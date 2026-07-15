@@ -31,7 +31,7 @@ export interface RagSourceInfo {
 // ============================================================================
 
 /** 多模态来源类型 */
-export type MultimodalSourceType = 'attachment' | 'exam' | 'textbook';
+export type MultimodalSourceType = 'attachment' | 'file' | 'image' | 'exam' | 'textbook';
 
 /** 多模态检索结果来源 */
 export type MultimodalRetrievalSource = 'multimodal_page' | 'text_chunk';

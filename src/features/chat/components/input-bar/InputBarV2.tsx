@@ -85,6 +85,7 @@ interface ModelProfileDisplayRecord {
 // 值 → i18n 键后缀（chatV2:inputBar.thinkingDepth.*）；kind 仅约束该模型允许的档位
 const THINKING_DEPTH_LABEL_KEYS: Record<DeepSeekReasoningControlKind, Partial<Record<DeepSeekReasoningOptionValue, string>>> = {
   'openai-effort': {
+    minimal: 'minimal',
     low: 'low',
     medium: 'medium',
     high: 'high',
@@ -101,10 +102,18 @@ const THINKING_DEPTH_LABEL_KEYS: Record<DeepSeekReasoningControlKind, Partial<Re
     xhigh: 'xhigh',
     max: 'max',
   },
+  'gemini-pro-effort': { low: 'low', high: 'high' },
+  'gemini-flash-effort': { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high' },
+  'anthropic-adaptive-effort': { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
+  'glm-effort': { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
+  'grok-effort': { low: 'low', medium: 'medium', high: 'high' },
+  'mistral-effort': { low: 'low', medium: 'medium', high: 'high' },
+  'ernie-effort': { high: 'high', max: 'max' },
   'toggle-only': {},
 };
 
 const THINKING_DEPTH_LABEL_FALLBACKS: Record<string, string> = {
+  minimal: '最低',
   low: '低',
   medium: '中',
   high: '高',
@@ -193,11 +202,13 @@ function resolveModelReasoningSupport(model: ModelInfo | undefined): boolean {
     return true;
   }
 
-  const explicitReasoning =
-    getModelBooleanField(model, 'isReasoning') ??
-    getModelBooleanField(model, 'supportsReasoning');
-  if (typeof explicitReasoning === 'boolean') {
-    return explicitReasoning;
+  const isReasoning = getModelBooleanField(model, 'isReasoning');
+  const supportsReasoning = getModelBooleanField(model, 'supportsReasoning');
+  if (isReasoning === true || supportsReasoning === true) {
+    return true;
+  }
+  if (isReasoning === false && supportsReasoning === false) {
+    return false;
   }
 
   return inferCapabilities({
@@ -362,12 +373,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       state.addContextRef(payload.contextRef);
     }, [store]);
 
-    // 切换推理模式回调（使用 store.getState 避免闭包陈旧）
-    const handleToggleThinking = useCallback(() => {
-      const state = store.getState();
-      state.setChatParams({ enableThinking: !state.chatParams.enableThinking });
-    }, [store]);
-
     const currentModelInfo = useMemo(
       () => availableModels?.find((model) => matchesModelIdentity(model, [modelId, modelDisplayName])),
       [availableModels, modelDisplayName, modelId]
@@ -480,19 +485,29 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         return;
       }
 
-      if (!runtimeDepthIsSet && thinkingControl.kind !== 'toggle-only') return;
+      if (
+        !runtimeDepthIsSet &&
+        thinkingControl.kind !== 'toggle-only' &&
+        (thinkingControl.canDisable || enableThinking)
+      ) return;
 
+      const nextEnableThinking = normalizedThinkingSelection.enableThinking;
       const nextReasoningEffort = normalizedThinkingSelection.reasoningEffort;
       const nextThinkingBudget = normalizedThinkingSelection.thinkingBudget;
-      if (reasoningEffort === nextReasoningEffort && thinkingBudget === nextThinkingBudget) return;
+      if (
+        enableThinking === nextEnableThinking &&
+        reasoningEffort === nextReasoningEffort &&
+        thinkingBudget === nextThinkingBudget
+      ) return;
 
       setChatParams({
-        enableThinking,
+        enableThinking: nextEnableThinking,
         reasoningEffort: nextReasoningEffort,
         thinkingBudget: nextThinkingBudget,
       });
     }, [
       enableThinking,
+      normalizedThinkingSelection.enableThinking,
       normalizedThinkingSelection.reasoningEffort,
       normalizedThinkingSelection.thinkingBudget,
       reasoningEffort,
@@ -500,8 +515,24 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       runtimeModelSupportsReasoning,
       setChatParams,
       thinkingBudget,
+      thinkingControl.canDisable,
       thinkingControl.kind,
     ]);
+
+    // 切换推理模式回调（使用 store.getState 避免闭包陈旧）
+    const handleToggleThinking = useCallback(() => {
+      const state = store.getState();
+      if (state.chatParams.enableThinking && !thinkingControl.canDisable) return;
+      if (state.chatParams.enableThinking) {
+        state.setChatParams({
+          enableThinking: false,
+          reasoningEffort: undefined,
+          thinkingBudget: undefined,
+        });
+      } else {
+        state.setChatParams({ enableThinking: true });
+      }
+    }, [store, thinkingControl.canDisable]);
 
     const handleSetThinkingDepth = useCallback(
       (value: DeepSeekReasoningOptionValue | 'off') => {
@@ -515,7 +546,21 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         }
 
         if (value === 'off') {
-          store.getState().setChatParams({ enableThinking: false });
+          if (!thinkingControl.canDisable) return;
+          store.getState().setChatParams({
+            enableThinking: false,
+            reasoningEffort: undefined,
+            thinkingBudget: undefined,
+          });
+          return;
+        }
+
+        if (thinkingControl.kind === 'openai-effort') {
+          store.getState().setChatParams({
+            enableThinking: true,
+            reasoningEffort: value === 'max' ? 'xhigh' : value,
+            thinkingBudget: undefined,
+          });
           return;
         }
 
@@ -538,9 +583,18 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           return;
         }
 
+        if (thinkingControl.kind !== 'toggle-only') {
+          store.getState().setChatParams({
+            enableThinking: true,
+            reasoningEffort: value,
+            thinkingBudget: undefined,
+          });
+          return;
+        }
+
         store.getState().setChatParams({ enableThinking: true });
       },
-      [store, thinkingControl.kind, runtimeModelSupportsReasoning]
+      [store, thinkingControl.canDisable, thinkingControl.kind, runtimeModelSupportsReasoning]
     );
 
     const thinkingStateLabel = useMemo(() => {
@@ -1071,6 +1125,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         enableThinking={effectiveEnableThinking}
         thinkingStateLabel={thinkingStateLabel}
         thinkingUnsupported={!runtimeModelSupportsReasoning}
+        thinkingCanDisable={thinkingControl.canDisable}
         thinkingDepthOptions={runtimeModelSupportsReasoning ? thinkingControl.options : []}
         thinkingDepthValue={runtimeModelSupportsReasoning ? normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined : undefined}
         onToggleThinking={handleToggleThinking}

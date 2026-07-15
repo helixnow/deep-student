@@ -59,6 +59,119 @@ describe('BlockingApprovalBar runtime scope', () => {
     expect(screen.getByRole('button', { name: 'Allow scope' })).toBeInTheDocument();
   });
 
+  it('shows the bound root authority and effective sandbox-readable roots', () => {
+    const interaction: ToolApprovalBlockingInteraction = {
+      kind: 'tool_approval',
+      toolCallId: 'call-shell-authority',
+      toolName: 'builtin-local_shell_execute',
+      arguments: { command: 'git status --short' },
+      sensitivity: 'high',
+      description: 'Execute git status',
+      timeoutSeconds: 30,
+      runtimeScope: {
+        kind: 'shell',
+        rootId: 'workspace',
+        rootPath: '/Users/student/project',
+        rootAccess: 'read_only',
+        rootSessionScoped: false,
+        rootBinding: 'abcdef1234567890abcdef1234567890',
+        readableRoots: ['/Users/student/project', '/tmp/deep-student/session'],
+        sandboxBackend: 'macos_seatbelt',
+        shellKind: 'posix_sh',
+        outputEncoding: 'utf-8',
+        executionLocation: 'local_device',
+        sandboxEnforced: true,
+        inheritEnv: true,
+        inheritedEnvKeys: ['PATH', 'LANG'],
+        explicitEnvKeys: ['CI'],
+        containsPotentialSecret: true,
+        cwd: '.',
+        commandPrefix: 'git status',
+        commandHash: '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      },
+    };
+
+    render(<BlockingApprovalBar interaction={interaction} sessionId="sess-shell" />);
+
+    expect(screen.getByText('/Users/student/project')).toBeInTheDocument();
+    expect(screen.getByText('read_only')).toBeInTheDocument();
+    expect(screen.getByText('persistent-root')).toBeInTheDocument();
+    expect(screen.getByText('sandbox:macos_seatbelt')).toBeInTheDocument();
+    expect(screen.getByText('local_device')).toBeInTheDocument();
+    expect(screen.getByText('sandbox:enforced')).toBeInTheDocument();
+    expect(screen.getByText('shell:posix_sh')).toBeInTheDocument();
+    expect(screen.getByText('encoding:utf-8')).toBeInTheDocument();
+    expect(screen.getByText('command:redacted')).toBeInTheDocument();
+    expect(screen.getByText('parent-env')).toBeInTheDocument();
+    expect(screen.getByText('inherited:2 [PATH, LANG]')).toHaveAttribute('title', 'PATH, LANG');
+    expect(screen.getByText('explicit-env:1 [CI]')).toHaveAttribute('title', 'CI');
+    expect(screen.getByText('bind:abcdef12')).toHaveAttribute(
+      'title',
+      'abcdef1234567890abcdef1234567890',
+    );
+    expect(screen.getByText('read:/tmp/deep-student/session')).toBeInTheDocument();
+  });
+
+  it('does not invent parent environment authority for an older payload', () => {
+    const interaction: ToolApprovalBlockingInteraction = {
+      kind: 'tool_approval',
+      toolCallId: 'call-shell-legacy',
+      toolName: 'builtin-local_shell_execute',
+      arguments: { command: 'pwd' },
+      sensitivity: 'high',
+      description: 'Print working directory',
+      timeoutSeconds: 30,
+      runtimeScope: {
+        kind: 'shell',
+        rootId: 'workspace',
+        cwd: '.',
+        commandPrefix: 'pwd',
+        commandHash: '1234567890abcdef',
+      },
+    };
+
+    render(<BlockingApprovalBar interaction={interaction} sessionId="sess-shell" />);
+
+    expect(screen.queryByText('parent-env')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^inherited:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^explicit-env:/)).not.toBeInTheDocument();
+  });
+
+  it('warns for external MCP execution and suppresses forged local sandbox metadata', () => {
+    const interaction: ToolApprovalBlockingInteraction = {
+      kind: 'tool_approval',
+      toolCallId: 'call-external-mcp',
+      toolName: 'mcp-execute_command',
+      arguments: { command: 'git status' },
+      sensitivity: 'high',
+      description: 'Execute through external MCP',
+      timeoutSeconds: 30,
+      runtimeScope: {
+        kind: 'shell',
+        executionLocation: 'external_mcp',
+        sandboxEnforced: false,
+        rootId: 'forged-workspace',
+        rootPath: '/forged/local/root',
+        rootAccess: 'read_write',
+        cwd: '/forged/local/root',
+        commandPrefix: 'git status',
+        commandHash: '1234567890abcdef',
+        sandboxBackend: 'forged_local_sandbox',
+        shellKind: 'posix_sh',
+        outputEncoding: 'utf-8',
+        readableRoots: ['/forged/readable/root'],
+      },
+    };
+
+    render(<BlockingApprovalBar interaction={interaction} sessionId="sess-shell" />);
+
+    expect(screen.getByText('external MCP / local sandbox not enforced')).toBeInTheDocument();
+    expect(screen.queryByText('forged-workspace')).not.toBeInTheDocument();
+    expect(screen.queryByText('/forged/local/root')).not.toBeInTheDocument();
+    expect(screen.queryByText('sandbox:forged_local_sandbox')).not.toBeInTheDocument();
+    expect(screen.queryByText('read:/forged/readable/root')).not.toBeInTheDocument();
+  });
+
   it('hides remember buttons when rememberDisabled is set for skill_install', () => {
     const interaction: ToolApprovalBlockingInteraction = {
       kind: 'tool_approval',

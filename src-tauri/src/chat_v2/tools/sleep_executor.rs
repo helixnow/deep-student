@@ -420,35 +420,3 @@ impl ToolExecutor for CoordinatorSleepExecutor {
         }
     }
 }
-
-/// 获取 coordinator_sleep 工具的 JSON Schema
-pub fn get_coordinator_sleep_tool_schema() -> Value {
-    json!({
-        "name": "builtin-coordinator_sleep",
-        "description": "创建子代理后调用此工具进入睡眠状态。睡眠期间 pipeline 挂起，等待子代理发送结果消息后自动唤醒继续执行。",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "workspace_id": {
-                    "type": "string",
-                    "description": "工作区 ID（必需）"
-                },
-                "awaiting_agents": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "等待的子代理 session_id 列表（可选，不指定则等待所有子代理）"
-                },
-                "wake_condition": {
-                    "type": "string",
-                    "enum": ["any_message", "result_message", "all_completed"],
-                    "description": "唤醒条件：result_message=收到结果消息（默认），any_message=任意消息，all_completed=全部完成"
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "超时时间（毫秒），超时后自动唤醒。可选，默认无超时"
-                }
-            },
-            "required": ["workspace_id"]
-        }
-    })
-}

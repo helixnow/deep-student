@@ -2750,6 +2750,13 @@ impl BuiltinResourceExecutor {
             .and_then(|d| d.get("state"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
+        let probe_window_id = probe_resp
+            .data
+            .as_ref()
+            .and_then(|data| data.get("windowId"))
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string);
 
         match state {
             "clean" | "dirty" | "hot" => {}
@@ -2768,6 +2775,34 @@ impl BuiltinResourceExecutor {
                 return None;
             }
         }
+        let Some(probe_window_id) = probe_window_id else {
+            log::warn!(
+                "[BuiltinResourceExecutor] mindmap probe eligible but missing exact windowId"
+            );
+            return Some(Err(json!({
+                "code": "BRIDGE_PROTOCOL_ERROR",
+                "message": "mindmap probe 未返回精确 windowId",
+                "hint": "重新 probe；不得对同资源的其他窗口粗粒度委托",
+                "retryable": false,
+            })
+            .to_string()));
+        };
+
+        if ctx.is_cancelled() {
+            return Some(Ok(json!({
+                "status": "cancelled",
+                "mode": "frontend",
+                "applied": 0,
+                "totalOps": operations.len(),
+                "entityIds": [mindmap_id],
+                "done": [],
+                "undone": operations.iter().map(|_| "cancelled before apply_ops submission").collect::<Vec<_>>(),
+                "message": "用户在提交写入前取消；未改动导图，不可自动重试。",
+                "retryable": false,
+                "plane": "frontend",
+                "delegated": true,
+            })));
+        }
 
         let ops: Vec<Value> = operations
             .iter()
@@ -2783,6 +2818,7 @@ impl BuiltinResourceExecutor {
             "target": {
                 "typeId": "mindmap",
                 "resourceId": mindmap_id,
+                "windowId": probe_window_id,
             },
             "ops": ops,
             "pacing": "normal",
@@ -2793,22 +2829,8 @@ impl BuiltinResourceExecutor {
         let apply_timeout = apply_ops_timeout_ms(ops.len(), Some("normal"));
         let apply_resp = match acr_bridge_call(ctx, "apply_ops", apply_args, apply_timeout).await {
             Ok(resp) => resp,
-            Err(e) if is_bridge_cancelled(&e) => {
-                return Some(Ok(json!({
-                    "status": "cancelled",
-                    "mode": "frontend",
-                    "applied": 0,
-                    "totalOps": ops.len(),
-                    "entityIds": [mindmap_id],
-                    "done": [],
-                    "undone": ops.iter()
-                        .map(|op| op.get("label").and_then(|v| v.as_str()).unwrap_or("op").to_string())
-                        .collect::<Vec<_>>(),
-                    "message": "用户取消；请根据 done/undone 继续，勿原样重试。",
-                    "plane": "frontend",
-                    "delegated": true,
-                })));
-            }
+            // apply_ops 已提交后不能伪造 applied=0；取消先由桥层有界
+            // drain 权威终态，无回执时与其他桥故障一样返回 resultUnknown。
             Err(e) => {
                 log::warn!(
                     "[BuiltinResourceExecutor] mindmap ACR apply_ops bridge error; no backend fallback: {}",
@@ -3799,7 +3821,9 @@ impl ToolExecutor for BuiltinResourceExecutor {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
             // 删除操作是破坏性的，需要更高敏感度
-            "mindmap_delete" => ToolSensitivity::High,
+            // mindmap_edit_nodes 可混入 delete_node/move_node；当前审批契约只按
+            // 工具名分级，因此整个混合工具 fail-closed 提升到 High。
+            "mindmap_delete" | "mindmap_edit_nodes" => ToolSensitivity::High,
             // ★ 2026-02-09: mindmap_update 降为 Low
             // 理由：用户主动让 AI 更新导图，且已有乐观并发控制（expected_updated_at）保护
             // ★ 2026-02-09: resource_read/resource_search 降为 Low
@@ -3821,6 +3845,10 @@ impl ToolExecutor for BuiltinResourceExecutor {
             // mindmap_* 含创建/更新/删除等写操作，保持串行（默认）
             _ => ToolConcurrency::Serial,
         }
+    }
+
+    fn manages_cancellation(&self, tool_name: &str) -> bool {
+        strip_tool_namespace(tool_name) == "mindmap_edit_nodes"
     }
 
     fn name(&self) -> &'static str {
@@ -4034,6 +4062,12 @@ mod tests {
             executor.sensitivity_level("builtin-mindmap_delete"),
             ToolSensitivity::High
         );
+        assert_eq!(
+            executor.sensitivity_level("builtin-mindmap_edit_nodes"),
+            ToolSensitivity::High
+        );
+        assert!(executor.manages_cancellation("builtin-mindmap_edit_nodes"));
+        assert!(!executor.manages_cancellation("builtin-resource_read"));
     }
 
     /// ★ M-062: 验证 essay 节点的敏感字段被正确移除

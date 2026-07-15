@@ -8,6 +8,24 @@ pub(crate) struct ExternalToolRoute {
     pub preferred_server_id: Option<String>,
 }
 
+fn approval_manager_required(sensitivity: Option<ToolSensitivity>) -> bool {
+    sensitivity != Some(ToolSensitivity::Low)
+}
+
+/// Retain usage reported before a failed terminal event. Responses providers
+/// commonly emit usage immediately before `response.incomplete`/`failed`;
+/// losing it here would make persisted message metadata and billing logs show 0.
+fn retain_failed_round_usage(
+    total_usage: &mut TokenUsage,
+    reported_usage: Option<TokenUsage>,
+) -> Option<TokenUsage> {
+    let reported_usage = reported_usage.filter(TokenUsage::has_tokens);
+    if let Some(usage) = reported_usage.as_ref() {
+        total_usage.accumulate(usage);
+    }
+    reported_usage
+}
+
 /// 🔧 P1-3 修复：stream hooks 的 RAII 注销守卫。
 ///
 /// 外层 `tokio::select!` 命中取消分支时会直接 drop 整个 `execute_with_tools`
@@ -320,7 +338,10 @@ impl ChatV2Pipeline {
             if ctx.options.is_continue != Some(true) {
                 // 🔴 关键修复：添加当前用户消息到消息列表
                 // 之前这里缺失，导致 LLM 看不到用户当前发送的问题
-                let current_user_message = self.build_current_user_message(ctx);
+                let current_user_message = ctx
+                    .compiled_current_user_message
+                    .clone()
+                    .unwrap_or_else(|| self.build_current_user_message(ctx));
                 messages.push(current_user_message);
             }
             log::debug!(
@@ -548,33 +569,7 @@ impl ChatV2Pipeline {
                     );
 
                     // 🔧 P1-49: 读取 MCP 策略配置（whitelist/blacklist）
-                    let (whitelist, blacklist) = if let Some(ref main_db) = self.main_db {
-                        let whitelist: Vec<String> = main_db
-                            .get_setting("mcp.tools.whitelist")
-                            .ok()
-                            .flatten()
-                            .map(|s| {
-                                s.split(',')
-                                    .map(|x| x.trim().to_string())
-                                    .filter(|x| !x.is_empty())
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        let blacklist: Vec<String> = main_db
-                            .get_setting("mcp.tools.blacklist")
-                            .ok()
-                            .flatten()
-                            .map(|s| {
-                                s.split(',')
-                                    .map(|x| x.trim().to_string())
-                                    .filter(|x| !x.is_empty())
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        (whitelist, blacklist)
-                    } else {
-                        (Vec::new(), Vec::new())
-                    };
+                    let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
 
                     log::debug!(
                         "[ChatV2::pipeline] MCP policy: whitelist={:?}, blacklist={:?}",
@@ -587,24 +582,17 @@ impl ChatV2Pipeline {
                     let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .filter(|tool| {
-                        // builtin- 前缀的工具不受策略过滤影响
-                        if tool.name.starts_with(BUILTIN_NAMESPACE) {
-                            return true;
-                        }
-                        // 黑名单优先级最高
-                        if !blacklist.is_empty() && blacklist.iter().any(|b| b == &tool.name) {
+                        let allowed =
+                            is_mcp_tool_allowed_by_policy(tool, &whitelist, &blacklist);
+                        if !allowed && blacklist.iter().any(|b| b == &tool.name) {
                             log::debug!(
                                 "[ChatV2::pipeline] Tool '{}' blocked by blacklist",
                                 tool.name
                             );
-                            return false;
-                        }
-                        // 如果白名单非空，工具必须在白名单中
-                        if !whitelist.is_empty() && !whitelist.iter().any(|w| w == &tool.name) {
+                        } else if !allowed {
                             log::debug!("[ChatV2::pipeline] Tool '{}' not in whitelist", tool.name);
-                            return false;
                         }
-                        true
+                        allowed
                     })
                     .filter_map(|tool| {
                         let Some(prepared) = prepare_external_tool_schema(tool, true) else {
@@ -824,8 +812,20 @@ impl ChatV2Pipeline {
                 }
             };
 
-            // 瞬时网络错误自动重试（最多 LLM_MAX_RETRIES 次）
-            if call_result.is_err() {
+            // 瞬时网络错误仅允许在尚未产生任何输出时重试。流一旦输出正文或思维链，
+            // 换模型/重放请求会把两次生成拼接成一个伪造回答；此时必须终止本轮，
+            // 由下一次显式重试重新冻结模型和上下文。
+            let stream_has_output = !adapter.get_accumulated_content().is_empty()
+                || adapter
+                    .get_accumulated_reasoning()
+                    .is_some_and(|reasoning| !reasoning.is_empty());
+            if call_result.is_err() && stream_has_output {
+                log::warn!(
+                    "[ChatV2::pipeline] Stream failed after output; suppressing automatic retry/failover for session={}",
+                    ctx.session_id
+                );
+            }
+            if call_result.is_err() && !stream_has_output {
                 for retry in 1..=LLM_MAX_RETRIES {
                     if ctx
                         .cancellation_token
@@ -1042,6 +1042,19 @@ impl ChatV2Pipeline {
                     );
                 }
                 Err(e) => {
+                    let failed_round_usage =
+                        retain_failed_round_usage(&mut ctx.token_usage, adapter.get_api_usage());
+                    if let Some(usage) = failed_round_usage.as_ref() {
+                        log::info!(
+                            "[ChatV2::pipeline] Retained partial usage from failed LLM round {}: prompt={}, completion={}, total={}; accumulated_total={}",
+                            recursion_depth,
+                            usage.prompt_tokens,
+                            usage.completion_tokens,
+                            usage.total_tokens,
+                            ctx.token_usage.total_tokens
+                        );
+                    }
+
                     // 调用 adapter 的错误处理
                     adapter.on_error(&e.to_string());
                     log::error!("[ChatV2::pipeline] LLM call failed: {}", e);
@@ -1056,10 +1069,20 @@ impl ChatV2Pipeline {
                     crate::llm_usage::record_llm_usage(
                         crate::llm_usage::CallerType::ChatV2,
                         model_for_usage,
-                        0,
-                        0,
-                        None,
-                        None,
+                        failed_round_usage
+                            .as_ref()
+                            .map(|usage| usage.prompt_tokens)
+                            .unwrap_or(0),
+                        failed_round_usage
+                            .as_ref()
+                            .map(|usage| usage.completion_tokens)
+                            .unwrap_or(0),
+                        failed_round_usage
+                            .as_ref()
+                            .and_then(|usage| usage.reasoning_tokens),
+                        failed_round_usage
+                            .as_ref()
+                            .and_then(|usage| usage.cached_tokens),
                         Some(ctx.session_id.clone()),
                         None,
                         false,
@@ -1410,6 +1433,16 @@ impl ChatV2Pipeline {
                         result
                     })
                     .collect();
+                if let (Some(item), Some(first_tool_call_id)) = (
+                    adapter.get_response_reasoning_item(),
+                    tool_results_with_reasoning
+                        .first()
+                        .and_then(|r| r.tool_call_id.clone())
+                        .filter(|id| !id.is_empty()),
+                ) {
+                    ctx.response_reasoning_by_tool_call_id
+                        .insert(first_tool_call_id, item);
+                }
                 // 🔧 P1-2 修复：记录本轮伴随文本（text-before-tool_use），
                 // 由 tool_results_to_messages_impl 回填到对应 assistant(tool_call) 消息的
                 // content 字段，让下一轮 LLM 能看到自己上一轮说过什么
@@ -1778,104 +1811,7 @@ impl ChatV2Pipeline {
     /// 2. pptx/xlsx/docx: _create 必须在 _read/_extract/_get/_replace/_edit/_to_spec 之前
     /// 3. 同优先级内保持原始顺序（stable sort）
     fn ordered_tool_calls_for_execution(&self, tool_calls: &[ToolCall]) -> Vec<ToolCall> {
-        /// 剥离工具名前缀，返回短名
-        fn strip_tool_prefix(tool_name: &str) -> &str {
-            // builtin-xxx, mcp_xxx, mcp.tools.xxx, namespace.xxx
-            tool_name
-                .strip_prefix(BUILTIN_NAMESPACE)
-                .or_else(|| tool_name.strip_prefix("mcp_"))
-                .or_else(|| tool_name.strip_prefix("mcp.tools."))
-                .unwrap_or(tool_name)
-        }
-
-        /// ChatAnki 工具优先级
-        fn chatanki_priority(short_name: &str) -> Option<u8> {
-            if !short_name.starts_with("chatanki_") {
-                return None;
-            }
-            let p = match short_name {
-                "chatanki_run" | "chatanki_start" => 0,
-                "chatanki_control" => 1,
-                "chatanki_status"
-                | "chatanki_list_templates"
-                | "chatanki_analyze"
-                | "chatanki_check_anki_connect" => 2,
-                "chatanki_wait" => 3,
-                "chatanki_export" | "chatanki_sync" => 4,
-                _ => 2,
-            };
-            Some(p)
-        }
-
-        /// 文档工具优先级（pptx/xlsx/docx）
-        /// _create = 0, 其余 = 1, 不匹配 = None
-        fn document_tool_priority(short_name: &str) -> Option<u8> {
-            // 检测是否属于文档工具族
-            let prefixes = ["pptx_", "xlsx_", "docx_"];
-            let matched_prefix = prefixes.iter().find(|p| short_name.starts_with(**p));
-            let prefix = match matched_prefix {
-                Some(p) => *p,
-                None => return None,
-            };
-
-            let action = &short_name[prefix.len()..];
-            let p = match action {
-                "create" => 0,                       // 创建文件 — 必须最先
-                "read_structured" | "get_metadata"   // 只读操作
-                | "extract_tables" => 1,
-                "edit_cells" | "replace_text" => 2,  // 写操作（依赖文件存在）
-                "to_spec" => 3,                      // 转换操作（依赖文件存在）
-                _ => 1,                              // 未知动作，按只读对待
-            };
-            Some(p)
-        }
-
-        /// 综合优先级：(group_priority, action_priority)
-        /// group 0 = chatanki, 1 = document, 99 = other
-        fn tool_priority(tool_name: &str) -> (u8, u8) {
-            let short = strip_tool_prefix(tool_name);
-            if let Some(p) = chatanki_priority(short) {
-                return (0, p);
-            }
-            if let Some(p) = document_tool_priority(short) {
-                return (1, p);
-            }
-            (99, 0)
-        }
-
-        // 快速路径：如果没有需要排序的工具，直接返回原始顺序
-        let needs_sort = tool_calls.iter().any(|call| {
-            let short = strip_tool_prefix(&call.name);
-            chatanki_priority(short).is_some() || document_tool_priority(short).is_some()
-        });
-        if !needs_sort {
-            return tool_calls.to_vec();
-        }
-
-        let mut indexed_calls: Vec<(usize, ToolCall)> =
-            tool_calls.iter().cloned().enumerate().collect();
-        // stable sort: 先按 tool_priority，同优先级保持原始顺序（idx）
-        indexed_calls.sort_by_key(|(idx, call)| {
-            let (group, action) = tool_priority(&call.name);
-            (group, action, *idx)
-        });
-
-        let reordered: Vec<ToolCall> = indexed_calls.into_iter().map(|(_, call)| call).collect();
-
-        // 日志：如果顺序发生变化，记录重排结果
-        if reordered
-            .iter()
-            .zip(tool_calls.iter())
-            .any(|(a, b)| a.id != b.id)
-        {
-            let names: Vec<&str> = reordered.iter().map(|c| c.name.as_str()).collect();
-            log::info!(
-                "[ChatV2::pipeline] Tool calls reordered for dependency safety: {:?}",
-                names
-            );
-        }
-
-        reordered
+        order_tool_calls_for_execution(tool_calls)
     }
 
     pub(crate) async fn execute_tool_calls(
@@ -2176,7 +2112,7 @@ impl ChatV2Pipeline {
             return false;
         }
 
-        !self.tool_may_require_approval(&tc.name)
+        !self.tool_may_require_approval(&tc.name, &tc.arguments)
     }
 
     /// 🆕 2026-07: 保守判断工具是否可能进入审批流程
@@ -2185,8 +2121,10 @@ impl ChatV2Pipeline {
     /// - 注册表敏感度非 Low（或无执行器）→ 可能审批 → 串行。
     ///   （即使全局旁路 global_bypass 打开也按串行处理，只损失并行度不损失正确性）
     /// - 敏感度为 Low 但存在把它**升级**为 medium/high 的单工具覆盖 → 串行。
-    fn tool_may_require_approval(&self, tool_name: &str) -> bool {
-        let sensitivity = self.executor_registry.get_sensitivity(tool_name);
+    fn tool_may_require_approval(&self, tool_name: &str, arguments: &Value) -> bool {
+        let sensitivity = self
+            .executor_registry
+            .get_sensitivity_for_call(tool_name, arguments);
         if sensitivity != Some(ToolSensitivity::Low) {
             return true;
         }
@@ -2516,9 +2454,14 @@ impl ChatV2Pipeline {
         );
 
         let build_preflight_blocked_result = |error_message: String| {
+            let display_arguments =
+                crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
+                    &tool_call.name,
+                    &tool_call.arguments,
+                );
             let payload = json!({
                 "toolName": tool_call.name,
-                "toolInput": tool_call.arguments,
+                "toolInput": display_arguments.clone(),
                 "toolCallId": tool_call.id,
             });
             emitter.emit_start_with_meta(
@@ -2542,7 +2485,7 @@ impl ChatV2Pipeline {
                 tool_call_id: Some(tool_call.id.clone()),
                 block_id: Some(block_id.to_string()),
                 tool_name: tool_call.name.clone(),
-                input: tool_call.arguments.clone(),
+                input: display_arguments,
                 output: json!(null),
                 success: false,
                 error: Some(error_message),
@@ -2595,8 +2538,37 @@ impl ChatV2Pipeline {
             ));
         }
 
+        // Shell approval is bound to backend-resolved filesystem authority,
+        // never to model-supplied root labels. The original ToolCall remains
+        // untouched and is the only value passed to the executor.
+        let approval_arguments = match self.resolve_local_shell_approval_arguments(
+            tool_call,
+            emitter,
+            session_id,
+            skill_package_roots.as_ref(),
+        ) {
+            Ok(Some(arguments)) => arguments,
+            Ok(None) => tool_call.arguments.clone(),
+            Err(error) => {
+                return Ok(build_preflight_blocked_result(format!(
+                    "无法绑定本地终端审批作用域: {error}"
+                )))
+            }
+        };
+        let expected_runtime_binding =
+            crate::chat_v2::approval_scope::runtime_root_binding_from_args(&approval_arguments)
+                .map(str::to_string);
+        let expected_runtime_scope_key = expected_runtime_binding.as_ref().map(|_| {
+            crate::chat_v2::approval_scope::make_runtime_scope_key(
+                &tool_call.name,
+                &approval_arguments,
+            )
+        });
+
         // 🆕 文档 29 P1-3：检查工具敏感等级，决定是否需要用户审批
-        let sensitivity = self.executor_registry.get_sensitivity(&tool_call.name);
+        let sensitivity = self
+            .executor_registry
+            .get_sensitivity_for_call(&tool_call.name, &tool_call.arguments);
 
         // 🆕 全局免审批开关和单工具覆盖：
         // 1. 全局开关 tool_approval.global_bypass = "true" → 所有工具跳过审批
@@ -2639,121 +2611,166 @@ impl ChatV2Pipeline {
             sensitivity
         };
 
-        if effective_sensitivity != Some(ToolSensitivity::Low) {
-            if let Some(approval_manager) = &self.approval_manager {
-                // 🔧 F8/F9 修复说明：session_id 必须是真实会话 ID（多变体路径不再传
-                // "{session}:{variant}" 复合键）。前端审批响应携带真实 session_id，
-                // ApprovalManager 按 (session_id, tool_call_id) 精确匹配 pending 项，
-                // 若此处键不一致，用户点击"允许"将永远匹配不到等待者（approval_expired），
-                // 工具只能等到超时被拒。
+        if approval_manager_required(effective_sensitivity) {
+            let Some(approval_manager) = &self.approval_manager else {
+                log::error!(
+                    "[ChatV2::pipeline] Refusing {:?} tool '{}' because ApprovalManager is unavailable",
+                    effective_sensitivity,
+                    tool_call.name
+                );
+                return Ok(build_preflight_blocked_result(
+                    "审批服务不可用，已阻止中高风险工具执行".to_string(),
+                ));
+            };
+            // 🔧 F8/F9 修复说明：session_id 必须是真实会话 ID（多变体路径不再传
+            // "{session}:{variant}" 复合键）。前端审批响应携带真实 session_id，
+            // ApprovalManager 按 (session_id, tool_call_id) 精确匹配 pending 项，
+            // 若此处键不一致，用户点击"允许"将永远匹配不到等待者（approval_expired），
+            // 工具只能等到超时被拒。
 
-                // 🔧 P1-51 + M-081 修复：优先查询数据库持久化设置
-                // 统一入口 `approval_scope::make_setting_key`（v2 优先，未知工具 fallback v1）
-                // 同时读取旧版 v1 键作为向后兼容（如果 v2 未命中）
-                // ADR-B2：权限类工具跳过一切 remember 路径（不可绕过人工审批）。
-                let skip_remember =
-                    crate::chat_v2::approval_scope::never_remember_approval(&tool_call.name);
-                let persisted_approval: Option<bool> = if skip_remember {
-                    None
-                } else {
-                    self.main_db.as_ref().and_then(|db| {
-                        use crate::chat_v2::approval_scope;
+            // 🔧 P1-51 + M-081 修复：优先查询数据库持久化设置
+            // 统一入口 `approval_scope::make_setting_key`（v2 优先，未知工具 fallback v1）
+            // 同时读取旧版 v1 键作为向后兼容（如果 v2 未命中）
+            // ADR-B2：权限类工具跳过一切 remember 路径（不可绕过人工审批）。
+            let skip_remember = crate::chat_v2::approval_scope::never_remember_approval_for_args(
+                &tool_call.name,
+                &approval_arguments,
+            );
+            let persisted_approval: Option<bool> = if skip_remember {
+                None
+            } else {
+                self.main_db.as_ref().and_then(|db| {
+                    use crate::chat_v2::approval_scope;
 
-                        // v2 查询（若为已知工具）
-                        if let Some(v2_key) = approval_scope::make_setting_key_v2(
-                            &tool_call.name,
-                            &tool_call.arguments,
-                        ) {
-                            if let Ok(Some(v)) = db.get_setting(&v2_key) {
-                                return Some(v == "allow");
-                            }
+                    // v2 查询（若为已知工具）
+                    if let Some(v2_key) =
+                        approval_scope::make_setting_key_v2(&tool_call.name, &approval_arguments)
+                    {
+                        if let Ok(Some(v)) = db.get_setting(&v2_key) {
+                            return Some(v == "allow");
                         }
-                        // v1 回退查询（保证旧"记住选择"仍生效）
-                        let v1_key = approval_scope::make_setting_key_v1(
+                    }
+                    // v1 回退查询（保证旧"记住选择"仍生效）
+                    let v1_key =
+                        approval_scope::make_setting_key_v1(&tool_call.name, &approval_arguments);
+                    db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
+                })
+            };
+
+            // 使用持久化设置、会话级记住（🆕 三档分级中间档）或内存缓存
+            let remembered = if skip_remember {
+                None
+            } else {
+                persisted_approval
+                    .or_else(|| {
+                        approval_manager.check_session_remembered(
+                            session_id,
                             &tool_call.name,
-                            &tool_call.arguments,
-                        );
-                        db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
+                            &approval_arguments,
+                        )
                     })
-                };
+                    .or_else(|| {
+                        approval_manager.check_remembered(&tool_call.name, &approval_arguments)
+                    })
+            };
 
-                // 使用持久化设置、会话级记住（🆕 三档分级中间档）或内存缓存
-                let remembered = if skip_remember {
-                    None
-                } else {
-                    persisted_approval
-                        .or_else(|| {
-                            approval_manager.check_session_remembered(
-                                session_id,
-                                &tool_call.name,
-                                &tool_call.arguments,
-                            )
-                        })
-                        .or_else(|| {
-                            approval_manager.check_remembered(&tool_call.name, &tool_call.arguments)
-                        })
-                };
+            if let Some(is_allowed) = remembered {
+                log::info!(
+                    "[ChatV2::pipeline] Tool {} approval remembered: {} (persisted={})",
+                    tool_call.name,
+                    is_allowed,
+                    persisted_approval.is_some()
+                );
+                if !is_allowed {
+                    // 用户之前选择了"始终拒绝"
+                    return Ok(build_preflight_blocked_result(
+                        "用户已拒绝此工具执行".to_string(),
+                    ));
+                }
+                // 用户之前选择了"始终允许"，继续执行
+            } else {
+                // 需要请求用户审批
+                let actual_sensitivity = sensitivity.unwrap_or(ToolSensitivity::Medium);
+                let approval_outcome = self
+                    .request_tool_approval(
+                        tool_call,
+                        &approval_arguments,
+                        emitter,
+                        session_id,
+                        message_id,
+                        block_id,
+                        &actual_sensitivity,
+                        approval_manager,
+                        cancellation_token.as_ref(),
+                    )
+                    .await;
 
-                if let Some(is_allowed) = remembered {
-                    log::info!(
-                        "[ChatV2::pipeline] Tool {} approval remembered: {} (persisted={})",
-                        tool_call.name,
-                        is_allowed,
-                        persisted_approval.is_some()
-                    );
-                    if !is_allowed {
-                        // 用户之前选择了"始终拒绝"
+                match approval_outcome {
+                    ApprovalOutcome::Approved => {
+                        // 用户同意，继续执行
+                    }
+                    ApprovalOutcome::Rejected { reason } => {
+                        let message = match reason {
+                            Some(user_reason) => {
+                                format!("用户拒绝执行此工具。用户说明：{}", user_reason)
+                            }
+                            None => "用户拒绝执行此工具".to_string(),
+                        };
+                        return Ok(build_preflight_blocked_result(message));
+                    }
+                    ApprovalOutcome::Timeout => {
                         return Ok(build_preflight_blocked_result(
-                            "用户已拒绝此工具执行".to_string(),
+                            "工具审批等待超时，请重试".to_string(),
                         ));
                     }
-                    // 用户之前选择了"始终允许"，继续执行
-                } else {
-                    // 需要请求用户审批
-                    let actual_sensitivity = sensitivity.unwrap_or(ToolSensitivity::Medium);
-                    let approval_outcome = self
-                        .request_tool_approval(
-                            tool_call,
-                            emitter,
-                            session_id,
-                            message_id,
-                            block_id,
-                            &actual_sensitivity,
-                            approval_manager,
-                            cancellation_token.as_ref(),
-                        )
-                        .await;
-
-                    match approval_outcome {
-                        ApprovalOutcome::Approved => {
-                            // 用户同意，继续执行
-                        }
-                        ApprovalOutcome::Rejected { reason } => {
-                            let message = match reason {
-                                Some(user_reason) => {
-                                    format!("用户拒绝执行此工具。用户说明：{}", user_reason)
-                                }
-                                None => "用户拒绝执行此工具".to_string(),
-                            };
-                            return Ok(build_preflight_blocked_result(message));
-                        }
-                        ApprovalOutcome::Timeout => {
-                            return Ok(build_preflight_blocked_result(
-                                "工具审批等待超时，请重试".to_string(),
-                            ));
-                        }
-                        ApprovalOutcome::ChannelClosed => {
-                            return Ok(build_preflight_blocked_result(
-                                "工具审批通道异常关闭，请重试".to_string(),
-                            ));
-                        }
-                        ApprovalOutcome::Cancelled => {
-                            return Ok(build_preflight_blocked_result(
-                                "流已取消，工具审批中止".to_string(),
-                            ));
-                        }
+                    ApprovalOutcome::ChannelClosed => {
+                        return Ok(build_preflight_blocked_result(
+                            "工具审批通道异常关闭，请重试".to_string(),
+                        ));
+                    }
+                    ApprovalOutcome::Cancelled => {
+                        return Ok(build_preflight_blocked_result(
+                            "流已取消，工具审批中止".to_string(),
+                        ));
                     }
                 }
+            }
+        }
+
+        if let Some(expected_binding) = expected_runtime_binding.as_deref() {
+            let rebound = match self.resolve_local_shell_approval_arguments(
+                tool_call,
+                emitter,
+                session_id,
+                skill_package_roots.as_ref(),
+            ) {
+                Ok(Some(arguments)) => arguments,
+                Ok(None) => {
+                    return Ok(build_preflight_blocked_result(
+                        "本地终端审批绑定在执行前丢失".to_string(),
+                    ))
+                }
+                Err(error) => {
+                    return Ok(build_preflight_blocked_result(format!(
+                        "本地终端运行时作用域在审批后发生变化: {error}"
+                    )))
+                }
+            };
+            let current_binding =
+                crate::chat_v2::approval_scope::runtime_root_binding_from_args(&rebound);
+            let current_scope_key =
+                crate::chat_v2::approval_scope::make_runtime_scope_key(&tool_call.name, &rebound);
+            if current_binding != Some(expected_binding)
+                || expected_runtime_scope_key.as_deref() != Some(current_scope_key.as_str())
+            {
+                log::warn!(
+                    "[ChatV2::pipeline] Runtime-root approval binding changed before shell exec: tool_call_id={}",
+                    tool_call.id
+                );
+                return Ok(build_preflight_blocked_result(
+                    "本地终端运行时目录、访问权限、环境或可读范围在审批后发生变化，请重新审批"
+                        .to_string(),
+                ));
             }
         }
 
@@ -2822,7 +2839,10 @@ impl ChatV2Pipeline {
                     tool_call_id: Some(tool_call.id.clone()),
                     block_id: Some(block_id.to_string()),
                     tool_name: tool_call.name.clone(),
-                    input: tool_call.arguments.clone(),
+                    input: crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
+                        &tool_call.name,
+                        &tool_call.arguments,
+                    ),
                     output: json!(null),
                     success: false,
                     error: Some(error_msg),
@@ -2832,6 +2852,44 @@ impl ChatV2Pipeline {
                 })
             }
         }
+    }
+
+    fn resolve_local_shell_approval_arguments(
+        &self,
+        tool_call: &ToolCall,
+        emitter: &Arc<ChatV2EventEmitter>,
+        session_id: &str,
+        skill_package_roots: Option<&std::collections::HashMap<String, String>>,
+    ) -> Result<Option<Value>, String> {
+        if !crate::chat_v2::approval_scope::is_local_shell_execute_tool(
+            &tool_call.name,
+            &tool_call.arguments,
+        ) {
+            return Ok(None);
+        }
+
+        use tauri::Manager;
+        let (root_id, cwd) =
+            crate::chat_v2::approval_scope::normalized_shell_runtime_location(&tool_call.arguments);
+        let window = emitter.window();
+        let state = window.state::<crate::commands::AppState>();
+        let support_readable_roots =
+            LocalShellExecuteExecutor::runtime_support_read_roots(&tool_call.arguments)?;
+        let binding = crate::chat_v2::runtime_roots::shell_runtime_approval_binding(
+            &window.app_handle(),
+            &state.database,
+            session_id,
+            skill_package_roots,
+            Some(&root_id),
+            Some(&cwd),
+            &support_readable_roots,
+        )?;
+        let scoped = crate::chat_v2::approval_scope::attach_runtime_root_approval_binding(
+            &tool_call.arguments,
+            &binding,
+        )?;
+        let env_facts = LocalShellExecuteExecutor::env_policy_facts(&tool_call.arguments)?;
+        crate::chat_v2::approval_scope::attach_shell_env_policy_facts(&scoped, &env_facts).map(Some)
     }
 
     fn canonical_tool_short_name(tool_name: &str) -> &str {
@@ -2851,6 +2909,7 @@ impl ChatV2Pipeline {
     async fn request_tool_approval(
         &self,
         tool_call: &ToolCall,
+        approval_arguments: &Value,
         emitter: &Arc<ChatV2EventEmitter>,
         session_id: &str,
         message_id: &str,
@@ -2874,17 +2933,14 @@ impl ChatV2Pipeline {
             tool_name: tool_call.name.clone(),
             arguments: crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
                 &tool_call.name,
-                &tool_call.arguments,
+                approval_arguments,
             ),
             sensitivity: sensitivity_label.to_string(),
-            description: ApprovalManager::generate_description(
-                &tool_call.name,
-                &tool_call.arguments,
-            ),
+            description: ApprovalManager::generate_description(&tool_call.name, approval_arguments),
             timeout_seconds,
             runtime_scope: crate::chat_v2::approval_scope::make_runtime_approval_scope(
                 &tool_call.name,
-                &tool_call.arguments,
+                approval_arguments,
                 sensitivity_label,
             ),
         };
@@ -2894,7 +2950,7 @@ impl ChatV2Pipeline {
             session_id,
             &tool_call.id,
             &tool_call.name,
-            &tool_call.arguments,
+            approval_arguments,
         );
 
         // 发射审批请求事件到前端
@@ -3003,6 +3059,92 @@ impl ChatV2Pipeline {
             }
         }
     }
+}
+
+fn order_tool_calls_for_execution(tool_calls: &[ToolCall]) -> Vec<ToolCall> {
+    fn strip_tool_prefix(tool_name: &str) -> &str {
+        tool_name
+            .strip_prefix(BUILTIN_NAMESPACE)
+            .or_else(|| tool_name.strip_prefix("mcp_"))
+            .or_else(|| tool_name.strip_prefix("mcp.tools."))
+            .unwrap_or(tool_name)
+    }
+
+    fn chatanki_priority(short_name: &str) -> Option<u8> {
+        if !short_name.starts_with("chatanki_") {
+            return None;
+        }
+        Some(match short_name {
+            "chatanki_run" | "chatanki_start" => 0,
+            "chatanki_control" => 1,
+            "chatanki_status"
+            | "chatanki_list_templates"
+            | "chatanki_analyze"
+            | "chatanki_check_anki_connect" => 2,
+            "chatanki_wait" => 3,
+            "chatanki_get_cards"
+            | "chatanki_update_card"
+            | "chatanki_delete_card"
+            | "chatanki_add_cards"
+            | "chatanki_retemplate" => 4,
+            "chatanki_enqueue_review" => 5,
+            "chatanki_export" | "chatanki_sync" => 6,
+            _ => 2,
+        })
+    }
+
+    fn document_tool_priority(short_name: &str) -> Option<u8> {
+        let prefixes = ["pptx_", "xlsx_", "docx_"];
+        let prefix = *prefixes.iter().find(|p| short_name.starts_with(**p))?;
+        Some(match &short_name[prefix.len()..] {
+            "create" => 0,
+            "read_structured" | "get_metadata" | "extract_tables" => 1,
+            "edit_cells" | "replace_text" => 2,
+            "to_spec" => 3,
+            _ => 1,
+        })
+    }
+
+    fn tool_priority(tool_name: &str) -> (u8, u8) {
+        let short = strip_tool_prefix(tool_name);
+        if let Some(priority) = chatanki_priority(short) {
+            return (0, priority);
+        }
+        if let Some(priority) = document_tool_priority(short) {
+            return (1, priority);
+        }
+        (99, 0)
+    }
+
+    let needs_sort = tool_calls.iter().any(|call| {
+        let short = strip_tool_prefix(&call.name);
+        chatanki_priority(short).is_some() || document_tool_priority(short).is_some()
+    });
+    if !needs_sort {
+        return tool_calls.to_vec();
+    }
+
+    let mut indexed_calls: Vec<(usize, ToolCall)> =
+        tool_calls.iter().cloned().enumerate().collect();
+    indexed_calls.sort_by_key(|(index, call)| {
+        let (group, action) = tool_priority(&call.name);
+        (group, action, *index)
+    });
+    let reordered: Vec<ToolCall> = indexed_calls.into_iter().map(|(_, call)| call).collect();
+
+    if reordered
+        .iter()
+        .zip(tool_calls.iter())
+        .any(|(left, right)| left.id != right.id)
+    {
+        let names: Vec<&str> = reordered.iter().map(|call| call.name.as_str()).collect();
+        log::info!(
+            "[ChatV2::pipeline] Tool calls reordered for dependency safety: {:?}",
+            names
+        );
+    }
+
+    reordered
 }
 
 // ============================================================================
@@ -3184,4 +3326,287 @@ pub(crate) fn merge_round_results_in_call_order(
     }
 
     merged
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tool_call(id: &str, name: &str) -> ToolCall {
+        ToolCall::new(id.to_string(), name.to_string(), json!({}))
+    }
+
+    #[test]
+    fn failed_round_retains_and_accumulates_reported_partial_usage() {
+        let mut accumulated = TokenUsage::from_api_with_cache(100, 10, Some(2), Some(4));
+        let partial = TokenUsage::from_api_with_cache(20, 5, Some(3), Some(7));
+
+        let retained = retain_failed_round_usage(&mut accumulated, Some(partial.clone()))
+            .expect("non-zero API usage must be retained on failure");
+
+        assert_eq!(retained.prompt_tokens, 20);
+        assert_eq!(retained.completion_tokens, 5);
+        assert_eq!(accumulated.prompt_tokens, 120);
+        assert_eq!(accumulated.completion_tokens, 15);
+        assert_eq!(accumulated.total_tokens, 135);
+        assert_eq!(accumulated.reasoning_tokens, Some(5));
+        assert_eq!(accumulated.cached_tokens, Some(11));
+        assert_eq!(accumulated.last_round_prompt_tokens, Some(25));
+    }
+
+    #[test]
+    fn failed_round_without_reported_usage_does_not_change_totals() {
+        let mut accumulated = TokenUsage::from_api(8, 3, None);
+        let before = accumulated.clone();
+
+        assert!(retain_failed_round_usage(&mut accumulated, None).is_none());
+        assert_eq!(accumulated.prompt_tokens, before.prompt_tokens);
+        assert_eq!(accumulated.completion_tokens, before.completion_tokens);
+        assert_eq!(accumulated.total_tokens, before.total_tokens);
+    }
+
+    #[test]
+    fn missing_approval_manager_is_fail_closed_for_non_low_sensitivity() {
+        assert!(!approval_manager_required(Some(ToolSensitivity::Low)));
+        assert!(approval_manager_required(Some(ToolSensitivity::Medium)));
+        assert!(approval_manager_required(Some(ToolSensitivity::High)));
+        assert!(approval_manager_required(None));
+    }
+
+    #[test]
+    fn phase9_non_low_tools_enter_the_fail_closed_approval_path() {
+        use crate::chat_v2::tools::ToolExecutor;
+
+        let memory = crate::chat_v2::tools::MemoryToolExecutor::new();
+        let essay = crate::chat_v2::tools::EssayGradingExecutor::new();
+        let temp_dir = tempfile::tempdir().expect("create workspace directory");
+        let subagent = crate::chat_v2::tools::SubagentExecutor::new(Arc::new(
+            crate::chat_v2::workspace::WorkspaceCoordinator::new(temp_dir.path().to_path_buf()),
+        ));
+
+        for (tool, sensitivity) in [
+            (
+                "builtin-memory_batch_move",
+                memory.sensitivity_level("builtin-memory_batch_move"),
+            ),
+            (
+                "builtin-memory_add_relation",
+                memory.sensitivity_level("builtin-memory_add_relation"),
+            ),
+            (
+                "builtin-memory_remove_relation",
+                memory.sensitivity_level("builtin-memory_remove_relation"),
+            ),
+            (
+                "builtin-memory_update_tags",
+                memory.sensitivity_level("builtin-memory_update_tags"),
+            ),
+            (
+                "builtin-memory_export_all",
+                memory.sensitivity_level("builtin-memory_export_all"),
+            ),
+            (
+                "builtin-essay_grade",
+                essay.sensitivity_level("builtin-essay_grade"),
+            ),
+            (
+                "builtin-subagent_call",
+                subagent.sensitivity_level("builtin-subagent_call"),
+            ),
+        ] {
+            assert_ne!(sensitivity, ToolSensitivity::Low, "{tool}");
+            assert!(
+                approval_manager_required(Some(sensitivity)),
+                "{tool} must be blocked when ApprovalManager is unavailable"
+            );
+        }
+
+        assert!(!approval_manager_required(Some(
+            essay.sensitivity_level("builtin-essay_list_modes")
+        )));
+    }
+
+    #[test]
+    fn phase2_phase3_and_phase8_non_low_tools_fail_closed_without_approval_manager() {
+        use crate::chat_v2::tools::ToolExecutor;
+
+        let canvas = crate::chat_v2::tools::CanvasToolExecutor::new();
+        let dstu = crate::chat_v2::tools::DstuToolExecutor::new();
+        let session = crate::chat_v2::tools::SessionToolExecutor::new();
+        let index = crate::chat_v2::tools::IndexWebpageToolExecutor::new();
+
+        let cases = [
+            (
+                "builtin-note_delete",
+                canvas.sensitivity_level("builtin-note_delete"),
+            ),
+            (
+                "builtin-note_update_tags",
+                canvas.sensitivity_level("builtin-note_update_tags"),
+            ),
+            (
+                "builtin-dstu_folder_create",
+                dstu.sensitivity_level("builtin-dstu_folder_create"),
+            ),
+            (
+                "builtin-dstu_folder_rename",
+                dstu.sensitivity_level("builtin-dstu_folder_rename"),
+            ),
+            (
+                "builtin-dstu_rename",
+                dstu.sensitivity_level("builtin-dstu_rename"),
+            ),
+            (
+                "builtin-dstu_move",
+                dstu.sensitivity_level("builtin-dstu_move"),
+            ),
+            (
+                "builtin-dstu_delete",
+                dstu.sensitivity_level("builtin-dstu_delete"),
+            ),
+            (
+                "builtin-dstu_restore",
+                dstu.sensitivity_level("builtin-dstu_restore"),
+            ),
+            (
+                "builtin-dstu_purge",
+                dstu.sensitivity_level("builtin-dstu_purge"),
+            ),
+            (
+                "builtin-dstu_upload_file",
+                dstu.sensitivity_level("builtin-dstu_upload_file"),
+            ),
+            (
+                "builtin-session_export",
+                session.sensitivity_level("builtin-session_export"),
+            ),
+            (
+                "builtin-session_tag_add",
+                session.sensitivity_level("builtin-session_tag_add"),
+            ),
+            (
+                "builtin-session_tag_remove",
+                session.sensitivity_level("builtin-session_tag_remove"),
+            ),
+            (
+                "builtin-session_move",
+                session.sensitivity_level("builtin-session_move"),
+            ),
+            (
+                "builtin-session_rename",
+                session.sensitivity_level("builtin-session_rename"),
+            ),
+            (
+                "builtin-session_restore",
+                session.sensitivity_level("builtin-session_restore"),
+            ),
+            (
+                "builtin-group_create",
+                session.sensitivity_level("builtin-group_create"),
+            ),
+            (
+                "builtin-group_update",
+                session.sensitivity_level("builtin-group_update"),
+            ),
+            (
+                "builtin-session_archive",
+                session.sensitivity_level("builtin-session_archive"),
+            ),
+            (
+                "builtin-index_rebuild",
+                index.sensitivity_level("builtin-index_rebuild"),
+            ),
+            (
+                "builtin-webpage_save",
+                index.sensitivity_level("builtin-webpage_save"),
+            ),
+        ];
+        for (tool, sensitivity) in cases {
+            assert_ne!(sensitivity, ToolSensitivity::Low, "{tool}");
+            assert!(
+                approval_manager_required(Some(sensitivity)),
+                "{tool} must be blocked when ApprovalManager is unavailable"
+            );
+        }
+
+        let learning = crate::chat_v2::tools::LearningOverviewExecutor::new();
+        for tool in [
+            "builtin-learning_overview",
+            "builtin-pomodoro_today_stats",
+            "builtin-pomodoro_daily_stats",
+        ] {
+            assert_eq!(
+                learning.sensitivity_level(tool),
+                ToolSensitivity::Low,
+                "{tool}"
+            );
+            assert!(!approval_manager_required(Some(
+                learning.sensitivity_level(tool)
+            )));
+        }
+    }
+
+    #[test]
+    fn chatanki_card_mutations_keep_explicit_read_write_read_order() {
+        let calls = vec![
+            tool_call("get-before", "builtin-chatanki_get_cards"),
+            tool_call("update", "builtin-chatanki_update_card"),
+            tool_call("get-after", "builtin-chatanki_get_cards"),
+        ];
+
+        let ordered = order_tool_calls_for_execution(&calls);
+        let ids: Vec<&str> = ordered.iter().map(|call| call.id.as_str()).collect();
+        assert_eq!(ids, vec!["get-before", "update", "get-after"]);
+    }
+
+    #[test]
+    fn chatanki_export_still_runs_after_card_mutations() {
+        let calls = vec![
+            tool_call("export", "builtin-chatanki_export"),
+            tool_call("delete", "builtin-chatanki_delete_card"),
+            tool_call("add", "builtin-chatanki_add_cards"),
+        ];
+
+        let ordered = order_tool_calls_for_execution(&calls);
+        let ids: Vec<&str> = ordered.iter().map(|call| call.id.as_str()).collect();
+        assert_eq!(ids, vec!["delete", "add", "export"]);
+    }
+
+    #[test]
+    fn chatanki_enqueue_runs_after_card_work_and_before_external_outputs() {
+        let calls = vec![
+            tool_call("sync", "builtin-chatanki_sync"),
+            tool_call("enqueue", "builtin-chatanki_enqueue_review"),
+            tool_call("delete", "builtin-chatanki_delete_card"),
+            tool_call("export", "builtin-chatanki_export"),
+            tool_call("get", "builtin-chatanki_get_cards"),
+            tool_call("add", "builtin-chatanki_add_cards"),
+            tool_call("update", "builtin-chatanki_update_card"),
+        ];
+
+        let ordered = order_tool_calls_for_execution(&calls);
+        let ids: Vec<&str> = ordered.iter().map(|call| call.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["delete", "get", "add", "update", "enqueue", "sync", "export"]
+        );
+    }
+
+    #[test]
+    fn chatanki_retemplate_keeps_get_write_get_before_enqueue_and_export() {
+        let calls = vec![
+            tool_call("export", "builtin-chatanki_export"),
+            tool_call("get-before", "builtin-chatanki_get_cards"),
+            tool_call("retemplate", "builtin-chatanki_retemplate"),
+            tool_call("enqueue", "builtin-chatanki_enqueue_review"),
+            tool_call("get-after", "builtin-chatanki_get_cards"),
+        ];
+
+        let ordered = order_tool_calls_for_execution(&calls);
+        let ids: Vec<&str> = ordered.iter().map(|call| call.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["get-before", "retemplate", "get-after", "enqueue", "export"]
+        );
+    }
 }

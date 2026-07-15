@@ -52,7 +52,9 @@
     "zoomIn": "Zoom In",
     "zoomOut": "Zoom Out",
     "fitView": "Fit View",
-    "resetView": "Reset View"
+    "resetView": "Reset View",
+    "sandboxTitle": "HTML Sandbox",
+    "openSandbox": "Open in Sandbox"
   },
   "common": {
     "close": "Close",
@@ -76,7 +78,8 @@
       "suggestion5": "Generate a set of Anki flashcards from my uploaded class notes for review."
     },
     "scrollToBottom": "Scroll to bottom",
-    "waiting": "Thinking..."
+    "waiting": "Thinking...",
+    "srNewMessages": "New messages received, total {{count}} messages"
   },
   "messageItem": {
     "actions": {
@@ -212,6 +215,9 @@
       "on": "Reasoning: {{depth}}"
     },
     "runtimeModelTitle": "Model",
+    "runtimeModelCompareMode": "Enter multi-select mode...",
+    "runtimeModelOtherProvider": "Other",
+    "runtimeModelNoResults": "No matching models",
     "chooseRuntimeModel": "Choose model",
     "thinkingDepthExpensive": "Slower",
     "ankiTools": "Anki cards",
@@ -403,8 +409,10 @@
       "blockError": "Paper download failed",
       "summaryDone_one": "{{done}}/{{total}} paper completed",
       "summaryDone_other": "{{done}}/{{total}} papers completed",
+      "summaryDone": "{{done}}/{{total}} papers completed",
       "summaryFailedSuffix_one": ", {{count}} failed",
       "summaryFailedSuffix_other": ", {{count}} failed",
+      "summaryFailedSuffix": ", {{count}} failed",
       "downloading": "Downloading {{done}}/{{total}}"
     },
     "rag": {
@@ -504,17 +512,26 @@
       "message": "Note",
       "applied": "Applied {{applied}}/{{total}}",
       "undoExpired": "Undo expired (session ended or ledger cleared)",
+      "undoApplied": "Reverted recoverable changes",
+      "undoing": "Undoing…",
+      "undoRetry": "Partially reverted, retry",
+      "undoUnavailable": "Undo unavailable",
+      "undoIncompleteExhausted": "Undo incomplete (cannot retry)",
       "verified": "Post-action state verified",
       "verificationFailed": "{{count}} postcondition(s) not met",
       "undoPersistent": "Persistent undo is available for this action, including after an app restart.",
       "undoSession": "This action can be undone during the current app session.",
       "undoPersistentShort": "Survives restart · one use after success",
       "undoSessionShort": "Current session only · one use after success",
+      "undoHighRisk": "Undo is High risk: this click confirms one undo only, and authorization is never remembered.",
+      "resultUnknownTitle": "Operation outcome unknown",
+      "resultUnknownHint": "Observe or read the target again before deciding what to do next. Do not retry unchanged or fall back to a backend write.",
       "status": {
         "running": "Running",
         "success": "Completed",
         "partial": "Partial",
         "cancelled": "Cancelled",
+        "unknown": "Outcome unknown",
         "error": "Failed"
       }
     },
@@ -559,9 +576,11 @@
       "export": "Export",
       "sync": "Sync",
       "reviewBatch": "Review batch",
+      "reviewBatchNeedsRealIds": "Finish generating and save every card to get real IDs before reviewing this batch",
       "pause": "Pause",
       "resume": "Resume",
       "cancel": "Cancel",
+      "retryFailedSegments": "Retry failed segments",
       "synced": "Synced",
       "syncToAnki": "Sync to Anki",
       "syncStatus": {
@@ -597,6 +616,7 @@
           "pending": "Pending",
           "processing": "Processing",
           "paused": "Paused",
+          "completedWithErrors": "Completed with some failed segments",
           "failed": "Failed",
           "truncated": "Truncated",
           "cancelled": "Cancelled"
@@ -626,7 +646,20 @@
         "waitInvalidArgs": "chatanki_wait needs an ankiBlockId or documentId. Re-run the tool with one of them.",
         "waitNotFound": "The cards block isn't available yet. Wait a moment or call chatanki_status with the documentId.",
         "waitTimeout": "Timed out waiting for completion. Try chatanki_status later or retry with a longer timeout.",
+        "documentIdRequired": "documentId is required. Provide the card document ID and retry.",
+        "databaseUnavailable": "The card database is unavailable. Try again later.",
+        "updateArgsRequired": "Updating a card requires cardId, expectedVersion, and at least one changed field.",
+        "deleteArgsRequired": "Deleting a card requires cardId and expectedVersion.",
+        "addArgsRequired": "Adding cards requires documentId and between 1 and 100 cards.",
+        "cardContentRequired": "A card needs non-empty front and back fields, or non-empty Cloze text.",
+        "reviewSelectorRequired": "Provide exactly one of documentId or cardIds when enqueueing cards for review.",
+        "retemplateSelectorRequired": "Provide exactly one of documentId or cardIds when changing templates.",
+        "templateDatabaseUnavailable": "The template database is unavailable. Try again later.",
         "statusNotFound": "No tasks found for this document yet. Wait a bit or restart the generation.",
+        "watchdogFailedWithoutCards": "Generation failed before any usable cards were produced.",
+        "watchdogCancelledWithoutCards": "Generation was cancelled before any usable cards were produced.",
+        "watchdogCompletedWithoutCards": "Generation completed without producing any usable cards.",
+        "watchdogUnknownWithoutCards": "Generation stopped in an unrecognized state before any usable cards were produced.",
         "ankiConnectUnavailable": "AnkiConnect is unavailable. Open Anki, enable AnkiConnect, then retry.",
         "missingClozeNoteType": "Cloze note type is missing in Anki. Create it in Anki and retry.",
         "ankiSyncEmpty": "No cards were imported. Check that Anki is running, the note type exists, and card fields are not empty."
@@ -679,7 +712,10 @@
         "cancelled": "Generation cancelled",
         "pauseFailed": "Failed to pause",
         "resumeFailed": "Failed to resume",
-        "cancelFailed": "Failed to cancel"
+        "cancelFailed": "Failed to cancel",
+        "retrySegmentsStarted": "Resubmitted {{count}} failed segments",
+        "retrySegmentsPartial": "{{failed}} of {{total}} segments could not be resubmitted",
+        "retrySegmentsFailed": "All {{failed}} failed segments could not be resubmitted"
       }
     }
   },
@@ -1490,6 +1526,21 @@
     "hint": "Select a model and click retry button",
     "retry": "Retry"
   },
+  "modelPicker": {
+    "title": "Select Model",
+    "retryTitle": "Select Model to Retry",
+    "retryHintEmpty": "Select a model, then click retry",
+    "retryHint": "{{count}} models selected",
+    "compareHint": "Comparing {{count}} selected models",
+    "singleHint": "Current session model",
+    "setAsDefault": "Set as system default",
+    "parallelMode": "Parallel mode",
+    "compareToggle": "Compare mode",
+    "compareToggleHint": "Use multiple models to answer",
+    "searchPlaceholder": "Search by name or model ID...",
+    "noMatches": "No matching models",
+    "empty": "No models available"
+  },
   "workspace": {
     "title": "Workspace",
     "toggle": "Workspace Panel",
@@ -1512,6 +1563,17 @@
     "task": "Task",
     "response": "Response",
     "moreMessages": "{{count}} more messages",
+    "failedHint": "This agent failed. Expand the session output below or choose “View Full Session” to see why.",
+    "elapsed": {
+      "runningHint": "Elapsed time (live)",
+      "finalHint": "Total elapsed time (approximate)"
+    },
+    "summary": {
+      "finished": "{{done}}/{{total}} completed",
+      "running": "{{count}} running",
+      "failed": "{{count}} failed",
+      "cancelled": "{{count}} cancelled"
+    },
     "agent": {
       "coordinator": "Coordinator",
       "worker": "Worker",
@@ -1673,6 +1735,7 @@
     "copyFailed": "Copy failed"
   },
   "readiness": {
+    "not_ready": "The current chat is not ready",
     "model2_missing": "Please configure a chat model in Settings → Model Assignment before sending messages.",
     "model2_auto_assigned": "Auto-assigned {{count}} models: {{models}}. You can review or change this in Settings → Model Assignment.",
     "model2_auto_assigned_single": "Auto-assigned \"{{model}}\" as the default chat model. You can review or change this in Settings → Model Assignment."
@@ -1716,7 +1779,10 @@
   },
   "documentViewer": {
     "defaultTitle": "Document Preview",
-    "search": "Search"
+    "search": "Search",
+    "previewHint": "Hint: Press ESC to close, +/- to adjust font size",
+    "noWrap": "Disable word wrap",
+    "wrap": "Enable word wrap"
   },
   "imageViewer": {
     "imageAlt": "Image {{index}}",
@@ -1774,7 +1840,10 @@
     "recommended": "Recommended",
     "optionReasonLabel": "Why this option",
     "confirmSelection": "Confirm selection",
-    "customPlaceholder": "Or enter a custom answer..."
+    "customPlaceholder": "Or enter a custom answer...",
+    "ignore": "Ignore",
+    "responded": "Answered",
+    "submit": "Submit"
   },
   "pageRef": {
     "clearAll": "Clear all page references",

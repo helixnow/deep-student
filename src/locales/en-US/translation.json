@@ -173,6 +173,7 @@
     "translate_failed": "Translation failed",
     "model_not_configured": "Translation model or Model2 not configured",
     "file_too_large": "File too large (max 200MB)",
+    "file_too_large_dynamic": "File too large. Each file must be no larger than {{size}}MB",
     "unsupported_format": "Unsupported file format",
     "empty_text": "Please enter text to translate",
     "network_error": "Network error, please check connection",

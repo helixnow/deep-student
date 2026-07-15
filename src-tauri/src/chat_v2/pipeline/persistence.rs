@@ -78,6 +78,8 @@ impl ChatV2Pipeline {
                 .with_id(ctx.user_message_id.clone())
                 .with_attachments(ctx.attachments.clone())
                 .with_context_snapshot(ctx.context_snapshot.clone())
+                .with_canonical_content(ctx.canonical_content.clone())
+                .with_execution_snapshot(ctx.execution_snapshot.clone())
                 .with_timestamp(now_ms);
 
         let user_msg_result = build_user_message(user_msg_params);
@@ -174,6 +176,8 @@ impl ChatV2Pipeline {
                     .with_id(ctx.user_message_id.clone())
                     .with_attachments(ctx.attachments.clone())
                     .with_context_snapshot(ctx.context_snapshot.clone())
+                    .with_canonical_content(ctx.canonical_content.clone())
+                    .with_execution_snapshot(ctx.execution_snapshot.clone())
                     .with_timestamp(now_ms);
 
             let user_msg_result = build_user_message(user_msg_params);
@@ -393,6 +397,8 @@ impl ChatV2Pipeline {
                     .with_id(ctx.user_message_id.clone())
                     .with_attachments(ctx.attachments.clone())
                     .with_context_snapshot(ctx.context_snapshot.clone())
+                    .with_canonical_content(ctx.canonical_content.clone())
+                    .with_execution_snapshot(ctx.execution_snapshot.clone())
                     .with_timestamp(user_now_ms);
 
             let user_msg_result = build_user_message(user_msg_params);
@@ -822,6 +828,8 @@ impl ChatV2Pipeline {
                         .filter(|id| !is_config_id_format(id))
                         .cloned()
                 }),
+            execution_snapshot: ctx.execution_snapshot.clone(),
+            canonical_content: None,
             chat_params: Some(chat_params_snapshot),
             sources: if ctx.retrieved_sources.rag.is_some()
                 || ctx.retrieved_sources.memory.is_some()

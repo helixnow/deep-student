@@ -18,6 +18,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
+use super::arg_utils::{ensure_localized_error, with_localized_message};
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
@@ -35,6 +36,16 @@ const RETRIEVAL_MIN_SCORE: f32 = 0.3;
 /// RAG 检索相对分数阈值（相对于最高分）
 const RETRIEVAL_RELATIVE_THRESHOLD: f32 = 0.5;
 const DEFAULT_RAG_TOP_K: u32 = 10;
+
+fn localized_retrieval_failure(error: impl Into<String>) -> String {
+    ensure_localized_error(
+        error,
+        "RETRIEVAL_OPERATION_FAILED",
+        "chat.tools.retrieval.error",
+        "检索操作失败",
+        "The retrieval operation failed.",
+    )
+}
 
 // ============================================================================
 // 内置检索工具执行器
@@ -345,14 +356,22 @@ impl BuiltinRetrievalExecutor {
                     })
                     .collect();
 
-                Ok(json!({
-                    "success": true,
-                    "sources": numbered_sources,
-                    "count": sources.len(),
-                    "durationMs": duration,
-                    "source": "vfs_rag",
-                    "citationGuide": "引用方式：[知识库-N] 显示角标，[知识库-N:图片] 渲染对应 PDF 页面图片。结果中 pageIndex 字段不为空时表示有图片可渲染。禁止输出 URL 或 Markdown 图片语法。"
-                }))
+                let guide_zh = "引用方式：[知识库-N] 显示角标，[知识库-N:图片] 渲染对应 PDF 页面图片。结果中 pageIndex 字段不为空时表示有图片可渲染。禁止输出 URL 或 Markdown 图片语法。";
+                let guide_en = "Cite sources as [知识库-N]. Use [知识库-N:图片] to render the matching PDF page image when pageIndex is present. Do not output URLs or Markdown image syntax.";
+                Ok(with_localized_message(
+                    json!({
+                        "success": true,
+                        "sources": numbered_sources,
+                        "count": sources.len(),
+                        "durationMs": duration,
+                        "source": "vfs_rag",
+                        "citationGuide": format!("{guide_zh} / {guide_en}"),
+                    }),
+                    "chat.tools.retrieval.knowledge_citation_guide",
+                    json!({ "sourceType": "knowledge" }),
+                    guide_zh,
+                    guide_en,
+                ))
             }
             Err(e) => {
                 let error_msg = e.to_string();
@@ -371,21 +390,25 @@ impl BuiltinRetrievalExecutor {
     ) -> Result<Value, String> {
         log::warn!("[BuiltinRetrievalExecutor] memory_search is deprecated, use builtin-memory_search instead");
 
+        let deprecation = with_localized_message(
+            json!({ "deprecated": true }),
+            "chat.tools.retrieval.memory_search_deprecated",
+            json!({ "replacementTool": "builtin-memory_search" }),
+            "请使用 builtin-memory_search 工具（由 MemoryToolExecutor 处理）",
+            "Use builtin-memory_search instead; it is handled by MemoryToolExecutor.",
+        );
         ctx.emitter.emit_end(
             event_types::MEMORY,
             &ctx.block_id,
-            Some(json!({
-                "deprecated": true,
-                "message": "请使用 builtin-memory_search 工具（由 MemoryToolExecutor 处理）"
-            })),
+            Some(deprecation.clone()),
             None,
         );
 
-        Ok(json!({
-            "success": false,
-            "deprecated": true,
-            "error": "memory_search 已废弃，请使用 builtin-memory_search 工具"
-        }))
+        let mut result = deprecation;
+        result["success"] = json!(false);
+        result["errorCode"] = json!("RETRIEVAL_TOOL_DEPRECATED");
+        result["error"] = result["message"].clone();
+        Ok(result)
     }
 
     /// 执行多模态检索（图片/PDF 页面）
@@ -653,14 +676,22 @@ impl BuiltinRetrievalExecutor {
                     })
                     .collect();
 
-                Ok(json!({
-                    "success": true,
-                    "sources": numbered_sources,
-                    "count": sources.len(),
-                    "durationMs": duration,
-                    "source": "multimodal_search",
-                    "citationGuide": "引用方式：[图片-N] 显示角标，[图片-N:图片] 渲染对应页面图片。结果中 pageIndex 字段不为空时表示有图片可渲染。禁止输出 URL 或 Markdown 图片语法。"
-                }))
+                let guide_zh = "引用方式：[图片-N] 显示角标，[图片-N:图片] 渲染对应页面图片。结果中 pageIndex 字段不为空时表示有图片可渲染。禁止输出 URL 或 Markdown 图片语法。";
+                let guide_en = "Cite sources as [图片-N]. Use [图片-N:图片] to render the matching page image when pageIndex is present. Do not output URLs or Markdown image syntax.";
+                Ok(with_localized_message(
+                    json!({
+                        "success": true,
+                        "sources": numbered_sources,
+                        "count": sources.len(),
+                        "durationMs": duration,
+                        "source": "multimodal_search",
+                        "citationGuide": format!("{guide_zh} / {guide_en}"),
+                    }),
+                    "chat.tools.retrieval.image_citation_guide",
+                    json!({ "sourceType": "image" }),
+                    guide_zh,
+                    guide_en,
+                ))
             }
             Err(e) => {
                 let error_msg = e.to_string();
@@ -680,6 +711,328 @@ impl BuiltinRetrievalExecutor {
     /// ★ 2026-01 VFS 统一管理：
     /// - VFS 文本搜索：`vfs_emb_text_{dim}` 表
     /// - VFS 多模态搜索：`vfs_emb_multimodal_{dim}` 表
+    async fn execute_planned_search(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+        tool_name: &str,
+    ) -> Result<Value, String> {
+        use crate::vfs::retrieval_planner::QueryModality;
+        use crate::vfs::{UnifiedRetrievalRequest, VfsLanceStore, VfsUnifiedRetriever};
+        use std::collections::HashMap;
+
+        if ctx.is_cancelled() {
+            return Err("Unified retrieval cancelled before start".to_string());
+        }
+
+        let string_arg = |names: &[&str]| {
+            names.iter().find_map(|name| {
+                call.arguments
+                    .get(*name)
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+            })
+        };
+        let vec_arg = |names: &[&str]| {
+            names.iter().find_map(|name| {
+                call.arguments
+                    .get(*name)
+                    .and_then(Value::as_array)
+                    .map(|values| {
+                        values
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                    })
+            })
+        };
+        let query_text = string_arg(&["queryText", "query_text", "query"]);
+        let query_image_base64 = string_arg(&["queryImageBase64", "query_image_base64"]);
+        let query_image_media_type = string_arg(&["queryImageMediaType", "query_image_media_type"]);
+        let query_modality = match string_arg(&["queryMode", "query_mode"])
+            .as_deref()
+            .map(|value| value.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("text") => QueryModality::Text,
+            Some("image") => QueryModality::Image,
+            Some("mixed") => QueryModality::Mixed,
+            Some(other) => return Err(format!("Unsupported queryMode: {}", other)),
+            None if query_text.is_some() && query_image_base64.is_some() => QueryModality::Mixed,
+            None if query_image_base64.is_some() => QueryModality::Image,
+            None => QueryModality::Text,
+        };
+        let folder_ids = vec_arg(&["folder_ids", "folderIds"]);
+        let resource_ids = vec_arg(&["resource_ids", "resourceIds"]);
+        let resource_types = vec_arg(&["resource_types", "resourceTypes"]);
+        let top_k = call
+            .arguments
+            .get("top_k")
+            .or_else(|| call.arguments.get("topK"))
+            .and_then(Value::as_u64)
+            .map(|value| value as usize)
+            .or(ctx.rag_top_k.map(|value| value as usize))
+            .unwrap_or(DEFAULT_RAG_TOP_K as usize)
+            .clamp(1, 100);
+        let max_per_resource = call
+            .arguments
+            .get("max_per_resource")
+            .or_else(|| call.arguments.get("maxPerResource"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize;
+        let enable_reranking = call
+            .arguments
+            .get("enable_reranking")
+            .or_else(|| call.arguments.get("enableReranking"))
+            .and_then(Value::as_bool)
+            .or(ctx.rag_enable_reranking)
+            .unwrap_or(true);
+
+        ctx.emitter.emit_start(
+            event_types::RAG,
+            &ctx.message_id,
+            Some(&ctx.block_id),
+            Some(json!({
+                "query": query_text,
+                "queryMode": query_modality,
+                "hasQueryImage": query_image_base64.is_some(),
+                "folderIds": folder_ids,
+                "resourceIds": resource_ids,
+                "resourceTypes": resource_types,
+                "source": tool_name,
+            })),
+            None,
+        );
+
+        let started = Instant::now();
+        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+        let llm_manager = ctx
+            .llm_manager
+            .as_ref()
+            .ok_or("LLM manager not available")?;
+        let lance_store = ctx
+            .vfs_lance_store
+            .clone()
+            .map(Ok)
+            .unwrap_or_else(|| {
+                VfsLanceStore::new(std::sync::Arc::clone(vfs_db)).map(std::sync::Arc::new)
+            })
+            .map_err(|error| format!("Failed to create Lance store: {}", error))?;
+        let retriever = VfsUnifiedRetriever::new(
+            std::sync::Arc::clone(vfs_db),
+            lance_store,
+            std::sync::Arc::clone(llm_manager),
+        );
+        let request = UnifiedRetrievalRequest {
+            query_text: query_text.clone(),
+            query_image_base64: query_image_base64.clone(),
+            query_image_media_type: query_image_media_type.clone(),
+            query_modality,
+            top_k,
+            folder_ids,
+            resource_ids,
+            resource_types,
+        };
+
+        let response = if planned_search_scope(tool_name) == PlannedSearchScope::MultimodalOnly {
+            if let Some(cancel_token) = ctx.cancellation_token() {
+                tokio::select! {
+                    result = retriever.search_multimodal(request) => result,
+                    _ = cancel_token.cancelled() => {
+                        return Err("Multimodal retrieval cancelled during execution".to_string());
+                    }
+                }
+            } else {
+                retriever.search_multimodal(request).await
+            }
+        } else {
+            if let Some(cancel_token) = ctx.cancellation_token() {
+                tokio::select! {
+                    result = retriever.search(request) => result,
+                    _ = cancel_token.cancelled() => {
+                        return Err("Unified retrieval cancelled during execution".to_string());
+                    }
+                }
+            } else {
+                retriever.search(request).await
+            }
+        }
+        .map_err(|error| error.to_string())?;
+
+        let route_failures = response.result.failures.clone();
+        let mut sources: Vec<SourceInfo> = response
+            .result
+            .hits
+            .into_iter()
+            .map(|fused| {
+                let hit = fused.hit;
+                let source_type = if hit.blob_hash.is_some()
+                    || fused.provenance.iter().any(|provenance| {
+                        matches!(
+                            provenance.route_kind,
+                            crate::vfs::retrieval_planner::RetrievalRouteKind::MultimodalImage
+                                | crate::vfs::retrieval_planner::RetrievalRouteKind::MultimodalText
+                        )
+                    }) {
+                    "multimodal_search"
+                } else {
+                    "text_search"
+                };
+                let image_citation = hit.image_url.as_ref().map(|url| {
+                    format!(
+                        "![Page {}]({})",
+                        hit.identity.page_index.unwrap_or(0) + 1,
+                        url
+                    )
+                });
+                SourceInfo {
+                    title: hit.title,
+                    url: hit.image_url.clone(),
+                    snippet: Some(hit.text),
+                    score: Some(fused.rrf_score as f32),
+                    metadata: Some(json!({
+                        "resourceType": hit.resource_type,
+                        "resourceId": hit.identity.resource_id,
+                        "sourceId": hit.source_id,
+                        "chunkIndex": hit.identity.chunk_index,
+                        "pageIndex": hit.identity.page_index,
+                        "blobHash": hit.blob_hash,
+                        "folderId": hit.folder_id,
+                        "sourceType": source_type,
+                        "imageUrl": hit.image_url,
+                        "imageCitation": image_citation,
+                        "rrfScore": fused.rrf_score,
+                        "retrievalProvenance": fused.provenance,
+                    })),
+                }
+            })
+            .collect();
+
+        // Reranking is optional and may fail internally; `vl_rerank_sources` returns the
+        // original RRF order on any configuration, protocol, or request error.
+        if enable_reranking && !sources.is_empty() {
+            sources = match select_reranker_kind(query_modality, &sources) {
+                PlannedRerankerKind::Text => {
+                    if let Some(query) = query_text.as_deref() {
+                        text_rerank_sources(query, sources, top_k, llm_manager).await
+                    } else {
+                        sources
+                    }
+                }
+                PlannedRerankerKind::Multimodal => {
+                    vl_rerank_sources_with_query(
+                        query_text.as_deref(),
+                        query_image_base64.as_deref(),
+                        query_image_media_type.as_deref(),
+                        sources,
+                        top_k,
+                        llm_manager,
+                        vfs_db,
+                    )
+                    .await
+                }
+            };
+        } else {
+            sources.truncate(top_k);
+        }
+
+        if max_per_resource > 0 {
+            let mut counts: HashMap<String, usize> = HashMap::new();
+            sources.retain(|source| {
+                let resource_id = source
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("resourceId"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let count = counts.entry(resource_id.to_string()).or_default();
+                let keep = *count < max_per_resource;
+                *count += usize::from(keep);
+                keep
+            });
+        }
+
+        let duration = started.elapsed().as_millis() as u64;
+        ctx.emitter.emit_end(
+            event_types::RAG,
+            &ctx.block_id,
+            Some(json!({
+                "sources": sources,
+                "durationMs": duration,
+                "source": tool_name,
+                "routeFailures": route_failures,
+                "retrievalPlan": response.plan,
+                "capabilitySnapshot": response.capability_snapshot,
+            })),
+            None,
+        );
+
+        let mut citation_counters: HashMap<&'static str, usize> = HashMap::new();
+        let mut numbered_sources = Vec::with_capacity(sources.len());
+        for (index, source) in sources.iter().enumerate() {
+            let metadata = source.metadata.as_ref();
+            let source_type = metadata
+                .and_then(|value| value.get("sourceType"))
+                .and_then(Value::as_str)
+                .unwrap_or("text_search");
+            let citation_prefix = citation_prefix_for_source_type(source_type);
+            let citation_group = citation_group_for_source_type(source_type);
+            let citation_index = {
+                let entry = citation_counters.entry(citation_group).or_default();
+                *entry += 1;
+                *entry
+            };
+            let resource_id = metadata
+                .and_then(|value| value.get("resourceId"))
+                .and_then(Value::as_str);
+            let source_id = metadata
+                .and_then(|value| value.get("sourceId"))
+                .and_then(Value::as_str);
+            numbered_sources.push(json!({
+                "index": index + 1,
+                "citationTag": format!("[{}-{}]", citation_prefix, citation_index),
+                "typeIndex": citation_index,
+                "title": source.title,
+                "url": source.url,
+                "snippet": source.snippet,
+                "score": source.score,
+                "imageUrl": metadata.and_then(|value| value.get("imageUrl")),
+                "imageCitation": metadata.and_then(|value| value.get("imageCitation")),
+                "pageIndex": metadata.and_then(|value| value.get("pageIndex")),
+                "chunkIndex": metadata.and_then(|value| value.get("chunkIndex")),
+                "resourceId": resource_id,
+                "sourceId": source_id,
+                "readResourceId": preferred_read_resource_id(resource_id, source_id),
+                "source_type": source_type,
+                "retrievalProvenance": metadata.and_then(|value| value.get("retrievalProvenance")),
+            }));
+        }
+
+        let guide_zh = "引用方式：[知识库-N]/[图片-N]（N 为同类来源编号）显示角标，[知识库-N:图片]/[图片-N:图片] 渲染对应页面图片。需要完整文档时使用 readResourceId 调用 builtin-resource_read。禁止输出 URL 或 Markdown 图片语法。";
+        let guide_en = "Cite sources with [知识库-N] or [图片-N]. Use [知识库-N:图片] or [图片-N:图片] for page images. Use readResourceId with builtin-resource_read for full content. Do not output URLs or Markdown image syntax.";
+        Ok(with_localized_message(
+            json!({
+                "success": true,
+                "sources": numbered_sources,
+                "count": sources.len(),
+                "durationMs": duration,
+                "source": tool_name,
+                "routeFailures": route_failures,
+                "retrievalPlan": response.plan,
+                "capabilitySnapshot": response.capability_snapshot,
+                "citationGuide": format!("{guide_zh} / {guide_en}"),
+            }),
+            "chat.tools.retrieval.unified_citation_guide",
+            json!({ "sourceTypes": ["knowledge", "image"] }),
+            guide_zh,
+            guide_en,
+        ))
+    }
+
+    #[allow(dead_code)]
     async fn execute_unified_search(
         &self,
         call: &ToolCall,
@@ -778,7 +1131,7 @@ impl BuiltinRetrievalExecutor {
             .as_ref()
             .ok_or("LLM manager not available")?;
 
-        // ========== 0. 预计算 query embedding（全局复用） ==========
+        // ========== 0. 初始化统一检索 ==========
         if ctx.is_cancelled() {
             return Err("Unified search cancelled before text search".to_string());
         }
@@ -798,12 +1151,7 @@ impl BuiltinRetrievalExecutor {
             std::sync::Arc::clone(llm_manager),
         );
 
-        let shared_embedding = search_service
-            .generate_query_embedding(query)
-            .await
-            .map_err(|e| format!("Failed to generate query embedding: {}", e))?;
-
-        // ========== 1. VFS 文本搜索（复用 shared_embedding） ==========
+        // ========== 1. VFS 文本搜索 ==========
         let text_params = VfsSearchParams {
             query: query.to_string(),
             folder_ids: folder_ids.clone(),
@@ -815,7 +1163,7 @@ impl BuiltinRetrievalExecutor {
 
         let text_result = if let Some(cancel_token) = ctx.cancellation_token() {
             tokio::select! {
-                res = search_service.search_with_embedding(query, &shared_embedding, &text_params, false) => res.ok(),
+                res = search_service.search_cross_dimension_with_resource_info(query, &text_params, false) => res.ok(),
                 _ = cancel_token.cancelled() => {
                     log::info!("[BuiltinRetrievalExecutor] Unified search cancelled during text search");
                     return Err("Unified search cancelled during text search".to_string());
@@ -823,7 +1171,7 @@ impl BuiltinRetrievalExecutor {
             }
         } else {
             search_service
-                .search_with_embedding(query, &shared_embedding, &text_params, false)
+                .search_cross_dimension_with_resource_info(query, &text_params, false)
                 .await
                 .ok()
         };
@@ -1046,7 +1394,8 @@ impl BuiltinRetrievalExecutor {
             return Err("Unified search cancelled before memory search".to_string());
         }
 
-        // 记忆搜索（复用 shared_embedding，忽略错误，不影响主流程）
+        // Memory is a separate profile-aware retrieval route. Any route failure is isolated here
+        // and must never suppress VFS lexical/ME-only results produced above.
         {
             let memory_service = MemoryService::new(
                 std::sync::Arc::clone(vfs_db),
@@ -1058,7 +1407,7 @@ impl BuiltinRetrievalExecutor {
 
             let memory_result = if let Some(cancel_token) = ctx.cancellation_token() {
                 tokio::select! {
-                    res = memory_service.search_with_embedding(query, &shared_embedding, memory_top_k) => {
+                    res = memory_service.search(query, memory_top_k) => {
                         res.map_err(|e| {
                             log::warn!("[BuiltinRetrievalExecutor] Unified memory search failed: {}", e);
                             e
@@ -1071,7 +1420,7 @@ impl BuiltinRetrievalExecutor {
                 }
             } else {
                 memory_service
-                    .search_with_embedding(query, &shared_embedding, memory_top_k)
+                    .search(query, memory_top_k)
                     .await
                     .map_err(|e| {
                         log::warn!(
@@ -1321,14 +1670,22 @@ impl BuiltinRetrievalExecutor {
             }));
         }
 
-        Ok(json!({
-            "success": true,
-            "sources": numbered_sources,
-            "count": all_sources.len(),
-            "durationMs": duration,
-            "source": "unified_search",
-            "citationGuide": "引用方式：[知识库-N]/[图片-N]/[记忆-N]（N 为同类来源编号）显示角标，[知识库-N:图片]/[图片-N:图片] 渲染对应页面图片。结果中 pageIndex 字段不为空时表示有图片可渲染。需要读取完整文档时优先使用 readResourceId 调用 builtin-resource_read。禁止输出 URL 或 Markdown 图片语法。"
-        }))
+        let guide_zh = "引用方式：[知识库-N]/[图片-N]/[记忆-N]（N 为同类来源编号）显示角标，[知识库-N:图片]/[图片-N:图片] 渲染对应页面图片。结果中 pageIndex 字段不为空时表示有图片可渲染。需要读取完整文档时优先使用 readResourceId 调用 builtin-resource_read。禁止输出 URL 或 Markdown 图片语法。";
+        let guide_en = "Cite each source with its type-local tag: [知识库-N], [图片-N], or [记忆-N]. Use [知识库-N:图片] or [图片-N:图片] for page images when pageIndex is present. For full content, pass readResourceId to builtin-resource_read. Do not output URLs or Markdown image syntax.";
+        Ok(with_localized_message(
+            json!({
+                "success": true,
+                "sources": numbered_sources,
+                "count": all_sources.len(),
+                "durationMs": duration,
+                "source": "unified_search",
+                "citationGuide": format!("{guide_zh} / {guide_en}"),
+            }),
+            "chat.tools.retrieval.unified_citation_guide",
+            json!({ "sourceTypes": ["knowledge", "image", "memory"] }),
+            guide_zh,
+            guide_en,
+        ))
     }
 
     /// 执行网络搜索
@@ -1481,13 +1838,21 @@ impl BuiltinRetrievalExecutor {
                 })
                 .collect();
 
-            Ok(json!({
-                "success": true,
-                "sources": numbered_sources,
-                "count": sources.len(),
-                "durationMs": duration,
-                "citationGuide": "回答时请使用 [搜索-N] 格式引用对应来源，如 [搜索-1]、[搜索-2] 等。引用标记应紧跟在引用内容之后。"
-            }))
+            let guide_zh = "回答时请使用 [搜索-N] 格式引用对应来源，如 [搜索-1]、[搜索-2] 等。引用标记应紧跟在引用内容之后。";
+            let guide_en = "Cite each matching source as [搜索-N], such as [搜索-1] or [搜索-2], immediately after the supported claim.";
+            Ok(with_localized_message(
+                json!({
+                    "success": true,
+                    "sources": numbered_sources,
+                    "count": sources.len(),
+                    "durationMs": duration,
+                    "citationGuide": format!("{guide_zh} / {guide_en}"),
+                }),
+                "chat.tools.retrieval.web_citation_guide",
+                json!({ "sourceType": "web" }),
+                guide_zh,
+                guide_en,
+            ))
         } else {
             let error_msg = result
                 .error
@@ -1544,7 +1909,7 @@ impl ToolExecutor for BuiltinRetrievalExecutor {
         // 检索工具的 execute_* 方法内部会发射对应的 emit_start 事件
 
         let result = if should_route_to_unified_search(tool_name) {
-            self.execute_unified_search(call, ctx).await
+            self.execute_planned_search(call, ctx, tool_name).await
         } else {
             match tool_name {
                 "memory_search" => self.execute_memory(call, ctx).await,
@@ -1575,6 +1940,7 @@ impl ToolExecutor for BuiltinRetrievalExecutor {
                 Ok(result)
             }
             Err(e) => {
+                let e = localized_retrieval_failure(e);
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
@@ -1653,6 +2019,20 @@ fn should_route_to_unified_search(tool_name: &str) -> bool {
         tool_name,
         "rag_search" | "multimodal_search" | "unified_search"
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlannedSearchScope {
+    Unified,
+    MultimodalOnly,
+}
+
+fn planned_search_scope(tool_name: &str) -> PlannedSearchScope {
+    if tool_name == "multimodal_search" {
+        PlannedSearchScope::MultimodalOnly
+    } else {
+        PlannedSearchScope::Unified
+    }
 }
 
 fn citation_prefix_for_source_type(source_type: &str) -> &'static str {
@@ -1834,8 +2214,144 @@ fn rrf_fuse_sources(result_lists: Vec<Vec<SourceInfo>>, top_k: usize) -> Vec<Sou
 /// - 文本类候选：仅传入 snippet 文本
 /// - 多模态类候选（有 blobHash）：加载图片 Base64 + snippet 一起送入
 /// - 失败时降级为原始排序，不阻断检索流程
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlannedRerankerKind {
+    Text,
+    Multimodal,
+}
+
+fn select_reranker_kind(
+    query_modality: crate::vfs::retrieval_planner::QueryModality,
+    candidates: &[SourceInfo],
+) -> PlannedRerankerKind {
+    let has_multimodal_candidate = candidates.iter().any(|candidate| {
+        let metadata = candidate.metadata.as_ref();
+        metadata
+            .and_then(|value| value.get("blobHash"))
+            .is_some_and(|value| !value.is_null())
+            || metadata
+                .and_then(|value| value.get("sourceType"))
+                .and_then(Value::as_str)
+                == Some("multimodal_search")
+    });
+    if query_modality.has_image() || has_multimodal_candidate {
+        PlannedRerankerKind::Multimodal
+    } else {
+        PlannedRerankerKind::Text
+    }
+}
+
+async fn text_rerank_sources(
+    query: &str,
+    candidates: Vec<SourceInfo>,
+    top_k: usize,
+    llm_manager: &std::sync::Arc<crate::llm_manager::LLMManager>,
+) -> Vec<SourceInfo> {
+    if candidates.is_empty() {
+        return candidates;
+    }
+    let config = match llm_manager.get_reranker_model_config().await {
+        Ok(config) if config.enabled && config.is_reranker && !config.is_multimodal => config,
+        Ok(_) => {
+            log::warn!("[hybrid-rag] Text reranker assignment has incompatible capabilities");
+            let mut fallback = candidates;
+            fallback.truncate(top_k);
+            return fallback;
+        }
+        Err(_) => {
+            let mut fallback = candidates;
+            fallback.truncate(top_k);
+            return fallback;
+        }
+    };
+    let chunks = candidates
+        .iter()
+        .enumerate()
+        .map(|(index, candidate)| crate::models::RetrievedChunk {
+            chunk: crate::models::DocumentChunk {
+                id: format!("rerank-source-{}", index),
+                document_id: candidate
+                    .metadata
+                    .as_ref()
+                    .and_then(|value| value.get("resourceId"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                chunk_index: candidate
+                    .metadata
+                    .as_ref()
+                    .and_then(|value| value.get("chunkIndex"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(index as u64) as usize,
+                text: candidate.snippet.clone().unwrap_or_default(),
+                metadata: std::collections::HashMap::new(),
+            },
+            score: candidate.score.unwrap_or_default(),
+        })
+        .collect();
+    match llm_manager
+        .call_reranker_api(query.to_string(), chunks, &config.id)
+        .await
+    {
+        Ok(results) => {
+            let mut reranked = Vec::with_capacity(top_k.min(results.len()));
+            for result in results.into_iter().take(top_k) {
+                let Some(index) = result
+                    .chunk
+                    .id
+                    .strip_prefix("rerank-source-")
+                    .and_then(|value| value.parse::<usize>().ok())
+                else {
+                    continue;
+                };
+                if let Some(mut source) = candidates.get(index).cloned() {
+                    source.score = Some(result.score);
+                    reranked.push(source);
+                }
+            }
+            if reranked.is_empty() {
+                let mut fallback = candidates;
+                fallback.truncate(top_k);
+                fallback
+            } else {
+                reranked
+            }
+        }
+        Err(error) => {
+            log::warn!(
+                "[hybrid-rag] Text reranker failed, retaining RRF: {}",
+                error
+            );
+            let mut fallback = candidates;
+            fallback.truncate(top_k);
+            fallback
+        }
+    }
+}
+
 async fn vl_rerank_sources(
     query: &str,
+    candidates: Vec<SourceInfo>,
+    top_k: usize,
+    llm_manager: &std::sync::Arc<crate::llm_manager::LLMManager>,
+    vfs_db: &std::sync::Arc<crate::vfs::database::VfsDatabase>,
+) -> Vec<SourceInfo> {
+    vl_rerank_sources_with_query(
+        Some(query),
+        None,
+        None,
+        candidates,
+        top_k,
+        llm_manager,
+        vfs_db,
+    )
+    .await
+}
+
+async fn vl_rerank_sources_with_query(
+    query_text: Option<&str>,
+    query_image_base64: Option<&str>,
+    query_image_media_type: Option<&str>,
     candidates: Vec<SourceInfo>,
     top_k: usize,
     llm_manager: &std::sync::Arc<crate::llm_manager::LLMManager>,
@@ -1849,16 +2365,41 @@ async fn vl_rerank_sources(
         return Vec::new();
     }
 
-    // 检查 VL-Reranker 是否已配置
-    if !llm_manager.is_multimodal_reranking_configured().await {
-        log::debug!("[hybrid-rag] VL-Reranker 未配置，跳过精排");
-        let mut out = candidates;
-        out.truncate(top_k);
-        return out;
-    }
+    let _config = match llm_manager.get_vl_reranker_model_config().await {
+        Ok(config) if config.enabled && config.is_reranker && config.is_multimodal => config,
+        Ok(_) => {
+            log::warn!("[hybrid-rag] VL reranker assignment has incompatible capabilities");
+            let mut out = candidates;
+            out.truncate(top_k);
+            return out;
+        }
+        Err(_) => {
+            let mut out = candidates;
+            out.truncate(top_k);
+            return out;
+        }
+    };
 
     // 构造 query 输入
-    let query_input = MultimodalInput::text(query);
+    let query_input = match (
+        query_text.filter(|value| !value.trim().is_empty()),
+        query_image_base64.filter(|value| !value.trim().is_empty()),
+    ) {
+        (Some(text), Some(image)) => MultimodalInput::text_and_image(
+            text,
+            image,
+            query_image_media_type.unwrap_or("image/png"),
+        ),
+        (None, Some(image)) => {
+            MultimodalInput::image_base64(image, query_image_media_type.unwrap_or("image/png"))
+        }
+        (Some(text), None) => MultimodalInput::text(text),
+        (None, None) => {
+            let mut out = candidates;
+            out.truncate(top_k);
+            return out;
+        }
+    };
 
     // 构造文档输入：有图片则加载，否则用文本
     let mut doc_inputs: Vec<MultimodalInput> = Vec::with_capacity(candidates.len());
@@ -2026,6 +2567,32 @@ mod tests {
     }
 
     #[test]
+    fn multimodal_search_uses_dedicated_me_only_scope() {
+        assert_eq!(
+            planned_search_scope("multimodal_search"),
+            PlannedSearchScope::MultimodalOnly
+        );
+        assert_eq!(
+            planned_search_scope("rag_search"),
+            PlannedSearchScope::Unified
+        );
+        assert_eq!(
+            planned_search_scope("unified_search"),
+            PlannedSearchScope::Unified
+        );
+    }
+
+    #[test]
+    fn executor_failure_boundary_localizes_retrieval_errors() {
+        let error: Value =
+            serde_json::from_str(&localized_retrieval_failure("未配置多模态嵌入模型"))
+                .expect("localized retrieval error");
+        assert_eq!(error["code"], "RETRIEVAL_OPERATION_FAILED");
+        assert_eq!(error["messageKey"], "chat.tools.retrieval.error");
+        assert!(error["messageFallback"]["en-US"].is_string());
+    }
+
+    #[test]
     fn test_citation_prefix_for_source_type() {
         assert_eq!(citation_prefix_for_source_type("text_search"), "知识库");
         assert_eq!(citation_prefix_for_source_type("multimodal_search"), "图片");
@@ -2040,6 +2607,38 @@ mod tests {
             "multimodal"
         );
         assert_eq!(citation_group_for_source_type("memory"), "memory");
+    }
+
+    #[test]
+    fn reranker_selection_tracks_query_and_candidate_modality() {
+        use crate::vfs::retrieval_planner::QueryModality;
+
+        let text_source = SourceInfo {
+            title: None,
+            url: None,
+            snippet: Some("text".to_string()),
+            score: Some(0.1),
+            metadata: Some(json!({ "sourceType": "text_search" })),
+        };
+        assert_eq!(
+            select_reranker_kind(QueryModality::Text, &[text_source.clone()]),
+            PlannedRerankerKind::Text
+        );
+        assert_eq!(
+            select_reranker_kind(QueryModality::Image, &[text_source]),
+            PlannedRerankerKind::Multimodal
+        );
+        let multimodal_source = SourceInfo {
+            title: None,
+            url: None,
+            snippet: Some("image page".to_string()),
+            score: Some(0.1),
+            metadata: Some(json!({ "sourceType": "multimodal_search" })),
+        };
+        assert_eq!(
+            select_reranker_kind(QueryModality::Text, &[multimodal_source]),
+            PlannedRerankerKind::Multimodal
+        );
     }
 
     #[test]

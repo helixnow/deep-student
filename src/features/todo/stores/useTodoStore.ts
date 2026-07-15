@@ -53,6 +53,7 @@ function loadPersistedSortBy(): TodoSortBy {
 }
 
 interface TodoState {
+  workspaceView: 'todos' | 'automations';
   // 数据
   lists: TodoList[];
   activeListId: string | null;
@@ -80,6 +81,7 @@ interface TodoState {
   error: string | null;
 
   // 列表操作
+  setWorkspaceView: (view: 'todos' | 'automations') => void;
   loadLists: () => Promise<void>;
   setActiveList: (listId: string | null) => void;
   createList: (title: string, description?: string) => Promise<TodoList>;
@@ -131,6 +133,7 @@ interface TodoState {
 }
 
 export const useTodoStore = create<TodoState>((set, get) => ({
+  workspaceView: 'todos',
   lists: [],
   activeListId: null,
   items: [],
@@ -156,6 +159,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   isLoadingItems: false,
   itemsRequestVersion: 0,
   error: null,
+
+  setWorkspaceView: (workspaceView) => set({ workspaceView, selectedItemId: null }),
 
   // ========================================================================
   // 列表操作

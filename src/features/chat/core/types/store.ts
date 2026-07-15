@@ -195,6 +195,20 @@ export interface ShellRuntimeApprovalScope {
   hasShellOperators?: boolean;
   usesScriptRunner?: boolean;
   firstToken?: string | null;
+  rootPath?: string;
+  rootAccess?: 'read_only' | 'read_write' | string;
+  rootSessionScoped?: boolean;
+  rootBinding?: string;
+  readableRoots?: string[];
+  sandboxBackend?: string;
+  shellKind?: string;
+  outputEncoding?: string;
+  executionLocation?: 'local_device' | 'external_mcp' | string;
+  sandboxEnforced?: boolean;
+  inheritEnv?: boolean;
+  inheritedEnvKeys?: string[];
+  explicitEnvKeys?: string[];
+  containsPotentialSecret?: boolean;
   rememberDisabled?: boolean;
 }
 

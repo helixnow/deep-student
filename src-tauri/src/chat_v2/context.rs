@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -13,8 +14,8 @@ use crate::models::ChatMessage as LegacyChatMessage;
 use super::pipeline::ChatV2LLMAdapter;
 use super::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
 use super::types::{
-    block_status, block_types, AttachmentInput, MessageBlock, MessageSources, SendMessageRequest,
-    SendOptions, TokenUsage, ToolResultInfo,
+    block_status, block_types, AttachmentInput, CanonicalContentPart, MessageBlock, MessageSources,
+    ModelExecutionSnapshot, SendMessageRequest, SendOptions, TokenUsage, ToolResultInfo,
 };
 use super::vfs_resolver::escape_xml_content;
 
@@ -27,6 +28,55 @@ pub(crate) const DOOM_LOOP_WARN_THRESHOLD: u32 = 3;
 
 /// 同一指纹连续出现第 5 次时终止本轮工具循环（生成 tool_limit 块）
 pub(crate) const DOOM_LOOP_ABORT_THRESHOLD: u32 = 5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LocalShellRuntimeContract {
+    pub(crate) os: &'static str,
+    pub(crate) sandbox_backend: &'static str,
+    pub(crate) shell_path: Option<&'static str>,
+    pub(crate) shell_kind: &'static str,
+    pub(crate) invocation: Option<&'static str>,
+    pub(crate) output_encoding: Option<&'static str>,
+    pub(crate) execution_supported: bool,
+}
+
+/// Return the local shell contract implemented by the desktop backend for a
+/// target platform. Keep this mapping explicit so prompts and preflight output
+/// cannot claim a PTY or a user-selected shell that the executor does not
+/// provide.
+pub(crate) fn local_shell_contract_for_platform(platform: &str) -> LocalShellRuntimeContract {
+    match platform {
+        "macos" => LocalShellRuntimeContract {
+            os: "macOS",
+            sandbox_backend: "macos_seatbelt",
+            shell_path: Some("/bin/sh"),
+            shell_kind: "posix_sh",
+            invocation: Some("/bin/sh -c"),
+            output_encoding: Some("utf-8"),
+            execution_supported: true,
+        },
+        "windows" => LocalShellRuntimeContract {
+            os: "Windows",
+            sandbox_backend: "windows_appcontainer_job",
+            shell_path: Some(r"System32\WindowsPowerShell\v1.0\powershell.exe"),
+            shell_kind: "windows_powershell",
+            invocation: Some(
+                "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand",
+            ),
+            output_encoding: Some("utf-8"),
+            execution_supported: true,
+        },
+        _ => LocalShellRuntimeContract {
+            os: "Unsupported",
+            sandbox_backend: "unavailable",
+            shell_path: None,
+            shell_kind: "unavailable",
+            invocation: None,
+            output_encoding: Some("unknown"),
+            execution_supported: false,
+        },
+    }
+}
 
 /// Doom loop 裁决结果
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,6 +191,12 @@ pub(crate) struct PipelineContext {
     pub(crate) attachments: Vec<AttachmentInput>,
     /// 聊天历史（用于构建上下文）
     pub(crate) chat_history: Vec<LegacyChatMessage>,
+    /// Capability-aware compiler output for the current user turn.
+    pub(crate) compiled_current_user_message: Option<LegacyChatMessage>,
+    /// Stable typed content persisted with the user message.
+    pub(crate) canonical_content: Vec<CanonicalContentPart>,
+    /// Frozen model/capability plan for this in-flight generation.
+    pub(crate) execution_snapshot: Option<ModelExecutionSnapshot>,
     /// 检索到的来源
     pub(crate) retrieved_sources: MessageSources,
     /// 发送选项
@@ -185,6 +241,10 @@ pub(crate) struct PipelineContext {
     /// 键为该轮第一个工具结果的 tool_call_id。用于在 tool_results_to_messages_impl
     /// 中回填 assistant(tool_call) 消息的 content，让 LLM 能看到上一轮说过的话
     pub(crate) round_text_by_tool_call_id: HashMap<String, String>,
+
+    /// OpenAI Responses reasoning item associated with the first tool call of
+    /// each round. Kept in memory and replayed on the next stateless request.
+    pub(crate) response_reasoning_by_tool_call_id: HashMap<String, Value>,
 
     /// Gemini 3 思维签名缓存（工具调用迭代时回传）
     /// 在工具调用场景下，API 返回的 thoughtSignature 需要缓存并在后续请求中回传
@@ -255,6 +315,9 @@ impl PipelineContext {
             // 所有附件现在通过 user_context_refs 传递
             attachments: Vec::new(),
             chat_history: Vec::new(),
+            compiled_current_user_message: None,
+            canonical_content: Vec::new(),
+            execution_snapshot: None,
             retrieved_sources: MessageSources::default(),
             options: request.options.unwrap_or_default(),
             tool_results: Vec::new(),
@@ -274,6 +337,7 @@ impl PipelineContext {
             global_block_index: 0,
             pending_reasoning_for_api: None,
             round_text_by_tool_call_id: HashMap::new(),
+            response_reasoning_by_tool_call_id: HashMap::new(),
             pending_thought_signature: None,
             current_adapter: None,
             // 统一上下文注入系统支持
@@ -367,6 +431,11 @@ impl PipelineContext {
             } else {
                 None
             };
+            let response_reasoning_item = result
+                .tool_call_id
+                .as_ref()
+                .and_then(|id| self.response_reasoning_by_tool_call_id.get(id))
+                .cloned();
 
             let assistant_msg = LegacyChatMessage {
                 role: "assistant".to_string(),
@@ -387,7 +456,8 @@ impl PipelineContext {
                 overrides: None,
                 relations: None,
                 persistent_stable_id: None,
-                metadata: None,
+                metadata: response_reasoning_item
+                    .map(|item| json!({ "openai_responses_reasoning_item": item })),
             };
             messages.push(assistant_msg);
 
@@ -447,6 +517,11 @@ impl PipelineContext {
             // 🔧 思维链修复：每个工具结果使用它自己的 reasoning_content
             // 这样多轮工具调用的思维链都能被正确保留和回传
             let thinking_content = result.reasoning_content.clone();
+            let response_reasoning_item = result
+                .tool_call_id
+                .as_ref()
+                .and_then(|id| self.response_reasoning_by_tool_call_id.get(id))
+                .cloned();
 
             // 🔧 P1-2 修复：回填该轮的伴随文本（text-before-tool_use），
             // 使 LLM 在后续轮次能看到自己在发起工具调用前说过的话
@@ -476,7 +551,8 @@ impl PipelineContext {
                 overrides: None,
                 relations: None,
                 persistent_stable_id: None,
-                metadata: None,
+                metadata: response_reasoning_item
+                    .map(|item| json!({ "openai_responses_reasoning_item": item })),
             };
             messages.push(assistant_msg);
 
@@ -877,19 +953,27 @@ impl PipelineContext {
 
     pub(crate) fn build_runtime_facts_block(user_content: &str) -> String {
         let now = chrono::Local::now();
-        if Self::is_time_sensitive_query(user_content) {
-            format!(
-                "<runtime_facts>\n当前时间: {}\n时区: {}\n</runtime_facts>",
-                now.format("%Y-%m-%d %H:%M:%S"),
-                now.format("%:z")
-            )
+        let platform = std::env::consts::OS;
+        let shell = local_shell_contract_for_platform(platform);
+        let temporal_fact = if Self::is_time_sensitive_query(user_content) {
+            format!("当前时间: {}", now.format("%Y-%m-%d %H:%M:%S"))
         } else {
-            format!(
-                "<runtime_facts>\n当前日期: {}\n时区: {}\n</runtime_facts>",
-                now.format("%Y-%m-%d"),
-                now.format("%:z")
-            )
-        }
+            format!("当前日期: {}", now.format("%Y-%m-%d"))
+        };
+
+        format!(
+            "<runtime_facts>\n{}\n时区: {}\nos: {}\nplatform: {}\nlocal_shell: {}\nshell_path: {}\nsandbox_backend: {}\nshell_kind: {}\noutput_encoding: {}\nexecution_supported: {}\nnon_interactive: true\npty_available: false\npersistent_shell_session: false\nnetwork_default: deny\n</runtime_facts>",
+            temporal_fact,
+            now.format("%:z"),
+            shell.os,
+            platform,
+            shell.invocation.unwrap_or("none"),
+            shell.shell_path.unwrap_or("none"),
+            shell.sandbox_backend,
+            shell.shell_kind,
+            shell.output_encoding.unwrap_or("none"),
+            shell.execution_supported,
+        )
     }
 
     pub(crate) fn build_injected_context_blocks(
@@ -970,6 +1054,9 @@ impl PipelineContext {
     ///
     /// 在消息发送开始时调用，将用户上下文引用保存到快照中。
     pub(crate) fn init_context_snapshot(&mut self) {
+        // Re-entry is expected (the crash-safe save initializes before execute_internal).
+        // Preserve retrieval refs/path_map while rebuilding user refs deterministically.
+        self.context_snapshot.user_refs.clear();
         // 将 SendContextRef 转换为 ContextRef
         for send_ref in &self.user_context_refs {
             self.context_snapshot

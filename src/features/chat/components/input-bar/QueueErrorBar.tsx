@@ -17,7 +17,7 @@ interface Props {
 export const QueueErrorBar: React.FC<Props> = React.memo(({
   failedItem, onRetry, onSkip, onClearAll,
 }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('chatV2');
   return (
     <div
       role="alert"

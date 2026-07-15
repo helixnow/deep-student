@@ -3,7 +3,15 @@ import { getErrorMessage } from './errorUtils';
 import { debugLogger } from './debugLogger';
 import { withGraphId, invokeWithDebug } from './shared';
 import type { GraphQueryParams, ForceGraphData } from './shared';
-import type { AnkiLibraryCard, AnkiLibraryListResponse, ListAnkiCardsParams, ExportAnkiCardsResult } from '../types';
+import type {
+  AnkiLibraryCard,
+  AnkiLibraryCardPatch,
+  AnkiLibraryListResponse,
+  ExportAnkiCardsResult,
+  FsrsCardMutationResult,
+  FsrsStats,
+  ListAnkiCardsParams,
+} from '../types';
 import { getAppDataDir } from './systemApi';
 
 // ★ irec 向量索引缓存已移除（灵感图谱废弃，2025-01 清理）
@@ -129,12 +137,66 @@ export async function listAnkiLibraryCards(
   params: ListAnkiCardsParams
 ): Promise<AnkiLibraryListResponse> {
   const request = {
-    template_id: params?.template_id,
+    templateId: params?.template_id,
     search: params?.search,
     page: params?.page,
-    page_size: params?.page_size,
+    pageSize: params?.page_size,
   };
   return invoke<AnkiLibraryListResponse>('list_anki_library_cards', { request });
+}
+
+export async function enqueueAnkiLibraryCard(cardId: string): Promise<unknown> {
+  return invoke('fsrs_enqueue_cards', { ankiCardIds: [cardId] });
+}
+
+export async function suspendFsrsCard(cardStateId: string): Promise<FsrsCardMutationResult> {
+  return invoke<FsrsCardMutationResult>('fsrs_suspend_card', { cardStateId });
+}
+
+export async function unsuspendFsrsCard(cardStateId: string): Promise<FsrsCardMutationResult> {
+  return invoke<FsrsCardMutationResult>('fsrs_unsuspend_card', { cardStateId });
+}
+
+export async function undoFsrsLastReview(
+  cardStateId: string,
+  expectedLogId: string,
+): Promise<unknown> {
+  return invoke('fsrs_undo_last_review', { cardStateId, expectedLogId });
+}
+
+export async function updateAnkiLibraryCard(
+  card: AnkiLibraryCard,
+  patch: AnkiLibraryCardPatch,
+): Promise<void> {
+  const front = patch.front ?? card.front;
+  const back = patch.back ?? card.back;
+  const text = patch.text ?? card.text;
+  const fields = {
+    ...(card.fields ?? {}),
+    Front: front,
+    Back: back,
+    ...(text !== undefined ? { Text: text } : {}),
+  };
+  await invoke<void>('update_anki_card', {
+    card: {
+      id: card.id,
+      task_id: card.task_id,
+      front,
+      back,
+      text,
+      tags: patch.tags ?? card.tags,
+      images: card.images,
+      fields,
+      extra_fields: { ...(card.extra_fields ?? {}) },
+      template_id: card.template_id ?? null,
+      is_error_card: card.is_error_card ?? false,
+      error_content: card.error_content ?? null,
+    },
+  });
+}
+
+export async function getFsrsStats(): Promise<FsrsStats> {
+  return invoke<FsrsStats>('fsrs_get_stats');
 }
 
 export async function updateAnkiCard(request: {
@@ -208,23 +270,19 @@ const results = list.map((r: any) => ({
   addedAt: r.created_at || r.updated_at || new Date().toISOString(),
 }));
 
-// 🆕 教材导入后自动触发多模态索引（异步执行，不阻塞主流程）
-// ★ 多模态索引已禁用，跳过自动索引。恢复 MULTIMODAL_INDEX_ENABLED = true 后取消注释即可
-// for (const textbook of results) {
-//   (async () => {
-//     try {
-//       const { multimodalRagService } = await import('@/services/multimodalRagService');
-//       const configured = await multimodalRagService.isConfigured();
-//       if (!configured) {
-//         return;
-//       }
-//       const indexResult = await multimodalRagService.indexTextbook(textbook.id);
-//     } catch (indexError) {
-//       // 静默失败，不影响主流程
-//       console.warn('[TauriApi] Auto-indexing textbook failed:', indexError);
-//     }
-//   })();
-// }
+// 教材导入后按运行时能力异步补充多模态索引，不阻塞导入主流程。
+for (const textbook of results) {
+  void (async () => {
+    try {
+      const { multimodalRagService } = await import('@/services/multimodalRagService');
+      const capability = await multimodalRagService.getCapabilityStatus();
+      if (!capability.available) return;
+      await multimodalRagService.indexTextbook(textbook.id);
+    } catch (indexError) {
+      console.warn('[TauriApi] Auto-indexing textbook failed:', indexError);
+    }
+  })();
+}
 
 return results;
 }
@@ -332,4 +390,3 @@ export async function getChatIndexStats(): Promise<{ total_fts: number; total_ve
 }
 
 // ★ 2026-06-13（round 2）：research_* 报告类死包装已删除（后端命令未注册、前端无调用方）
-// 错题自动保存 stub（runtimeAutosaveCommit / updateMistake）已迁至 testApi.ts，仅供 dev 面板使用。

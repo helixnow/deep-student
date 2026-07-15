@@ -729,6 +729,14 @@ impl ApprovalManager {
 
     /// 生成人类可读的工具描述
     pub fn generate_description(tool_name: &str, arguments: &Value) -> String {
+        if approval_scope::is_shell_runtime_tool(tool_name) {
+            let command = arguments
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or("...");
+            let (display, _) = approval_scope::redact_shell_command_for_display(command);
+            return format!("将执行命令: {}", display);
+        }
         match tool_name {
             "note_set" => {
                 let note_id = arguments
@@ -765,13 +773,6 @@ impl ApprovalManager {
                     .and_then(|v| v.as_str())
                     .unwrap_or("未知路径");
                 format!("将删除文件: {}", path)
-            }
-            "execute_command" => {
-                let cmd = arguments
-                    .get("command")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("...");
-                format!("将执行命令: {}", cmd)
             }
             "browser_open" | "builtin-browser_open" => {
                 let url = arguments
@@ -859,6 +860,47 @@ mod tests {
         // 接收响应
         let result = rx.await.unwrap();
         assert!(result.approved);
+    }
+
+    #[tokio::test]
+    async fn dstu_purge_user_rejection_is_delivered_and_never_remembered() {
+        let manager = ApprovalManager::new();
+        let arguments = serde_json::json!({"path": "/_trash/note_executor_contract"});
+        let receiver = manager.register_with_scope(
+            "sess_dstu_rejection",
+            "call_dstu_purge",
+            "builtin-dstu_purge",
+            &arguments,
+        );
+
+        let mut response = ApprovalResponse::rejected(
+            "sess_dstu_rejection".to_string(),
+            "call_dstu_purge".to_string(),
+            "builtin-dstu_purge".to_string(),
+            Some("keep this note".to_string()),
+        );
+        response.remember = true;
+        response.remember_session = true;
+        assert!(manager.respond(response));
+
+        let rejected = receiver.await.expect("deliver approval rejection");
+        assert!(!rejected.approved);
+        assert_eq!(rejected.reason.as_deref(), Some("keep this note"));
+        assert_eq!(manager.pending_count(), 0);
+        assert_eq!(
+            manager.check_remembered("builtin-dstu_purge", &arguments),
+            None,
+            "permanent deletion approval must remain single-use"
+        );
+        assert_eq!(
+            manager.check_session_remembered(
+                "sess_dstu_rejection",
+                "builtin-dstu_purge",
+                &arguments,
+            ),
+            None,
+            "session-level rejection must not bypass the next precise approval"
+        );
     }
 
     #[tokio::test]
@@ -953,7 +995,7 @@ mod tests {
     }
 
     #[test]
-    fn session_remember_for_shell_is_scoped_to_root_cwd_and_command() {
+    fn shell_execution_cannot_be_remembered_for_session() {
         let manager = ApprovalManager::new();
         let approved_args = serde_json::json!({
             "command": "git status --short",
@@ -973,7 +1015,7 @@ mod tests {
 
         assert_eq!(
             manager.check_session_remembered("sess_1", "execute_command", &approved_args),
-            Some(true)
+            None
         );
         assert!(
             manager
@@ -1031,11 +1073,11 @@ mod tests {
 
         assert_eq!(
             manager.check_remembered("execute_command", &approved_args),
-            Some(true)
+            None
         );
         assert_eq!(
             manager.check_session_remembered("sess_1", "execute_command", &approved_args),
-            Some(true)
+            None
         );
 
         let attacks = [
@@ -1186,13 +1228,13 @@ mod tests {
     #[test]
     fn session_remember_for_regular_tools_keeps_tool_level_semantics() {
         let manager = ApprovalManager::new();
-        let first_args = serde_json::json!({"noteId": "n1", "content": "v1"});
+        let first_args = serde_json::json!({"resourceId": "r1", "value": "v1"});
 
-        let _rx = manager.register_with_scope("sess_1", "call_note", "note_set", &first_args);
+        let _rx = manager.register_with_scope("sess_1", "call_regular", "test_tool", &first_args);
         let mut response = ApprovalResponse::approved(
             "sess_1".to_string(),
-            "call_note".to_string(),
-            "note_set".to_string(),
+            "call_regular".to_string(),
+            "test_tool".to_string(),
         );
         response.remember_session = true;
         assert!(manager.respond(response));
@@ -1200,8 +1242,8 @@ mod tests {
         assert_eq!(
             manager.check_session_remembered(
                 "sess_1",
-                "note_set",
-                &serde_json::json!({"noteId": "n2", "content": "v2"})
+                "test_tool",
+                &serde_json::json!({"resourceId": "r2", "value": "v2"})
             ),
             Some(true),
             "existing session-level tool approval semantics should remain unchanged for regular tools"
@@ -1229,12 +1271,9 @@ mod tests {
 
         let result = manager.respond_with_result(response);
         assert!(result.delivered);
-        let expected_setting_key =
-            crate::chat_v2::approval_scope::make_setting_key("execute_command", &shell_args);
-        assert_eq!(
-            result.setting_key.as_deref(),
-            Some(expected_setting_key.as_str()),
-            "persistent approval key must be derived from pending server-side arguments"
+        assert!(
+            result.setting_key.is_none(),
+            "shell approvals are single-use and must not return a persistence key"
         );
 
         let delivered = rx.await.unwrap();
@@ -1244,7 +1283,7 @@ mod tests {
         );
         assert_eq!(
             manager.check_session_remembered("sess_1", "execute_command", &shell_args),
-            Some(true)
+            None
         );
         assert!(
             manager

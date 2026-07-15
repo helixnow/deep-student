@@ -1197,33 +1197,9 @@ export async function resolveVfsRefs(
     };
   }
 
-  // ★ 2026-02-13 修复：纯文本模型 → 确保 injectModes 始终包含 OCR，并移除 image
-  // 后端根据 injectModes 决定返回内容；若缺少 OCR，后端不会返回 OCR 文本，
-  // 导致 formatToBlocks 找不到 OCR 数据、只能输出无用占位符。
-  //
-  // ★ P0/P1 修复（二轮审阅）：
-  //   1. 同时移除 'image' 模式，避免后端为文本模型准备无用的 base64 数据
-  //   2. 仅对 Image/File/Textbook 类型 ref 注入 effectiveInjectModes，
-  //      避免给 Note/Essay 等不相关类型污染缓存键
-  let effectiveInjectModes: import('../context/vfsRefTypes').ResourceInjectModes | undefined = injectModes;
-  if (options?.isMultimodal === false) {
-    type ImgMode = import('../context/vfsRefTypes').ImageInjectMode;
-    type PdfMode = import('../context/vfsRefTypes').PdfInjectMode;
-    const imgModes = injectModes?.image;
-    const pdfModes = injectModes?.pdf;
-    // 确保包含 OCR，同时移除 image（文本模型无法使用图片）
-    const normalizedImg: ImgMode[] = [
-      ...(imgModes ?? []).filter((m): m is ImgMode => m !== 'image'),
-      ...(!imgModes?.includes('ocr') ? ['ocr' as ImgMode] : []),
-    ];
-    const normalizedPdf: PdfMode[] = [
-      ...(pdfModes ?? []).filter((m): m is PdfMode => m !== 'image'),
-      ...(!pdfModes?.includes('ocr') ? ['ocr' as PdfMode] : []),
-      ...(!pdfModes?.includes('text') ? ['text' as PdfMode] : []),
-    ];
-    effectiveInjectModes = { image: normalizedImg, pdf: normalizedPdf };
-    console.debug('[resolveVfsRefs] Text-only model: normalized injectModes', effectiveInjectModes);
-  }
+  // 注入选择描述用户提供的源内容，不随本轮 TM/MM 改写。后端 context compiler
+  // 会按冻结的模型能力选择 MM 直读、辅助 MM 观察、OCR 或无视觉文本降级。
+  const effectiveInjectModes = injectModes;
 
   // ★ 将 injectModes 添加到每个引用中
   // ★ NEW-P0 修复：仅对 Image/File/Textbook 类型注入 effectiveInjectModes，

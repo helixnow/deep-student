@@ -18,7 +18,7 @@ export const WorkspaceTimeline: React.FC<WorkspaceTimelineProps> = ({
   currentAgentId,
   onViewFullSession,
 }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('chatV2');
   const agentMap = React.useMemo(() => {
     const map = new Map<string, { role: WorkspaceAgent['role']; skillId?: string }>();
     for (const agent of agents) {

@@ -301,7 +301,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
           <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale(1)} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
             <House size={16} />
           </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setWrap((w) => !w)} className={cn(wrap ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-[var(--interactive-hover)]')} aria-label={wrap ? t('common:noWrap') : t('common:wrap')} title={wrap ? t('common:noWrap') : t('common:wrap')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setWrap((w) => !w)} className={cn(wrap ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-[var(--interactive-hover)]')} aria-label={wrap ? t('chatV2:documentViewer.noWrap') : t('chatV2:documentViewer.wrap')} title={wrap ? t('chatV2:documentViewer.noWrap') : t('chatV2:documentViewer.wrap')}>
             <TextIndent size={16} />
           </NotionButton>
           <div className="w-px h-4 bg-border mx-1" />
@@ -318,17 +318,17 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
 
         {/* 右侧：操作按钮 */}
         <div className="flex items-center gap-1.5">
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:copy')} title={t('common:copy')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.copy')} title={t('common:actions.copy')}>
             {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
           </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:openInNewTab')} title={t('common:openInNewTab')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.open')} title={t('common:actions.open')}>
             <ArrowSquareOut size={16} />
           </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:download')} title={t('common:download')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.download')} title={t('common:actions.download')}>
             <Download size={16} />
           </NotionButton>
           <div className="w-px h-4 bg-border mx-1" />
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive" aria-label={t('common:close')} title={t('common:close')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive" aria-label={t('common:actions.close')} title={t('common:actions.close')}>
             <X size={16} />
           </NotionButton>
         </div>
@@ -352,7 +352,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
 
       {/* 快捷键提示 */}
       <div className="px-4 py-2 text-xs text-muted-foreground border-t border-border flex-shrink-0">
-        {t('chatV2:messageItem.documentPreviewHint')}
+        {t('chatV2:documentViewer.previewHint')}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::ffi::{c_void, OsStr, OsString};
+use std::ffi::{c_void, OsStr};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::mem::{size_of, zeroed};
@@ -9,6 +9,7 @@ use std::ptr::{null, null_mut};
 use std::thread;
 use std::time::Duration;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
 use tokio::process::{Child, Command};
 use uuid::Uuid;
@@ -37,7 +38,8 @@ use windows_sys::Win32::System::Console::{
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, OpenJobObjectW,
     SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOB_OBJECT_LIMIT_PROCESS_TIME,
 };
 use windows_sys::Win32::System::SystemServices::{JOB_OBJECT_TERMINATE, SE_GROUP_ENABLED};
 use windows_sys::Win32::System::Threading::{
@@ -50,8 +52,8 @@ use windows_sys::Win32::System::Threading::{
 };
 
 use super::{
-    configure_stdio, PlatformSandboxBackend, SandboxBackend, SandboxCapability,
-    SandboxEffectReport, SandboxPolicy,
+    configure_stdio, platform_sandbox_contract, PlatformSandboxBackend, SandboxBackend,
+    SandboxCapability, SandboxEffectReport, SandboxPolicy,
 };
 
 const HELPER_ARG: &str = "--deep-student-shell-sandbox-helper";
@@ -59,6 +61,13 @@ const PAYLOAD_PREFIX: &str = "deep-student-shell-sandbox-";
 const PROFILE_PREFIX: &str = "DeepStudent.LocalShell.";
 const MAX_PAYLOAD_BYTES: u64 = 1024 * 1024;
 const MAX_POLICY_ROOTS: usize = 128;
+const ACTIVE_PROCESS_LIMIT: u32 = 128;
+const PROCESS_CPU_TIME_LIMIT_SECS: i64 = 130;
+
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn GetSystemDirectoryW(buffer: *mut u16, size: u32) -> u32;
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct WindowsSandboxPayload {
@@ -387,11 +396,17 @@ impl SandboxBackend for PlatformSandboxBackend {
     }
 
     fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
+        let contract = platform_sandbox_contract();
         SandboxEffectReport {
-            backend: "windows_appcontainer_job",
+            backend: contract.backend,
+            shell_kind: contract.shell_kind,
+            output_encoding: contract.output_encoding,
             enforced: matches!(self.capability(), SandboxCapability::Available),
             network_enforced: true,
             process_group_isolated: true,
+            cpu_time_limit_seconds: Some(PROCESS_CPU_TIME_LIMIT_SECS as u64),
+            file_size_limit_bytes: None,
+            active_process_limit: Some(ACTIVE_PROCESS_LIMIT),
             readable_roots: policy.readable_roots.len(),
             writable_roots: policy.writable_roots.len(),
             protected_read_roots: policy.protected_read_roots.len(),
@@ -565,14 +580,23 @@ fn create_profile(name: &str, capabilities: &[SID_AND_ATTRIBUTES]) -> Result<Pro
     Ok(Profile { name_wide, sid })
 }
 
+fn job_limit_information() -> JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+        | JOB_OBJECT_LIMIT_PROCESS_TIME;
+    limits.BasicLimitInformation.ActiveProcessLimit = ACTIVE_PROCESS_LIMIT;
+    limits.BasicLimitInformation.PerProcessUserTimeLimit = PROCESS_CPU_TIME_LIMIT_SECS * 10_000_000;
+    limits
+}
+
 fn create_job() -> Result<OwnedHandle, String> {
     let name = wide(&job_name(unsafe { GetCurrentProcessId() }));
     let job = OwnedHandle::new(
         unsafe { CreateJobObjectW(null(), name.as_ptr()) },
         "Failed to create the Windows shell Job Object",
     )?;
-    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    let limits = job_limit_information();
     let ok = unsafe {
         SetInformationJobObject(
             job.0,
@@ -589,17 +613,66 @@ fn create_job() -> Result<OwnedHandle, String> {
     Ok(job)
 }
 
-fn command_line(command: &str) -> (Vec<u16>, Vec<u16>) {
-    let comspec = std::env::var_os("COMSPEC")
-        .unwrap_or_else(|| OsString::from(r"C:\Windows\System32\cmd.exe"));
-    let application = wide_os(&comspec);
-    let mut line: Vec<u16> = OsStr::new("\"").encode_wide().collect();
-    line.extend(comspec.encode_wide());
-    line.extend(OsStr::new("\" /D /S /C \"").encode_wide());
-    line.extend(OsStr::new(command).encode_wide());
-    line.extend(OsStr::new("\"").encode_wide());
-    line.push(0);
-    (application, line)
+fn trusted_powershell_path() -> Result<PathBuf, String> {
+    let mut system_directory = vec![0u16; 32_768];
+    let length = unsafe {
+        GetSystemDirectoryW(system_directory.as_mut_ptr(), system_directory.len() as u32)
+    };
+    if length == 0 {
+        return Err(last_error(
+            "Failed to resolve the trusted Windows system directory",
+        ));
+    }
+    if length as usize >= system_directory.len() {
+        return Err("The trusted Windows system directory path is too long".to_string());
+    }
+    let system_directory = PathBuf::from(String::from_utf16_lossy(
+        &system_directory[..length as usize],
+    ));
+    let powershell = system_directory
+        .join("WindowsPowerShell")
+        .join("v1.0")
+        .join("powershell.exe");
+    if !powershell.is_file() {
+        return Err(format!(
+            "Trusted Windows PowerShell executable is unavailable: {}",
+            powershell.display()
+        ));
+    }
+    Ok(powershell)
+}
+
+fn encoded_powershell_command(command: &str) -> String {
+    let script = format!(
+        "$utf8 = [System.Text.UTF8Encoding]::new($false)\n\
+         try {{ [Console]::InputEncoding = $utf8 }} catch {{}}\n\
+         try {{ [Console]::OutputEncoding = $utf8 }} catch {{}}\n\
+         $OutputEncoding = $utf8\n\
+         $ProgressPreference = 'SilentlyContinue'\n\
+         $global:LASTEXITCODE = 0\n\
+         & {{\n{command}\n}}\n\
+         $deepStudentSucceeded = $?\n\
+         $deepStudentExitCode = $global:LASTEXITCODE\n\
+         if (-not $deepStudentSucceeded -and $deepStudentExitCode -eq 0) {{ exit 1 }}\n\
+         exit $deepStudentExitCode"
+    );
+    let bytes = script
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect::<Vec<_>>();
+    BASE64.encode(bytes)
+}
+
+fn command_line(command: &str) -> Result<(Vec<u16>, Vec<u16>), String> {
+    let powershell = trusted_powershell_path()?;
+    let application = wide_os(powershell.as_os_str());
+    let encoded = encoded_powershell_command(command);
+    let line = format!(
+        "\"{}\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {}",
+        powershell.display(),
+        encoded
+    );
+    Ok((application, wide(&line)))
 }
 
 fn run_payload(
@@ -696,7 +769,7 @@ fn run_appcontainer_process(
     startup.StartupInfo.hStdError = unsafe { GetStdHandle(STD_ERROR_HANDLE) };
     startup.lpAttributeList = attribute_list;
 
-    let (application, mut command_line) = command_line(&payload.command);
+    let (application, mut command_line) = command_line(&payload.command)?;
     let cwd = wide_os(payload.cwd.as_os_str());
     let mut process_info: PROCESS_INFORMATION = unsafe { zeroed() };
     let created = unsafe {
@@ -749,10 +822,29 @@ fn run_appcontainer_process(
             "Failed to resume the AppContainer shell process",
         ));
     }
-    if unsafe { WaitForSingleObject(process.0, INFINITE) } != WAIT_OBJECT_0 {
-        return Err(last_error(
-            "Failed while waiting for the AppContainer shell process",
-        ));
+    loop {
+        match unsafe { WaitForSingleObject(process.0, 100) } {
+            WAIT_OBJECT_0 => break,
+            WAIT_TIMEOUT if is_cancelled(cancellation_event) => {
+                if unsafe { TerminateJobObject(job.0, 124) } == 0 {
+                    return Err(last_error(
+                        "Failed to terminate the cancelled Windows shell Job Object",
+                    ));
+                }
+                if unsafe { WaitForSingleObject(process.0, INFINITE) } != WAIT_OBJECT_0 {
+                    return Err(last_error(
+                        "Failed while waiting for the cancelled AppContainer shell process",
+                    ));
+                }
+                break;
+            }
+            WAIT_TIMEOUT => continue,
+            _ => {
+                return Err(last_error(
+                    "Failed while waiting for the AppContainer shell process",
+                ));
+            }
+        }
     }
     let mut exit_code = 0u32;
     if unsafe { GetExitCodeProcess(process.0, &mut exit_code) } == 0 {
@@ -789,7 +881,14 @@ pub fn terminate_job_for_child(child: &mut Child) -> Result<(), String> {
         .id()
         .ok_or_else(|| "Sandboxed shell helper has no process id".to_string())?;
     let cancellation = wide(&cancellation_name(pid));
-    for _ in 0..20 {
+    for _ in 0..100 {
+        if child
+            .try_wait()
+            .map_err(|error| format!("Failed to inspect Windows shell helper: {error}"))?
+            .is_some()
+        {
+            return Ok(());
+        }
         let handle = unsafe { OpenEventW(EVENT_MODIFY_STATE, 0, cancellation.as_ptr()) };
         if !handle.is_null() {
             let event = OwnedHandle(handle);
@@ -820,7 +919,14 @@ pub fn terminate_job_for_child(child: &mut Child) -> Result<(), String> {
     }
 
     let name = wide(&job_name(pid));
-    for _ in 0..20 {
+    for _ in 0..100 {
+        if child
+            .try_wait()
+            .map_err(|error| format!("Failed to inspect Windows shell helper: {error}"))?
+            .is_some()
+        {
+            return Ok(());
+        }
         let handle = unsafe { OpenJobObjectW(JOB_OBJECT_TERMINATE, 0, name.as_ptr()) };
         if !handle.is_null() {
             let job = OwnedHandle(handle);
@@ -878,13 +984,67 @@ mod tests {
     }
 
     #[test]
+    fn powershell_contract_uses_trusted_binary_encoded_script_and_utf8() {
+        let powershell = trusted_powershell_path().unwrap();
+        assert!(powershell.ends_with(
+            Path::new("WindowsPowerShell")
+                .join("v1.0")
+                .join("powershell.exe")
+        ));
+
+        let command = "Write-Output '中文 output'";
+        let encoded = encoded_powershell_command(command);
+        let bytes = BASE64.decode(encoded).unwrap();
+        let words = bytes
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        let script = String::from_utf16(&words).unwrap();
+        assert!(script.contains("[Console]::OutputEncoding = $utf8"));
+        assert!(script.contains("$OutputEncoding = $utf8"));
+        assert!(script.contains(command));
+        assert!(script.contains("exit $deepStudentExitCode"));
+
+        let (_application, line) = command_line(command).unwrap();
+        let line = String::from_utf16(&line[..line.len() - 1]).unwrap();
+        assert!(line.contains("-NoProfile -NonInteractive"));
+        assert!(line.contains("-EncodedCommand"));
+        assert!(!line.to_ascii_uppercase().contains("COMSPEC"));
+    }
+
+    #[test]
+    fn job_limits_bound_cpu_and_active_processes() {
+        let limits = job_limit_information();
+        assert_ne!(
+            limits.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            0
+        );
+        assert_ne!(
+            limits.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
+            0
+        );
+        assert_ne!(
+            limits.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_PROCESS_TIME,
+            0
+        );
+        assert_eq!(
+            limits.BasicLimitInformation.ActiveProcessLimit,
+            ACTIVE_PROCESS_LIMIT
+        );
+        assert_eq!(
+            limits.BasicLimitInformation.PerProcessUserTimeLimit,
+            PROCESS_CPU_TIME_LIMIT_SECS * 10_000_000
+        );
+    }
+
+    #[test]
     fn appcontainer_writes_only_inside_selected_cwd() {
         let writable = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         let inside_file = writable.path().join("inside.txt");
         let outside_file = outside.path().join("outside.txt");
         let command = format!(
-            "echo inside>\"{}\" & echo outside>\"{}\"",
+            "Set-Content -LiteralPath '{}' -Value inside; Set-Content -LiteralPath '{}' -Value outside",
             inside_file.display(),
             outside_file.display()
         );
@@ -908,7 +1068,10 @@ mod tests {
         let mut sandbox_policy = policy(writable.path(), writable.path());
         sandbox_policy.protected_write_roots.push(protected);
         let payload = WindowsSandboxPayload {
-            command: format!("echo blocked>\"{}\"", blocked_file.display()),
+            command: format!(
+                "Set-Content -LiteralPath '{}' -Value blocked",
+                blocked_file.display()
+            ),
             cwd: writable.path().to_path_buf(),
             policy: sandbox_policy,
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
@@ -941,7 +1104,7 @@ mod tests {
             }
         });
         let payload = WindowsSandboxPayload {
-            command: format!("curl.exe --silent --max-time 2 http://127.0.0.1:{port}/ >nul 2>&1"),
+            command: format!("curl.exe --silent --max-time 2 http://127.0.0.1:{port}/ *> $null"),
             cwd: writable.path().to_path_buf(),
             policy: policy(writable.path(), writable.path()),
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
@@ -958,7 +1121,10 @@ mod tests {
         let event = create_cancellation_event().unwrap();
         assert_ne!(unsafe { SetEvent(event.0) }, 0);
         let payload = WindowsSandboxPayload {
-            command: format!("echo late>\"{}\"", output.display()),
+            command: format!(
+                "Set-Content -LiteralPath '{}' -Value late",
+                output.display()
+            ),
             cwd: writable.path().to_path_buf(),
             policy: policy(writable.path(), writable.path()),
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),

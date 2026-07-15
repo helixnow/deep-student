@@ -33,7 +33,7 @@ describe('ErrorBoundary copy action', () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText(i18n.t('common:errorBoundary.title'))).toBeInTheDocument();
+    expect(screen.getByText(i18n.t('common:error_boundary.title'))).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole('button', {

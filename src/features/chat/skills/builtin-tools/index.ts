@@ -11,6 +11,7 @@ export { knowledgeRetrievalSkill } from './knowledge-retrieval';
 export { canvasNoteSkill } from './canvas-note';
 export { vfsMemorySkill } from './vfs-memory';
 export { learningResourceSkill } from './learning-resource';
+export { dstuToolsSkill } from './dstu-tools';
 export { mindmapToolsSkill } from './mindmap-tools';
 export { attachmentToolsSkill } from './attachment-tools';
 export { todoToolsSkill } from './todo-tools';
@@ -36,11 +37,19 @@ export { essayGradingSkill } from './essay-grading';
 export { reviewPlanningSkill } from './review-planning';
 export { documentProcessingSkill } from './document-processing';
 export { workbenchToolsSkill } from './workbench-tools';
+export { translationToolsSkill } from './translation-tools';
+export { settingsToolsSkill } from './settings-tools';
+export { llmUsageToolsSkill } from './llm-usage-tools';
+export { dataGovernanceToolsSkill } from './data-governance-tools';
+export { textbookPdfToolsSkill } from './textbook-pdf-tools';
+export { learningOverviewToolsSkill } from './learning-overview-tools';
+export { indexWebpageToolsSkill } from './index-webpage-tools';
 
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
 import { vfsMemorySkill } from './vfs-memory';
 import { learningResourceSkill } from './learning-resource';
+import { dstuToolsSkill } from './dstu-tools';
 import { mindmapToolsSkill } from './mindmap-tools';
 import { attachmentToolsSkill } from './attachment-tools';
 import { todoToolsSkill } from './todo-tools';
@@ -66,6 +75,13 @@ import { essayGradingSkill } from './essay-grading';
 import { reviewPlanningSkill } from './review-planning';
 import { documentProcessingSkill } from './document-processing';
 import { workbenchToolsSkill } from './workbench-tools';
+import { translationToolsSkill } from './translation-tools';
+import { settingsToolsSkill } from './settings-tools';
+import { llmUsageToolsSkill } from './llm-usage-tools';
+import { dataGovernanceToolsSkill } from './data-governance-tools';
+import { textbookPdfToolsSkill } from './textbook-pdf-tools';
+import { learningOverviewToolsSkill } from './learning-overview-tools';
+import { indexWebpageToolsSkill } from './index-webpage-tools';
 import type { SkillDefinition } from '../types';
 import { getPlatform } from '@/utils/platform';
 
@@ -88,6 +104,7 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   canvasNoteSkill,
   vfsMemorySkill,
   learningResourceSkill,
+  dstuToolsSkill,
   mindmapToolsSkill,
   attachmentToolsSkill,
   todoToolsSkill,
@@ -113,6 +130,13 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   reviewPlanningSkill,
   documentProcessingSkill,
   workbenchToolsSkill,
+  translationToolsSkill,
+  settingsToolsSkill,
+  llmUsageToolsSkill,
+  dataGovernanceToolsSkill,
+  textbookPdfToolsSkill,
+  learningOverviewToolsSkill,
+  indexWebpageToolsSkill,
 ];
 
 // The result-returning browser bridge is currently implemented only for

@@ -306,6 +306,10 @@ function SidebarUpdateBadge({
   compact?: boolean;
   className?: string;
 }) {
+  const { t } = useTranslation('common');
+  const updateLabel = t('header.update');
+  const downloadingLabel = t('status.downloading');
+
   if (!visible) return null;
 
   if (compact) {
@@ -316,7 +320,7 @@ function SidebarUpdateBadge({
         className={cn('desktop-shell-update-badge desktop-shell-update-badge--compact', className)}
         onClick={onClick}
         disabled={downloading}
-        aria-label={downloading ? '下载中...' : '点击更新'}
+        aria-label={downloading ? downloadingLabel : updateLabel}
       >
         {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : <DownloadSimple size={12} />}
       </button>
@@ -330,7 +334,7 @@ function SidebarUpdateBadge({
       className={cn('desktop-shell-update-badge', className)}
       onClick={onClick}
       disabled={downloading}
-      aria-label={downloading ? '下载中...' : '点击更新'}
+      aria-label={downloading ? downloadingLabel : updateLabel}
     >
       {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : <DownloadSimple size={12} />}
     </button>
@@ -741,7 +745,7 @@ function App() {
     let cancelled = false;
     const SIDEBAR_TRANSLUCENT_KEY = 'sidebar.translucent';
 
-    (async () => {
+    const loadSidebarTranslucentSetting = async () => {
       try {
         const val = await invoke<string | null>('get_setting', { key: SIDEBAR_TRANSLUCENT_KEY });
         if (cancelled) return;
@@ -753,9 +757,20 @@ function App() {
         if (cancelled) return;
         document.documentElement.setAttribute('data-sidebar-translucent', 'false');
       }
-    })();
+    };
+    void loadSidebarTranslucentSetting();
 
-    return () => { cancelled = true; };
+    const handleSettingsChange = (event: CustomEvent<{ settingKey?: string }>) => {
+      if (event.detail?.settingKey === SIDEBAR_TRANSLUCENT_KEY) {
+        void loadSidebarTranslucentSetting();
+      }
+    };
+    window.addEventListener('systemSettingsChanged', handleSettingsChange as EventListener);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('systemSettingsChanged', handleSettingsChange as EventListener);
+    };
   }, []);
 
   useEffect(() => {
@@ -2245,11 +2260,11 @@ function App() {
       'skills-management': t('sidebar:navigation.skills_management', '技能管理'),
       'data-management': t('common:navigation.data_management', '数据管理'),
       'template-management': t('sidebar:navigation.template_management', '模板库'),
-      'ui-lab': t('sidebar:navigation.ui_lab', '样式调试'),
+      'ui-lab': t('sidebar:navigation.ui_lab'),
       'template-json-preview': t('common:navigation.template_json_preview', '模板预览'),
       'pdf-reader': t('common:navigation.pdf_reader', 'PDF 阅读器'),
       'sandbox-workbench': t('common:navigation.sandbox_workbench', '沙箱工作台'),
-      'todo': t('common:navigation.todo', '待办'),
+      'todo': t('sidebar:navigation.todo'),
       'tree-test': t('common:navigation.tree_test', 'Tree Test'),
       'crepe-demo': t('common:navigation.crepe_demo', 'Crepe Demo'),
       'chat-v2-test': t('common:navigation.chat_v2_test', 'Chat V2 Test'),
@@ -2391,7 +2406,7 @@ function App() {
   if (needsAgreement === null) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background dark:bg-zinc-950">
-        <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
+        <div className="animate-pulse text-muted-foreground text-sm">{t('common:status.loading')}</div>
       </div>
     );
   }
@@ -2402,6 +2417,7 @@ function App() {
   return (
     <CommandPaletteProvider
         currentView={currentView}
+        workbenchActive={workbenchActive}
         navigate={commandPaletteNavigate}
         toggleTheme={toggleDarkMode}
         isDarkMode={isDarkMode}
@@ -2475,8 +2491,8 @@ function App() {
                   <div className="desktop-shell-workbench-chrome-pill">
                     <div
                       className="desktop-shell-workbench-drag-strip"
-                      aria-label={t('common:window_controls.drag', '拖动窗口')}
-                      title={t('common:window_controls.drag', '拖动窗口')}
+                      aria-label={t('common:window_controls.drag')}
+                      title={t('common:window_controls.drag')}
                       onMouseDown={handleWorkbenchChromeDragMouseDown}
                     >
                       <DeepStudentMark className="desktop-shell-workbench-app-icon" />

@@ -157,6 +157,8 @@ pub struct ChatV2LLMAdapter {
     think_tag_buffer: std::sync::Mutex<String>,
     /// 🔧 Gemini 3 思维签名缓存：工具调用场景下必须在后续请求中回传
     cached_thought_signature: std::sync::Mutex<Option<String>>,
+    /// Complete OpenAI Responses reasoning item for the current tool round.
+    cached_response_reasoning_item: std::sync::Mutex<Option<Value>>,
     /// tool_call_id → preparing block_id 映射（用于 args delta chunk 寻址）
     preparing_block_ids: std::sync::Mutex<HashMap<String, String>>,
     /// tool_call_id → 累积的 args delta（节流缓冲，减少事件频率）
@@ -190,6 +192,7 @@ impl ChatV2LLMAdapter {
             in_think_tag: std::sync::Mutex::new(false),
             think_tag_buffer: std::sync::Mutex::new(String::new()),
             cached_thought_signature: std::sync::Mutex::new(None),
+            cached_response_reasoning_item: std::sync::Mutex::new(None),
             preparing_block_ids: std::sync::Mutex::new(HashMap::new()),
             args_delta_buffer: std::sync::Mutex::new(HashMap::new()),
             last_activity_at: std::sync::Mutex::new(std::time::Instant::now()),
@@ -309,6 +312,14 @@ impl ChatV2LLMAdapter {
 
     /// 结束所有活跃块
     pub fn finalize_all(&self) {
+        self.finalize_all_inner(false);
+    }
+
+    fn finalize_all_with_authoritative_content(&self) {
+        self.finalize_all_inner(true);
+    }
+
+    fn finalize_all_inner(&self, include_authoritative_content: bool) {
         // 🔧 先处理缓冲区中剩余的内容
         self.flush_think_tag_buffer();
 
@@ -321,8 +332,20 @@ impl ChatV2LLMAdapter {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if let Some(ref block_id) = *content_guard {
-            self.emitter
-                .emit_end(event_types::CONTENT, block_id, None, None); // variant_id
+            let result = include_authoritative_content.then(|| {
+                let content = self
+                    .accumulated_content
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                json!({ "content": content })
+            });
+            self.emitter.emit_end(
+                event_types::CONTENT,
+                block_id,
+                result,
+                None, // variant_id
+            );
         }
         // 🔧 P0修复：工具块的结束事件由 execute_single_tool 直接发射，不再在这里处理
     }
@@ -469,6 +492,10 @@ impl ChatV2LLMAdapter {
             .cached_thought_signature
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .cached_response_reasoning_item
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
         self.preparing_block_ids
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -520,6 +547,13 @@ impl ChatV2LLMAdapter {
     /// 获取缓存的 Gemini 3 思维签名（如果有）
     pub fn get_thought_signature(&self) -> Option<String> {
         self.cached_thought_signature
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    pub fn get_response_reasoning_item(&self) -> Option<Value> {
+        self.cached_response_reasoning_item
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -974,6 +1008,15 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         *guard = Some(signature.to_string());
     }
 
+    fn on_response_reasoning_item(&self, item: &Value) {
+        self.touch_activity();
+        let mut guard = self
+            .cached_response_reasoning_item
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *guard = Some(item.clone());
+    }
+
     fn on_tool_call(&self, msg: &LegacyChatMessage) {
         // 从 ChatMessage 中提取工具调用信息
         if let Some(ref tool_call) = msg.tool_call {
@@ -1039,6 +1082,9 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
     }
 
     fn on_complete(&self, _final_text: &str, _reasoning: Option<&str>) {
-        self.finalize_all();
+        // Incremental UI events are best-effort. Include the adapter's complete,
+        // post-processed text in the terminal block event so the frontend can
+        // reconcile a delayed or dropped tail before marking the block complete.
+        self.finalize_all_with_authoritative_content();
     }
 }

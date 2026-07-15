@@ -1211,6 +1211,95 @@ impl ChatV2Repo {
         Ok(messages)
     }
 
+    /// Load one page of messages and all blocks belonging to that page.
+    ///
+    /// Pagination is applied by SQLite before message/block materialization so
+    /// callers never have to load an entire long-running session just to read
+    /// a small window. `page` is one-based and `role_filter`, when present,
+    /// uses the persisted `user` / `assistant` role values.
+    pub fn load_session_messages_page_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        page: u32,
+        page_size: u32,
+        role_filter: Option<&str>,
+    ) -> ChatV2Result<(Vec<ChatMessage>, Vec<MessageBlock>, u32)> {
+        let total: u32 = conn.query_row(
+            r#"
+            SELECT COUNT(*)
+            FROM chat_v2_messages
+            WHERE session_id = ?1
+              AND (?2 IS NULL OR role = ?2)
+            "#,
+            params![session_id, role_filter],
+            |row| row.get(0),
+        )?;
+
+        let offset = u64::from(page.saturating_sub(1)) * u64::from(page_size);
+        let mut message_stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, role, block_ids_json, timestamp, persistent_stable_id,
+                   parent_id, supersedes, meta_json, attachments_json, active_variant_id,
+                   variants_json, shared_context_json
+            FROM chat_v2_messages
+            WHERE session_id = ?1
+              AND (?2 IS NULL OR role = ?2)
+            ORDER BY timestamp ASC, rowid ASC
+            LIMIT ?3 OFFSET ?4
+            "#,
+        )?;
+        let message_rows = message_stmt.query_map(
+            params![session_id, role_filter, page_size, offset],
+            Self::row_to_message,
+        )?;
+        let messages: Vec<ChatMessage> = message_rows
+            .filter_map(|row| match row {
+                Ok(message) => Some(message),
+                Err(error) => {
+                    log::warn!(
+                        "[ChatV2Repo] Skipping malformed paged message row: {}",
+                        error
+                    );
+                    None
+                }
+            })
+            .collect();
+
+        let mut block_stmt = conn.prepare(
+            r#"
+            SELECT b.id, b.message_id, b.block_type, b.status, b.block_index,
+                   b.content, b.tool_name, b.tool_input_json, b.tool_output_json,
+                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at
+            FROM chat_v2_blocks b
+            INNER JOIN (
+                SELECT id, timestamp, rowid AS message_rowid
+                FROM chat_v2_messages
+                WHERE session_id = ?1
+                  AND (?2 IS NULL OR role = ?2)
+                ORDER BY timestamp ASC, rowid ASC
+                LIMIT ?3 OFFSET ?4
+            ) page_messages ON b.message_id = page_messages.id
+            ORDER BY page_messages.timestamp ASC, page_messages.message_rowid ASC,
+                     b.block_index ASC
+            "#,
+        )?;
+        let block_rows = block_stmt.query_map(
+            params![session_id, role_filter, page_size, offset],
+            Self::row_to_block,
+        )?;
+        let blocks: Vec<MessageBlock> = block_rows
+            .filter_map(|row| match row {
+                Ok(block) => Some(block),
+                Err(error) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed paged block row: {}", error);
+                    None
+                }
+            })
+            .collect();
+
+        Ok((messages, blocks, total))
+    }
+
     /// 更新消息
     pub fn update_message(db: &Database, message: &ChatMessage) -> ChatV2Result<()> {
         let conn = db.get_conn_safe()?;
@@ -3042,6 +3131,20 @@ impl ChatV2Repo {
         query: &str,
         limit: u32,
     ) -> ChatV2Result<Vec<super::types::ContentSearchResult>> {
+        Self::search_content_with_date_range(conn, query, limit, None, None)
+    }
+
+    /// Search message content with an optional inclusive session update range.
+    ///
+    /// The original `search_content` entry point intentionally remains as a
+    /// compatibility wrapper for existing Tauri/UI callers.
+    pub fn search_content_with_date_range(
+        conn: &Connection,
+        query: &str,
+        limit: u32,
+        date_from: Option<&str>,
+        date_to: Option<&str>,
+    ) -> ChatV2Result<Vec<super::types::ContentSearchResult>> {
         use super::types::ContentSearchResult;
 
         let trimmed = query.trim();
@@ -3067,12 +3170,14 @@ impl ChatV2Repo {
             JOIN chat_v2_sessions s ON m.session_id = s.id
             WHERE chat_v2_content_fts MATCH ?1
               AND s.persist_status = 'active'
+              AND (?2 IS NULL OR julianday(s.updated_at) >= julianday(?2))
+              AND (?3 IS NULL OR julianday(s.updated_at) <= julianday(?3))
             ORDER BY bm25(chat_v2_content_fts)
-            LIMIT ?2
+            LIMIT ?4
             "#,
         )?;
 
-        let rows = stmt.query_map(params![fts_query, limit], |row| {
+        let rows = stmt.query_map(params![fts_query, date_from, date_to, limit], |row| {
             let raw_snippet: String = row.get(5)?;
             Ok(ContentSearchResult {
                 session_id: row.get(0)?,
@@ -3704,6 +3809,113 @@ mod tests {
         ChatV2Repo::delete_message_with_conn(&conn, &message_id).unwrap();
         let deleted = ChatV2Repo::get_message_with_conn(&conn, &message_id).unwrap();
         assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn test_load_session_messages_page_with_role_filter() {
+        let conn = setup_test_db();
+        let session_id = "sess_message_page";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        for index in 0..5 {
+            let mut message = if index % 2 == 0 {
+                ChatMessage::new_user(session_id.to_string(), Vec::new())
+            } else {
+                ChatMessage::new_assistant(session_id.to_string())
+            };
+            message.id = format!("msg_page_{}", index);
+            message.timestamp = 1_000 + index;
+            let block_id = format!("blk_page_{}", index);
+            message.block_ids = vec![block_id.clone()];
+            ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+            let mut block = MessageBlock::new_content(message.id.clone(), 0);
+            block.id = block_id;
+            block.content = Some(format!("message {}", index));
+            block.set_success();
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+
+        let (messages, blocks, total) =
+            ChatV2Repo::load_session_messages_page_with_conn(&conn, session_id, 2, 2, None)
+                .unwrap();
+        assert_eq!(total, 5);
+        assert_eq!(
+            messages
+                .iter()
+                .map(|message| message.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["msg_page_2", "msg_page_3"]
+        );
+        assert_eq!(
+            blocks
+                .iter()
+                .map(|block| block.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["blk_page_2", "blk_page_3"]
+        );
+
+        let (user_messages, user_blocks, user_total) =
+            ChatV2Repo::load_session_messages_page_with_conn(&conn, session_id, 2, 1, Some("user"))
+                .unwrap();
+        assert_eq!(user_total, 3);
+        assert_eq!(user_messages[0].id, "msg_page_2");
+        assert_eq!(user_blocks[0].id, "blk_page_2");
+
+        let (empty_messages, empty_blocks, empty_total) =
+            ChatV2Repo::load_session_messages_page_with_conn(&conn, session_id, 99, 20, None)
+                .unwrap();
+        assert_eq!(empty_total, 5);
+        assert!(empty_messages.is_empty());
+        assert!(empty_blocks.is_empty());
+    }
+
+    #[test]
+    fn test_search_content_date_range_preserves_legacy_search() {
+        let conn = setup_test_db();
+
+        for (index, updated_at) in ["2026-07-10T12:00:00Z", "2026-07-11T18:30:00Z"]
+            .iter()
+            .enumerate()
+        {
+            let session_id = format!("sess_fts_date_{}", index);
+            let mut session = ChatSession::new(session_id.clone(), "chat".to_string());
+            session.title = Some(format!("Date {}", index));
+            session.updated_at = DateTime::parse_from_rfc3339(updated_at)
+                .unwrap()
+                .with_timezone(&Utc);
+            ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+            let mut message = ChatMessage::new_user(session_id, Vec::new());
+            message.id = format!("msg_fts_date_{}", index);
+            let block_id = format!("blk_fts_date_{}", index);
+            message.block_ids = vec![block_id.clone()];
+            ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+            let mut block = MessageBlock::new_content(message.id.clone(), 0);
+            block.id = block_id;
+            block.content = Some(format!("needle date result {}", index));
+            block.set_success();
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+
+        let legacy = ChatV2Repo::search_content(&conn, "needle", 10).unwrap();
+        assert_eq!(legacy.len(), 2, "legacy search must remain unfiltered");
+
+        let filtered = ChatV2Repo::search_content_with_date_range(
+            &conn,
+            "needle",
+            10,
+            Some("2026-07-11T00:00:00.000Z"),
+            Some("2026-07-11T23:59:59.999Z"),
+        )
+        .unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].session_id, "sess_fts_date_1");
     }
 
     #[test]

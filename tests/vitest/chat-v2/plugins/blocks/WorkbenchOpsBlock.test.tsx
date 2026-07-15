@@ -6,13 +6,14 @@
  * - running / success / partial 三态渲染
  * - 撤销按钮条件（仅 frontend + completed/partial + 账本存活）
  * - 账本过期失效态
- * - data-run-id 与 resolveWorkbenchRunId
+ * - data-run-id 的 ACR 3.0 会话隔离
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import type { Block } from '@/features/chat/core/types';
+import type { StoreApi } from 'zustand';
+import type { Block, ChatStore } from '@/features/chat/core/types';
 import type { AcrReceipt } from '@/features/workbench';
 import { blockRegistry } from '@/features/chat/registry';
 
@@ -39,6 +40,7 @@ vi.mock('react-i18next', () => ({
         'blocks.workbenchOps.status.success': 'Completed',
         'blocks.workbenchOps.status.partial': 'Partial',
         'blocks.workbenchOps.status.cancelled': 'Cancelled',
+        'blocks.workbenchOps.status.unknown': 'Outcome unknown',
         'blocks.workbenchOps.status.error': 'Failed',
         'blocks.mcpTool.unknownTool': 'Unknown Tool',
       };
@@ -52,7 +54,8 @@ vi.mock('react-i18next', () => ({
 
 const mockActivate = vi.fn(() => true);
 const mockRevertRun = vi.fn(async () => true);
-const mockHasRun = vi.fn((_id: string) => true);
+const mockHasRun = vi.fn((_id: string, _sessionId?: string) => true);
+const mockHandleBridgeRequest = vi.fn();
 const mockPresenceSubscribe = vi.fn((selector: (s: { byWindow: Record<string, never> }) => unknown) =>
   selector({ byWindow: {} })
 );
@@ -62,19 +65,14 @@ vi.mock('@/features/workbench', () => ({
     activate: (...args: unknown[]) => mockActivate(...args),
   },
   stageManager: {
-    revertRun: (...args: unknown[]) => mockRevertRun(...args),
+    revertRun: (runId: string, sessionId?: string) => mockRevertRun(runId, sessionId),
+    hasReversibleRun: (runId: string, sessionId?: string) => mockHasRun(runId, sessionId),
+    handleBridgeRequest: (request: unknown) => mockHandleBridgeRequest(request),
   },
+  makeAcrSessionRunId: (sessionId: string, toolCallId: string) =>
+    `acr3:${new TextEncoder().encode(sessionId).byteLength}:${sessionId}:${toolCallId}`,
   usePresenceStore: (selector: (s: { byWindow: Record<string, never> }) => unknown) =>
     mockPresenceSubscribe(selector),
-}));
-
-vi.mock('@/features/workbench/agent/ledger', () => ({
-  runLedger: {
-    hasRun: (id: string) => mockHasRun(id),
-    record: vi.fn(),
-    revertRun: vi.fn(async () => true),
-    sealRun: vi.fn(),
-  },
 }));
 
 vi.mock('@/features/chat/utils/toolDisplayName', () => ({
@@ -93,6 +91,20 @@ vi.mock('@/components/ui/PulseDot', () => ({
 
 // mocks 之后导入（触发注册）
 import { WorkbenchOpsBlock } from '@/features/chat/plugins/blocks/workbenchOpsBlock';
+
+function scopedRunId(sessionId: string, toolCallId: string): string {
+  return `acr3:${new TextEncoder().encode(sessionId).byteLength}:${sessionId}:${toolCallId}`;
+}
+
+function createStore(sessionId = 'session-test'): StoreApi<ChatStore> {
+  return {
+    getState: () => ({ sessionId }) as ChatStore,
+  } as unknown as StoreApi<ChatStore>;
+}
+
+function renderBlock(block: Block, sessionId = 'session-test') {
+  return render(<WorkbenchOpsBlock block={block} store={createStore(sessionId)} />);
+}
 
 function createReceipt(overrides?: Partial<AcrReceipt>): AcrReceipt {
   return {
@@ -139,7 +151,7 @@ describe('WorkbenchOpsBlock', () => {
       toolOutput: undefined,
     });
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
     expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute('data-status', 'running');
     expect(screen.getByTestId('workbench-ops-steps')).toBeInTheDocument();
@@ -155,10 +167,13 @@ describe('WorkbenchOpsBlock', () => {
       toolOutput: { result: receipt },
     });
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
     expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute('data-status', 'success');
-    expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute('data-run-id', 'call-1');
+    expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute(
+      'data-run-id',
+      scopedRunId('session-test', 'call-1'),
+    );
     expect(screen.getByTestId('workbench-ops-receipt')).toBeInTheDocument();
     expect(screen.getByText('Opened note')).toBeInTheDocument();
     expect(screen.getByText('Applied 1/1')).toBeInTheDocument();
@@ -176,15 +191,18 @@ describe('WorkbenchOpsBlock', () => {
       toolOutput: { result: receipt },
     });
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
     const undo = screen.getByTestId('workbench-ops-undo');
     expect(undo).toBeDisabled();
     expect(undo).toHaveTextContent('Not undoable');
   });
 
-  it('prefers block.id as runId when only block.id is in the ledger', () => {
-    mockHasRun.mockImplementation((id: string) => id === 'wb-ops-1');
+  it('uses the session-scoped toolCallId instead of the render block id', () => {
+    const expectedRunId = scopedRunId('session-test', 'call-llm');
+    mockHasRun.mockImplementation(
+      (id: string, sessionId?: string) => id === expectedRunId && sessionId === 'session-test',
+    );
     const receipt = createReceipt({ status: 'completed', mode: 'frontend' });
     const block = createBlock({
       id: 'wb-ops-1',
@@ -193,9 +211,9 @@ describe('WorkbenchOpsBlock', () => {
       toolOutput: { result: receipt },
     });
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
-    expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute('data-run-id', 'wb-ops-1');
+    expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute('data-run-id', expectedRunId);
   });
 
   it('keeps terminal steps summary when content lines exist', () => {
@@ -206,7 +224,7 @@ describe('WorkbenchOpsBlock', () => {
       toolOutput: { result: receipt },
     });
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
     expect(screen.getByTestId('workbench-ops-steps')).toBeInTheDocument();
     expect(screen.getByText('Opened note window')).toBeInTheDocument();
@@ -225,7 +243,7 @@ describe('WorkbenchOpsBlock', () => {
       toolOutput: { result: receipt },
     });
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
     expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute('data-status', 'partial');
     expect(screen.getByText('Added node A')).toBeInTheDocument();
@@ -241,7 +259,7 @@ describe('WorkbenchOpsBlock', () => {
       toolOutput: { result: receipt },
     });
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
     expect(screen.queryByTestId('workbench-ops-undo')).not.toBeInTheDocument();
     expect(screen.getByTestId('workbench-ops-header')).toContainElement(
@@ -256,7 +274,7 @@ describe('WorkbenchOpsBlock', () => {
       toolOutput: { result: receipt },
     });
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
     fireEvent.click(screen.getByTestId('workbench-ops-open'));
 
     expect(mockActivate).toHaveBeenCalledWith(
@@ -273,18 +291,21 @@ describe('WorkbenchOpsBlock', () => {
   });
 
   it('calls stageManager.revertRun and disables undo after success', async () => {
-    mockHasRun.mockImplementation((id: string) => id === 'run-abc');
+    const expectedRunId = scopedRunId('session-test', 'run-abc');
+    mockHasRun.mockImplementation(
+      (id: string, sessionId?: string) => id === expectedRunId && sessionId === 'session-test',
+    );
     const receipt = createReceipt({ status: 'completed', mode: 'frontend' });
     const block = createBlock({
       toolCallId: 'run-abc',
       toolOutput: { result: receipt },
     });
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
     fireEvent.click(screen.getByTestId('workbench-ops-undo'));
 
     await waitFor(() => {
-      expect(mockRevertRun).toHaveBeenCalledWith('run-abc');
+      expect(mockRevertRun).toHaveBeenCalledWith(expectedRunId, 'session-test');
     });
 
     await waitFor(() => {

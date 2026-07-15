@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -11,12 +12,13 @@ use tauri::Manager;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
 use tokio::sync::Mutex as AsyncMutex;
+use tokio_util::sync::CancellationToken;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{
-    analyze_shell_command, normalized_shell_runtime_location, redact_tool_arguments_for_display,
-    validate_shell_path_operands_within_root,
+    analyze_shell_command, normalized_shell_runtime_location, redact_shell_command_for_display,
+    redact_tool_arguments_for_display, validate_shell_path_operands_within_root,
 };
 use crate::chat_v2::runtime_roots::{
     normalize_runtime_relative_path, revalidate_runtime_root, runtime_root_by_id,
@@ -28,7 +30,8 @@ use crate::chat_v2::workspace_change_set::{self, ExternalFileSnapshot, ExternalF
 use crate::commands::AppState;
 
 use super::shell_sandbox::{
-    terminate_process_group, PlatformSandboxBackend, SandboxBackend, SandboxPolicy,
+    cleanup_finished_process_group, terminate_process_group, PlatformSandboxBackend,
+    SandboxBackend, SandboxPolicy,
 };
 
 pub mod tool_names {
@@ -42,9 +45,27 @@ struct ShellEnvPlan {
     inherit_parent_env: bool,
     allowlist_mode: bool,
     inherited_keys: Vec<String>,
+    inherited_values: BTreeMap<String, String>,
     explicit_keys: Vec<String>,
     denied_keys: Vec<String>,
     explicit_values: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ShellEnvPolicyFacts {
+    pub inherit_parent_env: bool,
+    pub allowlist_mode: bool,
+    pub inherited_keys: Vec<String>,
+    pub explicit_keys: Vec<String>,
+    pub denied_keys: Vec<String>,
+    pub plan_hash: String,
+}
+
+#[derive(Debug)]
+enum ShellWaitOutcome {
+    Exited(ExitStatus),
+    TimedOut,
+    Cancelled,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -81,6 +102,7 @@ impl LocalShellExecuteExecutor {
     const MAX_FILE_SNAPSHOT_ENTRIES: usize = 1_000;
     const MAX_FILE_CHANGE_ENTRIES: usize = 200;
     const MAX_REVERSIBLE_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
+    const PROCESS_CLEANUP_GRACE: Duration = Duration::from_secs(10);
 
     pub fn new() -> Self {
         Self
@@ -221,6 +243,120 @@ impl LocalShellExecuteExecutor {
             || upper == "ANTHROPIC_API_KEY"
     }
 
+    fn is_execution_control_env_key(key: &str) -> bool {
+        let upper = key.to_ascii_uppercase();
+        upper == "BASH_ENV"
+            || upper == "ENV"
+            || upper == "COMSPEC"
+            || upper == "SHELLOPTS"
+            || upper == "BASHOPTS"
+            || upper == "ZDOTDIR"
+            || upper == "PROMPT_COMMAND"
+            || upper.starts_with("BASH_FUNC_")
+            || upper.starts_with("DYLD_")
+            || upper.starts_with("LD_")
+            || matches!(
+                upper.as_str(),
+                "NODE_OPTIONS"
+                    | "NODE_PATH"
+                    | "NPM_CONFIG_NODE_OPTIONS"
+                    | "PYTHONHOME"
+                    | "PYTHONPATH"
+                    | "PYTHONSTARTUP"
+                    | "RUBYOPT"
+                    | "RUBYLIB"
+                    | "PERL5OPT"
+                    | "PERL5LIB"
+                    | "JAVA_TOOL_OPTIONS"
+                    | "JDK_JAVA_OPTIONS"
+                    | "_JAVA_OPTIONS"
+                    | "CLASSPATH"
+                    | "DOTNET_STARTUP_HOOKS"
+                    | "DEVELOPER_DIR"
+                    | "RUSTC_WRAPPER"
+                    | "RUSTC_WORKSPACE_WRAPPER"
+                    | "MAKEFLAGS"
+                    | "GIT_EXEC_PATH"
+                    | "GIT_EXTERNAL_DIFF"
+                    | "GIT_DIFF_OPTS"
+                    | "GIT_SSH"
+                    | "GIT_SSH_COMMAND"
+                    | "GIT_ASKPASS"
+                    | "GIT_CONFIG"
+                    | "GIT_CONFIG_GLOBAL"
+                    | "GIT_CONFIG_SYSTEM"
+                    | "GIT_CONFIG_COUNT"
+                    | "GIT_TEMPLATE_DIR"
+                    | "SSH_ASKPASS"
+            )
+            || upper.starts_with("GIT_CONFIG_KEY_")
+            || upper.starts_with("GIT_CONFIG_VALUE_")
+    }
+
+    fn is_path_env_key(key: &str) -> bool {
+        matches!(key.to_ascii_uppercase().as_str(), "PATH" | "PATHEXT")
+    }
+
+    fn is_explicit_env_override_blocked(key: &str) -> bool {
+        Self::is_execution_control_env_key(key)
+            || Self::is_path_env_key(key)
+            || matches!(
+                key.to_ascii_uppercase().as_str(),
+                "SYSTEMROOT" | "WINDIR" | "HOME" | "USERPROFILE" | "XDG_CONFIG_HOME" | "SKILL_DIR"
+            )
+    }
+
+    fn sanitize_path_value(value: &str) -> Result<String, String> {
+        let mut seen = BTreeSet::new();
+        let mut paths = Vec::new();
+        for path in env::split_paths(value) {
+            if path.as_os_str().is_empty() || !path.is_absolute() {
+                continue;
+            }
+            let key = if cfg!(windows) {
+                path.to_string_lossy().to_ascii_lowercase()
+            } else {
+                path.to_string_lossy().into_owned()
+            };
+            if seen.insert(key) {
+                paths.push(path);
+            }
+        }
+        env::join_paths(paths)
+            .map(|value| value.to_string_lossy().into_owned())
+            .map_err(|error| format!("Failed to sanitize inherited PATH: {error}"))
+    }
+
+    fn sanitize_pathext_value(value: &str) -> String {
+        let mut seen = BTreeSet::new();
+        value
+            .split(';')
+            .filter_map(|entry| {
+                let normalized = entry.trim().to_ascii_uppercase();
+                if normalized.len() < 2
+                    || !normalized.starts_with('.')
+                    || !normalized[1..]
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric())
+                    || !seen.insert(normalized.clone())
+                {
+                    None
+                } else {
+                    Some(normalized)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(";")
+    }
+
+    fn sanitize_inherited_env_value(key: &str, value: String) -> Result<String, String> {
+        match key.to_ascii_uppercase().as_str() {
+            "PATH" => Self::sanitize_path_value(&value),
+            "PATHEXT" => Ok(Self::sanitize_pathext_value(&value)),
+            _ => Ok(value),
+        }
+    }
+
     fn looks_network_capable(command: &str) -> bool {
         analyze_shell_command(command).network_capable
     }
@@ -234,6 +370,12 @@ impl LocalShellExecuteExecutor {
         })
     }
 
+    fn command_audit(command: &str) -> (String, String, bool) {
+        let (display, redacted) = redact_shell_command_for_display(command);
+        let hash = hex::encode(Sha256::digest(command.as_bytes()));
+        (display, hash, redacted)
+    }
+
     fn push_canonical_unique(paths: &mut Vec<PathBuf>, path: &Path) -> Result<(), String> {
         let canonical = path
             .canonicalize()
@@ -244,11 +386,114 @@ impl LocalShellExecuteExecutor {
         Ok(())
     }
 
+    fn protect_existing_roots<I>(paths: &mut Vec<PathBuf>, roots: I) -> Result<(), String>
+    where
+        I: IntoIterator<Item = PathBuf>,
+    {
+        for root in roots {
+            if root.exists() {
+                Self::push_canonical_unique(paths, &root)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn add_runtime_read_roots(
+        readable_roots: &mut Vec<PathBuf>,
+        env_plan: &ShellEnvPlan,
+    ) -> Result<(), String> {
+        let path_value = env_plan
+            .inherited_values
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case("PATH"))
+            .map(|(_, value)| value.as_str());
+        if let Some(path_value) = path_value {
+            for path in env::split_paths(path_value).take(64) {
+                if !path.is_dir() {
+                    continue;
+                }
+                Self::push_canonical_unique(readable_roots, &path)?;
+            }
+        }
+
+        if let (Some(home), Some(path_value)) = (dirs::home_dir(), path_value) {
+            let path_entries = env::split_paths(path_value).collect::<Vec<_>>();
+            let groups: &[(&str, &[&str])] = &[
+                (
+                    ".cargo/bin",
+                    &[".cargo/bin", ".cargo/registry", ".cargo/git", ".rustup"],
+                ),
+                (".nvm/versions", &[".nvm/versions"]),
+                (".volta/bin", &[".volta/bin", ".volta/tools"]),
+                (".fnm", &[".fnm/node-versions"]),
+                (".local/bin", &[".local/bin"]),
+                (".bun/bin", &[".bun/bin"]),
+            ];
+            for (trigger, support_roots) in groups {
+                let trigger = home.join(trigger);
+                if path_entries.iter().any(|entry| entry.starts_with(&trigger)) {
+                    for relative in *support_roots {
+                        let root = home.join(relative);
+                        if root.exists() {
+                            Self::push_canonical_unique(readable_roots, &root)?;
+                        }
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(path_value) = path_value {
+                for prefix in ["/opt/homebrew", "/usr/local"] {
+                    if env::split_paths(path_value).any(|entry| entry.starts_with(prefix)) {
+                        for relative in ["bin", "lib", "Cellar"] {
+                            let root = Path::new(prefix).join(relative);
+                            if root.exists() {
+                                Self::push_canonical_unique(readable_roots, &root)?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Apple's /usr/bin/python3 and other developer shims load libraries from the active
+            // Xcode/CommandLineTools directory. Resolve that trusted OS selection outside the
+            // sandbox and expose it read-only; network remains denied by Seatbelt.
+            if let Ok(output) = std::process::Command::new("/usr/bin/xcode-select")
+                .arg("-p")
+                .output()
+            {
+                if output.status.success() {
+                    let selected = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    let mut selected = PathBuf::from(selected);
+                    if selected.ends_with(Path::new("Contents").join("Developer")) {
+                        if let Some(xcode_app) = selected.parent().and_then(Path::parent) {
+                            selected = xcode_app.to_path_buf();
+                        }
+                    }
+                    if selected.is_dir() {
+                        Self::push_canonical_unique(readable_roots, &selected)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn runtime_support_read_roots(args: &Value) -> Result<Vec<PathBuf>, String> {
+        let plan = Self::build_env_plan(args)?;
+        let mut roots = Vec::new();
+        Self::add_runtime_read_roots(&mut roots, &plan)?;
+        Ok(roots)
+    }
+
     fn build_sandbox_policy(
         ctx: &ExecutionContext,
         selected_root: &RuntimeRoot,
         writable_cwd: &Path,
         skill_dir: Option<&SkillDirInjection>,
+        env_plan: &ShellEnvPlan,
         allow_network: bool,
     ) -> Result<SandboxPolicy, String> {
         let state = ctx.window.state::<AppState>();
@@ -286,16 +531,37 @@ impl LocalShellExecuteExecutor {
                 Self::push_canonical_unique(&mut protected_write_roots, &root.path)?;
             }
         }
+        // Skill packages are mutable only through the governed skill installers. Protect every
+        // existing loader base, not just packages loaded into this session, so an indirect script
+        // cannot turn the command-text deny rule into the sole write boundary.
+        Self::protect_existing_roots(
+            &mut protected_write_roots,
+            crate::chat_v2::skills::get_allowed_skills_bases(),
+        )?;
         if let Some(skill_dir) = skill_dir {
             Self::push_canonical_unique(&mut readable_roots, &skill_dir.path)?;
             Self::push_canonical_unique(&mut protected_write_roots, &skill_dir.path)?;
         }
+        Self::add_runtime_read_roots(&mut readable_roots, env_plan)?;
         if selected_root.access == RuntimeRootAccess::ReadWrite {
             Self::push_canonical_unique(&mut writable_roots, writable_cwd)?;
         }
 
         if let Some(home) = dirs::home_dir() {
-            for relative in [".ssh", ".aws", ".gnupg", ".config", "Library/Keychains"] {
+            for relative in [
+                ".ssh",
+                ".aws",
+                ".gnupg",
+                ".config",
+                ".cargo/credentials",
+                ".cargo/credentials.toml",
+                ".npmrc",
+                ".netrc",
+                ".pypirc",
+                ".docker",
+                ".kube",
+                "Library/Keychains",
+            ] {
                 let sensitive = home.join(relative);
                 if sensitive.exists() {
                     Self::push_canonical_unique(&mut protected_read_roots, &sensitive)?;
@@ -363,7 +629,15 @@ impl LocalShellExecuteExecutor {
         #[cfg(not(windows))]
         {
             &[
-                "PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER",
+                "PATH",
+                "HOME",
+                "TMPDIR",
+                "TEMP",
+                "TMP",
+                "LANG",
+                "LC_ALL",
+                "USER",
+                "DEVELOPER_DIR",
             ]
         }
     }
@@ -373,7 +647,7 @@ impl LocalShellExecuteExecutor {
             .get("inherit_env")
             .or_else(|| args.get("inheritEnv"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+            .unwrap_or(false);
         let allowlist = Self::normalize_env_key_set(
             args.get("env_allowlist")
                 .or_else(|| args.get("envAllowlist")),
@@ -384,10 +658,24 @@ impl LocalShellExecuteExecutor {
             "env_denylist",
         )?;
 
+        for key in &allowlist {
+            if Self::is_sensitive_env_key(key) || Self::is_execution_control_env_key(key) {
+                return Err(format!(
+                    "environment variable '{}' is blocked by the shell env policy",
+                    key
+                ));
+            }
+        }
+
         let mut denied_keys = BTreeSet::new();
-        denied_keys.extend(explicit_denylist);
+        denied_keys.extend(explicit_denylist.iter().cloned());
         for (key, _) in env::vars() {
-            if Self::is_sensitive_env_key(&key) {
+            if Self::is_sensitive_env_key(&key)
+                || Self::is_execution_control_env_key(&key)
+                || explicit_denylist
+                    .iter()
+                    .any(|denied| denied.eq_ignore_ascii_case(&key))
+            {
                 denied_keys.insert(key);
             }
         }
@@ -402,7 +690,12 @@ impl LocalShellExecuteExecutor {
             }
             for (raw_key, raw_value) in env_object {
                 let key = Self::normalize_env_key(raw_key)?;
-                if Self::is_sensitive_env_key(&key) || denied_keys.contains(&key) {
+                if Self::is_sensitive_env_key(&key)
+                    || Self::is_explicit_env_override_blocked(&key)
+                    || denied_keys
+                        .iter()
+                        .any(|denied| denied.eq_ignore_ascii_case(&key))
+                {
                     return Err(format!(
                         "environment variable '{}' is blocked by the shell env policy",
                         key
@@ -422,39 +715,86 @@ impl LocalShellExecuteExecutor {
         }
 
         let allowlist_mode = !allowlist.is_empty() || !inherit_parent_env;
-        let mut inherited_keys = BTreeSet::new();
+        let mut requested_keys = BTreeSet::new();
         if allowlist_mode {
-            for key in allowlist {
-                inherited_keys.insert(key);
-            }
+            requested_keys.extend(allowlist);
             for key in Self::platform_minimal_env_keys() {
-                inherited_keys.insert((*key).to_string());
+                requested_keys.insert((*key).to_string());
             }
-            inherited_keys.retain(|key| env::var_os(key).is_some() && !denied_keys.contains(key));
+        } else {
+            requested_keys.extend(env::vars().map(|(key, _)| key));
         }
+
+        let mut inherited_values = BTreeMap::new();
+        for key in requested_keys {
+            if Self::is_sensitive_env_key(&key)
+                || Self::is_execution_control_env_key(&key)
+                || denied_keys
+                    .iter()
+                    .any(|denied| denied.eq_ignore_ascii_case(&key))
+            {
+                continue;
+            }
+            let Some(value) = env::var_os(&key) else {
+                continue;
+            };
+            let value =
+                Self::sanitize_inherited_env_value(&key, value.to_string_lossy().into_owned())?;
+            inherited_values.insert(key, value);
+        }
+
+        #[cfg(target_os = "macos")]
+        if let Some(developer_dir) = Self::trusted_macos_developer_dir() {
+            let developer_bin = developer_dir.join("usr/bin");
+            if developer_bin.is_dir() {
+                if let Some(current_path) = inherited_values.get("PATH") {
+                    let mut paths = vec![developer_bin];
+                    paths.extend(env::split_paths(current_path));
+                    let path = env::join_paths(paths).map_err(|error| {
+                        format!("Failed to add trusted developer tools to PATH: {error}")
+                    })?;
+                    inherited_values
+                        .insert("PATH".to_string(), path.to_string_lossy().into_owned());
+                }
+            }
+            inherited_values.insert(
+                "DEVELOPER_DIR".to_string(),
+                developer_dir.to_string_lossy().into_owned(),
+            );
+        }
+
+        let inherited_keys = inherited_values.keys().cloned().collect();
 
         Ok(ShellEnvPlan {
             inherit_parent_env,
             allowlist_mode,
-            inherited_keys: inherited_keys.into_iter().collect(),
+            inherited_keys,
+            inherited_values,
             explicit_keys: explicit_values.keys().cloned().collect(),
             denied_keys: denied_keys.into_iter().collect(),
             explicit_values,
         })
     }
 
+    #[cfg(target_os = "macos")]
+    fn trusted_macos_developer_dir() -> Option<PathBuf> {
+        let output = std::process::Command::new("/usr/bin/xcode-select")
+            .arg("-p")
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+        path.is_dir().then_some(path)
+    }
+
     fn apply_env_plan(cmd: &mut Command, plan: &ShellEnvPlan) {
-        if plan.allowlist_mode {
-            cmd.env_clear();
-            for key in &plan.inherited_keys {
-                if let Some(value) = env::var_os(key) {
-                    cmd.env(key, value);
-                }
-            }
-        } else {
-            for key in &plan.denied_keys {
-                cmd.env_remove(key);
-            }
+        // Rebuild from the snapshotted plan even for inherit_env=true. This makes removal of
+        // case-variant control variables deterministic and ensures PATH is always sanitized.
+        cmd.env_clear();
+        for (key, value) in &plan.inherited_values {
+            cmd.env(key, value);
         }
 
         for (key, value) in &plan.explicit_values {
@@ -462,9 +802,54 @@ impl LocalShellExecuteExecutor {
         }
     }
 
+    fn hash_env_plan(plan: &ShellEnvPlan) -> String {
+        fn hash_part(hasher: &mut Sha256, value: &[u8]) {
+            hasher.update((value.len() as u64).to_le_bytes());
+            hasher.update(value);
+        }
+
+        let mut hasher = Sha256::new();
+        hash_part(&mut hasher, b"deep-student-shell-env-plan-v1");
+        hash_part(&mut hasher, &[plan.inherit_parent_env as u8]);
+        hash_part(&mut hasher, &[plan.allowlist_mode as u8]);
+        for (key, value) in &plan.inherited_values {
+            hash_part(&mut hasher, b"inherited");
+            hash_part(&mut hasher, key.as_bytes());
+            hash_part(&mut hasher, value.as_bytes());
+        }
+        for (key, value) in &plan.explicit_values {
+            hash_part(&mut hasher, b"explicit");
+            hash_part(&mut hasher, key.as_bytes());
+            hash_part(&mut hasher, value.as_bytes());
+        }
+        for key in &plan.denied_keys {
+            hash_part(&mut hasher, b"denied");
+            hash_part(&mut hasher, key.as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
+
+    pub(crate) fn env_policy_facts(args: &Value) -> Result<ShellEnvPolicyFacts, String> {
+        let plan = Self::build_env_plan(args)?;
+        Ok(ShellEnvPolicyFacts {
+            inherit_parent_env: plan.inherit_parent_env,
+            allowlist_mode: plan.allowlist_mode,
+            inherited_keys: plan.inherited_keys.clone(),
+            explicit_keys: plan.explicit_keys.clone(),
+            denied_keys: plan.denied_keys.clone(),
+            plan_hash: Self::hash_env_plan(&plan),
+        })
+    }
+
     fn apply_skill_dir_injection(cmd: &mut Command, injection: Option<&SkillDirInjection>) {
         if let Some(injection) = injection {
             cmd.env("SKILL_DIR", &injection.path);
+        }
+    }
+
+    fn apply_writable_scratch_dir(cmd: &mut Command, cwd: &Path, writable: bool) {
+        if writable {
+            cmd.env("TMPDIR", cwd).env("TEMP", cwd).env("TMP", cwd);
         }
     }
 
@@ -723,13 +1108,111 @@ impl LocalShellExecuteExecutor {
     async fn finish_drain_task(
         task: &mut tokio::task::JoinHandle<Result<(), String>>,
     ) -> Result<(), String> {
-        match tokio::time::timeout(Duration::from_secs(2), &mut *task).await {
+        match tokio::time::timeout(Duration::from_secs(5), &mut *task).await {
             Ok(Ok(result)) => result,
             Ok(Err(error)) => Err(format!("Local shell output reader task failed: {error}")),
             Err(_) => {
                 task.abort();
                 let _ = task.await;
+                Err("Local shell output pipes did not close after process cleanup".to_string())
+            }
+        }
+    }
+
+    async fn terminate_and_reap(child: &mut tokio::process::Child) -> Result<(), String> {
+        let terminate_error = terminate_process_group(child).err();
+        match tokio::time::timeout(Self::PROCESS_CLEANUP_GRACE, child.wait()).await {
+            Ok(Ok(_status)) => {
+                if let Some(error) = terminate_error {
+                    log::warn!(
+                        "[LocalShellExecuteExecutor] Process tree exited after termination warning: {}",
+                        error
+                    );
+                }
                 Ok(())
+            }
+            Ok(Err(error)) => Err(format!(
+                "Failed to wait for local shell process cleanup: {error}"
+            )),
+            Err(_) => {
+                #[cfg(windows)]
+                {
+                    // The Windows helper owns temporary ACLs and the AppContainer profile. Retry
+                    // its cooperative cancellation and then wait for that helper to unwind; killing
+                    // the helper here would skip revoke_policy/Profile::drop.
+                    if let Err(error) = terminate_process_group(child) {
+                        log::warn!(
+                            "[LocalShellExecuteExecutor] Windows cleanup retry warning: {}",
+                            error
+                        );
+                    }
+                    child.wait().await.map(|_| ()).map_err(|error| {
+                        format!("Failed to reap Windows local shell sandbox helper: {error}")
+                    })
+                }
+
+                #[cfg(not(windows))]
+                {
+                    let _ = child.kill().await;
+                    child.wait().await.map(|_| ()).map_err(|error| {
+                        format!("Failed to reap local shell process after forced kill: {error}")
+                    })
+                }
+            }
+        }
+    }
+
+    async fn wait_for_shell_process(
+        child: &mut tokio::process::Child,
+        process_id: u32,
+        timeout_duration: Duration,
+        cancellation_token: Option<&CancellationToken>,
+    ) -> Result<ShellWaitOutcome, String> {
+        let initial = {
+            let wait_future = tokio::time::timeout(timeout_duration, child.wait());
+            tokio::pin!(wait_future);
+            if let Some(token) = cancellation_token {
+                tokio::select! {
+                    biased;
+                    _ = token.cancelled() => Ok(ShellWaitOutcome::Cancelled),
+                    result = &mut wait_future => match result {
+                        Ok(Ok(status)) => Ok(ShellWaitOutcome::Exited(status)),
+                        Ok(Err(error)) => Err(format!("Failed to wait for local shell command: {error}")),
+                        Err(_) => Ok(ShellWaitOutcome::TimedOut),
+                    },
+                }
+            } else {
+                match wait_future.await {
+                    Ok(Ok(status)) => Ok(ShellWaitOutcome::Exited(status)),
+                    Ok(Err(error)) => {
+                        Err(format!("Failed to wait for local shell command: {error}"))
+                    }
+                    Err(_) => Ok(ShellWaitOutcome::TimedOut),
+                }
+            }
+        };
+
+        match initial {
+            Ok(ShellWaitOutcome::Exited(status)) => {
+                // On Unix, the foreground sandbox launcher may exit while descendants remain in
+                // its process group. Child::id() is gone after wait(), so use the captured PGID.
+                cleanup_finished_process_group(process_id)?;
+                Ok(ShellWaitOutcome::Exited(status))
+            }
+            Ok(ShellWaitOutcome::TimedOut) => {
+                Self::terminate_and_reap(child).await?;
+                Ok(ShellWaitOutcome::TimedOut)
+            }
+            Ok(ShellWaitOutcome::Cancelled) => {
+                Self::terminate_and_reap(child).await?;
+                Ok(ShellWaitOutcome::Cancelled)
+            }
+            Err(error) => {
+                let cleanup_result = Self::terminate_and_reap(child).await;
+                match cleanup_result {
+                    Ok(()) => Err(error),
+                    Err(cleanup_error) => Err(format!("{error}; cleanup failed: {cleanup_error}")),
+                }
             }
         }
     }
@@ -747,6 +1230,7 @@ impl LocalShellExecuteExecutor {
         if command.len() > 8192 {
             return Err("command is too long for local shell execution".to_string());
         }
+        let (display_command, command_hash, command_redacted) = Self::command_audit(&command);
         // 🔒 封侧门：命令正文命中技能包目录即拒绝执行。安装/修改技能必须走
         // skill_install 工具（scan → install 两段式审批）或技能管理 UI，
         // 不允许用一条被批准的 shell 命令绕过安装审批与 provenance 记录。
@@ -791,12 +1275,6 @@ impl LocalShellExecuteExecutor {
             .unwrap_or(false);
         let network_capable = Self::looks_network_capable(&command);
         let network_policy = Self::network_policy_json(allow_network, network_capable);
-        if network_capable && !allow_network {
-            return Err(
-                "Command appears to require network access; set allow_network=true and request approval for that network-enabled scope"
-                    .to_string(),
-            );
-        }
 
         let skill_root_id_input = args
             .get("skill_root_id")
@@ -837,6 +1315,7 @@ impl LocalShellExecuteExecutor {
             &root,
             &cwd_abs,
             skill_dir_injection.as_ref(),
+            &env_plan,
             allow_network,
         )?;
         let sandbox_backend = PlatformSandboxBackend::new();
@@ -861,21 +1340,39 @@ impl LocalShellExecuteExecutor {
             None
         };
 
+        if ctx.is_cancelled() {
+            return Err("Tool execution cancelled before local shell spawn".to_string());
+        }
+
         let start = Instant::now();
         let mut shell = sandbox_backend.command(&command, &cwd_abs, &sandbox_policy)?;
         Self::apply_env_plan(&mut shell, &env_plan);
         Self::apply_skill_dir_injection(&mut shell, skill_dir_injection.as_ref());
+        Self::apply_writable_scratch_dir(
+            &mut shell,
+            &cwd_abs,
+            root.access == RuntimeRootAccess::ReadWrite,
+        );
         let mut child = shell
             .spawn()
             .map_err(|error| format!("Failed to execute local shell command: {error}"))?;
-        let stdout_reader = child
-            .stdout
-            .take()
-            .ok_or_else(|| "Failed to capture local shell stdout".to_string())?;
-        let stderr_reader = child
-            .stderr
-            .take()
-            .ok_or_else(|| "Failed to capture local shell stderr".to_string())?;
+        let process_id = child
+            .id()
+            .ok_or_else(|| "Sandboxed local shell process has no process id".to_string())?;
+        let stdout_reader = match child.stdout.take() {
+            Some(reader) => reader,
+            None => {
+                Self::terminate_and_reap(&mut child).await?;
+                return Err("Failed to capture local shell stdout".to_string());
+            }
+        };
+        let stderr_reader = match child.stderr.take() {
+            Some(reader) => reader,
+            None => {
+                Self::terminate_and_reap(&mut child).await?;
+                return Err("Failed to capture local shell stderr".to_string());
+            }
+        };
         let stdout_capture = std::sync::Arc::new(AsyncMutex::new(BoundedPipeOutput::default()));
         let stderr_capture = std::sync::Arc::new(AsyncMutex::new(BoundedPipeOutput::default()));
         let mut stdout_task = tokio::spawn(Self::drain_bounded(
@@ -889,38 +1386,23 @@ impl LocalShellExecuteExecutor {
             max_output_bytes,
         ));
 
-        let (status, timed_out) =
-            match tokio::time::timeout(Duration::from_millis(timeout_ms), child.wait()).await {
-                Ok(Ok(status)) => (Some(status), false),
-                Ok(Err(error)) => {
-                    if terminate_process_group(&mut child).is_err() {
-                        let _ = child.kill().await;
-                    }
-                    let _ = child.wait().await;
-                    stdout_task.abort();
-                    stderr_task.abort();
-                    return Err(format!("Failed to wait for local shell command: {error}"));
-                }
-                Err(_) => {
-                    if let Err(error) = terminate_process_group(&mut child) {
-                        let _ = child.kill().await;
-                        let _ = child.wait().await;
-                        stdout_task.abort();
-                        stderr_task.abort();
-                        return Err(error);
-                    }
-                    if tokio::time::timeout(Duration::from_secs(5), child.wait())
-                        .await
-                        .is_err()
-                    {
-                        let _ = child.kill().await;
-                        let _ = child.wait().await;
-                    }
-                    (None, true)
-                }
-            };
-        Self::finish_drain_task(&mut stdout_task).await?;
-        Self::finish_drain_task(&mut stderr_task).await?;
+        let wait_result = Self::wait_for_shell_process(
+            &mut child,
+            process_id,
+            Duration::from_millis(timeout_ms),
+            ctx.cancellation_token(),
+        )
+        .await;
+        let stdout_drain_result = Self::finish_drain_task(&mut stdout_task).await;
+        let stderr_drain_result = Self::finish_drain_task(&mut stderr_task).await;
+        let wait_outcome = wait_result?;
+        stdout_drain_result?;
+        stderr_drain_result?;
+        let (status, timed_out, cancelled) = match wait_outcome {
+            ShellWaitOutcome::Exited(status) => (Some(status), false, false),
+            ShellWaitOutcome::TimedOut => (None, true, false),
+            ShellWaitOutcome::Cancelled => (None, false, true),
+        };
         let duration_ms = start.elapsed().as_millis() as u64;
         let stdout_capture = stdout_capture.lock().await.clone();
         let stderr_capture = stderr_capture.lock().await.clone();
@@ -933,6 +1415,15 @@ impl LocalShellExecuteExecutor {
             } else if stderr.len() < max_output_bytes {
                 let remaining = max_output_bytes.saturating_sub(stderr.len());
                 let suffix = format!("\n{timeout_message}");
+                stderr.push_str(&suffix[..suffix.len().min(remaining)]);
+            }
+        } else if cancelled {
+            let cancellation_message = "Command cancelled; sandbox process tree was terminated";
+            if stderr.is_empty() {
+                stderr = cancellation_message.to_string();
+            } else if stderr.len() < max_output_bytes {
+                let remaining = max_output_bytes.saturating_sub(stderr.len());
+                let suffix = format!("\n{cancellation_message}");
                 stderr.push_str(&suffix[..suffix.len().min(remaining)]);
             }
         }
@@ -1003,7 +1494,9 @@ impl LocalShellExecuteExecutor {
         };
 
         Ok(json!({
-            "command": command,
+            "command": display_command,
+            "command_hash": command_hash,
+            "command_redacted": command_redacted,
             "command_prefix": analysis.command_prefix,
             "root": Self::root_json(&root),
             "root_id": root.id,
@@ -1012,6 +1505,7 @@ impl LocalShellExecuteExecutor {
             "timeout_ms": timeout_ms,
             "duration_ms": duration_ms,
             "timed_out": timed_out,
+            "cancelled": cancelled,
             "exit_code": exit_code,
             "success": success,
             "stdout": stdout,
@@ -1112,6 +1606,10 @@ impl ToolExecutor for LocalShellExecuteExecutor {
         ToolSensitivity::High
     }
 
+    fn manages_cancellation(&self, _tool_name: &str) -> bool {
+        true
+    }
+
     fn name(&self) -> &'static str {
         "LocalShellExecuteExecutor"
     }
@@ -1129,6 +1627,31 @@ mod tests {
         assert_eq!(text, "abc");
         assert!(truncated);
         assert_eq!(bytes, 6);
+    }
+
+    #[test]
+    fn command_audit_never_returns_embedded_credentials() {
+        for (command, secret) in [
+            (
+                "curl https://alice:supersecret@example.com/data",
+                "supersecret",
+            ),
+            ("tool --token token-secret run", "token-secret"),
+            ("tool --password='password-secret' run", "password-secret"),
+            ("tool --api-key=api-secret run", "api-secret"),
+        ] {
+            let (display, hash, redacted) = LocalShellExecuteExecutor::command_audit(command);
+            assert!(redacted, "secret-bearing command must be marked redacted");
+            assert!(!display.contains(secret));
+            assert!(display.contains("[REDACTED]"));
+            assert_eq!(hash.len(), 64);
+            assert_eq!(hash, hex::encode(Sha256::digest(command.as_bytes())));
+        }
+
+        let benign = "git status --short";
+        let (display, _hash, redacted) = LocalShellExecuteExecutor::command_audit(benign);
+        assert_eq!(display, benign);
+        assert!(!redacted);
     }
 
     #[tokio::test]
@@ -1152,6 +1675,79 @@ mod tests {
         assert!(capture.total_bytes > capture.visible.len());
     }
 
+    #[cfg(target_os = "macos")]
+    fn macos_test_policy(root: &Path) -> SandboxPolicy {
+        SandboxPolicy {
+            readable_roots: vec![root.to_path_buf()],
+            writable_roots: vec![root.to_path_buf()],
+            protected_read_roots: Vec::new(),
+            protected_write_roots: Vec::new(),
+            allow_network: false,
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn cancellation_terminates_and_reaps_sandbox_process_tree() {
+        let temp = tempfile::tempdir().unwrap();
+        let backend = PlatformSandboxBackend::new();
+        let mut child = backend
+            .command("sleep 30", temp.path(), &macos_test_policy(temp.path()))
+            .unwrap()
+            .spawn()
+            .unwrap();
+        let process_id = child.id().unwrap();
+        let cancellation = CancellationToken::new();
+        let cancel_from_task = cancellation.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            cancel_from_task.cancel();
+        });
+
+        let started = Instant::now();
+        let outcome = LocalShellExecuteExecutor::wait_for_shell_process(
+            &mut child,
+            process_id,
+            Duration::from_secs(30),
+            Some(&cancellation),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(outcome, ShellWaitOutcome::Cancelled));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(child.try_wait().unwrap().is_some(), "child must be reaped");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn successful_foreground_exit_still_kills_background_group() {
+        let temp = tempfile::tempdir().unwrap();
+        let marker = temp.path().join("background-leak.txt");
+        let backend = PlatformSandboxBackend::new();
+        let command = format!(
+            "(sleep 1; printf leaked > '{}') >/dev/null 2>&1 & exit 0",
+            marker.display()
+        );
+        let mut child = backend
+            .command(&command, temp.path(), &macos_test_policy(temp.path()))
+            .unwrap()
+            .spawn()
+            .unwrap();
+        let process_id = child.id().unwrap();
+
+        let outcome = LocalShellExecuteExecutor::wait_for_shell_process(
+            &mut child,
+            process_id,
+            Duration::from_secs(5),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(outcome, ShellWaitOutcome::Exited(status) if status.success()));
+        tokio::time::sleep(Duration::from_millis(1_250)).await;
+        assert!(!marker.exists(), "background descendant survived cleanup");
+    }
+
     /// SECURITY: 封侧门谓词——命令命中技能目录（Windows 反斜杠与正斜杠两种写法）
     /// 必须被 execute 前置检查拒绝；无关命令不受影响。
     #[test]
@@ -1168,6 +1764,29 @@ mod tests {
         assert!(!crate::chat_v2::skills::command_mentions_skills_directory(
             "git status --short"
         ));
+    }
+
+    #[test]
+    fn every_existing_skill_base_is_added_to_hard_write_protection() {
+        let temp = tempfile::tempdir().unwrap();
+        let first = temp.path().join("first-skills");
+        let second = temp.path().join("second-skills");
+        let missing = temp.path().join("not-created");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        let mut protected = Vec::new();
+        LocalShellExecuteExecutor::protect_existing_roots(
+            &mut protected,
+            vec![first.clone(), second.clone(), first.clone(), missing],
+        )
+        .unwrap();
+        assert_eq!(
+            protected,
+            vec![
+                first.canonicalize().unwrap(),
+                second.canonicalize().unwrap()
+            ]
+        );
     }
 
     #[test]
@@ -1196,6 +1815,111 @@ mod tests {
         });
         let err = LocalShellExecuteExecutor::build_env_plan(&args).unwrap_err();
         assert!(err.contains("blocked by the shell env policy"));
+    }
+
+    #[test]
+    fn env_policy_defaults_to_minimal_inheritance() {
+        let plan = LocalShellExecuteExecutor::build_env_plan(&json!({})).expect("env plan");
+        assert!(!plan.inherit_parent_env);
+        assert!(plan.allowlist_mode);
+        assert!(plan.inherited_keys.iter().all(|key| {
+            LocalShellExecuteExecutor::platform_minimal_env_keys()
+                .iter()
+                .any(|minimal| minimal.eq_ignore_ascii_case(key))
+        }));
+
+        let facts = LocalShellExecuteExecutor::env_policy_facts(&json!({})).unwrap();
+        assert!(!facts.inherit_parent_env);
+        assert_eq!(facts.plan_hash.len(), 64);
+    }
+
+    #[test]
+    fn env_plan_hash_changes_with_redacted_values_without_exposing_them() {
+        let first = LocalShellExecuteExecutor::env_policy_facts(&json!({
+            "env": {"MODE": "first-secret-value"}
+        }))
+        .unwrap();
+        let second = LocalShellExecuteExecutor::env_policy_facts(&json!({
+            "env": {"MODE": "second-secret-value"}
+        }))
+        .unwrap();
+        assert_ne!(first.plan_hash, second.plan_hash);
+        let rendered = format!("{first:?}");
+        assert!(!rendered.contains("first-secret-value"));
+        assert_eq!(first.explicit_keys, vec!["MODE".to_string()]);
+    }
+
+    #[test]
+    fn env_policy_blocks_execution_control_and_path_overrides() {
+        for key in [
+            "BASH_ENV",
+            "ENV",
+            "COMSPEC",
+            "DYLD_INSERT_LIBRARIES",
+            "LD_PRELOAD",
+            "NODE_OPTIONS",
+            "PYTHONPATH",
+            "DEVELOPER_DIR",
+            "RUSTC_WRAPPER",
+            "GIT_EXTERNAL_DIFF",
+            "PATH",
+            "Path",
+            "PATHEXT",
+        ] {
+            let args = json!({ "env": { key: "payload" } });
+            let error = LocalShellExecuteExecutor::build_env_plan(&args)
+                .expect_err("execution-control override must be rejected");
+            assert!(
+                error.contains("blocked by the shell env policy"),
+                "{key}: {error}"
+            );
+        }
+
+        let allowlist_error = LocalShellExecuteExecutor::build_env_plan(&json!({
+            "env_allowlist": ["NODE_OPTIONS"]
+        }))
+        .expect_err("execution-control allowlist entry must be rejected");
+        assert!(allowlist_error.contains("NODE_OPTIONS"));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn inherited_path_drops_empty_and_relative_entries() {
+        let joined = env::join_paths([
+            PathBuf::from(""),
+            PathBuf::from("relative/bin"),
+            PathBuf::from("/usr/bin"),
+            PathBuf::from("/usr/bin"),
+            PathBuf::from("/bin"),
+        ])
+        .unwrap();
+        let sanitized = LocalShellExecuteExecutor::sanitize_path_value(&joined.to_string_lossy())
+            .expect("sanitize PATH");
+        let paths = env::split_paths(&sanitized).collect::<Vec<_>>();
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("/usr/bin"), PathBuf::from("/bin")]
+        );
+        assert!(paths.iter().all(|path| path.is_absolute()));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn runtime_read_roots_include_active_developer_toolchain() {
+        let plan = LocalShellExecuteExecutor::build_env_plan(&json!({})).unwrap();
+        let mut roots = Vec::new();
+        LocalShellExecuteExecutor::add_runtime_read_roots(&mut roots, &plan).unwrap();
+        let selected = std::process::Command::new("/usr/bin/xcode-select")
+            .arg("-p")
+            .output()
+            .unwrap();
+        assert!(selected.status.success());
+        let mut selected = PathBuf::from(String::from_utf8_lossy(&selected.stdout).trim());
+        if selected.ends_with(Path::new("Contents").join("Developer")) {
+            selected = selected.parent().unwrap().parent().unwrap().to_path_buf();
+        }
+        let selected = selected.canonicalize().unwrap();
+        assert!(roots.contains(&selected));
     }
 
     #[test]
@@ -1312,7 +2036,17 @@ mod tests {
     /// SECURITY regression: the Seatbelt backend now enforces the network policy.
     #[test]
     fn network_policy_audit_reports_hard_enforcement() {
-        let audit = LocalShellExecuteExecutor::network_policy_json(false, false);
+        let audit = LocalShellExecuteExecutor::network_policy_json(false, true);
+        assert_eq!(
+            audit
+                .get("network_capable_command")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            audit.get("allow_network").and_then(|v| v.as_bool()),
+            Some(false)
+        );
         assert_eq!(audit.get("enforced").and_then(|v| v.as_bool()), Some(true));
         assert_eq!(
             audit.get("heuristic").and_then(|v| v.as_bool()),
@@ -1409,6 +2143,29 @@ mod tests {
             )
             .is_ok());
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn minimal_env_prefers_the_trusted_xcode_toolchain() {
+        let Some(developer_dir) = LocalShellExecuteExecutor::trusted_macos_developer_dir() else {
+            return;
+        };
+        let developer_bin = developer_dir.join("usr/bin");
+        if !developer_bin.is_dir() {
+            return;
+        }
+
+        let plan = LocalShellExecuteExecutor::build_env_plan(&json!({})).unwrap();
+        assert_eq!(
+            plan.inherited_values.get("DEVELOPER_DIR"),
+            Some(&developer_dir.to_string_lossy().into_owned())
+        );
+        let first_path = plan
+            .inherited_values
+            .get("PATH")
+            .and_then(|path| env::split_paths(path).next());
+        assert_eq!(first_path.as_deref(), Some(developer_bin.as_path()));
     }
 
     #[test]

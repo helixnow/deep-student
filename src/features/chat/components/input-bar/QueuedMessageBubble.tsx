@@ -22,7 +22,7 @@ interface Props {
 export const QueuedMessageBubble: React.FC<Props> = React.memo(({
   item, allowSteer, onClick, onSteer, onDelete,
 }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('chatV2');
   const failed = item.status === 'failed';
   const tooltip = failed ? `${t('chatV2:queue.error.tooltipPrefix')}${item.error ?? ''}` : undefined;
 

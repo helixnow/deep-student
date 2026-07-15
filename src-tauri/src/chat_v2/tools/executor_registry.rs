@@ -11,6 +11,7 @@ use tokio::time::{timeout, Duration};
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::types::is_external_mcp_tool_name;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use serde_json::Value;
 
 // ============================================================================
 // 全局超时配置
@@ -66,6 +67,8 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         "arxiv_search" | "scholar_search" => 180, // 3 分钟
         // 论文保存工具（下载 PDF + VFS 存储，批量最多 5 篇）
         "paper_save" => 600, // 10 分钟（批量下载+处理）
+        // Long translation can require multiple sequential 100K-character segments.
+        "translate_text" => 600,
         // 引用格式化工具（纯计算，无网络）
         "cite_format" => 30, // 30 秒
         // 网络请求和 HTML 解析工具（涉及网络请求和 HTML 解析）
@@ -78,6 +81,9 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         // 子代理调用工具（可能执行复杂任务）
         "subagent_call" => 300, // 5 分钟
         "tool_pack" => 600,     // 10 minutes (matches ToolPack schema maximum)
+        // The executor has its own bounded command deadline, but cleanup may need to unwind a
+        // Windows AppContainer helper and temporary ACLs. Never drop that cleanup future here.
+        "local_shell_execute" => NO_TOOL_TIMEOUT_SECS,
         _ => {
             // ChatAnki 工具：chatanki_wait 内部有 30 分钟超时，外层需匹配
             if stripped == "chatanki_wait" {
@@ -219,6 +225,7 @@ impl ToolExecutorRegistry {
         let timeout_secs = get_executor_timeout_secs(&call.name, executor.name());
         // 执行工具（带超时和取消保护）
         // 🆕 取消支持：使用 tokio::select! 同时监听取消信号
+        let executor_manages_cancellation = executor.manages_cancellation(&call.name);
         let execute_future = executor.execute(call, ctx);
 
         if timeout_secs == NO_TOOL_TIMEOUT_SECS {
@@ -227,7 +234,9 @@ impl ToolExecutorRegistry {
                 call.name,
             );
 
-            if let Some(cancel_token) = ctx.cancellation_token() {
+            if executor_manages_cancellation {
+                execute_future.await
+            } else if let Some(cancel_token) = ctx.cancellation_token() {
                 tokio::select! {
                     result = execute_future => result,
                     _ = cancel_token.cancelled() => {
@@ -253,7 +262,23 @@ impl ToolExecutorRegistry {
 
             let timeout_future = timeout(timeout_duration, execute_future);
 
-            if let Some(cancel_token) = ctx.cancellation_token() {
+            if executor_manages_cancellation {
+                match timeout_future.await {
+                    Ok(result) => result,
+                    Err(_elapsed) => {
+                        log::error!(
+                            "[ToolExecutorRegistry] Self-cancelling tool execution timeout after {}s: {} (id={})",
+                            timeout_secs,
+                            call.name,
+                            call.id
+                        );
+                        Err(format!(
+                            "Tool '{}' execution timed out after {}s; terminal result unknown",
+                            call.name, timeout_secs
+                        ))
+                    }
+                }
+            } else if let Some(cancel_token) = ctx.cancellation_token() {
                 tokio::select! {
                     result = timeout_future => {
                         match result {
@@ -312,6 +337,17 @@ impl ToolExecutorRegistry {
     pub fn get_sensitivity(&self, tool_name: &str) -> Option<ToolSensitivity> {
         self.get_executor(tool_name)
             .map(|e| e.sensitivity_level(tool_name))
+    }
+
+    /// Resolve sensitivity for the concrete arguments of a tool call.
+    /// Unknown tools remain `None` so approval stays fail-closed upstream.
+    pub fn get_sensitivity_for_call(
+        &self,
+        tool_name: &str,
+        arguments: &Value,
+    ) -> Option<ToolSensitivity> {
+        self.get_executor(tool_name)
+            .map(|e| e.sensitivity_level_for_call(tool_name, arguments))
     }
 
     /// 获取工具并发等级（2026-07 并行工具调用改造）
@@ -464,6 +500,14 @@ mod tests {
             Some(ToolSensitivity::Low)
         );
         assert_eq!(registry.get_sensitivity("unknown_tool"), None);
+        assert_eq!(
+            registry.get_sensitivity_for_call("tool_a", &serde_json::json!({"action": "get"})),
+            Some(ToolSensitivity::Low)
+        );
+        assert_eq!(
+            registry.get_sensitivity_for_call("unknown_tool", &serde_json::json!({})),
+            None
+        );
     }
 
     #[test]
@@ -483,6 +527,11 @@ mod tests {
         assert_eq!(
             registry.get_concurrency_class("unknown_tool"),
             ToolConcurrency::Serial
+        );
+        let found = registry.get_executor("tool_a").expect("test executor");
+        assert!(
+            !found.manages_cancellation("tool_a"),
+            "non-ACR executors retain registry-level immediate cancellation"
         );
     }
 
@@ -517,6 +566,21 @@ mod tests {
     fn tool_pack_uses_ten_minute_timeout() {
         assert_eq!(get_tool_timeout_secs("builtin-tool_pack"), 600);
         assert_eq!(get_tool_timeout_secs("tool_pack"), 600);
+    }
+
+    #[test]
+    fn translation_uses_ten_minute_timeout() {
+        assert_eq!(get_tool_timeout_secs("builtin-translate_text"), 600);
+        assert_eq!(get_tool_timeout_secs("translate_text"), 600);
+        assert_eq!(get_tool_timeout_secs("builtin-translation_save"), 120);
+    }
+
+    #[test]
+    fn local_shell_registry_watchdog_is_disabled_for_authoritative_cleanup() {
+        assert_eq!(
+            get_tool_timeout_secs("builtin-local_shell_execute"),
+            NO_TOOL_TIMEOUT_SECS
+        );
     }
 
     #[test]

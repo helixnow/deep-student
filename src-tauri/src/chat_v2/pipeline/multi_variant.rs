@@ -33,6 +33,21 @@ fn build_replay_skill_payload_snapshot(
     snapshot.has_replay_metadata().then_some(snapshot)
 }
 
+fn source_user_canonical_before_assistant(
+    messages: &[ChatMessage],
+    assistant_message_id: &str,
+) -> Option<Vec<crate::chat_v2::types::CanonicalContentPart>> {
+    let assistant_index = messages
+        .iter()
+        .position(|message| message.id == assistant_message_id)?;
+    messages[..assistant_index]
+        .iter()
+        .rev()
+        .find(|message| message.role == MessageRole::User)
+        .and_then(|message| message.meta.as_ref())
+        .and_then(|meta| meta.canonical_content.clone())
+}
+
 impl ChatV2Pipeline {
     // ========================================================================
     // 多模型并行变体执行 (Prompt 5)
@@ -274,21 +289,35 @@ impl ChatV2Pipeline {
         // 多变体模式不在 stream_start 中传递模型名称，每个变体通过 variant_start 事件传递
         emitter.emit_stream_start(&assistant_message_id, None);
 
+        // Build stable canonical refs once for the shared user message. Execution snapshots remain
+        // variant-local below; this first snapshot is only the crash-safe user-message audit.
+        let mut base_options = options.clone();
+        if let Some((_, first_config_id)) = resolved_models.first() {
+            base_options.model_id = Some(first_config_id.clone());
+            base_options.model2_override_id = Some(first_config_id.clone());
+        }
+        let temp_request = SendMessageRequest {
+            session_id: session_id.clone(),
+            content: user_content.clone(),
+            user_message_id: Some(user_message_id.clone()),
+            assistant_message_id: Some(assistant_message_id.clone()),
+            options: Some(base_options),
+            user_context_refs: request.user_context_refs.clone(),
+            path_map: request.path_map.clone(),
+            workspace_id: request.workspace_id.clone(),
+        };
+        let mut temp_ctx = PipelineContext::new(temp_request);
+        temp_ctx.init_context_snapshot();
+        self.freeze_execution_context(&mut temp_ctx).await?;
+        let canonical_content = temp_ctx.canonical_content.clone();
+        // The shared user message has no single active model. Per-variant snapshots are persisted
+        // on VariantMeta; attaching the first variant here would misrepresent the other variants.
+        temp_ctx.execution_snapshot = None;
+        let user_execution_snapshot = None;
+
         // 🆕 P0防闪退：用户消息即时保存（多变体模式）
         // 在变体执行前立即保存用户消息，确保用户输入不会因闪退丢失
         if !options.skip_user_message_save.unwrap_or(false) {
-            // 构建临时 PipelineContext 用于保存用户消息
-            let temp_request = SendMessageRequest {
-                session_id: session_id.clone(),
-                content: user_content.clone(),
-                user_message_id: Some(user_message_id.clone()),
-                assistant_message_id: Some(assistant_message_id.clone()),
-                options: Some(options.clone()),
-                user_context_refs: request.user_context_refs.clone(),
-                path_map: request.path_map.clone(),
-                workspace_id: request.workspace_id.clone(),
-            };
-            let temp_ctx = PipelineContext::new(temp_request);
             if let Err(e) = self.save_user_message_immediately(&temp_ctx).await {
                 log::warn!(
                     "[ChatV2::pipeline] Multi-variant: Failed to save user message immediately: {}",
@@ -324,6 +353,28 @@ impl ChatV2Pipeline {
             // 🔧 P2修复：设置 config_id，用于重试时正确选择模型
             ctx.set_config_id(config_id.clone());
 
+            // Freeze and persist a per-variant plan before the crash-safe assistant skeleton is
+            // written. The execution task recompiles independently and later fills actual route.
+            let mut variant_options = options.clone();
+            variant_options.model_id = Some(config_id.clone());
+            variant_options.model2_override_id = Some(config_id.clone());
+            let mut freeze_ctx = PipelineContext::new(SendMessageRequest {
+                session_id: session_id.clone(),
+                content: user_content.clone(),
+                options: Some(variant_options),
+                user_message_id: Some(user_message_id.clone()),
+                assistant_message_id: Some(assistant_message_id.clone()),
+                user_context_refs: request.user_context_refs.clone(),
+                path_map: request.path_map.clone(),
+                workspace_id: request.workspace_id.clone(),
+            });
+            freeze_ctx.init_context_snapshot();
+            self.freeze_execution_context(&mut freeze_ctx).await?;
+            ctx.set_meta(crate::chat_v2::types::VariantMeta {
+                execution_snapshot: freeze_ctx.execution_snapshot,
+                ..Default::default()
+            });
+
             // 🔧 P1修复：为每个变体注册独立的 cancel token
             // 使用 session_id:variant_id 作为 key，这样可以精确取消单个变体
             if let Some(ref state) = chat_v2_state {
@@ -345,11 +396,13 @@ impl ChatV2Pipeline {
             let skeleton_variants: Vec<Variant> = variant_contexts
                 .iter()
                 .map(|(ctx, _)| {
-                    Variant::new_with_id_and_config(
+                    let mut variant = Variant::new_with_id_and_config(
                         ctx.variant_id().to_string(),
                         ctx.model_id().to_string(),
                         ctx.get_config_id().unwrap_or_default(),
-                    )
+                    );
+                    variant.meta = ctx.get_meta();
+                    variant
                 })
                 .collect();
 
@@ -366,6 +419,8 @@ impl ChatV2Pipeline {
                 supersedes: None,
                 meta: Some(MessageMeta {
                     model_id: None,
+                    execution_snapshot: None,
+                    canonical_content: None,
                     chat_params: Some(serde_json::json!({
                         "reasoningEffort": options.reasoning_effort,
                         "thinkingBudget": options.thinking_budget,
@@ -424,12 +479,13 @@ impl ChatV2Pipeline {
             let shared_ctx = Arc::clone(&shared_context);
             let context_refs_clone = Arc::clone(&context_refs_arc);
             let state_clone = chat_v2_state.clone();
+            let variant_meta_clone = ctx.get_meta();
 
             let future = async move {
                 self_ref.execute_single_variant_with_config(
                     ctx_clone,
                     config_id_clone,  // 传递 API 配置 ID
-                    None,
+                    variant_meta_clone,
                     (*options_clone).clone(),
                     (*user_content_clone).clone(),
                     (*session_id_clone).clone(),
@@ -539,6 +595,8 @@ impl ChatV2Pipeline {
                 &contexts_only,
                 active_variant_id.as_deref(),
                 context_snapshot,
+                canonical_content,
+                user_execution_snapshot,
             )
             .await;
 
@@ -770,7 +828,11 @@ impl ChatV2Pipeline {
             .await;
 
         // 加载聊天历史
-        let mut chat_history = self.load_variant_chat_history(&session_id).await?;
+        let mut chat_history = self
+            .load_variant_chat_history(&session_id, Some(ctx.message_id()))
+            .await?;
+        // load_variant_chat_history excludes this attempt's persisted user/assistant rows by id.
+        // Do not infer duplicates from message text: consecutive identical prompts are valid.
         // 🔧 Token 预算裁剪（对齐单变体路径）
         // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
         let max_tokens = effective_history_token_budget(options.context_limit);
@@ -893,8 +955,12 @@ impl ChatV2Pipeline {
         // 如需完整的工具调用循环，请使用 execute_single_variant_with_config
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
+                let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
+                    .filter(|tool| {
+                        is_mcp_tool_allowed_by_policy(tool, &whitelist, &blacklist)
+                    })
                     .filter_map(|tool| {
                         let Some(prepared) = prepare_external_tool_schema(tool, false) else {
                             log::warn!(
@@ -1025,27 +1091,85 @@ impl ChatV2Pipeline {
         options.model_id = Some(config_id.clone());
         options.model2_override_id = Some(config_id.clone());
 
-        if let Some(meta) = variant_meta {
-            ctx.set_meta(meta);
-        }
-
-        ctx.start_streaming();
-
         if ctx.is_cancelled() {
             ctx.cancel();
             return Ok(());
         }
 
-        let system_prompt = self
-            .build_system_prompt_with_shared_context(&options, &shared_context)
-            .await;
-        let mut chat_history = self.load_variant_chat_history(&session_id).await?;
+        // Each variant owns an independent frozen capability snapshot and compiler context.
+        // This must happen before variant_start so UI changes or another variant's model cannot
+        // affect the in-flight request.
+        let compile_request = SendMessageRequest {
+            session_id: session_id.clone(),
+            content: user_content.clone(),
+            options: Some(options.clone()),
+            user_message_id: None,
+            assistant_message_id: Some(ctx.message_id().to_string()),
+            user_context_refs: Some(user_context_refs.clone()),
+            path_map: None,
+            workspace_id: None,
+        };
+        let mut compile_ctx = PipelineContext::new(compile_request);
+        compile_ctx.init_context_snapshot();
+        compile_ctx.set_cancellation_token(ctx.cancel_token().clone());
+        if user_context_refs.is_empty() {
+            if let Some(mut canonical) =
+                self.load_source_user_canonical_for_assistant(&session_id, ctx.message_id())?
+            {
+                canonical.retain(|part| {
+                    !matches!(
+                        part,
+                        crate::chat_v2::types::CanonicalContentPart::DerivedArtifactRef { .. }
+                    )
+                });
+                if let Some(artifacts) = variant_meta
+                    .as_ref()
+                    .and_then(|meta| meta.canonical_artifacts.as_ref())
+                {
+                    canonical.extend(artifacts.iter().cloned());
+                }
+                compile_ctx.canonical_content = canonical;
+            }
+        }
+        self.freeze_execution_context(&mut compile_ctx).await?;
+        options = compile_ctx.options.clone();
+
+        let mut chat_history = self
+            .load_variant_chat_history(&session_id, Some(ctx.message_id()))
+            .await?;
         // 🔧 Token 预算裁剪（对齐单变体路径）
         // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
         let max_tokens_budget = effective_history_token_budget(options.context_limit);
         trim_history_by_token_budget(&mut chat_history, max_tokens_budget);
-        let current_user_message =
-            self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
+        compile_ctx.chat_history = chat_history;
+        self.compile_frozen_context(&mut compile_ctx).await?;
+        let mut effective_meta = variant_meta.unwrap_or_default();
+        effective_meta.execution_snapshot = compile_ctx.execution_snapshot.clone();
+        let artifacts: Vec<_> = compile_ctx
+            .canonical_content
+            .iter()
+            .filter(|part| {
+                matches!(
+                    part,
+                    crate::chat_v2::types::CanonicalContentPart::DerivedArtifactRef { .. }
+                )
+            })
+            .cloned()
+            .collect();
+        effective_meta.canonical_artifacts = (!artifacts.is_empty()).then_some(artifacts);
+        ctx.set_meta(effective_meta);
+
+        ctx.start_streaming();
+
+        let system_prompt = self
+            .build_system_prompt_with_shared_context(&options, &shared_context)
+            .await;
+        let chat_history = compile_ctx.chat_history;
+        let current_user_message = compile_ctx
+            .compiled_current_user_message
+            .unwrap_or_else(|| {
+                self.build_variant_user_message(&user_content, &attachments, &user_context_refs)
+            });
 
         let enable_thinking = options.enable_thinking.unwrap_or(true);
         let max_input_tokens_override = options.context_limit.map(|v| v as usize);
@@ -1128,11 +1252,15 @@ impl ChatV2Pipeline {
         // 🔧 工具名称映射：sanitized API name → original name
         let mut variant_tool_name_mapping: HashMap<String, super::tool_loop::ExternalToolRoute> =
             HashMap::new();
+        let (whitelist, blacklist) = load_mcp_tool_policy(self.main_db.as_ref());
 
         if !disable_tools {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
+                    .filter(|tool| {
+                        is_mcp_tool_allowed_by_policy(tool, &whitelist, &blacklist)
+                    })
                     .filter_map(|tool| {
                         let Some(prepared) = prepare_external_tool_schema(tool, true) else {
                             log::warn!(
@@ -1463,6 +1591,13 @@ impl ChatV2Pipeline {
                                     );
                                     let refreshed_tools: Vec<Value> = mcp_schemas
                                         .iter()
+                                        .filter(|tool| {
+                                            is_mcp_tool_allowed_by_policy(
+                                                tool,
+                                                &whitelist,
+                                                &blacklist,
+                                            )
+                                        })
                                         .filter_map(|tool| {
                                             let Some(prepared) =
                                                 prepare_external_tool_schema(tool, true)
@@ -1797,9 +1932,23 @@ impl ChatV2Pipeline {
     /// - 提取 mcp_tool 块的工具调用信息
     /// - 解析 context_snapshot（如果有 vfs_db 连接）
     /// - 从附件中提取图片 base64 和文档附件
+    fn load_source_user_canonical_for_assistant(
+        &self,
+        session_id: &str,
+        assistant_message_id: &str,
+    ) -> ChatV2Result<Option<Vec<crate::chat_v2::types::CanonicalContentPart>>> {
+        let conn = self.db.get_conn_safe()?;
+        let messages = ChatV2Repo::get_session_messages_with_conn(&conn, session_id)?;
+        Ok(source_user_canonical_before_assistant(
+            &messages,
+            assistant_message_id,
+        ))
+    }
+
     async fn load_variant_chat_history(
         &self,
         session_id: &str,
+        assistant_message_id: Option<&str>,
     ) -> ChatV2Result<Vec<LegacyChatMessage>> {
         log::debug!(
             "[ChatV2::pipeline] Loading variant chat history for session={}",
@@ -1823,7 +1972,7 @@ impl ChatV2Pipeline {
             .as_ref()
             .map(|vfs_db| vfs_db.blobs_dir().to_path_buf());
 
-        let messages = ChatV2Repo::get_session_messages_with_conn(&conn, session_id)?;
+        let mut messages = ChatV2Repo::get_session_messages_with_conn(&conn, session_id)?;
 
         if messages.is_empty() {
             log::debug!(
@@ -1831,6 +1980,25 @@ impl ChatV2Pipeline {
                 session_id
             );
             return Ok(Vec::new());
+        }
+
+        if let Some(assistant_message_id) = assistant_message_id {
+            if let Some(assistant_index) = messages
+                .iter()
+                .position(|message| message.id == assistant_message_id)
+            {
+                let source_user_id = messages[..assistant_index]
+                    .iter()
+                    .rev()
+                    .find(|message| message.role == MessageRole::User)
+                    .map(|message| message.id.clone());
+                messages.retain(|message| {
+                    message.id != assistant_message_id
+                        && source_user_id
+                            .as_ref()
+                            .is_none_or(|user_id| message.id != *user_id)
+                });
+            }
         }
 
         // 🆕 P1: 应用 compaction 视图（与单变体路径一致）
@@ -1850,6 +2018,8 @@ impl ChatV2Pipeline {
         } else {
             messages
         };
+        let active_variant_artifacts =
+            super::history::active_variant_artifacts_by_user(&messages_to_load);
 
         log::debug!(
             "[ChatV2::pipeline] Loading {} variant messages (max_messages={})",
@@ -2004,11 +2174,6 @@ impl ChatV2Pipeline {
                 }
             }
 
-            // 跳过空内容消息（但工具调用消息已经添加）
-            if content.is_empty() {
-                continue;
-            }
-
             // 🆕 从附件中提取图片 base64（仅用户消息有附件）
             // 合并旧附件图片和 VFS 图片
             let mut all_images: Vec<String> = message
@@ -2096,6 +2261,21 @@ impl ChatV2Pipeline {
                 })
                 .filter(|v| !v.is_empty());
 
+            if content.is_empty()
+                && image_base64.is_none()
+                && doc_attachments.is_none()
+                && thinking_content
+                    .as_ref()
+                    .is_none_or(|thinking| thinking.trim().is_empty())
+            {
+                continue;
+            }
+            let content = if content.is_empty() && role == "user" {
+                "[用户发送了附件]".to_string()
+            } else {
+                content
+            };
+
             let legacy_message = LegacyChatMessage {
                 role: role.to_string(),
                 content: content.clone(),
@@ -2115,7 +2295,11 @@ impl ChatV2Pipeline {
                 overrides: None,
                 relations: None,
                 persistent_stable_id: message.persistent_stable_id.clone(),
-                metadata: None,
+                metadata: super::history::canonical_content_for_history(
+                    &message,
+                    active_variant_artifacts.get(&message.id),
+                )
+                .map(|parts| serde_json::json!({ "canonicalContent": parts })),
             };
 
             chat_history.push(legacy_message);
@@ -2666,6 +2850,7 @@ impl ChatV2Pipeline {
                 variant.status = ctx.status();
                 variant.error = ctx.error();
                 variant.block_ids = ctx.block_ids();
+                variant.meta = ctx.get_meta();
                 let usage = ctx.get_usage();
                 variant.usage = if usage.total_tokens > 0 {
                     Some(usage)
@@ -2821,6 +3006,8 @@ impl ChatV2Pipeline {
         variant_contexts: &[Arc<super::super::variant_context::VariantExecutionContext>],
         active_variant_id: Option<&str>,
         context_snapshot: Option<ContextSnapshot>,
+        canonical_content: Vec<crate::chat_v2::types::CanonicalContentPart>,
+        user_execution_snapshot: Option<crate::chat_v2::types::ModelExecutionSnapshot>,
     ) -> ChatV2Result<()> {
         let conn = self.db.get_conn_safe()?;
         let now_ms = chrono::Utc::now().timestamp_millis();
@@ -2840,6 +3027,11 @@ impl ChatV2Pipeline {
                 UserMessageParams::new(session_id.to_string(), user_content.to_string())
                     .with_id(user_message_id.to_string())
                     .with_attachments(attachments.to_vec())
+                    // Variant artifacts remain variant-scoped. History compilation reads the
+                    // currently active variant dynamically, so later switching cannot reuse a
+                    // stale observation promoted by an earlier active selection.
+                    .with_canonical_content(canonical_content.clone())
+                    .with_execution_snapshot(user_execution_snapshot.clone())
                     .with_timestamp(now_ms);
 
             if let Some(snapshot) = context_snapshot.clone() {
@@ -3040,7 +3232,9 @@ impl ChatV2Pipeline {
                 parent_id: None,
                 supersedes: None,
                 meta: Some(MessageMeta {
-                    model_id: None, // 多变体模式下不设置单一模型
+                    model_id: None,           // 多变体模式下不设置单一模型
+                    execution_snapshot: None, // 每个 VariantMeta 持有独立快照
+                    canonical_content: None,
                     chat_params: Some(json!({
                         "temperature": options.temperature,
                         "maxTokens": options.max_tokens,
@@ -3150,5 +3344,64 @@ impl ChatV2Pipeline {
                 Err(e)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod canonical_retry_tests {
+    use super::*;
+    use crate::chat_v2::types::{CanonicalContentPart, MessageMeta};
+
+    fn message(
+        id: &str,
+        role: MessageRole,
+        canonical_content: Option<Vec<CanonicalContentPart>>,
+    ) -> ChatMessage {
+        ChatMessage {
+            id: id.to_string(),
+            session_id: "session".to_string(),
+            role,
+            block_ids: Vec::new(),
+            timestamp: 1,
+            persistent_stable_id: None,
+            parent_id: None,
+            supersedes: None,
+            meta: canonical_content.map(|canonical_content| MessageMeta {
+                canonical_content: Some(canonical_content),
+                ..Default::default()
+            }),
+            attachments: None,
+            active_variant_id: None,
+            variants: None,
+            shared_context: None,
+        }
+    }
+
+    #[test]
+    fn retry_without_context_refs_recovers_original_blob_canonical() {
+        let original = vec![
+            CanonicalContentPart::Text {
+                text: "inspect this".to_string(),
+            },
+            CanonicalContentPart::ImageRef {
+                image_id: "img-1".to_string(),
+                resource_id: Some("res-1".to_string()),
+                source_id: Some("source-1".to_string()),
+                blob_hash: Some("stable-original-blob".to_string()),
+                content_hash: None,
+                mime_type: "image/jpeg".to_string(),
+                pinned: false,
+                retrieval_hit: false,
+            },
+        ];
+        let messages = vec![
+            message("user", MessageRole::User, Some(original.clone())),
+            message("assistant", MessageRole::Assistant, None),
+        ];
+
+        assert_eq!(
+            source_user_canonical_before_assistant(&messages, "assistant"),
+            Some(original)
+        );
     }
 }

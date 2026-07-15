@@ -15,8 +15,8 @@ export const automationToolsSkill: SkillDefinition = {
   id: 'automation-tools',
   name: 'automation-tools',
   description:
-    '周期自动化：提案创建每日/每周/间隔调度的自动任务（审批后落库）。notify 类型到点=系统通知+待办；agent_turn 类型到点由后端 headless 跑完整 agent 任务（无人值守、工具受限）并推送结果摘要。可列出/启停已有自动化。',
-  version: '2.0.0',
+    '周期自动化：创建、查看、完整修改、启停、立即运行、查询历史、重试、取消或删除每日/工作日/每周/每月/间隔调度。notify 类型到点=系统通知+待办；agent_turn 类型到点由后端 headless 跑完整 Agent 任务并推送结果摘要。',
+  version: '4.0.0',
   author: 'Deep Student',
   priority: 8,
   location: 'builtin',
@@ -48,27 +48,46 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
 
 ## 创建自动化
 
-1. 向用户确认名称、周期（daily/weekly/interval + 时刻或间隔分钟）、动作类型与任务提示词
+1. 向用户确认名称、周期（daily/weekdays/weekly/monthly/interval）、时区、动作类型与任务提示词
 2. 调用 **builtin-automation_propose**（**High 审批**，不可记住授权）
-3. 审批通过后写入 \`chat_v2.automations\`；返回 id 与下次预计触发时间
+3. 审批通过后写入持久化自动化定义；返回 id 与下次预计触发时间
 
 ## 管理
 
-- **builtin-automation_list**（Low）：查看全部自动化（enabled、action_type、last_run_at、next_trigger_at、agent_session_id 等）
-- **builtin-automation_set_enabled**（Medium）：按 id 启用/停用
+- **builtin-automation_list**（Low）：查看全部自动化（version、enabled、action_type、last_run_at、next_trigger_at、agent_session_id 等）
+- **builtin-automation_set_enabled**（Medium）：按 id 启用/停用；必须把 list 返回的 version 传为 expected_version
+- **builtin-automation_update**（Medium）：修改名称、调度、动作、提示词、会话、补偿、重试或超时；先 list 确认目标并把当前 version 原样传为 expected_version。版本冲突时必须重新 list 和规划，禁止用猜测版本覆盖
+- **builtin-automation_run_now**（Medium）：绕过下次调度时间立即运行一次；必须携带 expected_version，避免运行已被改写的任务
+- **builtin-automation_runs**（Low）：查询运行历史、状态、摘要和错误
+- **builtin-automation_retry_run**（Medium）：重试失败、超时、启动失败或已取消的运行
+- **builtin-automation_cancel_run**（Medium）：取消排队、重试等待或正在执行的运行
+- **builtin-automation_delete**（High，不可恢复）：必须先用 builtin-ask_user 列明名称与周期并取得确认，不得记住授权；确认前读取的 version 必须原样传为 expected_version
 
 ## 限制
 
 - 最多 **20** 条自动化；name ≤ 100 字符；prompt / agent_prompt ≤ 4000 字符
-- schedule.time 必须为 **24 小时制 HH:MM**（如 \`21:00\`）；weekly 必须提供 **weekday**（0=周日 … 6=周六）；interval 必须提供 **interval_minutes**（5–1440）
-- 不支持 cron 表达式、编辑已有自动化
+- schedule.time 必须为 **24 小时制 HH:MM**（如 \`21:00\`）；weekly 必须提供 **weekday**（0=周日 … 6=周六）；monthly 必须提供 **day_of_month**（1–31，短月份落到月末）；interval 必须提供 **interval_minutes**（5–1440）
+- 非 interval 调度可提供 IANA \`timezone\`（如 \`Asia/Shanghai\`）；不支持 cron 表达式
+- 补偿策略：skip=错过后跳过，run_once=恢复后补跑一次，catch_up_all=按历史时点逐次追赶
 - agent_turn 失败/超时也会通知并记录运行历史（心跳类静默）
+- set_enabled/update/delete/run_now 缺少 expected_version 时稳定返回 \`AUTOMATION_OCC_REQUIRED\`；版本冲突返回 \`AUTOMATION_VERSION_CONFLICT\` 与 current，必须重新 list
 `,
+  allowedTools: [
+    'builtin-automation_propose',
+    'builtin-automation_list',
+    'builtin-automation_set_enabled',
+    'builtin-automation_update',
+    'builtin-automation_delete',
+    'builtin-automation_run_now',
+    'builtin-automation_runs',
+    'builtin-automation_retry_run',
+    'builtin-automation_cancel_run',
+  ],
   embeddedTools: [
     {
       name: 'builtin-automation_propose',
       description:
-        '提案创建一条周期自动化（High 审批，不可记住授权）。写入 chat_v2.automations。action_type=notify（默认）：到点发系统通知并创建带 reminder 的待办；action_type=agent_turn：到点由后端 headless 跑完整 agent 任务（无人值守、工具受白名单约束，无 MCP/ask_user/shell/子代理，硬超时 10 分钟），完成后推送结果摘要通知。最多 20 条；daily/weekly 需 time（HH:MM），weekly 需 weekday 0-6，interval 需 interval_minutes 5-1440。',
+        '提案创建一条周期自动化（High 审批，不可记住授权）。action_type=notify（默认）：到点发系统通知并创建待办；action_type=agent_turn：到点由后端 headless 跑完整 Agent 任务，完成后推送结果摘要。最多 20 条；支持 daily/weekdays/weekly/monthly/interval、IANA 时区、补偿策略和失败重试。',
       inputSchema: {
         type: 'object',
         required: ['name', 'schedule', 'prompt'],
@@ -85,9 +104,9 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
             properties: {
               kind: {
                 type: 'string',
-                enum: ['daily', 'weekly', 'interval'],
+                enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval'],
                 description:
-                  'daily=每日固定时刻；weekly=每周固定 weekday + 时刻；interval=每 N 分钟（心跳类检查）',
+                  'daily=每日；weekdays=工作日；weekly=每周；monthly=每月；interval=每 N 分钟',
               },
               time: {
                 type: 'string',
@@ -99,11 +118,21 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
                 maximum: 6,
                 description: 'weekly 必填：0=周日 … 6=周六',
               },
+              day_of_month: {
+                type: 'integer',
+                minimum: 1,
+                maximum: 31,
+                description: 'monthly 必填；短月份自动使用该月最后一天',
+              },
               interval_minutes: {
                 type: 'integer',
                 minimum: 5,
                 maximum: 1440,
                 description: 'interval 必填：间隔分钟数（5–1440）',
+              },
+              timezone: {
+                type: 'string',
+                description: '非 interval 可选的 IANA 时区，如 Asia/Shanghai；缺省使用系统时区',
               },
             },
           },
@@ -141,6 +170,33 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
             default: true,
             description: '是否立即启用，默认 true',
           },
+          catch_up_policy: {
+            type: 'string',
+            enum: ['skip', 'run_once', 'catch_up_all'],
+            default: 'run_once',
+            description: '应用离线错过时点后的补偿方式',
+          },
+          max_retries: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 10,
+            default: 2,
+            description: '失败后的自动重试次数',
+          },
+          retry_backoff_seconds: {
+            type: 'integer',
+            minimum: 5,
+            maximum: 86400,
+            default: 60,
+            description: '首次重试退避秒数，后续指数增长',
+          },
+          timeout_seconds: {
+            type: 'integer',
+            minimum: 30,
+            maximum: 3600,
+            default: 600,
+            description: '单次 agent_turn 硬超时秒数',
+          },
         },
       },
     },
@@ -157,20 +213,143 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
     {
       name: 'builtin-automation_set_enabled',
       description:
-        '按 id 启用或停用自动化（Medium 审批）。停用后调度器不再触发。',
+        '按 id 启用或停用自动化（Medium 审批）。先 list 并将当前 version 原样传为 expected_version；冲突后重新读取。停用后调度器不再触发。',
       inputSchema: {
         type: 'object',
-        required: ['id', 'enabled'],
+        required: ['id', 'expected_version', 'enabled'],
         additionalProperties: false,
         properties: {
           id: {
             type: 'string',
             description: 'automation_propose 返回的 id（auto_<毫秒>_<4位>）',
           },
+          expected_version: {
+            type: 'integer',
+            minimum: 1,
+            description: 'automation_list 返回的当前 version',
+          },
           enabled: {
             type: 'boolean',
             description: 'true=启用，false=停用',
           },
+        },
+      },
+    },
+    {
+      name: 'builtin-automation_update',
+      description:
+        '完整修改已有自动化（Medium 审批）。先用 automation_list 读取当前 version，并原样传入 expected_version；版本冲突时重新读取，禁止盲重试。可修改名称、调度、动作类型、提示词、Agent 会话/模型、补偿策略、重试和超时；至少提供一个待修改字段。返回修改前后快照。',
+      inputSchema: {
+        type: 'object',
+        required: ['id', 'expected_version'],
+        anyOf: [
+          { required: ['schedule'] },
+          { required: ['prompt'] },
+          { required: ['name'] },
+          { required: ['action_type'] },
+          { required: ['agent_prompt'] },
+          { required: ['session_mode'] },
+          { required: ['model_id'] },
+          { required: ['catch_up_policy'] },
+          { required: ['max_retries'] },
+          { required: ['retry_backoff_seconds'] },
+          { required: ['timeout_seconds'] },
+        ],
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string', minLength: 1, description: 'automation_list 返回的自动化 ID' },
+          expected_version: { type: 'integer', minimum: 1, description: 'automation_list 返回的当前 version；用于乐观并发控制' },
+          name: { type: 'string', minLength: 1, maxLength: 100, description: '新名称' },
+          schedule: {
+            type: 'object',
+            required: ['kind'],
+            additionalProperties: false,
+            properties: {
+              kind: { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval'] },
+              time: { type: 'string', description: '非 interval 必填：24 小时制 HH:MM' },
+              weekday: { type: 'integer', minimum: 0, maximum: 6, description: 'weekly 必填：0=周日…6=周六' },
+              day_of_month: { type: 'integer', minimum: 1, maximum: 31, description: 'monthly 必填' },
+              interval_minutes: { type: 'integer', minimum: 5, maximum: 1440, description: 'interval 必填：间隔分钟数' },
+              timezone: { type: 'string', description: '非 interval 可选 IANA 时区' },
+            },
+          },
+          prompt: { type: 'string', minLength: 1, maxLength: 4000, description: '新任务说明/提示词' },
+          action_type: { type: 'string', enum: ['notify', 'agent_turn'] },
+          agent_prompt: { type: 'string', maxLength: 4000, description: 'Agent 提示词；空字符串清除并回退到 prompt' },
+          session_mode: { type: 'string', enum: ['isolated', 'named'] },
+          model_id: { type: 'string', description: '模型配置 ID；空字符串清除' },
+          catch_up_policy: { type: 'string', enum: ['skip', 'run_once', 'catch_up_all'] },
+          max_retries: { type: 'integer', minimum: 0, maximum: 10 },
+          retry_backoff_seconds: { type: 'integer', minimum: 5, maximum: 86400 },
+          timeout_seconds: { type: 'integer', minimum: 30, maximum: 3600 },
+        },
+      },
+    },
+    {
+      name: 'builtin-automation_delete',
+      description:
+        '永久删除一条自动化（High，不可恢复）。调用前必须加载 ask-user 技能，用 builtin-ask_user 列明自动化名称、周期和动作并取得明确确认；不得记住该授权。确认前 list 返回的 version 必须作为 expected_version，冲突后重新确认。返回 success、automationId、deleted（删除前快照）、reversible=false 与 restoreWith=null。',
+      inputSchema: {
+        type: 'object',
+        required: ['id', 'expected_version'],
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string', minLength: 1, description: '要永久删除的自动化 ID' },
+          expected_version: { type: 'integer', minimum: 1, description: '确认前 automation_list 返回的 version' },
+        },
+      },
+    },
+    {
+      name: 'builtin-automation_run_now',
+      description:
+        '绕过调度时点，立即运行一条自动化（Medium 审批）。必须把 automation_list 返回的 version 传为 expected_version，冲突后重新读取再决定是否运行。notify 类型会立即发通知并建待办；agent_turn 类型会启动 headless 任务。返回 success 与 result；result 含 status、automationId，agent_turn 还含 timeoutSecs。运行副作用不可撤销（reversible=false）。',
+      inputSchema: {
+        type: 'object',
+        required: ['id', 'expected_version'],
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string', minLength: 1, description: '要立即运行的自动化 ID' },
+          expected_version: { type: 'integer', minimum: 1, description: 'automation_list 返回的当前 version' },
+        },
+      },
+    },
+    {
+      name: 'builtin-automation_runs',
+      description:
+        '查询自动化运行历史（Low）。可按 automation_id 筛选，返回状态、触发类型、尝试次数、摘要、错误和会话 ID。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          automation_id: { type: 'string', minLength: 1, description: '可选的自动化 ID' },
+          page: { type: 'integer', minimum: 1, default: 1 },
+          page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20 },
+        },
+      },
+    },
+    {
+      name: 'builtin-automation_retry_run',
+      description:
+        '重试一条失败、超时、启动失败或已取消的运行（Medium 审批）。返回 success 与 runId。',
+      inputSchema: {
+        type: 'object',
+        required: ['id'],
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string', minLength: 1, description: 'automation_runs 返回的运行 ID' },
+        },
+      },
+    },
+    {
+      name: 'builtin-automation_cancel_run',
+      description:
+        '取消排队、等待重试或正在执行的运行（Medium 审批）。正在运行的 headless 管线会收到取消信号。',
+      inputSchema: {
+        type: 'object',
+        required: ['id'],
+        additionalProperties: false,
+        properties: {
+          id: { type: 'string', minLength: 1, description: 'automation_runs 返回的运行 ID' },
         },
       },
     },

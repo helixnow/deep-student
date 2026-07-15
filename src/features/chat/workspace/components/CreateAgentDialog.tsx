@@ -26,7 +26,7 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
   workspaceId,
   currentSessionId,
 }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('chatV2');
   const builtinSkills = useSkillsByLocation('builtin');
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [initialTask, setInitialTask] = useState('');

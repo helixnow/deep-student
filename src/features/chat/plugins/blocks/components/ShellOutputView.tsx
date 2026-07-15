@@ -30,6 +30,8 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface ShellExecuteOutput {
   command?: string;
+  command_hash?: string;
+  command_redacted?: boolean;
   command_prefix?: string;
   root_id?: string;
   cwd?: string;
@@ -44,14 +46,31 @@ interface ShellExecuteOutput {
   stderr_bytes?: number;
   stdout_truncated?: boolean;
   stderr_truncated?: boolean;
+  root?: {
+    id?: string;
+    path?: string;
+    access?: string;
+    session_scoped?: boolean;
+  };
   env_policy?: {
+    inherit_parent_env?: boolean;
     allowlist_mode?: boolean;
+    inherited_keys?: string[];
     explicit_keys?: string[];
     denied_keys?: string[];
   };
   network_policy?: {
     allow_network?: boolean;
     network_capable_command?: boolean;
+  };
+  sandbox?: {
+    backend?: string;
+    shell_kind?: string;
+    output_encoding?: string;
+    enforced?: boolean;
+    network_enforced?: boolean;
+    readable_roots?: number;
+    writable_roots?: number;
   };
 }
 
@@ -234,7 +253,9 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
 
   const envPolicy = data.env_policy;
   const netPolicy = data.network_policy;
+  const sandbox = data.sandbox;
   const envExplicit = Array.isArray(envPolicy?.explicit_keys) ? envPolicy?.explicit_keys.length : 0;
+  const inheritedEnvKeys = Array.isArray(envPolicy?.inherited_keys) ? envPolicy.inherited_keys : null;
 
   return (
     <div className={cn('shell-output-view', className)}>
@@ -253,6 +274,19 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
               {data.command}
             </code>
             <CopyButton text={data.command} label={t('shellOutput.copyCommand', { defaultValue: '复制命令' })} />
+          </div>
+        )}
+
+        {data.command_redacted && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border/20 px-2 py-1 text-[10px] text-muted-foreground">
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              command:redacted
+            </span>
+            {data.command_hash && (
+              <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={data.command_hash}>
+                hash:{data.command_hash.slice(0, 8)}
+              </span>
+            )}
           </div>
         )}
 
@@ -282,6 +316,15 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
               <span className="opacity-60">root</span>
               <code className="font-mono">{data.root_id}</code>
             </span>
+          )}
+          {data.root?.path && (
+            <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground">
+              <span className="opacity-60">path</span>
+              <code className="max-w-[18rem] truncate font-mono" title={data.root.path}>{data.root.path}</code>
+            </span>
+          )}
+          {data.root?.access && (
+            <code className="font-mono text-muted-foreground">{data.root.access}</code>
           )}
           {data.cwd && (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
@@ -324,7 +367,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
         )}
 
         {/* 策略摘要（折叠） */}
-        {(envPolicy || netPolicy) && (
+        {(envPolicy || netPolicy || sandbox) && (
           <div className="border-t border-border/20 px-2 py-1">
             <NotionButton
               variant="ghost"
@@ -349,9 +392,48 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
                     {t('shellOutput.envAllowlist', { defaultValue: '环境变量：白名单' })}
                   </span>
                 )}
+                {envPolicy?.inherit_parent_env === true && (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    parent-env
+                  </span>
+                )}
+                {inheritedEnvKeys && (
+                  <span
+                    className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                    title={inheritedEnvKeys.join(', ') || 'none'}
+                  >
+                    inherited:{inheritedEnvKeys.length}
+                    {inheritedEnvKeys.length > 0 ? ` [${inheritedEnvKeys.join(', ')}]` : ''}
+                  </span>
+                )}
                 {envExplicit > 0 && (
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                     {t('shellOutput.envExplicit', { count: envExplicit, defaultValue: `自定义变量 ${envExplicit}` })}
+                  </span>
+                )}
+                {sandbox?.backend && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    sandbox:{sandbox.backend}
+                  </span>
+                )}
+                {sandbox?.shell_kind && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    shell:{sandbox.shell_kind}
+                  </span>
+                )}
+                {sandbox?.output_encoding && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    encoding:{sandbox.output_encoding}
+                  </span>
+                )}
+                {typeof sandbox?.readable_roots === 'number' && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    readable-roots:{sandbox.readable_roots}
+                  </span>
+                )}
+                {sandbox?.enforced === false && (
+                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                    sandbox:unenforced
                   </span>
                 )}
               </div>

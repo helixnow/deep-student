@@ -7,23 +7,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTauriEventListener } from './useTauriEventListener';
 import type { ExamSheetProgressEvent } from '../utils/tauriApi';
 import { showGlobalNotification } from '../components/UnifiedNotification';
-import { multimodalRagService, MULTIMODAL_INDEX_ENABLED } from '../services/multimodalRagService';
+import { multimodalRagService } from '../services/multimodalRagService';
 import i18n from '@/i18n';
 import { emitExamSheetDebug } from '../debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 
 /**
- * 🆕 异步触发多模态索引（不阻塞主流程）
- * ★ 多模态索引已禁用时静默跳过，恢复 MULTIMODAL_INDEX_ENABLED = true 即可重新启用
+ * 异步触发多模态索引（不阻塞题目识别主流程）。
  */
 async function triggerMultimodalIndex(resourceId: string) {
-  if (!MULTIMODAL_INDEX_ENABLED) {
-    return;
-  }
   try {
-    // 先检查是否配置了多模态 RAG
-    const configured = await multimodalRagService.isConfigured();
-    if (!configured) {
-      console.log('[MultimodalIndex] Multimodal RAG not configured, skipping auto-index');
+    const capability = await multimodalRagService.getCapabilityStatus();
+    if (!capability.available) {
+      const message = capability.reason === 'not_configured'
+        ? 'Multimodal embedding is not configured'
+        : `Multimodal embedding is temporarily unavailable: ${capability.error ?? 'unknown error'}`;
+      console.warn(`[MultimodalIndex] ${message}; skipping auto-index`);
       return;
     }
 
@@ -216,7 +214,7 @@ export function useExamSheetProgress(options: UseExamSheetProgressOptions = {}) 
 
         // 🆕 自动触发多模态索引（异步，不阻塞主流程）
         if (detail?.summary?.id) {
-          triggerMultimodalIndex(detail.summary.id);
+          void triggerMultimodalIndex(detail.summary.id);
         }
         break;
     }

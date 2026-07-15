@@ -21,7 +21,7 @@ use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
-use super::workbench_bridge::{self, is_bridge_cancelled};
+use super::workbench_bridge::{self, is_bridge_cancelled, is_bridge_result_unknown};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
 use crate::feature_flags::FeatureFlagManager;
@@ -181,14 +181,39 @@ fn workbench_cancelled(message: &str) -> String {
     structured_error("CANCELLED", message, HINT_CANCELLED, false)
 }
 
+fn workbench_result_unknown(message: &str) -> String {
+    json!({
+        "code": "RESULT_UNKNOWN",
+        "message": message,
+        "hint": "桥请求已提交但未收到权威终态；先重新 observe/读取目标，禁止原样重试",
+        "retryable": false,
+        "resultUnknown": true,
+    })
+    .to_string()
+}
+
 /// 将桥层 `ok:false` 的 error 字符串映射为结构化码。
 /// 已知码原样透传；未知 → WORKBENCH_UNAVAILABLE。
 fn map_bridge_error(raw: &str) -> String {
-    let code = extract_error_code(raw).unwrap_or("WORKBENCH_UNAVAILABLE");
-    let hint = match code {
+    let parsed = serde_json::from_str::<Value>(raw).ok();
+    let code = parsed
+        .as_ref()
+        .and_then(|value| value.get("code"))
+        .and_then(Value::as_str)
+        .and_then(extract_error_code)
+        .or_else(|| extract_error_code(raw))
+        .unwrap_or("WORKBENCH_UNAVAILABLE");
+    let default_hint = match code {
         "WORKBENCH_DISABLED" => HINT_DISABLED,
         "CANCELLED" => HINT_CANCELLED,
+        "RESULT_UNKNOWN" => "桥请求已提交但终态未知；请先重新 observe/读取目标，禁止原样重试",
+        "BRIDGE_AUTH_FAILED" | "BRIDGE_PROTOCOL_ERROR" => {
+            "桥回执身份或结构不可采信；写请求先重新读取目标，禁止原样重试"
+        }
         "WINDOW_BUSY" => "目标窗口正被其他 Agent run 占用；请等待或换窗",
+        "STALE_TARGET_WINDOW" | "WINDOW_TARGET_MISMATCH" => {
+            "目标窗口已关闭、切换资源或身份不匹配；请重新 probe/observe 并使用精确 windowId"
+        }
         "STALE_OBSERVATION" => {
             "目标状态已变化；请重新 observe 并根据最新 revision 规划，勿原样重试"
         }
@@ -199,9 +224,13 @@ fn map_bridge_error(raw: &str) -> String {
         "CAPABILITY_NOT_FOUND" | "ACTION_UNAVAILABLE" => {
             "能力不存在或当前不可用；请重新 get_capabilities 与 observe"
         }
-        "INVALID_AGENT_REF" => "实体引用无效或已过期；请重新 observe 并使用最新 ref",
+        "INVALID_AGENT_REF" | "TARGET_REF_MISMATCH" => {
+            "实体引用无效、已过期或与参数不一致；请重新 observe 并使用最新 ref"
+        }
         "INVALID_ACTION_ARGS" => "动作参数不符合 capability inputSchema；请重新 get_capabilities",
-        "CONDITION_NOT_MET" => "动作已执行但后置条件未满足；请查看最新 observation 再决定下一步",
+        "CONDITION_NOT_MET" | "POSTCONDITION_FAILED" => {
+            "动作已执行但后置条件未满足；请查看最新 observation 再决定下一步"
+        }
         "INVALID_CONDITION" => "条件格式无效；请使用工具 schema 支持的结构化 condition",
         "FOCUS_REQUIRED" => "该能力要求目标窗口获得焦点；请使用跟随模式或先聚焦窗口",
         "ACTION_FAILED" => "应用拒绝或未能完成动作；请查看回执与最新 observation",
@@ -209,20 +238,55 @@ fn map_bridge_error(raw: &str) -> String {
             "manifest 能力风险超过本工具的可信审批上限；高风险动作必须改用 workbench_act_high"
         }
         "UNDO_NOT_FOUND" => "撤销 token 不存在、已消费或已过期；不要重复调用",
+        "UNDO_IN_PROGRESS" => "同一 token 正在撤销；等待原撤销终态，不要并发重放 inverse",
+        "UNDO_CONFLICT" => "撤销前状态已变化；重新 observe，由用户决定冲突处理",
+        "UNDO_PARTIAL" => "inverse 仅部分完成；根据回执剩余进度重新观察，勿从头重放",
         "STRICT_MODE" => "番茄钟严格模式拒绝该操作",
-        "TODO_CONFLICT" | "QBANK_CONFLICT" => "版本冲突；请重新读取后再写",
+        "NOTE_OCC_REQUIRED" => {
+            "先读取笔记 updated_at，再携带 expected_updated_at 提交；不得无条件覆写"
+        }
+        "NOTE_CONFLICT" | "TODO_CONFLICT" | "QBANK_CONFLICT" => {
+            "版本冲突；请重新读取后基于最新版本规划"
+        }
+        "NOTE_WRITE_FAILED" => "笔记持久化未确认；请重新读取目标后再决定下一步",
+        "DUPLICATE_RUN_ID" | "DUPLICATE_CORRELATION_ID" | "RUN_ID_REUSE" => {
+            "事务身份已被使用；等待原事务终态，不要覆盖或复用身份"
+        }
         _ => HINT_UNAVAILABLE,
     };
-    let retryable = matches!(code, "WINDOW_BUSY");
-    structured_error(code, raw, hint, retryable)
+    let message = parsed
+        .as_ref()
+        .and_then(|value| value.get("message"))
+        .and_then(Value::as_str)
+        .filter(|message| !message.trim().is_empty())
+        .unwrap_or(raw);
+    let hint = parsed
+        .as_ref()
+        .and_then(|value| value.get("hint"))
+        .and_then(Value::as_str)
+        .filter(|hint| !hint.trim().is_empty())
+        .unwrap_or(default_hint);
+    let retryable = parsed
+        .as_ref()
+        .and_then(|value| value.get("retryable"))
+        .and_then(Value::as_bool)
+        .unwrap_or(matches!(code, "WINDOW_BUSY" | "UNDO_IN_PROGRESS"));
+    if code == "RESULT_UNKNOWN" {
+        return workbench_result_unknown(message);
+    }
+    structured_error(code, message, hint, retryable)
 }
 
 fn extract_error_code(raw: &str) -> Option<&'static str> {
     const KNOWN: &[&str] = &[
         "WORKBENCH_DISABLED",
         "WORKBENCH_UNAVAILABLE",
+        "BRIDGE_AUTH_FAILED",
+        "BRIDGE_PROTOCOL_ERROR",
         "WINDOW_BUSY",
         "WINDOW_NOT_FOUND",
+        "STALE_TARGET_WINDOW",
+        "WINDOW_TARGET_MISMATCH",
         "DRIVER_NOT_FOUND",
         "APP_AGENT_UNAVAILABLE",
         "APP_NOT_REGISTERED",
@@ -231,19 +295,31 @@ fn extract_error_code(raw: &str) -> Option<&'static str> {
         "CAPABILITY_NOT_FOUND",
         "ACTION_UNAVAILABLE",
         "INVALID_AGENT_REF",
+        "TARGET_REF_MISMATCH",
         "INVALID_ACTION_ARGS",
         "CONDITION_NOT_MET",
+        "POSTCONDITION_FAILED",
         "INVALID_CONDITION",
         "FOCUS_REQUIRED",
         "ACTION_FAILED",
         "RISK_APPROVAL_REQUIRED",
         "UNDO_NOT_FOUND",
+        "UNDO_IN_PROGRESS",
+        "UNDO_CONFLICT",
+        "UNDO_PARTIAL",
         "INVALID_ARGS",
         "STRICT_MODE",
         "ANCHOR_NOT_FOUND",
         "TODO_CONFLICT",
         "QBANK_CONFLICT",
+        "NOTE_OCC_REQUIRED",
+        "NOTE_CONFLICT",
+        "NOTE_WRITE_FAILED",
+        "DUPLICATE_RUN_ID",
+        "DUPLICATE_CORRELATION_ID",
+        "RUN_ID_REUSE",
         "CANCELLED",
+        "RESULT_UNKNOWN",
     ];
     for code in KNOWN {
         if raw.contains(code) {
@@ -304,6 +380,15 @@ fn inject_approval_risk_ceiling(args: Value, ceiling: &'static str) -> Value {
         Value::String(ceiling.to_string()),
     );
     Value::Object(object)
+}
+
+/// 只有已通过对应工具级审批的路径才能获得风险上限；模型参数始终被覆盖。
+fn trusted_approval_risk_ceiling(stripped: &str) -> Option<&'static str> {
+    match stripped {
+        tool_names::ACT => Some("medium"),
+        tool_names::ACT_HIGH | tool_names::UNDO => Some("high"),
+        _ => None,
+    }
 }
 
 /// 旧 app_command 没有按 manifest risk 分工具审批。已知 high 动作必须 fail-closed，
@@ -388,10 +473,9 @@ impl WorkbenchToolExecutor {
                 false,
             ));
         }
-        let bridge_args = match stripped {
-            tool_names::ACT => inject_approval_risk_ceiling(normalized_args, "medium"),
-            tool_names::ACT_HIGH => inject_approval_risk_ceiling(normalized_args, "high"),
-            _ => normalized_args,
+        let bridge_args = match trusted_approval_risk_ceiling(stripped) {
+            Some(ceiling) => inject_approval_risk_ceiling(normalized_args, ceiling),
+            None => normalized_args,
         };
 
         log::debug!(
@@ -401,6 +485,7 @@ impl WorkbenchToolExecutor {
 
         match workbench_bridge::acr_bridge_call(ctx, command, bridge_args, timeout_ms).await {
             Err(e) if is_bridge_cancelled(&e) => Err(workbench_cancelled(&e)),
+            Err(e) if is_bridge_result_unknown(&e) => Err(workbench_result_unknown(&e)),
             Err(e) => Err(workbench_unavailable(&e)),
             Ok(resp) => {
                 if !resp.ok {
@@ -493,11 +578,21 @@ impl ToolExecutor for WorkbenchToolExecutor {
         match strip_tool_namespace(tool_name) {
             tool_names::CLOSE_WINDOW => ToolSensitivity::High,
             tool_names::ACT_HIGH => ToolSensitivity::High,
+            // undo 的 inverse 风险无法从工具名得知；在审批框架支持参数级分级前
+            // 必须整体 High，防止 Medium 路径重放 sandbox.setMode 等 High inverse。
+            tool_names::UNDO => ToolSensitivity::High,
             // 审批接口只接收工具名：普通 act 的可信上限为 Medium；manifest high
             // 必须使用独立 High 工具，Rust 再覆盖注入 approvalRiskCeiling。
-            tool_names::ACT | tool_names::UNDO | tool_names::APP_COMMAND => ToolSensitivity::Medium,
+            // open_app payload 可以触发浏览器导航，不能继续作为 Low 导航旁路。
+            tool_names::ACT | tool_names::APP_COMMAND | tool_names::OPEN_APP => {
+                ToolSensitivity::Medium
+            }
             _ => ToolSensitivity::Low,
         }
+    }
+
+    fn manages_cancellation(&self, _tool_name: &str) -> bool {
+        true
     }
 
     fn concurrency_class(&self, _tool_name: &str) -> ToolConcurrency {
@@ -565,7 +660,7 @@ mod tests {
         );
         assert_eq!(
             ex.sensitivity_level("workbench_open_app"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             ex.sensitivity_level("workbench_query_state"),
@@ -593,8 +688,9 @@ mod tests {
         );
         assert_eq!(
             ex.sensitivity_level("workbench_undo"),
-            ToolSensitivity::Medium
+            ToolSensitivity::High
         );
+        assert!(ex.manages_cancellation("workbench_act"));
     }
 
     #[test]
@@ -655,6 +751,20 @@ mod tests {
         });
         let elevated = inject_approval_risk_ceiling(normalize_bridge_args(&model_args), "high");
         assert_eq!(elevated["approvalRiskCeiling"], "high");
+
+        assert_eq!(
+            trusted_approval_risk_ceiling(tool_names::ACT),
+            Some("medium")
+        );
+        assert_eq!(
+            trusted_approval_risk_ceiling(tool_names::ACT_HIGH),
+            Some("high")
+        );
+        assert_eq!(
+            trusted_approval_risk_ceiling(tool_names::UNDO),
+            Some("high")
+        );
+        assert_eq!(trusted_approval_risk_ceiling(tool_names::OPEN_APP), None);
     }
 
     #[test]
@@ -723,5 +833,37 @@ mod tests {
         let risk = map_bridge_error("RISK_APPROVAL_REQUIRED: sandbox.setMode");
         assert!(risk.contains("RISK_APPROVAL_REQUIRED"));
         assert!(risk.contains("workbench_act_high"));
+        let unknown = workbench_result_unknown("RESULT_UNKNOWN: cancel drain expired");
+        assert!(unknown.contains("RESULT_UNKNOWN"));
+        assert!(unknown.contains("\"retryable\":false"));
+        assert!(unknown.contains("\"resultUnknown\":true"));
+
+        let exact_window = map_bridge_error(
+            &json!({
+                "code": "STALE_TARGET_WINDOW",
+                "message": "window changed",
+                "hint": "probe again",
+                "retryable": false,
+            })
+            .to_string(),
+        );
+        let exact_window: Value = serde_json::from_str(&exact_window).expect("structured error");
+        assert_eq!(exact_window["code"], "STALE_TARGET_WINDOW");
+        assert_eq!(exact_window["message"], "window changed");
+        assert_eq!(exact_window["hint"], "probe again");
+        assert_eq!(exact_window["retryable"], false);
+
+        let undo_progress = map_bridge_error(
+            &json!({
+                "code": "UNDO_IN_PROGRESS",
+                "message": "already reverting",
+                "retryable": true,
+            })
+            .to_string(),
+        );
+        let undo_progress: Value =
+            serde_json::from_str(&undo_progress).expect("structured undo error");
+        assert_eq!(undo_progress["code"], "UNDO_IN_PROGRESS");
+        assert_eq!(undo_progress["retryable"], true);
     }
 }

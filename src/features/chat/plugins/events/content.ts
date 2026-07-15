@@ -16,6 +16,7 @@
 
 import { eventRegistry, type EventHandler } from '../../registry/eventRegistry';
 import type { ChatStore } from '../../core/types';
+import { chunkBuffer } from '../../core/middleware/chunkBuffer';
 
 // ============================================================================
 // 事件处理器
@@ -76,7 +77,18 @@ const contentEventHandler: EventHandler = {
    * @param store ChatStore 实例
    * @param blockId 块 ID
    */
-  onEnd: (store: ChatStore, blockId: string): void => {
+  onEnd: (store: ChatStore, blockId: string, result?: unknown): void => {
+    // The end event is sequenced after all content chunks. Drain any UI batching
+    // first, then reconcile against the backend adapter's authoritative text so
+    // a delayed/dropped realtime tail cannot survive as a successful reply.
+    chunkBuffer.flushBlock(store.sessionId, blockId);
+    const authoritativeContent =
+      result && typeof result === 'object' && 'content' in result
+        ? (result as { content?: unknown }).content
+        : undefined;
+    if (typeof authoritativeContent === 'string') {
+      store.updateBlock(blockId, { content: authoritativeContent });
+    }
     // Store 内部会自动从 activeBlockIds 移除
     store.updateBlockStatus(blockId, 'success');
   },

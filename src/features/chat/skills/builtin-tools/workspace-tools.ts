@@ -8,10 +8,35 @@
 
 import type { SkillDefinition } from '../types';
 
+const WORKSPACE_TOOL_NAMES = [
+  'builtin-workspace_create',
+  'builtin-workspace_create_agent',
+  'builtin-subagent_call',
+  'builtin-workspace_send',
+  'builtin-workspace_query',
+  'builtin-workspace_set_context',
+  'builtin-workspace_get_context',
+  'builtin-workspace_update_document',
+  'builtin-workspace_read_document',
+  'builtin-workspace_file_list',
+  'builtin-workspace_file_read',
+  'builtin-workspace_artifact_write',
+  'builtin-workspace_file_write',
+  'builtin-workspace_file_move',
+  'builtin-workspace_file_delete',
+  'builtin-workspace_change_revert',
+  'builtin-attachment_stage',
+  'builtin-local_shell_preflight',
+  'builtin-local_shell_execute',
+  'builtin-coordinator_sleep',
+  'builtin-skill_scan',
+  'builtin-skill_install',
+] as const;
+
 export const workspaceToolsSkill: SkillDefinition = {
   id: 'workspace-tools',
   name: 'workspace-tools',
-  description: '工作区协作与本地运行时能力组：创建多 Agent 协作工作区、分配任务、共享上下文和文档；并提供受授权目录约束的本地文件读取/列目录、会话产物写入（workspace_file_list/read、workspace_artifact_write），以及经用户审批的本地 shell 命令预检与执行（local_shell_preflight/execute）。当需要多 Agent 协作、读取用户授权的本地资料，或在本机执行命令类任务时使用。',
+  description: '工作区协作与本地运行时能力组：创建多 Agent 协作工作区、注册或即时派发 Worker（workspace_create/create_agent/subagent_call）、共享上下文和文档；并提供受授权目录约束的本地文件读取/列目录、会话产物写入，以及经用户审批的本地 shell 命令预检与执行。当需要多 Agent 协作、读取用户授权的本地资料，或在本机执行命令类任务时使用。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 8,
@@ -38,10 +63,21 @@ export const workspaceToolsSkill: SkillDefinition = {
 ### 工作区管理
 - **builtin-workspace_create**: 创建新工作区
 - **builtin-workspace_create_agent**: 在工作区中创建 Agent
+- **builtin-subagent_call**: 通过后端运行时即时创建并派发一个带明确技能和任务的 Worker，返回 agent session/run 标识
 - **builtin-workspace_query**: 查询工作区信息
 
 ### 等待子代理
 - **builtin-coordinator_sleep**: 【必需】创建 Worker 后调用，等待结果
+
+### Workspace 三件套与编排边界
+
+工作区的三件套是：
+
+1. \`builtin-workspace_create\` 建立共享工作区并取得 \`workspace_id\`；
+2. \`builtin-workspace_create_agent\` 注册一个可协作的 Worker（需要它自行运行时提供 \`initial_task\`），或使用 \`builtin-subagent_call\` 让后端运行时按 \`skill_id + task\` 立即创建并派发专用 Worker；
+3. 用 \`builtin-workspace_query\` / \`builtin-workspace_send\` 观察和沟通，必要时由协调者调用 \`builtin-coordinator_sleep\` 等待结果。
+
+\`subagent_call\` 是 \`workspace_create_agent\` 的运行时派发路径，不是另一个未实现的 MCP 工具；同一任务只选择一种派发路径，避免重复创建 Worker。它必须使用真实已加载的技能 ID（例如 \`subagent-worker\`、\`academic-search\`、\`document-processing\`），并传回 \`workspace_id\`、\`agent_session_id\` 与 \`run_id\` 供后续查询。
 
 ### 消息通信
 - **builtin-workspace_send**: 向 Agent 发送消息
@@ -61,6 +97,8 @@ export const workspaceToolsSkill: SkillDefinition = {
 - **builtin-attachment_stage**: 把聊天附件的原始字节物化到会话 temp root 的 attachments/ 子目录，返回 root_id + relative_path，供 workspace 文件工具或 local_shell_execute（cwd 选 temp）继续处理二进制/大文件
 - **builtin-local_shell_preflight**: 检查本地命令、cwd、runtime root 与风险等级，但不会执行命令
 - **builtin-local_shell_execute**: 经用户审批后执行非交互本地命令，返回 exit code、stdout/stderr 与截断状态
+
+本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 固定使用受信任 System32 路径下的 Windows PowerShell（\`-NoProfile -NonInteractive\`，UTF-8 输出）；其他平台当前不支持本地 shell。每次真实执行都必须经过用户审批，网络默认禁止，只有显式 \`allow_network=true\` 的独立审批 scope 才可放行。
 
 不确定自己有哪些 runtime root、技能或 MCP 时，先用 self-service-tools 技能组的 **builtin-self_inspect** 自查（只读、脱敏）。
 
@@ -94,7 +132,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
 
 1. 调用 local_shell_preflight / local_shell_execute 时传 skill_root_id（如 skill:pdf-tools），执行器会向子进程注入环境变量 SKILL_DIR，指向该 Skill 包根目录的绝对路径。
 2. cwd 仍然使用 workspace、temp 或 artifacts 等可执行 root，不要尝试把 skill:<skillId> 当 cwd。
-3. 命令里通过环境变量引用脚本路径：PowerShell（Windows）用 \`python $env:SKILL_DIR/scripts/convert.py\`，sh（macOS/Linux）用 \`python $SKILL_DIR/scripts/convert.py\`。
+3. 命令里通过环境变量引用脚本路径并给路径加引号：Windows PowerShell 用 \`python "$env:SKILL_DIR/scripts/convert.py"\`；macOS \`/bin/sh\` 用 \`python "$SKILL_DIR/scripts/convert.py"\`。不要把 Windows 命令写成 cmd 的 \`%SKILL_DIR%\` 语法，也不要假设 Linux 可执行。
 4. 脚本产物请写到 temp 或 artifacts（cwd 所在 root），不要试图写回 SKILL_DIR。
 
 ## 产物交付纪律
@@ -104,6 +142,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
 - 禁止「静默写文件」：写了产物但最终回复中不提及，是不可接受的交付方式。
 - 通过 builtin-local_shell_execute 执行命令产生的文件产物，同样适用以上交付要求。
 `,
+  allowedTools: [...WORKSPACE_TOOL_NAMES],
   embeddedTools: [
     {
       name: 'builtin-workspace_create',
@@ -133,6 +172,41 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           initial_task: { type: 'string', description: '【推荐】初始任务描述。提供此参数后 Worker 会立即自动启动执行任务并返回结果，不提供则 Worker 保持空闲' },
         },
         required: ['workspace_id'],
+      },
+    },
+    {
+      // Progressive disclosure forwards embeddedTools to Chat V2; keep this as
+      // the single production schema for subagent_call instead of duplicating
+      // an unconsumed Rust schema beside the executor.
+      name: 'builtin-subagent_call',
+      description:
+        '通过后端工作区运行时即时创建并派发一个专用 Worker。必须先有 workspace_create 返回的 workspace_id；skill_id 必须是真实技能 ID，task 是要执行的具体任务。返回 agent_session_id 与 run_id，后续用 workspace_query/send 协作。不要对同一任务同时调用 workspace_create_agent 和 subagent_call。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          workspace_id: {
+            type: 'string',
+            minLength: 1,
+            description: '【必填】已创建的工作区 ID',
+          },
+          skill_id: {
+            type: 'string',
+            minLength: 1,
+            description:
+              '【必填】真实技能 ID，例如 subagent-worker、academic-search、document-processing；不要填写不存在的技能名',
+          },
+          task: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 20000,
+            description: '【必填】交给 Worker 执行的具体任务',
+          },
+          context: {
+            description: '可选：传给 Worker 的结构化上下文（任意 JSON 值）',
+          },
+        },
+        required: ['workspace_id', 'skill_id', 'task'],
       },
     },
     {
@@ -426,7 +500,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_preflight',
       description:
-        '预检本地 shell 命令的 runtime root、cwd、风险等级和审批信息。此工具只返回结构化分析，不会执行命令、启动进程或写入文件。',
+        '预检本地 shell 命令的 runtime root、cwd、平台 shell 合同、风险等级和审批信息。此工具只返回结构化分析，不会执行命令、启动进程或写入文件；任何真实执行仍必须单独经过用户审批。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -436,7 +510,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           root_id: {
             type: 'string',
-            description: 'Runtime root id，默认为 workspace；可填 artifacts、temp、authorized_* 授权目录 id，或当前已加载 Skill 的 skill:<skillId> 包目录',
+            description: 'Runtime root id，默认为 workspace；可填 artifacts、temp 或 authorized_* 授权目录 id。skill:<skillId> 包目录不能作为 cwd；运行包内脚本请使用 skill_root_id。',
           },
           cwd: {
             type: 'string',
@@ -465,7 +539,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_execute',
       description:
-        '经用户审批后执行非交互本地 shell 命令。执行前会重新校验 runtime root 和 cwd，强制 timeout，截断 stdout/stderr，并保存 tool block 审计记录；不会启动交互式终端或长驻进程。',
+        '经用户审批后执行非交互本地 shell 命令。macOS 固定使用 /bin/sh -c；Windows 固定使用受信任 System32 Windows PowerShell（-NoProfile -NonInteractive，UTF-8 输出）；其他平台不支持。执行前会重新校验 runtime root 和 cwd，强制 timeout，截断 stdout/stderr，并保存 tool block 审计记录；不提供 PTY、stdin 或持久 shell session，网络默认禁止。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -484,7 +558,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           skill_root_id: {
             type: 'string',
             description:
-              '可选。当前已加载 Skill 的包根 id（skill:<skillId>）。提供后会向子进程注入 SKILL_DIR 环境变量（指向该 Skill 包根绝对路径），用于运行 Skill 自带脚本，例如 PowerShell 中 python $env:SKILL_DIR/scripts/x.py。skill 包根仍不能作为 cwd；带 skill_root_id 的执行使用独立审批 scope。',
+              '可选。当前已加载 Skill 的包根 id（skill:<skillId>）。提供后会向子进程注入 SKILL_DIR 环境变量（指向该 Skill 包根绝对路径），用于运行 Skill 自带脚本，例如 Windows PowerShell 中 python "$env:SKILL_DIR/scripts/x.py"。skill 包根仍不能作为 cwd；带 skill_root_id 的执行使用独立审批 scope。',
           },
           timeout_ms: {
             type: 'integer',
@@ -495,9 +569,9 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           inherit_env: {
             type: 'boolean',
-            default: true,
+            default: false,
             description:
-              'Whether to inherit the parent process environment. Sensitive names such as TOKEN, SECRET, PASSWORD, and API_KEY are removed by default.',
+              'Whether to inherit a sanitized allowlist of parent-process environment variables. Defaults to false. Sensitive and execution-control variables are always blocked; inherited key names are shown in the approval scope.',
           },
           allow_network: {
             type: 'boolean',

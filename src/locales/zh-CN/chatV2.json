@@ -52,7 +52,9 @@
     "zoomIn": "放大",
     "zoomOut": "缩小",
     "fitView": "适配视图",
-    "resetView": "重置视图"
+    "resetView": "重置视图",
+    "sandboxTitle": "HTML 沙箱",
+    "openSandbox": "在沙箱中打开"
   },
   "common": {
     "close": "关闭",
@@ -76,7 +78,8 @@
       "suggestion5": "根据我上传的高中英语资料，生成一套复习用的Anki闪卡。"
     },
     "scrollToBottom": "回到底部",
-    "waiting": "正在思考..."
+    "waiting": "正在思考...",
+    "srNewMessages": "收到新消息，共 {{count}} 条"
   },
   "messageItem": {
     "actions": {
@@ -212,6 +215,9 @@
       "on": "推理: {{depth}}"
     },
     "runtimeModelTitle": "模型",
+    "runtimeModelCompareMode": "进入多选模式...",
+    "runtimeModelOtherProvider": "其他",
+    "runtimeModelNoResults": "未找到匹配模型",
     "chooseRuntimeModel": "选择模型",
     "thinkingDepthExpensive": "更慢",
     "ankiTools": "Anki 制卡",
@@ -403,8 +409,10 @@
       "blockError": "论文下载失败",
       "summaryDone_one": "{{done}}/{{total}} 篇完成",
       "summaryDone_other": "{{done}}/{{total}} 篇完成",
+      "summaryDone": "{{done}}/{{total}} 篇完成",
       "summaryFailedSuffix_one": "，{{count}} 篇失败",
       "summaryFailedSuffix_other": "，{{count}} 篇失败",
+      "summaryFailedSuffix": "，{{count}} 篇失败",
       "downloading": "下载中 {{done}}/{{total}}"
     },
     "rag": {
@@ -504,17 +512,26 @@
       "message": "说明",
       "applied": "已应用 {{applied}}/{{total}}",
       "undoExpired": "撤销已失效（会话结束或账本已清空）",
+      "undoApplied": "已撤销可恢复更改",
+      "undoing": "正在撤销…",
+      "undoRetry": "部分撤销，重试",
+      "undoUnavailable": "不可撤销",
+      "undoIncompleteExhausted": "撤销未完全完成（无法重试）",
       "verified": "操作后状态已验证",
       "verificationFailed": "{{count}} 个后置条件未满足",
       "undoPersistent": "此操作可使用持久撤销，应用重启后仍可恢复。",
       "undoSession": "此操作可在当前应用会话中撤销。",
       "undoPersistentShort": "跨重启可撤销 · 成功后一次性失效",
       "undoSessionShort": "仅当前会话 · 成功后一次性失效",
+      "undoHighRisk": "撤销按 High 风险处理：本次点击仅确认这一次撤销，授权不会被记忆。",
+      "resultUnknownTitle": "操作终态未知",
+      "resultUnknownHint": "请先重新观察或读取目标状态，再决定后续步骤；不要原样重试，也不要转为后台写入。",
       "status": {
         "running": "执行中",
         "success": "已完成",
         "partial": "部分完成",
         "cancelled": "已取消",
+        "unknown": "终态未知",
         "error": "失败"
       }
     },
@@ -559,9 +576,11 @@
       "export": "导出",
       "sync": "同步",
       "reviewBatch": "复习这批",
+      "reviewBatchNeedsRealIds": "卡片生成完成并保存、取得真实 ID 后才能复习这批卡片",
       "pause": "暂停",
       "resume": "继续",
       "cancel": "取消",
+      "retryFailedSegments": "重试失败分段",
       "synced": "已同步",
       "syncToAnki": "同步到 Anki",
       "syncStatus": {
@@ -597,6 +616,7 @@
           "pending": "待处理",
           "processing": "处理中",
           "paused": "暂停",
+          "completedWithErrors": "已完成，部分分段失败",
           "failed": "失败",
           "truncated": "截断",
           "cancelled": "取消"
@@ -626,7 +646,20 @@
         "waitInvalidArgs": "chatanki_wait 需要 ankiBlockId 或 documentId，请补充后重试。",
         "waitNotFound": "尚未找到卡片块，请稍等或用 documentId 调用 chatanki_status。",
         "waitTimeout": "等待超时。可稍后用 chatanki_status 查询，或延长超时时间重试。",
+        "documentIdRequired": "缺少 documentId，请补充制卡文档 ID 后重试。",
+        "databaseUnavailable": "卡片数据库当前不可用，请稍后重试。",
+        "updateArgsRequired": "更新卡片需要 cardId、expectedVersion 和至少一个修改字段。",
+        "deleteArgsRequired": "删除卡片需要 cardId 和 expectedVersion。",
+        "addArgsRequired": "补卡需要 documentId，并提供 1 到 100 张卡片。",
+        "cardContentRequired": "卡片必须包含非空正反面，或包含非空的 Cloze 文本。",
+        "reviewSelectorRequired": "加入复习时必须且只能提供 documentId 或 cardIds。",
+        "retemplateSelectorRequired": "更换模板时必须且只能提供 documentId 或 cardIds。",
+        "templateDatabaseUnavailable": "模板数据库当前不可用，请稍后重试。",
         "statusNotFound": "未找到该文档任务，请稍候或重新发起生成。",
+        "watchdogFailedWithoutCards": "生成失败，且没有产出可用卡片。",
+        "watchdogCancelledWithoutCards": "生成已取消，且没有产出可用卡片。",
+        "watchdogCompletedWithoutCards": "生成已结束，但没有产出可用卡片。",
+        "watchdogUnknownWithoutCards": "生成在未知状态下停止，且没有产出可用卡片。",
         "ankiConnectUnavailable": "AnkiConnect 不可用。请打开 Anki 并启用 AnkiConnect 后重试。",
         "missingClozeNoteType": "Anki 缺少 Cloze 笔记类型。请在 Anki 中创建后重试。",
         "ankiSyncEmpty": "未导入任何卡片。请检查 Anki 是否运行、笔记类型是否存在、卡片字段是否为空。"
@@ -679,7 +712,10 @@
         "cancelled": "已取消生成",
         "pauseFailed": "暂停失败",
         "resumeFailed": "继续失败",
-        "cancelFailed": "取消失败"
+        "cancelFailed": "取消失败",
+        "retrySegmentsStarted": "已重新提交 {{count}} 个失败分段",
+        "retrySegmentsPartial": "共 {{total}} 个分段，其中 {{failed}} 个重试提交失败",
+        "retrySegmentsFailed": "{{failed}} 个失败分段均未能重新提交"
       }
     }
   },
@@ -1490,6 +1526,21 @@
     "hint": "选择模型后点击重试按钮",
     "retry": "重试"
   },
+  "modelPicker": {
+    "title": "选择模型",
+    "retryTitle": "选择模型重试",
+    "retryHintEmpty": "选择模型后点击重试",
+    "retryHint": "已选择 {{count}} 个模型",
+    "compareHint": "已选择 {{count}} 个模型进行对比",
+    "singleHint": "当前会话模型",
+    "setAsDefault": "设为系统默认",
+    "parallelMode": "并行模式",
+    "compareToggle": "对比模式",
+    "compareToggleHint": "同时使用多个模型回答",
+    "searchPlaceholder": "搜索名称或模型 ID...",
+    "noMatches": "未找到匹配的模型",
+    "empty": "暂无可用模型"
+  },
   "workspace": {
     "title": "工作区",
     "toggle": "工作区面板",
@@ -1512,6 +1563,17 @@
     "task": "任务",
     "response": "响应",
     "moreMessages": "还有 {{count}} 条消息",
+    "failedHint": "该代理执行失败。展开下方会话输出或点击“查看完整会话”了解失败原因。",
+    "elapsed": {
+      "runningHint": "运行耗时（实时）",
+      "finalHint": "总耗时（近似）"
+    },
+    "summary": {
+      "finished": "{{done}}/{{total}} 已完成",
+      "running": "{{count}} 运行中",
+      "failed": "{{count}} 失败",
+      "cancelled": "{{count}} 已取消"
+    },
     "agent": {
       "coordinator": "协调者",
       "worker": "执行者",
@@ -1673,6 +1735,7 @@
     "copyFailed": "复制失败"
   },
   "readiness": {
+    "not_ready": "当前会话尚未就绪",
     "model2_missing": "请先在「设置 → 模型分配」配置对话模型后再发送消息。",
     "model2_auto_assigned": "已自动分配 {{count}} 个模型：{{models}}。可前往「设置 → 模型分配」查看或更改。",
     "model2_auto_assigned_single": "已自动将「{{model}}」设为默认对话模型。可前往「设置 → 模型分配」查看或更改。"
@@ -1716,7 +1779,10 @@
   },
   "documentViewer": {
     "defaultTitle": "文档预览",
-    "search": "搜索"
+    "search": "搜索",
+    "previewHint": "提示：按 ESC 关闭，+/- 调整字号",
+    "noWrap": "取消自动换行",
+    "wrap": "自动换行"
   },
   "imageViewer": {
     "imageAlt": "图片 {{index}}",
@@ -1774,7 +1840,10 @@
     "recommended": "推荐",
     "optionReasonLabel": "查看该选项原因",
     "confirmSelection": "确认选择",
-    "customPlaceholder": "或输入自定义回答..."
+    "customPlaceholder": "或输入自定义回答...",
+    "ignore": "忽略",
+    "responded": "已回答",
+    "submit": "提交"
   },
   "pageRef": {
     "clearAll": "清空页码引用",

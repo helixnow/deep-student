@@ -14,7 +14,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import i18n from 'i18next';
-import { getErrorMessage } from '@/utils/errorUtils';
+import { formatUserFacingError, getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { StoreApi } from 'zustand';
 import type {
@@ -30,6 +30,7 @@ import {
   handleStreamComplete,
   handleStreamAbort,
   clearEventContext,
+  flushPendingBackendEvents,
   resetBridgeState,
 } from '../core/middleware/eventBridge';
 import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
@@ -112,6 +113,24 @@ const LOAD_SESSION_TAIL_LIMIT = 80;
 const FULL_HISTORY_IDLE_TIMEOUT_MS = 1_000;
 const FULL_HISTORY_MAX_RETRIES = 2;
 const FULL_HISTORY_RETRY_BASE_MS = 500;
+// Block and session lifecycle events use separate Tauri channels. Keep a
+// short quiet window before success cleanup so the block-channel tail can be
+// processed and flushed first without adding perceptible completion latency.
+const STREAM_COMPLETE_SETTLE_DELAY_MS = 32;
+
+function isRetryableTerminalAnkiBlock(
+  status: unknown,
+  output: Record<string, unknown>,
+): boolean {
+  const finalStatus = String(output.finalStatus ?? '').trim().toLowerCase();
+  const progress = output.progress as Record<string, unknown> | undefined;
+  const progressStage = String(progress?.stage ?? '').trim().toLowerCase();
+  return (
+    status === 'error' ||
+    ['error', 'failed', 'completed_with_errors'].includes(finalStatus) ||
+    progressStage === 'completed_with_errors'
+  );
+}
 
 function getCanvasNoteIdFromModeState(modeState: Record<string, unknown> | null): string | undefined {
   if (!modeState || typeof modeState !== 'object') {
@@ -200,8 +219,16 @@ export class ChatV2TauriAdapter {
   } | null = null;
   /** 最近一次已接受的后端流代次，防止同 messageId retry 被旧终态结束。 */
   private lastStreamGenerationByMessageId = new Map<string, number>();
+  private pendingStreamCompletion: {
+    payload: SessionEventPayload;
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null = null;
   /** ChatAnki 桥接 chunk 日志节流计数器（按 blockId） */
   private chatAnkiChunkLogCounter = new Map<string, number>();
+  /** 已终态 anki 块收到任务事件时，表示失败分段正在重试。 */
+  private retryingAnkiDocumentIds = new Set<string>();
+  /** 防止并发查询的旧结果覆盖更新的重试终态。 */
+  private ankiRetryReconcileRevisions = new Map<string, number>();
 
   constructor(sessionId: string, store: ChatStore, storeApi?: StoreApi<ChatStore>) {
     this.adapterInstanceId = ChatV2TauriAdapter.nextAdapterInstanceId++;
@@ -266,6 +293,7 @@ export class ChatV2TauriAdapter {
 
   private beginStreamExpectation(messageId: string): void {
     if (!messageId) return;
+    this.cancelPendingStreamCompletion();
     this.streamExpectation = {
       messageId,
       startedAt: Date.now(),
@@ -322,6 +350,73 @@ export class ChatV2TauriAdapter {
     if (!messageId || this.streamExpectation.messageId === messageId) {
       this.streamExpectation = null;
     }
+  }
+
+  private cancelPendingStreamCompletion(): void {
+    if (!this.pendingStreamCompletion) return;
+    if (this.pendingStreamCompletion.timer !== null) {
+      clearTimeout(this.pendingStreamCompletion.timer);
+    }
+    this.pendingStreamCompletion = null;
+  }
+
+  private armPendingStreamCompletion(pending: {
+    payload: SessionEventPayload;
+    timer: ReturnType<typeof setTimeout> | null;
+  }): void {
+    pending.timer = setTimeout(() => {
+      if (this.pendingStreamCompletion !== pending) return;
+      this.pendingStreamCompletion = null;
+
+      const { payload } = pending;
+      if (
+        !this.isSessionRuntimeOwner()
+        || !payload.messageId
+        || !this.isTargetingCurrentStreamMessage(payload.messageId)
+        || this.isStaleByStreamGeneration(payload)
+        || this.isStaleByExpectationTimestamp(payload)
+      ) {
+        return;
+      }
+
+      // A terminal event can overtake block events from the separate channel.
+      // First drain sequence-buffered events, then flush their chunk batches,
+      // and only after that tear down the streaming state and bridge context.
+      flushPendingBackendEvents(this.getCurrentState());
+      chunkBuffer.flushSession(this.sessionId);
+      this.clearStreamExpectation(payload.messageId);
+      this.store.completeStream('success');
+      this.store.updateMessageMeta(payload.messageId, {
+        terminalError: undefined,
+        streamReconnect: undefined,
+      });
+      handleStreamComplete(this.store, {
+        messageId: payload.messageId,
+        usage: payload.usage,
+      }).catch((err) => {
+        console.error(LOG_PREFIX, 'Error in handleStreamComplete:', getErrorMessage(err));
+      });
+    }, STREAM_COMPLETE_SETTLE_DELAY_MS);
+  }
+
+  private scheduleStreamCompletion(payload: SessionEventPayload): void {
+    this.cancelPendingStreamCompletion();
+    const pending = {
+      payload: { ...payload },
+      timer: null,
+    };
+    this.pendingStreamCompletion = pending;
+    this.armPendingStreamCompletion(pending);
+  }
+
+  /** Restart the quiet window whenever a block callback arrives. */
+  private touchPendingStreamCompletion(): void {
+    const pending = this.pendingStreamCompletion;
+    if (!pending) return;
+    if (pending.timer !== null) {
+      clearTimeout(pending.timer);
+    }
+    this.armPendingStreamCompletion(pending);
   }
 
   private isStaleByExpectationTimestamp(payload: SessionEventPayload): boolean {
@@ -867,6 +962,7 @@ export class ChatV2TauriAdapter {
    */
   async cleanup(): Promise<void> {
     console.log(LOG_PREFIX, 'Cleaning up...');
+    this.cancelPendingStreamCompletion();
     // 使正在进行的 setup/listener 注册代际失效，防止过期监听器被挂回当前实例
     this.setupGeneration += 1;
     this.cancelScheduledFullHistoryLoad?.();
@@ -1061,6 +1157,8 @@ export class ChatV2TauriAdapter {
     this.unlisteners = [];
     this.releaseAnkiEventOwnershipIfHeld('cleanup');
     this.chatAnkiChunkLogCounter.clear();
+    this.retryingAnkiDocumentIds.clear();
+    this.ankiRetryReconcileRevisions.clear();
     this.clearStreamExpectation();
     this.lastStreamGenerationByMessageId.clear();
     if (ownsSessionRuntime) {
@@ -1073,6 +1171,164 @@ export class ChatV2TauriAdapter {
   // ========================================================================
   // 事件处理
   // ========================================================================
+
+  private scheduleAnkiRetryReconcile(blockId: string, documentId: string): void {
+    const revision = (this.ankiRetryReconcileRevisions.get(documentId) ?? 0) + 1;
+    this.ankiRetryReconcileRevisions.set(documentId, revision);
+    void this.reconcileAnkiRetryState(blockId, documentId, revision).catch((error: unknown) => {
+      if (this.ankiRetryReconcileRevisions.get(documentId) !== revision) return;
+      console.warn(
+        LOG_PREFIX,
+        `Failed to reconcile retried Anki document ${documentId}:`,
+        getErrorMessage(error),
+      );
+    });
+  }
+
+  private async reconcileAnkiRetryState(
+    blockId: string,
+    documentId: string,
+    revision: number,
+  ): Promise<void> {
+    type TaskSnapshot = {
+      status?: unknown;
+      error_message?: unknown;
+      errorMessage?: unknown;
+    };
+
+    const tasks = await invoke<TaskSnapshot[]>('get_document_tasks', { documentId });
+    if (this.ankiRetryReconcileRevisions.get(documentId) !== revision) return;
+    if (!Array.isArray(tasks) || tasks.length === 0) return;
+
+    const normalizeStatus = (value: unknown) =>
+      typeof value === 'string' ? value.trim().toLowerCase() : '';
+    const statuses = tasks.map((task) => normalizeStatus(task.status));
+    const count = (status: string) => statuses.filter((value) => value === status).length;
+    const counts = {
+      total: tasks.length,
+      pending: count('pending'),
+      processing: count('processing'),
+      streaming: count('streaming'),
+      paused: count('paused'),
+      completed: count('completed'),
+      failed: count('failed'),
+      truncated: count('truncated'),
+      cancelled: count('cancelled'),
+    };
+    const hasInFlight = counts.pending + counts.processing + counts.streaming > 0;
+
+    let cards: AnkiCard[] | undefined;
+    if (!hasInFlight) {
+      cards = await invoke<AnkiCard[]>('get_document_cards', { documentId });
+      if (this.ankiRetryReconcileRevisions.get(documentId) !== revision) return;
+      if (!Array.isArray(cards)) cards = [];
+    }
+
+    const state = this.getCurrentState();
+    const block = state.blocks.get(blockId);
+    const output = block?.toolOutput as Record<string, unknown> | undefined;
+    if (block?.type !== 'anki_cards' || output?.documentId !== documentId) return;
+
+    const currentCards = Array.isArray(output.cards) ? (output.cards as AnkiCard[]) : [];
+    const mergedCards = cards
+      ? (() => {
+          const byId = new Map<string, AnkiCard>();
+          for (const card of cards) {
+            if (card.id) byId.set(card.id, card);
+          }
+          for (const card of currentCards) {
+            if (card.id) byId.set(card.id, card);
+          }
+          return Array.from(byId.values());
+        })()
+      : currentCards;
+    const hasFailure = counts.failed + counts.truncated > 0;
+    const hasUsableCard = mergedCards.some(
+      (card) => !(card as AnkiCard & { is_error_card?: boolean }).is_error_card,
+    );
+    const hasUserCancellation = tasks.some((task, index) => {
+      if (statuses[index] !== 'cancelled') return false;
+      const error = task.error_message ?? task.errorMessage;
+      return error !== 'GLOBAL_CARD_LIMIT_REACHED';
+    });
+    const terminalCount = counts.completed + counts.failed + counts.truncated + counts.cancelled;
+    const completedRatio = counts.total > 0 ? terminalCount / counts.total : 0;
+
+    let finalStatus: 'generating' | 'paused' | 'cancelled' | 'completed' | 'completed_with_errors' | 'error';
+    let blockStatus: 'running' | 'success' | 'error';
+    if (hasInFlight) {
+      finalStatus = 'generating';
+      blockStatus = 'running';
+    } else if (counts.paused > 0) {
+      finalStatus = 'paused';
+      blockStatus = 'running';
+    } else if (hasUserCancellation) {
+      finalStatus = 'cancelled';
+      blockStatus = 'success';
+    } else if (hasFailure) {
+      const isPartial = counts.completed > 0 || hasUsableCard;
+      finalStatus = isPartial ? 'completed_with_errors' : 'error';
+      blockStatus = isPartial ? 'success' : 'error';
+    } else {
+      finalStatus = 'completed';
+      blockStatus = 'success';
+    }
+
+    const taskError = tasks
+      .map((task) => task.error_message ?? task.errorMessage)
+      .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    const progress = (output.progress as Record<string, unknown> | undefined) ?? {};
+    const recoveredFromGenerationError =
+      ['error', 'failed'].includes(String(output.finalStatus ?? '').toLowerCase()) ||
+      ['error', 'failed'].includes(String(progress.stage ?? '').toLowerCase());
+    const messageKey =
+      finalStatus === 'completed_with_errors'
+        ? 'blocks.ankiCards.progress.messages.completedWithErrors'
+        : finalStatus === 'generating'
+          ? 'blocks.ankiCards.progress.messages.generating'
+          : undefined;
+
+    state.updateBlock(blockId, {
+      status: blockStatus,
+      error: finalStatus === 'error' ? taskError ?? block.error ?? 'generation_failed' : undefined,
+      toolOutput: {
+        ...output,
+        cards: mergedCards,
+        finalStatus,
+        finalError:
+          finalStatus === 'error' || finalStatus === 'completed_with_errors'
+            ? taskError ?? output.finalError
+            : undefined,
+        syncStatus:
+          recoveredFromGenerationError && output.syncStatus === 'error'
+            ? 'pending'
+            : output.syncStatus,
+        syncError:
+          recoveredFromGenerationError && output.syncStatus === 'error'
+            ? undefined
+            : output.syncError,
+        progress: {
+          ...progress,
+          stage: finalStatus,
+          messageKey,
+          messageParams:
+            finalStatus === 'completed_with_errors'
+              ? { failed: counts.failed, truncated: counts.truncated }
+              : undefined,
+          cardsGenerated: mergedCards.length,
+          counts,
+          completedRatio,
+          lastUpdatedAt: new Date().toISOString(),
+        },
+      },
+    });
+    state.updateBlockStatus(blockId, blockStatus);
+    autoSave.scheduleAutoSave(this.getCurrentState());
+
+    if (blockStatus !== 'running') {
+      this.retryingAnkiDocumentIds.delete(documentId);
+    }
+  }
 
   /**
    * 处理 ChatAnki 后端事件（anki_generation_event）
@@ -1199,6 +1455,25 @@ export class ChatV2TauriAdapter {
     const currentOutput = (targetBlock.toolOutput as Record<string, unknown> | undefined) ?? {};
     const currentCards = (currentOutput.cards as AnkiCard[] | undefined) ?? [];
     const ensureDocumentId = documentId && !currentOutput.documentId ? { documentId } : {};
+    const retryRelevantEvent = [
+      'TaskStatusUpdate',
+      'NewCard',
+      'NewErrorCard',
+      'TaskCompleted',
+      'TaskProcessingError',
+      'TaskFailed',
+      'DocumentProcessingFailed',
+      'DocumentProcessingCompleted',
+    ].includes(type);
+    const isRetryFlow = Boolean(
+      documentId &&
+        retryRelevantEvent &&
+        (this.retryingAnkiDocumentIds.has(documentId) ||
+          isRetryableTerminalAnkiBlock(targetBlock.status, currentOutput)),
+    );
+    if (isRetryFlow && documentId) {
+      this.retryingAnkiDocumentIds.add(documentId);
+    }
 
     const extractCardQuestion = (card: AnkiCard): string => {
       const fields = (card.fields ?? {}) as Record<string, unknown>;
@@ -1332,10 +1607,17 @@ export class ChatV2TauriAdapter {
           ? {}
           : { status: 'running' }),
       });
+      if (isRetryFlow && documentId) {
+        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
+      }
       return;
     }
 
     if (type === 'TaskStatusUpdate' || type === 'DocumentProcessingStarted') {
+      if (isRetryFlow && documentId) {
+        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
+        return;
+      }
       const nextProgress = {
         ...(currentOutput.progress as Record<string, unknown> | undefined),
         stage:
@@ -1364,6 +1646,10 @@ export class ChatV2TauriAdapter {
     }
 
     if (type === 'TaskCompleted' || type === 'DocumentProcessingCompleted') {
+      if (isRetryFlow && documentId) {
+        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
+        return;
+      }
       try {
         window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
           level: 'info', phase: 'bridge:card',
@@ -1388,6 +1674,11 @@ export class ChatV2TauriAdapter {
       if (targetBlock.status !== 'error') {
         state.updateBlockStatus(targetBlock.id, 'success');
       }
+      return;
+    }
+
+    if (type === 'TaskProcessingError' && isRetryFlow && documentId) {
+      this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
       return;
     }
 
@@ -1425,6 +1716,10 @@ export class ChatV2TauriAdapter {
       type === 'DocumentProcessingFailed' ||
       type === 'WorkflowFailed'
     ) {
+      if (isRetryFlow && documentId) {
+        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
+        return;
+      }
       const errorMessage =
         (dataObj?.message as string | undefined) ||
         (dataObj?.error as string | undefined) ||
@@ -1556,6 +1851,8 @@ export class ChatV2TauriAdapter {
         error: getErrorMessage(error),
       }, 'error');
       console.error(LOG_PREFIX, 'Error handling block event:', getErrorMessage(error), event);
+    } finally {
+      this.touchPendingStreamCompletion();
     }
   }
 
@@ -1907,7 +2204,6 @@ export class ChatV2TauriAdapter {
             });
             break;
           }
-          this.clearStreamExpectation(payload.messageId);
           // 流式完成 - 重置状态为 idle
           console.log(
             LOG_PREFIX,
@@ -1917,26 +2213,10 @@ export class ChatV2TauriAdapter {
             payload.durationMs,
             'ms'
           );
-          // 先冲刷当前会话的 chunk buffer，确保最终正文先进入实时态再切终态。
-          chunkBuffer.flushSession(this.sessionId);
-          // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
-          // handleStreamComplete 内部会捕获当前状态快照进行保存
-          this.store.completeStream('success');
-          this.store.updateMessageMeta(payload.messageId, {
-            terminalError: undefined,
-            streamReconnect: undefined,
-          });
-          // 🆕 Prompt 8: 将 messageId 和 usage 传递给 handleStreamComplete
-          // token 统计处理在 eventBridge.handleStreamComplete 中完成
-          handleStreamComplete(this.store, {
-            messageId: payload.messageId,
-            usage: payload.usage,
-          }).catch((err) => {
-            console.error(LOG_PREFIX, 'Error in handleStreamComplete:', getErrorMessage(err));
-          });
+          this.scheduleStreamCompletion(payload);
           break;
 
-        case 'stream_error':
+        case 'stream_error': {
           if (
             !payload.messageId
             || !this.isTargetingCurrentStreamMessage(payload.messageId)
@@ -1951,14 +2231,22 @@ export class ChatV2TauriAdapter {
             });
             break;
           }
+          this.cancelPendingStreamCompletion();
           this.clearStreamExpectation(payload.messageId);
           // 流式错误 - 重置状态为 idle
           console.error(LOG_PREFIX, 'Stream error:', payload.error);
           chunkBuffer.flushSession(this.sessionId);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
           this.store.completeStream('error');
+          const streamError = payload.error
+            ? formatUserFacingError(
+                payload.error,
+                'chatV2:error.loadFailed',
+                'Load failed',
+              )
+            : i18n.t('chatV2:error.loadFailed', { defaultValue: 'Load failed' });
           this.store.updateMessageMeta(payload.messageId, {
-            terminalError: payload.error || 'Stream ended with error',
+            terminalError: streamError,
             streamReconnect: undefined,
           });
           handleStreamAbort(this.store).catch((err) => {
@@ -1966,9 +2254,10 @@ export class ChatV2TauriAdapter {
           });
           // 显示错误提示
           if (payload.error) {
-            showGlobalNotification('error', payload.error);
+            showGlobalNotification('error', streamError);
           }
           break;
+        }
 
         case 'stream_cancelled':
           if (
@@ -1985,6 +2274,7 @@ export class ChatV2TauriAdapter {
             });
             break;
           }
+          this.cancelPendingStreamCompletion();
           this.clearStreamExpectation(payload.messageId);
           // 流式被取消 - 由 abortStream 处理状态重置
           console.log(LOG_PREFIX, 'Stream cancelled for message:', payload.messageId);
@@ -2326,8 +2616,11 @@ export class ChatV2TauriAdapter {
         // 忽略恢复失败
       }
       // 显示错误提示（使用 i18n）
-      const sendFailedMsg = i18n.t('chatV2:error.sendFailed');
-      showGlobalNotification('error', `${sendFailedMsg}: ${errorMsg}`);
+      showGlobalNotification('error', formatUserFacingError(
+        error,
+        'chatV2:error.sendFailed',
+        'Send failed',
+      ));
       throw error;
     }
   }
@@ -2552,8 +2845,11 @@ export class ChatV2TauriAdapter {
       } catch {
         // 忽略恢复失败
       }
-      const sendFailedMsg = i18n.t('chatV2:error.sendFailed');
-      showGlobalNotification('error', `${sendFailedMsg}: ${errorMsg}`);
+      showGlobalNotification('error', formatUserFacingError(
+        error,
+        'chatV2:error.sendFailed',
+        'Send failed',
+      ));
       throw error;
     }
   }
@@ -2712,8 +3008,11 @@ export class ChatV2TauriAdapter {
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Retry failed:', errorMsg);
       // 显示错误提示（使用 i18n）
-      const retryFailedMsg = i18n.t('chatV2:messageItem.actions.retryFailed');
-      showGlobalNotification('error', `${retryFailedMsg}: ${errorMsg}`);
+      showGlobalNotification('error', formatUserFacingError(
+        error,
+        'chatV2:messageItem.actions.retryFailed',
+        'Retry failed',
+      ));
       throw error;
     } finally {
       // 无论成功/失败都清理重试阶段暂存的并行模型，避免污染下一次普通发送
@@ -2942,8 +3241,11 @@ export class ChatV2TauriAdapter {
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Edit and resend failed:', errorMsg);
       // 显示错误提示（使用 i18n）
-      const editFailedMsg = i18n.t('chatV2:messageItem.actions.editFailed');
-      showGlobalNotification('error', `${editFailedMsg}: ${errorMsg}`);
+      showGlobalNotification('error', formatUserFacingError(
+        error,
+        'chatV2:messageItem.actions.editFailed',
+        'Edit and resend failed',
+      ));
       // 🆕 P1 状态同步修复: 返回失败结果而不是抛出异常
       // 让 Store 有机会处理失败情况
       throw error;
@@ -3686,13 +3988,12 @@ export class ChatV2TauriAdapter {
     }
 
     const explicitReasoning = modelInfo.isReasoning;
-    if (typeof explicitReasoning === 'boolean') {
-      return explicitReasoning;
-    }
-
     const explicitSupportsReasoning = (modelInfo as Record<string, unknown>).supportsReasoning;
-    if (typeof explicitSupportsReasoning === 'boolean') {
-      return explicitSupportsReasoning;
+    if (explicitReasoning === true || explicitSupportsReasoning === true) {
+      return true;
+    }
+    if (explicitReasoning === false && explicitSupportsReasoning === false) {
+      return false;
     }
 
     const providerScope =
@@ -4314,9 +4615,8 @@ export class ChatV2TauriAdapter {
       // 🔧 P1-35: 传递 Rerank 开关配置
       ragEnableReranking: chatParams.ragEnableReranking,
 
-      // 🆕 多模态知识库检索配置
-      // ★ 多模态索引已禁用，强制关闭多模态检索，避免后端报错。恢复时改回 chatParams.multimodalRagEnabled
-      multimodalRagEnabled: false,
+      // 多模态知识库检索配置（由用户开关逐轮快照到请求中）
+      multimodalRagEnabled: chatParams.multimodalRagEnabled ?? false,
       multimodalTopK: chatParams.multimodalTopK,
       multimodalEnableReranking: chatParams.multimodalEnableReranking,
       multimodalLibraryIds: chatParams.multimodalLibraryIds,

@@ -231,18 +231,12 @@ export const fileDefinition: ContextTypeDefinition = {
       if (isPdfFile(name, mimeType)) {
         const pdfModes = injectModes?.pdf;
         
-        // 确定要注入的内容类型
-        // ★ 与后端 SSOT resolve_pdf_inject_modes 对齐：
-        //   默认最大化 (text + ocr + image)；非多模态模型自动降级移除 image。
-        // 空数组视为未设置，使用默认值
+        // 注入模式是源内容契约，不随当前模型能力变化。默认使用原生解析文本和
+        // 页面原图；OCR 仅在用户显式选择时注入。
         const hasPdfModes = pdfModes && pdfModes.length > 0;
         const isMultimodal = options?.isMultimodal !== false;
-        const includeImage = isMultimodal
-          ? (hasPdfModes ? pdfModes.includes('image') : true) // ★ P0-2 修复：默认注入 image（与后端 SSOT 对齐）
-          : false; // 纯文本模型：绝不注入 image 块
-        const includeOcr = !isMultimodal
-          ? true // 纯文本模型：始终注入 OCR 文本作为回退
-          : (hasPdfModes ? pdfModes.includes('ocr') : true); // ★ P0-2 修复：默认注入 OCR（与后端 SSOT 对齐）
+        const includeImage = hasPdfModes ? pdfModes.includes('image') : true;
+        const includeOcr = hasPdfModes ? pdfModes.includes('ocr') : false;
         const includeText = hasPdfModes ? pdfModes.includes('text') : true; // 默认包含文本
         
         console.debug('[FileDef] PDF:', sourceId, { isMultimodal, includeImage, includeOcr, includeText });

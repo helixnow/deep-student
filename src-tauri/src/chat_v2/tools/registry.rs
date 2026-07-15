@@ -214,7 +214,8 @@ mod tests {
         assert!(registry.len() >= 5);
         // Agent tool
         assert!(registry.has_tool("attempt_completion"));
-        assert!(!registry.has_tool("anki:generate_cards"));
+        assert!(!registry.has_tool("builtin-anki_generate_cards"));
+        assert!(!registry.has_tool("builtin-anki_control_task"));
         // TodoList tools（注册 ID 为无前缀的 tool_names 常量）
         assert!(registry.has_tool(todo_executor::tool_names::TODO_INIT));
         assert!(registry.has_tool(todo_executor::tool_names::TODO_UPDATE));

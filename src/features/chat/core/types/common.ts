@@ -289,6 +289,8 @@ export interface AttachmentMeta {
   id: string;
   name: string;
   type: 'image' | 'document' | 'audio' | 'video' | 'other';
+  /** VFS 中的规范资源类型；附件业务表本身仍使用 att_xxx sourceId。 */
+  resourceType?: 'image' | 'file';
   mimeType: string;
   size: number;
   /** 图片/文档的预览 URL 或 base64 */

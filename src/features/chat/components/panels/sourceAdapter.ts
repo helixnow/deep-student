@@ -492,7 +492,11 @@ function getProviderLabelKey(blockType: string, groupType?: string): string {
 }
 
 function isMultimodalSourceType(value: unknown): value is MultimodalSourceType {
-  return value === 'attachment' || value === 'exam' || value === 'textbook';
+  return value === 'attachment'
+    || value === 'file'
+    || value === 'image'
+    || value === 'exam'
+    || value === 'textbook';
 }
 
 function resolveSourceGroupType(defaultGroupType: string, sourceType: unknown): string {

@@ -32,6 +32,7 @@ export {
   handleBackendEventsWithSequence,
   resetBridgeState,
   clearBridgeState,
+  flushPendingBackendEvents,
   EVENT_TYPE_VARIANT_START,
   EVENT_TYPE_VARIANT_END,
   // 类型

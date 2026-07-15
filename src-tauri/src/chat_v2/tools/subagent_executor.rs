@@ -353,30 +353,21 @@ impl ToolExecutor for SubagentExecutor {
     }
 }
 
-pub fn get_subagent_tool_schema() -> Value {
-    json!({
-        "name": SUBAGENT_TOOL_NAME,
-        "description": "Dispatch a task to a specialized subagent. The subagent will process the task asynchronously and send results back through the workspace messaging system.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "workspace_id": {
-                    "type": "string",
-                    "description": "The workspace ID where the subagent will be created"
-                },
-                "skill_id": {
-                    "type": "string",
-                    "description": "The skill/capability identifier for the subagent (e.g., 'code_review', 'research', 'translation')"
-                },
-                "task": {
-                    "type": "string",
-                    "description": "The task description for the subagent to execute"
-                },
-                "context": {
-                    "description": "Optional context data to pass to the subagent (any JSON value)"
-                }
-            },
-            "required": ["workspace_id", "skill_id", "task"]
-        }
-    })
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subagent_call_is_a_medium_sensitivity_mutation() {
+        let temp_dir = tempfile::tempdir().expect("create workspace directory");
+        let coordinator = Arc::new(WorkspaceCoordinator::new(temp_dir.path().to_path_buf()));
+        let executor = SubagentExecutor::new(coordinator);
+
+        assert!(executor.can_handle("subagent_call"));
+        assert!(executor.can_handle("builtin-subagent_call"));
+        assert_eq!(
+            executor.sensitivity_level("builtin-subagent_call"),
+            ToolSensitivity::Medium
+        );
+    }
 }

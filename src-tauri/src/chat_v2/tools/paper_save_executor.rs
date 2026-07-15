@@ -21,6 +21,7 @@ use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::{json, Value};
 use std::time::Duration;
 
+use super::arg_utils::{ensure_localized_error, with_localized_message};
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
@@ -63,6 +64,16 @@ fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
         end -= 1;
     }
     &s[..end]
+}
+
+fn localized_paper_failure(error: impl Into<String>) -> String {
+    ensure_localized_error(
+        error,
+        "PAPER_OPERATION_FAILED",
+        "chat.tools.paper.error",
+        "论文工具操作失败",
+        "The paper operation failed.",
+    )
 }
 
 // ============================================================================
@@ -580,13 +591,21 @@ impl PaperSaveExecutor {
                 progress[idx].deduplicated = true;
                 progress[idx].file_id = Some(existing.id.clone());
                 emit_progress(ctx, progress);
-                return Ok(json!({
-                    "success": true,
-                    "deduplicated": true,
-                    "file_id": existing.id,
-                    "title": title,
-                    "message": format!("论文已存在于资料库中（文件ID: {}）", existing.id),
-                }));
+                return Ok(with_localized_message(
+                    json!({
+                        "success": true,
+                        "deduplicated": true,
+                        "file_id": existing.id,
+                        "title": title,
+                    }),
+                    "chat.tools.paper_save.already_exists",
+                    json!({ "fileId": existing.id }),
+                    format!("论文已存在于资料库中（文件ID: {}）", existing.id),
+                    format!(
+                        "The paper already exists in the library (file ID: {}).",
+                        existing.id
+                    ),
+                ));
             }
         }
 
@@ -727,17 +746,29 @@ impl PaperSaveExecutor {
         progress[idx].file_id = Some(file.id.clone());
         emit_progress(ctx, progress);
 
-        Ok(json!({
-            "success": true,
-            "deduplicated": false,
-            "file_id": file.id,
-            "title": title,
-            "file_name": file_name,
-            "size_bytes": pdf_bytes.len(),
-            "page_count": page_count,
-            "has_text": extracted_text.is_some(),
-            "message": format!("论文已保存到资料库（{}页，文件ID: {}）", page_count.unwrap_or(0), file.id),
-        }))
+        let saved_pages = page_count.unwrap_or(0);
+        Ok(with_localized_message(
+            json!({
+                "success": true,
+                "deduplicated": false,
+                "file_id": file.id,
+                "title": title,
+                "file_name": file_name,
+                "size_bytes": pdf_bytes.len(),
+                "page_count": page_count,
+                "has_text": extracted_text.is_some(),
+            }),
+            "chat.tools.paper_save.saved",
+            json!({ "pageCount": saved_pages, "fileId": file.id }),
+            format!(
+                "论文已保存到资料库（{}页，文件ID: {}）",
+                saved_pages, file.id
+            ),
+            format!(
+                "The paper was saved to the library ({} pages, file ID: {}).",
+                saved_pages, file.id
+            ),
+        ))
     }
 
     /// 解析所有可用的 PDF 下载源（支持多源自动回退）
@@ -1284,6 +1315,7 @@ impl ToolExecutor for PaperSaveExecutor {
                 Ok(result)
             }
             Err(e) => {
+                let e = localized_paper_failure(e);
                 ctx.emit_tool_call_error(&e);
 
                 log::warn!(
@@ -1355,6 +1387,18 @@ mod tests {
             executor.sensitivity_level("builtin-cite_format"),
             ToolSensitivity::Low
         ));
+    }
+
+    #[test]
+    fn executor_failure_boundary_localizes_paper_errors() {
+        let error: Value = serde_json::from_str(&localized_paper_failure(
+            "Missing required parameter 'papers' (array)",
+        ))
+        .expect("localized paper error");
+        assert_eq!(error["code"], "PAPER_OPERATION_FAILED");
+        assert_eq!(error["messageKey"], "chat.tools.paper.error");
+        assert!(error["messageFallback"]["zh-CN"].is_string());
+        assert!(error["messageFallback"]["en-US"].is_string());
     }
 
     #[test]

@@ -41,7 +41,7 @@ export const attachmentToolsSkill: SkillDefinition = {
   "limit": 10
 }
 \`\`\`
-type 可选：image/document/audio/video/all
+type 可选：image/document/all
 
 ### builtin-attachment_read
 读取附件内容，参数格式：
@@ -56,8 +56,8 @@ type 可选：image/document/audio/video/all
 
 - **image**: 图片文件（jpg/png/gif等）
 - **document**: 文档文件（pdf/docx/txt等）
-- **audio**: 音频文件（mp3/wav等）
-- **video**: 视频文件（mp4/webm等）
+
+当前工具不提供音频转写或视频解析；遇到 audio/video 附件时不要声称可以读取其内容。
 
 ## 使用建议
 
@@ -79,7 +79,7 @@ type 可选：image/document/audio/video/all
           type: { 
             type: 'string', 
             description: '附件类型过滤，默认 all',
-            enum: ['image', 'document', 'audio', 'video', 'all'],
+            enum: ['image', 'document', 'all'],
             default: 'all'
           },
           limit: { 

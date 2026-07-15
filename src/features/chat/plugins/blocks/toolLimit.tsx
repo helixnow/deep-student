@@ -26,7 +26,7 @@ import { blockRegistry, type BlockComponentProps } from '../../registry';
  * 3. 🆕 提供"继续执行"按钮，点击后在同一消息内继续执行
  */
 const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming, onContinue }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('chatV2');
   const content = block.content || '';
   const [isContinuing, setIsContinuing] = useState(false);
 

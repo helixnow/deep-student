@@ -254,6 +254,32 @@ describe('InputBarUI thinking/runtime model menu', () => {
     expect(onSetThinkingDepth).toHaveBeenCalledWith('off');
   });
 
+  it('shows effort levels without an off action for forced-thinking models', async () => {
+    const user = userEvent.setup();
+    const onSetThinkingDepth = vi.fn();
+
+    renderInputBar({
+      enableThinking: true,
+      thinkingStateLabel: '推理: high',
+      thinkingCanDisable: false,
+      thinkingDepthOptions: [
+        { value: 'low', labelKey: 'low', defaultLabel: 'Low' },
+        { value: 'high', labelKey: 'high', defaultLabel: 'High' },
+      ],
+      thinkingDepthValue: 'high',
+      onToggleThinking: vi.fn(),
+      onSetThinkingDepth,
+    });
+
+    await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+    expect(screen.getByRole('menuitem', { name: 'Low' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'High' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: '关闭' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('menuitem', { name: 'Low' }));
+    expect(onSetThinkingDepth).toHaveBeenCalledWith('low');
+  });
+
   it('shows unsupported reasoning as unavailable while keeping model switching available', async () => {
     const user = userEvent.setup();
     const onSelectRuntimeModel = vi.fn();

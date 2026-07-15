@@ -49,6 +49,11 @@ export const reviewPlanningSkill: SkillDefinition = {
 ### 统计概览
 - **builtin-review_stats**: 复习统计（各状态数量、到期/逾期、正确率；可选日历热力图）
 
+### 管理单个计划
+- **builtin-review_suspend**: 暂停计划，之后不再出现在到期队列中
+- **builtin-review_resume**: 恢复已暂停计划，并重新排到今天
+- **builtin-review_delete**: 永久删除计划（High；必须先用 ask_user 明确确认）
+
 ## 典型工作流
 
 ### A. 错题入库后立刻安排复习（🔗 与 qbank-tools / essay-grading 衔接）
@@ -68,6 +73,12 @@ export const reviewPlanningSkill: SkillDefinition = {
 1. \`builtin-review_plan_generate\`（exam_id）
 2. \`builtin-review_stats\` 展示计划全貌（今日到期/总计划数）
 
+### D. 停止或恢复单题复习
+1. 从 \`review_get_due\` 的结果取得准确 \`plan_id\` 和 \`updatedAt\`
+2. 临时停止时调用 \`builtin-review_suspend\`；之后使用暂停结果返回的新 \`updatedAt\` 调 \`builtin-review_resume\`
+3. 永久删除时必须先 \`load_skills(["ask-user"])\`，再用 \`builtin-ask_user\` 列明计划并确认“永久删除”
+4. 只有用户明确确认后才调用 \`builtin-review_delete\`；审批通过后不可恢复
+
 ## quality 评分指导（替用户判断时）
 
 - 答案完全正确且流畅 → 5
@@ -80,7 +91,8 @@ export const reviewPlanningSkill: SkillDefinition = {
 ## 注意事项
 
 - review_schedule 对已有计划的题目自动跳过（幂等），可放心重复调用
-- 不提供删除复习计划的工具；用户要求停止复习某题时，说明可在复习界面暂停
+- 临时停止优先 suspend，不要用 delete 代替；delete 是不可恢复的 High 操作
+- submit/suspend/resume/delete 都必须使用刚读取工具返回的准确 \`plan_id\` 与 \`updatedAt\`；不要猜测 ID 或复用过期版本
 - 日期参数统一使用 YYYY-MM-DD 格式
 `,
   allowedTools: [
@@ -89,6 +101,9 @@ export const reviewPlanningSkill: SkillDefinition = {
     'builtin-review_plan_generate',
     'builtin-review_submit',
     'builtin-review_stats',
+    'builtin-review_suspend',
+    'builtin-review_resume',
+    'builtin-review_delete',
   ],
   embeddedTools: [
     {
@@ -144,7 +159,7 @@ export const reviewPlanningSkill: SkillDefinition = {
     {
       name: 'builtin-review_submit',
       description:
-        '提交一次复习结果（quality 0-5 评分），SM-2 算法自动计算下次复习日期：通过则间隔拉长，失败则重置为明天。plan_id 与 question_id 二选一。',
+        '提交一次复习结果（quality 0-5 评分），SM-2 自动计算下次复习日期。必须先从 review_get_due 等读取计划，并携带返回的 updatedAt 作为 expected_updated_at；plan_id 与 question_id 二选一。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -156,10 +171,15 @@ export const reviewPlanningSkill: SkillDefinition = {
             maximum: 5,
             description: '【必填】0-5 评分：0=完全不记得, 1-2=错误, 3=勉强正确, 4=良好, 5=完美回忆',
           },
+          expected_updated_at: {
+            type: 'string',
+            minLength: 1,
+            description: '【必填】计划读取结果中的 updatedAt；用于防止覆盖并发更新',
+          },
           user_answer: { type: 'string', description: '用户本次作答内容（可选，记入复习历史）' },
           time_spent_seconds: { type: 'integer', minimum: 0, description: '本次复习耗时秒数（可选）' },
         },
-        required: ['quality'],
+        required: ['quality', 'expected_updated_at'],
       },
     },
     {
@@ -174,6 +194,48 @@ export const reviewPlanningSkill: SkillDefinition = {
           start_date: { type: 'string', description: '日历起始日期 YYYY-MM-DD（可选）' },
           end_date: { type: 'string', description: '日历结束日期 YYYY-MM-DD（可选）' },
         },
+      },
+    },
+    {
+      name: 'builtin-review_suspend',
+      description:
+        '暂停一个复习计划（Medium）。plan_id 和 expected_updated_at 必须来自刚读取的计划；暂停后该计划不再进入到期队列。返回暂停后的计划状态，可用 review_resume 恢复。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          plan_id: { type: 'string', minLength: 1, description: '【必填】复习计划 ID（来自 review_get_due）' },
+          expected_updated_at: { type: 'string', minLength: 1, description: '【必填】读取计划时返回的 updatedAt' },
+        },
+        required: ['plan_id', 'expected_updated_at'],
+      },
+    },
+    {
+      name: 'builtin-review_resume',
+      description:
+        '恢复一个已暂停的复习计划（Medium）。恢复后会重新排到今天；plan_id 和 expected_updated_at 必须来自此前 suspend/get_due 返回的准确值。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          plan_id: { type: 'string', minLength: 1, description: '【必填】已暂停的复习计划 ID' },
+          expected_updated_at: { type: 'string', minLength: 1, description: '【必填】读取计划时返回的 updatedAt' },
+        },
+        required: ['plan_id', 'expected_updated_at'],
+      },
+    },
+    {
+      name: 'builtin-review_delete',
+      description:
+        '永久删除一个复习计划（High，不可恢复）。调用前必须加载 ask-user 技能并用 builtin-ask_user 向用户列明目标、取得明确确认；还必须携带读取计划时的 updatedAt，避免删除已变化的计划。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          plan_id: { type: 'string', minLength: 1, description: '【必填】要永久删除的复习计划 ID' },
+          expected_updated_at: { type: 'string', minLength: 1, description: '【必填】读取计划时返回的 updatedAt' },
+        },
+        required: ['plan_id', 'expected_updated_at'],
       },
     },
   ],

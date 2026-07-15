@@ -109,203 +109,181 @@ function createNotificationBridge(t: TFunction) {
       > = {
         'permission-denied': {
           type: 'warning',
-          title: t('inputBar.voiceInput.permissionDeniedTitle', 'Microphone permission needed'),
+          title: t('inputBar.voiceInput.permissionDeniedTitle'),
           message: t(
-            'inputBar.voiceInput.permissionDeniedMessage',
-            'Allow microphone access to use voice input.'
+            'inputBar.voiceInput.permissionDeniedMessage'
           ),
         },
         timeout: {
           type: 'warning',
-          title: t('inputBar.voiceInput.timeoutTitle', 'Recording stopped'),
+          title: t('inputBar.voiceInput.timeoutTitle'),
           message: t(
-            'inputBar.voiceInput.timeoutMessage',
-            'The recording reached the time limit and was sent for transcription.'
+            'inputBar.voiceInput.timeoutMessage'
           ),
         },
         'empty-transcript': {
           type: 'warning',
-          title: t('inputBar.voiceInput.emptyTranscriptTitle', 'No speech detected'),
+          title: t('inputBar.voiceInput.emptyTranscriptTitle'),
           message: t(
-            'inputBar.voiceInput.emptyTranscriptMessage',
-            'No transcript was returned, so the input was left unchanged.'
+            'inputBar.voiceInput.emptyTranscriptMessage'
           ),
         },
         'auth-failed': {
           type: 'error',
-          title: t('inputBar.voiceInput.authFailedTitle', 'Voice input authentication failed'),
+          title: t('inputBar.voiceInput.authFailedTitle'),
           message: t(
-            'inputBar.voiceInput.authFailedMessage',
-            'Check your SiliconFlow API key and try again.'
+            'inputBar.voiceInput.authFailedMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openSettingsAction', 'Open Settings'),
+            label: t('inputBar.voiceInput.openSettingsAction'),
             onClick: openApiSettings,
           },
         },
         'rate-limited': {
           type: 'warning',
-          title: t('inputBar.voiceInput.rateLimitedTitle', 'Voice input is rate limited'),
+          title: t('inputBar.voiceInput.rateLimitedTitle'),
           message: t(
-            'inputBar.voiceInput.rateLimitedMessage',
-            'Too many transcription requests were sent. Please wait a moment and try again.'
+            'inputBar.voiceInput.rateLimitedMessage'
           ),
         },
         'network-failed': {
           type: 'error',
-          title: t('inputBar.voiceInput.networkFailedTitle', 'Voice input network error'),
+          title: t('inputBar.voiceInput.networkFailedTitle'),
           message: t(
-            'inputBar.voiceInput.networkFailedMessage',
-            'The transcription request failed due to a network problem.'
+            'inputBar.voiceInput.networkFailedMessage'
           ),
         },
         'settings-required': {
           type: 'warning',
-          title: t('inputBar.voiceInput.settingsRequiredTitle', 'Set up SiliconFlow first'),
+          title: t('inputBar.voiceInput.settingsRequiredTitle'),
           message: t(
-            'inputBar.voiceInput.settingsRequiredMessage',
-            'Add a SiliconFlow API key in Settings before using voice input.'
+            'inputBar.voiceInput.settingsRequiredMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openSettingsAction', 'Open Settings'),
+            label: t('inputBar.voiceInput.openSettingsAction'),
             onClick: openApiSettings,
           },
         },
         'model-assignment-required': {
           type: 'warning',
-          title: t('inputBar.voiceInput.modelAssignmentRequiredTitle', 'Assign a voice input model'),
+          title: t('inputBar.voiceInput.modelAssignmentRequiredTitle'),
           message: t(
-            'inputBar.voiceInput.modelAssignmentRequiredMessage',
-            'Choose a Voice Input ASR model in Settings before recording.'
+            'inputBar.voiceInput.modelAssignmentRequiredMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openSettingsAction', 'Open Settings'),
+            label: t('inputBar.voiceInput.openSettingsAction'),
             onClick: openModelSettings,
           },
         },
         'model-config-missing': {
           type: 'warning',
-          title: t('inputBar.voiceInput.modelConfigMissingTitle', 'Voice input model needs attention'),
+          title: t('inputBar.voiceInput.modelConfigMissingTitle'),
           message: t(
-            'inputBar.voiceInput.modelConfigMissingMessage',
-            'The assigned ASR model is missing or no longer supports voice input. Pick another one in Settings > Models.'
+            'inputBar.voiceInput.modelConfigMissingMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openSettingsAction', 'Open Settings'),
+            label: t('inputBar.voiceInput.openSettingsAction'),
             onClick: openModelSettings,
           },
         },
         'model-disabled': {
           type: 'warning',
-          title: t('inputBar.voiceInput.modelDisabledTitle', 'Voice input model is disabled'),
+          title: t('inputBar.voiceInput.modelDisabledTitle'),
           message: t(
-            'inputBar.voiceInput.modelDisabledMessage',
-            'Enable the assigned ASR model or pick another one in Settings > Models.'
+            'inputBar.voiceInput.modelDisabledMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openSettingsAction', 'Open Settings'),
+            label: t('inputBar.voiceInput.openSettingsAction'),
             onClick: openModelSettings,
           },
         },
         'provider-unavailable': {
           type: 'error',
-          title: t('inputBar.voiceInput.providerUnavailableTitle', 'Voice input provider unavailable'),
+          title: t('inputBar.voiceInput.providerUnavailableTitle'),
           message: t(
-            'inputBar.voiceInput.providerUnavailableMessage',
-            'The selected voice input provider is not available.'
+            'inputBar.voiceInput.providerUnavailableMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openSettingsAction', 'Open Settings'),
+            label: t('inputBar.voiceInput.openSettingsAction'),
             onClick: openModelSettings,
           },
         },
         'no-active-target': {
           type: 'info',
-          title: t('inputBar.voiceInput.noTargetTitle', 'Select an input first'),
+          title: t('inputBar.voiceInput.noTargetTitle'),
           message: t(
-            'inputBar.voiceInput.noTargetMessage',
-            'Focus a supported text input before inserting a transcript.'
+            'inputBar.voiceInput.noTargetMessage'
           ),
         },
         'recording-unavailable': {
           type: 'error',
-          title: t('inputBar.voiceInput.recordingUnavailableTitle', 'Recording unavailable'),
+          title: t('inputBar.voiceInput.recordingUnavailableTitle'),
           message: t(
-            'inputBar.voiceInput.recordingUnavailableMessage',
-            'This environment does not support microphone recording.'
+            'inputBar.voiceInput.recordingUnavailableMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openVoiceSettingsAction', 'Open Voice Settings'),
+            label: t('inputBar.voiceInput.openVoiceSettingsAction'),
             onClick: openVoiceSettings,
           },
         },
         'missing-get-user-media': {
           type: 'error',
           title: t(
-            'inputBar.voiceInput.missingGetUserMediaTitle',
-            'Recording runtime is incomplete'
+            'inputBar.voiceInput.missingGetUserMediaTitle'
           ),
           message: t(
-            'inputBar.voiceInput.missingGetUserMediaMessage',
-            'This build is not exposing microphone capture to the app. Check the Voice Input section in Settings.'
+            'inputBar.voiceInput.missingGetUserMediaMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openVoiceSettingsAction', 'Open Voice Settings'),
+            label: t('inputBar.voiceInput.openVoiceSettingsAction'),
             onClick: openVoiceSettings,
           },
         },
         'insecure-context': {
           type: 'error',
           title: t(
-            'inputBar.voiceInput.insecureContextTitle',
-            'Recording runtime is not secure'
+            'inputBar.voiceInput.insecureContextTitle'
           ),
           message: t(
-            'inputBar.voiceInput.insecureContextMessage',
-            'This runtime is not exposing a secure microphone context, so voice input cannot start.'
+            'inputBar.voiceInput.insecureContextMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openVoiceSettingsAction', 'Open Voice Settings'),
+            label: t('inputBar.voiceInput.openVoiceSettingsAction'),
             onClick: openVoiceSettings,
           },
         },
         'missing-recorder-backend': {
           type: 'error',
           title: t(
-            'inputBar.voiceInput.missingRecorderBackendTitle',
-            'No recording backend available'
+            'inputBar.voiceInput.missingRecorderBackendTitle'
           ),
           message: t(
-            'inputBar.voiceInput.missingRecorderBackendMessage',
-            'The runtime does not expose MediaRecorder or a PCM fallback, so voice input cannot record yet.'
+            'inputBar.voiceInput.missingRecorderBackendMessage'
           ),
           action: {
-            label: t('inputBar.voiceInput.openVoiceSettingsAction', 'Open Voice Settings'),
+            label: t('inputBar.voiceInput.openVoiceSettingsAction'),
             onClick: openVoiceSettings,
           },
         },
         'microphone-not-found': {
           type: 'warning',
-          title: t('inputBar.voiceInput.microphoneNotFoundTitle', 'No microphone found'),
+          title: t('inputBar.voiceInput.microphoneNotFoundTitle'),
           message: t(
-            'inputBar.voiceInput.microphoneNotFoundMessage',
-            'Connect or enable a microphone before using voice input.'
+            'inputBar.voiceInput.microphoneNotFoundMessage'
           ),
         },
         'microphone-busy': {
           type: 'warning',
-          title: t('inputBar.voiceInput.microphoneBusyTitle', 'Microphone unavailable'),
+          title: t('inputBar.voiceInput.microphoneBusyTitle'),
           message: t(
-            'inputBar.voiceInput.microphoneBusyMessage',
-            'Another app may already be using the microphone.'
+            'inputBar.voiceInput.microphoneBusyMessage'
           ),
         },
         'transcription-failed': {
           type: 'error',
-          title: t('inputBar.voiceInput.failedTitle', 'Voice input failed'),
+          title: t('inputBar.voiceInput.failedTitle'),
           message: t(
-            'inputBar.voiceInput.failedMessage',
-            'The recording could not be transcribed.'
+            'inputBar.voiceInput.failedMessage'
           ),
         },
       };

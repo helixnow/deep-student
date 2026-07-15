@@ -4,6 +4,7 @@ import {
   clearBridgeState,
   clearEventContext,
   clearProcessedEventIds,
+  flushPendingBackendEvents,
   handleBackendEventWithSequence,
   resetBridgeState,
   type BackendEvent,
@@ -98,5 +99,35 @@ describe('eventBridge guards', () => {
 
     expect(onStart).toHaveBeenCalledTimes(1);
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('drains sequence-buffered block events at the terminal boundary', () => {
+    const store = createStore(3);
+
+    handleBackendEventWithSequence(store, {
+      sequenceId: 0,
+      type: 'tool_call',
+      phase: 'start',
+      messageId: 'msg_test',
+      blockId: 'blk_tail',
+      payload: { toolName: 'fetch' },
+      skillStateVersion: 3,
+      roundId: 'tool-round-1',
+    });
+    // Sequence 1 is absent, so this valid tail event waits in pendingEvents.
+    handleBackendEventWithSequence(store, {
+      sequenceId: 2,
+      type: 'tool_call',
+      phase: 'end',
+      blockId: 'blk_tail',
+      skillStateVersion: 3,
+      roundId: 'tool-round-1',
+    });
+
+    expect(onEnd).not.toHaveBeenCalled();
+
+    flushPendingBackendEvents(store);
+
+    expect(onEnd).toHaveBeenCalledTimes(1);
   });
 });

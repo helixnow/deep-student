@@ -8,6 +8,7 @@ pub mod anki;
 pub mod anki_connect_service;
 #[allow(dead_code)]
 pub mod apkg_exporter_service;
+pub mod apkg_importer_service;
 #[allow(dead_code)]
 pub mod backup_job_manager;
 pub mod batch_operations;
@@ -72,6 +73,7 @@ pub mod notes_exporter;
 pub mod notes_manager;
 pub mod ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
 pub mod ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
+pub mod openai_codex;
 pub mod package_manager;
 pub mod page_rasterizer;
 pub mod pdf_ocr_service;
@@ -983,6 +985,35 @@ pub fn run() {
                 });
             }
 
+            // 有启用自动化时，用户关闭主窗口默认转为后台驻留。应用仍可通过
+            // Dock/任务栏再次启动；single-instance 回调会唤回这一窗口。显式“退出”
+            // 仍走 RunEvent::ExitRequested，不拦截。
+            #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+            if let Some(window) = app.get_webview_window("main") {
+                let database_for_close = database.clone();
+                let window_for_close = window.clone();
+                let app_for_close = app_handle.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        if !crate::chat_v2::automations::automation_app_is_exiting()
+                            && crate::chat_v2::automations::should_keep_automation_background(
+                                &database_for_close,
+                            )
+                        {
+                            api.prevent_close();
+                            let _ = window_for_close.hide();
+                            use tauri_plugin_notification::NotificationExt;
+                            let _ = app_for_close
+                                .notification()
+                                .builder()
+                                .title("Deep Student 正在后台运行")
+                                .body("已启用的定时任务会继续按计划执行。")
+                                .show();
+                        }
+                    }
+                });
+            }
+
             // macOS 窗口圆角设置
             #[cfg(target_os = "macos")]
             {
@@ -1121,6 +1152,7 @@ pub fn run() {
             crate::commands::inspect_pdf_text_for_qbank,
             crate::commands::import_question_bank,
             crate::commands::import_question_bank_stream,
+            crate::commands::cancel_question_bank_import,
             // 断点续导
             crate::commands::resume_question_import,
             crate::commands::list_importing_sessions,
@@ -1130,6 +1162,7 @@ pub fn run() {
             crate::commands::qbank_remove_question_image,
             // CSV 导入导出命令
             crate::commands::import_questions_csv,
+            crate::commands::cancel_questions_csv_import,
             crate::commands::export_questions_csv,
             crate::commands::get_csv_preview,
             crate::commands::get_csv_exportable_fields,
@@ -1176,6 +1209,11 @@ pub fn run() {
             crate::commands::get_model_profiles,
             crate::commands::save_model_profiles,
             crate::commands::test_api_connection,
+            crate::cmd::openai_codex::openai_codex_auth_status,
+            crate::cmd::openai_codex::openai_codex_login_start,
+            crate::cmd::openai_codex::openai_codex_login_cancel,
+            crate::cmd::openai_codex::openai_codex_logout,
+            crate::cmd::openai_codex::openai_codex_usage,
 
             crate::commands::get_model_adapter_options,
             crate::commands::save_model_adapter_options,
@@ -1661,6 +1699,8 @@ pub fn run() {
             // VFS 多模态统一管理命令（2026-01）
             ,crate::vfs::handlers::vfs_multimodal_index
             ,crate::vfs::handlers::vfs_multimodal_search
+            ,crate::vfs::handlers::vfs_multimodal_search_detailed
+            ,crate::vfs::handlers::vfs_inspect_retrieval_capabilities
             ,crate::vfs::handlers::vfs_multimodal_stats
             ,crate::vfs::handlers::vfs_multimodal_delete
             ,crate::vfs::handlers::vfs_multimodal_index_resource
@@ -1924,6 +1964,13 @@ pub fn run() {
             ,crate::cmd::fsrs_review::fsrs_get_due
             ,crate::cmd::fsrs_review::fsrs_rate
             ,crate::cmd::fsrs_review::fsrs_get_stats
+            ,crate::cmd::fsrs_review::fsrs_undo_last_review
+            ,crate::cmd::fsrs_review::fsrs_suspend_card
+            ,crate::cmd::fsrs_review::fsrs_unsuspend_card
+            // =================================================
+            // APKG 本地导入
+            // =================================================
+            ,crate::cmd::apkg_import::import_apkg_to_library
             // =================================================
             // Workbench 内置浏览器（B1e；content 窗零 capability，见 capabilities/browser-content.json）
             // =================================================
@@ -1933,8 +1980,13 @@ pub fn run() {
             ,crate::cmd::browser::browser_forward
             ,crate::cmd::browser::browser_reload
             ,crate::cmd::browser::browser_get_state
+            ,crate::cmd::browser::browser_get_surface_host_mode
+            ,crate::cmd::browser::browser_set_surface_bounds
+            ,crate::cmd::browser::browser_set_surface_visibility
+            ,crate::cmd::browser::browser_content_user_input
             ,crate::cmd::browser::browser_close
             ,crate::cmd::browser::browser_focus
+            ,crate::cmd::browser::browser_release_surface_focus
             ,crate::cmd::browser::browser_take_over
             ,crate::cmd::browser::browser_snapshot
             ,crate::cmd::browser::browser_click
@@ -1978,6 +2030,9 @@ pub fn run() {
             // 恢复命令
             ,crate::data_governance::commands_restore::data_governance_restore_backup
             // 同步命令
+            ,crate::data_governance::commands_sync::data_governance_save_cloud_config_ssot
+            ,crate::data_governance::commands_sync::data_governance_get_cloud_config_ssot
+            ,crate::data_governance::commands_sync::data_governance_clear_cloud_config_ssot
             ,crate::data_governance::commands_sync::data_governance_get_sync_status
             ,crate::data_governance::commands_sync::data_governance_detect_conflicts
             ,crate::data_governance::commands_sync::data_governance_resolve_conflicts
@@ -2018,7 +2073,17 @@ pub fn run() {
             // =================================================
             // Chat V2 自动化：立即运行（headless agent turn）
             // =================================================
+            ,crate::chat_v2::automations::chat_v2_automation_list
+            ,crate::chat_v2::automations::chat_v2_automation_create
+            ,crate::chat_v2::automations::chat_v2_automation_set_enabled
+            ,crate::chat_v2::automations::chat_v2_automation_update
+            ,crate::chat_v2::automations::chat_v2_automation_delete
             ,crate::chat_v2::automations::chat_v2_automation_run_now
+            ,crate::chat_v2::automations::chat_v2_automation_runs
+            ,crate::chat_v2::automations::chat_v2_automation_retry_run
+            ,crate::chat_v2::automations::chat_v2_automation_cancel_run
+            ,crate::chat_v2::automations::chat_v2_automation_summary
+            ,crate::chat_v2::automations::chat_v2_automation_set_background_enabled
         ])
         // 注册 pdfstream:// 自定义协议，用于 PDF 流式加载（支持 HTTP Range Request）
         .register_uri_scheme_protocol("pdfstream", |ctx, request| {
@@ -2054,6 +2119,7 @@ pub fn run() {
         .expect("Failed to build Tauri application")
         .run(|_app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
+                crate::chat_v2::automations::mark_automation_app_exiting();
                 tauri::async_runtime::block_on(crate::background_tasks::shutdown());
             }
             #[cfg(target_os = "macos")]
@@ -2074,6 +2140,100 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+/// Starts the durable VFS index consumer. SQLite owns pending/failed state and
+/// the Lance orphan queue, so an interrupted run resumes on the next tick or
+/// application start without relying on an in-memory job list.
+fn start_vfs_index_worker(
+    vfs_db: Arc<crate::vfs::VfsDatabase>,
+    llm_manager: Arc<crate::llm_manager::LLMManager>,
+    lance_store: Arc<crate::vfs::VfsLanceStore>,
+) {
+    crate::background_tasks::spawn(async move {
+        let mut last_run: Option<std::time::Instant> = None;
+        loop {
+            if crate::background_tasks::BACKGROUND_TASKS.is_closed() {
+                break;
+            }
+
+            let basic = crate::vfs::VfsIndexingService::new(vfs_db.clone());
+            let config = match basic.get_indexing_config() {
+                Ok(config) => config,
+                Err(error) => {
+                    tracing::warn!("[VfsIndexWorker] Failed to load config: {}", error);
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+            let interval = std::time::Duration::from_secs(config.interval_secs.max(1) as u64);
+            let due = last_run.map_or(true, |last| last.elapsed() >= interval);
+            if !config.enabled || !due {
+                let remaining = last_run
+                    .map(|last| interval.saturating_sub(last.elapsed()))
+                    .unwrap_or(interval)
+                    .min(std::time::Duration::from_secs(5));
+                tokio::time::sleep(remaining.max(std::time::Duration::from_millis(100))).await;
+                continue;
+            }
+            last_run = Some(std::time::Instant::now());
+
+            let full = match crate::vfs::VfsFullIndexingService::new(
+                vfs_db.clone(),
+                llm_manager.clone(),
+                lance_store.clone(),
+            ) {
+                Ok(service) => service,
+                Err(error) => {
+                    tracing::warn!(
+                        "[VfsIndexWorker] Failed to initialize text worker: {}",
+                        error
+                    );
+                    continue;
+                }
+            };
+
+            // Keep jobs pending while a capability is unconfigured. Configuration
+            // changes are picked up by a later tick without exhausting retry_count.
+            let text_embedding_configured = llm_manager.get_embedding_model_config().await.is_ok();
+            if text_embedding_configured {
+                match full.process_pending_batch(config.batch_size).await {
+                    Ok((success, failed)) if success > 0 || failed > 0 => tracing::info!(
+                        "[VfsIndexWorker] text batch completed: success={}, failed={}",
+                        success,
+                        failed
+                    ),
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!("[VfsIndexWorker] text batch failed: {}", error)
+                    }
+                }
+            } else if let Err(error) = full.drain_lance_orphan_queue(200).await {
+                // Deletion compensation itself does not require an embedding provider.
+                tracing::warn!("[VfsIndexWorker] Orphan cleanup failed: {}", error);
+            }
+
+            if llm_manager.is_multimodal_rag_configured().await {
+                let multimodal = crate::vfs::VfsMultimodalService::new(
+                    vfs_db.clone(),
+                    llm_manager.clone(),
+                    lance_store.clone(),
+                );
+                match multimodal.process_pending_batch(config.batch_size).await {
+                    Ok((success, failed)) if success > 0 || failed > 0 => tracing::info!(
+                        "[VfsIndexWorker] multimodal batch completed: success={}, failed={}",
+                        success,
+                        failed
+                    ),
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!("[VfsIndexWorker] multimodal batch failed: {}", error)
+                    }
+                }
+            }
+        }
+        tracing::info!("[VfsIndexWorker] stopped");
+    });
 }
 
 // Helper to build the global application state
@@ -2108,20 +2268,26 @@ fn build_app_state(
     app_handle.manage(vfs_db.clone());
 
     // ★ VfsLanceStore：非核心，可降级
-    match crate::vfs::VfsLanceStore::new(vfs_db.clone()) {
+    let vfs_lance_store = match crate::vfs::VfsLanceStore::new(vfs_db.clone()) {
         Ok(store) => {
-            app_handle.manage(std::sync::Arc::new(store));
+            let store = std::sync::Arc::new(store);
+            app_handle.manage(store.clone());
+            Some(store)
         }
         Err(e) => {
             log::error!("[AppState] VfsLanceStore init failed, degrading: {}", e);
+            None
         }
-    }
+    };
 
     let llm_manager = Arc::new(
         crate::llm_manager::LLMManager::new(database.clone(), file_manager.clone())
             .expect("Failed to initialise LLMManager"),
     );
     app_handle.manage(llm_manager.clone());
+    if let Some(lance_store) = vfs_lance_store {
+        start_vfs_index_worker(vfs_db.clone(), llm_manager.clone(), lance_store);
+    }
     let exam_sheet_service = Arc::new(
         crate::exam_sheet_service::ExamSheetService::new(
             database.clone(),
@@ -2163,6 +2329,8 @@ fn build_app_state(
         String,
         std::collections::HashSet<usize>,
     >::new()));
+    let csv_import_cancellations = Arc::new(dashmap::DashMap::new());
+    let question_import_cancellations = Arc::new(dashmap::DashMap::new());
 
     let notes_manager = Arc::new(
         crate::notes_manager::NotesManager::new_with_vfs(notes_database.clone(), vfs_db.clone())
@@ -2348,6 +2516,8 @@ fn build_app_state(
         pdf_ocr_pauses,
         pdf_ocr_sessions: Arc::new(tokio::sync::Mutex::new(HashMap::new())), // 🎯 Initialize sessions map
         pdf_ocr_skip_pages,
+        csv_import_cancellations,
+        question_import_cancellations,
         app_handle,
         active_database: RwLock::new(crate::commands::ActiveDatabaseKind::Production),
         question_bank_service,

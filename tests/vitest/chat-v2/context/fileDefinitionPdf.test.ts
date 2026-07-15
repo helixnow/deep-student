@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { Resource } from '@/features/chat/context';
-import { fileDefinition, isImageContentBlock } from '@/features/chat/context';
+import { fileDefinition, isImageContentBlock, isTextContentBlock } from '@/features/chat/context';
 
 describe('fileDefinition (PDF multimodal)', () => {
   it('should convert multimodalBlocks image {mediaType, base64} into an image ContentBlock', () => {
@@ -49,5 +49,35 @@ describe('fileDefinition (PDF multimodal)', () => {
     expect((imageBlocks[0] as any).mediaType).toBe('image/png');
     expect((imageBlocks[0] as any).base64).toBe('base64_png');
   });
-});
 
+  it('keeps native text and page images for TM while leaving OCR opt-in', () => {
+    const resource: Resource = {
+      id: 'res_test_pdf_tm',
+      hash: 'hash_pdf_tm',
+      type: 'file',
+      data: '',
+      refCount: 1,
+      createdAt: Date.now(),
+      _resolvedResources: [{
+        sourceId: 'att_pdf_tm',
+        resourceHash: 'hash_pdf_tm',
+        type: 'file',
+        name: 'tm.pdf',
+        path: '/tmp/tm.pdf',
+        content: 'native extracted text',
+        found: true,
+        metadata: { name: 'tm.pdf', mimeType: 'application/pdf', size: 1234 },
+        multimodalBlocks: [
+          { type: 'image', mediaType: 'image/png', base64: 'page_image' },
+          { type: 'text', text: '<ocr_page page="1">OCR duplicate</ocr_page>' },
+        ],
+      }],
+    };
+
+    const blocks = fileDefinition.formatToBlocks(resource, { isMultimodal: false } as any);
+    expect(blocks.filter(isImageContentBlock)).toHaveLength(1);
+    const text = blocks.filter(isTextContentBlock).map((block: any) => block.text).join('\n');
+    expect(text).toContain('native extracted text');
+    expect(text).not.toContain('<pdf_ocr');
+  });
+});

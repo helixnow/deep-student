@@ -646,6 +646,13 @@ pub trait ToolExecutor: Send + Sync {
         ToolSensitivity::Low
     }
 
+    /// Resolve sensitivity for a concrete call. Executors that multiplex read
+    /// and write actions under one tool name can override this method; all
+    /// existing executors retain their name-based behavior by default.
+    fn sensitivity_level_for_call(&self, tool_name: &str, _arguments: &Value) -> ToolSensitivity {
+        self.sensitivity_level(tool_name)
+    }
+
     /// 获取工具并发等级（2026-07 并行工具调用改造）
     ///
     /// 接收 `tool_name` 是因为同一 executor 可能混合读写工具
@@ -657,6 +664,14 @@ pub trait ToolExecutor: Send + Sync {
     /// 只有明确只读/并行安全的 executor 才应覆写此方法。
     fn concurrency_class(&self, _tool_name: &str) -> ToolConcurrency {
         ToolConcurrency::Serial
+    }
+
+    /// 执行器是否自行处理取消终态。
+    ///
+    /// 默认 false：注册表在 cancellation token 触发时立即中断 future。
+    /// ACR 桥调用需在发出 cancel 后有界 drain 前端权威回执，因此可按工具名覆写为 true。
+    fn manages_cancellation(&self, _tool_name: &str) -> bool {
+        false
     }
 
     /// 获取执行器名称（用于日志）

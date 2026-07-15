@@ -874,6 +874,16 @@ impl SessionSkillState {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct VariantMeta {
+    /// Per-variant model/capability snapshot captured before fan-out.
+    ///
+    /// This is deliberately variant-scoped: parallel variants may target models with
+    /// different image capabilities and must never share a compiled context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_snapshot: Option<ModelExecutionSnapshot>,
+    /// Variant-specific derived visual observations. Original ImageRef parts remain on the user
+    /// message; the active variant's artifacts may be promoted there for later TM reuse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canonical_artifacts: Option<Vec<CanonicalContentPart>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_snapshot_before: Option<SkillStateSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -882,6 +892,91 @@ pub struct VariantMeta {
     pub skill_runtime_before: Option<ReplaySkillPayloadSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_runtime_after: Option<ReplaySkillPayloadSnapshot>,
+}
+
+/// Canonical, persistence-safe message content.
+///
+/// Binary image bytes are intentionally absent. Images retain stable VFS/blob references and
+/// are resolved to request-local base64 only by the context compiler.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CanonicalContentPart {
+    Text {
+        text: String,
+    },
+    ImageRef {
+        image_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        blob_hash: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content_hash: Option<String>,
+        mime_type: String,
+        #[serde(default)]
+        pinned: bool,
+        #[serde(default)]
+        retrieval_hit: bool,
+    },
+    FileRef {
+        file_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        blob_hash: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content_hash: Option<String>,
+        mime_type: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    CitationRef {
+        citation_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        resource_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
+    },
+    DerivedArtifactRef {
+        artifact_id: String,
+        artifact_type: String,
+        source_image_ids: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        producer_model_id: Option<String>,
+        content: String,
+        created_at: i64,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatGenerationPlan {
+    /// Shared VFS capability planner decision. This is the authoritative route semantics used
+    /// by both retrieval and chat generation.
+    pub planner: crate::vfs::retrieval_planner::GenerationPlan,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auxiliary_multimodal_config_id: Option<String>,
+    pub image_budget: usize,
+    pub history_image_budget: usize,
+}
+
+/// Immutable model resolution and routing facts for one assistant generation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelExecutionSnapshot {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_model_id: Option<String>,
+    pub resolved_model_id: String,
+    pub resolved_model_name: String,
+    pub resolved_model_is_multimodal: bool,
+    pub capability_snapshot: crate::vfs::retrieval_planner::CapabilitySnapshot,
+    pub generation_plan: ChatGenerationPlan,
+    /// Actual compiler route after auxiliary-MM/OCR fallbacks have completed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_route: Option<crate::vfs::retrieval_planner::GenerationRoute>,
+    pub frozen_at: i64,
 }
 
 impl VariantMeta {
@@ -1234,6 +1329,15 @@ pub struct MessageMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
 
+    /// Immutable model/capability/route snapshot captured before this generation started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_snapshot: Option<ModelExecutionSnapshot>,
+
+    /// Canonical typed content. Images/files are stable references rather than persisted base64.
+    /// Older messages omit this field and continue to use attachments/context_snapshot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canonical_content: Option<Vec<CanonicalContentPart>>,
+
     /// 生成此消息使用的对话参数快照
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_params: Option<Value>,
@@ -1284,6 +1388,8 @@ impl Default for MessageMeta {
     fn default() -> Self {
         Self {
             model_id: None,
+            execution_snapshot: None,
+            canonical_content: None,
             chat_params: None,
             sources: None,
             tool_results: None,
@@ -2651,6 +2757,7 @@ mod tests {
                 skill_runtime_before: None,
                 skill_runtime_after: None,
                 replay_source: None,
+                ..Default::default()
             }),
             attachments: None,
             active_variant_id: None,

@@ -63,6 +63,13 @@ impl ToolExecutor for GeneralToolExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start_time = Instant::now();
+        // External MCP command tools still pass through this executor. Keep the
+        // raw arguments for execution, but never expose shell secrets through
+        // events or persisted tool-block input.
+        let audited_arguments = crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
+            &call.name,
+            &call.arguments,
+        );
 
         log::debug!(
             "[GeneralToolExecutor] Executing tool: name={}, id={}",
@@ -71,7 +78,7 @@ impl ToolExecutor for GeneralToolExecutor {
         );
 
         // 1. 发射工具调用开始事件
-        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
+        ctx.emit_tool_call_start(&call.name, audited_arguments.clone(), Some(&call.id));
 
         // 2. 构建工具上下文
         let tool_ctx = ToolContext {
@@ -112,7 +119,7 @@ impl ToolExecutor for GeneralToolExecutor {
                 Some(call.id.clone()),
                 Some(ctx.block_id.clone()),
                 call.name.clone(),
-                call.arguments.clone(),
+                audited_arguments.clone(),
                 output,
                 duration_ms,
             );
@@ -139,7 +146,7 @@ impl ToolExecutor for GeneralToolExecutor {
                 Some(call.id.clone()),
                 Some(ctx.block_id.clone()),
                 call.name.clone(),
-                call.arguments.clone(),
+                audited_arguments,
                 error_msg,
                 duration_ms,
             );
@@ -164,7 +171,9 @@ impl ToolExecutor for GeneralToolExecutor {
             "mcp_file_delete",
         ];
 
-        if HIGH_RISK_TOOLS.contains(&tool_name) {
+        if HIGH_RISK_TOOLS.contains(&tool_name)
+            || crate::chat_v2::approval_scope::is_high_risk_external_mcp_tool(tool_name)
+        {
             log::debug!(
                 "[GeneralToolExecutor] Tool '{}' is registered as high-risk -> High sensitivity",
                 tool_name
@@ -242,6 +251,14 @@ mod tests {
         // 明确高风险
         assert_eq!(
             executor.sensitivity_level("mcp_shell_execute"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.sensitivity_level("mcp_builtin-execute_command"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.sensitivity_level("mcp_builtin-file_write"),
             ToolSensitivity::High
         );
     }

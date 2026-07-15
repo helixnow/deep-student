@@ -31,7 +31,7 @@
 //! - 失败: `ctx.emit_tool_call_error`
 
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -41,9 +41,10 @@ use tokio::sync::Mutex;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use crate::essay_grading::custom_modes::CustomModeManager;
 use crate::essay_grading::events::GradingEventEmitter;
-use crate::essay_grading::pipeline::{run_grading, GradingDeps};
-use crate::essay_grading::types::{get_builtin_grading_modes, GradingRequest};
+use crate::essay_grading::pipeline::{resolve_grading_mode, run_grading, GradingDeps};
+use crate::essay_grading::types::{get_builtin_grading_modes, GradingMode, GradingRequest};
 use crate::vfs::repos::VfsEssayRepo;
 use crate::vfs::types::VfsCreateEssaySessionParams;
 
@@ -57,7 +58,7 @@ const DEFAULT_WAIT_TIMEOUT_MS: u64 = 90_000;
 const MAX_WAIT_TIMEOUT_MS: u64 = 100_000;
 
 /// 批改结果回传给 LLM 的最大字符数（防止上下文膨胀；完整结果始终可经 essay_get_result 获取）
-const MAX_RESULT_CHARS_IN_TOOL_OUTPUT: usize = 12_000;
+const MAX_RESULT_CHARS_IN_TOOL_OUTPUT: usize = 2_000;
 
 // ============================================================================
 // 后台批改任务注册表
@@ -131,6 +132,73 @@ impl EssayGradingExecutor {
             .or_else(|| score.map(|s| s as f32))
     }
 
+    /// Load the current custom-mode file using the same data directory that
+    /// backs the active main database.  The UI owns the manager in AppState,
+    /// but tool execution only receives the database handle; deriving the
+    /// directory here keeps the tool on the same source of truth without
+    /// introducing a second in-memory cache into the Chat V2 context.
+    fn load_custom_modes_from_database(
+        main_db: Option<&crate::database::Database>,
+    ) -> Vec<GradingMode> {
+        let Some(main_db) = main_db else {
+            return Vec::new();
+        };
+        let Some(db_path) = main_db.db_path() else {
+            return Vec::new();
+        };
+        let Some(data_dir) = db_path.parent() else {
+            return Vec::new();
+        };
+        let data_dir = data_dir.to_path_buf();
+        CustomModeManager::new(&data_dir).list_modes()
+    }
+
+    fn load_custom_modes(ctx: &ExecutionContext) -> Vec<GradingMode> {
+        Self::load_custom_modes_from_database(ctx.main_db.as_deref())
+    }
+
+    /// Match the UI command semantics: custom overrides replace built-ins with
+    /// the same id, while standalone custom modes are appended to the list.
+    fn merge_modes(custom_modes: Vec<GradingMode>) -> Vec<GradingMode> {
+        let builtin_modes = get_builtin_grading_modes();
+        let builtin_ids = builtin_modes
+            .iter()
+            .map(|mode| mode.id.clone())
+            .collect::<std::collections::HashSet<_>>();
+
+        let mut modes = Vec::with_capacity(builtin_modes.len() + custom_modes.len());
+        for builtin in builtin_modes {
+            if let Some(custom) = custom_modes.iter().find(|mode| mode.id == builtin.id) {
+                let mut override_mode = custom.clone();
+                // Preserve the UI's semantic distinction for an overridden
+                // built-in mode while still returning the customized prompt.
+                override_mode.is_builtin = true;
+                modes.push(override_mode);
+            } else {
+                modes.push(builtin);
+            }
+        }
+        modes.extend(
+            custom_modes
+                .into_iter()
+                .filter(|mode| !builtin_ids.contains(&mode.id)),
+        );
+        modes
+    }
+
+    fn canonicalize_requested_mode_id(
+        requested_mode_id: Option<String>,
+        custom_modes: &[GradingMode],
+    ) -> Result<Option<String>, String> {
+        if requested_mode_id.is_none() {
+            return Ok(None);
+        }
+
+        resolve_grading_mode(&requested_mode_id, custom_modes)
+            .map(|mode| Some(mode.id))
+            .map_err(|error| serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()))
+    }
+
     // ========================================================================
     // essay_grade：发起批改（异步任务）
     // ========================================================================
@@ -167,11 +235,16 @@ impl EssayGradingExecutor {
             .ok_or("LLM Manager not available")?
             .clone();
 
-        let mode_id = call
+        let requested_mode_id = call
             .arguments
             .get("mode_id")
             .and_then(|v| v.as_str())
             .map(String::from);
+        // Validate before creating a grading session or background task. This
+        // keeps an explicit stale/guessed mode ID from silently using the
+        // default rubric and returns the pipeline's structured error intact.
+        let custom_modes = Self::load_custom_modes(ctx);
+        let mode_id = Self::canonicalize_requested_mode_id(requested_mode_id, &custom_modes)?;
         let topic = call
             .arguments
             .get("topic")
@@ -193,6 +266,13 @@ impl EssayGradingExecutor {
             .arguments
             .get("custom_prompt")
             .and_then(|v| v.as_str())
+            .map(String::from);
+        let model_config_id = call
+            .arguments
+            .get("model_config_id")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
             .map(String::from);
         let session_id_arg = call
             .arguments
@@ -289,7 +369,7 @@ impl EssayGradingExecutor {
             input_text: text.to_string(),
             topic,
             mode_id,
-            model_config_id: None,
+            model_config_id,
             essay_type,
             grade_level,
             custom_prompt,
@@ -299,12 +379,12 @@ impl EssayGradingExecutor {
             topic_image_base64_list: None,
         };
 
-        // 后台执行批改流水线（custom_modes 传空：agent 侧仅支持内置批阅模式）
+        // 后台执行批改流水线
         let deps = GradingDeps {
             llm: llm_manager,
             vfs_db,
             emitter: GradingEventEmitter::new(ctx.window.clone()),
-            custom_modes: Vec::new(),
+            custom_modes,
         };
         let task_id_for_spawn = task_id.clone();
         tokio::spawn(async move {
@@ -524,8 +604,8 @@ impl EssayGradingExecutor {
     // 查询类工具
     // ========================================================================
 
-    async fn execute_list_modes(&self) -> Result<Value, String> {
-        let modes: Vec<Value> = get_builtin_grading_modes()
+    async fn execute_list_modes(&self, ctx: &ExecutionContext) -> Result<Value, String> {
+        let modes: Vec<Value> = Self::merge_modes(Self::load_custom_modes(ctx))
             .into_iter()
             .map(|m| {
                 json!({
@@ -533,6 +613,7 @@ impl EssayGradingExecutor {
                     "name": m.name,
                     "description": m.description,
                     "total_max_score": m.total_max_score,
+                    "is_builtin": m.is_builtin,
                     "dimensions": m.score_dimensions.iter().map(|d| json!({
                         "name": d.name,
                         "max_score": d.max_score,
@@ -553,11 +634,14 @@ impl EssayGradingExecutor {
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
-        let limit = Self::read_bounded_u32(&call.arguments, "limit", 20, 1, 100);
-        let offset = Self::read_bounded_u32(&call.arguments, "offset", 0, 0, u32::MAX);
+        let page = Self::read_bounded_u32(&call.arguments, "page", 1, 1, u32::MAX);
+        let page_size = Self::read_bounded_u32(&call.arguments, "page_size", 20, 1, 20);
+        let offset = page.saturating_sub(1).saturating_mul(page_size);
 
-        let sessions = VfsEssayRepo::list_sessions(vfs_db, limit, offset)
+        let sessions = VfsEssayRepo::list_sessions(vfs_db, page_size, offset)
             .map_err(|e| format!("查询批改会话失败: {}", e))?;
+        let total = VfsEssayRepo::count_sessions(vfs_db)
+            .map_err(|e| format!("统计批改会话失败: {}", e))?;
 
         let items: Vec<Value> = sessions
             .iter()
@@ -578,8 +662,10 @@ impl EssayGradingExecutor {
         Ok(json!({
             "sessions": items,
             "count": items.len(),
-            "limit": limit,
-            "offset": offset,
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+            "hasMore": offset.saturating_add(items.len() as u32) < total,
         }))
     }
 
@@ -595,8 +681,13 @@ impl EssayGradingExecutor {
             .ok_or("Missing 'session_id' parameter")?;
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
 
-        let essays = VfsEssayRepo::get_rounds_by_session(vfs_db, session_id)
+        let page = Self::read_bounded_u32(&call.arguments, "page", 1, 1, u32::MAX);
+        let page_size = Self::read_bounded_u32(&call.arguments, "page_size", 20, 1, 20);
+        let offset = page.saturating_sub(1).saturating_mul(page_size);
+        let essays = VfsEssayRepo::list_rounds_by_session(vfs_db, session_id, page_size, offset)
             .map_err(|e| format!("查询批改轮次失败: {}", e))?;
+        let total = VfsEssayRepo::count_rounds_by_session(vfs_db, session_id)
+            .map_err(|e| format!("统计批改轮次失败: {}", e))?;
 
         let rounds: Vec<Value> = essays
             .iter()
@@ -616,6 +707,10 @@ impl EssayGradingExecutor {
             "session_id": session_id,
             "rounds": rounds,
             "count": rounds.len(),
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+            "hasMore": offset.saturating_add(rounds.len() as u32) < total,
             "hint": "用 essay_get_result 获取某轮的完整批改内容。",
         }))
     }
@@ -652,12 +747,16 @@ impl EssayGradingExecutor {
             .unwrap_or_default();
         let result_text = Self::extract_result_text(essay.grading_result.as_ref());
 
+        let input_text_truncated = input_text.chars().count() > MAX_RESULT_CHARS_IN_TOOL_OUTPUT;
+        let grading_result_truncated = result_text.chars().count() > MAX_RESULT_CHARS_IN_TOOL_OUTPUT;
         Ok(json!({
             "session_id": session_id,
             "round_id": essay.id,
             "round_number": essay.round_number,
             "input_text": truncate_chars(&input_text, MAX_RESULT_CHARS_IN_TOOL_OUTPUT),
+            "inputTextTruncated": input_text_truncated,
             "grading_result": truncate_chars(&result_text, MAX_RESULT_CHARS_IN_TOOL_OUTPUT),
+            "gradingResultTruncated": grading_result_truncated,
             "overall_score": Self::extract_overall_score(essay.grading_result.as_ref(), essay.score),
             "dimension_scores": essay.dimension_scores,
             "created_at": essay.created_at,
@@ -704,7 +803,7 @@ impl ToolExecutor for EssayGradingExecutor {
             "essay_grade" => self.execute_grade(call, ctx).await,
             "essay_grade_status" => self.execute_grade_status(call, ctx).await,
             "essay_grade_wait" => self.execute_grade_wait(call, ctx).await,
-            "essay_list_modes" => self.execute_list_modes().await,
+            "essay_list_modes" => self.execute_list_modes(ctx).await,
             "essay_list_sessions" => self.execute_list_sessions(call, ctx).await,
             "essay_list_results" => self.execute_list_results(call, ctx).await,
             "essay_get_result" => self.execute_get_result(call, ctx).await,
@@ -881,6 +980,102 @@ mod tests {
         assert_eq!(
             EssayGradingExecutor::read_bounded_u32(&args, "missing", 20, 1, 100),
             20
+        );
+    }
+
+    #[test]
+    fn test_load_custom_modes_from_active_database_directory() {
+        let temp_dir = tempfile::tempdir().expect("create temp data directory");
+        let data_dir = temp_dir.path().to_path_buf();
+        let database = crate::database::Database::new(&data_dir.join("mistakes.db"))
+            .expect("create active main database");
+        let manager = CustomModeManager::new(&data_dir);
+        let created = manager
+            .create_mode(crate::essay_grading::custom_modes::CreateModeInput {
+                name: "Agent 真实模式".to_string(),
+                description: "从应用数据目录加载".to_string(),
+                system_prompt: "Use this exact rubric".to_string(),
+                score_dimensions: vec![crate::essay_grading::types::ScoreDimension {
+                    name: "内容".to_string(),
+                    max_score: 10.0,
+                    description: None,
+                }],
+                total_max_score: 10.0,
+            })
+            .expect("persist custom grading mode");
+
+        let loaded = EssayGradingExecutor::load_custom_modes_from_database(Some(&database));
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, created.id);
+        assert_eq!(loaded[0].system_prompt, "Use this exact rubric");
+    }
+
+    #[test]
+    fn test_merge_modes_includes_custom_and_preserves_builtin_override_semantics() {
+        let builtin = get_builtin_grading_modes()
+            .into_iter()
+            .next()
+            .expect("at least one builtin grading mode");
+        let custom_only = GradingMode {
+            id: "custom_agent_mode".to_string(),
+            name: "Agent 自定义模式".to_string(),
+            description: "测试模式".to_string(),
+            system_prompt: "Grade carefully".to_string(),
+            score_dimensions: builtin.score_dimensions.clone(),
+            total_max_score: builtin.total_max_score,
+            is_builtin: false,
+            created_at: "now".to_string(),
+            updated_at: "now".to_string(),
+        };
+        let overridden = GradingMode {
+            id: builtin.id.clone(),
+            name: "覆盖后的内置模式".to_string(),
+            description: "覆盖".to_string(),
+            system_prompt: "Use the custom rubric".to_string(),
+            score_dimensions: builtin.score_dimensions.clone(),
+            total_max_score: builtin.total_max_score,
+            is_builtin: false,
+            created_at: "now".to_string(),
+            updated_at: "now".to_string(),
+        };
+
+        let merged = EssayGradingExecutor::merge_modes(vec![custom_only.clone(), overridden]);
+        let override_result = merged
+            .iter()
+            .find(|mode| mode.id == builtin.id)
+            .expect("overridden builtin remains listed");
+        assert_eq!(override_result.name, "覆盖后的内置模式");
+        assert!(override_result.is_builtin);
+        assert!(merged.iter().any(|mode| mode.id == custom_only.id));
+        assert_eq!(
+            merged.iter().filter(|mode| mode.id == builtin.id).count(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_mode_validation_is_immediate_and_preserves_structured_error() {
+        let invalid = EssayGradingExecutor::canonicalize_requested_mode_id(
+            Some("missing-rubric".to_string()),
+            &[],
+        )
+        .expect_err("unknown mode must be rejected before starting a task");
+        let error: Value = serde_json::from_str(&invalid).expect("structured AppError JSON");
+        assert_eq!(error["error_type"], "Validation");
+        assert_eq!(error["details"]["code"], "ESSAY_MODE_NOT_FOUND");
+
+        assert_eq!(
+            EssayGradingExecutor::canonicalize_requested_mode_id(
+                Some("ielts_task2".to_string()),
+                &[],
+            )
+            .expect("known alias should resolve"),
+            Some("ielts".to_string())
+        );
+        assert_eq!(
+            EssayGradingExecutor::canonicalize_requested_mode_id(None, &[])
+                .expect("omitting mode keeps the documented default behavior"),
+            None
         );
     }
 

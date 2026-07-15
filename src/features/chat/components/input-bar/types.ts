@@ -288,6 +288,8 @@ export interface InputBarUIProps {
   thinkingStateLabel?: string;
   /** 当前生效模型是否不支持推理模式 */
   thinkingUnsupported?: boolean;
+  /** 当前模型是否允许完全关闭推理；false 时仅允许切换强度 */
+  thinkingCanDisable?: boolean;
   /** 当前模型支持的运行时推理深度选项；为空且没有 runtime 模型菜单时按钮保持 toggle-only */
   thinkingDepthOptions?: DeepSeekReasoningOption[];
   /** 当前归一化后的运行时推理深度 */

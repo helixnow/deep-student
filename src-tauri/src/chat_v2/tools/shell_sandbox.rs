@@ -4,6 +4,12 @@ use std::process::Stdio;
 use serde::{Deserialize, Serialize};
 use tokio::process::{Child, Command};
 
+const SANDBOX_CPU_TIME_LIMIT_SECS: u64 = 130;
+const SANDBOX_FILE_SIZE_LIMIT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+// RLIMIT_NPROC is per-user on macOS rather than per process tree. Keep the ceiling high enough
+// for a busy desktop session while still preventing an unbounded fork storm.
+const SANDBOX_PROCESS_LIMIT: u32 = 2_048;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SandboxPolicy {
     pub readable_roots: Vec<PathBuf>,
@@ -29,13 +35,54 @@ pub enum SandboxCapability {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SandboxEffectReport {
     pub backend: &'static str,
+    pub shell_kind: &'static str,
+    pub output_encoding: &'static str,
     pub enforced: bool,
     pub network_enforced: bool,
     pub process_group_isolated: bool,
+    pub cpu_time_limit_seconds: Option<u64>,
+    pub file_size_limit_bytes: Option<u64>,
+    pub active_process_limit: Option<u32>,
     pub readable_roots: usize,
     pub writable_roots: usize,
     pub protected_read_roots: usize,
     pub protected_write_roots: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SandboxRuntimeContract {
+    pub backend: &'static str,
+    pub shell_kind: &'static str,
+    pub output_encoding: &'static str,
+}
+
+pub(crate) const fn platform_sandbox_contract() -> SandboxRuntimeContract {
+    #[cfg(target_os = "macos")]
+    {
+        SandboxRuntimeContract {
+            backend: "macos_seatbelt",
+            shell_kind: "posix_sh",
+            output_encoding: "utf-8",
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        SandboxRuntimeContract {
+            backend: "windows_appcontainer_job",
+            shell_kind: "windows_powershell",
+            output_encoding: "utf-8",
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        SandboxRuntimeContract {
+            backend: "unavailable",
+            shell_kind: "unavailable",
+            output_encoding: "unknown",
+        }
+    }
 }
 
 pub trait SandboxBackend: Send + Sync {
@@ -68,10 +115,31 @@ fn configure_stdio(command: &mut Command, cwd: &Path) {
 
 #[cfg(unix)]
 fn isolate_process_group(command: &mut Command) {
-    // SAFETY: setpgid is async-signal-safe and the closure performs no allocation.
+    // SAFETY: setpgid/setrlimit are async-signal-safe and the closure performs no allocation.
     unsafe {
         command.pre_exec(|| {
             if libc::setpgid(0, 0) == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let cpu_limit = libc::rlimit {
+                rlim_cur: SANDBOX_CPU_TIME_LIMIT_SECS as libc::rlim_t,
+                rlim_max: SANDBOX_CPU_TIME_LIMIT_SECS as libc::rlim_t,
+            };
+            if libc::setrlimit(libc::RLIMIT_CPU, &cpu_limit) == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let file_size_limit = libc::rlimit {
+                rlim_cur: SANDBOX_FILE_SIZE_LIMIT_BYTES as libc::rlim_t,
+                rlim_max: SANDBOX_FILE_SIZE_LIMIT_BYTES as libc::rlim_t,
+            };
+            if libc::setrlimit(libc::RLIMIT_FSIZE, &file_size_limit) == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let process_limit = libc::rlimit {
+                rlim_cur: SANDBOX_PROCESS_LIMIT as libc::rlim_t,
+                rlim_max: SANDBOX_PROCESS_LIMIT as libc::rlim_t,
+            };
+            if libc::setrlimit(libc::RLIMIT_NPROC, &process_limit) == -1 {
                 return Err(std::io::Error::last_os_error());
             }
             Ok(())
@@ -202,11 +270,17 @@ mod macos {
         }
 
         fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
+            let contract = platform_sandbox_contract();
             SandboxEffectReport {
-                backend: "macos_seatbelt",
+                backend: contract.backend,
+                shell_kind: contract.shell_kind,
+                output_encoding: contract.output_encoding,
                 enforced: matches!(self.capability(), SandboxCapability::Available),
                 network_enforced: true,
                 process_group_isolated: true,
+                cpu_time_limit_seconds: Some(SANDBOX_CPU_TIME_LIMIT_SECS),
+                file_size_limit_bytes: Some(SANDBOX_FILE_SIZE_LIMIT_BYTES),
+                active_process_limit: Some(SANDBOX_PROCESS_LIMIT),
                 readable_roots: policy.readable_roots.len(),
                 writable_roots: policy.writable_roots.len(),
                 protected_read_roots: policy.protected_read_roots.len(),
@@ -235,11 +309,17 @@ impl SandboxBackend for PlatformSandboxBackend {
     }
 
     fn effect_report(&self, policy: &SandboxPolicy) -> SandboxEffectReport {
+        let contract = platform_sandbox_contract();
         SandboxEffectReport {
-            backend: "unavailable",
+            backend: contract.backend,
+            shell_kind: contract.shell_kind,
+            output_encoding: contract.output_encoding,
             enforced: false,
             network_enforced: false,
             process_group_isolated: false,
+            cpu_time_limit_seconds: None,
+            file_size_limit_bytes: None,
+            active_process_limit: None,
             readable_roots: policy.readable_roots.len(),
             writable_roots: policy.writable_roots.len(),
             protected_read_roots: policy.protected_read_roots.len(),
@@ -278,6 +358,40 @@ pub fn terminate_process_group(child: &mut Child) -> Result<(), String> {
     }
 }
 
+/// Clean up descendants after the foreground launcher has already been reaped.
+///
+/// Tokio clears `Child::id()` after `wait()`, but on Unix the original PID remains the process
+/// group id for any background descendants. Windows' helper owns a kill-on-close Job Object and
+/// does not exit until ACL/Profile cleanup is complete, so a successfully reaped helper needs no
+/// additional action here.
+pub fn cleanup_finished_process_group(process_id: u32) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let result = unsafe { libc::kill(-(process_id as libc::pid_t), libc::SIGKILL) };
+        if result == -1 {
+            let error = std::io::Error::last_os_error();
+            if error.raw_os_error() != Some(libc::ESRCH) {
+                return Err(format!(
+                    "Failed to clean up sandbox background process group: {error}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    {
+        let _ = process_id;
+        Ok(())
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = process_id;
+        Err("Process-group cleanup is unavailable on this platform".to_string())
+    }
+}
+
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::macos::profile;
@@ -304,6 +418,17 @@ mod tests {
         assert!(rendered.contains("(allow file-write*"));
         assert!(rendered.contains("(deny file-write*"));
         assert!(rendered.contains(&readable.to_string_lossy().to_string()));
+
+        let report = PlatformSandboxBackend::new().effect_report(&policy);
+        assert_eq!(
+            report.cpu_time_limit_seconds,
+            Some(SANDBOX_CPU_TIME_LIMIT_SECS)
+        );
+        assert_eq!(
+            report.file_size_limit_bytes,
+            Some(SANDBOX_FILE_SIZE_LIMIT_BYTES)
+        );
+        assert_eq!(report.active_process_limit, Some(SANDBOX_PROCESS_LIMIT));
     }
 
     #[tokio::test]
@@ -360,6 +485,65 @@ mod tests {
             std::fs::read_to_string(temp.path().join("interpreter.txt")).unwrap(),
             "awk\n"
         );
+    }
+
+    #[tokio::test]
+    async fn seatbelt_allows_script_runner_while_network_is_denied() {
+        let temp = tempfile::tempdir().unwrap();
+        let developer_dir = std::process::Command::new("/usr/bin/xcode-select")
+            .arg("-p")
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| PathBuf::from(String::from_utf8_lossy(&output.stdout).trim()))
+            .filter(|path| path.is_dir());
+        let developer_root = developer_dir.clone().map(|mut selected| {
+            if selected.ends_with(Path::new("Contents").join("Developer")) {
+                selected = selected.parent().unwrap().parent().unwrap().to_path_buf();
+            }
+            selected
+        });
+        let mut readable_roots = vec![temp.path().to_path_buf()];
+        if let Some(developer_root) = developer_root {
+            readable_roots.push(developer_root);
+        }
+        let policy = SandboxPolicy {
+            readable_roots,
+            writable_roots: vec![temp.path().to_path_buf()],
+            protected_read_roots: vec![],
+            protected_write_roots: vec![],
+            allow_network: false,
+        };
+        let backend = PlatformSandboxBackend::new();
+        let mut command = backend
+            .command(
+                "python3 -c 'print(\"offline-runner-ok\")'",
+                temp.path(),
+                &policy,
+            )
+            .unwrap();
+        command
+            .env("TMPDIR", temp.path())
+            .env("TEMP", temp.path())
+            .env("TMP", temp.path());
+        if let Some(developer_dir) = developer_dir {
+            let developer_bin = developer_dir.join("usr/bin");
+            command.env("DEVELOPER_DIR", &developer_dir);
+            if developer_bin.is_dir() {
+                let mut paths = vec![developer_bin];
+                if let Some(current_path) = std::env::var_os("PATH") {
+                    paths.extend(std::env::split_paths(&current_path));
+                }
+                command.env("PATH", std::env::join_paths(paths).unwrap());
+            }
+        }
+        let output = command.output().await.unwrap();
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(output.stdout, b"offline-runner-ok\n");
     }
 
     #[tokio::test]

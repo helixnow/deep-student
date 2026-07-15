@@ -214,6 +214,21 @@ export function clearBridgeState(sessionId: string): void {
 }
 
 /**
+ * Drain block events that are still waiting behind a sequence gap.
+ *
+ * `stream_complete` is delivered on a different Tauri channel from block
+ * events, so it can overtake a tail event that is already buffered here. At a
+ * successful stream boundary the backend has finished emitting block events;
+ * keeping the gap buffer until its normal timeout would let terminal cleanup
+ * discard valid final chunks.
+ */
+export function flushPendingBackendEvents(store: ChatStore): void {
+  const state = bridgeStates.get(store.sessionId);
+  if (!state || state.pendingEvents.size === 0) return;
+  skipGapAndFlush(store, state);
+}
+
+/**
  * 重置会话的事件桥接状态（开始新流式时调用）
  */
 export function resetBridgeState(sessionId: string): void {

@@ -3,17 +3,20 @@
 use std::time::Instant;
 
 use async_trait::async_trait;
-use chrono::{Local, Utc};
+use chrono::Local;
 use serde_json::{json, Value};
 use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::automations::{
-    automation_to_list_item, compute_next_trigger, generate_automation_id, load_automations,
-    save_automations, validate_automation_fields, validate_schedule, with_automations_lock,
-    AutomationActionType, AutomationDefinition, AutomationSchedule, ScheduleKind, MAX_AUTOMATIONS,
-    MAX_PROMPT_LEN,
+    automation_agent_list_response, automation_to_agent_list_item, cancel_automation_run,
+    compute_next_trigger, create_automation, delete_automation, emit_automations_changed,
+    list_automation_runs_page, retry_automation_run, run_automation_now_core,
+    serialize_automation_update_error, set_automation_enabled, update_automation_full,
+    validate_automation_fields, validate_schedule, AutomationActionType, AutomationCreateFields,
+    AutomationSchedule, AutomationUpdateFields, CatchUpPolicy, ScheduleKind, DEFAULT_MAX_RETRIES,
+    DEFAULT_RETRY_BACKOFF_SECS, DEFAULT_TIMEOUT_SECS, MAX_PROMPT_LEN,
 };
 use crate::chat_v2::headless::HeadlessSessionMode;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -24,6 +27,12 @@ pub mod tool_names {
     pub const AUTOMATION_PROPOSE: &str = "automation_propose";
     pub const AUTOMATION_LIST: &str = "automation_list";
     pub const AUTOMATION_SET_ENABLED: &str = "automation_set_enabled";
+    pub const AUTOMATION_UPDATE: &str = "automation_update";
+    pub const AUTOMATION_DELETE: &str = "automation_delete";
+    pub const AUTOMATION_RUN_NOW: &str = "automation_run_now";
+    pub const AUTOMATION_RUNS: &str = "automation_runs";
+    pub const AUTOMATION_RETRY_RUN: &str = "automation_retry_run";
+    pub const AUTOMATION_CANCEL_RUN: &str = "automation_cancel_run";
 }
 
 const PROPOSE_ALLOWED_KEYS: &[&str] = &[
@@ -35,9 +44,54 @@ const PROPOSE_ALLOWED_KEYS: &[&str] = &[
     "agent_prompt",
     "session_mode",
     "model_id",
+    "catch_up_policy",
+    "max_retries",
+    "retry_backoff_seconds",
+    "timeout_seconds",
 ];
-const SET_ENABLED_ALLOWED_KEYS: &[&str] = &["id", "enabled"];
-const SCHEDULE_ALLOWED_KEYS: &[&str] = &["kind", "time", "weekday", "interval_minutes"];
+const SET_ENABLED_ALLOWED_KEYS: &[&str] = &["id", "expected_version", "enabled"];
+const UPDATE_ALLOWED_KEYS: &[&str] = &[
+    "id",
+    "expected_version",
+    "name",
+    "schedule",
+    "prompt",
+    "action_type",
+    "agent_prompt",
+    "session_mode",
+    "model_id",
+    "catch_up_policy",
+    "max_retries",
+    "retry_backoff_seconds",
+    "timeout_seconds",
+];
+const ID_ONLY_ALLOWED_KEYS: &[&str] = &["id"];
+const ID_VERSION_ALLOWED_KEYS: &[&str] = &["id", "expected_version"];
+const RUNS_ALLOWED_KEYS: &[&str] = &["automation_id", "page", "page_size"];
+const SCHEDULE_ALLOWED_KEYS: &[&str] = &[
+    "kind",
+    "time",
+    "weekday",
+    "day_of_month",
+    "interval_minutes",
+    "timezone",
+];
+const AUTOMATION_OCC_REQUIRED_CODE: &str = "AUTOMATION_OCC_REQUIRED";
+
+fn automation_occ_required_error() -> String {
+    json!({
+        "code": AUTOMATION_OCC_REQUIRED_CODE,
+        "errorType": "validation",
+        "message": "expected_version is required; call automation_list and use its current version",
+        "messageFallback": {
+            "zh-CN": "必须先调用 automation_list，并将当前 version 原样传为 expected_version。",
+            "en-US": "Call automation_list first and pass its current version as expected_version."
+        },
+        "requiredField": "expected_version",
+        "retryable": false,
+    })
+    .to_string()
+}
 
 pub struct AutomationExecutor;
 
@@ -59,6 +113,13 @@ impl AutomationExecutor {
         }
         let state = ctx.window.state::<AppState>();
         f(&state.database)
+    }
+
+    fn database_arc(ctx: &ExecutionContext) -> std::sync::Arc<Database> {
+        if let Some(db) = ctx.main_db.as_ref() {
+            return db.clone();
+        }
+        ctx.window.state::<AppState>().database.clone()
     }
 
     fn reject_unknown_fields(args: &Value, allowed: &[&str]) -> Result<(), String> {
@@ -107,12 +168,14 @@ impl AutomationExecutor {
         let kind = match kind_raw.trim().to_ascii_lowercase().as_str() {
             "daily" => ScheduleKind::Daily,
             "weekly" => ScheduleKind::Weekly,
+            "weekdays" => ScheduleKind::Weekdays,
+            "monthly" => ScheduleKind::Monthly,
             "interval" => ScheduleKind::Interval,
             other => {
                 return Err(format!(
-                    "Invalid schedule.kind '{}'. Allowed: daily, weekly, interval",
-                    other
-                ))
+                "Invalid schedule.kind '{}'. Allowed: daily, weekly, weekdays, monthly, interval",
+                other
+            ))
             }
         };
 
@@ -152,11 +215,34 @@ impl AutomationExecutor {
             }
         };
 
+        let day_of_month = match obj.get("day_of_month") {
+            None => None,
+            Some(value) => Some(
+                value
+                    .as_u64()
+                    .and_then(|value| u8::try_from(value).ok())
+                    .ok_or("'schedule.day_of_month' must be an integer 1-31")?,
+            ),
+        };
+        let timezone = match obj.get("timezone") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or("'schedule.timezone' must be a non-empty IANA timezone string")?
+                    .to_string(),
+            ),
+        };
+
         let schedule = AutomationSchedule {
             kind,
             time,
             weekday,
+            day_of_month,
             interval_minutes,
+            timezone,
         };
         validate_schedule(&schedule).map_err(|e| e.to_string())?;
         Ok(schedule)
@@ -172,6 +258,102 @@ impl AutomationExecutor {
                 AutomationActionType::parse(raw).map_err(|e| e.to_string())
             }
         }
+    }
+
+    fn parse_optional_action_type(args: &Value) -> Result<Option<AutomationActionType>, String> {
+        match args.get("action_type") {
+            None => Ok(None),
+            Some(value) => {
+                let raw = value.as_str().ok_or_else(|| {
+                    "'action_type' must be a string: notify | agent_turn".to_string()
+                })?;
+                AutomationActionType::parse(raw)
+                    .map(Some)
+                    .map_err(|error| error.to_string())
+            }
+        }
+    }
+
+    fn parse_catch_up_policy(
+        args: &Value,
+        required: bool,
+    ) -> Result<Option<CatchUpPolicy>, String> {
+        match args.get("catch_up_policy") {
+            None if required => Ok(Some(CatchUpPolicy::RunOnce)),
+            None => Ok(None),
+            Some(value) => {
+                let raw = value.as_str().ok_or_else(|| {
+                    "'catch_up_policy' must be skip | run_once | catch_up_all".to_string()
+                })?;
+                CatchUpPolicy::parse(raw)
+                    .map(Some)
+                    .map_err(|error| error.to_string())
+            }
+        }
+    }
+
+    fn parse_optional_u64(
+        args: &Value,
+        key: &str,
+        min: u64,
+        max: u64,
+    ) -> Result<Option<u64>, String> {
+        let Some(value) = args.get(key) else {
+            return Ok(None);
+        };
+        let value = value
+            .as_u64()
+            .ok_or_else(|| format!("'{}' must be an integer", key))?;
+        if !(min..=max).contains(&value) {
+            return Err(format!("'{}' must be between {} and {}", key, min, max));
+        }
+        Ok(Some(value))
+    }
+
+    fn parse_required_version(args: &Value) -> Result<u64, String> {
+        Self::parse_optional_u64(args, "expected_version", 1, i64::MAX as u64)?
+            .ok_or_else(automation_occ_required_error)
+    }
+
+    fn parse_nullable_string(
+        args: &Value,
+        key: &str,
+        max_chars: Option<usize>,
+    ) -> Result<Option<Option<String>>, String> {
+        let Some(value) = args.get(key) else {
+            return Ok(None);
+        };
+        if value.is_null() {
+            return Ok(Some(None));
+        }
+        let value = value
+            .as_str()
+            .ok_or_else(|| format!("'{}' must be a string or null", key))?
+            .trim()
+            .to_string();
+        if max_chars.is_some_and(|max| value.chars().count() > max) {
+            return Err(format!(
+                "'{}' must be at most {} characters",
+                key,
+                max_chars.unwrap_or_default()
+            ));
+        }
+        Ok(Some((!value.is_empty()).then_some(value)))
+    }
+
+    fn parse_nullable_session_mode(
+        args: &Value,
+    ) -> Result<Option<Option<HeadlessSessionMode>>, String> {
+        let Some(value) = args.get("session_mode") else {
+            return Ok(None);
+        };
+        if value.is_null() {
+            return Ok(Some(None));
+        }
+        let raw = value
+            .as_str()
+            .ok_or_else(|| "'session_mode' must be isolated | named | null".to_string())?;
+        HeadlessSessionMode::parse(raw).map(|mode| Some(Some(mode)))
     }
 
     /// 解析 agent_turn 专属字段（agent_prompt / session_mode / model_id）。
@@ -215,11 +397,13 @@ impl AutomationExecutor {
 
         let model_id = match args.get("model_id") {
             None => None,
-            Some(v) => v
-                .as_str()
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+            Some(v) => Some(
+                v.as_str()
+                    .ok_or("'model_id' must be a string")?
+                    .trim()
+                    .to_string(),
+            )
+            .filter(|value| !value.is_empty()),
         };
 
         if action_type == AutomationActionType::Notify
@@ -244,46 +428,46 @@ impl AutomationExecutor {
         let schedule_value = args.get("schedule").ok_or("'schedule' is required")?;
         let schedule = Self::parse_schedule(schedule_value)?;
 
-        let enabled = args.get("enabled").and_then(Value::as_bool).unwrap_or(true);
+        let enabled = match args.get("enabled") {
+            None => true,
+            Some(value) => value.as_bool().ok_or("'enabled' must be a boolean")?,
+        };
 
         let action_type = Self::parse_action_type(args)?;
         let (agent_prompt, session_mode, model_id) = Self::parse_agent_fields(args, action_type)?;
+        let catch_up_policy = Self::parse_catch_up_policy(args, true)?.unwrap_or_default();
+        let max_retries = Self::parse_optional_u64(args, "max_retries", 0, 10)?
+            .unwrap_or(DEFAULT_MAX_RETRIES as u64) as u8;
+        let retry_backoff_seconds =
+            Self::parse_optional_u64(args, "retry_backoff_seconds", 5, 86_400)?
+                .unwrap_or(DEFAULT_RETRY_BACKOFF_SECS);
+        let timeout_seconds = Self::parse_optional_u64(args, "timeout_seconds", 30, 3_600)?
+            .unwrap_or(DEFAULT_TIMEOUT_SECS);
 
         Self::with_database(ctx, |db| {
-            // 🔧 P1-1 修复：load → 上限检查 → push → save 整段持自动化存储互斥锁，
-            // 消除与调度器 last_run_at 回写的丢失更新，以及 MAX 上限的 TOCTOU
-            let id = with_automations_lock(|| -> Result<String, String> {
-                let mut automations = load_automations(db).map_err(|e| e.to_string())?;
-                if automations.len() >= MAX_AUTOMATIONS {
-                    return Err(format!(
-                        "Automation limit reached (max {}). Disable or remove an existing automation first.",
-                        MAX_AUTOMATIONS
-                    ));
-                }
-
-                let now_utc = Utc::now();
-                let id = generate_automation_id(now_utc);
-                let definition = AutomationDefinition {
-                    id: id.clone(),
+            let definition = create_automation(
+                db,
+                AutomationCreateFields {
                     name: name.clone(),
                     schedule: schedule.clone(),
                     prompt: prompt.clone(),
                     enabled,
-                    created_at: now_utc.to_rfc3339(),
-                    session_id: ctx.session_id.clone(),
-                    last_run_at: None,
                     action_type,
                     heartbeat: false,
                     agent_prompt: agent_prompt.clone(),
                     session_mode,
                     model_id: model_id.clone(),
-                    agent_session_id: None,
-                };
-
-                automations.push(definition);
-                save_automations(db, &automations).map_err(|e| e.to_string())?;
-                Ok(id)
-            })?;
+                    catch_up_policy,
+                    max_retries,
+                    retry_backoff_seconds,
+                    timeout_seconds,
+                    source_session_id: ctx.session_id.clone(),
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            let id = definition.id;
+            let version = definition.version;
+            emit_automations_changed(&ctx.window.app_handle(), "create", &id);
 
             let now_local = Local::now();
             let next_trigger = compute_next_trigger(&schedule, now_local)
@@ -312,24 +496,22 @@ impl AutomationExecutor {
                     "Automation '{}' created. {} Use automation_list to review or automation_set_enabled to disable.",
                     name, behavior
                 ),
-                "settings_key": "chat_v2.automations",
+                "storage": "automation_definitions",
+                "previous": Value::Null,
+                "reversible": false,
+                "reversibleWithApproval": true,
+                "restoreWith": {
+                    "tool": tool_names::AUTOMATION_DELETE,
+                    "arguments": { "id": id, "expected_version": version }
+                },
+                "undoReason": "Deleting a created automation is High risk and requires fresh user confirmation.",
             }))
         })
     }
 
     fn execute_list(ctx: &ExecutionContext) -> Result<Value, String> {
         Self::with_database(ctx, |db| {
-            let automations = load_automations(db).map_err(|e| e.to_string())?;
-            let now = Local::now();
-            let items: Vec<Value> = automations
-                .iter()
-                .map(|a| automation_to_list_item(a, now))
-                .collect();
-            Ok(json!({
-                "count": items.len(),
-                "max": MAX_AUTOMATIONS,
-                "automations": items,
-            }))
+            automation_agent_list_response(db).map_err(|e| e.to_string())
         })
     }
 
@@ -337,45 +519,199 @@ impl AutomationExecutor {
         Self::reject_unknown_fields(args, SET_ENABLED_ALLOWED_KEYS)?;
 
         let id = Self::parse_required_string(args, "id")?;
+        let expected_version = Self::parse_required_version(args)?;
         let enabled = args
             .get("enabled")
             .and_then(Value::as_bool)
             .ok_or("'enabled' is required and must be a boolean")?;
 
         Self::with_database(ctx, |db| {
-            // 🔧 P1-1 修复：load → 改 enabled → save 整段持自动化存储互斥锁，
-            // 避免与调度器回写竞争导致「停用失效、自动化继续触发」
-            let (name, schedule) = with_automations_lock(|| -> Result<_, String> {
-                let mut automations = load_automations(db).map_err(|e| e.to_string())?;
-                let item = automations
-                    .iter_mut()
-                    .find(|a| a.id == id)
-                    .ok_or_else(|| format!("Automation '{}' not found", id))?;
-
-                item.enabled = enabled;
-                let name = item.name.clone();
-                let schedule = item.schedule.clone();
-                save_automations(db, &automations).map_err(|e| e.to_string())?;
-                Ok((name, schedule))
-            })?;
+            let (previous, current) = set_automation_enabled(db, &id, expected_version, enabled)
+                .map_err(|error| serialize_automation_update_error(error, true))?;
+            emit_automations_changed(&ctx.window.app_handle(), "set_enabled", &id);
 
             let now = Local::now();
-            let next_trigger = compute_next_trigger(&schedule, now)
+            let next_trigger = compute_next_trigger(&current.schedule, now)
                 .map(|dt| dt.to_rfc3339())
                 .unwrap_or_else(|_| "unknown".to_string());
 
             Ok(json!({
+                "success": true,
                 "status": if enabled { "enabled" } else { "disabled" },
                 "id": id,
-                "name": name,
+                "name": current.name,
                 "enabled": enabled,
                 "next_trigger_at": next_trigger,
+                "previous": automation_to_agent_list_item(&previous, Local::now()),
+                "current": automation_to_agent_list_item(&current, Local::now()),
+                "reversible": true,
+                "restoreWith": {
+                    "tool": tool_names::AUTOMATION_SET_ENABLED,
+                    "arguments": {
+                        "id": id,
+                        "expected_version": current.version,
+                        "enabled": previous.enabled
+                    }
+                },
                 "message": format!(
                     "Automation '{}' is now {}.",
-                    name,
+                    current.name,
                     if enabled { "enabled" } else { "disabled" }
                 ),
             }))
+        })
+    }
+
+    fn execute_update(args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+        Self::reject_unknown_fields(args, UPDATE_ALLOWED_KEYS)?;
+        let id = Self::parse_required_string(args, "id")?;
+        let expected_version = Self::parse_required_version(args)?;
+        let name = args
+            .get("name")
+            .map(|_| Self::parse_required_string(args, "name"))
+            .transpose()?;
+        let schedule = args.get("schedule").map(Self::parse_schedule).transpose()?;
+        let prompt = args
+            .get("prompt")
+            .map(|_| Self::parse_required_string(args, "prompt"))
+            .transpose()?;
+        let action_type = Self::parse_optional_action_type(args)?;
+        let agent_prompt = Self::parse_nullable_string(args, "agent_prompt", Some(MAX_PROMPT_LEN))?;
+        let session_mode = Self::parse_nullable_session_mode(args)?;
+        let model_id = Self::parse_nullable_string(args, "model_id", None)?;
+        let catch_up_policy = Self::parse_catch_up_policy(args, false)?;
+        let max_retries = Self::parse_optional_u64(args, "max_retries", 0, 10)?.map(|v| v as u8);
+        let retry_backoff_seconds =
+            Self::parse_optional_u64(args, "retry_backoff_seconds", 5, 86_400)?;
+        let timeout_seconds = Self::parse_optional_u64(args, "timeout_seconds", 30, 3_600)?;
+        Self::with_database(ctx, |db| {
+            let (previous, current) = update_automation_full(
+                db,
+                &id,
+                expected_version,
+                AutomationUpdateFields {
+                    name,
+                    schedule,
+                    prompt,
+                    action_type,
+                    agent_prompt,
+                    session_mode,
+                    model_id,
+                    catch_up_policy,
+                    max_retries,
+                    retry_backoff_seconds,
+                    timeout_seconds,
+                },
+            )
+            .map_err(|error| serialize_automation_update_error(error, true))?;
+            let next_trigger = compute_next_trigger(&current.schedule, Local::now())
+                .map(|value| value.to_rfc3339())
+                .map_err(|error| error.to_string())?;
+            emit_automations_changed(&ctx.window.app_handle(), "update", &id);
+            let previous_prompt = crate::chat_v2::automations::effective_agent_prompt(&previous);
+            let directly_reversible = previous_prompt.chars().count() <= 2_000;
+            Ok(json!({
+                "success": true,
+                "automation": automation_to_agent_list_item(&current, Local::now()),
+                "previous": automation_to_agent_list_item(&previous, Local::now()),
+                "current": automation_to_agent_list_item(&current, Local::now()),
+                "nextTriggerAt": next_trigger,
+                "reversible": directly_reversible,
+                "restoreWith": directly_reversible.then(|| json!({
+                    "tool": tool_names::AUTOMATION_UPDATE,
+                    "arguments": {
+                        "id": id,
+                        "expected_version": current.version,
+                        "name": previous.name,
+                        "schedule": previous.schedule,
+                        "prompt": previous.prompt,
+                        "action_type": previous.action_type,
+                        "agent_prompt": previous.agent_prompt,
+                        "session_mode": previous.session_mode,
+                        "model_id": previous.model_id,
+                        "catch_up_policy": previous.catch_up_policy,
+                        "max_retries": previous.max_retries,
+                        "retry_backoff_seconds": previous.retry_backoff_seconds,
+                        "timeout_seconds": previous.timeout_seconds
+                    }
+                })),
+                "undoReason": (!directly_reversible).then_some("旧提示词超过 Agent 返回上限，无法在不泄漏/截断内容的情况下生成精确撤销参数"),
+            }))
+        })
+    }
+
+    fn execute_delete(args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+        Self::reject_unknown_fields(args, ID_VERSION_ALLOWED_KEYS)?;
+        let id = Self::parse_required_string(args, "id")?;
+        let expected_version = Self::parse_required_version(args)?;
+        Self::with_database(ctx, |db| {
+            let deleted = delete_automation(db, &id, expected_version)
+                .map_err(|error| serialize_automation_update_error(error, true))?;
+            emit_automations_changed(&ctx.window.app_handle(), "delete", &id);
+            Ok(json!({
+                "success": true,
+                "automationId": id,
+                "deleted": automation_to_agent_list_item(&deleted, Local::now()),
+                "previous": automation_to_agent_list_item(&deleted, Local::now()),
+                "reversible": false,
+                "restoreWith": Value::Null,
+            }))
+        })
+    }
+
+    fn execute_run_now(args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+        Self::reject_unknown_fields(args, ID_VERSION_ALLOWED_KEYS)?;
+        let id = Self::parse_required_string(args, "id")?;
+        let expected_version = Self::parse_required_version(args)?;
+        let output = run_automation_now_core(
+            &id,
+            expected_version,
+            ctx.window.app_handle().clone(),
+            Self::database_arc(ctx),
+            true,
+        )?;
+        Ok(json!({
+            "success": true,
+            "result": output,
+            "previous": Value::Null,
+            "reversible": false,
+            "restoreWith": Value::Null,
+        }))
+    }
+
+    fn execute_runs(args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+        Self::reject_unknown_fields(args, RUNS_ALLOWED_KEYS)?;
+        let automation_id = match args.get("automation_id") {
+            None | Some(Value::Null) => None,
+            Some(_) => Some(Self::parse_required_string(args, "automation_id")?),
+        };
+        let page = Self::parse_optional_u64(args, "page", 1, i64::MAX as u64)?.unwrap_or(1) as usize;
+        let page_size = Self::parse_optional_u64(args, "page_size", 1, 20)?.unwrap_or(20) as usize;
+        let offset = page.saturating_sub(1).saturating_mul(page_size);
+        Self::with_database(ctx, |db| {
+            let (runs, total) = list_automation_runs_page(db, automation_id.as_deref(), page_size, offset)
+                .map_err(|error| error.to_string())?;
+            Ok(json!({ "runs": runs, "total": total, "page": page, "pageSize": page_size, "hasMore": offset.saturating_add(page_size) < total }))
+        })
+    }
+
+    fn execute_retry_run(args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+        Self::reject_unknown_fields(args, ID_ONLY_ALLOWED_KEYS)?;
+        let id = Self::parse_required_string(args, "id")?;
+        Self::with_database(ctx, |db| {
+            retry_automation_run(db, &id).map_err(|error| error.to_string())?;
+            emit_automations_changed(&ctx.window.app_handle(), "retry", "");
+            Ok(json!({ "success": true, "runId": id, "reversible": false }))
+        })
+    }
+
+    fn execute_cancel_run(args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
+        Self::reject_unknown_fields(args, ID_ONLY_ALLOWED_KEYS)?;
+        let id = Self::parse_required_string(args, "id")?;
+        Self::with_database(ctx, |db| {
+            cancel_automation_run(db, &id).map_err(|error| error.to_string())?;
+            emit_automations_changed(&ctx.window.app_handle(), "cancel_run", "");
+            Ok(json!({ "success": true, "runId": id, "reversible": false }))
         })
     }
 }
@@ -394,6 +730,12 @@ impl ToolExecutor for AutomationExecutor {
             tool_names::AUTOMATION_PROPOSE
                 | tool_names::AUTOMATION_LIST
                 | tool_names::AUTOMATION_SET_ENABLED
+                | tool_names::AUTOMATION_UPDATE
+                | tool_names::AUTOMATION_DELETE
+                | tool_names::AUTOMATION_RUN_NOW
+                | tool_names::AUTOMATION_RUNS
+                | tool_names::AUTOMATION_RETRY_RUN
+                | tool_names::AUTOMATION_CANCEL_RUN
         )
     }
 
@@ -416,6 +758,12 @@ impl ToolExecutor for AutomationExecutor {
                 }
             }
             tool_names::AUTOMATION_SET_ENABLED => Self::execute_set_enabled(&call.arguments, ctx),
+            tool_names::AUTOMATION_UPDATE => Self::execute_update(&call.arguments, ctx),
+            tool_names::AUTOMATION_DELETE => Self::execute_delete(&call.arguments, ctx),
+            tool_names::AUTOMATION_RUN_NOW => Self::execute_run_now(&call.arguments, ctx),
+            tool_names::AUTOMATION_RUNS => Self::execute_runs(&call.arguments, ctx),
+            tool_names::AUTOMATION_RETRY_RUN => Self::execute_retry_run(&call.arguments, ctx),
+            tool_names::AUTOMATION_CANCEL_RUN => Self::execute_cancel_run(&call.arguments, ctx),
             _ => Err(format!("Unknown automation tool: {}", call.name)),
         };
 
@@ -460,8 +808,12 @@ impl ToolExecutor for AutomationExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match Self::strip_namespace(tool_name) {
-            tool_names::AUTOMATION_PROPOSE => ToolSensitivity::High,
-            tool_names::AUTOMATION_SET_ENABLED => ToolSensitivity::Medium,
+            tool_names::AUTOMATION_PROPOSE | tool_names::AUTOMATION_DELETE => ToolSensitivity::High,
+            tool_names::AUTOMATION_SET_ENABLED
+            | tool_names::AUTOMATION_UPDATE
+            | tool_names::AUTOMATION_RUN_NOW
+            | tool_names::AUTOMATION_RETRY_RUN
+            | tool_names::AUTOMATION_CANCEL_RUN => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
     }
@@ -519,6 +871,28 @@ mod tests {
         .expect("interval schedule parses");
         assert_eq!(schedule.kind, ScheduleKind::Interval);
         assert_eq!(schedule.interval_minutes, Some(30));
+    }
+
+    #[test]
+    fn parses_monthly_and_weekday_schedules_with_timezone() {
+        let monthly = AutomationExecutor::parse_schedule(&json!({
+            "kind": "monthly",
+            "time": "09:00",
+            "day_of_month": 31,
+            "timezone": "Asia/Shanghai"
+        }))
+        .unwrap();
+        assert_eq!(monthly.kind, ScheduleKind::Monthly);
+        assert_eq!(monthly.day_of_month, Some(31));
+        assert_eq!(monthly.timezone.as_deref(), Some("Asia/Shanghai"));
+
+        let weekdays = AutomationExecutor::parse_schedule(&json!({
+            "kind": "weekdays",
+            "time": "08:30",
+            "timezone": "UTC"
+        }))
+        .unwrap();
+        assert_eq!(weekdays.kind, ScheduleKind::Weekdays);
     }
 
     #[test]
@@ -598,12 +972,70 @@ mod tests {
     }
 
     #[test]
+    fn update_requires_a_positive_expected_version() {
+        let missing = AutomationExecutor::parse_required_version(&json!({
+            "id": "auto_test",
+            "name": "Renamed"
+        }))
+        .unwrap_err();
+        assert!(missing.contains("expected_version"));
+        assert!(missing.contains("automation_list"));
+
+        assert!(AutomationExecutor::parse_required_version(&json!({
+            "expected_version": 0
+        }))
+        .is_err());
+        assert_eq!(
+            AutomationExecutor::parse_required_version(&json!({
+                "expected_version": 7
+            }))
+            .unwrap(),
+            7
+        );
+    }
+
+    #[test]
+    fn update_parsers_preserve_missing_and_clear_empty_values() {
+        assert_eq!(
+            AutomationExecutor::parse_nullable_string(&json!({}), "model_id", None).unwrap(),
+            None
+        );
+        assert_eq!(
+            AutomationExecutor::parse_nullable_string(
+                &json!({ "model_id": "" }),
+                "model_id",
+                None,
+            )
+            .unwrap(),
+            Some(None)
+        );
+        assert_eq!(
+            AutomationExecutor::parse_nullable_session_mode(&json!({ "session_mode": null }))
+                .unwrap(),
+            Some(None)
+        );
+        assert_eq!(
+            AutomationExecutor::parse_catch_up_policy(
+                &json!({ "catch_up_policy": "catch_up_all" }),
+                false,
+            )
+            .unwrap(),
+            Some(CatchUpPolicy::CatchUpAll)
+        );
+    }
+
+    #[test]
     fn handles_expected_tool_names() {
         let executor = AutomationExecutor::new();
         assert!(executor.can_handle("automation_propose"));
         assert!(executor.can_handle("builtin-automation_list"));
         assert!(executor.can_handle("builtin-automation_set_enabled"));
-        assert!(!executor.can_handle("automation_delete"));
+        assert!(executor.can_handle("automation_update"));
+        assert!(executor.can_handle("builtin-automation_delete"));
+        assert!(executor.can_handle("builtin-automation_run_now"));
+        assert!(executor.can_handle("builtin-automation_runs"));
+        assert!(executor.can_handle("builtin-automation_retry_run"));
+        assert!(executor.can_handle("builtin-automation_cancel_run"));
     }
 
     #[test]
@@ -621,5 +1053,41 @@ mod tests {
             executor.sensitivity_level("automation_list"),
             ToolSensitivity::Low
         );
+        assert_eq!(
+            executor.sensitivity_level("automation_update"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("automation_run_now"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("automation_delete"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.sensitivity_level("automation_runs"),
+            ToolSensitivity::Low
+        );
+        assert_eq!(
+            executor.sensitivity_level("automation_retry_run"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("automation_cancel_run"),
+            ToolSensitivity::Medium
+        );
+    }
+
+    #[test]
+    fn missing_expected_version_returns_structured_occ_required_error() {
+        let error: Value = serde_json::from_str(
+            &AutomationExecutor::parse_required_version(&json!({}))
+                .expect_err("missing version must fail"),
+        )
+        .expect("structured OCC error");
+        assert_eq!(error["code"], AUTOMATION_OCC_REQUIRED_CODE);
+        assert_eq!(error["requiredField"], "expected_version");
+        assert_eq!(error["retryable"], false);
     }
 }

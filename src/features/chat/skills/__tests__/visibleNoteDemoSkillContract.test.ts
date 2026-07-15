@@ -18,7 +18,7 @@ describe('visible note demo skill contract', () => {
     const listWindows = content.indexOf('builtin-workbench_list_windows');
     const openApp = content.indexOf('builtin-workbench_open_app', listWindows);
     const domainEdit = content.indexOf('builtin-note_append', openApp);
-    const confirmation = content.indexOf('最后读取笔记或查询窗口状态确认结果', domainEdit);
+    const confirmation = content.indexOf('最后重新读取笔记或观察窗口确认结果', domainEdit);
 
     expect(workbenchToolsSkill.description).toContain('展示/演示/让我看你操作');
     expect(content).toContain('可见笔记演示');

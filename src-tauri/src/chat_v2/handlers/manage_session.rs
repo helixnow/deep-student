@@ -1658,6 +1658,7 @@ mod tests {
                 }),
                 skill_runtime_before: None,
                 skill_runtime_after: None,
+                ..Default::default()
             }),
         }]);
 

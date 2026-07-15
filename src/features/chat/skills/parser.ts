@@ -16,6 +16,7 @@ import type {
   ToolSchema,
   SkillType,
   SkillRequires,
+  JsonSchemaProperty,
 } from './types';
 import { validateSkillMetadata, SKILL_DEFAULT_PRIORITY } from './types';
 
@@ -251,7 +252,16 @@ function parseEmbeddedTools(value: unknown, warnings: string[]): ToolSchema[] | 
         type: 'object',
         properties: inputSchema.properties as Record<string, unknown>,
         required: Array.isArray(inputSchema.required) ? inputSchema.required as string[] : undefined,
-        additionalProperties: inputSchema.additionalProperties as boolean | undefined,
+        additionalProperties: inputSchema.additionalProperties as
+          | boolean
+          | JsonSchemaProperty
+          | undefined,
+        anyOf: Array.isArray(inputSchema.anyOf)
+          ? inputSchema.anyOf as JsonSchemaProperty[]
+          : undefined,
+        oneOf: Array.isArray(inputSchema.oneOf)
+          ? inputSchema.oneOf as JsonSchemaProperty[]
+          : undefined,
       },
     } as ToolSchema);
   }

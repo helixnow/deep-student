@@ -8,7 +8,7 @@
 //! - `types`: 工具类型定义（ToolDefinition, ToolCategory, ToolExecutionResult）
 //! - `registry`: Schema 工具注册表（SchemaToolRegistry）
 //! - `canvas_tools`: Canvas 智能笔记工具实现
-//! - `anki_executor`: Anki 工具执行器（桥接到前端 CardAgent）
+//! - `anki_executor`: 仅保留的 CardForge 兼容实现（未注册且不注入 Schema）
 //! - `executor`: ToolExecutor trait 定义（文档 29 P0-1）
 //! - `executor_registry`: 工具执行器注册表（文档 29 P0-1）
 //! - `general_executor`: 通用工具执行器（文档 29 P0-1）
@@ -16,11 +16,11 @@
 //!
 //! ### 工具列表
 //! - Canvas 工具：`builtin:note_read`, `builtin:note_append`, `builtin:note_replace`, `builtin:note_set`
-//! - Anki 工具：`builtin:anki_generate_cards`, `builtin:anki_control_task`, 等（定义在前端 builtinMcpServer.ts）
+//! - Anki 工具：由 ChatAnki 工具集统一提供；旧 `builtin-anki_*` 路径不再暴露给 LLM
 //!
 //! ## 约束
 //! - Canvas 工具必须从参数中获取 `note_id` 和 `subject`（由 Pipeline 通过 SendOptions 传递）
-//! - Anki 工具由前端 CardAgent 执行（通过事件通信）
+//! - 旧 Anki CardAgent 执行器不得加入生产执行器注册表或 Schema 注入表
 //! - 操作后必须发送事件通知前端
 //!
 //! ## ⚠️ 事件发射要求（2026-01-16 强制）
@@ -36,7 +36,7 @@
 //! 详见 `executor.rs` 中 `ToolExecutor` trait 文档。
 
 pub mod academic_search_executor; // 🆕 学术论文搜索执行器（arXiv + OpenAlex）
-pub mod anki_executor;
+pub mod anki_executor; // 旧 CardForge 兼容代码；生产管线不注册
 mod arg_utils;
 pub mod ask_user_executor; // 🆕 用户提问工具执行器（轻量级问答交互） // Anki 工具执行器（桥接到前端 CardAgent）
 pub mod attachment_executor; // 🆕 附件工具执行器（解决 P0 断裂点）
@@ -49,16 +49,21 @@ pub mod builtin_retrieval_executor; // 🆕 内置检索工具执行器（MCP �
 pub mod canvas_executor;
 pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
+pub mod data_governance_executor; // Agent-safe backup and sync tools
 pub mod document_processing_executor; // 🆕 文档解析/OCR 主动触发执行器（document_parse/status）
 pub mod docx_executor; // 🆕 DOCX 文档读写工具执行器（docx-rs 完整能力）
+pub mod dstu_executor; // DSTU/VFS Finder mutation and trash tools
 pub mod essay_grading_executor; // 🆕 作文批改工具执行器（essay_grade 异步任务 + 历史查询）
 pub mod executor;
 pub mod executor_registry;
 pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthropic/mcp-fetch）
 pub mod general_executor;
 pub mod image_generation_executor; // 🆕 内置图片生成工具执行器
+pub mod index_webpage_executor; // VFS index inspection/rebuild and webpage archive tools
 pub mod injector;
 pub mod knowledge_executor; // 🆕 知识工具执行器（内化/提取）
+pub mod learning_overview_executor; // Read-only learning overview and Pomodoro statistics
+pub mod llm_usage_executor; // Agent-safe local LLM usage reporting
 pub mod local_shell_execute_executor;
 pub mod local_shell_preflight_executor;
 pub mod mcp_propose_executor; // 🆕 MCP server 提案执行器（High 敏感度，secure store 写入）
@@ -72,6 +77,7 @@ pub mod review_executor; // 🆕 间隔重复复习计划工具执行器（revie
 pub mod runtime_root_request_executor; // 🆕 runtime_root_request 授权请求执行器（High，never-remember）
 pub mod self_inspect_executor; // 🆕 self_inspect 只读自查工具执行器（脱敏状态概览）
 pub mod session_executor; // 🆕 会话管理工具执行器（AI 自主管理会话/分组/标签）
+pub mod settings_models_executor; // Agent-safe settings and model assignment tools
 pub mod shell_sandbox;
 pub mod skill_install_executor; // 🆕 skill_scan / skill_install 技能包自装执行器
 pub mod skill_workshop_executor; // 🆕 skill_workshop_propose / skill_workshop_apply 提案式技能 workshop
@@ -79,8 +85,10 @@ pub mod skills_executor; // 🆕 Skills 工具执行器（渐进披露架构）
 pub mod sleep_executor;
 pub mod subagent_executor;
 pub mod template_executor; // 🆕 模板设计师工具执行器
+pub mod textbook_pdf_executor; // Agent-safe textbook annotations and PDF page images
 pub mod todo_executor;
 pub mod tool_pack_executor; // ToolPack parallel executor
+pub mod translation_executor; // Translation pipeline + explicit VFS save tools
 pub mod types;
 pub mod user_todo_executor;
 pub mod workbench_bridge; // ACR R1-01：工作台桥 RPC（acr_bridge_call）
@@ -109,7 +117,7 @@ pub use types::{
 
 // 重导出执行器（文档 29 P0-1）
 pub use academic_search_executor::AcademicSearchExecutor; // 🆕 学术论文搜索执行器
-pub use anki_executor::AnkiToolExecutor; // 🆕 Anki 工具执行器
+pub use anki_executor::AnkiToolExecutor; // 旧 CardForge 兼容执行器；仅保留类型
 pub use ask_user_executor::AskUserExecutor; // 🆕 用户提问工具执行器
 pub use attachment_executor::AttachmentToolExecutor; // 🆕 附件工具执行器
 pub use attachment_stage_executor::AttachmentStageExecutor; // 🆕 附件物化工具执行器
@@ -120,15 +128,20 @@ pub use builtin_resource_executor::BuiltinResourceExecutor; // 🆕 内置学习
 pub use builtin_retrieval_executor::BuiltinRetrievalExecutor; // 🆕 内置检索工具执行器
 pub use canvas_executor::CanvasToolExecutor;
 pub use chatanki_executor::ChatAnkiToolExecutor; // 🆕 ChatAnki 工具执行器
+pub use data_governance_executor::DataGovernanceToolExecutor;
 pub use document_processing_executor::DocumentProcessingExecutor; // 🆕 文档解析/OCR 主动触发执行器
 pub use docx_executor::DocxToolExecutor; // 🆕 DOCX 文档读写工具执行器
+pub use dstu_executor::DstuToolExecutor;
 pub use essay_grading_executor::EssayGradingExecutor; // 🆕 作文批改工具执行器
 pub use executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 pub use executor_registry::ToolExecutorRegistry;
 pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
 pub use general_executor::GeneralToolExecutor;
 pub use image_generation_executor::ImageGenerationExecutor; // 🆕 内置图片生成工具执行器
+pub use index_webpage_executor::IndexWebpageToolExecutor;
 pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器
+pub use learning_overview_executor::LearningOverviewExecutor;
+pub use llm_usage_executor::LlmUsageToolExecutor;
 pub use local_shell_execute_executor::LocalShellExecuteExecutor;
 pub use local_shell_preflight_executor::LocalShellPreflightExecutor;
 pub use mcp_propose_executor::McpProposeExecutor; // 🆕 MCP server 提案执行器
@@ -137,12 +150,15 @@ pub use paper_save_executor::PaperSaveExecutor; // 🆕 论文保存+引用格�
 pub use pptx_executor::PptxToolExecutor; // 🆕 PPTX 演示文稿读写工具执行器
 pub use review_executor::ReviewToolExecutor; // 🆕 间隔重复复习计划工具执行器
 pub use session_executor::SessionToolExecutor; // 🆕 会话管理工具执行器
+pub use settings_models_executor::SettingsModelsToolExecutor;
 pub use skills_executor::SkillsExecutor; // 🆕 Skills 工具执行器
-pub use sleep_executor::{get_coordinator_sleep_tool_schema, CoordinatorSleepExecutor};
-pub use subagent_executor::{get_subagent_tool_schema, SubagentExecutor, SUBAGENT_TOOL_NAME};
+pub use sleep_executor::CoordinatorSleepExecutor;
+pub use subagent_executor::{SubagentExecutor, SUBAGENT_TOOL_NAME};
 pub use template_executor::TemplateDesignerExecutor; // 🆕 模板设计师工具执行器
+pub use textbook_pdf_executor::TextbookPdfToolExecutor;
 pub use todo_executor::TodoListExecutor;
 pub use tool_pack_executor::ToolPackExecutor; // ToolPack parallel executor
+pub use translation_executor::TranslationToolExecutor;
 pub use user_todo_executor::UserTodoExecutor;
 pub use workbench_bridge::{acr_bridge_call, AcrBridgeRequest, AcrBridgeResponse, AcrProgress}; // ACR R1-01
 pub use workbench_executor::WorkbenchToolExecutor;
@@ -159,6 +175,8 @@ pub mod canvas_tool_names {
     pub const NOTE_LIST: &str = "note_list";
     pub const NOTE_SEARCH: &str = "note_search";
     pub const NOTE_CREATE: &str = "note_create";
+    pub const NOTE_DELETE: &str = "note_delete";
+    pub const NOTE_UPDATE_TAGS: &str = "note_update_tags";
 
     /// 带 builtin- 前缀的工具名称
     pub const BUILTIN_NOTE_READ: &str = "builtin-note_read";
@@ -168,6 +186,8 @@ pub mod canvas_tool_names {
     pub const BUILTIN_NOTE_LIST: &str = "builtin-note_list";
     pub const BUILTIN_NOTE_SEARCH: &str = "builtin-note_search";
     pub const BUILTIN_NOTE_CREATE: &str = "builtin-note_create";
+    pub const BUILTIN_NOTE_DELETE: &str = "builtin-note_delete";
+    pub const BUILTIN_NOTE_UPDATE_TAGS: &str = "builtin-note_update_tags";
 }
 
 /// 检查工具名是否为 Canvas 工具
@@ -187,6 +207,8 @@ pub fn is_canvas_tool(tool_name: &str) -> bool {
             | canvas_tool_names::NOTE_LIST
             | canvas_tool_names::NOTE_SEARCH
             | canvas_tool_names::NOTE_CREATE
+            | canvas_tool_names::NOTE_DELETE
+            | canvas_tool_names::NOTE_UPDATE_TAGS
     )
 }
 
@@ -213,6 +235,8 @@ mod tests {
         assert!(is_canvas_tool("note_list"));
         assert!(is_canvas_tool("note_search"));
         assert!(is_canvas_tool("note_create"));
+        assert!(is_canvas_tool("note_delete"));
+        assert!(is_canvas_tool("note_update_tags"));
 
         // builtin- 前缀格式
         assert!(is_canvas_tool("builtin-note_read"));
@@ -222,6 +246,8 @@ mod tests {
         assert!(is_canvas_tool("builtin-note_list"));
         assert!(is_canvas_tool("builtin-note_search"));
         assert!(is_canvas_tool("builtin-note_create"));
+        assert!(is_canvas_tool("builtin-note_delete"));
+        assert!(is_canvas_tool("builtin-note_update_tags"));
 
         // 非 Canvas 工具
         assert!(!is_canvas_tool("web_search"));

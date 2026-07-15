@@ -77,6 +77,15 @@ pub enum RuntimeRootAccess {
     ReadWrite,
 }
 
+impl RuntimeRootAccess {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RuntimeRootAccess::ReadOnly => "read_only",
+            RuntimeRootAccess::ReadWrite => "read_write",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RuntimeRoot {
     pub id: String,
@@ -87,6 +96,18 @@ pub struct RuntimeRoot {
     pub description: String,
     pub session_scoped: bool,
     pub configured: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RuntimeRootApprovalBinding {
+    pub root_id: String,
+    pub root_path: String,
+    pub root_access: RuntimeRootAccess,
+    pub root_session_scoped: bool,
+    /// Digest of the selected root, cwd, session identity, and every effective
+    /// sandbox-readable root. This is compared again immediately before exec.
+    pub root_binding: String,
+    pub readable_roots: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -637,8 +658,27 @@ fn configured_workspace_runtime_root(record: WorkspaceRootRecord) -> RuntimeRoot
     workspace_runtime_root(record, true)
 }
 
+fn validate_workspace_access(canonical: &Path, access: RuntimeRootAccess) -> Result<(), String> {
+    if access == RuntimeRootAccess::ReadWrite
+        && assess_authorized_root_risk_canonical(canonical) == AuthorizedRootRisk::Critical
+    {
+        return Err(
+            "Critical filesystem locations cannot be configured as a read-write agent workspace"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 pub fn workspace_root(database: &crate::database::Database) -> Result<RuntimeRoot, String> {
-    if let Some(record) = load_workspace_record(database)? {
+    if let Some(mut record) = load_workspace_record(database)? {
+        if validate_workspace_access(&record.path, record.access).is_err() {
+            log::error!(
+                "[RuntimeRoots] Downgrading persisted critical workspace '{}' to read-only",
+                record.path.display()
+            );
+            record.access = RuntimeRootAccess::ReadOnly;
+        }
         let is_valid = validate_persisted_root_binding(
             &record.path,
             record.identity.as_ref(),
@@ -965,6 +1005,7 @@ pub(crate) fn revalidate_runtime_root(
 pub(crate) fn runtime_root_binding_token(
     database: &crate::database::Database,
     root: &RuntimeRoot,
+    session_id: &str,
 ) -> Result<String, String> {
     let canonical = revalidate_runtime_root(database, root)?;
     let identity = runtime_root_identity(&canonical)?;
@@ -973,9 +1014,121 @@ pub(crate) fn runtime_root_binding_token(
         "kind": root.kind,
         "canonical_path": canonical,
         "identity": identity,
+        "access": root.access,
+        "session_scoped": root.session_scoped,
+        "session_id": root.session_scoped.then_some(session_id),
     }))
     .map_err(|error| format!("Failed to serialize runtime-root binding: {}", error))?;
     Ok(hex::encode(Sha256::digest(payload)))
+}
+
+fn shell_approval_binding_digest(
+    selected_root_binding: &str,
+    cwd_canonical: &Path,
+    cwd_identity: &RuntimeRootIdentity,
+    readable: &[(String, String)],
+) -> Result<String, String> {
+    let approval_payload = serde_json::to_vec(&serde_json::json!({
+        "selected_root": selected_root_binding,
+        "cwd_path": cwd_canonical,
+        "cwd_identity": cwd_identity,
+        "readable_roots": readable,
+    }))
+    .map_err(|error| format!("Failed to serialize shell approval binding: {error}"))?;
+    Ok(hex::encode(Sha256::digest(approval_payload)))
+}
+
+/// Resolve the exact filesystem authority a shell approval would grant.
+///
+/// The local shell sandbox can read every configured runtime root, not only
+/// the selected cwd root. Keep those paths in the user-visible scope and bind
+/// their directory identities into one digest so an authorization/root switch
+/// between prompt and execution fails closed.
+pub(crate) fn shell_runtime_approval_binding(
+    app: &AppHandle,
+    database: &crate::database::Database,
+    session_id: &str,
+    skill_package_roots: Option<&HashMap<String, String>>,
+    root_id: Option<&str>,
+    cwd: Option<&str>,
+    support_readable_roots: &[PathBuf],
+) -> Result<RuntimeRootApprovalBinding, String> {
+    let mut selected = runtime_root_by_id(
+        app,
+        database,
+        session_id,
+        skill_package_roots,
+        root_id,
+        true,
+    )?;
+    selected.path = revalidate_runtime_root(database, &selected)?;
+
+    let cwd_relative = normalize_runtime_relative_path(cwd)?;
+    let cwd_path = selected.path.join(cwd_relative);
+    let cwd_canonical = cwd_path
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve shell cwd for approval: {error}"))?;
+    if !cwd_canonical.starts_with(&selected.path) || !cwd_canonical.is_dir() {
+        return Err("Shell cwd is not a directory inside the selected runtime root".to_string());
+    }
+    let cwd_identity = runtime_root_identity(&cwd_canonical)?;
+
+    let mut roots = runtime_roots_for_session(app, database, session_id, true)?;
+    roots.retain(|root| {
+        root.configured || matches!(root.kind, RuntimeRootKind::Artifact | RuntimeRootKind::Temp)
+    });
+    if !roots.iter().any(|root| root.id == selected.id) {
+        roots.push(selected.clone());
+    }
+    if let Some(skill_roots) = skill_package_roots {
+        for (skill_id, path) in skill_roots {
+            roots.push(skill_package_runtime_root(skill_id, path)?);
+        }
+    }
+
+    let mut readable = Vec::<(String, String)>::new();
+    for mut root in roots {
+        root.path = revalidate_runtime_root(database, &root)?;
+        let path = strip_windows_verbatim_prefix(&root.path);
+        if readable.iter().any(|(existing, _)| existing == &path) {
+            continue;
+        }
+        let token = runtime_root_binding_token(database, &root, session_id)?;
+        readable.push((path, token));
+    }
+    for support_root in support_readable_roots {
+        let canonical = support_root
+            .canonicalize()
+            .map_err(|error| format!("Failed to resolve sandbox support root: {error}"))?;
+        let path = strip_windows_verbatim_prefix(&canonical);
+        if readable.iter().any(|(existing, _)| existing == &path) {
+            continue;
+        }
+        let identity = runtime_root_identity(&canonical)?;
+        let payload = serde_json::to_vec(&serde_json::json!({
+            "kind": "sandbox_support",
+            "canonical_path": canonical,
+            "identity": identity,
+            "access": RuntimeRootAccess::ReadOnly,
+        }))
+        .map_err(|error| format!("Failed to serialize sandbox support binding: {error}"))?;
+        readable.push((path, hex::encode(Sha256::digest(payload))));
+    }
+    readable.sort_by(|left, right| left.0.cmp(&right.0));
+
+    let selected_token = runtime_root_binding_token(database, &selected, session_id)?;
+    let root_binding =
+        shell_approval_binding_digest(&selected_token, &cwd_canonical, &cwd_identity, &readable)?;
+    let readable_roots = readable.into_iter().map(|(path, _)| path).collect();
+
+    Ok(RuntimeRootApprovalBinding {
+        root_id: selected.id.clone(),
+        root_path: strip_windows_verbatim_prefix(&selected.path),
+        root_access: selected.access,
+        root_session_scoped: selected.session_scoped,
+        root_binding,
+        readable_roots,
+    })
 }
 
 pub fn skill_package_runtime_root(skill_id: &str, raw_path: &str) -> Result<RuntimeRoot, String> {
@@ -1235,6 +1388,8 @@ pub async fn chat_v2_set_workspace_root(
     session_id: Option<String>,
 ) -> Result<Vec<RuntimeRoot>, String> {
     let canonical = canonicalize_workspace_dir(&path)?;
+    let access = access.unwrap_or_default();
+    validate_workspace_access(&canonical, access)?;
     let identity = runtime_root_identity(&canonical)?;
     let label = label
         .as_deref()
@@ -1255,7 +1410,7 @@ pub async fn chat_v2_set_workspace_root(
             &WorkspaceRootRecord {
                 path: canonical,
                 label,
-                access: access.unwrap_or_default(),
+                access,
                 identity: Some(identity),
             },
         )?;
@@ -2221,6 +2376,44 @@ mod tests {
     }
 
     #[test]
+    fn critical_workspace_locations_cannot_receive_write_access() {
+        let home = dirs::home_dir()
+            .expect("home directory")
+            .canonicalize()
+            .expect("canonical home");
+        assert_eq!(
+            assess_authorized_root_risk_canonical(&home),
+            AuthorizedRootRisk::Critical
+        );
+        assert!(validate_workspace_access(&home, RuntimeRootAccess::ReadWrite).is_err());
+        assert!(validate_workspace_access(&home, RuntimeRootAccess::ReadOnly).is_ok());
+    }
+
+    #[test]
+    fn tampered_persisted_critical_workspace_is_downgraded_to_read_only() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let database = settings_database(&temp_dir.path().join("settings.db"));
+        let home = dirs::home_dir()
+            .expect("home directory")
+            .canonicalize()
+            .expect("canonical home");
+        save_workspace_record(
+            &database,
+            &WorkspaceRootRecord {
+                path: home.clone(),
+                label: "Tampered Workspace".to_string(),
+                access: RuntimeRootAccess::ReadWrite,
+                identity: Some(runtime_root_identity(&home).expect("identity")),
+            },
+        )
+        .expect("save tampered workspace");
+
+        let root = workspace_root(&database).expect("load workspace");
+        assert!(root.configured);
+        assert_eq!(root.access, RuntimeRootAccess::ReadOnly);
+    }
+
+    #[test]
     fn legacy_workspace_record_deserializes_as_read_only() {
         let record: WorkspaceRootRecord = serde_json::from_value(serde_json::json!({
             "path": "/tmp/project",
@@ -2371,12 +2564,39 @@ mod tests {
         save_workspace(&first);
         let first_root = workspace_root(&database).expect("first root");
         let first_token =
-            runtime_root_binding_token(&database, &first_root).expect("first binding");
+            runtime_root_binding_token(&database, &first_root, "sess-a").expect("first binding");
         save_workspace(&second);
         let second_root = workspace_root(&database).expect("second root");
         let second_token =
-            runtime_root_binding_token(&database, &second_root).expect("second binding");
+            runtime_root_binding_token(&database, &second_root, "sess-a").expect("second binding");
         assert_ne!(first_token, second_token);
+
+        let mut write_enabled = second_root.clone();
+        write_enabled.access = RuntimeRootAccess::ReadWrite;
+        let write_enabled_token = runtime_root_binding_token(&database, &write_enabled, "sess-a")
+            .expect("write-enabled binding");
+        assert_ne!(
+            second_token, write_enabled_token,
+            "access is approval authority"
+        );
+
+        let session_root = RuntimeRoot {
+            id: "temp".to_string(),
+            kind: RuntimeRootKind::Temp,
+            path: second.canonicalize().expect("session root path"),
+            access: RuntimeRootAccess::ReadWrite,
+            label: "Temp".to_string(),
+            description: String::new(),
+            session_scoped: true,
+            configured: false,
+        };
+        assert_ne!(
+            runtime_root_binding_token(&database, &session_root, "sess-a")
+                .expect("session a binding"),
+            runtime_root_binding_token(&database, &session_root, "sess-b")
+                .expect("session b binding"),
+            "session-scoped roots must not share approvals across sessions"
+        );
 
         let authorized_path = temp_dir.path().join("authorized");
         let old_authorized = temp_dir.path().join("authorized-old");
@@ -2390,8 +2610,9 @@ mod tests {
         let first_authorized = authorized_root_by_id(&database, &first_outcome.root_id)
             .expect("lookup first")
             .expect("first root");
-        let first_authorized_token = runtime_root_binding_token(&database, &first_authorized)
-            .expect("first authorized binding");
+        let first_authorized_token =
+            runtime_root_binding_token(&database, &first_authorized, "sess-a")
+                .expect("first authorized binding");
 
         fs::rename(&authorized_path, &old_authorized).expect("move old authorized");
         fs::create_dir(&authorized_path).expect("replace authorized");
@@ -2405,8 +2626,22 @@ mod tests {
             .expect("lookup replacement")
             .expect("replacement root");
         let second_authorized_token =
-            runtime_root_binding_token(&database, &second_authorized).expect("replacement binding");
+            runtime_root_binding_token(&database, &second_authorized, "sess-a")
+                .expect("replacement binding");
         assert_ne!(first_authorized_token, second_authorized_token);
+    }
+
+    #[test]
+    fn shell_binding_changes_when_support_readable_roots_change() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let cwd = temp_dir.path().canonicalize().expect("canonical cwd");
+        let identity = runtime_root_identity(&cwd).expect("cwd identity");
+        let first = vec![("/toolchain/a".to_string(), "identity-a".to_string())];
+        let second = vec![("/toolchain/b".to_string(), "identity-b".to_string())];
+        assert_ne!(
+            shell_approval_binding_digest("selected", &cwd, &identity, &first).unwrap(),
+            shell_approval_binding_digest("selected", &cwd, &identity, &second).unwrap(),
+        );
     }
 
     #[test]

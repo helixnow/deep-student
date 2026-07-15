@@ -40,6 +40,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Window};
+use tokio_util::sync::CancellationToken;
 
 use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
@@ -116,12 +117,47 @@ pub const HEADLESS_BLOCKED_TOOLS: &[(&str, &str)] = &[
     ("skill_workshop_apply", "write-risk"),
     ("automation_propose", "write-risk"),
     ("automation_set_enabled", "write-risk"),
+    ("automation_update", "write-risk"),
+    ("automation_delete", "write-risk"),
+    ("automation_run_now", "write-risk"),
+    ("settings_set", "write-risk"),
+    ("model_assignments_set", "write-risk"),
+    ("backup_create", "write-risk"),
+    ("sync_run", "write-risk"),
+    ("index_rebuild", "write-risk"),
+    ("webpage_save", "write-risk"),
+    ("user_todo_create_item", "write-risk"),
+    ("user_todo_complete_item", "write-risk"),
+    ("user_todo_update_item", "write-risk"),
+    ("user_todo_delete_item", "write-risk"),
+    ("user_todo_create_list", "write-risk"),
+    ("user_todo_update_list", "write-risk"),
+    ("user_todo_delete_list", "write-risk"),
+    ("user_todo_restore", "write-risk"),
+    ("user_todo_reorder", "write-risk"),
+    ("memory_write", "write-risk"),
+    ("memory_write_smart", "write-risk"),
+    ("memory_write_batch", "write-risk"),
+    ("memory_update_by_id", "write-risk"),
     ("memory_delete", "write-risk"),
     ("qbank_reset_progress", "write-risk"),
     ("qbank_export", "write-risk"),
+    ("qbank_delete_questions", "write-risk"),
     ("attachment_stage", "write-risk"),
     ("paper_save", "write-risk"),
     ("mindmap_delete", "write-risk"),
+    ("review_suspend", "write-risk"),
+    ("review_resume", "write-risk"),
+    ("review_delete", "write-risk"),
+    ("dstu_folder_create", "write-risk"),
+    ("dstu_folder_rename", "write-risk"),
+    ("dstu_rename", "write-risk"),
+    ("dstu_move", "write-risk"),
+    ("dstu_delete", "write-risk"),
+    ("dstu_restore", "write-risk"),
+    ("dstu_set_favorite", "write-risk"),
+    ("dstu_purge", "write-risk"),
+    ("dstu_upload_file", "write-risk"),
     // —— 绕过风险：tool_pack 会展开执行子工具，可能绕过白名单逐项检查
     ("tool_pack", "write-risk"),
 ];
@@ -146,25 +182,34 @@ pub fn headless_allowed_tools() -> Vec<String> {
         "builtin-rag_search",
         "builtin-web_search",
         "builtin-web_fetch",
-        // 记忆（MemoryToolExecutor，除 memory_delete 外均 Low）
+        // 系统观测（阶段七，只读 Low；所有写入仍在 blocked 清单）
+        "builtin-settings_get",
+        "builtin-model_assignments_get",
+        "builtin-llm_usage_query",
+        "builtin-backup_status",
+        "builtin-backup_job_status",
+        "builtin-sync_status",
+        // VFS index diagnosis is read-only; rebuild/archive remain blocked.
+        "builtin-index_status",
+        // 学习概览与番茄钟统计（阶段十，只读 Low）
+        "builtin-learning_overview",
+        "builtin-pomodoro_today_stats",
+        "builtin-pomodoro_daily_stats",
+        // 记忆只读面（无人值守不得修改用户长期记忆）
         "builtin-memory_read",
         "builtin-memory_list",
-        "builtin-memory_write",
-        "builtin-memory_write_smart",
-        "builtin-memory_write_batch",
-        "builtin-memory_update_by_id",
         // VFS 学习资源（BuiltinResourceExecutor，只读，Low）
         "builtin-resource_list",
         "builtin-resource_read",
         "builtin-resource_search",
         "builtin-folder_list",
-        // 用户待办（UserTodoExecutor，Low）——复习提醒场景的核心落点
+        "builtin-dstu_list_trash",
+        // 用户待办只读面（无人值守不得修改用户真实待办）
         "builtin-user_todo_list_lists",
-        "builtin-user_todo_create_item",
-        "builtin-user_todo_complete_item",
         "builtin-user_todo_list_items",
         "builtin-user_todo_get_summary",
-        "builtin-user_todo_update_item",
+        "builtin-user_todo_search",
+        "builtin-user_todo_list_trash",
         // 题库只读（QBankExecutor，Low）——到期复习卡 / 学情统计
         "builtin-qbank_list",
         "builtin-qbank_list_questions",
@@ -287,79 +332,12 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
             "列出记忆目录结构和笔记列表。返回笔记 ID、标题、文件夹路径和更新时间。",
             json!({
                 "type": "object",
+                "additionalProperties": false,
                 "properties": {
                     "folder": { "type": "string", "description": "相对于记忆根目录的文件夹路径，留空表示根目录" },
-                    "limit": { "type": "integer", "description": "返回数量限制，默认 100", "default": 100, "minimum": 1, "maximum": 500 },
+                    "limit": { "type": "integer", "description": "返回数量限制，默认及最多 20", "default": 20, "minimum": 1, "maximum": 20 },
                     "offset": { "type": "integer", "description": "分页偏移量，默认 0", "default": 0, "minimum": 0 }
                 }
-            }),
-        ),
-        tool(
-            "builtin-memory_write",
-            "创建或更新用户记忆（fact 类型，≤50 字的原子事实短句）。",
-            json!({
-                "type": "object",
-                "properties": {
-                    "note_id": { "type": "string", "description": "可选：指定 note_id 则按 ID 更新/追加" },
-                    "folder": { "type": "string", "description": "记忆分类文件夹路径，如 \"偏好\"、\"经历/学科状态\"" },
-                    "title": { "type": "string", "description": "【必填】记忆标题" },
-                    "content": { "type": "string", "description": "【必填】关于用户的简短陈述句，≤50 字" },
-                    "mode": { "type": "string", "enum": ["create", "update", "append"], "description": "写入模式" }
-                },
-                "required": ["title", "content"]
-            }),
-        ),
-        tool(
-            "builtin-memory_write_smart",
-            "智能写入记忆（推荐首选）。支持 fact / study / note 三种类型，自动判断新增/更新。",
-            json!({
-                "type": "object",
-                "properties": {
-                    "folder": { "type": "string", "description": "记忆分类文件夹路径" },
-                    "title": { "type": "string", "description": "【必填】记忆标题" },
-                    "content": { "type": "string", "description": "【必填】记忆内容" },
-                    "memory_type": { "type": "string", "enum": ["fact", "study", "note"], "description": "记忆类型，默认 fact" },
-                    "idempotency_key": { "type": "string", "description": "可选：幂等键，重试时复用避免重复写入" }
-                },
-                "required": ["title", "content"]
-            }),
-        ),
-        tool(
-            "builtin-memory_write_batch",
-            "批量写入记忆。适合一次性保存多条词汇/知识点/要点，默认 memory_type=study。",
-            json!({
-                "type": "object",
-                "properties": {
-                    "folder": { "type": "string", "description": "默认文件夹路径" },
-                    "memory_type": { "type": "string", "enum": ["fact", "study", "note"], "default": "study" },
-                    "items": {
-                        "type": "array",
-                        "description": "要保存的记忆项列表",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "title": { "type": "string" },
-                                "content": { "type": "string" },
-                                "folder": { "type": "string" }
-                            },
-                            "required": ["title", "content"]
-                        }
-                    }
-                },
-                "required": ["items"]
-            }),
-        ),
-        tool(
-            "builtin-memory_update_by_id",
-            "按 note_id 精确更新记忆。必须先查出 note_id 再调用。",
-            json!({
-                "type": "object",
-                "properties": {
-                    "note_id": { "type": "string", "description": "【必填】记忆笔记 ID" },
-                    "title": { "type": "string", "description": "可选：新标题" },
-                    "content": { "type": "string", "description": "可选：新内容（Markdown）" }
-                },
-                "required": ["note_id"]
             }),
         ),
         tool(
@@ -415,36 +393,27 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
             }),
         ),
         tool(
-            "builtin-user_todo_list_lists",
-            "[用户待办] 列出用户的所有个人待办列表。",
-            json!({ "type": "object", "properties": {} }),
-        ),
-        tool(
-            "builtin-user_todo_create_item",
-            "[用户待办] 在用户的个人待办列表中创建新的待办项（持久化）。不指定 list_id 时使用默认收件箱。",
+            "builtin-dstu_list_trash",
+            "分页列出 DSTU 回收站内容。这是只读操作，不会恢复或永久删除资源。",
             json!({
                 "type": "object",
                 "properties": {
-                    "title": { "type": "string", "description": "【必填】待办项标题" },
-                    "description": { "type": "string", "description": "详细描述（可选）" },
-                    "priority": { "type": "string", "enum": ["none", "low", "medium", "high", "urgent"], "description": "优先级，默认 none" },
-                    "due_date": { "type": "string", "description": "截止日期 YYYY-MM-DD（可选）" },
-                    "due_time": { "type": "string", "description": "截止时间 HH:MM（可选）" },
-                    "list_id": { "type": "string", "description": "目标待办列表 ID（可选）" },
-                    "tags": { "type": "array", "items": { "type": "string" }, "description": "标签列表（可选）" }
+                    "limit": { "type": "integer", "default": 20, "minimum": 1, "maximum": 20 },
+                    "offset": { "type": "integer", "default": 0, "minimum": 0 }
                 },
-                "required": ["title"]
+                "additionalProperties": false
             }),
         ),
         tool(
-            "builtin-user_todo_complete_item",
-            "[用户待办] 将用户的待办项标记为已完成。",
+            "builtin-user_todo_list_lists",
+            "[用户待办] 分页列出用户的个人待办列表。",
             json!({
                 "type": "object",
                 "properties": {
-                    "item_id": { "type": "string", "description": "【必填】待办项 ID" }
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
                 },
-                "required": ["item_id"]
+                "additionalProperties": false
             }),
         ),
         tool(
@@ -455,8 +424,11 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
                 "properties": {
                     "list_id": { "type": "string", "description": "待办列表 ID（可选）" },
                     "view": { "type": "string", "enum": ["all", "today", "overdue", "upcoming", "completed"], "description": "视图过滤，默认 all" },
-                    "include_completed": { "type": "boolean", "description": "是否包含已完成项，默认 false" }
-                }
+                    "include_completed": { "type": "boolean", "description": "是否包含已完成项，默认 false" },
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                },
+                "additionalProperties": false
             }),
         ),
         tool(
@@ -465,19 +437,144 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
             json!({ "type": "object", "properties": {} }),
         ),
         tool(
-            "builtin-user_todo_update_item",
-            "[用户待办] 更新待办项属性（标题、描述、优先级、截止日期等）。",
+            "builtin-user_todo_search",
+            "[用户待办] 跨列表分页搜索待办项。",
             json!({
                 "type": "object",
                 "properties": {
-                    "item_id": { "type": "string", "description": "【必填】待办项 ID" },
-                    "title": { "type": "string", "description": "新标题（可选）" },
-                    "description": { "type": "string", "description": "新描述（可选）" },
-                    "priority": { "type": "string", "enum": ["none", "low", "medium", "high", "urgent"], "description": "新优先级（可选）" },
-                    "due_date": { "type": "string", "description": "新截止日期 YYYY-MM-DD（可选）" },
-                    "due_time": { "type": "string", "description": "新截止时间 HH:MM（可选）" }
+                    "query": { "type": "string", "minLength": 1 },
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
                 },
-                "required": ["item_id"]
+                "required": ["query"],
+                "additionalProperties": false
+            }),
+        ),
+        tool(
+            "builtin-user_todo_list_trash",
+            "[用户待办] 分页查看待办项或列表回收站（只读）。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "entity_type": { "type": "string", "enum": ["item", "list"] },
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                },
+                "required": ["entity_type"],
+                "additionalProperties": false
+            }),
+        ),
+        tool(
+            "builtin-settings_get",
+            "按显式安全前缀读取最多 20 个低风险应用设置；密钥、OAuth、MCP、云凭据和审批设置永不返回。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "prefix": {
+                        "type": "string",
+                        "enum": ["theme", "language", "enableNotifications", "maxChatHistory", "markdownRendererMode", "auto_save", "macos.", "sidebar.", "ui.", "thinking.", "textbook."]
+                    }
+                },
+                "required": ["prefix"],
+                "additionalProperties": false
+            }),
+        ),
+        tool(
+            "builtin-model_assignments_get",
+            "读取模型职责分配和严格脱敏的分页模型目录；不返回 API key、base URL、headers 或认证配置。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                },
+                "additionalProperties": false
+            }),
+        ),
+        tool(
+            "builtin-llm_usage_query",
+            "查询本地 LLM token 用量、趋势和分组统计。成本仅为 estimated；缺少定价的 0 不代表免费。",
+            json!({
+                "type": "object",
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "action": { "const": "summary" },
+                            "start_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+                            "end_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+                        },
+                        "required": ["action", "start_date", "end_date"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "action": { "const": "trends" },
+                            "days": { "type": "integer", "minimum": 1, "maximum": 366 },
+                            "granularity": { "type": "string", "enum": ["hour", "day"] },
+                            "offset": { "type": "integer", "minimum": 0, "default": 0 },
+                            "limit": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                        },
+                        "required": ["action", "days", "granularity"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "action": { "enum": ["by_model", "by_caller"] },
+                            "start_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+                            "end_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+                            "offset": { "type": "integer", "minimum": 0, "default": 0 },
+                            "limit": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                        },
+                        "required": ["action", "start_date", "end_date"],
+                        "additionalProperties": false
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "action": { "const": "recent" },
+                            "offset": { "type": "integer", "minimum": 0, "default": 0 },
+                            "limit": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                        },
+                        "required": ["action"],
+                        "additionalProperties": false
+                    }
+                ]
+            }),
+        ),
+        tool(
+            "builtin-backup_status",
+            "分页读取本机备份目录；仅表示 local_backup_catalog，不探测云端。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                },
+                "additionalProperties": false
+            }),
+        ),
+        tool(
+            "builtin-backup_job_status",
+            "查询已知后台备份 job 的真实状态和 result.success；只读，不创建或取消任务。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "job_id": { "type": "string", "minLength": 1, "maxLength": 80 }
+                },
+                "required": ["job_id"],
+                "additionalProperties": false
+            }),
+        ),
+        tool(
+            "builtin-sync_status",
+            "读取本地 change-log 同步统计。cloud_probed=false，不能据此判断云端可达或两端一致。",
+            json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
             }),
         ),
         tool(
@@ -485,8 +582,9 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
             "列出用户的所有题目集，返回基本信息和学习统计数据。",
             json!({
                 "type": "object",
+                "additionalProperties": false,
                 "properties": {
-                    "limit": { "type": "integer", "default": 20, "minimum": 1, "maximum": 500 },
+                    "limit": { "type": "integer", "default": 20, "minimum": 1, "maximum": 20 },
                     "offset": { "type": "integer", "default": 0, "minimum": 0 },
                     "search": { "type": "string", "description": "搜索关键词（匹配题目集名称）" },
                     "include_stats": { "type": "boolean", "default": true, "description": "是否包含统计信息" }
@@ -498,12 +596,14 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
             "列出题目集中的题目。支持按状态、难度、标签筛选与分页。",
             json!({
                 "type": "object",
+                "additionalProperties": false,
                 "properties": {
                     "session_id": { "type": "string", "description": "【必填】题目集 ID" },
                     "status": { "type": "string", "enum": ["new", "in_progress", "mastered", "review"], "description": "筛选状态" },
                     "difficulty": { "type": "string", "enum": ["easy", "medium", "hard", "very_hard"], "description": "筛选难度" },
+                    "tags": { "type": "array", "items": { "type": "string" }, "description": "筛选标签" },
                     "page": { "type": "integer", "default": 1, "minimum": 1 },
-                    "page_size": { "type": "integer", "default": 20, "minimum": 1, "maximum": 500 }
+                    "page_size": { "type": "integer", "default": 20, "minimum": 1, "maximum": 20 }
                 },
                 "required": ["session_id"]
             }),
@@ -536,12 +636,60 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
             "获取下一道推荐题目（顺序/随机/错题优先/知识点聚焦）。",
             json!({
                 "type": "object",
+                "additionalProperties": false,
                 "properties": {
                     "session_id": { "type": "string", "description": "【必填】题目集 ID" },
                     "mode": { "type": "string", "enum": ["sequential", "random", "review_first", "by_tag"], "default": "sequential" },
-                    "tag": { "type": "string", "description": "mode=by_tag 时指定要练习的标签" }
+                    "tag": { "type": "string", "description": "mode=by_tag 时指定要练习的标签" },
+                    "current_card_id": { "type": "string", "description": "当前题目 ID（用于顺序模式获取下一题）" },
+                    "review_only": { "type": "boolean", "default": false, "description": "只选择 status=review 的错题/待复习题" }
                 },
                 "required": ["session_id"]
+            }),
+        ),
+        tool(
+            "builtin-index_status",
+            "读取真实 VFS 索引摘要；可按 resource_id 查询分页 Unit 与有界 OCR/提取文本预览。",
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "resource_id": { "type": "string", "pattern": "^res_[A-Za-z0-9_-]+$" },
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                }
+            }),
+        ),
+        tool(
+            "builtin-learning_overview",
+            "聚合查询学习活动、题库、复习与番茄钟统计；返回分页日明细与部分数据源错误。",
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "start_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+                    "end_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                }
+            }),
+        ),
+        tool(
+            "builtin-pomodoro_today_stats",
+            "查询今日番茄钟专注统计。",
+            json!({ "type": "object", "additionalProperties": false }),
+        ),
+        tool(
+            "builtin-pomodoro_daily_stats",
+            "分页查询最近若干天的番茄钟日统计。",
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "days": { "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 20, "default": 20 }
+                }
             }),
         ),
         tool(
@@ -622,6 +770,8 @@ pub struct HeadlessTurnRequest {
     pub hard_timeout_secs: Option<u64>,
     /// 工具轮次上限，None 用默认值/全局设置
     pub max_tool_rounds: Option<u32>,
+    /// Optional caller-owned token used by durable schedulers to cancel this run.
+    pub cancellation_token: Option<CancellationToken>,
 }
 
 /// headless turn 结果
@@ -687,6 +837,14 @@ pub async fn run_headless_turn(
 ) -> ChatV2Result<HeadlessTurnResult> {
     let started = std::time::Instant::now();
 
+    if req
+        .cancellation_token
+        .as_ref()
+        .is_some_and(CancellationToken::is_cancelled)
+    {
+        return Err(ChatV2Error::Cancelled);
+    }
+
     let prompt = req.prompt.trim().to_string();
     if prompt.is_empty() {
         return Err(ChatV2Error::Validation(
@@ -716,6 +874,7 @@ pub async fn run_headless_turn(
         None,
         std::time::Duration::from_secs(hard_timeout_secs),
         req.max_tool_rounds,
+        req.cancellation_token,
     )
     .await;
 
@@ -775,6 +934,7 @@ pub async fn run_headless_agent_turn(
         req.model_id.as_deref(),
         req.system_prompt_append.as_deref(),
         req.timeout,
+        None,
         None,
     )
     .await?;
@@ -897,6 +1057,7 @@ async fn execute_headless_pipeline(
     extra_system_append: Option<&str>,
     hard_timeout: std::time::Duration,
     max_tool_rounds_override: Option<u32>,
+    external_cancellation_token: Option<CancellationToken>,
 ) -> Result<(), String> {
     // —— 解析托管状态（缺失说明 Chat V2 降级运行，headless 不可用）
     let pipeline = app
@@ -963,12 +1124,27 @@ async fn execute_headless_pipeline(
     };
 
     // —— 原子注册流（named 会话可能与用户手动会话冲突，fail fast）
-    let cancel_token = chat_v2_state.try_register_stream(session_id).map_err(|_| {
-        format!(
-            "会话 {} 已有活跃流，headless turn 取消（会话可能正被使用）",
-            session_id
-        )
-    })?;
+    let cancel_token = if let Some(token) = external_cancellation_token {
+        if token.is_cancelled() {
+            return Err("headless turn 被外部取消".to_string());
+        }
+        chat_v2_state
+            .try_register_existing_token(session_id, token.clone())
+            .map_err(|_| {
+                format!(
+                    "会话 {} 已有活跃流，headless turn 取消（会话可能正被使用）",
+                    session_id
+                )
+            })?;
+        token
+    } else {
+        chat_v2_state.try_register_stream(session_id).map_err(|_| {
+            format!(
+                "会话 {} 已有活跃流，headless turn 取消（会话可能正被使用）",
+                session_id
+            )
+        })?
+    };
 
     log::info!(
         "[ChatV2::headless] 启动 headless turn: session={}, timeout={}s, max_rounds={}",
@@ -1148,8 +1324,10 @@ mod tests {
     use crate::chat_v2::tool_policy::is_tool_allowed_by_skill_policy;
     use crate::chat_v2::tools::{
         AttemptCompletionExecutor, BuiltinResourceExecutor, BuiltinRetrievalExecutor,
-        FetchExecutor, MemoryToolExecutor, ReviewToolExecutor, TodoListExecutor, ToolExecutor,
-        ToolExecutorRegistry, ToolSensitivity, UserTodoExecutor,
+        DataGovernanceToolExecutor, DstuToolExecutor, FetchExecutor, IndexWebpageToolExecutor,
+        LearningOverviewExecutor, LlmUsageToolExecutor, MemoryToolExecutor, ReviewToolExecutor,
+        SettingsModelsToolExecutor, TodoListExecutor, ToolExecutor, ToolExecutorRegistry,
+        ToolSensitivity, UserTodoExecutor,
     };
     use serde_json::json;
     use std::sync::Arc;
@@ -1160,7 +1338,13 @@ mod tests {
             Arc::new(AttemptCompletionExecutor::new()),
             Arc::new(BuiltinRetrievalExecutor::new()),
             Arc::new(BuiltinResourceExecutor::new()),
+            Arc::new(DstuToolExecutor::new()),
             Arc::new(FetchExecutor::new()),
+            Arc::new(SettingsModelsToolExecutor::new()),
+            Arc::new(LlmUsageToolExecutor::new()),
+            Arc::new(DataGovernanceToolExecutor::new()),
+            Arc::new(LearningOverviewExecutor::new()),
+            Arc::new(IndexWebpageToolExecutor::new()),
             Arc::new(TodoListExecutor::new()),
             Arc::new(crate::chat_v2::tools::qbank_executor::QBankExecutor::new()),
             Arc::new(MemoryToolExecutor::new()),
@@ -1168,6 +1352,35 @@ mod tests {
             Arc::new(ReviewToolExecutor::new()),
         ];
         ToolExecutorRegistry::from_vec(executors)
+    }
+
+    fn schema_for(name: &str) -> Value {
+        headless_tool_schemas()
+            .into_iter()
+            .find(|schema| schema.name == name)
+            .unwrap_or_else(|| panic!("missing headless schema {name}"))
+            .input_schema
+            .unwrap_or_else(|| panic!("missing input schema for {name}"))
+    }
+
+    #[test]
+    fn headless_read_schemas_match_production_pagination_contracts() {
+        let memory = schema_for("builtin-memory_list");
+        assert_eq!(memory["properties"]["limit"]["default"], 20);
+        assert_eq!(memory["properties"]["limit"]["maximum"], 20);
+
+        let trash = schema_for("builtin-dstu_list_trash");
+        assert_eq!(trash["properties"]["limit"]["default"], 20);
+        assert_eq!(trash["properties"]["limit"]["maximum"], 20);
+
+        let banks = schema_for("builtin-qbank_list");
+        assert_eq!(banks["properties"]["limit"]["maximum"], 20);
+        let questions = schema_for("builtin-qbank_list_questions");
+        assert_eq!(questions["properties"]["page_size"]["maximum"], 20);
+
+        let next = schema_for("builtin-qbank_get_next_question");
+        assert_eq!(next["properties"]["review_only"]["default"], false);
+        assert!(next["properties"]["current_card_id"].is_object());
     }
 
     // —— headless 工具过滤 ————————————————————————————————
@@ -1308,8 +1521,13 @@ mod tests {
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_skill_policy(
             "builtin-user_todo_create_item",
+            &json!({}),
+            &allowed
+        ));
+        assert!(is_tool_allowed_by_skill_policy(
+            "builtin-user_todo_search",
             &json!({}),
             &allowed
         ));
@@ -1347,6 +1565,111 @@ mod tests {
                 "白名单工具 '{}' 敏感度必须为 Low（实际: {:?}），否则 headless 下会触发审批挂起",
                 tool_name,
                 sensitivity
+            );
+        }
+    }
+
+    #[test]
+    fn headless_dstu_surface_is_strictly_read_only() {
+        let allowed = headless_allowed_tools();
+        assert!(allowed.iter().any(|tool| tool == "builtin-dstu_list_trash"));
+        for write_tool in [
+            "builtin-dstu_folder_create",
+            "builtin-dstu_folder_rename",
+            "builtin-dstu_rename",
+            "builtin-dstu_move",
+            "builtin-dstu_delete",
+            "builtin-dstu_restore",
+            "builtin-dstu_set_favorite",
+            "builtin-dstu_purge",
+            "builtin-dstu_upload_file",
+        ] {
+            assert!(
+                !allowed.iter().any(|tool| tool == write_tool),
+                "DSTU write tool '{}' must remain unavailable headlessly",
+                write_tool
+            );
+        }
+
+        let schema_names: Vec<_> = headless_tool_schemas()
+            .into_iter()
+            .map(|schema| schema.name)
+            .collect();
+        assert!(schema_names
+            .iter()
+            .any(|name| name == "builtin-dstu_list_trash"));
+        assert!(!schema_names
+            .iter()
+            .any(|name| name == "builtin-dstu_set_favorite"));
+    }
+
+    #[test]
+    fn headless_memory_surface_is_strictly_read_only() {
+        let allowed = headless_allowed_tools();
+        for read_tool in ["builtin-memory_read", "builtin-memory_list"] {
+            assert!(allowed.iter().any(|tool| tool == read_tool), "{read_tool}");
+        }
+        for write_tool in [
+            "builtin-memory_write",
+            "builtin-memory_write_smart",
+            "builtin-memory_write_batch",
+            "builtin-memory_update_by_id",
+            "builtin-memory_delete",
+            "builtin-memory_batch_move",
+            "builtin-memory_add_relation",
+            "builtin-memory_remove_relation",
+            "builtin-memory_update_tags",
+            "builtin-memory_export_all",
+        ] {
+            assert!(
+                !allowed.iter().any(|tool| tool == write_tool),
+                "memory mutation or privacy export {write_tool} must remain unavailable headlessly"
+            );
+        }
+
+        let schema_names: Vec<_> = headless_tool_schemas()
+            .into_iter()
+            .map(|schema| schema.name)
+            .collect();
+        assert!(schema_names
+            .iter()
+            .any(|name| name == "builtin-memory_read"));
+        assert!(!schema_names
+            .iter()
+            .any(|name| name == "builtin-memory_write_smart"));
+    }
+
+    #[test]
+    fn headless_todo_and_automation_surfaces_are_read_only() {
+        let allowed = headless_allowed_tools();
+        for read_tool in [
+            "builtin-user_todo_list_lists",
+            "builtin-user_todo_list_items",
+            "builtin-user_todo_get_summary",
+            "builtin-user_todo_search",
+            "builtin-user_todo_list_trash",
+        ] {
+            assert!(allowed.iter().any(|tool| tool == read_tool), "{read_tool}");
+        }
+        for write_tool in [
+            "builtin-user_todo_create_item",
+            "builtin-user_todo_complete_item",
+            "builtin-user_todo_update_item",
+            "builtin-user_todo_delete_item",
+            "builtin-user_todo_create_list",
+            "builtin-user_todo_update_list",
+            "builtin-user_todo_delete_list",
+            "builtin-user_todo_restore",
+            "builtin-user_todo_reorder",
+            "builtin-automation_propose",
+            "builtin-automation_set_enabled",
+            "builtin-automation_update",
+            "builtin-automation_delete",
+            "builtin-automation_run_now",
+        ] {
+            assert!(
+                !allowed.iter().any(|tool| tool == write_tool),
+                "write tool {write_tool} must remain unavailable headlessly"
             );
         }
     }

@@ -3,7 +3,7 @@
  *
  * 根据 Prompt 10 要求：
  * 1. 创建独立 Store 实例，连接 Tauri 后端
- * 2. 组装所有 V2 组件（ChatContainer、MessageList、InputBar、AnkiPanelHost 等）
+ * 2. 组装所有 V2 组件（ChatContainer、MessageList、InputBar 等）
  * 3. 验证数据流和各种场景
  * 4. 验证守卫机制和样式
  */

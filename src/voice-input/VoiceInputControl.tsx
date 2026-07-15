@@ -41,12 +41,12 @@ export function VoiceInputControl({
   const isRecording = state.phase === 'recording';
   const isTranscribing = state.phase === 'transcribing';
   const hotkeyLabel = useMemo(() => formatShortcut(state.hotkey), [state.hotkey]);
-  const buttonLabel = t('inputBar.voiceInput.button', 'Voice Input');
+  const buttonLabel = t('inputBar.voiceInput.button');
   const tooltipLabel = isTranscribing
-    ? t('inputBar.voiceInput.transcribing', 'Transcribing...')
+    ? t('inputBar.voiceInput.transcribing')
     : isRecording
-    ? t('inputBar.voiceInput.stop', 'Stop recording')
-    : t('inputBar.voiceInput.start', 'Start voice input');
+    ? t('inputBar.voiceInput.stop')
+    : t('inputBar.voiceInput.start');
 
   useEffect(() => {
     if (!isRecording) {

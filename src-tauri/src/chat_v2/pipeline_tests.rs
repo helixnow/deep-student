@@ -417,6 +417,7 @@ fn test_assistant_message_meta_with_sources() {
         skill_runtime_before: None,
         skill_runtime_after: None,
         replay_source: None,
+        ..Default::default()
     };
 
     assert!(meta.sources.is_some());
@@ -456,6 +457,7 @@ fn test_assistant_message_meta_with_tool_results() {
         skill_runtime_before: None,
         skill_runtime_after: None,
         replay_source: None,
+        ..Default::default()
     };
 
     assert!(meta.tool_results.is_some());
@@ -2094,4 +2096,46 @@ fn test_runtime_facts_uses_date_only_for_non_time_sensitive_query() {
     assert!(runtime_facts.contains("当前日期:"));
     assert!(runtime_facts.contains("时区:"));
     assert!(!runtime_facts.contains("当前时间:"));
+}
+
+#[test]
+fn test_runtime_facts_describes_non_interactive_shell_limits() {
+    let runtime_facts = PipelineContext::build_runtime_facts_block("检查项目状态");
+    let platform = std::env::consts::OS;
+    let shell = super::context::local_shell_contract_for_platform(platform);
+    let sandbox = super::tools::shell_sandbox::platform_sandbox_contract();
+
+    assert!(runtime_facts.contains(&format!("platform: {}", platform)));
+    assert!(runtime_facts.contains(&format!(
+        "local_shell: {}",
+        shell.invocation.unwrap_or("none")
+    )));
+    assert!(runtime_facts.contains(&format!("shell_kind: {}", shell.shell_kind)));
+    assert!(runtime_facts.contains(&format!("sandbox_backend: {}", shell.sandbox_backend)));
+    assert_eq!(shell.sandbox_backend, sandbox.backend);
+    assert_eq!(shell.shell_kind, sandbox.shell_kind);
+    assert_eq!(shell.output_encoding, Some(sandbox.output_encoding));
+    assert!(runtime_facts.contains(&format!(
+        "execution_supported: {}",
+        shell.execution_supported
+    )));
+    assert!(runtime_facts.contains("non_interactive: true"));
+    assert!(runtime_facts.contains("pty_available: false"));
+    assert!(runtime_facts.contains("persistent_shell_session: false"));
+    assert!(runtime_facts.contains("network_default: deny"));
+}
+
+#[test]
+fn test_runtime_facts_platform_contract_covers_windows_and_macos() {
+    let macos = super::context::local_shell_contract_for_platform("macos");
+    assert_eq!(macos.invocation, Some("/bin/sh -c"));
+    assert_eq!(macos.shell_kind, "posix_sh");
+
+    let windows = super::context::local_shell_contract_for_platform("windows");
+    assert_eq!(
+        windows.invocation,
+        Some("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand")
+    );
+    assert_eq!(windows.shell_kind, "windows_powershell");
+    assert_eq!(windows.output_encoding, Some("utf-8"));
 }

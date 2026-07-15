@@ -105,8 +105,7 @@ export const BUILTIN_TOOLS: BuiltinToolSchema[] = [
       required: ['query'],
     },
   },
-  // ★ 多模态搜索工具 - 当前多模态索引已禁用，暂时隐藏此工具
-  // 恢复时取消注释即可重新启用
+  // 独立 multimodal_search 已收敛到 unified_search，避免向模型暴露重复工具。
   // {
   //   name: `${BUILTIN_NAMESPACE}multimodal_search`,
   //   displayNameKey: 'mcp.tools.multimodal_search',
@@ -874,7 +873,7 @@ export const BUILTIN_TOOLS: BuiltinToolSchema[] = [
   },
 
   // Anki 制卡工具（CardForge 2.0）已移除 — 全部由 ChatAnki skill 接管
-  // 后端 AnkiToolExecutor 仍注册但不再暴露给 LLM
+  // 旧 AnkiToolExecutor 仅保留兼容代码；生产管线不注册，也不向 LLM 暴露
 
   {
     name: `${BUILTIN_NAMESPACE}qbank_list`,

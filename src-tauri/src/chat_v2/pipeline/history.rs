@@ -1,4 +1,5 @@
 use super::*;
+use crate::chat_v2::types::CanonicalContentPart;
 
 impl ChatV2Pipeline {
     /// 加载聊天历史
@@ -84,6 +85,7 @@ impl ChatV2Pipeline {
         } else {
             messages
         };
+        let active_variant_artifacts = active_variant_artifacts_by_user(&messages_to_load);
 
         log::debug!(
             "[ChatV2::pipeline] Loading {} messages (max_messages={})",
@@ -416,7 +418,11 @@ impl ChatV2Pipeline {
                 overrides: None,
                 relations: None,
                 persistent_stable_id: message.persistent_stable_id.clone(),
-                metadata: None,
+                metadata: canonical_content_for_history(
+                    &message,
+                    active_variant_artifacts.get(&message.id),
+                )
+                .map(|parts| serde_json::json!({ "canonicalContent": parts })),
             };
 
             chat_history.push(legacy_message);
@@ -518,20 +524,35 @@ impl ChatV2Pipeline {
 
             // 尝试解析为 VfsContextRefData（附件等引用模式资源）
             if let Ok(mut ref_data) = serde_json::from_str::<VfsContextRefData>(data_str) {
-                // ★ 2026-02 修复：历史消息解引用时也要恢复 inject_modes
-                // 否则编辑重发/重试时会错误注入文本
-                if let Some(ref saved_inject_modes) = context_ref.inject_modes {
-                    for vfs_ref in &mut ref_data.refs {
-                        vfs_ref.inject_modes = Some(saved_inject_modes.clone());
+                // Historical turns must be recompiled for the model active now. Old TM turns
+                // often persisted OCR-only modes; carrying those forward would make TM -> MM
+                // permanently lose the original image. Keep native PDF text plus original pages,
+                // while OCR/visual observations are selected by context_compiler for this turn.
+                for vfs_ref in &mut ref_data.refs {
+                    use crate::vfs::types::{
+                        ImageInjectMode, PdfInjectMode, ResourceInjectModes, VfsResourceType,
+                    };
+                    match vfs_ref.resource_type {
+                        VfsResourceType::Image => {
+                            vfs_ref.inject_modes = Some(ResourceInjectModes {
+                                image: Some(vec![ImageInjectMode::Image]),
+                                pdf: None,
+                            });
+                        }
+                        VfsResourceType::File | VfsResourceType::Textbook => {
+                            vfs_ref.inject_modes = Some(ResourceInjectModes {
+                                image: None,
+                                pdf: Some(vec![PdfInjectMode::Text, PdfInjectMode::Image]),
+                            });
+                        }
+                        _ => {}
                     }
                 }
-                // ★ 使用统一的 vfs_resolver 模块解析
-                // ★ 2026-01-17 修复：历史加载时使用 is_multimodal=false，同时收集图片和 OCR 文本
-                // 实际发送给 LLM 时，由 model2_pipeline 根据 config.is_multimodal 决定：
-                // - 多模态模型：使用 image_base64 发送图片
-                // - 非多模态模型：使用 content 中的 OCR 文本
+                // Resolve original images regardless of the model used on the old turn. OCR is
+                // now a text-model fallback owned by context_compiler, after this turn's model
+                // capability has been frozen.
                 let content =
-                    resolve_context_ref_data_to_content(vfs_conn, blobs_dir, &ref_data, false);
+                    resolve_context_ref_data_to_content(vfs_conn, blobs_dir, &ref_data, true);
                 total_result.merge(content);
             } else {
                 // 非引用模式资源（如笔记内容直接存储），直接使用 data
@@ -574,6 +595,48 @@ impl ChatV2Pipeline {
         let final_content = total_result.to_formatted_text(original_content);
         (final_content, total_result.image_base64_list)
     }
+}
+
+pub(super) fn active_variant_artifacts_by_user(
+    messages: &[ChatMessage],
+) -> std::collections::HashMap<String, Vec<CanonicalContentPart>> {
+    let mut result = std::collections::HashMap::new();
+    for pair in messages.windows(2) {
+        let [user, assistant] = pair else {
+            continue;
+        };
+        if user.role != MessageRole::User || assistant.role != MessageRole::Assistant {
+            continue;
+        }
+        let Some(artifacts) = assistant
+            .get_active_variant()
+            .and_then(|variant| variant.meta.as_ref())
+            .and_then(|meta| meta.canonical_artifacts.as_ref())
+            .filter(|artifacts| !artifacts.is_empty())
+        else {
+            continue;
+        };
+        result.insert(user.id.clone(), artifacts.clone());
+    }
+    result
+}
+
+pub(super) fn canonical_content_for_history(
+    message: &ChatMessage,
+    active_variant_artifacts: Option<&Vec<CanonicalContentPart>>,
+) -> Option<Vec<CanonicalContentPart>> {
+    let mut canonical = message
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.canonical_content.clone())
+        .unwrap_or_default();
+    if let Some(active_artifacts) = active_variant_artifacts {
+        // Older builds promoted the then-active artifacts onto the user message. Strip those
+        // before adding the currently active variant so switching variants is immediately real.
+        canonical.retain(|part| !matches!(part, CanonicalContentPart::DerivedArtifactRef { .. }));
+        canonical.extend(active_artifacts.iter().cloned());
+    }
+    (!canonical.is_empty()).then_some(canonical)
 }
 
 /// 🔧 B1+B2 修复：判断一个 block 是否是 LLM 发起的工具调用块

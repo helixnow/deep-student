@@ -77,11 +77,94 @@ export interface ReplaySkillPayloadSnapshot {
 }
 
 export interface VariantMeta {
+  executionSnapshot?: ModelExecutionSnapshot;
+  canonicalArtifacts?: CanonicalContentPart[];
   skillSnapshotBefore?: SkillStateSnapshot;
   skillSnapshotAfter?: SkillStateSnapshot;
   skillRuntimeBefore?: ReplaySkillPayloadSnapshot;
   skillRuntimeAfter?: ReplaySkillPayloadSnapshot;
 }
+
+export interface CapabilityState {
+  configured: boolean;
+  healthy: boolean;
+  circuitOpen: boolean;
+  protocolCompatible: boolean;
+  indexCompatible: boolean;
+  reason?: string;
+}
+
+export interface CapabilitySnapshot {
+  textEmbedding: CapabilityState;
+  multimodalEmbedding: CapabilityState;
+  textModel: CapabilityState;
+  multimodalModel: CapabilityState;
+  ocr: CapabilityState;
+}
+
+export type GenerationRoute =
+  | 'text_model_direct'
+  | 'multimodal_model_direct'
+  | 'multimodal_observation_then_text_model'
+  | 'ocr_then_text_model'
+  | 'text_model_without_image'
+  | 'unavailable';
+
+export interface ModelExecutionSnapshot {
+  requestedModelId?: string;
+  resolvedModelId: string;
+  resolvedModelName: string;
+  resolvedModelIsMultimodal: boolean;
+  capabilitySnapshot: CapabilitySnapshot;
+  generationPlan: {
+    planner: {
+      route: GenerationRoute;
+      activeModel: 'text' | 'multimodal' | null;
+      fallbackFrom: 'text' | 'multimodal' | null;
+      sendsOriginalImages: boolean;
+      usesOcr: boolean;
+      degraded: boolean;
+    };
+    auxiliaryMultimodalConfigId?: string;
+    imageBudget: number;
+    historyImageBudget: number;
+  };
+  executionRoute?: GenerationRoute;
+  frozenAt: number;
+}
+
+export type CanonicalContentPart =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image_ref';
+      imageId: string;
+      resourceId?: string;
+      sourceId?: string;
+      blobHash?: string;
+      contentHash?: string;
+      mimeType: string;
+      pinned: boolean;
+      retrievalHit: boolean;
+    }
+  | {
+      type: 'file_ref';
+      fileId: string;
+      resourceId?: string;
+      blobHash?: string;
+      contentHash?: string;
+      mimeType: string;
+      name?: string;
+    }
+  | { type: 'citation_ref'; citationId: string; resourceId?: string; label?: string }
+  | {
+      type: 'derived_artifact_ref';
+      artifactId: string;
+      artifactType: string;
+      sourceImageIds: string[];
+      producerModelId?: string;
+      content: string;
+      createdAt: number;
+    };
 
 // ============================================================================
 // 消息角色
@@ -168,6 +251,12 @@ export interface Message {
 export interface MessageMeta {
   /** 生成此消息使用的模型 ID */
   modelId?: string;
+
+  /** Immutable model/capability route captured before this turn started. */
+  executionSnapshot?: ModelExecutionSnapshot;
+
+  /** Stable typed refs; image bytes are resolved only for an individual request. */
+  canonicalContent?: CanonicalContentPart[];
 
   /** 生成此消息使用的模型显示名称（用于 UI 展示） */
   modelDisplayName?: string;

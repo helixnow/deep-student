@@ -7,6 +7,7 @@
 
 pub mod anki_cards;
 pub mod anki_connect;
+pub mod apkg_import;
 pub mod browser;
 pub mod enhanced_anki;
 pub mod fsrs_review;
@@ -14,6 +15,7 @@ pub mod helpers;
 pub mod mcp;
 pub mod notes;
 pub mod ocr;
+pub mod openai_codex;
 pub mod power;
 pub mod textbooks;
 pub mod translation;

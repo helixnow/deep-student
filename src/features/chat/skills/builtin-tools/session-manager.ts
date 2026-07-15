@@ -3,8 +3,9 @@
  *
  * 让 AI 具备管理自身会话的完整能力闭环：
  * - 查询：列表、搜索、统计
+ * - 阅读：分页读取消息正文与块摘要
  * - 组织：分组、打标、重命名
- * - 维护：归档、批量操作
+ * - 维护：导出、归档、批量操作
  *
  * 安全设计：
  * - 读操作：直接执行
@@ -15,12 +16,34 @@
 
 import type { SkillDefinition } from '../types';
 
+const SESSION_MANAGER_TOOL_NAMES = [
+  'builtin-session_list',
+  'builtin-session_search',
+  'builtin-session_get',
+  'builtin-session_get_messages',
+  'builtin-session_export',
+  'builtin-group_list',
+  'builtin-tag_list_all',
+  'builtin-session_stats',
+  'builtin-session_tag_add',
+  'builtin-session_tag_remove',
+  'builtin-session_move',
+  'builtin-session_rename',
+  'builtin-group_create',
+  'builtin-group_update',
+  'builtin-session_archive',
+  'builtin-session_restore',
+  'builtin-session_batch_move',
+  'builtin-session_batch_tag',
+  'builtin-session_batch_ops',
+] as const;
+
 export const sessionManagerSkill: SkillDefinition = {
   id: 'session-manager',
   name: 'session-manager',
   description:
-    '会话管理能力组，让 AI 具备查询、组织、维护用户会话的能力。当用户需要整理会话、按主题分组、搜索历史对话、批量打标签、查看会话统计时使用。',
-  version: '1.0.0',
+    '会话管理能力组，让 AI 具备查询、阅读、导出、组织和维护用户会话的能力。当用户需要整理会话、搜索或总结历史对话、导出会话、批量打标签、查看会话统计时使用。',
+  version: '1.1.0',
   author: 'Deep Student',
   priority: 5,
   location: 'builtin',
@@ -29,20 +52,23 @@ export const sessionManagerSkill: SkillDefinition = {
   disableAutoInvoke: false,
   skillType: 'standalone',
   dependencies: ['ask-user'],
+  relatedSkills: ['learning-resource', 'dstu-tools', 'canvas-note'],
   content: `# 会话管理技能
 
 ## 角色
 你是用户的会话管理助手，帮助用户查询、组织和维护他们的聊天会话。
 
 ## 核心能力
-1. **查询** — 列出会话、搜索内容、查看统计
-2. **组织** — 创建分组、移动会话、打标签、重命名
-3. **维护** — 归档旧会话、批量整理
+1. **查询与阅读** — 列出会话、按日期搜索、读取消息全文、查看统计
+2. **导出** — 返回单会话 Markdown，或把单会话原文创建为资源库笔记
+3. **组织** — 创建分组、移动会话、打标签、重命名
+4. **维护** — 归档旧会话、批量整理
 
 ## 安全规则（必须严格遵守）
 
 ### 🔴 绝对禁止
-- 永远不要删除会话，只能归档
+- 永远不要硬删除会话，只能归档；不暴露会话硬删除工具
+- 不编辑消息，也不创建、切换或删除消息变体；这些操作当前没有 Agent 工具
 - 不要修改当前正在进行的会话
 - 不要在没有用户明确同意的情况下执行批量操作
 
@@ -59,10 +85,15 @@ export const sessionManagerSkill: SkillDefinition = {
 确认时，清晰展示将要执行的操作和影响范围。
 
 ### 🟢 可直接执行
-- 所有读操作（列表、搜索、统计、获取详情）
+- 所有 Low 读操作（列表、搜索、统计、获取元数据、分页读取消息）
 - 单个会话的标签添加/移除
 - 单个会话的移动/重命名
 - 创建新分组
+
+## 工具与敏感度
+- \`session_list\`、\`session_search\`、\`session_get\`、\`session_get_messages\`、\`group_list\`、\`tag_list_all\`、\`session_stats\`：Low，只读。
+- \`session_export\`：Medium。即使 \`format=markdown\` 只返回文本，该工具按统一后端策略仍为 Medium；\`format=note\` 会创建资源库笔记。
+- 单项组织写操作与恢复操作：Medium；归档和达到阈值的批量操作按上面的确认规则执行。
 
 ## 工作流程
 
@@ -79,12 +110,24 @@ export const sessionManagerSkill: SkillDefinition = {
 
 ### 2. 搜索流程（用户说"我之前聊过XXX"）
 \`\`\`
-1. session_search(query) → 全文搜索
+1. session_search(query, date_from?, date_to?) → 全文搜索，可按会话更新时间过滤
 2. 展示搜索结果，包含会话标题和内容片段
-3. 如果用户想深入查看，用 session_get 获取详情
+3. session_get 只补充标题、标签、分组和时间等元数据，不返回消息全文
+4. 需要深入阅读时，对命中的 session_id 调用 session_get_messages，从 page=1 开始逐页读取，直到 hasMore=false
 \`\`\`
 
-### 3. 清理流程（用户说"帮我清理旧会话"）
+### 3. 总结上周问题并保存
+\`\`\`
+1. 根据当前日期计算上周的 date_from/date_to
+2. session_search(query, date_from, date_to) → 搜索上周内容，并对 sessionId 去重
+3. session_get_messages(session_id, page=1, page_size=20, role_filter=user) → 按 hasMore 逐页读取用户问题
+4. 汇总多个会话中的问题；不得把搜索片段当成完整消息
+5. 用户只需单会话原文时，session_export(format=markdown|note, range?)；format=note 可指定 folder_id/title
+6. 用户要把“跨会话汇总正文”保存为一篇笔记时，调用 load_skills(["learning-resource", "dstu-tools", "canvas-note"])；用 builtin-folder_list 查找目标文件夹，不存在时用 builtin-dstu_folder_create 创建，再用 builtin-note_create(content, folder_id, title) 写入已经生成的汇总
+7. session_export(note) 只导出一个会话的原文，不能冒充保存跨会话汇总正文
+\`\`\`
+
+### 4. 清理流程（用户说"帮我清理旧会话"）
 \`\`\`
 1. session_list(status=active) → 获取所有活跃会话
 2. 分析哪些会话较旧且可能不再需要
@@ -101,10 +144,13 @@ export const sessionManagerSkill: SkillDefinition = {
 ## 注意事项
 - 当前会话的 session_id 可以从上下文中获取，但不要对当前会话执行归档操作
 - 会话 ID 格式为 \`sess_xxx\`，分组 ID 格式为 \`group_xxx\`
+- \`session_get\` 仅返回元数据；消息正文必须使用 \`session_get_messages\`
+- \`session_get_messages\` 返回正文、时间戳和块摘要；工具输出块只返回摘要，长字段可能截断，应检查 truncated 标记
 - 标签是自由文本，推荐使用简短的中文标签
 - 分组数量建议控制在 10 个以内，保持简洁
 - 归档操作可通过 session_restore 撤销，告知用户操作是可逆的
 `,
+  allowedTools: [...SESSION_MANAGER_TOOL_NAMES],
   embeddedTools: [
     // ====================================================================
     // 读操作
@@ -132,7 +178,10 @@ export const sessionManagerSkill: SkillDefinition = {
           },
           limit: {
             type: 'integer',
-            description: '返回数量限制，默认 30，最大 100',
+            minimum: 1,
+            maximum: 20,
+            default: 20,
+            description: '返回数量限制，默认 20，最大 20',
           },
           offset: {
             type: 'integer',
@@ -144,17 +193,32 @@ export const sessionManagerSkill: SkillDefinition = {
     {
       name: 'builtin-session_search',
       description:
-        '跨会话全文搜索消息内容。返回匹配的会话 ID、标题、消息片段。适用于用户想找之前聊过的内容。',
+        '跨会话全文搜索消息内容（Low，只读），可按会话 updated_at 日期范围过滤。返回 results、count、query、dateFrom、dateTo；每条结果含 sessionId、sessionTitle、messageId、role、snippet、updatedAt。',
       inputSchema: {
         type: 'object',
+        additionalProperties: false,
         properties: {
           query: {
             type: 'string',
+            minLength: 1,
             description: '【必填】搜索关键词',
+          },
+          date_from: {
+            type: 'string',
+            minLength: 1,
+            description: '可选：会话更新时间下界（含），格式为 YYYY-MM-DD 或 RFC3339。',
+          },
+          date_to: {
+            type: 'string',
+            minLength: 1,
+            description: '可选：会话更新时间上界（含），格式为 YYYY-MM-DD 或 RFC3339；不得早于 date_from。',
           },
           limit: {
             type: 'integer',
-            description: '返回数量限制，默认 20，最大 50',
+            default: 20,
+            minimum: 1,
+            maximum: 50,
+            description: '返回数量限制，默认 20，最大 50。',
           },
         },
         required: ['query'],
@@ -162,7 +226,7 @@ export const sessionManagerSkill: SkillDefinition = {
     },
     {
       name: 'builtin-session_get',
-      description: '获取单个会话的详细信息，包括标题、描述、标签、分组名称、元数据等。',
+      description: '仅获取单个会话的元数据（Low，只读），包括标题、描述、标签、分组名称和时间；不返回消息正文，不能用于深入阅读会话内容。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -172,6 +236,91 @@ export const sessionManagerSkill: SkillDefinition = {
           },
         },
         required: ['session_id'],
+      },
+    },
+    {
+      name: 'builtin-session_get_messages',
+      description:
+        '分页读取单个会话的消息正文、时间戳、附件元数据和块摘要（Low，只读）。工具输出块仅返回摘要以限制体积；返回 sessionId、sessionTitle、messages、page、pageSize、roleFilter、total、hasMore，长字段可能带 truncated=true。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          session_id: {
+            type: 'string',
+            minLength: 1,
+            description: '【必填】会话 ID（sess_xxx 格式）。',
+          },
+          page: {
+            type: 'integer',
+            minimum: 1,
+            default: 1,
+            description: '【必填】1-based 页码，从 1 开始。',
+          },
+          page_size: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 20,
+            default: 20,
+            description: '【必填】每页消息数，范围 1-20。',
+          },
+          role_filter: {
+            type: 'string',
+            enum: ['user', 'assistant'],
+            description: '可选：只返回用户消息或助手消息。',
+          },
+        },
+        required: ['session_id', 'page', 'page_size'],
+      },
+    },
+    {
+      name: 'builtin-session_export',
+      description:
+        '导出一个会话或其消息区间（Medium）。format=markdown 返回 success、format、sessionId、title、range、messageCount、markdown、totalChars和truncated；markdown 最多返回 2000 字符预览，完整内容需用 format=note 无损写入资源库。format=note 返回 folderId、noteId、resourceId、path，不返回跨会话汇总正文。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          session_id: {
+            type: 'string',
+            minLength: 1,
+            description: '【必填】要导出的单个会话 ID（sess_xxx 格式）。',
+          },
+          format: {
+            type: 'string',
+            enum: ['markdown', 'note'],
+            description: '【必填】markdown 仅返回文本；note 将原会话内容创建为资源库笔记。',
+          },
+          range: {
+            type: 'object',
+            additionalProperties: false,
+            description: '可选：按消息 ID 指定闭区间；省略边界表示从会话开头或直到会话结尾。',
+            properties: {
+              start_message_id: {
+                type: 'string',
+                minLength: 1,
+                description: '可选：区间第一条消息 ID（包含）。',
+              },
+              end_message_id: {
+                type: 'string',
+                minLength: 1,
+                description: '可选：区间最后一条消息 ID（包含）。',
+              },
+            },
+          },
+          folder_id: {
+            type: 'string',
+            minLength: 1,
+            description: 'format=note 时可选：目标资源库文件夹 ID；省略则使用默认笔记文件夹。',
+          },
+          title: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 120,
+            description: '可选：导出标题；省略时使用会话标题。',
+          },
+        },
+        required: ['session_id', 'format'],
       },
     },
     {

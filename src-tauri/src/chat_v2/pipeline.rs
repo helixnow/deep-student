@@ -36,11 +36,13 @@ pub(crate) use super::database::ChatV2Database;
 pub(crate) use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 pub(crate) use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, AutomationExecutor, BuiltinResourceExecutor,
-    BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
-    FetchExecutor, GeneralToolExecutor, ImageGenerationExecutor, KnowledgeExecutor,
-    LocalShellExecuteExecutor, LocalShellPreflightExecutor, McpProposeExecutor, MemoryToolExecutor,
-    SkillsExecutor, TemplateDesignerExecutor, ToolExecutorRegistry, ToolSensitivity,
-    UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
+    BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, DataGovernanceToolExecutor,
+    DstuToolExecutor, ExecutionContext, FetchExecutor, GeneralToolExecutor,
+    ImageGenerationExecutor, IndexWebpageToolExecutor, KnowledgeExecutor, LearningOverviewExecutor,
+    LlmUsageToolExecutor, LocalShellExecuteExecutor, LocalShellPreflightExecutor,
+    McpProposeExecutor, MemoryToolExecutor, SettingsModelsToolExecutor, SkillsExecutor,
+    TemplateDesignerExecutor, TextbookPdfToolExecutor, ToolExecutorRegistry, ToolSensitivity,
+    TranslationToolExecutor, UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -76,6 +78,7 @@ pub(crate) use std::sync::Mutex;
 
 pub mod compaction; // 🆕 P1: 上下文压缩 agent（锚定摘要 + 尾部保真）
 pub mod constants;
+pub mod context_compiler;
 pub mod helpers;
 pub mod history;
 pub mod llm_adapter;
@@ -92,6 +95,7 @@ pub mod variant_adapter;
 
 pub use compaction::*;
 pub use constants::*;
+pub use context_compiler::*;
 pub use helpers::*;
 pub use history::*;
 pub use llm_adapter::*;
@@ -237,6 +241,7 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(ChatAnkiToolExecutor::new()));
         executors.push(Arc::new(BuiltinRetrievalExecutor::new()));
         executors.push(Arc::new(BuiltinResourceExecutor::new()));
+        executors.push(Arc::new(DstuToolExecutor::new()));
         executors.push(Arc::new(super::tools::AttachmentToolExecutor::new())); // 🆕 附件工具执行器（解决 P0 断裂点）
         executors.push(Arc::new(FetchExecutor::new())); // 🆕 内置 Web Fetch 工具
         executors.push(Arc::new(super::tools::BrowserToolExecutor::new())); // 🆕 内置浏览器 Agent 工具（非 Playwright）
@@ -247,10 +252,17 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(KnowledgeExecutor::new()));
         executors.push(Arc::new(super::tools::TodoListExecutor::new()));
         executors.push(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
+        executors.push(Arc::new(TranslationToolExecutor::new()));
+        executors.push(Arc::new(SettingsModelsToolExecutor::new()));
+        executors.push(Arc::new(LlmUsageToolExecutor::new()));
+        executors.push(Arc::new(LearningOverviewExecutor::new()));
+        executors.push(Arc::new(DataGovernanceToolExecutor::new()));
         executors.push(Arc::new(MemoryToolExecutor::new()));
         executors.push(Arc::new(UserTodoExecutor::new()));
         executors.push(Arc::new(SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
         executors.push(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
+        executors.push(Arc::new(TextbookPdfToolExecutor::new()));
+        executors.push(Arc::new(IndexWebpageToolExecutor::new()));
         executors.push(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器
         executors.push(Arc::new(super::tools::SessionToolExecutor::new())); // 🆕 会话管理工具执行器
         executors.push(Arc::new(super::tools::DocxToolExecutor::new())); // 🆕 DOCX 文档读写工具执行器
@@ -486,8 +498,13 @@ impl ChatV2Pipeline {
 
         // === 单变体模式（原有逻辑）===
         let mut ctx = PipelineContext::new(request);
-        // 🆕 设置取消令牌：传递给工具执行器，支持工具执行取消
+        // Freeze the active model and capability route before emitting/saving anything. The
+        // options stored in this context are owned by this request, so later UI switches only
+        // affect the next turn.
+        ctx.init_context_snapshot();
         ctx.set_cancellation_token(cancel_token.clone());
+        self.freeze_execution_context(&mut ctx).await?;
+        // 🆕 设置取消令牌：传递给工具执行器，支持工具执行取消
         let session_id = ctx.session_id.clone();
         let assistant_message_id = ctx.assistant_message_id.clone();
 
@@ -801,6 +818,13 @@ impl ChatV2Pipeline {
 
         // 阶段 2：加载聊天历史
         self.load_chat_history(ctx).await?;
+        // Recompile canonical history/current content for this turn's frozen TM/MM capability.
+        // This is where transient image base64 is resolved and where auxiliary-MM/OCR fallback
+        // happens for text-only active models.
+        tokio::select! {
+            result = self.compile_frozen_context(ctx) => result?,
+            _ = cancel_token.cancelled() => return Err(ChatV2Error::Cancelled),
+        }
 
         // 阶段 3：并行执行检索
         if cancel_token.is_cancelled() {

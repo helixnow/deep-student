@@ -579,6 +579,13 @@ pub struct AppState {
     // PDF-OCR 跳过页面：session_id -> skip set
     pub pdf_ocr_skip_pages:
         Arc<tokio::sync::Mutex<HashMap<String, std::collections::HashSet<usize>>>>,
+    // CSV 导入取消控制：import_id -> cancellable in-flight import
+    pub csv_import_cancellations:
+        Arc<dashmap::DashMap<String, Arc<crate::question_import_service::CsvImportCancellation>>>,
+    // 题目集流式导入取消控制：import_id -> cancellable in-flight import
+    pub question_import_cancellations: Arc<
+        dashmap::DashMap<String, Arc<crate::question_import_service::QuestionImportCancellation>>,
+    >,
     pub app_handle: tauri::AppHandle,
     pub active_database: RwLock<ActiveDatabaseKind>,
 }
@@ -908,6 +915,9 @@ pub struct ImportQuestionBankRequest {
     /// - None: 使用后端默认策略
     #[serde(default)]
     pub pdf_prefer_ocr: Option<bool>,
+    /// 前端为每次流式导入生成的唯一标识，用于取消与事件隔离。
+    #[serde(default)]
+    pub import_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -975,7 +985,7 @@ pub async fn import_question_bank_stream(
     app_handle: AppHandle,
 ) -> Result<ExamSheetSessionDetail> {
     use crate::question_import_service::{
-        ImportRequest, QuestionImportProgress, QuestionImportService,
+        ImportRequest, QuestionImportCancellation, QuestionImportProgress, QuestionImportService,
     };
 
     let vfs_db = state
@@ -983,14 +993,56 @@ pub async fn import_question_bank_stream(
         .as_ref()
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
 
+    let import_id = request
+        .import_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned);
+
+    // Register before work starts so a visible Cancel action always targets
+    // this exact attempt. The terminal-state token prevents a late cancel from
+    // claiming success after the import has already completed.
+    let cancellation = if let Some(import_id) = import_id.as_ref() {
+        let token = Arc::new(QuestionImportCancellation::new());
+        match state.question_import_cancellations.entry(import_id.clone()) {
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                entry.insert(token.clone());
+                Some(token)
+            }
+            dashmap::mapref::entry::Entry::Occupied(_) => {
+                return Err(AppError::validation("该题目集导入仍在进行中，请稍后再试"));
+            }
+        }
+    } else {
+        None
+    };
+
     let (progress_tx, mut progress_rx) =
         tokio::sync::mpsc::unbounded_channel::<QuestionImportProgress>();
 
     let event_forwarder = {
         let app_handle = app_handle.clone();
+        let import_id = import_id.clone();
         tokio::spawn(async move {
             while let Some(payload) = progress_rx.recv().await {
-                if let Err(err) = app_handle.emit("question_import_progress", payload) {
+                let mut event_payload = match serde_json::to_value(payload) {
+                    Ok(payload) => payload,
+                    Err(err) => {
+                        error!("[question_import_progress] serialize failed: {}", err);
+                        continue;
+                    }
+                };
+                if let (Some(import_id), Some(object)) =
+                    (import_id.as_ref(), event_payload.as_object_mut())
+                {
+                    object.insert(
+                        "import_id".to_string(),
+                        serde_json::Value::String(import_id.clone()),
+                    );
+                }
+
+                if let Err(err) = app_handle.emit("question_import_progress", event_payload) {
                     error!("[question_import_progress] emit failed: {}", err);
                 }
             }
@@ -1010,9 +1062,33 @@ pub async fn import_question_bank_stream(
         pdf_prefer_ocr: request.pdf_prefer_ocr,
     };
 
-    let result = import_service
-        .import_document_stream(vfs_db, import_request, Some(progress_tx))
-        .await;
+    // Dropping this future cancels the in-flight request at its next await
+    // point, which also closes the progress channel. This is intentionally
+    // scoped to the caller-provided import_id; another retry has its own token.
+    let result = {
+        let import_future =
+            import_service.import_document_stream(vfs_db, import_request, Some(progress_tx));
+        tokio::pin!(import_future);
+
+        match cancellation.as_ref() {
+            Some(cancellation) => {
+                let cancellation_token = cancellation.token();
+                let result = tokio::select! {
+                    result = &mut import_future => result,
+                    _ = cancellation_token.cancelled() => {
+                        Err(AppError::validation("题目集导入已取消"))
+                    }
+                };
+
+                if cancellation.finish_or_cancelled() {
+                    result
+                } else {
+                    Err(AppError::validation("题目集导入已取消"))
+                }
+            }
+            None => import_future.await,
+        }
+    };
 
     if let Err(err) = event_forwarder.await {
         error!(
@@ -1021,12 +1097,40 @@ pub async fn import_question_bank_stream(
         );
     }
 
+    if let (Some(import_id), Some(cancellation)) = (import_id.as_ref(), cancellation.as_ref()) {
+        let should_remove = state
+            .question_import_cancellations
+            .get(import_id)
+            .is_some_and(|entry| Arc::ptr_eq(entry.value(), cancellation));
+        if should_remove {
+            state.question_import_cancellations.remove(import_id);
+        }
+    }
+
     let result = result?;
 
     state
         .exam_sheet_service
         .get_exam_sheet_session_detail(&result.session_id)
         .await
+}
+
+/// Requests cancellation for one active streaming question-bank import.
+///
+/// The import task is dropped at its next await point. Any checkpoint created
+/// before then remains resumable, while no later progress from this attempt is
+/// allowed to affect a newer frontend attempt.
+#[tauri::command]
+pub fn cancel_question_bank_import(import_id: String, state: State<'_, AppState>) -> Result<bool> {
+    let Some(cancellation) = state
+        .question_import_cancellations
+        .get(&import_id)
+        .map(|entry| entry.value().clone())
+    else {
+        return Ok(false);
+    };
+
+    Ok(cancellation.request_cancel())
 }
 
 // ============================================================================
@@ -1120,6 +1224,9 @@ pub struct CsvImportCommandRequest {
     pub folder_id: Option<String>,
     /// 题目集名称（创建新题目集时使用）
     pub exam_name: Option<String>,
+    /// 前端生成的导入会话 ID，用于取消正在进行的导入。
+    #[serde(default)]
+    pub import_id: Option<String>,
 }
 
 /// CSV 导出请求参数
@@ -1155,7 +1262,8 @@ pub async fn import_questions_csv(
     window: Window,
 ) -> Result<crate::question_import_service::CsvImportResult> {
     use crate::question_import_service::{
-        CsvDuplicateStrategy, CsvImportProgress, CsvImportRequest, CsvImportService,
+        CsvDuplicateStrategy, CsvImportCancellation, CsvImportProgress, CsvImportRequest,
+        CsvImportService,
     };
 
     let vfs_db = state
@@ -1201,6 +1309,7 @@ pub async fn import_questions_csv(
         })
     };
 
+    let import_id = request.import_id.filter(|id| !id.trim().is_empty());
     let csv_request = CsvImportRequest {
         file_path: csv_file_path,
         exam_id: request.exam_id,
@@ -1209,12 +1318,67 @@ pub async fn import_questions_csv(
         folder_id: request.folder_id,
         exam_name: request.exam_name,
     };
+    let progress_exam_id = csv_request.exam_id.clone();
 
-    let result = CsvImportService::import_csv(vfs_db, &csv_request, Some(progress_tx));
+    // CSV 导入会同步执行数据库写入，令牌在每行写入前检查。这样取消会保留已完成的
+    // 行，但不会继续写入后续行。
+    let cancellation = if let Some(import_id) = import_id.as_ref() {
+        let token = Arc::new(CsvImportCancellation::new());
+        match state.csv_import_cancellations.entry(import_id.clone()) {
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                entry.insert(token.clone());
+                Some(token)
+            }
+            dashmap::mapref::entry::Entry::Occupied(_) => {
+                if let Some(cleanup) = cleanup_path.as_ref() {
+                    if let Err(err) = std::fs::remove_file(cleanup) {
+                        warn!(
+                            "[csv_import] 清理重复导入的临时 CSV 文件失败 ({}): {}",
+                            cleanup.display(),
+                            err
+                        );
+                    }
+                }
+                return Err(AppError::validation("该 CSV 导入仍在进行中，请稍后再试"));
+            }
+        }
+    } else {
+        None
+    };
+
+    let vfs_db = Arc::clone(vfs_db);
+    let import_cancellation = cancellation.clone();
+    let join_result = tokio::task::spawn_blocking(move || {
+        CsvImportService::import_csv(
+            &vfs_db,
+            &csv_request,
+            Some(progress_tx),
+            import_cancellation,
+        )
+    })
+    .await;
+
+    if let (Some(import_id), Some(cancellation)) = (import_id.as_ref(), cancellation.as_ref()) {
+        // Only remove our own registration. This stays correct even if the
+        // lifecycle changes to permit reusing an import id in the future.
+        let should_remove = state
+            .csv_import_cancellations
+            .get(import_id)
+            .is_some_and(|entry| Arc::ptr_eq(entry.value(), cancellation));
+        if should_remove {
+            state.csv_import_cancellations.remove(import_id);
+        }
+    }
+
+    let result: Result<crate::question_import_service::CsvImportResult> = match join_result {
+        Ok(result) => result,
+        Err(err) => Err(AppError::internal(format!("CSV 导入任务异常终止: {err}"))),
+    };
+
     if let Err(err) = &result {
         let _ = progress_tx_error.send(CsvImportProgress::Failed {
             error: err.to_string(),
-            exam_id: csv_request.exam_id.clone(),
+            exam_id: progress_exam_id,
         });
     }
     drop(progress_tx_error);
@@ -1235,6 +1399,22 @@ pub async fn import_questions_csv(
     }
 
     result.map_err(|e| e.into())
+}
+
+/// 请求取消正在执行的 CSV 导入。
+///
+/// 导入服务会在下一行写入前读取该标记，因此已完成的行会保留，尚未开始的行不会继续入库。
+#[tauri::command]
+pub fn cancel_questions_csv_import(import_id: String, state: State<'_, AppState>) -> Result<bool> {
+    let Some(token) = state
+        .csv_import_cancellations
+        .get(&import_id)
+        .map(|entry| entry.value().clone())
+    else {
+        return Ok(false);
+    };
+
+    Ok(token.request_cancel())
 }
 
 /// 导出题目集为 CSV 文件
@@ -1592,16 +1772,20 @@ fn resolve_test_api_protocol(
     explicit_protocol: Option<&str>,
     model: Option<&str>,
     supports_openai_responses: Option<bool>,
+    provider_type: Option<&str>,
+    model_adapter: Option<&str>,
 ) -> &'static str {
     let mut inferred_config = ApiConfig {
         base_url: api_base.to_string(),
         model: model.unwrap_or_default().to_string(),
-        model_adapter: "general".to_string(),
+        model_adapter: model_adapter.unwrap_or("general").to_string(),
         api_protocol: explicit_protocol.map(|protocol| protocol.to_string()),
+        provider_type: provider_type.map(str::to_string),
         ..Default::default()
     };
     inferred_config.supports_openai_responses = supports_openai_responses;
-    if api_base.to_lowercase().contains("api.openai.com") {
+    if inferred_config.provider_type.is_none() && api_base.to_lowercase().contains("api.openai.com")
+    {
         inferred_config.provider_type = Some("openai".to_string());
     }
 
@@ -1612,14 +1796,71 @@ fn resolve_test_api_protocol(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TestProviderAdapter {
+    OpenAi,
+    Anthropic,
+    Gemini,
+}
+
+fn resolve_test_provider_adapter(
+    provider_type: Option<&str>,
+    model_adapter: Option<&str>,
+) -> TestProviderAdapter {
+    let normalized_adapter = model_adapter.unwrap_or_default().trim().to_lowercase();
+    match normalized_adapter.as_str() {
+        "anthropic" | "claude" => return TestProviderAdapter::Anthropic,
+        "google" | "gemini" => return TestProviderAdapter::Gemini,
+        _ => {}
+    }
+
+    match provider_type
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase()
+        .as_str()
+    {
+        "anthropic" | "claude" => TestProviderAdapter::Anthropic,
+        "google" | "gemini" => TestProviderAdapter::Gemini,
+        _ => TestProviderAdapter::OpenAi,
+    }
+}
+
+fn build_test_provider_request(
+    api_base: &str,
+    api_key: &str,
+    model: &str,
+    request_body: &serde_json::Value,
+    protocol: &str,
+    provider_type: Option<&str>,
+    model_adapter: Option<&str>,
+) -> std::result::Result<crate::providers::ProviderRequest, crate::providers::ProviderError> {
+    use crate::providers::ProviderAdapter;
+
+    let adapter: Box<dyn ProviderAdapter> =
+        match resolve_test_provider_adapter(provider_type, model_adapter) {
+            TestProviderAdapter::Anthropic => Box::new(crate::providers::AnthropicAdapter::new()),
+            TestProviderAdapter::Gemini => Box::new(crate::providers::GeminiAdapter::new()),
+            TestProviderAdapter::OpenAi if protocol == "openai_responses" => {
+                Box::new(crate::providers::OpenAIResponsesAdapter::new())
+            }
+            TestProviderAdapter::OpenAi => Box::new(crate::providers::OpenAIAdapter),
+        };
+
+    adapter.build_request(api_base, api_key, model, request_body)
+}
+
 #[tauri::command]
 pub async fn test_api_connection(
     api_key: String,
     api_base: String,
     api_protocol: Option<String>,
     supports_openai_responses: Option<bool>,
+    provider_type: Option<String>,
+    model_adapter: Option<String>,
     model: Option<String>,
     vendor_id: Option<String>,
+    headers: Option<HashMap<String, String>>,
     state: State<'_, AppState>,
 ) -> Result<bool> {
     use reqwest::Client;
@@ -1627,7 +1868,9 @@ pub async fn test_api_connection(
 
     info!(
         "[API测试] 开始测试连接: base={}, model={:?}, vendor_id={:?}",
-        api_base, model, vendor_id
+        crate::llm_manager::sanitize_url_for_log(&api_base),
+        model,
+        vendor_id
     );
 
     // 解析真实的 API 密钥
@@ -1702,37 +1945,27 @@ pub async fn test_api_connection(
         api_protocol.as_deref(),
         model.as_deref(),
         supports_openai_responses,
+        provider_type.as_deref(),
+        model_adapter.as_deref(),
     );
 
-    // 构建请求 URL
-    let url = match protocol {
-        "openai_responses" => format!("{}/responses", api_base.trim_end_matches('/')),
-        _ => format!("{}/chat/completions", api_base.trim_end_matches('/')),
-    };
-
-    // 构建最小化请求体
-    let model_id = model.unwrap_or_else(|| {
-        if protocol == "openai_responses" {
-            "gpt-4o-mini".to_string()
-        } else {
-            "gpt-4o-mini".to_string()
-        }
+    let model_id = model.unwrap_or_else(|| "gpt-4o-mini".to_string());
+    let request_body = serde_json::json!({
+        "model": model_id.clone(),
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 1,
+        "stream": false
     });
-    let request_body = if protocol == "openai_responses" {
-        serde_json::json!({
-            "model": model_id,
-            "input": "Hi",
-            "max_output_tokens": 1,
-            "stream": false
-        })
-    } else {
-        serde_json::json!({
-            "model": model_id,
-            "messages": [{"role": "user", "content": "Hi"}],
-            "max_tokens": 1,
-            "stream": false
-        })
-    };
+    let provider_request = build_test_provider_request(
+        &api_base,
+        effective_api_key.trim(),
+        &model_id,
+        &request_body,
+        protocol,
+        provider_type.as_deref(),
+        model_adapter.as_deref(),
+    )
+    .map_err(|error| AppError::validation(format!("API连接测试请求构建失败: {error}")))?;
 
     // 创建 HTTP 客户端（10 秒超时）
     let client = Client::builder()
@@ -1740,18 +1973,35 @@ pub async fn test_api_connection(
         .build()
         .map_err(|e| AppError::network(format!("创建HTTP客户端失败: {}", e)))?;
 
+    let mut request_builder = client.post(&provider_request.url);
+    for (name, value) in &provider_request.headers {
+        request_builder = request_builder.header(name, value);
+    }
+    if let Some(headers) = headers {
+        for (name, value) in headers {
+            let Ok(parsed_name) = reqwest::header::HeaderName::from_bytes(name.as_bytes()) else {
+                continue;
+            };
+            if provider_request
+                .headers
+                .iter()
+                .any(|(owned, _)| owned.eq_ignore_ascii_case(parsed_name.as_str()))
+            {
+                continue;
+            }
+            let Ok(parsed_value) = reqwest::header::HeaderValue::from_str(&value) else {
+                continue;
+            };
+            request_builder = request_builder.header(parsed_name, parsed_value);
+        }
+    }
+
     // 发送请求
-    let response = client
-        .post(&url)
-        .header(
-            "Authorization",
-            format!("Bearer {}", effective_api_key.trim()),
-        )
-        .header("Content-Type", "application/json")
-        .json(&request_body)
+    let response = request_builder
+        .json(&provider_request.body)
         .send()
         .await
-        .map_err(|e| AppError::network(format!("API连接测试失败: {}", e)))?;
+        .map_err(|e| AppError::network(format!("API连接测试失败: {}", e.without_url())))?;
 
     let status = response.status();
     if status.is_success() {
@@ -3165,8 +3415,10 @@ fn parse_version_parts(version: &str) -> Option<Vec<u64>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        compare_template_version, resolve_test_api_protocol, should_update_builtin_template,
+        build_test_provider_request, compare_template_version, resolve_test_api_protocol,
+        resolve_test_provider_adapter, should_update_builtin_template, TestProviderAdapter,
     };
+    use serde_json::json;
     use std::cmp::Ordering;
 
     #[test]
@@ -3193,7 +3445,9 @@ mod tests {
                 "https://proxy.example.com/v1",
                 Some("openai_responses"),
                 Some("gpt-4o-mini"),
-                None
+                None,
+                None,
+                None,
             ),
             "openai_chat_completions"
         );
@@ -3202,7 +3456,9 @@ mod tests {
                 "https://api.openai.com/v1",
                 Some("openai_chat_completions"),
                 Some("gpt-5"),
-                None
+                None,
+                None,
+                None,
             ),
             "openai_chat_completions"
         );
@@ -3211,7 +3467,14 @@ mod tests {
     #[test]
     fn resolve_test_api_protocol_defaults_official_openai_to_responses() {
         assert_eq!(
-            resolve_test_api_protocol("https://api.openai.com/v1", None, Some("gpt-4o-mini"), None),
+            resolve_test_api_protocol(
+                "https://api.openai.com/v1",
+                None,
+                Some("gpt-4o-mini"),
+                None,
+                None,
+                None,
+            ),
             "openai_responses"
         );
     }
@@ -3223,7 +3486,9 @@ mod tests {
                 "https://proxy.example.com/v1",
                 None,
                 Some("gpt-4o-mini"),
-                Some(true)
+                Some(true),
+                Some("custom"),
+                Some("qwen"),
             ),
             "openai_responses"
         );
@@ -3232,7 +3497,9 @@ mod tests {
                 "https://proxy.example.com/v1",
                 None,
                 Some("o4-mini"),
-                Some(true)
+                Some(true),
+                Some("custom"),
+                Some("deepseek"),
             ),
             "openai_responses"
         );
@@ -3245,7 +3512,9 @@ mod tests {
                 "https://api.openai.com/v1",
                 Some("openai_responses"),
                 Some("gpt-5"),
-                None
+                None,
+                None,
+                None,
             ),
             "openai_responses"
         );
@@ -3254,9 +3523,33 @@ mod tests {
                 "https://api.qsl.fan/v1",
                 Some("openai_responses"),
                 Some("deepseek-v4-pro"),
-                None
+                None,
+                Some("openai"),
+                Some("deepseek"),
             ),
             "openai_chat_completions"
+        );
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                Some("openai_responses"),
+                Some("qwen-plus"),
+                None,
+                Some("qwen"),
+                Some("qwen"),
+            ),
+            "openai_responses"
+        );
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://proxy.example.com/v1",
+                Some("openai_responses"),
+                Some("claude-sonnet-4-5"),
+                Some(true),
+                Some("custom"),
+                Some("anthropic"),
+            ),
+            "openai_responses"
         );
     }
 
@@ -3267,10 +3560,92 @@ mod tests {
                 "https://proxy.example.com/v1",
                 None,
                 Some("gpt-4o-mini"),
-                None
+                None,
+                Some("custom"),
+                Some("general"),
             ),
             "openai_chat_completions"
         );
+    }
+
+    #[test]
+    fn resolve_test_provider_adapter_prefers_native_model_adapters() {
+        assert_eq!(
+            resolve_test_provider_adapter(Some("custom"), Some("anthropic")),
+            TestProviderAdapter::Anthropic
+        );
+        assert_eq!(
+            resolve_test_provider_adapter(Some("custom"), Some("gemini")),
+            TestProviderAdapter::Gemini
+        );
+        assert_eq!(
+            resolve_test_provider_adapter(Some("anthropic"), Some("general")),
+            TestProviderAdapter::Anthropic
+        );
+        assert_eq!(
+            resolve_test_provider_adapter(Some("openai"), Some("general")),
+            TestProviderAdapter::OpenAi
+        );
+    }
+
+    #[test]
+    fn build_test_provider_request_uses_native_endpoints_and_authentication() {
+        let body = json!({
+            "model": "placeholder",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 1,
+            "stream": false
+        });
+
+        let anthropic = build_test_provider_request(
+            "https://api.anthropic.com",
+            "anthropic-key",
+            "claude-sonnet-4-5",
+            &body,
+            "anthropic_messages",
+            Some("anthropic"),
+            Some("anthropic"),
+        )
+        .expect("Anthropic test request should build");
+        assert_eq!(anthropic.url, "https://api.anthropic.com/v1/messages");
+        assert!(anthropic
+            .headers
+            .iter()
+            .any(|(name, value)| name == "x-api-key" && value == "anthropic-key"));
+
+        let gemini = build_test_provider_request(
+            "https://generativelanguage.googleapis.com",
+            "gemini-key",
+            "gemini-2.5-flash",
+            &body,
+            "google_generate_content",
+            Some("google"),
+            Some("google"),
+        )
+        .expect("Gemini test request should build");
+        assert!(gemini
+            .url
+            .contains("/v1/models/gemini-2.5-flash:generateContent"));
+        assert!(gemini
+            .headers
+            .iter()
+            .any(|(name, value)| name == "x-goog-api-key" && value == "gemini-key"));
+
+        let responses = build_test_provider_request(
+            "https://proxy.example.com/v1",
+            "openai-key",
+            "gpt-5",
+            &body,
+            "openai_responses",
+            Some("custom"),
+            Some("general"),
+        )
+        .expect("OpenAI Responses test request should build");
+        assert_eq!(responses.url, "https://proxy.example.com/v1/responses");
+        assert!(responses
+            .headers
+            .iter()
+            .any(|(name, value)| name == "Authorization" && value == "Bearer openai-key"));
     }
 }
 
@@ -3897,23 +4272,6 @@ async fn calculate_recent_growth(database: &Arc<Database>) -> std::result::Resul
     Ok(growth_rate)
 }
 
-/// 回顾分析功能已移除
-#[allow(dead_code)]
-async fn calculate_review_analysis_stats(
-    _database: &Arc<Database>,
-) -> std::result::Result<serde_json::Value, String> {
-    let review_stats = serde_json::json!({
-        "total_reviews": 0,
-        "total_covered_mistakes": 0,
-        "average_depth": 0.0,
-        "improvement_rate": 0.0,
-        "recent_reviews": 0,
-        "success_rate": 0.0,
-        "timestamp": chrono::Utc::now().to_rfc3339()
-    });
-
-    Ok(review_stats)
-}
 /// 计算统一回顾趋势增长率 - 基于回顾分析创建数据
 async fn calculate_review_trend(database: &Arc<Database>) -> std::result::Result<f64, String> {
     let conn = database
@@ -5504,13 +5862,13 @@ pub async fn get_learning_heatmap(
                 }
             }
 
-            // VFS 做题记录（question_history）
+            // VFS 作答提交记录
             for (date, count) in query_date_counts(
                 &conn,
-                "SELECT DATE(answered_at) as date, COUNT(*) as count
-                 FROM question_history
-                 WHERE DATE(answered_at) >= ?1 AND DATE(answered_at) <= ?2
-                 GROUP BY DATE(answered_at)",
+                "SELECT DATE(submitted_at) as date, COUNT(*) as count
+                 FROM answer_submissions
+                 WHERE DATE(submitted_at) >= ?1 AND DATE(submitted_at) <= ?2
+                 GROUP BY DATE(submitted_at)",
                 &start_date,
                 &end_date,
             ) {

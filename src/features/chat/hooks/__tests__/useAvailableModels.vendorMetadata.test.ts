@@ -23,6 +23,8 @@ describe('useAvailableModels vendor metadata', () => {
         vendorId: 'builtin-siliconflow',
         vendorName: 'SiliconFlow',
         providerType: 'openai-compatible',
+        isReasoning: false,
+        supportsReasoning: true,
         enabled: true,
       },
     ]);
@@ -34,6 +36,8 @@ describe('useAvailableModels vendor metadata', () => {
       model: 'deepseek-ai/DeepSeek-V3.2',
       vendorId: 'builtin-siliconflow',
       vendorName: 'SiliconFlow',
+      isReasoning: false,
+      supportsReasoning: true,
     });
   });
 });

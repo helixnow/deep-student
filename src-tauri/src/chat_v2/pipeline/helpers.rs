@@ -211,6 +211,43 @@ pub(crate) struct PreparedExternalToolSchema {
     pub schema: Value,
 }
 
+pub(crate) fn load_mcp_tool_policy(
+    main_db: Option<&Arc<MainDatabase>>,
+) -> (Vec<String>, Vec<String>) {
+    let load_list = |key: &str| -> Vec<String> {
+        main_db
+            .and_then(|db| db.get_setting(key).ok().flatten())
+            .map(|raw| {
+                raw.split(',')
+                    .map(str::trim)
+                    .filter(|entry| !entry.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    (
+        load_list("mcp.tools.whitelist"),
+        load_list("mcp.tools.blacklist"),
+    )
+}
+
+/// Deny-first MCP policy shared by single- and multi-variant pipelines.
+/// Only schemas without an external server identity are trusted builtins.
+pub(crate) fn is_mcp_tool_allowed_by_policy(
+    tool: &crate::chat_v2::types::McpToolSchema,
+    whitelist: &[String],
+    blacklist: &[String],
+) -> bool {
+    if blacklist.iter().any(|blocked| blocked == &tool.name) {
+        return false;
+    }
+    if tool.server_id.is_none() && tool.name.starts_with(BUILTIN_NAMESPACE) {
+        return true;
+    }
+    whitelist.is_empty() || whitelist.iter().any(|allowed| allowed == &tool.name)
+}
+
 pub(crate) fn prepare_external_tool_schema(
     tool: &crate::chat_v2::types::McpToolSchema,
     include_server_suffix: bool,
@@ -1045,5 +1082,47 @@ mod tests {
             crate::canonical_tools::decode_tool_name_from_api(&prepared.api_name),
             Some("[\"mcp-route-v1\",\"mcp_load_skills\",\"external-server\"]".to_string())
         );
+    }
+
+    #[test]
+    fn mcp_policy_is_deny_first_and_external_builtin_names_are_not_exempt() {
+        let trusted_builtin = crate::chat_v2::types::McpToolSchema {
+            name: "builtin-workspace_file_read".to_string(),
+            server_id: None,
+            description: None,
+            input_schema: None,
+        };
+        let spoofed_builtin = crate::chat_v2::types::McpToolSchema {
+            name: "builtin-execute_command".to_string(),
+            server_id: Some("external-server".to_string()),
+            description: None,
+            input_schema: None,
+        };
+
+        assert!(is_mcp_tool_allowed_by_policy(
+            &trusted_builtin,
+            &["some_other_tool".to_string()],
+            &[],
+        ));
+        assert!(!is_mcp_tool_allowed_by_policy(
+            &trusted_builtin,
+            &[],
+            &[trusted_builtin.name.clone()],
+        ));
+        assert!(!is_mcp_tool_allowed_by_policy(
+            &spoofed_builtin,
+            &["some_other_tool".to_string()],
+            &[],
+        ));
+        assert!(is_mcp_tool_allowed_by_policy(
+            &spoofed_builtin,
+            &[spoofed_builtin.name.clone()],
+            &[],
+        ));
+        assert!(!is_mcp_tool_allowed_by_policy(
+            &spoofed_builtin,
+            &[spoofed_builtin.name.clone()],
+            &[spoofed_builtin.name.clone()],
+        ));
     }
 }

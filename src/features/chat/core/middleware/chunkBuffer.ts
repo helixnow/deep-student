@@ -113,7 +113,7 @@ class ChunkBufferImpl {
     // 检查是否需要立即刷新（超过最大缓冲大小）
     const buffer = session.buffers.get(blockId)!;
     if (buffer.content.length >= this.config.maxBufferSize) {
-      this.flushSessionBlock(sessionId, blockId);
+      this.flushBlock(sessionId, blockId);
     } else {
       this.scheduleSessionFlush(sessionId);
     }
@@ -139,7 +139,7 @@ class ChunkBufferImpl {
   /**
    * 刷新指定会话的单个块
    */
-  private flushSessionBlock(sessionId: string, blockId: string): void {
+  flushBlock(sessionId: string, blockId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 

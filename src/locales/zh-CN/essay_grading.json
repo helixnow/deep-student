@@ -104,7 +104,8 @@
     "load_models_failed": "模型列表加载失败，请检查设置",
     "load_modes_failed": "批阅模式加载失败",
     "offline": "离线状态下无法批改，请检查网络连接",
-    "unchanged_text": "内容未修改，请修改后再提交批改"
+    "unchanged_text": "内容未修改，请修改后再提交批改",
+    "export_failed": "导出失败，请重试"
   },
   "toast": {
     "grading_success": "批改完成",

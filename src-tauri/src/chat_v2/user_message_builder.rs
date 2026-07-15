@@ -12,8 +12,8 @@ use base64::Engine;
 
 use super::resource_types::{ContextRef, ContextSnapshot};
 use super::types::{
-    block_status, block_types, AttachmentInput, AttachmentMeta, ChatMessage, MessageBlock,
-    MessageMeta, MessageRole,
+    block_status, block_types, AttachmentInput, AttachmentMeta, CanonicalContentPart, ChatMessage,
+    MessageBlock, MessageMeta, MessageRole, ModelExecutionSnapshot,
 };
 
 // ============================================================================
@@ -35,6 +35,10 @@ pub struct UserMessageParams {
     pub attachments: Vec<AttachmentInput>,
     /// 上下文快照（完整快照，函数内部会提取 userRefs）
     pub context_snapshot: Option<ContextSnapshot>,
+    /// Canonical typed content (stable refs only; no request-local base64).
+    pub canonical_content: Vec<CanonicalContentPart>,
+    /// Frozen model/capability snapshot for this turn.
+    pub execution_snapshot: Option<ModelExecutionSnapshot>,
     /// 时间戳（可选，不提供则使用当前时间）
     pub timestamp: Option<i64>,
 }
@@ -48,6 +52,8 @@ impl UserMessageParams {
             content,
             attachments: Vec::new(),
             context_snapshot: None,
+            canonical_content: Vec::new(),
+            execution_snapshot: None,
             timestamp: None,
         }
     }
@@ -67,6 +73,16 @@ impl UserMessageParams {
     /// 设置上下文快照
     pub fn with_context_snapshot(mut self, snapshot: ContextSnapshot) -> Self {
         self.context_snapshot = Some(snapshot);
+        self
+    }
+
+    pub fn with_canonical_content(mut self, content: Vec<CanonicalContentPart>) -> Self {
+        self.canonical_content = content;
+        self
+    }
+
+    pub fn with_execution_snapshot(mut self, snapshot: Option<ModelExecutionSnapshot>) -> Self {
+        self.execution_snapshot = snapshot;
         self
     }
 
@@ -142,9 +158,15 @@ pub fn build_user_message(params: UserMessageParams) -> UserMessageResult {
         .and_then(extract_user_refs_snapshot);
 
     // 3. 构建消息元数据
-    let meta = if user_context_snapshot.is_some() {
+    let meta = if user_context_snapshot.is_some()
+        || !params.canonical_content.is_empty()
+        || params.execution_snapshot.is_some()
+    {
         Some(MessageMeta {
             context_snapshot: user_context_snapshot,
+            canonical_content: (!params.canonical_content.is_empty())
+                .then_some(params.canonical_content),
+            execution_snapshot: params.execution_snapshot,
             ..Default::default()
         })
     } else {
@@ -432,5 +454,26 @@ mod tests {
         // 只有 userRefs，没有 retrievalRefs
         assert_eq!(ctx_snapshot.user_refs.len(), 1);
         assert!(ctx_snapshot.retrieval_refs.is_empty());
+    }
+
+    #[test]
+    fn multi_variant_user_can_persist_canonical_refs_without_claiming_a_model_snapshot() {
+        let canonical = vec![CanonicalContentPart::ImageRef {
+            image_id: "image-1".to_string(),
+            resource_id: Some("res-1".to_string()),
+            source_id: Some("file-1".to_string()),
+            blob_hash: Some("blob-hash".to_string()),
+            content_hash: Some("content-hash".to_string()),
+            mime_type: "image/png".to_string(),
+            pinned: false,
+            retrieval_hit: false,
+        }];
+        let result = build_user_message(
+            UserMessageParams::new("session".to_string(), "look".to_string())
+                .with_canonical_content(canonical),
+        );
+        let meta = result.message.meta.unwrap();
+        assert!(meta.execution_snapshot.is_none());
+        assert_eq!(meta.canonical_content.unwrap().len(), 1);
     }
 }

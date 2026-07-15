@@ -535,6 +535,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   enableThinking,
   thinkingStateLabel,
   thinkingUnsupported,
+  thinkingCanDisable = true,
   thinkingDepthOptions,
   thinkingDepthValue,
   onToggleThinking,
@@ -687,6 +688,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           id: attachmentId,
           name: file.name,
           type: isImage ? 'image' : 'document',
+          resourceType: isImage ? 'image' : 'file',
           mimeType: file.type,
           size: file.size,
           status: 'error',
@@ -706,6 +708,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           id: attachmentId,
           name: file.name,
           type: isImage ? 'image' : 'document',
+          resourceType: isImage ? 'image' : 'file',
           mimeType: file.type || 'application/octet-stream',
           size: file.size,
           status: 'error',
@@ -723,6 +726,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         id: attachmentId,
         name: file.name,
         type: isImage ? 'image' : 'document',
+        resourceType: isImage ? 'image' : 'file',
         mimeType: file.type || 'application/octet-stream',
         size: file.size,
         status: 'uploading', // 标记为上传中
@@ -1550,13 +1554,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, [enableThinking, onToggleThinking]);
 
   const handleTurnThinkingOff = useCallback(() => {
+    if (!thinkingCanDisable) return;
     if (!enableThinking) return;
     if (onSetThinkingDepth) {
       onSetThinkingDepth('off');
       return;
     }
     onToggleThinking?.();
-  }, [enableThinking, onSetThinkingDepth, onToggleThinking]);
+  }, [enableThinking, onSetThinkingDepth, onToggleThinking, thinkingCanDisable]);
 
   const handleAttachmentMenuOpenChange = useCallback((open: boolean) => {
     setIsAttachmentMenuOpen(open);
@@ -2639,19 +2644,25 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                               {option.defaultLabel}
                             </AppMenuItem>
                           ))}
-                          <AppMenuSeparator />
-                          <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
-                            {t('chatV2:inputBar.thinkingOff', '关闭')}
-                          </AppMenuItem>
+                          {thinkingCanDisable && (
+                            <>
+                              <AppMenuSeparator />
+                              <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
+                                {t('chatV2:inputBar.thinkingOff', '关闭')}
+                              </AppMenuItem>
+                            </>
+                          )}
                         </AppMenuGroup>
                       ) : hasThinkingToggleMenu ? (
                         <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
                           <AppMenuItem checked={!!enableThinking} onClick={handleTurnThinkingOn}>
                             {t('chatV2:inputBar.thinkingOn', '开启')}
                           </AppMenuItem>
-                          <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
-                            {t('chatV2:inputBar.thinkingOff', '关闭')}
-                          </AppMenuItem>
+                          {thinkingCanDisable && (
+                            <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
+                              {t('chatV2:inputBar.thinkingOff', '关闭')}
+                            </AppMenuItem>
+                          )}
                         </AppMenuGroup>
                       ) : null}
                       {(hasThinkingToggleMenu || hasThinkingUnsupportedMenu) && hasRuntimeModelMenu && (

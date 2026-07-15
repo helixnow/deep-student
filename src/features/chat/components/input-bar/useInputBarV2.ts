@@ -17,10 +17,7 @@ import i18n from 'i18next';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import { isMultiModelSelectEnabled } from '@/config/featureFlags';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
-import { isModelMultimodalAsync } from '@/features/chat/hooks/useAvailableModels';
 import {
-  areAttachmentInjectModesReady,
-  downgradeInjectModesForNonMultimodal,
   getMissingInjectModesForAttachment,
   hasAnySelectedInjectModeReady,
 } from './injectModeUtils';
@@ -161,7 +158,7 @@ export function useInputBarV2(
     }
 
     const currentAttachments = state.attachments;
-    let effectiveAttachments = currentAttachments;
+    const effectiveAttachments = currentAttachments;
     
     // ========== 多变体支持（chips 模式） ==========
     const content = rawContent; // 输入内容已是纯文本（不含 @模型）
@@ -253,73 +250,8 @@ export function useInputBarV2(
       return modeLabels.join(i18n.t('chatV2:inputBar.modeSeparator', { defaultValue: '、' }));
     };
 
-    // 非多模态模型下，自动将图片注入模式回退为文本/OCR，避免发送后图片被模型忽略。
-    const selectedModelIds = selectedModels && selectedModels.length > 0
-      ? (selectedModels.length >= 2 && multiModelSelectEnabled
-          ? selectedModels.map(m => m.id)
-          : [selectedModels[selectedModels.length - 1].id])
-      : (state.chatParams.modelId ? [state.chatParams.modelId] : []);
-
-    let hasNonMultimodalTarget = false;
-    let hasMultimodalTarget = false;
-    if (selectedModelIds.length > 0) {
-      const capabilities = await Promise.all(
-        selectedModelIds.map(async (id) => ({ id, isMultimodal: await isModelMultimodalAsync(id) }))
-      );
-      hasNonMultimodalTarget = capabilities.some(c => !c.isMultimodal);
-      hasMultimodalTarget = capabilities.some(c => c.isMultimodal);
-    }
-
-    const shouldDowngradeForTextOnlyTargets = hasNonMultimodalTarget && !hasMultimodalTarget;
-
-    if (shouldDowngradeForTextOnlyTargets) {
-      let adjustedCount = 0;
-      let unresolvedCount = 0;
-      effectiveAttachments = currentAttachments.map((attachment) => {
-        const injectModes = downgradeInjectModesForNonMultimodal(attachment);
-        if (!injectModes) {
-          return attachment;
-        }
-
-        const nextAttachment: AttachmentMeta = { ...attachment, injectModes };
-        const status = getAttachmentStatus(attachment);
-        if (!areAttachmentInjectModesReady(nextAttachment, status)) {
-          unresolvedCount += 1;
-          return attachment;
-        }
-
-        adjustedCount += 1;
-        state.updateAttachment(attachment.id, { injectModes });
-        if (attachment.resourceId) {
-          state.updateContextRefInjectModes(attachment.resourceId, {
-            image: injectModes.image,
-            pdf: injectModes.pdf,
-          });
-        }
-        return nextAttachment;
-      });
-
-      if (adjustedCount > 0) {
-        showGlobalNotification(
-          'warning',
-          i18n.t('chatV2:inputBar.nonMultimodalImageFallback', {
-            count: adjustedCount,
-            defaultValue: '当前模型不支持图片输入，已自动切换为文本/OCR 模式。可切换到支持多模态的模型后再启用图片模式。',
-          })
-        );
-      }
-
-      if (unresolvedCount > 0) {
-        showGlobalNotification(
-          'warning',
-          i18n.t('chatV2:inputBar.nonMultimodalImageFallbackUnavailable', {
-            count: unresolvedCount,
-            defaultValue: '当前模型不支持图片输入，且有附件尚未准备好可用的文本/OCR模式。请切换到多模态模型，或等待 OCR 完成后重试。',
-          })
-        );
-        return;
-      }
-    }
+    // 源附件的注入选择不随 TM/MM 切换而改写。Rust context compiler 会为每个
+    // 目标模型分别选择原图直读、辅助 MM 观察、OCR 或无视觉文本降级。
 
     // 检查是否有附件正在上传
     const hasUploadingAttachments = effectiveAttachments.some(

@@ -59,11 +59,6 @@ export async function registerAllStores(): Promise<void> {
       exportName: 'useAnkiUIStore',
     },
     {
-      name: 'ankiQueue',
-      module: () => import('../stores/ankiQueueStore'),
-      exportName: 'useAnkiQueueStore',
-    },
-    {
       name: 'templateAI',
       module: () => import('../stores/templateAiStore'),
       exportName: 'useTemplateAIStore',

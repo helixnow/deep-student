@@ -1,15 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
+  handleBackendEventWithSequence,
+  flushPendingBackendEvents,
   handleStreamComplete,
   handleStreamAbort,
 } = vi.hoisted(() => ({
+  handleBackendEventWithSequence: vi.fn(),
+  flushPendingBackendEvents: vi.fn(),
   handleStreamComplete: vi.fn(() => Promise.resolve()),
   handleStreamAbort: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../core/middleware/eventBridge', () => ({
-  handleBackendEventWithSequence: vi.fn(),
+  handleBackendEventWithSequence,
+  flushPendingBackendEvents,
   handleStreamComplete,
   handleStreamAbort,
   clearEventContext: vi.fn(),
@@ -19,6 +24,7 @@ vi.mock('../../core/middleware/eventBridge', () => ({
 vi.mock('../../core/middleware/autoSave', () => ({
   autoSave: {
     forceImmediateSave: vi.fn(() => Promise.resolve()),
+    cleanup: vi.fn(),
   },
   streamingBlockSaver: {
     cleanup: vi.fn(),
@@ -32,6 +38,12 @@ function createStore() {
   return {
     sessionId: 'sess_test',
     currentStreamingMessageId: 'msg_test',
+    messageMap: new Map([
+      ['msg_test', { id: 'msg_test', role: 'assistant', blockIds: ['blk_test'] }],
+    ]),
+    blocks: new Map([
+      ['blk_test', { id: 'blk_test', messageId: 'msg_test', type: 'content' }],
+    ]),
     completeStream: vi.fn(),
     updateMessageMeta: vi.fn(),
   };
@@ -91,9 +103,15 @@ function createAutonomousStore() {
 describe('ChatV2TauriAdapter stream_complete sequencing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
   });
 
-  it('flushes buffered chunks before marking the stream complete', () => {
+  afterEach(() => {
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('flushes buffered chunks before marking the stream complete', async () => {
     const store = createStore();
     const adapter = new ChatV2TauriAdapter('sess_test', store as any);
     const callOrder: string[] = [];
@@ -114,12 +132,136 @@ describe('ChatV2TauriAdapter stream_complete sequencing', () => {
       durationMs: 12,
     });
 
+    await vi.runAllTimersAsync();
+
+    expect(flushPendingBackendEvents).toHaveBeenCalledWith(store);
     expect(flushSpy).toHaveBeenCalledWith('sess_test');
     expect(store.completeStream).toHaveBeenCalledWith('success');
     expect(callOrder).toEqual(['flush', 'complete']);
   });
 
-  it('adopts an existing empty assistant for an autonomous stream and accepts its completion', () => {
+  it('keeps the stream open until late block-channel tail events have drained', async () => {
+    const store = createStore();
+    const adapter = new ChatV2TauriAdapter('sess_test', store as any);
+    const callOrder: string[] = [];
+    vi.spyOn(chunkBuffer, 'flushSession').mockImplementation(() => {
+      callOrder.push('flush');
+    });
+    flushPendingBackendEvents.mockImplementation(() => {
+      callOrder.push('drain');
+    });
+    handleBackendEventWithSequence.mockImplementation((_store, event) => {
+      callOrder.push(`block:${event.phase}`);
+    });
+    store.completeStream.mockImplementation(() => {
+      callOrder.push('complete');
+    });
+
+    // Session and block events are emitted on independent Tauri channels.
+    // Reproduce the session terminal callback overtaking the block tail.
+    (adapter as any).handleSessionEvent({
+      sessionId: 'sess_test',
+      eventType: 'stream_complete',
+      messageId: 'msg_test',
+      durationMs: 12,
+      timestamp: 100,
+    });
+
+    expect(store.completeStream).not.toHaveBeenCalled();
+
+    (adapter as any).handleBlockEvent({
+      type: 'content',
+      phase: 'chunk',
+      blockId: 'blk_test',
+      chunk: 'late tail',
+      sequenceId: 2,
+    });
+    (adapter as any).handleBlockEvent({
+      type: 'content',
+      phase: 'end',
+      blockId: 'blk_test',
+      sequenceId: 3,
+    });
+
+    await vi.runAllTimersAsync();
+
+    expect(callOrder).toEqual([
+      'block:chunk',
+      'block:end',
+      'drain',
+      'flush',
+      'complete',
+    ]);
+    expect(handleStreamComplete).toHaveBeenCalledWith(
+      store,
+      expect.objectContaining({ messageId: 'msg_test' }),
+    );
+  });
+
+  it.each([
+    ['stream_error', 'error'],
+    ['stream_cancelled', 'cancelled'],
+  ] as const)('cancels pending success when %s supersedes it', async (eventType, reason) => {
+    const store = createStore();
+    const adapter = new ChatV2TauriAdapter('sess_test', store as any);
+
+    (adapter as any).handleSessionEvent({
+      sessionId: 'sess_test',
+      eventType: 'stream_complete',
+      messageId: 'msg_test',
+      timestamp: 100,
+    });
+    (adapter as any).handleSessionEvent({
+      sessionId: 'sess_test',
+      eventType,
+      messageId: 'msg_test',
+      timestamp: 101,
+      error: eventType === 'stream_error' ? 'connection failed' : undefined,
+    });
+
+    expect((adapter as any).pendingStreamCompletion).toBeNull();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(store.completeStream).toHaveBeenCalledTimes(1);
+    expect(store.completeStream).toHaveBeenCalledWith(reason);
+    expect(store.completeStream).not.toHaveBeenCalledWith('success');
+  });
+
+  it('cancels pending success when a retry expectation begins', async () => {
+    const store = createStore();
+    const adapter = new ChatV2TauriAdapter('sess_test', store as any);
+
+    (adapter as any).handleSessionEvent({
+      sessionId: 'sess_test',
+      eventType: 'stream_complete',
+      messageId: 'msg_test',
+      timestamp: 100,
+    });
+    (adapter as any).beginStreamExpectation('msg_retry');
+
+    expect((adapter as any).pendingStreamCompletion).toBeNull();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(store.completeStream).not.toHaveBeenCalled();
+  });
+
+  it('cancels pending success during adapter cleanup', async () => {
+    const store = createStore();
+    const adapter = new ChatV2TauriAdapter('sess_test', store as any);
+
+    (adapter as any).handleSessionEvent({
+      sessionId: 'sess_test',
+      eventType: 'stream_complete',
+      messageId: 'msg_test',
+      timestamp: 100,
+    });
+    await adapter.cleanup();
+
+    expect((adapter as any).pendingStreamCompletion).toBeNull();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(store.completeStream).not.toHaveBeenCalled();
+  });
+
+  it('adopts an existing empty assistant for an autonomous stream and accepts its completion', async () => {
     const { store, storeApi, getState } = createAutonomousStore();
     const adapter = new ChatV2TauriAdapter('agent_test', store as any, storeApi as any);
     vi.spyOn(chunkBuffer, 'flushSession').mockImplementation(() => undefined);
@@ -142,6 +284,8 @@ describe('ChatV2TauriAdapter stream_complete sequencing', () => {
       timestamp: 102,
     });
 
+    await vi.runAllTimersAsync();
+
     expect(store.completeStream).toHaveBeenCalledWith('success');
     expect(handleStreamComplete).toHaveBeenCalledWith(
       store,
@@ -149,7 +293,7 @@ describe('ChatV2TauriAdapter stream_complete sequencing', () => {
     );
   });
 
-  it('rejects delayed terminal events from the previous generation of a same-ID retry', () => {
+  it('rejects delayed terminal events from the previous generation of a same-ID retry', async () => {
     const { store, storeApi, getState } = createAutonomousStore();
     const adapter = new ChatV2TauriAdapter('agent_test', store as any, storeApi as any);
     vi.spyOn(chunkBuffer, 'flushSession').mockImplementation(() => undefined);
@@ -168,6 +312,7 @@ describe('ChatV2TauriAdapter stream_complete sequencing', () => {
       streamGeneration: 41,
       timestamp: 1_010,
     });
+    await vi.runAllTimersAsync();
     expect(store.completeStream).toHaveBeenCalledTimes(1);
 
     // retryMessage reuses the assistant message ID and creates an expectation
@@ -211,6 +356,7 @@ describe('ChatV2TauriAdapter stream_complete sequencing', () => {
       streamGeneration: 42,
       timestamp: Date.now() + 2,
     });
+    await vi.runAllTimersAsync();
     expect(store.completeStream).toHaveBeenCalledTimes(2);
   });
 });

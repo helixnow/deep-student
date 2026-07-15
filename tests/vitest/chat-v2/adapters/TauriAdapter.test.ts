@@ -98,6 +98,7 @@ function createMockStore(): ChatStore {
     createBlock: vi.fn(() => 'test-block-id'),
     updateBlockContent: vi.fn(),
     updateBlockStatus: vi.fn(),
+    updateMessageMeta: vi.fn(),
     setBlockResult: vi.fn(),
     setBlockError: vi.fn(),
     updateBlock: vi.fn(),
@@ -422,6 +423,26 @@ describe('ChatV2TauriAdapter', () => {
       });
     });
 
+    it('passes the multimodal retrieval switch and route settings to the request snapshot', async () => {
+      await adapter.setup();
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        multimodalRagEnabled: true,
+        multimodalTopK: 7,
+        multimodalEnableReranking: true,
+        multimodalLibraryIds: ['folder-a'],
+      };
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options).toMatchObject({
+        multimodalRagEnabled: true,
+        multimodalTopK: 7,
+        multimodalEnableReranking: true,
+        multimodalLibraryIds: ['folder-a'],
+      });
+    });
+
     it('should pass DeepSeek V4 runtime reasoning effort without mutating model defaults', async () => {
       await adapter.setup();
 
@@ -437,6 +458,27 @@ describe('ChatV2TauriAdapter', () => {
       expect(options).toMatchObject({
         enableThinking: true,
         reasoningEffort: 'max',
+      });
+      expect(options.thinkingBudget).toBeUndefined();
+    });
+
+    it('should map OpenAI Codex runtime reasoning effort into send options', async () => {
+      await adapter.setup();
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        modelId: 'builtin-codex-gpt-5.6-sol',
+        enableThinking: true,
+        reasoningEffort: 'xhigh',
+        thinkingBudget: undefined,
+      };
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options).toMatchObject({
+        modelId: 'builtin-codex-gpt-5.6-sol',
+        enableThinking: true,
+        reasoningEffort: 'xhigh',
       });
       expect(options.thinkingBudget).toBeUndefined();
     });
@@ -872,20 +914,26 @@ describe('ChatV2TauriAdapter', () => {
       await adapter.setup();
     });
 
-    it('should handle stream_complete event', () => {
-      (mockStore as any).currentStreamingMessageId = 'msg-1';
-      sessionEventCallback({
-        payload: {
-          sessionId: 'test-session-id',
-          eventType: 'stream_complete',
-          messageId: 'msg-1',
-          durationMs: 1000,
-          timestamp: Date.now(),
-        },
-      });
+    it('should handle stream_complete event', async () => {
+      vi.useFakeTimers();
+      try {
+        (mockStore as any).currentStreamingMessageId = 'msg-1';
+        sessionEventCallback({
+          payload: {
+            sessionId: 'test-session-id',
+            eventType: 'stream_complete',
+            messageId: 'msg-1',
+            durationMs: 1000,
+            timestamp: Date.now(),
+          },
+        });
 
-      // Should call completeStream to reset state
-      expect(mockStore.completeStream).toHaveBeenCalled();
+        expect(mockStore.completeStream).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(50);
+        expect(mockStore.completeStream).toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should handle stream_error event', () => {
@@ -1573,6 +1621,241 @@ describe('ChatV2TauriAdapter', () => {
       expect(block1.toolOutput.cards).toEqual([]);
       expect(block2.toolOutput.cards).toHaveLength(1);
       expect(block2.toolOutput.cards[0].id).toBe('card-fallback');
+    });
+
+    it('recovers a terminal error block when its retried task completes', async () => {
+      let tasks: Array<Record<string, unknown>> = [
+        { id: 'task-retry', status: 'Processing' },
+      ];
+      let cards: Array<Record<string, unknown>> = [];
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_document_tasks') return tasks;
+        if (command === 'get_document_cards') return cards;
+        return undefined;
+      });
+      const seeded = seedAnkiBlock('anki-block-retry', {
+        documentId: 'doc-retry',
+        status: 'error',
+      });
+      (seeded as any).error = 'generation_failed';
+      (seeded.toolOutput as any).finalStatus = 'error';
+      (seeded.toolOutput as any).finalError = 'generation_failed';
+      (seeded.toolOutput as any).syncStatus = 'error';
+      (seeded.toolOutput as any).syncError = 'generation_failed';
+
+      ankiEventCallback({
+        payload: {
+          type: 'TaskStatusUpdate',
+          data: { document_id: 'doc-retry', task_id: 'task-retry', status: 'Processing' },
+        },
+      });
+
+      await vi.waitFor(() => {
+        expect((mockStore.blocks.get('anki-block-retry') as any).status).toBe('running');
+      });
+
+      tasks = [{ id: 'task-retry', status: 'Completed' }];
+      cards = [{ id: 'card-retried', front: 'Q', back: 'A', is_error_card: false }];
+      ankiEventCallback({
+        payload: {
+          type: 'TaskCompleted',
+          data: { document_id: 'doc-retry', task_id: 'task-retry' },
+        },
+      });
+
+      await vi.waitFor(() => {
+        const block = mockStore.blocks.get('anki-block-retry') as any;
+        expect(block.status).toBe('success');
+        expect(block.error).toBeUndefined();
+        expect(block.toolOutput.finalStatus).toBe('completed');
+        expect(block.toolOutput.syncStatus).toBe('pending');
+        expect(block.toolOutput.syncError).toBeUndefined();
+        expect(block.toolOutput.cards).toEqual([
+          expect.objectContaining({ id: 'card-retried' }),
+        ]);
+      });
+    });
+
+    it('keeps a multi-task retry partial when one task completes and another still fails', async () => {
+      let tasks: Array<Record<string, unknown>> = [
+        { id: 'task-old', status: 'Completed' },
+        { id: 'task-retry-a', status: 'Processing' },
+        { id: 'task-retry-b', status: 'Processing' },
+      ];
+      const cards = [{ id: 'card-old', front: 'Q1', back: 'A1', is_error_card: false }];
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_document_tasks') return tasks;
+        if (command === 'get_document_cards') return cards;
+        return undefined;
+      });
+      const seeded = seedAnkiBlock('anki-block-partial-retry', {
+        documentId: 'doc-partial-retry',
+        status: 'success',
+        cards: cards as any,
+      });
+      (seeded.toolOutput as any).finalStatus = 'completed_with_errors';
+
+      ankiEventCallback({
+        payload: {
+          type: 'TaskStatusUpdate',
+          data: { document_id: 'doc-partial-retry', task_id: 'task-retry-a', status: 'Processing' },
+        },
+      });
+      await vi.waitFor(() => {
+        expect((mockStore.blocks.get('anki-block-partial-retry') as any).status).toBe('running');
+      });
+
+      tasks = [
+        { id: 'task-old', status: 'Completed' },
+        { id: 'task-retry-a', status: 'Completed' },
+        { id: 'task-retry-b', status: 'Processing' },
+      ];
+      ankiEventCallback({
+        payload: {
+          type: 'TaskCompleted',
+          data: { document_id: 'doc-partial-retry', task_id: 'task-retry-a' },
+        },
+      });
+
+      await vi.waitFor(() => {
+        const block = mockStore.blocks.get('anki-block-partial-retry') as any;
+        expect(block.status).toBe('running');
+        expect(block.toolOutput.finalStatus).toBe('generating');
+        expect(block.toolOutput.progress.stage).toBe('generating');
+      });
+
+      tasks = [
+        { id: 'task-old', status: 'Completed' },
+        { id: 'task-retry-a', status: 'Completed' },
+        { id: 'task-retry-b', status: 'Failed', error_message: 'still failed' },
+      ];
+      ankiEventCallback({
+        payload: {
+          type: 'TaskCompleted',
+          data: { document_id: 'doc-partial-retry', task_id: 'task-retry-a' },
+        },
+      });
+
+      await vi.waitFor(() => {
+        const block = mockStore.blocks.get('anki-block-partial-retry') as any;
+        expect(block.status).toBe('success');
+        expect(block.toolOutput.finalStatus).toBe('completed_with_errors');
+        expect(block.toolOutput.progress.stage).toBe('completed_with_errors');
+        expect(block.toolOutput.progress.counts).toEqual(
+          expect.objectContaining({ completed: 2, failed: 1 }),
+        );
+        expect(block.toolOutput.finalError).toBe('still failed');
+      });
+    });
+
+    it('keeps an all-failed retry as error when the document has no usable cards', async () => {
+      let tasks: Array<Record<string, unknown>> = [
+        { id: 'task-a', status: 'Processing' },
+        { id: 'task-b', status: 'Processing' },
+      ];
+      const cards = [
+        { id: 'card-error', front: '', back: '', is_error_card: true },
+      ];
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_document_tasks') return tasks;
+        if (command === 'get_document_cards') return cards;
+        return undefined;
+      });
+      const seeded = seedAnkiBlock('anki-block-failed-retry', {
+        documentId: 'doc-failed-retry',
+        status: 'error',
+      });
+      (seeded.toolOutput as any).finalStatus = 'error';
+
+      ankiEventCallback({
+        payload: {
+          type: 'TaskStatusUpdate',
+          data: { document_id: 'doc-failed-retry', task_id: 'task-a', status: 'Processing' },
+        },
+      });
+      await vi.waitFor(() => {
+        expect((mockStore.blocks.get('anki-block-failed-retry') as any).status).toBe('running');
+      });
+
+      tasks = [
+        { id: 'task-a', status: 'Failed', error_message: 'retry failed' },
+        { id: 'task-b', status: 'Truncated', error_message: 'retry truncated' },
+      ];
+      ankiEventCallback({
+        payload: {
+          type: 'TaskProcessingError',
+          data: { document_id: 'doc-failed-retry', task_id: 'task-a' },
+        },
+      });
+
+      await vi.waitFor(() => {
+        const block = mockStore.blocks.get('anki-block-failed-retry') as any;
+        expect(block.status).toBe('error');
+        expect(block.toolOutput.finalStatus).toBe('error');
+        expect(block.toolOutput.progress.counts).toEqual(
+          expect.objectContaining({ failed: 1, truncated: 1 }),
+        );
+      });
+    });
+
+    it('does not classify a late event for an ordinary completed block as retry', async () => {
+      const seeded = seedAnkiBlock('anki-block-completed', {
+        documentId: 'doc-completed',
+        status: 'success',
+      });
+      (seeded.toolOutput as any).finalStatus = 'completed';
+      (seeded.toolOutput as any).progress = { stage: 'completed' };
+
+      ankiEventCallback({
+        payload: {
+          type: 'TaskCompleted',
+          data: { document_id: 'doc-completed', task_id: 'task-completed' },
+        },
+      });
+
+      expect(invoke).not.toHaveBeenCalledWith('get_document_tasks', {
+        documentId: 'doc-completed',
+      });
+      expect((mockStore.blocks.get('anki-block-completed') as any).status).toBe('success');
+    });
+
+    it('preserves current user edits and a real sync error while reconciling a partial retry', async () => {
+      const tasks = [
+        { id: 'task-completed', status: 'Completed' },
+        { id: 'task-failed', status: 'Failed', error_message: 'generation failed' },
+      ];
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_document_tasks') return tasks;
+        if (command === 'get_document_cards') {
+          return [{ id: 'card-edited', front: 'backend front', back: 'backend back', is_error_card: false }];
+        }
+        return undefined;
+      });
+      const seeded = seedAnkiBlock('anki-block-edited-partial', {
+        documentId: 'doc-edited-partial',
+        status: 'success',
+        cards: [{ id: 'card-edited', front: 'user front', back: 'user back' }],
+      });
+      (seeded.toolOutput as any).finalStatus = 'completed_with_errors';
+      (seeded.toolOutput as any).syncStatus = 'error';
+      (seeded.toolOutput as any).syncError = 'anki-connect-down';
+
+      ankiEventCallback({
+        payload: {
+          type: 'TaskProcessingError',
+          data: { document_id: 'doc-edited-partial', task_id: 'task-failed' },
+        },
+      });
+
+      await vi.waitFor(() => {
+        const block = mockStore.blocks.get('anki-block-edited-partial') as any;
+        expect(block.toolOutput.cards).toEqual([
+          expect.objectContaining({ id: 'card-edited', front: 'user front', back: 'user back' }),
+        ]);
+        expect(block.toolOutput.syncStatus).toBe('error');
+        expect(block.toolOutput.syncError).toBe('anki-connect-down');
+        expect(block.toolOutput.finalStatus).toBe('completed_with_errors');
+      });
     });
   });
 });

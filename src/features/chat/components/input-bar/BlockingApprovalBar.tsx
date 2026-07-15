@@ -105,6 +105,10 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       shellScope.usesScriptRunner ? 'runner' : null,
     ].filter((value): value is string => Boolean(value));
   }, [shellScope]);
+  const rootBindingLabel = shellScope?.rootBinding
+    ? `bind:${shellScope.rootBinding.slice(0, HASH_PREVIEW_LENGTH)}`
+    : null;
+  const isExternalMcpExecution = shellScope?.executionLocation?.startsWith('external') ?? false;
 
   // 新请求到达时重置状态
   useEffect(() => {
@@ -280,18 +284,118 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       {/* Row 2: Runtime scope 摘要（内联 chip，不新增审批面板） */}
       {shellScope && (
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.toolSource}>
-            {shellScope.rootId}
-          </span>
-          <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.cwd}>
-            {shellScope.cwd}
-          </span>
+          {isExternalMcpExecution ? (
+            <span className="rounded bg-red-100 px-1.5 py-0.5 font-mono text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              external MCP / local sandbox not enforced
+            </span>
+          ) : (
+            <>
+              {shellScope.executionLocation && (
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
+                  {shellScope.executionLocation}
+                </span>
+              )}
+              {shellScope.sandboxEnforced !== undefined && (
+                <span
+                  className={cn(
+                    'rounded px-1.5 py-0.5 font-mono',
+                    shellScope.sandboxEnforced
+                      ? 'bg-muted text-muted-foreground'
+                      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+                  )}
+                >
+                  sandbox:{shellScope.sandboxEnforced ? 'enforced' : 'unenforced'}
+                </span>
+              )}
+              <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.rootPath ?? shellScope.toolSource}>
+                {shellScope.rootId}
+              </span>
+              {shellScope.rootPath && (
+                <span
+                  className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono"
+                  title={shellScope.rootPath}
+                >
+                  {shellScope.rootPath}
+                </span>
+              )}
+              {shellScope.rootAccess && (
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
+                  {shellScope.rootAccess}
+                </span>
+              )}
+              {shellScope.rootSessionScoped !== undefined && (
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
+                  {shellScope.rootSessionScoped ? 'session-root' : 'persistent-root'}
+                </span>
+              )}
+              <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.cwd}>
+                {shellScope.cwd}
+              </span>
+            </>
+          )}
           <span className="max-w-[14rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.commandPrefix}>
             {shellCommandLabel}
           </span>
           {shellFlags.map((flag) => (
             <span key={flag} className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
               {flag}
+            </span>
+          ))}
+          {!isExternalMcpExecution && shellScope.sandboxBackend && (
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
+              sandbox:{shellScope.sandboxBackend}
+            </span>
+          )}
+          {!isExternalMcpExecution && shellScope.shellKind && (
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
+              shell:{shellScope.shellKind}
+            </span>
+          )}
+          {!isExternalMcpExecution && shellScope.outputEncoding && (
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
+              encoding:{shellScope.outputEncoding}
+            </span>
+          )}
+          {shellScope.containsPotentialSecret && (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              command:redacted
+            </span>
+          )}
+          {!isExternalMcpExecution && shellScope.inheritEnv === true && (
+            <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              parent-env
+            </span>
+          )}
+          {!isExternalMcpExecution && shellScope.inheritedEnvKeys && (
+            <span
+              className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono"
+              title={shellScope.inheritedEnvKeys.join(', ') || 'none'}
+            >
+              inherited:{shellScope.inheritedEnvKeys.length}
+              {shellScope.inheritedEnvKeys.length > 0 ? ` [${shellScope.inheritedEnvKeys.join(', ')}]` : ''}
+            </span>
+          )}
+          {!isExternalMcpExecution && shellScope.explicitEnvKeys && (
+            <span
+              className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono"
+              title={shellScope.explicitEnvKeys.join(', ') || 'none'}
+            >
+              explicit-env:{shellScope.explicitEnvKeys.length}
+              {shellScope.explicitEnvKeys.length > 0 ? ` [${shellScope.explicitEnvKeys.join(', ')}]` : ''}
+            </span>
+          )}
+          {!isExternalMcpExecution && rootBindingLabel && (
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={shellScope.rootBinding}>
+              {rootBindingLabel}
+            </span>
+          )}
+          {!isExternalMcpExecution && shellScope.readableRoots?.map((path) => (
+            <span
+              key={path}
+              className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono"
+              title={path}
+            >
+              read:{path}
             </span>
           ))}
         </div>

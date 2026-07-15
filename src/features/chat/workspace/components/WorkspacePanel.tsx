@@ -23,7 +23,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
   currentAgentId,
   onViewAgentSession,
 }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('chatV2');
   const { workspace, agents, messages, isLoading, error } = useWorkspaceStore(
     useShallow((state) => ({
       workspace: state.workspace,

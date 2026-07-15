@@ -439,6 +439,44 @@ describe('AnkiCardsEventHandler', () => {
       expect(block?.status).toBe('success');
       expect(toolOutput?.cards).toEqual([]);
     });
+
+    it('should retemplate persisted cards by id on a terminal mutation patch without duplication', () => {
+      const handler = eventRegistry.get('anki_cards');
+      handler!.onStart!(mockStore, 'msg-1', { blockType: 'anki_cards' });
+      handler!.onChunk!(
+        mockStore,
+        'anki_cards-block-1',
+        JSON.stringify([
+          { id: 'card-1', front: 'Q1', back: 'A1', template_id: 'design-swiss' },
+          { id: 'card-2', front: 'Q2', back: 'A2', template_id: 'design-swiss' },
+        ]),
+      );
+      mockStore.updateBlockStatus('anki_cards-block-1', 'success');
+
+      handler!.onChunk!(
+        mockStore,
+        'anki_cards-block-1',
+        JSON.stringify({
+          cardMutation: 'upsert',
+          cards: [
+            { id: 'card-1', front: 'Q1', back: 'A1', template_id: 'design-lexicon' },
+            { id: 'card-2', front: 'Q2', back: 'A2', template_id: 'design-lexicon' },
+          ],
+        }),
+      );
+
+      const block = mockStore.blocks.get('anki_cards-block-1');
+      const cards = (block?.toolOutput as any)?.cards as Array<{
+        id: string;
+        template_id?: string;
+      }>;
+
+      expect(block?.status).toBe('success');
+      expect(cards).toHaveLength(2);
+      expect(cards.filter((card) => card.id === 'card-1')).toHaveLength(1);
+      expect(cards.filter((card) => card.id === 'card-2')).toHaveLength(1);
+      expect(cards.every((card) => card.template_id === 'design-lexicon')).toBe(true);
+    });
   });
 
   describe('onEnd', () => {

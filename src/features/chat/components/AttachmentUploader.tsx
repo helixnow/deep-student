@@ -29,7 +29,7 @@ import { useAttachments } from '../hooks/useChatStore';
 import { resourceStoreApi, type ContextRef } from '../resources';
 import { IMAGE_TYPE_ID } from '../context/definitions/image';
 import { FILE_TYPE_ID } from '../context/definitions/file';
-import { getErrorMessage } from '@/utils/errorUtils';
+import { formatUserFacingError } from '@/utils/errorUtils';
 import { vfsRefApi } from '../context/vfsRefApi';
 import { logAttachment } from '../debug/chatV2Logger';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
@@ -325,7 +325,11 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
             store.getState().addAttachment(attachment);
             onUploadSuccess?.(attachment);
           } catch (error: unknown) {
-            const message = getErrorMessage(error);
+            const message = formatUserFacingError(
+              error,
+              'common:errors.upload_failed',
+              'Upload failed',
+            );
             logAttachment('ui', 'upload_error', {
               fileName: attachment.name,
               error: message,

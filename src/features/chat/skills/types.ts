@@ -27,15 +27,20 @@ export interface JsonSchemaProperty {
   items?: JsonSchemaProperty;
   properties?: Record<string, JsonSchemaProperty>;
   required?: string[];
-  additionalProperties?: boolean;
+  additionalProperties?: boolean | JsonSchemaProperty;
   /** JSON Schema 数值约束 */
   minimum?: number;
   maximum?: number;
   /** JSON Schema 数组约束 */
   minItems?: number;
   maxItems?: number;
+  uniqueItems?: boolean;
+  /** JSON Schema 对象属性数量约束 */
+  minProperties?: number;
   /** JSON Schema 字符串正则约束 */
   pattern?: string;
+  minLength?: number;
+  maxLength?: number;
   /** JSON Schema anyOf/oneOf 支持 */
   anyOf?: JsonSchemaProperty[];
   oneOf?: JsonSchemaProperty[];
@@ -48,7 +53,7 @@ export interface ToolInputSchema {
   type: 'object';
   properties: Record<string, JsonSchemaProperty>;
   required?: string[];
-  additionalProperties?: boolean;
+  additionalProperties?: boolean | JsonSchemaProperty;
   /** JSON Schema anyOf/oneOf 支持（与 JsonSchemaProperty 对齐） */
   anyOf?: JsonSchemaProperty[];
   oneOf?: JsonSchemaProperty[];

@@ -73,26 +73,19 @@ export const imageDefinition: ContextTypeDefinition = {
       // ★ 图片注入模式处理
       const imageModes = injectModes?.image;
       
-      // 确定要注入的内容类型
-      // ★ 2026-02-13 修复：纯文本模型不注入 image 块，强制回退到 OCR 文本
-      // 空数组视为未设置，使用默认值（默认注入图片）
+      // 注入模式是源内容契约，不随当前模型能力变化。TM 也保留原图，交给
+      // Rust context compiler 选择辅助 MM、OCR 或无视觉降级。
       const hasImageModes = imageModes && imageModes.length > 0;
       const isMultimodal = options?.isMultimodal !== false;
-      // ★ 与后端 SSOT resolve_image_inject_modes 对齐：
-      //   默认最大化 (image + ocr)；非多模态模型自动降级移除 image。
-      const includeImage = isMultimodal
-        ? (hasImageModes ? imageModes.includes('image') : true)
-        : false; // 纯文本模型：绝不注入 image 块
-      const includeOcr = !isMultimodal
-        ? true // 纯文本模型：始终注入 OCR 文本作为回退
-        : (hasImageModes ? imageModes.includes('ocr') : true); // ★ P0-1 修复：默认注入 OCR（与后端 SSOT 对齐）
+      const includeImage = hasImageModes ? imageModes.includes('image') : true;
+      const includeOcr = hasImageModes ? imageModes.includes('ocr') : false;
       
       const blocks: ContentBlock[] = [];
       const name = (resolved.metadata as ImageMetadata | undefined)?.name || resolved.name || 'image';
 
       console.debug('[ImageDef]', resolved.sourceId, { isMultimodal, includeImage, includeOcr, contentLen: resolved.content?.length ?? 0 });
 
-      // 1. 图片模式：注入原始图片（仅多模态模型）
+      // 1. 图片模式：保留原始图片，由后端按本轮模型能力编译
       if (includeImage) {
         const content = resolved.content || '';
         const { base64, mediaType: extractedMediaType } = extractImagePayload(content);

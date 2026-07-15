@@ -308,6 +308,28 @@ impl ChatV2State {
             .map(StreamRegistration::into_token)
     }
 
+    /// Atomically register a caller-owned token without replacing an active stream.
+    pub(crate) fn try_register_existing_token(
+        &self,
+        key: &str,
+        token: CancellationToken,
+    ) -> Result<(), ()> {
+        let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
+            log::error!(
+                "[ChatV2::state] Mutex poisoned during try_register_existing_token! Attempting recovery"
+            );
+            poisoned.into_inner()
+        });
+        if guard.contains_key(key) {
+            log::warn!("[ChatV2::state] Stream key {} is already active", key);
+            return Err(());
+        }
+
+        let generation = self.allocate_stream_generation();
+        guard.insert(key.to_string(), ActiveStream { token, generation });
+        Ok(())
+    }
+
     /// Atomically register a stream and return the token together with its cleanup identity.
     pub(crate) fn try_register_stream_owned(
         &self,

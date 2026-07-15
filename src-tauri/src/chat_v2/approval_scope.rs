@@ -22,9 +22,21 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
-use std::env;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+use super::runtime_roots::RuntimeRootApprovalBinding;
+
+const ROOT_PATH_FIELD: &str = "_runtimeRootPath";
+const ROOT_ACCESS_FIELD: &str = "_runtimeRootAccess";
+const ROOT_SESSION_SCOPED_FIELD: &str = "_runtimeRootSessionScoped";
+const ROOT_BINDING_FIELD: &str = "_runtimeRootBinding";
+const READABLE_ROOTS_FIELD: &str = "_runtimeReadableRoots";
+const ENV_PLAN_HASH_FIELD: &str = "_runtimeEnvPlanHash";
+const INHERIT_ENV_FIELD: &str = "_runtimeInheritEnv";
+const INHERITED_ENV_KEYS_FIELD: &str = "_runtimeInheritedEnvKeys";
+const EXPLICIT_ENV_KEYS_FIELD: &str = "_runtimeExplicitEnvKeys";
 
 /// Source namespace used in scope keys. Prevents a user-granted approval on one
 /// tool source from leaking to a same-named tool on another source.
@@ -88,8 +100,16 @@ fn build_tool_key(tool_name: &str, args: &Value) -> String {
     format!("{}:{}", ns, short)
 }
 
-fn is_shell_runtime_tool(tool_name: &str) -> bool {
+fn semantic_tool_short_name(tool_name: &str) -> &str {
     let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    short
+        .strip_prefix("builtin-")
+        .or_else(|| short.strip_prefix("builtin:"))
+        .unwrap_or(short)
+}
+
+pub(crate) fn is_shell_runtime_tool(tool_name: &str) -> bool {
+    let short = semantic_tool_short_name(tool_name);
     matches!(
         short,
         "execute_command"
@@ -101,8 +121,34 @@ fn is_shell_runtime_tool(tool_name: &str) -> bool {
     )
 }
 
+pub(crate) fn is_local_shell_execute_tool(tool_name: &str, args: &Value) -> bool {
+    let (source, _) = tool_source_namespace(tool_name, args);
+    matches!(source.as_str(), "builtin" | "local")
+        && semantic_tool_short_name(tool_name) == "local_shell_execute"
+}
+
+pub(crate) fn is_high_risk_external_mcp_tool(tool_name: &str) -> bool {
+    let (source, _) = tool_source_namespace(tool_name, &Value::Null);
+    if !source.starts_with("mcp") {
+        return false;
+    }
+    matches!(
+        semantic_tool_short_name(tool_name),
+        "execute_command"
+            | "bash"
+            | "shell"
+            | "shell_execute"
+            | "local_shell_execute"
+            | "file_write"
+            | "file_delete"
+            | "file_patch"
+            | "file_append"
+            | "file_create"
+    )
+}
+
 fn is_file_mutation_runtime_tool(tool_name: &str) -> bool {
-    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    let short = semantic_tool_short_name(tool_name);
     matches!(
         short,
         "file_write"
@@ -128,6 +174,7 @@ fn is_workbench_precise_action_tool(tool_name: &str) -> bool {
         "workbench_act"
             | "workbench_act_high"
             | "workbench_undo"
+            | "workbench_open_app"
             | "workbench_app_command"
             | "workbench_close_window"
     )
@@ -135,7 +182,36 @@ fn is_workbench_precise_action_tool(tool_name: &str) -> bool {
 
 fn is_workbench_always_confirm_tool(tool_name: &str) -> bool {
     let (_, short) = tool_source_namespace(tool_name, &Value::Null);
-    matches!(short, "workbench_act_high" | "workbench_close_window")
+    matches!(
+        short,
+        "workbench_act_high" | "workbench_undo" | "workbench_close_window"
+    )
+}
+
+/// 当前 Executor 审批接口只按工具名分级；混合操作必须 fail-closed。
+fn is_acr_destructive_domain_tool(tool_name: &str) -> bool {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    matches!(
+        short,
+        "note_set"
+            | "note_replace"
+            | "mindmap_edit_nodes"
+            | "mindmap_delete"
+            | "review_delete"
+            | "qbank_delete_questions"
+            | "user_todo_delete_list"
+            | "automation_delete"
+    )
+}
+
+fn is_dstu_purge_tool(tool_name: &str) -> bool {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    short == "dstu_purge"
+}
+
+fn is_governance_always_confirm_tool(tool_name: &str) -> bool {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    matches!(short, "backup_create" | "sync_run")
 }
 
 /// 权限升级类工具短名清单（ADR-B2 never-remember）。
@@ -160,29 +236,25 @@ fn is_privilege_escalation_tool(tool_name: &str) -> bool {
 
 /// 权限升级与 Workbench High 工具永不进入 remember / 本会话允许 / 始终允许。
 pub fn never_remember_approval(tool_name: &str) -> bool {
-    is_privilege_escalation_tool(tool_name) || is_workbench_always_confirm_tool(tool_name)
+    is_privilege_escalation_tool(tool_name)
+        || is_workbench_always_confirm_tool(tool_name)
+        || is_acr_destructive_domain_tool(tool_name)
+        || is_dstu_purge_tool(tool_name)
+        || is_governance_always_confirm_tool(tool_name)
 }
 
-/// Argument-aware never-remember policy. Commands that select arbitrary code,
-/// a wrapper payload, or a mutable path executable cannot be bound to a stable
-/// filesystem identity at ApprovalManager time, so they are single-use only.
+/// Argument-aware never-remember policy. Every real shell execution is
+/// single-use: PATH, wrappers, scripts, and executable file contents can all
+/// change after approval. Preflight is analysis-only and remains rememberable.
 pub fn never_remember_approval_for_args(tool_name: &str, args: &Value) -> bool {
     if never_remember_approval(tool_name) {
         return true;
     }
-    if !is_shell_runtime_tool(tool_name) {
-        return false;
-    }
-    let Some(command) = args.get("command").and_then(Value::as_str) else {
-        return true;
-    };
-    let analysis = analyze_shell_command(command);
-    analysis.uses_script_runner
-        || analysis
-            .first_token
-            .as_deref()
-            .map(is_path_executable_token)
-            .unwrap_or(true)
+    let short = semantic_tool_short_name(tool_name);
+    (is_shell_runtime_tool(tool_name) && short != "local_shell_preflight")
+        || is_high_risk_external_mcp_tool(tool_name)
+        || (is_shell_runtime_tool(tool_name)
+            && args.get("command").and_then(Value::as_str).is_none())
 }
 
 /// Tools in these families execute local commands, mutate files, or perform
@@ -192,6 +264,9 @@ pub fn requires_precise_approval_scope(tool_name: &str) -> bool {
         || is_file_mutation_runtime_tool(tool_name)
         || is_privilege_escalation_tool(tool_name)
         || is_workbench_precise_action_tool(tool_name)
+        || is_acr_destructive_domain_tool(tool_name)
+        || is_dstu_purge_tool(tool_name)
+        || is_governance_always_confirm_tool(tool_name)
 }
 
 /// Broad approval bypasses are intentionally ignored for local runtime tools
@@ -213,17 +288,171 @@ pub fn redact_tool_arguments_for_display(tool_name: &str, args: &Value) -> Value
     let Some(object) = redacted.as_object_mut() else {
         return redacted;
     };
-    let Some(env_value) = object.get_mut("env") else {
-        return redacted;
-    };
-    if let Some(env_object) = env_value.as_object_mut() {
-        for value in env_object.values_mut() {
-            *value = Value::String("[REDACTED]".to_string());
-        }
-    } else {
-        *env_value = Value::String("[REDACTED]".to_string());
+    if let Some(command) = object
+        .get("command")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    {
+        let (display, _) = redact_shell_command_for_display(&command);
+        object.insert("command".to_string(), Value::String(display));
     }
+    if let Some(env_value) = object.get_mut("env") {
+        if let Some(env_object) = env_value.as_object_mut() {
+            for value in env_object.values_mut() {
+                *value = Value::String("[REDACTED]".to_string());
+            }
+        } else {
+            *env_value = Value::String("[REDACTED]".to_string());
+        }
+    }
+    object.remove(ROOT_BINDING_FIELD);
+    object.remove(ROOT_PATH_FIELD);
+    object.remove(ROOT_ACCESS_FIELD);
+    object.remove(ROOT_SESSION_SCOPED_FIELD);
+    object.remove(READABLE_ROOTS_FIELD);
+    object.remove(ENV_PLAN_HASH_FIELD);
+    object.remove(INHERIT_ENV_FIELD);
+    object.remove(INHERITED_ENV_KEYS_FIELD);
+    object.remove(EXPLICIT_ENV_KEYS_FIELD);
     redacted
+}
+
+pub(crate) fn redact_shell_command_for_display(command: &str) -> (String, bool) {
+    static URL_CREDENTIALS: OnceLock<regex::Regex> = OnceLock::new();
+    static QUERY_SECRET: OnceLock<regex::Regex> = OnceLock::new();
+    static SECRET_FLAG: OnceLock<regex::Regex> = OnceLock::new();
+    static ENV_SECRET: OnceLock<regex::Regex> = OnceLock::new();
+    static CURL_USER: OnceLock<regex::Regex> = OnceLock::new();
+    static QUOTED_SECRET_HEADER: OnceLock<regex::Regex> = OnceLock::new();
+    static BARE_SECRET_HEADER: OnceLock<regex::Regex> = OnceLock::new();
+    let url_credentials = URL_CREDENTIALS.get_or_init(|| {
+        regex::Regex::new(r"(?i)\b(https?://)[^/\s:@]+:[^@\s/]+@").expect("valid URL regex")
+    });
+    let secret_flag = SECRET_FLAG.get_or_init(|| {
+        regex::Regex::new(
+            r#"(?i)(--(?:token|password|api[-_]?key)(?:\s*=\s*|\s+))((?:"[^"]*")|(?:'[^']*')|[^\s;&|]+)"#,
+        )
+        .expect("valid secret flag regex")
+    });
+    let query_secret = QUERY_SECRET.get_or_init(|| {
+        regex::Regex::new(r"(?i)([?&](?:token|api[-_]?key|password)=)[^&#\s]+")
+            .expect("valid query secret regex")
+    });
+    let env_secret = ENV_SECRET.get_or_init(|| {
+        regex::Regex::new(
+            r#"(?i)\b((?:export\s+)?(?:TOKEN|PASSWORD|PASSWD|API_KEY|SECRET|AUTHORIZATION|[A-Za-z_][A-Za-z0-9_]*(?:TOKEN|PASSWORD|PASSWD|API_KEY|SECRET|AUTHORIZATION)[A-Za-z0-9_]*)\s*=\s*)((?:"[^"]*")|(?:'[^']*')|[^\s;&|]+)"#,
+        )
+        .expect("valid environment secret regex")
+    });
+    let curl_user = CURL_USER.get_or_init(|| {
+        regex::Regex::new(
+            r#"(?i)(\s(?:-u|--user)(?:\s*=\s*|\s+))((?:"[^"]*")|(?:'[^']*')|[^\s;&|]+)"#,
+        )
+        .expect("valid curl user regex")
+    });
+    let quoted_secret_header = QUOTED_SECRET_HEADER.get_or_init(|| {
+        regex::Regex::new(r#"(?i)(["'](?:Authorization|X-Api-Key)\s*:\s*)[^"']+"#)
+            .expect("valid quoted header regex")
+    });
+    let bare_secret_header = BARE_SECRET_HEADER.get_or_init(|| {
+        regex::Regex::new(r"(?i)((?:Authorization|X-Api-Key)\s*:\s*)[^\s;&|]+")
+            .expect("valid bare header regex")
+    });
+
+    let url_redacted = url_credentials.replace_all(command, "$1[REDACTED]@");
+    let query_redacted = query_secret.replace_all(&url_redacted, "$1[REDACTED]");
+    let flag_redacted = secret_flag.replace_all(&query_redacted, "$1[REDACTED]");
+    let env_redacted = env_secret.replace_all(&flag_redacted, "$1[REDACTED]");
+    let user_redacted = curl_user.replace_all(&env_redacted, "$1[REDACTED]");
+    let quoted_header_redacted = quoted_secret_header.replace_all(&user_redacted, "$1[REDACTED]");
+    let display = bare_secret_header
+        .replace_all(&quoted_header_redacted, "$1[REDACTED]")
+        .into_owned();
+    let changed = display != command;
+    (display, changed)
+}
+
+pub(crate) fn attach_runtime_root_approval_binding(
+    args: &Value,
+    binding: &RuntimeRootApprovalBinding,
+) -> Result<Value, String> {
+    let mut scoped = args.clone();
+    let object = scoped
+        .as_object_mut()
+        .ok_or_else(|| "Shell arguments must be a JSON object".to_string())?;
+    object.insert(
+        ROOT_PATH_FIELD.to_string(),
+        Value::String(binding.root_path.clone()),
+    );
+    object.insert(
+        ROOT_ACCESS_FIELD.to_string(),
+        Value::String(binding.root_access.as_str().to_string()),
+    );
+    object.insert(
+        ROOT_SESSION_SCOPED_FIELD.to_string(),
+        Value::Bool(binding.root_session_scoped),
+    );
+    object.insert(
+        ROOT_BINDING_FIELD.to_string(),
+        Value::String(binding.root_binding.clone()),
+    );
+    object.insert(
+        READABLE_ROOTS_FIELD.to_string(),
+        Value::Array(
+            binding
+                .readable_roots
+                .iter()
+                .cloned()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    Ok(scoped)
+}
+
+pub(crate) fn attach_shell_env_policy_facts(
+    args: &Value,
+    facts: &crate::chat_v2::tools::local_shell_execute_executor::ShellEnvPolicyFacts,
+) -> Result<Value, String> {
+    let mut scoped = args.clone();
+    let object = scoped
+        .as_object_mut()
+        .ok_or_else(|| "Shell arguments must be a JSON object".to_string())?;
+    object.insert(
+        ENV_PLAN_HASH_FIELD.to_string(),
+        Value::String(facts.plan_hash.clone()),
+    );
+    object.insert(
+        INHERIT_ENV_FIELD.to_string(),
+        Value::Bool(facts.inherit_parent_env),
+    );
+    object.insert(
+        INHERITED_ENV_KEYS_FIELD.to_string(),
+        Value::Array(
+            facts
+                .inherited_keys
+                .iter()
+                .cloned()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    object.insert(
+        EXPLICIT_ENV_KEYS_FIELD.to_string(),
+        Value::Array(
+            facts
+                .explicit_keys
+                .iter()
+                .cloned()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    Ok(scoped)
+}
+
+pub(crate) fn runtime_root_binding_from_args(args: &Value) -> Option<&str> {
+    args.get(ROOT_BINDING_FIELD).and_then(Value::as_str)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -240,6 +469,12 @@ pub struct RuntimeApprovalScope {
     /// exposed, but changing an inherited or explicit value requires a fresh
     /// approval even when the visible command is unchanged.
     pub env_plan_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherit_env: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherited_env_keys: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explicit_env_keys: Option<Vec<String>>,
     pub timeout_ms: u64,
     pub max_output_bytes: u64,
     pub track_file_changes: bool,
@@ -252,6 +487,29 @@ pub struct RuntimeApprovalScope {
     /// Executions with a SKILL_DIR injection must not reuse approvals granted
     /// to the same command prefix without one (and vice versa).
     pub skill_root_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_access: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_session_scoped: Option<bool>,
+    /// Short digest for display; the full binding remains backend-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_binding: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readable_roots: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contains_potential_secret: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_backend: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shell_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_encoding: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_location: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_enforced: Option<bool>,
     /// 为 true 时前端隐藏「本会话允许 / 始终允许」（权限类审批不可 remember）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remember_disabled: Option<bool>,
@@ -283,6 +541,22 @@ fn extract_str_field(args: &Value, field_names: &[&str]) -> Option<String> {
         }
     }
     None
+}
+
+fn extract_sorted_string_array(args: &Value, field_name: &str) -> Option<String> {
+    let values = args.get(field_name)?.as_array()?;
+    if values.is_empty() {
+        return None;
+    }
+    let mut normalized = BTreeSet::new();
+    for value in values {
+        let value = value.as_str()?.trim();
+        if value.is_empty() {
+            return None;
+        }
+        normalized.insert(value.to_string());
+    }
+    serde_json::to_string(&normalized.into_iter().collect::<Vec<_>>()).ok()
 }
 
 /// 未知工具的保守型兜底提取。
@@ -368,92 +642,54 @@ fn shell_skill_root_id(args: &Value) -> Option<String> {
     extract_str_field(args, &["skill_root_id", "skillRootId"])
 }
 
-fn canonical_env_key_list(value: Option<&Value>) -> Value {
-    let Some(value) = value else {
-        return Value::Array(Vec::new());
-    };
-    let Some(values) = value.as_array() else {
-        return value.clone();
-    };
-    let mut keys = values
-        .iter()
-        .filter_map(Value::as_str)
-        .map(str::trim)
-        .filter(|key| !key.is_empty())
-        .map(str::to_string)
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .map(Value::String)
-        .collect::<Vec<_>>();
-    if keys.len() != values.len() {
-        // Invalid/mixed arrays must not collapse onto a valid plan.
-        return value.clone();
-    }
-    Value::Array(std::mem::take(&mut keys))
-}
-
-fn canonical_json(value: &Value) -> Value {
-    match value {
-        Value::Object(object) => {
-            let sorted = object
-                .iter()
-                .map(|(key, value)| (key.clone(), canonical_json(value)))
-                .collect::<BTreeMap<_, _>>();
-            serde_json::to_value(sorted).unwrap_or(Value::Null)
-        }
-        Value::Array(values) => Value::Array(values.iter().map(canonical_json).collect()),
-        _ => value.clone(),
-    }
-}
-
 /// Digest the complete environment that will influence the child shell.
-///
-/// The requested plan is canonicalized across snake/camel aliases and the
-/// current parent environment is included because `inherit_env=true` makes
-/// values such as NODE_OPTIONS, LD_PRELOAD, BASH_ENV, and PATH executable
-/// inputs. Only the digest is surfaced; environment values never enter an
-/// approval request or audit record.
-fn shell_env_plan_hash(args: &Value) -> String {
-    let inherit_parent_env = args
-        .get("inherit_env")
-        .or_else(|| args.get("inheritEnv"))
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
-    let allowlist = canonical_env_key_list(
-        args.get("env_allowlist")
-            .or_else(|| args.get("envAllowlist")),
-    );
-    let denylist =
-        canonical_env_key_list(args.get("env_denylist").or_else(|| args.get("envDenylist")));
-    let explicit = canonical_json(args.get("env").unwrap_or(&Value::Null));
-
-    // Even inherit_env=false retains the platform-minimal environment in the
-    // executor. Hashing the complete parent environment is intentionally
-    // conservative and guarantees every effective inherited value is covered.
-    let parent_env = env::vars_os()
-        .map(|(key, value)| {
-            (
-                key.to_string_lossy().into_owned(),
-                value.to_string_lossy().into_owned(),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let plan = serde_json::json!({
-        "inherit_parent_env": inherit_parent_env,
-        "allowlist": allowlist,
-        "denylist": denylist,
-        "explicit": explicit,
-        "parent_env": parent_env,
-    });
-    raw_hash(&serde_json::to_string(&plan).unwrap_or_else(|_| "null".to_string()))
-        .strip_prefix("raw:")
-        .unwrap_or("")
-        .to_string()
+/// Values are hashed by the executor's own plan builder and never exposed.
+fn shell_env_plan_hash(args: &Value) -> Option<String> {
+    if let Some(hash) = extract_str_field(args, &[ENV_PLAN_HASH_FIELD]) {
+        return Some(hash);
+    }
+    crate::chat_v2::tools::LocalShellExecuteExecutor::env_policy_facts(args)
+        .ok()
+        .map(|facts| facts.plan_hash)
 }
 
-fn shell_scope_fingerprint(args: &Value) -> Option<String> {
+fn shell_env_approval_facts(args: &Value) -> Option<(String, bool, Vec<String>, Vec<String>)> {
+    let read_keys = |field: &str| {
+        args.get(field)?
+            .as_array()?
+            .iter()
+            .map(|value| value.as_str().map(str::to_string))
+            .collect::<Option<Vec<_>>>()
+    };
+    if let (Some(hash), Some(inherit_env), Some(inherited), Some(explicit)) = (
+        extract_str_field(args, &[ENV_PLAN_HASH_FIELD]),
+        args.get(INHERIT_ENV_FIELD).and_then(Value::as_bool),
+        read_keys(INHERITED_ENV_KEYS_FIELD),
+        read_keys(EXPLICIT_ENV_KEYS_FIELD),
+    ) {
+        return Some((hash, inherit_env, inherited, explicit));
+    }
+    let facts = crate::chat_v2::tools::LocalShellExecuteExecutor::env_policy_facts(args).ok()?;
+    Some((
+        facts.plan_hash,
+        facts.inherit_parent_env,
+        facts.inherited_keys,
+        facts.explicit_keys,
+    ))
+}
+
+fn shell_scope_fingerprint(tool_name: &str, args: &Value) -> Option<String> {
     let command = args.get("command").and_then(|v| v.as_str())?;
     let analysis = analyze_shell_command(command);
+    // Only the dedicated local executor is governed by our root/env/sandbox
+    // binding. MCP and generic command tools are opaque implementations and
+    // use exact full-argument identity instead of claiming local isolation.
+    if !is_local_shell_execute_tool(tool_name, args) {
+        return Some(format!(
+            "uncontrolled={}",
+            raw_hash(&serde_json::to_string(args).ok()?)
+        ));
+    }
     let (root_id, cwd) = normalized_shell_runtime_location(args);
     let network_allowed = args
         .get("allow_network")
@@ -461,15 +697,22 @@ fn shell_scope_fingerprint(args: &Value) -> Option<String> {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let skill_root_id = shell_skill_root_id(args).unwrap_or_else(|| "-".to_string());
+    let root_binding =
+        extract_str_field(args, &[ROOT_BINDING_FIELD]).unwrap_or_else(|| "unbound".to_string());
     let (timeout_ms, max_output_bytes, track_file_changes) =
         normalized_shell_execution_controls(args);
+    let sandbox_contract = crate::chat_v2::tools::shell_sandbox::platform_sandbox_contract();
     Some(format!(
-        "root={};cwd={};net={};skill={};env={};timeout={};maxout={};track={};cmd={}",
+        "root={};binding={};cwd={};net={};skill={};env={};sandbox={};shell={};encoding={};timeout={};maxout={};track={};cmd={}",
         root_id,
+        root_binding,
         cwd,
         network_allowed,
         skill_root_id,
-        shell_env_plan_hash(args),
+        shell_env_plan_hash(args)?,
+        sandbox_contract.backend,
+        sandbox_contract.shell_kind,
+        sandbox_contract.output_encoding,
         timeout_ms,
         max_output_bytes,
         track_file_changes,
@@ -526,6 +769,9 @@ fn make_skill_install_approval_scope(
             .unwrap_or("")
             .to_string(),
         env_plan_hash: "-".to_string(),
+        inherit_env: None,
+        inherited_env_keys: None,
+        explicit_env_keys: None,
         timeout_ms: 0,
         max_output_bytes: 0,
         track_file_changes: false,
@@ -535,6 +781,17 @@ fn make_skill_install_approval_scope(
         uses_script_runner: false,
         first_token: None,
         skill_root_id: None,
+        root_path: None,
+        root_access: None,
+        root_session_scoped: None,
+        root_binding: None,
+        readable_roots: None,
+        contains_potential_secret: None,
+        sandbox_backend: None,
+        shell_kind: None,
+        output_encoding: None,
+        execution_location: None,
+        sandbox_enforced: None,
         remember_disabled: Some(true),
         source_summary: skill_install_source_summary(args),
         expected_sha256_prefix: Some(sha_prefix),
@@ -578,6 +835,9 @@ fn make_skill_workshop_approval_scope(
             .unwrap_or("")
             .to_string(),
         env_plan_hash: "-".to_string(),
+        inherit_env: None,
+        inherited_env_keys: None,
+        explicit_env_keys: None,
         timeout_ms: 0,
         max_output_bytes: 0,
         track_file_changes: false,
@@ -587,6 +847,17 @@ fn make_skill_workshop_approval_scope(
         uses_script_runner: false,
         first_token: None,
         skill_root_id: None,
+        root_path: None,
+        root_access: None,
+        root_session_scoped: None,
+        root_binding: None,
+        readable_roots: None,
+        contains_potential_secret: None,
+        sandbox_backend: None,
+        shell_kind: None,
+        output_encoding: None,
+        execution_location: None,
+        sandbox_enforced: None,
         remember_disabled: Some(true),
         source_summary: Some(proposal_id),
         expected_sha256_prefix: Some(sha_prefix),
@@ -624,6 +895,9 @@ fn make_automation_propose_approval_scope(
             .unwrap_or("")
             .to_string(),
         env_plan_hash: "-".to_string(),
+        inherit_env: None,
+        inherited_env_keys: None,
+        explicit_env_keys: None,
         timeout_ms: 0,
         max_output_bytes: 0,
         track_file_changes: false,
@@ -633,6 +907,17 @@ fn make_automation_propose_approval_scope(
         uses_script_runner: false,
         first_token: None,
         skill_root_id: None,
+        root_path: None,
+        root_access: None,
+        root_session_scoped: None,
+        root_binding: None,
+        readable_roots: None,
+        contains_potential_secret: None,
+        sandbox_backend: None,
+        shell_kind: None,
+        output_encoding: None,
+        execution_location: None,
+        sandbox_enforced: None,
         remember_disabled: Some(true),
         source_summary: Some(name),
         expected_sha256_prefix: None,
@@ -660,8 +945,16 @@ pub fn make_runtime_approval_scope(
     }
     let command = args.get("command").and_then(|v| v.as_str())?;
     let analysis = analyze_shell_command(command);
-    let (root_id, cwd) = normalized_shell_runtime_location(args);
+    let (display_command, contains_potential_secret) = redact_shell_command_for_display(command);
+    let display_analysis = analyze_shell_command(&display_command);
     let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
+    let is_local_shell = is_local_shell_execute_tool(tool_name, args);
+    let is_external_mcp = tool_source.starts_with("mcp");
+    let (root_id, cwd) = if is_local_shell {
+        normalized_shell_runtime_location(args)
+    } else {
+        ("-".to_string(), "-".to_string())
+    };
     let network_allowed = args
         .get("allow_network")
         .or_else(|| args.get("allowNetwork"))
@@ -670,18 +963,54 @@ pub fn make_runtime_approval_scope(
     let (timeout_ms, max_output_bytes, track_file_changes) =
         normalized_shell_execution_controls(args);
     let remember_disabled = never_remember_approval_for_args(tool_name, args).then_some(true);
+    let sandbox_contract = crate::chat_v2::tools::shell_sandbox::platform_sandbox_contract();
+    let env_facts = is_local_shell
+        .then(|| shell_env_approval_facts(args))
+        .flatten();
+    let (sandbox_backend, shell_kind, output_encoding, execution_location, sandbox_enforced) =
+        if is_local_shell {
+            (
+                sandbox_contract.backend.to_string(),
+                Some(sandbox_contract.shell_kind.to_string()),
+                Some(sandbox_contract.output_encoding.to_string()),
+                "local_device".to_string(),
+                true,
+            )
+        } else if is_external_mcp {
+            (
+                "external_mcp_uncontrolled".to_string(),
+                None,
+                None,
+                "external_mcp".to_string(),
+                false,
+            )
+        } else {
+            (
+                "local_tool_uncontrolled".to_string(),
+                None,
+                None,
+                "local_device".to_string(),
+                false,
+            )
+        };
     Some(RuntimeApprovalScope {
         kind: "shell".to_string(),
         tool_source,
         tool_name: short_tool_name.to_string(),
         root_id,
         cwd,
-        command_prefix: analysis.command_prefix,
+        command_prefix: display_analysis.command_prefix,
         command_hash: raw_hash(&analysis.trimmed)
             .strip_prefix("raw:")
             .unwrap_or("")
             .to_string(),
-        env_plan_hash: shell_env_plan_hash(args),
+        env_plan_hash: env_facts
+            .as_ref()
+            .map(|facts| facts.0.clone())
+            .unwrap_or_else(|| "-".to_string()),
+        inherit_env: env_facts.as_ref().map(|facts| facts.1),
+        inherited_env_keys: env_facts.as_ref().map(|facts| facts.2.clone()),
+        explicit_env_keys: env_facts.as_ref().map(|facts| facts.3.clone()),
         timeout_ms,
         max_output_bytes,
         track_file_changes,
@@ -690,7 +1019,41 @@ pub fn make_runtime_approval_scope(
         has_shell_operators: analysis.has_shell_operators,
         uses_script_runner: analysis.uses_script_runner,
         first_token: analysis.first_token,
-        skill_root_id: shell_skill_root_id(args),
+        skill_root_id: is_local_shell.then(|| shell_skill_root_id(args)).flatten(),
+        root_path: is_local_shell
+            .then(|| extract_str_field(args, &[ROOT_PATH_FIELD]))
+            .flatten(),
+        root_access: is_local_shell
+            .then(|| extract_str_field(args, &[ROOT_ACCESS_FIELD]))
+            .flatten(),
+        root_session_scoped: is_local_shell
+            .then(|| args.get(ROOT_SESSION_SCOPED_FIELD).and_then(Value::as_bool))
+            .flatten(),
+        root_binding: is_local_shell
+            .then(|| {
+                extract_str_field(args, &[ROOT_BINDING_FIELD])
+                    .map(|binding| binding.chars().take(16).collect())
+            })
+            .flatten(),
+        readable_roots: is_local_shell
+            .then(|| {
+                args.get(READABLE_ROOTS_FIELD)
+                    .and_then(Value::as_array)
+                    .map(|roots| {
+                        roots
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_string)
+                            .collect()
+                    })
+            })
+            .flatten(),
+        contains_potential_secret: contains_potential_secret.then_some(true),
+        sandbox_backend: Some(sandbox_backend),
+        shell_kind,
+        output_encoding,
+        execution_location: Some(execution_location),
+        sandbox_enforced: Some(sandbox_enforced),
         remember_disabled,
         source_summary: None,
         expected_sha256_prefix: None,
@@ -713,7 +1076,7 @@ pub fn make_runtime_approval_scope(
 /// - `tool_key` 含 source 命名空间（builtin/mcp/local），避免跨源塌陷
 /// - 缺识别字段 → **fail-closed 返回 None**，不用 `*` 通配符扩大授权
 pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, String)> {
-    let (_, short) = tool_source_namespace(tool_name, args);
+    let short = semantic_tool_short_name(tool_name);
     let tool_key = build_tool_key(tool_name, args);
 
     let fingerprint: Option<String> = match short {
@@ -742,6 +1105,7 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         | "mindmap_patch" => extract_str_field(args, &["mindmapId", "mindmap_id", "id"]),
 
         // --- 题库 ---
+        "qbank_delete_questions" => extract_sorted_string_array(args, "question_ids"),
         "qbank_create"
         | "qbank_update"
         | "qbank_delete"
@@ -749,6 +1113,20 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         | "qbank_import"
         | "qbank_reset_progress"
         | "qbank_export" => extract_str_field(args, &["qbankId", "qbank_id", "id"]),
+
+        // --- 复习计划 ---
+        "review_delete" => extract_str_field(args, &["planId", "plan_id", "id"]),
+
+        // --- 用户待办 / 周期自动化（High，按精确目标 ID 单次审批）---
+        "user_todo_delete_list" => extract_str_field(args, &["listId", "list_id", "id"]),
+        "automation_delete" => extract_str_field(args, &["automationId", "automation_id", "id"]),
+
+        // Backup and cloud sync are always-confirm system operations. Bind
+        // approval to the complete argument object so direction, conflict
+        // strategy and asset selection cannot reuse one another's approval.
+        "backup_create" | "sync_run" => serde_json::to_string(args)
+            .ok()
+            .map(|encoded| format!("args:{}", raw_hash(&encoded))),
 
         // --- 记忆（含 write_smart / write_batch / update_by_id 等变体）---
         "memory_write"
@@ -768,6 +1146,7 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         "resource_create" | "resource_update" | "resource_delete" => {
             extract_str_field(args, &["resourceId", "resource_id", "id"])
         }
+        "dstu_purge" => extract_str_field(args, &["path"]),
 
         // --- Workspace filesystem runtime ---
         "workspace_artifact_write" => extract_str_field(args, &["path", "file_path", "filepath"])
@@ -838,7 +1217,7 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         | "shell"
         | "shell_execute"
         | "local_shell_execute"
-        | "local_shell_preflight" => shell_scope_fingerprint(args),
+        | "local_shell_preflight" => shell_scope_fingerprint(tool_name, args),
 
         "skill_install" => extract_str_field(args, &["expected_sha256", "expectedSha256"])
             .map(|sha| format!("sha={}", sha)),
@@ -1748,6 +2127,44 @@ mod tests {
     }
 
     #[test]
+    fn qbank_batch_delete_scope_is_exact_sorted_and_never_remembered() {
+        let first = json!({
+            "question_ids": ["q-2", "q-1"],
+            "expected_updated_at_by_id": {"q-1": "v1", "q-2": "v2"}
+        });
+        let reordered = json!({
+            "question_ids": ["q-1", "q-2"],
+            "expected_updated_at_by_id": {"q-1": "new-v1", "q-2": "new-v2"}
+        });
+        let different = json!({"question_ids": ["q-1", "q-3"]});
+
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-qbank_delete_questions", &first),
+            make_runtime_scope_key_v2("builtin-qbank_delete_questions", &reordered)
+        );
+        assert_ne!(
+            make_runtime_scope_key_v2("builtin-qbank_delete_questions", &first),
+            make_runtime_scope_key_v2("builtin-qbank_delete_questions", &different)
+        );
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-qbank_delete_questions", &first).as_deref(),
+            Some("builtin:qbank_delete_questions::[\"q-1\",\"q-2\"]")
+        );
+        assert!(requires_precise_approval_scope(
+            "builtin-qbank_delete_questions"
+        ));
+        assert!(ignores_broad_approval_bypass(
+            "builtin-qbank_delete_questions"
+        ));
+        assert!(never_remember_approval("builtin-qbank_delete_questions"));
+        assert!(make_runtime_scope_key_v2(
+            "builtin-qbank_delete_questions",
+            &json!({"question_ids": []})
+        )
+        .is_none());
+    }
+
+    #[test]
     fn note_set_different_noteid_different_scope() {
         let args1 = json!({"noteId": "n1", "content": "x"});
         let args2 = json!({"noteId": "n2", "content": "x"});
@@ -1911,6 +2328,7 @@ mod tests {
             "builtin-workbench_act",
             "builtin-workbench_act_high",
             "builtin-workbench_undo",
+            "builtin-workbench_open_app",
             "builtin-workbench_app_command",
             "builtin-workbench_close_window",
         ] {
@@ -1918,9 +2336,9 @@ mod tests {
             assert!(ignores_broad_approval_bypass(name), "{name}");
         }
         assert!(never_remember_approval("builtin-workbench_act_high"));
+        assert!(never_remember_approval("builtin-workbench_undo"));
         assert!(never_remember_approval("workbench_close_window"));
         assert!(!never_remember_approval("builtin-workbench_act"));
-        assert!(!never_remember_approval("builtin-workbench_undo"));
     }
 
     #[test]
@@ -1958,9 +2376,7 @@ mod tests {
         });
 
         let workspace_key = make_runtime_scope_key_v2("execute_command", &workspace_root).unwrap();
-        assert!(workspace_key
-            .starts_with("local:execute_command::root=workspace;cwd=.;net=false;skill=-;env="));
-        assert!(workspace_key.contains(";cmd=raw:"));
+        assert!(workspace_key.starts_with("local:execute_command::uncontrolled=raw:"));
         assert_ne!(
             make_runtime_scope_key_v2("execute_command", &workspace_root),
             make_runtime_scope_key_v2("execute_command", &skill_root),
@@ -1984,7 +2400,7 @@ mod tests {
         let key = make_runtime_scope_key_v2("builtin-local_shell_execute", &args)
             .expect("shell scope key");
         assert!(key.starts_with(
-            "builtin:local_shell_execute::root=workspace;cwd=src-tauri;net=false;skill=-;env="
+            "builtin:local_shell_execute::root=workspace;binding=unbound;cwd=src-tauri;net=false;skill=-;env="
         ));
         assert!(key.contains(";cmd=raw:"));
         assert!(requires_precise_approval_scope(
@@ -2016,6 +2432,10 @@ mod tests {
         assert_eq!(scope.first_token.as_deref(), Some("git"));
         assert_eq!(scope.command_hash.len(), 64);
         assert_eq!(scope.env_plan_hash.len(), 64);
+        assert_eq!(scope.inherit_env, Some(false));
+        assert!(scope.inherited_env_keys.is_some());
+        assert_eq!(scope.execution_location.as_deref(), Some("local_device"));
+        assert_eq!(scope.sandbox_enforced, Some(true));
         assert_eq!(scope.timeout_ms, 30_000);
         assert_eq!(scope.max_output_bytes, 64 * 1024);
         assert!(scope.track_file_changes);
@@ -2057,37 +2477,34 @@ mod tests {
             "cwd": ".",
             "inherit_env": false,
         });
-        let node_options = json!({
+        let first = json!({
             "command": "node script.js",
             "root_id": "temp",
             "cwd": ".",
             "inherit_env": false,
-            "env": {"NODE_OPTIONS": "--require=/tmp/payload.js"},
+            "env": {"CUSTOM_MODE": "one"},
         });
-        let preload = json!({
+        let second = json!({
             "command": "node script.js",
             "root_id": "temp",
             "cwd": ".",
             "inherit_env": false,
-            "env": {"LD_PRELOAD": "/tmp/payload.so"},
+            "env": {"CUSTOM_MODE": "two"},
         });
         let base_key = make_runtime_scope_key_v2("builtin-local_shell_execute", &base).unwrap();
-        let node_key =
-            make_runtime_scope_key_v2("builtin-local_shell_execute", &node_options).unwrap();
-        let preload_key =
-            make_runtime_scope_key_v2("builtin-local_shell_execute", &preload).unwrap();
-        assert_ne!(base_key, node_key);
-        assert_ne!(base_key, preload_key);
-        assert_ne!(node_key, preload_key);
-        assert!(!node_key.contains("NODE_OPTIONS"));
-        assert!(!node_key.contains("payload.js"));
+        let first_key = make_runtime_scope_key_v2("builtin-local_shell_execute", &first).unwrap();
+        let second_key = make_runtime_scope_key_v2("builtin-local_shell_execute", &second).unwrap();
+        assert_ne!(base_key, first_key);
+        assert_ne!(base_key, second_key);
+        assert_ne!(first_key, second_key);
+        assert!(!first_key.contains("CUSTOM_MODE"));
+        assert!(!first_key.contains("one"));
 
-        let node_scope =
-            make_runtime_approval_scope("builtin-local_shell_execute", &node_options, "high")
-                .unwrap();
-        let preload_scope =
-            make_runtime_approval_scope("builtin-local_shell_execute", &preload, "high").unwrap();
-        assert_ne!(node_scope.env_plan_hash, preload_scope.env_plan_hash);
+        let first_scope =
+            make_runtime_approval_scope("builtin-local_shell_execute", &first, "high").unwrap();
+        let second_scope =
+            make_runtime_approval_scope("builtin-local_shell_execute", &second, "high").unwrap();
+        assert_ne!(first_scope.env_plan_hash, second_scope.env_plan_hash);
     }
 
     #[test]
@@ -2165,6 +2582,77 @@ mod tests {
     }
 
     #[test]
+    fn shell_command_secret_forms_are_redacted_without_changing_raw_hash() {
+        let command = "export API_TOKEN=env-secret; curl -u alice:pw -H 'Authorization: Bearer header-secret' -H \"X-Api-Key: key-secret\" 'https://user:pass@example.test/path?token=query-secret&api_key=other' --password flag-secret";
+        let args = json!({"command": command});
+        let redacted = redact_tool_arguments_for_display("builtin-local_shell_execute", &args);
+        let display = redacted["command"].as_str().unwrap();
+        for secret in [
+            "env-secret",
+            "alice:pw",
+            "header-secret",
+            "key-secret",
+            "user:pass",
+            "query-secret",
+            "other",
+            "flag-secret",
+        ] {
+            assert!(!display.contains(secret), "secret leaked: {secret}");
+        }
+        assert!(display.matches("[REDACTED]").count() >= 7);
+        let scope =
+            make_runtime_approval_scope("builtin-local_shell_execute", &args, "high").unwrap();
+        assert_eq!(scope.contains_potential_secret, Some(true));
+        assert_eq!(
+            scope.command_hash,
+            raw_hash(command).trim_start_matches("raw:")
+        );
+    }
+
+    #[test]
+    fn backend_env_plan_change_invalidates_complete_shell_scope() {
+        let base = json!({
+            "command": "git status --short",
+            (ROOT_BINDING_FIELD): "root-binding",
+            (ENV_PLAN_HASH_FIELD): "env-plan-a",
+            (INHERIT_ENV_FIELD): false,
+            (INHERITED_ENV_KEYS_FIELD): ["PATH"],
+            (EXPLICIT_ENV_KEYS_FIELD): [],
+        });
+        let mut changed = base.clone();
+        changed[ENV_PLAN_HASH_FIELD] = json!("env-plan-b");
+        assert_ne!(
+            make_runtime_scope_key("builtin-local_shell_execute", &base),
+            make_runtime_scope_key("builtin-local_shell_execute", &changed),
+        );
+    }
+
+    #[test]
+    fn external_mcp_builtin_command_never_claims_local_sandbox() {
+        let args = json!({
+            "command": "rm -rf data",
+            "_serverId": "external-server",
+            (ROOT_PATH_FIELD): "/spoofed/local/path",
+            (ROOT_BINDING_FIELD): "spoofed-binding",
+        });
+        let scope = make_runtime_approval_scope("mcp_builtin-execute_command", &args, "high")
+            .expect("external command scope");
+        assert_eq!(scope.execution_location.as_deref(), Some("external_mcp"));
+        assert_eq!(scope.sandbox_enforced, Some(false));
+        assert_eq!(
+            scope.sandbox_backend.as_deref(),
+            Some("external_mcp_uncontrolled")
+        );
+        assert!(scope.root_path.is_none());
+        assert!(scope.readable_roots.is_none());
+        assert!(scope.shell_kind.is_none());
+        assert_eq!(scope.remember_disabled, Some(true));
+        assert!(requires_precise_approval_scope(
+            "mcp_builtin-execute_command"
+        ));
+    }
+
+    #[test]
     fn arbitrary_code_and_path_executables_are_single_use_and_effectful() {
         for command in [
             "python analyze.py",
@@ -2185,7 +2673,7 @@ mod tests {
                 "runner can use network: {command}"
             );
         }
-        assert!(!never_remember_approval_for_args(
+        assert!(never_remember_approval_for_args(
             "builtin-local_shell_execute",
             &json!({"command": "rm -f harmless.txt"})
         ));
@@ -2534,6 +3022,11 @@ mod tests {
             make_runtime_scope_key_v2("memory_update_by_id", &json!({"memoryId": "m1"})).is_some()
         );
         assert!(make_runtime_scope_key_v2("mindmap_delete", &json!({"mindmapId": "m1"})).is_some());
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-review_delete", &json!({"plan_id": "rp_1"}))
+                .as_deref(),
+            Some("builtin:review_delete::rp_1")
+        );
     }
 
     #[test]
@@ -2618,9 +3111,19 @@ mod tests {
                 name
             );
         }
-        // 非权限工具不误伤
+        // 非破坏性工具不误伤；ACR 破坏性工具必须单次确认。
         assert!(!never_remember_approval("mcp_server_list"));
-        assert!(!never_remember_approval("note_set"));
+        for name in [
+            "note_set",
+            "builtin-note_replace",
+            "builtin-mindmap_edit_nodes",
+            "mindmap_delete",
+            "builtin-review_delete",
+        ] {
+            assert!(never_remember_approval(name), "{name}");
+            assert!(requires_precise_approval_scope(name), "{name}");
+            assert!(ignores_broad_approval_bypass(name), "{name}");
+        }
     }
 
     /// SECURITY 回归（02 号报告 P1-1）：Windows 脚本解释器必须走完整命令哈希，
@@ -2664,7 +3167,7 @@ mod tests {
         let plain =
             make_runtime_scope_key_v2("execute_command", &json!({"command": "git status --short"}))
                 .unwrap();
-        assert!(plain.contains(";cmd=raw:"));
+        assert!(plain.contains("uncontrolled=raw:"));
     }
 
     /// 08 号报告：automation_propose 审批卡必须带 remember_disabled scope。
@@ -2757,6 +3260,87 @@ mod tests {
         assert!(
             make_runtime_scope_key_v2("builtin-skill_workshop_apply", &missing_review_hash)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn dstu_purge_is_single_use_and_path_scoped() {
+        let args = json!({"path": "/_trash/note_123"});
+        assert!(never_remember_approval("builtin-dstu_purge"));
+        assert!(requires_precise_approval_scope("builtin-dstu_purge"));
+        assert!(ignores_broad_approval_bypass("builtin-dstu_purge"));
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-dstu_purge", &args).as_deref(),
+            Some("builtin:dstu_purge::/_trash/note_123")
+        );
+        assert!(make_runtime_scope_key_v2("builtin-dstu_purge", &json!({})).is_none());
+        assert_ne!(
+            make_runtime_scope_key_v2("builtin-dstu_purge", &args),
+            make_runtime_scope_key_v2("builtin-dstu_purge", &json!({"path": "/_trash/note_456"}))
+        );
+    }
+
+    #[test]
+    fn phase5_high_deletes_are_single_use_and_id_scoped() {
+        let cases = [
+            (
+                "builtin-user_todo_delete_list",
+                json!({"list_id": "tdl_exam"}),
+                "builtin:user_todo_delete_list::tdl_exam",
+            ),
+            (
+                "builtin-automation_delete",
+                json!({"id": "auto_daily_review"}),
+                "builtin:automation_delete::auto_daily_review",
+            ),
+        ];
+        for (tool, args, expected_key) in cases {
+            assert!(never_remember_approval(tool), "{tool}");
+            assert!(requires_precise_approval_scope(tool), "{tool}");
+            assert!(ignores_broad_approval_bypass(tool), "{tool}");
+            assert_eq!(
+                make_runtime_scope_key_v2(tool, &args).as_deref(),
+                Some(expected_key)
+            );
+            assert!(make_runtime_scope_key_v2(tool, &json!({})).is_none());
+        }
+
+        assert_ne!(
+            make_runtime_scope_key_v2(
+                "builtin-user_todo_delete_list",
+                &json!({"list_id": "tdl_a"})
+            ),
+            make_runtime_scope_key_v2(
+                "builtin-user_todo_delete_list",
+                &json!({"list_id": "tdl_b"})
+            )
+        );
+        assert_ne!(
+            make_runtime_scope_key_v2("builtin-automation_delete", &json!({"id": "auto_a"})),
+            make_runtime_scope_key_v2("builtin-automation_delete", &json!({"id": "auto_b"}))
+        );
+    }
+
+    #[test]
+    fn phase7_governance_writes_are_single_use_and_argument_scoped() {
+        for tool in ["builtin-backup_create", "builtin-sync_run"] {
+            assert!(never_remember_approval(tool), "{tool}");
+            assert!(requires_precise_approval_scope(tool), "{tool}");
+            assert!(ignores_broad_approval_bypass(tool), "{tool}");
+        }
+
+        let upload = json!({"direction": "upload", "strategy": "keep_latest"});
+        let download = json!({"direction": "download", "strategy": "keep_latest"});
+        assert_ne!(
+            make_runtime_scope_key_v2("builtin-sync_run", &upload),
+            make_runtime_scope_key_v2("builtin-sync_run", &download)
+        );
+
+        let slim = json!({"include_assets": false});
+        let full = json!({"include_assets": true, "asset_types": ["documents"]});
+        assert_ne!(
+            make_runtime_scope_key_v2("builtin-backup_create", &slim),
+            make_runtime_scope_key_v2("builtin-backup_create", &full)
         );
     }
 }

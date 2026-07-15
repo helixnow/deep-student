@@ -384,7 +384,9 @@ impl ToolExecutor for ToolPackExecutor {
 
                 // Sensitivity check — block high-sensitivity tools that require user approval
                 // (approval dialogs cannot work inside parallel async spawns)
-                if let Some(sensitivity) = registry_clone.get_sensitivity(&sub.name) {
+                if let Some(sensitivity) =
+                    registry_clone.get_sensitivity_for_call(&sub.name, &sub.args)
+                {
                     if sensitivity != ToolSensitivity::Low {
                         log::warn!(
                             "[ToolPack] Sub-tool '{}' has sensitivity {:?} — blocking in parallel context",
