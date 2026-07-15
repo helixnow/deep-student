@@ -69,6 +69,79 @@ export interface CloudStorageConfig {
   encryptionPassword?: string;
 }
 
+/** Credential-free cloud configuration persisted for backend Agent sync. */
+export type SafeCloudStorageConfig =
+  | {
+      provider: 'webdav';
+      webdav: Pick<WebDavConfig, 'endpoint' | 'username'>;
+      root?: string;
+    }
+  | {
+      provider: 's3';
+      s3: Pick<S3Config, 'endpoint' | 'bucket' | 'accessKeyId' | 'region' | 'pathStyle'>;
+      root?: string;
+    }
+  | {
+      provider: 'ftp';
+      ftp: Pick<FtpConfig, 'host' | 'port' | 'username' | 'useTls'>;
+      root?: string;
+    };
+
+export interface CloudConfigSsotResponse {
+  configured: boolean;
+  provider?: StorageProvider;
+  root?: string;
+  config?: SafeCloudStorageConfig;
+}
+
+/**
+ * Convert the UI configuration into the exclusive, credential-free DTO
+ * accepted by the backend SSOT command. Inactive provider blocks and every
+ * secret field are dropped rather than serialized as empty placeholders.
+ */
+export function toSafeCloudStorageConfig(config: CloudStorageConfig): SafeCloudStorageConfig {
+  switch (config.provider) {
+    case 'webdav': {
+      if (!config.webdav) throw new Error('Missing WebDAV configuration');
+      return {
+        provider: 'webdav',
+        webdav: {
+          endpoint: config.webdav.endpoint,
+          username: config.webdav.username,
+        },
+        ...(config.root ? { root: config.root } : {}),
+      };
+    }
+    case 's3': {
+      if (!config.s3) throw new Error('Missing S3 configuration');
+      return {
+        provider: 's3',
+        s3: {
+          endpoint: config.s3.endpoint,
+          bucket: config.s3.bucket,
+          accessKeyId: config.s3.accessKeyId,
+          ...(config.s3.region ? { region: config.s3.region } : {}),
+          pathStyle: config.s3.pathStyle ?? false,
+        },
+        ...(config.root ? { root: config.root } : {}),
+      };
+    }
+    case 'ftp': {
+      if (!config.ftp) throw new Error('Missing FTP configuration');
+      return {
+        provider: 'ftp',
+        ftp: {
+          host: config.ftp.host,
+          port: config.ftp.port ?? 21,
+          username: config.ftp.username,
+          useTls: config.ftp.useTls ?? false,
+        },
+        ...(config.root ? { root: config.root } : {}),
+      };
+    }
+  }
+}
+
 // ============== 前端本地配置存储（非敏感信息） ==============
 
 /** CloudStorageSection 使用的配置存储 key（仅存储非敏感信息） */
@@ -89,6 +162,22 @@ export function loadStoredCloudStorageConfigSafe(): CloudStorageConfig | null {
   } catch {
     return null;
   }
+}
+
+export async function saveCloudConfigSsot(
+  config: CloudStorageConfig,
+): Promise<CloudConfigSsotResponse> {
+  return invoke<CloudConfigSsotResponse>('data_governance_save_cloud_config_ssot', {
+    config: toSafeCloudStorageConfig(config),
+  });
+}
+
+export async function getCloudConfigSsot(): Promise<CloudConfigSsotResponse> {
+  return invoke<CloudConfigSsotResponse>('data_governance_get_cloud_config_ssot');
+}
+
+export async function clearCloudConfigSsot(): Promise<CloudConfigSsotResponse> {
+  return invoke<CloudConfigSsotResponse>('data_governance_clear_cloud_config_ssot');
 }
 
 /**

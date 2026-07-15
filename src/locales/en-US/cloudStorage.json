@@ -73,6 +73,23 @@
     "placeholder": "deep-student-sync",
     "hint": "Root directory path for cloud storage"
   },
+
+  "encryption": {
+    "title": "End-to-end encryption password (optional, recommended)",
+    "placeholder": "Leave blank for no encryption; only your devices can decrypt encrypted backups",
+    "description": "When enabled, uploaded ZIP backups use AES-256-GCM encryption and cannot be read by the cloud provider.",
+    "warning": "The password is stored only in this device's secure credential store (Keychain/Credential Manager). If you forget it, encrypted cloud backups cannot be recovered. All devices connected to this cloud must use the same password."
+  },
+
+  "progress": {
+    "backupDatabase": "Backing up database...",
+    "packageZip": "Packaging ZIP...",
+    "uploadCloud": "Uploading to cloud...",
+    "refreshStatus": "Refreshing status...",
+    "downloadCloud": "Downloading from cloud...",
+    "importZip": "Importing ZIP...",
+    "restoreDatabase": "Restoring database..."
+  },
   
   "actions": {
     "testConnection": "Test Connection",
@@ -153,6 +170,12 @@
     "permissionDenied": "Permission denied",
     "notFound": "File not found",
     "noBackupAvailable": "No backup file available",
+    "backupDatabaseFailed": "Database backup failed: {{error}}",
+    "packageZipFailed": "ZIP packaging failed: {{error}}",
+    "uploadFileFailed": "File upload failed: {{error}}",
+    "downloadBackupFailed": "Backup download failed: {{error}}",
+    "importZipFailed": "ZIP import failed: {{error}}",
+    "restoreDatabaseFailed": "Database restore failed: {{error}}",
     "unknown": "Unknown error"
   },
   
@@ -160,7 +183,9 @@
     "connectionSuccess": "Connection successful!",
     "configSaved": "Configuration saved",
     "configSavedButCredentialsFailed": "Configuration was not saved because credentials could not be stored securely",
+    "configSsotFailed": "Configuration was not saved because the backend sync configuration could not be persisted",
     "configCleared": "Configuration cleared",
+    "configClearPartial": "The configuration was removed from this view, but some backend data could not be cleared",
     "versionDeleted": "Version deleted"
   }
 }

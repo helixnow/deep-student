@@ -142,40 +142,40 @@ function getConflictTypeInfo(
   switch (type) {
     case 'SchemaMismatch':
       return {
-        label: t('conflict_type.schema_mismatch', 'Schema 版本不匹配'),
-        description: t('conflict_type.schema_mismatch_desc', '本地和云端的数据库结构版本不同，需要进行迁移'),
+        label: t('conflict_type.schema_mismatch'),
+        description: t('conflict_type.schema_mismatch_desc'),
         color: 'bg-red-500',
         icon: <FileX size={16} />,
         severity: 'high',
       };
     case 'DataConflict':
       return {
-        label: t('conflict_type.data_conflict', '数据版本冲突'),
-        description: t('conflict_type.data_conflict_desc', '本地和云端都有数据修改，存在冲突'),
+        label: t('conflict_type.data_conflict'),
+        description: t('conflict_type.data_conflict_desc'),
         color: 'bg-amber-500',
         icon: <Warning size={16} />,
         severity: 'medium',
       };
     case 'ChecksumMismatch':
       return {
-        label: t('conflict_type.checksum_mismatch', '校验和不匹配'),
-        description: t('conflict_type.checksum_mismatch_desc', '数据版本相同但内容不一致，可能存在数据损坏'),
+        label: t('conflict_type.checksum_mismatch'),
+        description: t('conflict_type.checksum_mismatch_desc'),
         color: 'bg-orange-500',
         icon: <WarningCircle size={16} />,
         severity: 'high',
       };
     case 'LocalOnly':
       return {
-        label: t('conflict_type.local_only', '仅本地存在'),
-        description: t('conflict_type.local_only_desc', '此数据库仅存在于本地，云端没有'),
+        label: t('conflict_type.local_only'),
+        description: t('conflict_type.local_only_desc'),
         color: 'bg-blue-500',
         icon: <HardDrive size={16} />,
         severity: 'low',
       };
     case 'CloudOnly':
       return {
-        label: t('conflict_type.cloud_only', '仅云端存在'),
-        description: t('conflict_type.cloud_only_desc', '此数据库仅存在于云端，本地没有'),
+        label: t('conflict_type.cloud_only'),
+        description: t('conflict_type.cloud_only_desc'),
         color: 'bg-purple-500',
         icon: <Cloud size={16} />,
         severity: 'low',
@@ -183,7 +183,7 @@ function getConflictTypeInfo(
     default:
       return {
         label: type,
-        description: t('conflict_type.unknown_desc', '未知冲突类型'),
+        description: t('conflict_type.unknown_desc'),
         color: 'bg-gray-500',
         icon: <WarningCircle size={16} />,
         severity: 'medium',
@@ -204,26 +204,26 @@ function getStrategyInfo(
   switch (strategy) {
     case 'keep_local':
       return {
-        label: t('strategy_info.keep_local', '保留本地'),
-        description: t('strategy_info.keep_local_desc', '使用本地数据覆盖云端，本地修改将推送到云端'),
+        label: t('strategy_info.keep_local'),
+        description: t('strategy_info.keep_local_desc'),
         icon: <HardDrive size={16} />,
       };
     case 'use_cloud':
       return {
-        label: t('strategy_info.use_cloud', '使用云端'),
-        description: t('strategy_info.use_cloud_desc', '使用云端数据覆盖本地，云端修改将同步到本地'),
+        label: t('strategy_info.use_cloud'),
+        description: t('strategy_info.use_cloud_desc'),
         icon: <Cloud size={16} />,
       };
     case 'keep_latest':
       return {
-        label: t('strategy_info.keep_latest', '保留最新'),
-        description: t('strategy_info.keep_latest_desc', '根据更新时间自动选择较新的版本'),
+        label: t('strategy_info.keep_latest'),
+        description: t('strategy_info.keep_latest_desc'),
         icon: <Clock size={16} />,
       };
     case 'manual':
       return {
-        label: t('strategy_info.manual', '手动处理'),
-        description: t('strategy_info.manual_desc', '逐个查看和选择每条冲突记录的解决方式'),
+        label: t('strategy_info.manual'),
+        description: t('strategy_info.manual_desc'),
         icon: <PencilSimple size={16} />,
       };
   }
@@ -294,9 +294,9 @@ function ConflictSummaryHeader({ conflicts }: ConflictSummaryHeaderProps) {
   };
 
   const severityLabels = {
-    low: t('severity_low', '低'),
-    medium: t('severity_medium', '中'),
-    high: t('severity_high', '高'),
+    low: t('severity_low'),
+    medium: t('severity_medium'),
+    high: t('severity_high'),
   };
 
   return (
@@ -305,14 +305,14 @@ function ConflictSummaryHeader({ conflicts }: ConflictSummaryHeaderProps) {
         <div className="flex items-center gap-2">
           <WarningCircle size={20} className="text-amber-500" />
           <span className="font-medium">
-            {t('conflict_count', '发现 {{count}} 个冲突', { count: totalConflicts })}
+            {t('conflict_count', { count: totalConflicts })}
           </span>
         </div>
         <div className="w-px h-6 bg-border" />
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Database size={16} />
           <span>
-            {t('database_conflicts', '数据库级: {{count}}', {
+            {t('database_conflicts', {
               count: conflicts.database_conflicts.length,
             })}
           </span>
@@ -321,7 +321,7 @@ function ConflictSummaryHeader({ conflicts }: ConflictSummaryHeaderProps) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <FileX size={16} />
             <span>
-              {t('record_conflicts', '记录级: {{count}}', {
+              {t('record_conflicts', {
                 count: recordConflictDisplayCount,
               })}
             </span>
@@ -329,7 +329,7 @@ function ConflictSummaryHeader({ conflicts }: ConflictSummaryHeaderProps) {
         )}
       </div>
       <Badge variant="outline" className={severityColors[severity]}>
-        {t('severity', '严重程度')}: {severityLabels[severity]}
+        {t('severity')}: {severityLabels[severity]}
       </Badge>
     </div>
   );
@@ -384,17 +384,17 @@ function DatabaseConflictCard({
         </div>
 
         {newerSide !== 'equal' && (
-          <CommonTooltip content={t('newer_hint', '建议保留较新版本')}>
+          <CommonTooltip content={t('newer_hint')}>
             <Badge variant="secondary" className="bg-green-100 text-green-800">
               {newerSide === 'local' ? (
                 <>
                   <HardDrive size={12} className="mr-1" />
-                  {t('local_newer', '本地较新')}
+                  {t('local_newer')}
                 </>
               ) : (
                 <>
                   <Cloud size={12} className="mr-1" />
-                  {t('cloud_newer', '云端较新')}
+                  {t('cloud_newer')}
                 </>
               )}
             </Badge>
@@ -413,25 +413,25 @@ function DatabaseConflictCard({
             >
               <div className="flex items-center gap-2 mb-2">
                 <HardDrive size={16} />
-                <span className="font-medium text-sm">{t('local_version', '本地版本')}</span>
+                <span className="font-medium text-sm">{t('local_version')}</span>
                 {newerSide === 'local' && (
                   <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
-                    {t('newer', '较新')}
+                    {t('newer')}
                   </Badge>
                 )}
               </div>
               {conflict.local_state ? (
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('detail_labels.schema_version', 'Schema 版本:')}</span>
+                    <span className="text-muted-foreground">{t('detail_labels.schema_version')}</span>
                     <span className="font-mono">{conflict.local_state.schema_version}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('detail_labels.data_version', '数据版本:')}</span>
+                    <span className="text-muted-foreground">{t('detail_labels.data_version')}</span>
                     <span className="font-mono">{conflict.local_state.data_version}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('detail_labels.update_time', '更新时间:')}</span>
+                    <span className="text-muted-foreground">{t('detail_labels.update_time')}</span>
                     <span>{formatTime(conflict.local_state.last_updated_at)}</span>
                   </div>
                   <div className="flex justify-between">
@@ -443,7 +443,7 @@ function DatabaseConflictCard({
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground italic">
-                  {t('not_exist', '不存在')}
+                  {t('not_exist')}
                 </p>
               )}
             </div>
@@ -454,25 +454,25 @@ function DatabaseConflictCard({
             >
               <div className="flex items-center gap-2 mb-2">
                 <Cloud size={16} />
-                <span className="font-medium text-sm">{t('cloud_version', '云端版本')}</span>
+                <span className="font-medium text-sm">{t('cloud_version')}</span>
                 {newerSide === 'cloud' && (
                   <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
-                    {t('newer', '较新')}
+                    {t('newer')}
                   </Badge>
                 )}
               </div>
               {conflict.cloud_state ? (
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('detail_labels.schema_version', 'Schema 版本:')}</span>
+                    <span className="text-muted-foreground">{t('detail_labels.schema_version')}</span>
                     <span className="font-mono">{conflict.cloud_state.schema_version}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('detail_labels.data_version', '数据版本:')}</span>
+                    <span className="text-muted-foreground">{t('detail_labels.data_version')}</span>
                     <span className="font-mono">{conflict.cloud_state.data_version}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('detail_labels.update_time', '更新时间:')}</span>
+                    <span className="text-muted-foreground">{t('detail_labels.update_time')}</span>
                     <span>{formatTime(conflict.cloud_state.last_updated_at)}</span>
                   </div>
                   <div className="flex justify-between">
@@ -484,7 +484,7 @@ function DatabaseConflictCard({
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground italic">
-                  {t('not_exist', '不存在')}
+                  {t('not_exist')}
                 </p>
               )}
             </div>
@@ -543,11 +543,11 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
         <div className="grid grid-cols-2 bg-muted/50 text-xs font-medium">
           <div className="p-2 flex items-center gap-2 border-r">
             <HardDrive size={12} />
-            {t('local_data', '本地数据')}
+            {t('local_data')}
           </div>
           <div className="p-2 flex items-center gap-2">
             <Cloud size={12} />
-            {t('cloud_data', '云端数据')}
+            {t('cloud_data')}
           </div>
         </div>
         <div className="max-h-64 overflow-auto">
@@ -598,15 +598,15 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
       <div className="flex gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded bg-amber-100 dark:bg-amber-900/50 border border-amber-200" />
-          <span>{t('diff_modified', '已修改')}</span>
+          <span>{t('diff_modified')}</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/50 border border-blue-200" />
-          <span>{t('diff_local_only', '仅本地')}</span>
+          <span>{t('diff_local_only')}</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded bg-purple-100 dark:bg-purple-900/50 border border-purple-200" />
-          <span>{t('diff_cloud_only', '仅云端')}</span>
+          <span>{t('diff_cloud_only')}</span>
         </div>
       </div>
     </div>
@@ -654,11 +654,11 @@ function RecordConflictCard({
           </div>
           <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
             <span>
-              {t('local_v', '本地 v{{version}}', { version: conflict.local_version })}
+              {t('local_v', { version: conflict.local_version })}
             </span>
             <span>vs</span>
             <span>
-              {t('cloud_v', '云端 v{{version}}', { version: conflict.cloud_version })}
+              {t('cloud_v', { version: conflict.cloud_version })}
             </span>
           </div>
         </div>
@@ -668,12 +668,12 @@ function RecordConflictCard({
             {newerSide === 'local' ? (
               <>
                 <HardDrive size={12} className="mr-1" />
-                {t('local_newer', '本地较新')}
+                {t('local_newer')}
               </>
             ) : (
               <>
                 <Cloud size={12} className="mr-1" />
-                {t('cloud_newer', '云端较新')}
+                {t('cloud_newer')}
               </>
             )}
           </Badge>
@@ -688,12 +688,12 @@ function RecordConflictCard({
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="flex items-center gap-2">
                 <Clock size={12} className="text-muted-foreground" />
-                <span className="text-muted-foreground">{t('local_time', '本地更新')}:</span>
+                <span className="text-muted-foreground">{t('local_time')}:</span>
                 <span>{formatTime(conflict.local_updated_at)}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Clock size={12} className="text-muted-foreground" />
-                <span className="text-muted-foreground">{t('cloud_time', '云端更新')}:</span>
+                <span className="text-muted-foreground">{t('cloud_time')}:</span>
                 <span>{formatTime(conflict.cloud_updated_at)}</span>
               </div>
             </div>
@@ -702,7 +702,7 @@ function RecordConflictCard({
             <JsonDiffViewer
               localData={conflict.local_data}
               cloudData={conflict.cloud_data}
-              title={t('data_diff', '数据差异')}
+              title={t('data_diff')}
 />
           </div>
         </CardContent>
@@ -733,7 +733,7 @@ function StrategySelection({
 
   return (
     <div className="space-y-3">
-      <Label className="text-sm font-medium">{t('select_strategy', '选择解决策略')}</Label>
+      <Label className="text-sm font-medium">{t('select_strategy')}</Label>
 
       {needsMigration && (
         <Alert variant="warning">
@@ -847,7 +847,7 @@ export function ConflictResolutionDialog({
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
             <WarningCircle size={20} className="text-amber-500" />
-            {t('conflict_resolution', '同步冲突解决')}
+            {t('conflict_resolution')}
             {hasConflicts && (
               <Badge variant="secondary" className="ml-2">
                 {totalConflicts}
@@ -860,7 +860,7 @@ export function ConflictResolutionDialog({
                   'conflict_description',
                   '检测到本地和云端数据存在冲突，请选择解决策略。'
                 )
-              : t('no_conflicts', '没有检测到数据冲突。')}
+              : t('no_conflicts')}
           </NotionDialogDescription>
         </NotionDialogHeader>
         <NotionDialogBody>
@@ -875,7 +875,7 @@ export function ConflictResolutionDialog({
               <TabsList>
                 <TabsTrigger value="database" className="flex items-center gap-2">
                   <Database size={16} />
-                  {t('database_level', '数据库级')}
+                  {t('database_level')}
                   {conflicts.database_conflicts.length > 0 && (
                     <Badge variant="secondary" className="ml-1 h-5 px-1.5">
                       {conflicts.database_conflicts.length}
@@ -884,7 +884,7 @@ export function ConflictResolutionDialog({
                 </TabsTrigger>
                 <TabsTrigger value="record" className="flex items-center gap-2">
                   <FileX size={16} />
-                  {t('record_level', '记录级')}
+                  {t('record_level')}
                   {recordConflictDisplayCount > 0 && (
                     <Badge variant="secondary" className="ml-1 h-5 px-1.5">
                       {recordConflictDisplayCount}
@@ -893,7 +893,7 @@ export function ConflictResolutionDialog({
                 </TabsTrigger>
                 <TabsTrigger value="strategy" className="flex items-center gap-2">
                   <GearSix size={16} />
-                  {t('strategy', '策略选择')}
+                  {t('strategy')}
                 </TabsTrigger>
               </TabsList>
 
@@ -915,7 +915,7 @@ export function ConflictResolutionDialog({
                     <Alert>
                       <Check size={16} />
                       <AlertDescription>
-                        {t('no_database_conflicts', '没有数据库级冲突')}
+                        {t('no_database_conflicts')}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -954,7 +954,7 @@ export function ConflictResolutionDialog({
                     <Alert>
                       <Check size={16} />
                       <AlertDescription>
-                        {t('no_record_conflicts', '没有记录级冲突')}
+                        {t('no_record_conflicts')}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -980,7 +980,7 @@ export function ConflictResolutionDialog({
           <Alert>
             <Check size={16} />
             <AlertDescription>
-              {t('sync_ready', '数据已同步，没有需要处理的冲突。')}
+              {t('sync_ready')}
             </AlertDescription>
           </Alert>
         )}
@@ -990,7 +990,7 @@ export function ConflictResolutionDialog({
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {hasConflicts && (
               <>
-                <span>{t('selected_strategy', '当前策略')}:</span>
+                <span>{t('selected_strategy')}:</span>
                 <Badge variant="outline" className="font-normal">
                   {getStrategyInfo(selectedStrategy, t).icon}
                   <span className="ml-1">{getStrategyInfo(selectedStrategy, t).label}</span>
@@ -1000,19 +1000,19 @@ export function ConflictResolutionDialog({
           </div>
           <div className="flex items-center gap-2">
             <NotionButton variant="ghost" onClick={onClose} disabled={isResolving}>
-              {t('cancel', '取消')}
+              {t('cancel')}
             </NotionButton>
             {hasConflicts && (
               <NotionButton onClick={handleResolve} disabled={isResolving}>
                 {isResolving ? (
                   <>
                     <CircleNotch size={16} className="animate-spin mr-2" />
-                    {t('resolving', '处理中...')}
+                    {t('resolving')}
                   </>
                 ) : (
                   <>
                     <Lightning size={16} className="mr-2" />
-                    {t('apply_strategy', '应用策略')}
+                    {t('apply_strategy')}
                   </>
                 )}
               </NotionButton>

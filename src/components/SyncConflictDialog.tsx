@@ -17,6 +17,7 @@ import {
   NotionDialogDescription,
   NotionDialogBody,
   NotionDialogFooter,
+  NotionAlertDialog,
 } from "@/components/ui/NotionDialog";
 import { NotionButton } from "@/components/ui/NotionButton";
 import { Badge } from "@/components/ui/shad/Badge";
@@ -74,6 +75,18 @@ interface SyncConflictDialogProps {
   onResolved?: () => void;
 }
 
+type PendingResolution =
+  | {
+      kind: "single";
+      conflictId: string;
+      strategy: QuestionConflictStrategy;
+    }
+  | {
+      kind: "batch";
+      conflictIds: string[];
+      strategy: QuestionConflictStrategy;
+    };
+
 // ============================================================================
 // 辅助函数
 // ============================================================================
@@ -130,6 +143,24 @@ function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function getStrategyLabel(
+  strategy: QuestionConflictStrategy,
+  t: (...args: any[]) => any,
+): string {
+  switch (strategy) {
+    case "keep_local":
+      return t("keepLocal");
+    case "keep_remote":
+      return t("keepRemote");
+    case "keep_newer":
+      return t("keepNewer");
+    case "merge":
+      return t("merge");
+    case "manual":
+      return t("manual");
+  }
+}
+
 // ============================================================================
 // 版本对比组件
 // ============================================================================
@@ -153,14 +184,14 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
               <GitBranch size={16} />
-              {t("localVersion", "本地版本")}
+              {t("localVersion")}
             </span>
             {newerSide === "local" && (
               <Badge
                 variant="secondary"
                 className="bg-green-100 text-green-800"
               >
-                {t("newer", "较新")}
+                {t("newer")}
               </Badge>
             )}
           </CardTitle>
@@ -168,7 +199,7 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
         <CardContent className="space-y-3 text-sm">
           <div>
             <Label className="text-xs text-muted-foreground">
-              {t("content", "题干")}
+              {t("content")}
             </Label>
             <p className="mt-1 whitespace-pre-wrap line-clamp-3">
               {local.content}
@@ -177,7 +208,7 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
           {local.answer && (
             <div>
               <Label className="text-xs text-muted-foreground">
-                {t("answer", "答案")}
+                {t("answer")}
               </Label>
               <p className="mt-1">{local.answer}</p>
             </div>
@@ -208,14 +239,14 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
               <GitMerge size={16} />
-              {t("remoteVersion", "远程版本")}
+              {t("remoteVersion")}
             </span>
             {newerSide === "remote" && (
               <Badge
                 variant="secondary"
                 className="bg-green-100 text-green-800"
               >
-                {t("newer", "较新")}
+                {t("newer")}
               </Badge>
             )}
           </CardTitle>
@@ -223,7 +254,7 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
         <CardContent className="space-y-3 text-sm">
           <div>
             <Label className="text-xs text-muted-foreground">
-              {t("content", "题干")}
+              {t("content")}
             </Label>
             <p className="mt-1 whitespace-pre-wrap line-clamp-3">
               {remote.content}
@@ -232,7 +263,7 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
           {remote.answer && (
             <div>
               <Label className="text-xs text-muted-foreground">
-                {t("answer", "答案")}
+                {t("answer")}
               </Label>
               <p className="mt-1">{remote.answer}</p>
             </div>
@@ -326,7 +357,7 @@ function ConflictItem({
           className="flex items-center gap-1"
           onClick={(e) => e.stopPropagation()}
         >
-          <CommonTooltip content={t("keepLocal", "保留本地")}>
+          <CommonTooltip content={t("keepLocal")}>
             <NotionButton
               variant="ghost"
               size="icon"
@@ -338,7 +369,7 @@ function ConflictItem({
             </NotionButton>
           </CommonTooltip>
 
-          <CommonTooltip content={t("keepRemote", "保留远程")}>
+          <CommonTooltip content={t("keepRemote")}>
             <NotionButton
               variant="ghost"
               size="icon"
@@ -350,7 +381,7 @@ function ConflictItem({
             </NotionButton>
           </CommonTooltip>
 
-          <CommonTooltip content={t("keepNewer", "保留较新")}>
+          <CommonTooltip content={t("keepNewer")}>
             <NotionButton
               variant="ghost"
               size="icon"
@@ -394,6 +425,9 @@ export function SyncConflictDialog({
   const [batchStrategy, setBatchStrategy] =
     useState<QuestionConflictStrategy>("keep_newer");
   const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
+  const [pendingResolution, setPendingResolution] =
+    useState<PendingResolution | null>(null);
+  const [isConfirmingResolution, setIsConfirmingResolution] = useState(false);
 
   const { resolveSyncConflict, batchResolveSyncConflicts, isSyncing } =
     useQuestionBankStore(
@@ -403,6 +437,12 @@ export function SyncConflictDialog({
         isSyncing: state.isSyncing,
       })),
     );
+
+  // 待处理的冲突
+  const pendingConflicts = useMemo(
+    () => conflicts.filter((c) => c.status === "pending"),
+    [conflicts],
+  );
 
   // 切换选择
   const toggleSelect = useCallback((id: string) => {
@@ -432,12 +472,12 @@ export function SyncConflictDialog({
 
   // 全选/取消全选
   const toggleSelectAll = useCallback(() => {
-    if (selectedIds.size === conflicts.length) {
+    if (selectedIds.size === pendingConflicts.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(conflicts.map((c) => c.id)));
+      setSelectedIds(new Set(pendingConflicts.map((c) => c.id)));
     }
-  }, [conflicts, selectedIds.size]);
+  }, [pendingConflicts, selectedIds.size]);
 
   // 解决单个冲突
   const handleResolve = useCallback(
@@ -470,13 +510,16 @@ export function SyncConflictDialog({
   );
 
   // 批量解决
-  const handleBatchResolve = useCallback(async () => {
-    if (selectedIds.size === 0) return;
+  const handleBatchResolve = useCallback(async (
+    conflictIds: string[],
+    strategy: QuestionConflictStrategy,
+  ) => {
+    if (conflictIds.length === 0) return;
 
     try {
       // 如果选择了全部，使用批量 API
-      if (selectedIds.size === conflicts.length) {
-        const result = await batchResolveSyncConflicts(examId, batchStrategy);
+      if (conflictIds.length === pendingConflicts.length) {
+        const result = await batchResolveSyncConflicts(examId, strategy);
         // ★ #20(round2): 显式提示部分失败（此前仅后端 warn，前端无感知）
         if (result.failed.length > 0) {
           unifiedAlert(
@@ -489,8 +532,8 @@ export function SyncConflictDialog({
         }
       } else {
         // 否则逐个解决
-        for (const id of selectedIds) {
-          await resolveSyncConflict(id, batchStrategy);
+        for (const id of conflictIds) {
+          await resolveSyncConflict(id, strategy);
         }
       }
       setSelectedIds(new Set());
@@ -504,34 +547,67 @@ export function SyncConflictDialog({
       );
     }
   }, [
-    selectedIds,
-    conflicts.length,
+    pendingConflicts.length,
     examId,
-    batchStrategy,
     batchResolveSyncConflicts,
     resolveSyncConflict,
     onResolved,
     t,
   ]);
 
-  // 待处理的冲突
-  const pendingConflicts = useMemo(
-    () => conflicts.filter((c) => c.status === "pending"),
-    [conflicts],
+  const requestSingleResolve = useCallback(
+    (conflictId: string, strategy: QuestionConflictStrategy) => {
+      setPendingResolution({ kind: "single", conflictId, strategy });
+    },
+    [],
   );
+
+  const requestBatchResolve = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    setPendingResolution({
+      kind: "batch",
+      conflictIds: Array.from(selectedIds),
+      strategy: batchStrategy,
+    });
+  }, [selectedIds, batchStrategy]);
+
+  const handleConfirmResolution = useCallback(async () => {
+    if (!pendingResolution) return;
+
+    setIsConfirmingResolution(true);
+    try {
+      if (pendingResolution.kind === "single") {
+        await handleResolve(pendingResolution.conflictId, pendingResolution.strategy);
+      } else {
+        await handleBatchResolve(
+          pendingResolution.conflictIds,
+          pendingResolution.strategy,
+        );
+      }
+      setPendingResolution(null);
+    } finally {
+      setIsConfirmingResolution(false);
+    }
+  }, [pendingResolution, handleResolve, handleBatchResolve]);
+
+  const handleResolutionDialogOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen && !isConfirmingResolution) {
+      setPendingResolution(null);
+    }
+  }, [isConfirmingResolution]);
 
   return (
     <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-4xl">
       <NotionDialogHeader>
         <NotionDialogTitle className="flex items-center gap-2">
           <WarningCircle size={20} className="text-amber-500" />
-          {t("syncConflicts", "同步冲突")}
+          {t("syncConflicts")}
           <Badge variant="secondary">{pendingConflicts.length}</Badge>
         </NotionDialogTitle>
         <NotionDialogDescription>
           {t(
             "conflictDescription",
-            "以下题目在本地和远程存在冲突，请选择解决策略。",
+            "conflictDescription",
           )}
         </NotionDialogDescription>
       </NotionDialogHeader>
@@ -540,7 +616,7 @@ export function SyncConflictDialog({
           <Alert>
             <Check size={16} />
             <AlertDescription>
-              {t("noConflicts", "没有待解决的冲突。")}
+              {t("noConflicts")}
             </AlertDescription>
           </Alert>
         ) : (
@@ -557,10 +633,10 @@ export function SyncConflictDialog({
                 />
                 <span className="text-sm text-muted-foreground">
                   {selectedIds.size > 0
-                    ? t("selectedCount", "已选择 {{count}} 项", {
+                    ? t("selectedCount", {
                         count: selectedIds.size,
                       })
-                    : t("selectAll", "全选")}
+                    : t("selectAll")}
                 </span>
               </div>
 
@@ -598,12 +674,12 @@ export function SyncConflictDialog({
                           />
                           <span className="text-sm">
                             {strategy === "keep_local"
-                              ? t("keepLocal", "保留本地")
+                              ? t("keepLocal")
                               : strategy === "keep_remote"
-                                ? t("keepRemote", "保留远程")
+                                ? t("keepRemote")
                                 : strategy === "keep_newer"
-                                  ? t("keepNewer", "保留较新")
-                                  : t("merge", "智能合并")}
+                                  ? t("keepNewer")
+                                  : t("merge")}
                           </span>
                         </Card>
                       </label>
@@ -613,15 +689,15 @@ export function SyncConflictDialog({
                   <NotionButton
                     variant="default"
                     size="sm"
-                    onClick={handleBatchResolve}
-                    disabled={isSyncing}
+                    onClick={requestBatchResolve}
+                    disabled={isSyncing || isConfirmingResolution}
                   >
                     {isSyncing ? (
                       <CircleNotch size={16} className="animate-spin mr-2" />
                     ) : (
                       <Check size={16} className="mr-2" />
                     )}
-                    {t("batchResolve", "批量解决")}
+                    {t("batchResolve")}
                   </NotionButton>
                 </div>
               )}
@@ -639,7 +715,7 @@ export function SyncConflictDialog({
                     onToggleSelect={() => toggleSelect(conflict.id)}
                     onToggleExpand={() => toggleExpand(conflict.id)}
                     onResolve={(strategy) =>
-                      handleResolve(conflict.id, strategy)
+                      requestSingleResolve(conflict.id, strategy)
                     }
                     isResolving={resolvingIds.has(conflict.id)}
                   />
@@ -655,9 +731,36 @@ export function SyncConflictDialog({
           size="sm"
           onClick={() => onOpenChange(false)}
         >
-          {t("close", "关闭")}
+          {t("close")}
         </NotionButton>
       </NotionDialogFooter>
+      <NotionAlertDialog
+        open={pendingResolution !== null}
+        onOpenChange={handleResolutionDialogOpenChange}
+        icon={<WarningCircle size={20} className="text-amber-500" />}
+        title={t("confirmConflictResolveTitle")}
+        description={pendingResolution
+          ? pendingResolution.kind === "single"
+            ? t(
+              "confirmConflictResolveDescription",
+              "confirmConflictResolveDescription",
+              { strategy: getStrategyLabel(pendingResolution.strategy, t) },
+            )
+            : t(
+              "confirmConflictBatchResolveDescription",
+              "confirmConflictBatchResolveDescription",
+              {
+                count: pendingResolution.conflictIds.length,
+                strategy: getStrategyLabel(pendingResolution.strategy, t),
+              },
+            )
+          : undefined}
+        confirmText={t("confirm")}
+        cancelText={t("cancel")}
+        confirmVariant="warning"
+        onConfirm={() => void handleConfirmResolution()}
+        loading={isConfirmingResolution}
+      />
     </NotionDialog>
   );
 }

@@ -1236,11 +1236,8 @@ describe('DataGovernanceDashboard restart dialog after restore', () => {
       screen.queryByRole('button', { name: /稍后重启|data:governance\.restart_later/i }),
     ).not.toBeInTheDocument();
 
-    // 通用对话框关闭按钮也不能绕过恢复激活。
-    const closeBtn = screen.getByRole('button', { name: 'Close' });
-    await act(async () => {
-      fireEvent.click(closeBtn);
-    });
+    // 强制重启对话框不渲染通用关闭按钮，避免绕过恢复激活。
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
 
     // 对话框保持打开，直到立即重启被执行。
     await waitFor(() => {
