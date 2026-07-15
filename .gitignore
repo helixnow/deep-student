@@ -258,6 +258,8 @@ design/
 output/
 
 # Development notes
+/docs/dev/*-20??-??-??.md
+/test-results/
 note/
 
 # AI tool artifacts
