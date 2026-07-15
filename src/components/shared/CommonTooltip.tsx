@@ -90,25 +90,29 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
 
     const triggerRect = triggerRef.current.getBoundingClientRect();
     const tooltipRect = tooltipRef.current.getBoundingClientRect();
+    // Entry transforms do not alter layout dimensions, so use offset* for
+    // collision math and avoid feeding transient animation scale into it.
+    const tooltipWidth = tooltipRef.current.offsetWidth || tooltipRect.width;
+    const tooltipHeight = tooltipRef.current.offsetHeight || tooltipRect.height;
     
     let top = 0;
     let left = 0;
 
     switch (position) {
       case 'top':
-        top = triggerRect.top - tooltipRect.height - offset;
-        left = triggerRect.left + (triggerRect.width - tooltipRect.width) / 2;
+        top = triggerRect.top - tooltipHeight - offset;
+        left = triggerRect.left + (triggerRect.width - tooltipWidth) / 2;
         break;
       case 'bottom':
         top = triggerRect.bottom + offset;
-        left = triggerRect.left + (triggerRect.width - tooltipRect.width) / 2;
+        left = triggerRect.left + (triggerRect.width - tooltipWidth) / 2;
         break;
       case 'left':
-        top = triggerRect.top + (triggerRect.height - tooltipRect.height) / 2;
-        left = triggerRect.left - tooltipRect.width - offset;
+        top = triggerRect.top + (triggerRect.height - tooltipHeight) / 2;
+        left = triggerRect.left - tooltipWidth - offset;
         break;
       case 'right':
-        top = triggerRect.top + (triggerRect.height - tooltipRect.height) / 2;
+        top = triggerRect.top + (triggerRect.height - tooltipHeight) / 2;
         left = triggerRect.right + offset;
         break;
     }
@@ -118,19 +122,10 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    // 水平边界
-    if (left < padding) {
-      left = padding;
-    } else if (left + tooltipRect.width > viewportWidth - padding) {
-      left = viewportWidth - tooltipRect.width - padding;
-    }
-
-    // 垂直边界
-    if (top < padding) {
-      top = padding;
-    } else if (top + tooltipRect.height > viewportHeight - padding) {
-      top = viewportHeight - tooltipRect.height - padding;
-    }
+    const maxLeft = Math.max(padding, viewportWidth - tooltipWidth - padding);
+    const maxTop = Math.max(padding, viewportHeight - tooltipHeight - padding);
+    left = Math.min(Math.max(left, padding), maxLeft);
+    top = Math.min(Math.max(top, padding), maxTop);
 
     setTooltipPos({ top, left });
   }, [offset, position]);

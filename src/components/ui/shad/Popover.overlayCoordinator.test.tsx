@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CommonTooltip } from '../../shared/CommonTooltip';
 import { OverlayCoordinatorProvider } from '../../shared/OverlayCoordinator';
-import { Popover, PopoverContent, PopoverTrigger } from './Popover';
+import { Popover, PopoverContent, PopoverTrigger, resolvePopoverPosition } from './Popover';
 
 describe('Popover overlay coordination', () => {
   afterEach(() => {
@@ -110,6 +110,12 @@ describe('Popover overlay coordination', () => {
         toJSON: () => ({}),
       } as DOMRect;
     });
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function () {
+      return this.getAttribute('role') === 'dialog' ? 240 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function () {
+      return this.getAttribute('role') === 'dialog' ? contentHeight : 0;
+    });
 
     render(
       <OverlayCoordinatorProvider>
@@ -129,5 +135,27 @@ describe('Popover overlay coordination', () => {
     contentHeight = 250;
     act(() => resizeCallbacks[0]([], {} as ResizeObserver));
     expect(screen.getByRole('dialog')).toHaveStyle({ top: '242px' });
+  });
+
+  it('keeps an oversized popover within the viewport when neither side fits', () => {
+    const position = resolvePopoverPosition({
+      triggerRect: {
+        left: 180,
+        right: 280,
+        top: 104,
+        bottom: 140,
+        width: 100,
+      },
+      contentWidth: 320,
+      contentHeight: 260,
+      viewportWidth: 480,
+      viewportHeight: 320,
+      align: 'start',
+      side: 'top',
+      sideOffset: 4,
+      collisionPadding: 16,
+    });
+
+    expect(position).toEqual({ left: 144, top: 16, translateX: 0 });
   });
 });

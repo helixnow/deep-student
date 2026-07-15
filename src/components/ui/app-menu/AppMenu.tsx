@@ -309,7 +309,11 @@ export function AppMenuContent({
       const contentEl = contentRef.current;
       if (!contentEl) return;
 
-      const contentRect = contentEl.getBoundingClientRect();
+      // Keep collision placement independent from ui-zoom-fade-in transforms.
+      const contentRect = {
+        width: contentEl.offsetWidth,
+        height: contentEl.offsetHeight,
+      };
       const gap = 6;
       let top: number;
       let left: number;
@@ -796,7 +800,11 @@ export function AppMenuSubContent({
       if (!triggerEl || !contentEl) return;
 
       const triggerRect = triggerEl.getBoundingClientRect();
-      const contentRect = contentEl.getBoundingClientRect();
+      // The submenu has the same animated entry class as its parent menu.
+      const contentRect = {
+        width: contentEl.offsetWidth,
+        height: contentEl.offsetHeight,
+      };
       const viewportPadding = 8;
       const gap = 6;
 

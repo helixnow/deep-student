@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 
 interface TooltipContextValue {
   open: boolean;
@@ -60,6 +61,17 @@ export const TooltipTrigger: React.FC<React.HTMLAttributes<HTMLElement> & { asCh
 type TooltipSide = 'top' | 'bottom' | 'left' | 'right';
 type TooltipAlign = 'start' | 'center' | 'end';
 
+interface TooltipPosition {
+  top: number;
+  left: number;
+  side: TooltipSide;
+}
+
+const VIEWPORT_PADDING = 8;
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), Math.max(min, max));
+
 interface TooltipContentProps extends React.HTMLAttributes<HTMLDivElement> {
   side?: TooltipSide;
   align?: TooltipAlign;
@@ -76,74 +88,86 @@ const getBaseClasses = () => {
 export const TooltipContent: React.FC<TooltipContentProps>
   = ({ children, className, side = 'top', align = 'center', sideOffset = 8, alignOffset = 0, style, ...props }) => {
     const context = React.useContext(TooltipContext);
+    const contentRef = React.useRef<HTMLDivElement>(null);
+    const [position, setPosition] = useState<TooltipPosition | null>(null);
+
+    const updatePosition = React.useCallback(() => {
+      const rect = context?.triggerRect;
+      const content = contentRef.current;
+      if (!context?.open || !rect || !content) return;
+
+      const width = content.offsetWidth;
+      const height = content.offsetHeight;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      let resolvedSide = side;
+      let top: number;
+      let left: number;
+
+      if (side === 'top' || side === 'bottom') {
+        const above = rect.top - height - sideOffset;
+        const below = rect.bottom + sideOffset;
+        const fitsAbove = above >= VIEWPORT_PADDING;
+        const fitsBelow = below + height <= viewportHeight - VIEWPORT_PADDING;
+        if (side === 'top') resolvedSide = fitsAbove || !fitsBelow ? 'top' : 'bottom';
+        else resolvedSide = fitsBelow || !fitsAbove ? 'bottom' : 'top';
+        top = resolvedSide === 'top' ? above : below;
+        if (align === 'start') left = rect.left + alignOffset;
+        else if (align === 'end') left = rect.right - width + alignOffset;
+        else left = rect.left + rect.width / 2 - width / 2 + alignOffset;
+      } else {
+        const before = rect.left - width - sideOffset;
+        const after = rect.right + sideOffset;
+        const fitsBefore = before >= VIEWPORT_PADDING;
+        const fitsAfter = after + width <= viewportWidth - VIEWPORT_PADDING;
+        if (side === 'left') resolvedSide = fitsBefore || !fitsAfter ? 'left' : 'right';
+        else resolvedSide = fitsAfter || !fitsBefore ? 'right' : 'left';
+        left = resolvedSide === 'left' ? before : after;
+        if (align === 'start') top = rect.top + alignOffset;
+        else if (align === 'end') top = rect.bottom - height + alignOffset;
+        else top = rect.top + rect.height / 2 - height / 2 + alignOffset;
+      }
+
+      const next = {
+        top: clamp(top, VIEWPORT_PADDING, viewportHeight - height - VIEWPORT_PADDING),
+        left: clamp(left, VIEWPORT_PADDING, viewportWidth - width - VIEWPORT_PADDING),
+        side: resolvedSide,
+      };
+      setPosition((current) => (
+        current?.top === next.top && current.left === next.left && current.side === next.side
+          ? current
+          : next
+      ));
+    }, [align, alignOffset, context?.open, context?.triggerRect, side, sideOffset]);
+
+    React.useLayoutEffect(() => {
+      if (!context?.open) {
+        setPosition(null);
+        return;
+      }
+      updatePosition();
+    }, [context?.open, updatePosition]);
+
+    useEventRegistry(
+      context?.open
+        ? [{ target: 'window', type: 'resize', listener: updatePosition as EventListener, options: { passive: true } }]
+        : [],
+      [context?.open, updatePosition],
+    );
+
     if (!context || !context.open || !context.triggerRect) return null;
-
-    const rect = context.triggerRect;
-
-    let top = rect.top;
-    let left = rect.left;
-    let transform = '';
-
-    if (side === 'top') {
-      top = rect.top - sideOffset;
-      if (align === 'start') {
-        left = rect.left + alignOffset;
-        transform = 'translateY(-100%)';
-      } else if (align === 'end') {
-        left = rect.right + alignOffset;
-        transform = 'translate(-100%, -100%)';
-      } else {
-        left = rect.left + rect.width / 2 + alignOffset;
-        transform = 'translate(-50%, -100%)';
-      }
-    } else if (side === 'bottom') {
-      top = rect.bottom + sideOffset;
-      if (align === 'start') {
-        left = rect.left + alignOffset;
-        transform = 'translateY(0)';
-      } else if (align === 'end') {
-        left = rect.right + alignOffset;
-        transform = 'translateX(-100%)';
-      } else {
-        left = rect.left + rect.width / 2 + alignOffset;
-        transform = 'translate(-50%, 0)';
-      }
-    } else if (side === 'left') {
-      left = rect.left - sideOffset;
-      if (align === 'start') {
-        top = rect.top + alignOffset;
-        transform = 'translate(-100%, 0)';
-      } else if (align === 'end') {
-        top = rect.bottom + alignOffset;
-        transform = 'translate(-100%, -100%)';
-      } else {
-        top = rect.top + rect.height / 2 + alignOffset;
-        transform = 'translate(-100%, -50%)';
-      }
-    } else if (side === 'right') {
-      left = rect.right + sideOffset;
-      if (align === 'start') {
-        top = rect.top + alignOffset;
-        transform = 'translate(0, 0)';
-      } else if (align === 'end') {
-        top = rect.bottom + alignOffset;
-        transform = 'translate(0, -100%)';
-      } else {
-        top = rect.top + rect.height / 2 + alignOffset;
-        transform = 'translate(0, -50%)';
-      }
-    }
 
     const node = (
       <div
+        ref={contentRef}
         className={className ? `${getBaseClasses()} ${className}` : getBaseClasses()}
         role="tooltip"
-        data-side={side}
+        data-side={position?.side ?? side}
         style={{
           position: 'fixed',
-          top,
-          left,
-          transform,
+          top: position?.top ?? -9999,
+          left: position?.left ?? -9999,
+          visibility: position ? 'visible' : 'hidden',
           pointerEvents: 'none',
           ...(style ?? {}),
         }}

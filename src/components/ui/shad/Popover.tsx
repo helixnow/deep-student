@@ -109,12 +109,78 @@ interface PopoverContentProps extends React.HTMLAttributes<HTMLDivElement> {
   collisionPadding?: number; // 与屏幕边缘的最小距离，默认 8
 }
 
+export interface PopoverPositionInput {
+  triggerRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom' | 'width'>;
+  contentWidth: number;
+  contentHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  align: 'start' | 'center' | 'end';
+  side: 'top' | 'bottom';
+  sideOffset: number;
+  collisionPadding: number;
+}
+
+export interface PopoverPosition {
+  left: number;
+  top: number;
+  translateX: number;
+}
+
+const clampToViewport = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), Math.max(min, max));
+
+/** Resolves placement once, including the case where neither side can fully fit. */
+export function resolvePopoverPosition({
+  triggerRect,
+  contentWidth,
+  contentHeight,
+  viewportWidth,
+  viewportHeight,
+  align,
+  side,
+  sideOffset,
+  collisionPadding,
+}: PopoverPositionInput): PopoverPosition {
+  let anchoredLeft = triggerRect.left;
+  if (align === 'center') {
+    anchoredLeft = triggerRect.left + triggerRect.width / 2 - contentWidth / 2;
+  } else if (align === 'end') {
+    anchoredLeft = triggerRect.right - contentWidth;
+  }
+
+  const left = clampToViewport(
+    anchoredLeft,
+    collisionPadding,
+    viewportWidth - collisionPadding - contentWidth,
+  );
+
+  const above = triggerRect.top - contentHeight - sideOffset;
+  const below = triggerRect.bottom + sideOffset;
+  const fitsAbove = above >= collisionPadding;
+  const fitsBelow = below + contentHeight <= viewportHeight - collisionPadding;
+  const anchoredTop = side === 'bottom'
+    ? (fitsBelow || !fitsAbove ? below : above)
+    : (fitsAbove || !fitsBelow ? above : below);
+
+  return {
+    left,
+    top: clampToViewport(
+      anchoredTop,
+      collisionPadding,
+      viewportHeight - collisionPadding - contentHeight,
+    ),
+    // `left` is already the visible content edge, not an anchor point.
+    translateX: 0,
+  };
+}
+
 export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(function PopoverContent(
   { className, align = 'center', side = 'bottom', sideOffset = 8, portal = true, collisionPadding = 8, style, ...rest },
   forwardedRef,
 ) {
   const ctx = React.useContext(PopoverContext);
-  const [position, setPosition] = React.useState<{ left: number; top: number; translateX: number } | null>(null);
+  const [position, setPosition] = React.useState<PopoverPosition | null>(null);
   const localContentRef = React.useRef<HTMLDivElement | null>(null);
 
   const assignContentRef = React.useCallback((node: HTMLDivElement | null) => {
@@ -137,52 +203,28 @@ export const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentPro
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    // 水平对齐
-    let left = rect.left;
-    let translateX = 0;
-    if (align === 'center') {
-      left = rect.left + rect.width / 2;
-      translateX = -50;
-    } else if (align === 'end') {
-      left = rect.right;
-      translateX = -100;
-    }
+    // offset* is unaffected by ui-zoom-fade-in scale/translate. Using the
+    // transformed rect here makes overflow collision placement visibly jump.
+    const nextPosition = resolvePopoverPosition({
+      triggerRect: rect,
+      contentWidth: localContentRef.current.offsetWidth,
+      contentHeight: localContentRef.current.offsetHeight,
+      viewportWidth,
+      viewportHeight,
+      align,
+      side,
+      sideOffset,
+      collisionPadding,
+    });
 
-    const contentRect = localContentRef.current.getBoundingClientRect();
-    const contentWidth = contentRect.width;
-    const contentHeight = contentRect.height;
-
-    // 水平碰撞检测
-    const actualLeft = left + (contentWidth * translateX / 100);
-    if (actualLeft < collisionPadding) {
-      left = collisionPadding;
-      translateX = 0;
-    } else if (actualLeft + contentWidth > viewportWidth - collisionPadding) {
-      left = viewportWidth - collisionPadding;
-      translateX = -100;
-    }
-
-    // 垂直碰撞检测：自动翻转方向
-    let finalTop: number;
-    if (side === 'bottom') {
-      finalTop = rect.bottom + sideOffset;
-      if (finalTop + contentHeight > viewportHeight - collisionPadding) {
-        const flippedTop = rect.top - contentHeight - sideOffset;
-        if (flippedTop >= collisionPadding) {
-          finalTop = flippedTop;
-        }
-      }
-    } else {
-      finalTop = rect.top - contentHeight - sideOffset;
-      if (finalTop < collisionPadding) {
-        const flippedTop = rect.bottom + sideOffset;
-        if (flippedTop + contentHeight <= viewportHeight - collisionPadding) {
-          finalTop = flippedTop;
-        }
-      }
-    }
-
-    setPosition({ left, top: finalTop, translateX });
+    setPosition((current) => (
+      current
+      && current.left === nextPosition.left
+      && current.top === nextPosition.top
+      && current.translateX === nextPosition.translateX
+        ? current
+        : nextPosition
+    ));
   }, [ctx?.containerRef, align, side, sideOffset, collisionPadding]);
 
   // 初始定位 + 滚动/resize 跟随
