@@ -5,7 +5,7 @@
   "identifier": "com.deepstudent.app",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1422",
+    "devUrl": "http://127.0.0.1:1422",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "features": [
@@ -27,7 +27,7 @@
         "fullscreen": false,
         "center": true,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "skipTaskbar": false,
         "alwaysOnTop": false,
         "visible": true,

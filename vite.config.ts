@@ -163,7 +163,9 @@ export default defineConfig(({ command, mode }) => ({
   server: {
     port: 1422,
     strictPort: true,
-    host: host || false,
+    // Tauri's macOS WebView resolves the dev URL through IPv4 on this host.
+    // Bind the fallback explicitly so it can reach http://localhost:1422.
+    host: host || '127.0.0.1',
     hmr: host
       ? {
           protocol: "ws",
