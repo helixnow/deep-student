@@ -46,11 +46,17 @@ pub const DEFAULT_MAX_RETRIES: u8 = 2;
 pub const DEFAULT_RETRY_BACKOFF_SECS: u64 = 60;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 600;
 pub const AUTOMATION_VERSION_CONFLICT_CODE: &str = "AUTOMATION_VERSION_CONFLICT";
+const AUTOMATION_LEASE_GRACE_SECS: u64 = 60;
 
 static AUTOMATION_APP_EXITING: AtomicBool = AtomicBool::new(false);
+static AUTOMATION_SHUTDOWN_TOKEN: LazyLock<CancellationToken> =
+    LazyLock::new(CancellationToken::new);
+static AUTOMATION_BOOT_ID: LazyLock<String> = LazyLock::new(|| uuid::Uuid::new_v4().to_string());
 
 pub fn mark_automation_app_exiting() {
     AUTOMATION_APP_EXITING.store(true, Ordering::SeqCst);
+    AUTOMATION_SHUTDOWN_TOKEN.cancel();
+    cancel_active_automation_runs_for_shutdown();
 }
 
 pub fn automation_app_is_exiting() -> bool {
@@ -65,7 +71,7 @@ pub const MAX_INTERVAL_MINUTES: u32 = 24 * 60;
 pub const HEARTBEAT_AUTOMATION_ID: &str = "auto_heartbeat_default";
 /// 心跳默认间隔（分钟）
 pub const DEFAULT_HEARTBEAT_INTERVAL_MINUTES: u32 = 30;
-/// 心跳"无事"哨兵串：最终回复包含该串时静默吞掉、不发任何通知
+/// 心跳"无事"哨兵串：最终回复仅为该串时静默吞掉、不发任何通知
 pub const HEARTBEAT_OK_SENTINEL: &str = "HEARTBEAT_OK";
 
 /// 默认心跳检查清单 prompt（v1 硬编码模板，后续可做成用户可编辑文件）。
@@ -1051,12 +1057,7 @@ pub fn update_automation_full(
         };
     }
     if let Some(prompt) = fields.prompt {
-        let prompt = prompt.trim().to_string();
-        current.prompt = prompt.clone();
-        if current.action_type == AutomationActionType::AgentTurn && current.agent_prompt.is_some()
-        {
-            current.agent_prompt = Some(prompt);
-        }
+        current.prompt = prompt.trim().to_string();
     }
     if let Some(action_type) = fields.action_type {
         current.action_type = action_type;
@@ -1214,6 +1215,27 @@ pub fn delete_automation(
             automation_id,
             expected_version,
             &deleted,
+        ));
+    }
+    if deleted.heartbeat || deleted.id == HEARTBEAT_AUTOMATION_ID {
+        return Err(AppError::validation(
+            "The built-in heartbeat automation cannot be deleted; disable it instead".to_string(),
+        ));
+    }
+    let has_active_runs: bool = tx
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM automation_runs
+                 WHERE automation_id = ?1
+                   AND status IN ('queued', 'running', 'retrying')
+             )",
+            params![automation_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| db_error("Failed to check active automation runs", error))?;
+    if has_active_runs {
+        return Err(AppError::validation(
+            "Cancel active runs before deleting this automation".to_string(),
         ));
     }
     let affected = tx
@@ -1469,19 +1491,28 @@ pub fn list_automation_runs_page(
             "SELECT COUNT(*) FROM automation_runs",
         )
     };
-    let mut stmt = conn.prepare(sql).map_err(|error| db_error("Failed to prepare paged run history", error))?;
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|error| db_error("Failed to prepare paged run history", error))?;
     let map_row = |row: &Row<'_>| -> rusqlite::Result<AutomationRunRecord> {
         let delivered_json: String = row.get("delivered_json")?;
         let scheduled_for: String = row.get("scheduled_for")?;
         Ok(AutomationRunRecord {
-            id: row.get("id")?, automation_id: row.get("automation_id")?,
-            fired_at: scheduled_for.clone(), delivered: serde_json::from_str(&delivered_json).unwrap_or_default(),
-            session_id: row.get("session_id")?, status: Some(row.get("status")?),
-            trigger_type: row.get("trigger_type")?, scheduled_for,
+            id: row.get("id")?,
+            automation_id: row.get("automation_id")?,
+            fired_at: scheduled_for.clone(),
+            delivered: serde_json::from_str(&delivered_json).unwrap_or_default(),
+            session_id: row.get("session_id")?,
+            status: Some(row.get("status")?),
+            trigger_type: row.get("trigger_type")?,
+            scheduled_for,
             attempt: row.get::<_, i64>("attempt")?.max(1) as u32,
             max_attempts: row.get::<_, i64>("max_attempts")?.max(1) as u32,
-            started_at: row.get("started_at")?, finished_at: row.get("finished_at")?,
-            next_attempt_at: row.get("next_attempt_at")?, summary: row.get("summary")?, error: row.get("error")?,
+            started_at: row.get("started_at")?,
+            finished_at: row.get("finished_at")?,
+            next_attempt_at: row.get("next_attempt_at")?,
+            summary: row.get("summary")?,
+            error: row.get("error")?,
         })
     };
     let limit = limit.clamp(1, 20) as i64;
@@ -1490,14 +1521,17 @@ pub fn list_automation_runs_page(
         stmt.query_map(params![automation_id, limit, offset], map_row)
     } else {
         stmt.query_map(params![limit, offset], map_row)
-    }.map_err(|error| db_error("Failed to query paged run history", error))?;
-    let runs = rows.collect::<rusqlite::Result<Vec<_>>>()
+    }
+    .map_err(|error| db_error("Failed to query paged run history", error))?;
+    let runs = rows
+        .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|error| db_error("Failed to decode paged run history", error))?;
     let total: i64 = if let Some(automation_id) = automation_id {
         conn.query_row(count_sql, params![automation_id], |row| row.get(0))
     } else {
         conn.query_row(count_sql, [], |row| row.get(0))
-    }.map_err(|error| db_error("Failed to count run history", error))?;
+    }
+    .map_err(|error| db_error("Failed to count run history", error))?;
     Ok((runs, total.max(0) as usize))
 }
 
@@ -1735,30 +1769,10 @@ fn truncate_prompt_for_notification(prompt: &str) -> String {
     }
 }
 
-fn send_automation_notification(app_handle: &AppHandle, name: &str, prompt: &str) -> bool {
-    let body = truncate_prompt_for_notification(prompt);
-    match app_handle
-        .notification()
-        .builder()
-        .title(format!("自动化：{}", name))
-        .body(body)
-        .show()
-    {
-        Ok(()) => true,
-        Err(e) => {
-            tracing::warn!(
-                "[AutomationScheduler] notification failed for '{}': {}",
-                name,
-                e
-            );
-            false
-        }
-    }
-}
-
 fn create_automation_todo(
     app_handle: &AppHandle,
     vfs_db: &VfsDatabase,
+    run_id: &str,
     name: &str,
     prompt: &str,
     now: DateTime<Local>,
@@ -1786,19 +1800,78 @@ fn create_automation_todo(
         repeat_json: None,
     };
 
-    match VfsTodoRepo::create_todo_item(vfs_db, params) {
-        Ok(_) => {
-            let _ = app_handle.emit(
-                "todo://changed",
-                json!({ "source": "automation", "action": "create_item" }),
+    let mut conn = match vfs_db.get_conn_safe() {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::warn!(
+                "[AutomationScheduler] open VFS todo database failed: {}",
+                error
             );
-            true
+            return false;
         }
-        Err(e) => {
-            tracing::warn!("[AutomationScheduler] create_todo_item failed: {}", e);
-            false
+    };
+    let tx = match conn.transaction_with_behavior(TransactionBehavior::Immediate) {
+        Ok(tx) => tx,
+        Err(error) => {
+            tracing::warn!(
+                "[AutomationScheduler] begin todo delivery failed: {}",
+                error
+            );
+            return false;
         }
+    };
+    let existing: Option<String> = match tx
+        .query_row(
+            "SELECT todo_item_id FROM automation_todo_deliveries WHERE run_id = ?1",
+            params![run_id],
+            |row| row.get(0),
+        )
+        .optional()
+    {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(
+                "[AutomationScheduler] read todo delivery receipt failed: {}",
+                error
+            );
+            return false;
+        }
+    };
+    if existing.is_some() {
+        return true;
     }
+
+    let item = match VfsTodoRepo::create_todo_item_with_conn(&tx, params) {
+        Ok(item) => item,
+        Err(error) => {
+            tracing::warn!("[AutomationScheduler] create_todo_item failed: {}", error);
+            return false;
+        }
+    };
+    if let Err(error) = tx.execute(
+        "INSERT INTO automation_todo_deliveries (run_id, todo_item_id, created_at)
+         VALUES (?1, ?2, ?3)",
+        params![run_id, item.id, Utc::now().to_rfc3339()],
+    ) {
+        tracing::warn!(
+            "[AutomationScheduler] persist todo delivery receipt failed: {}",
+            error
+        );
+        return false;
+    }
+    if let Err(error) = tx.commit() {
+        tracing::warn!(
+            "[AutomationScheduler] commit todo delivery failed: {}",
+            error
+        );
+        return false;
+    }
+
+    let _ = app_handle.emit(
+        "todo://changed",
+        json!({ "source": "automation", "action": "create_item" }),
+    );
+    true
 }
 
 #[derive(Debug, Clone)]
@@ -1818,13 +1891,21 @@ fn parse_utc_datetime(raw: &str) -> Result<DateTime<Utc>> {
 
 fn scheduler_identity() -> String {
     format!(
-        "{}:{}",
+        "{}:{}:{}",
         hostname::get()
             .ok()
             .and_then(|value| value.into_string().ok())
             .unwrap_or_else(|| "local".to_string()),
-        std::process::id()
+        std::process::id(),
+        AUTOMATION_BOOT_ID.as_str(),
     )
+}
+
+fn lease_expires_at(now: DateTime<Utc>, timeout_seconds: u64) -> String {
+    (now + chrono::Duration::seconds(
+        timeout_seconds.saturating_add(AUTOMATION_LEASE_GRACE_SECS) as i64
+    ))
+    .to_rfc3339()
 }
 
 fn next_after_claim(
@@ -1910,12 +1991,13 @@ fn claim_scheduled_run(
 
     let run_id = format!("run_{}", uuid::Uuid::new_v4());
     let dedupe_key = format!("schedule:{}:{}", automation_id, scheduled_for.to_rfc3339());
+    let lease_expires_at = lease_expires_at(now, automation.timeout_seconds);
     tx.execute(
         "INSERT INTO automation_runs (
             id, automation_id, dedupe_key, trigger_type, scheduled_for, status,
-            attempt, max_attempts, claimed_by, claimed_at, started_at,
-            delivered_json, created_at, updated_at
-         ) VALUES (?1, ?2, ?3, 'schedule', ?4, 'running', 1, ?5, ?6, ?7, ?7, '[]', ?7, ?7)",
+            attempt, max_attempts, claimed_by, claimed_at, lease_expires_at,
+            started_at, delivered_json, created_at, updated_at
+         ) VALUES (?1, ?2, ?3, 'schedule', ?4, 'running', 1, ?5, ?6, ?7, ?8, ?7, '[]', ?7, ?7)",
         params![
             run_id,
             automation_id,
@@ -1924,6 +2006,7 @@ fn claim_scheduled_run(
             automation.max_retries as i64 + 1,
             scheduler_identity(),
             now.to_rfc3339(),
+            lease_expires_at,
         ],
     )
     .map_err(|error| db_error("Failed to create automation run", error))?;
@@ -1991,12 +2074,13 @@ fn create_manual_run(
             ));
         }
     };
+    let lease_expires_at = lease_expires_at(now, automation.timeout_seconds);
     tx.execute(
         "INSERT INTO automation_runs (
             id, automation_id, dedupe_key, trigger_type, scheduled_for, status,
-            attempt, max_attempts, claimed_by, claimed_at, started_at,
-            delivered_json, created_at, updated_at
-         ) VALUES (?1, ?2, ?3, 'manual', ?4, 'running', 1, ?5, ?6, ?4, ?4, '[]', ?4, ?4)",
+            retry_requested, attempt, max_attempts, claimed_by, claimed_at, lease_expires_at,
+            started_at, delivered_json, created_at, updated_at
+         ) VALUES (?1, ?2, ?3, 'manual', ?4, 'running', 1, 1, ?5, ?6, ?4, ?7, ?4, '[]', ?4, ?4)",
         params![
             run_id,
             automation.id,
@@ -2004,6 +2088,7 @@ fn create_manual_run(
             now.to_rfc3339(),
             automation.max_retries as i64 + 1,
             scheduler_identity(),
+            lease_expires_at,
         ],
     )
     .map_err(|error| db_error("Failed to create manual automation run", error))?;
@@ -2039,7 +2124,8 @@ fn complete_run(
         .execute(
             "UPDATE automation_runs
          SET status = ?2, delivered_json = ?3, session_id = ?4, summary = ?5,
-             error = ?6, finished_at = ?7, next_attempt_at = NULL, updated_at = ?7
+             error = ?6, finished_at = ?7, next_attempt_at = NULL,
+             lease_expires_at = NULL, updated_at = ?7
          WHERE id = ?1 AND attempt = ?8 AND status IN ('running', ?2)",
             params![
                 run_id,
@@ -2057,6 +2143,191 @@ fn complete_run(
         prune_run_history(&conn, run_id)?;
     }
     Ok(changed == 1)
+}
+
+fn load_run_deliveries(db: &Database, run_id: &str) -> Result<Vec<String>> {
+    let conn = db
+        .get_conn_safe()
+        .map_err(|cause| db_error("Failed to open automation database", cause))?;
+    let raw: String = conn
+        .query_row(
+            "SELECT delivered_json FROM automation_runs WHERE id = ?1",
+            params![run_id],
+            |row| row.get(0),
+        )
+        .map_err(|cause| db_error("Failed to load automation deliveries", cause))?;
+    serde_json::from_str(&raw).map_err(|cause| {
+        AppError::internal(format!("Failed to decode automation deliveries: {}", cause))
+    })
+}
+
+fn set_run_delivery_marker(
+    db: &Database,
+    run_id: &str,
+    expected_attempt: i64,
+    expected_status: &str,
+    channel: &str,
+    present: bool,
+) -> Result<bool> {
+    let mut conn = db
+        .get_conn_safe()
+        .map_err(|cause| db_error("Failed to open automation database", cause))?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|cause| db_error("Failed to start delivery update", cause))?;
+    let current: Option<(i64, String, String)> = tx
+        .query_row(
+            "SELECT attempt, status, delivered_json FROM automation_runs WHERE id = ?1",
+            params![run_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(|cause| db_error("Failed to load delivery state", cause))?;
+    let Some((attempt, status, raw)) = current else {
+        return Ok(false);
+    };
+    if attempt != expected_attempt || status != expected_status {
+        return Ok(false);
+    }
+    let mut delivered: Vec<String> = serde_json::from_str(&raw).unwrap_or_default();
+    let already_present = delivered.iter().any(|entry| entry == channel);
+    if present == already_present {
+        return Ok(true);
+    }
+    if present {
+        delivered.push(channel.to_string());
+    } else {
+        delivered.retain(|entry| entry != channel);
+    }
+    let serialized = serde_json::to_string(&delivered).map_err(|cause| {
+        AppError::internal(format!("Failed to serialize delivery state: {}", cause))
+    })?;
+    let changed = tx
+        .execute(
+            "UPDATE automation_runs SET delivered_json = ?2, updated_at = ?3
+             WHERE id = ?1 AND attempt = ?4 AND status = ?5",
+            params![
+                run_id,
+                serialized,
+                Utc::now().to_rfc3339(),
+                expected_attempt,
+                expected_status,
+            ],
+        )
+        .map_err(|cause| db_error("Failed to update delivery state", cause))?;
+    tx.commit()
+        .map_err(|cause| db_error("Failed to commit delivery state", cause))?;
+    Ok(changed == 1)
+}
+
+fn set_notification_retry_at(
+    db: &Database,
+    run_id: &str,
+    expected_attempt: i64,
+    expected_status: &str,
+    retry_at: Option<String>,
+) -> Result<()> {
+    let conn = db
+        .get_conn_safe()
+        .map_err(|cause| db_error("Failed to open automation database", cause))?;
+    conn.execute(
+        "UPDATE automation_runs SET next_attempt_at = ?2, updated_at = ?3
+         WHERE id = ?1 AND attempt = ?4 AND status = ?5",
+        params![
+            run_id,
+            retry_at,
+            Utc::now().to_rfc3339(),
+            expected_attempt,
+            expected_status,
+        ],
+    )
+    .map_err(|cause| db_error("Failed to update notification retry time", cause))?;
+    Ok(())
+}
+
+fn deliver_run_notification(
+    db: &Database,
+    app_handle: &AppHandle,
+    run_id: &str,
+    expected_attempt: i64,
+    expected_status: &str,
+    title: &str,
+    body: &str,
+) -> bool {
+    let existing = load_run_deliveries(db, run_id).unwrap_or_default();
+    if existing.iter().any(|entry| entry == "notification") {
+        let _ = set_run_delivery_marker(
+            db,
+            run_id,
+            expected_attempt,
+            expected_status,
+            "notification_pending",
+            false,
+        );
+        return true;
+    }
+
+    // Reserve before crossing into the OS notification service. Desktop APIs
+    // do not expose an idempotent acknowledgement, so this deliberately gives
+    // notifications at-most-once behavior across a process crash.
+    match set_run_delivery_marker(
+        db,
+        run_id,
+        expected_attempt,
+        expected_status,
+        "notification",
+        true,
+    ) {
+        Ok(true) => {}
+        Ok(false) => return false,
+        Err(error) => {
+            tracing::warn!(
+                "[AutomationScheduler] reserve notification failed: {}",
+                error
+            );
+            return false;
+        }
+    }
+
+    if send_notification(app_handle, run_id, title, body) {
+        let _ = set_run_delivery_marker(
+            db,
+            run_id,
+            expected_attempt,
+            expected_status,
+            "notification_pending",
+            false,
+        );
+        if expected_status != "running" {
+            let _ = set_notification_retry_at(db, run_id, expected_attempt, expected_status, None);
+        }
+        true
+    } else {
+        if let Err(error) = set_run_delivery_marker(
+            db,
+            run_id,
+            expected_attempt,
+            expected_status,
+            "notification",
+            false,
+        ) {
+            tracing::warn!(
+                "[AutomationScheduler] release notification reservation failed: {}",
+                error
+            );
+        }
+        if expected_status != "running" {
+            let retry_at = (Utc::now() + chrono::Duration::minutes(5)).to_rfc3339();
+            let _ = set_notification_retry_at(
+                db,
+                run_id,
+                expected_attempt,
+                expected_status,
+                Some(retry_at),
+            );
+        }
+        false
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2102,15 +2373,17 @@ fn retry_or_finish_run(
     terminal_status: &str,
     session_id: Option<&str>,
     error: &str,
+    notify_on_terminal: bool,
 ) -> Result<RunFinalizeOutcome> {
     let conn = db
         .get_conn_safe()
         .map_err(|cause| db_error("Failed to open automation database", cause))?;
-    let (attempt, max_attempts, current_status): (i64, i64, String) = conn
+    let (attempt, max_attempts, current_status, delivered_json): (i64, i64, String, String) = conn
         .query_row(
-            "SELECT attempt, max_attempts, status FROM automation_runs WHERE id = ?1",
+            "SELECT attempt, max_attempts, status, delivered_json
+             FROM automation_runs WHERE id = ?1",
             params![run_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .map_err(|cause| db_error("Failed to load automation attempt", cause))?;
     if attempt != expected_attempt || current_status != "running" {
@@ -2126,7 +2399,8 @@ fn retry_or_finish_run(
             .execute(
                 "UPDATE automation_runs
              SET status = 'retrying', error = ?2, session_id = ?3,
-                 next_attempt_at = ?4, finished_at = NULL, updated_at = ?5
+                 next_attempt_at = ?4, finished_at = NULL,
+                 lease_expires_at = NULL, updated_at = ?5
              WHERE id = ?1 AND status = 'running' AND attempt = ?6",
                 params![
                     run_id,
@@ -2144,12 +2418,22 @@ fn retry_or_finish_run(
             RunFinalizeOutcome::Superseded
         })
     } else {
+        let mut delivered: Vec<String> = serde_json::from_str(&delivered_json).unwrap_or_default();
+        if notify_on_terminal
+            && !delivered.iter().any(|entry| entry == "notification")
+            && !delivered
+                .iter()
+                .any(|entry| entry == "notification_pending")
+        {
+            delivered.push("notification_pending".to_string());
+        }
+        drop(conn);
         let changed = complete_run(
             db,
             run_id,
             expected_attempt,
             terminal_status,
-            &[],
+            &delivered,
             session_id,
             None,
             Some(error),
@@ -2168,7 +2452,7 @@ fn process_due_automation(
     app_handle: &AppHandle,
     claimed: ClaimedAutomationRun,
     now: DateTime<Local>,
-) {
+) -> Option<Value> {
     let automation = &claimed.automation;
 
     if automation.action_type == AutomationActionType::AgentTurn {
@@ -2192,59 +2476,127 @@ fn process_due_automation(
                     "spawn_error",
                     None,
                     &error,
+                    !automation.heartbeat,
                 )
                 .unwrap_or(RunFinalizeOutcome::Finished);
                 if finalize_outcome == RunFinalizeOutcome::Finished && !automation.heartbeat {
-                    let _ = send_notification(
+                    let _ = deliver_run_notification(
+                        db,
                         app_handle,
+                        &claimed.run_id,
+                        claimed.attempt,
+                        "spawn_error",
                         &format!("自动化失败：{}", automation.name),
                         &truncate_for_notification(&error, 120),
                     );
                 }
             }
         }
-        return;
+        return None;
     }
 
-    let mut delivered = Vec::new();
-    if send_automation_notification(app_handle, &automation.name, &automation.prompt) {
-        delivered.push("notification".to_string());
-    }
-    if let Some(vfs_db) = vfs_db {
-        if create_automation_todo(
-            app_handle,
-            vfs_db,
-            &automation.name,
-            &automation.prompt,
-            now,
-        ) {
-            delivered.push("todo".to_string());
+    let notification_body = truncate_prompt_for_notification(&automation.prompt);
+    let _ = deliver_run_notification(
+        db,
+        app_handle,
+        &claimed.run_id,
+        claimed.attempt,
+        "running",
+        &format!("自动化：{}", automation.name),
+        &notification_body,
+    );
+
+    let already_delivered = load_run_deliveries(db, &claimed.run_id).unwrap_or_default();
+    if !already_delivered.iter().any(|entry| entry == "todo") {
+        let todo_created = vfs_db.is_some_and(|vfs_db| {
+            create_automation_todo(
+                app_handle,
+                vfs_db,
+                &claimed.run_id,
+                &automation.name,
+                &automation.prompt,
+                now,
+            )
+        });
+        if todo_created {
+            if let Err(error) = set_run_delivery_marker(
+                db,
+                &claimed.run_id,
+                claimed.attempt,
+                "running",
+                "todo",
+                true,
+            ) {
+                tracing::warn!(
+                    "[AutomationScheduler] failed to persist todo delivery for '{}': {}",
+                    claimed.run_id,
+                    error
+                );
+            }
         }
     }
 
-    let status = if delivered.is_empty() {
-        "error"
-    } else {
-        "success"
+    let delivered = load_run_deliveries(db, &claimed.run_id).unwrap_or_default();
+    let notification_delivered = delivered.iter().any(|entry| entry == "notification");
+    let todo_delivered = delivered.iter().any(|entry| entry == "todo");
+    let error_message = match (notification_delivered, todo_delivered) {
+        (false, false) => "Notification and todo delivery both failed",
+        (false, true) => "Notification delivery failed",
+        (true, false) => "Todo delivery failed",
+        (true, true) => "",
     };
-    if let Err(error) = complete_run(
-        db,
-        &claimed.run_id,
-        claimed.attempt,
-        status,
-        &delivered,
-        None,
-        Some(&automation.prompt),
-        (status == "error").then_some("Notification and todo delivery both failed"),
-    ) {
-        tracing::warn!(
-            "[AutomationScheduler] failed to finish run '{}' for '{}': {}",
-            claimed.run_id,
-            automation.id,
-            error
-        );
-    }
+
+    let finalize_outcome = if error_message.is_empty() {
+        match complete_run(
+            db,
+            &claimed.run_id,
+            claimed.attempt,
+            "success",
+            &delivered,
+            None,
+            Some(&automation.prompt),
+            None,
+        ) {
+            Ok(true) => RunFinalizeOutcome::Finished,
+            Ok(false) => RunFinalizeOutcome::Superseded,
+            Err(error) => {
+                tracing::warn!(
+                    "[AutomationScheduler] failed to finish run '{}' for '{}': {}",
+                    claimed.run_id,
+                    automation.id,
+                    error
+                );
+                RunFinalizeOutcome::Superseded
+            }
+        }
+    } else {
+        retry_or_finish_run(
+            db,
+            &claimed.run_id,
+            claimed.attempt,
+            automation,
+            "error",
+            None,
+            error_message,
+            false,
+        )
+        .unwrap_or(RunFinalizeOutcome::Superseded)
+    };
+
+    let persisted_status = match finalize_outcome {
+        RunFinalizeOutcome::Finished if error_message.is_empty() => "success",
+        RunFinalizeOutcome::Finished => "error",
+        RunFinalizeOutcome::RetryScheduled => "retrying",
+        RunFinalizeOutcome::Superseded => "superseded",
+    };
     emit_automations_changed(app_handle, "run_completed", &automation.id);
+    Some(json!({
+        "status": persisted_status,
+        "automationId": automation.id,
+        "runId": claimed.run_id,
+        "delivered": delivered,
+        "error": (!error_message.is_empty()).then_some(error_message),
+    }))
 }
 
 // ============================================================================
@@ -2314,6 +2666,33 @@ fn automation_run_has_live_executor(run_id: &str) -> bool {
         .contains_key(run_id)
 }
 
+fn automation_run_is_running(db: &Database, run_id: &str, attempt: i64) -> Result<bool> {
+    let conn = db
+        .get_conn_safe()
+        .map_err(|error| db_error("Failed to open automation database", error))?;
+    conn.query_row(
+        "SELECT EXISTS(
+             SELECT 1 FROM automation_runs
+             WHERE id = ?1 AND attempt = ?2 AND status = 'running'
+         )",
+        params![run_id, attempt],
+        |row| row.get(0),
+    )
+    .map_err(|error| db_error("Failed to verify automation run state", error))
+}
+
+fn cancel_active_automation_runs_for_shutdown() {
+    let tokens: Vec<CancellationToken> = ACTIVE_AUTOMATION_RUNS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .values()
+        .map(|entry| entry.token.clone())
+        .collect();
+    for token in tokens {
+        token.cancel();
+    }
+}
+
 /// RAII 单飞守卫：drop（含 panic 路径）时释放占用
 pub struct AgentAutomationRunGuard {
     automation_id: String,
@@ -2344,9 +2723,9 @@ impl Drop for AgentAutomationRunGuard {
     }
 }
 
-/// 心跳回复是否应静默吞掉（最终回复包含 HEARTBEAT_OK 哨兵串）
+/// 心跳回复是否应静默吞掉（最终回复必须只有 HEARTBEAT_OK 哨兵串）
 pub fn heartbeat_is_silent(content: &str) -> bool {
-    content.contains(HEARTBEAT_OK_SENTINEL)
+    content.trim() == HEARTBEAT_OK_SENTINEL
 }
 
 fn truncate_for_notification(text: &str, max_chars: usize) -> String {
@@ -2359,10 +2738,21 @@ fn truncate_for_notification(text: &str, max_chars: usize) -> String {
     }
 }
 
-fn send_notification(app_handle: &AppHandle, title: &str, body: &str) -> bool {
+fn notification_id_for_run(run_id: &str) -> i32 {
+    let hash = run_id
+        .as_bytes()
+        .iter()
+        .fold(2_166_136_261_u32, |value, byte| {
+            (value ^ u32::from(*byte)).wrapping_mul(16_777_619)
+        });
+    (hash & i32::MAX as u32) as i32
+}
+
+fn send_notification(app_handle: &AppHandle, run_id: &str, title: &str, body: &str) -> bool {
     match app_handle
         .notification()
         .builder()
+        .id(notification_id_for_run(run_id))
         .title(title)
         .body(body)
         .show()
@@ -2432,7 +2822,14 @@ fn spawn_claimed_agent_turn_with_guard(
 ) {
     let (active_run_guard, cancellation_token) =
         ActiveAutomationRunGuard::register(&claimed.run_id);
-    tauri::async_runtime::spawn(async move {
+    // Cancellation can commit after the run row is claimed but before its
+    // in-memory token is registered. Re-read the durable state after
+    // registration so that such a cancellation wins deterministically.
+    if !automation_run_is_running(&db, &claimed.run_id, claimed.attempt).unwrap_or(false) {
+        cancellation_token.cancel();
+        return;
+    }
+    crate::background_tasks::spawn(async move {
         let _guard = guard;
         let _active_run_guard = active_run_guard;
         execute_agent_turn_automation(app_handle, db, claimed, cancellation_token).await;
@@ -2447,6 +2844,9 @@ async fn execute_agent_turn_automation(
     cancellation_token: CancellationToken,
 ) {
     let automation = claimed.automation;
+    if !automation_run_is_running(&db, &claimed.run_id, claimed.attempt).unwrap_or(false) {
+        return;
+    }
     // 会话由 headless runner 创建/复用：
     // - isolated（默认）：每次新建，metadata 标注 automation_run/source；
     // - named：复用 agent_session_id 指向的固定会话（跨运行积累上下文）
@@ -2463,15 +2863,17 @@ async fn execute_agent_turn_automation(
         cancellation_token: Some(cancellation_token.clone()),
     };
     let result = run_headless_turn(app_handle.clone(), request).await;
-    let was_cancelled = cancellation_token.is_cancelled();
 
     // named 模式：回存实际使用的会话 ID（首次运行/旧会话失效重建时会变化）
     if session_mode == HeadlessSessionMode::Named {
         if let Ok(outcome) = result.as_ref() {
             if automation.agent_session_id.as_deref() != Some(outcome.session_id.as_str()) {
-                if let Err(e) =
-                    update_automation_agent_session_id(&db, &automation.id, &outcome.session_id)
-                {
+                if let Err(e) = update_automation_agent_session_id(
+                    &db,
+                    &automation.id,
+                    automation.version,
+                    &outcome.session_id,
+                ) {
                     tracing::warn!(
                         "[AutomationScheduler] failed to persist named session id for '{}': {}",
                         automation.id,
@@ -2482,7 +2884,6 @@ async fn execute_agent_turn_automation(
         }
     }
 
-    let mut delivered: Vec<String> = Vec::new();
     let status: String;
     let summary: String;
     let session_id: Option<String>;
@@ -2502,21 +2903,6 @@ async fn execute_agent_turn_automation(
                 } else {
                     status = "success".to_string();
                     summary = truncate_for_notification(&outcome.summary, 120);
-                    let body = if summary.is_empty() {
-                        format!(
-                            "已完成，打开 Deep Student 查看会话（{}）",
-                            outcome.session_id
-                        )
-                    } else {
-                        format!("{}\n打开 Deep Student 查看完整会话", summary)
-                    };
-                    if send_notification(
-                        &app_handle,
-                        &format!("自动化完成：{}", automation.name),
-                        &body,
-                    ) {
-                        delivered.push("notification".to_string());
-                    }
                 }
             } else {
                 // timeout | error（消息/块已按管线取消/错误路径落库）
@@ -2534,9 +2920,15 @@ async fn execute_agent_turn_automation(
             }
         }
         Err(e) => {
-            // 基础设施级失败（管线未初始化 / 无窗口 / 会话流冲突等）
+            // 基础设施级失败（管线未初始化 / 无窗口 / 会话流冲突等）。
+            // A pre-start external cancellation is represented by the typed
+            // ChatV2 cancellation error rather than inferred from token state.
             session_id = None;
-            status = "error".to_string();
+            status = if matches!(&e, crate::chat_v2::error::ChatV2Error::Cancelled) {
+                "cancelled".to_string()
+            } else {
+                "error".to_string()
+            };
             summary = truncate_for_notification(&e.to_string(), 160);
             tracing::warn!(
                 "[AutomationScheduler] agent_turn automation '{}' failed: {}",
@@ -2546,14 +2938,30 @@ async fn execute_agent_turn_automation(
         }
     }
 
+    // Shutdown cancellation is not a user decision and must not consume an
+    // attempt or turn the durable run into `cancelled`. The next process boot
+    // immediately recovers this foreign lease.
+    if status == "cancelled" && automation_app_is_exiting() {
+        tracing::info!(
+            "[AutomationScheduler] leaving run '{}' recoverable during shutdown",
+            claimed.run_id
+        );
+        return;
+    }
+
     let successful = matches!(status.as_str(), "success" | "heartbeat_ok");
+    let completion_deliveries = if status == "success" && !automation.heartbeat {
+        vec!["notification_pending".to_string()]
+    } else {
+        Vec::new()
+    };
     let finalize_outcome = if successful {
         match complete_run(
             &db,
             &claimed.run_id,
             claimed.attempt,
             &status,
-            &delivered,
+            &completion_deliveries,
             session_id.as_deref(),
             Some(&summary),
             None,
@@ -2562,7 +2970,28 @@ async fn execute_agent_turn_automation(
             Ok(false) => RunFinalizeOutcome::Superseded,
             Err(error) => {
                 tracing::warn!("[AutomationScheduler] failed to complete run: {}", error);
-                RunFinalizeOutcome::Finished
+                RunFinalizeOutcome::Superseded
+            }
+        }
+    } else if status == "cancelled" {
+        match complete_run(
+            &db,
+            &claimed.run_id,
+            claimed.attempt,
+            "cancelled",
+            &[],
+            session_id.as_deref(),
+            Some(&summary),
+            Some(&summary),
+        ) {
+            Ok(true) => RunFinalizeOutcome::Finished,
+            Ok(false) => RunFinalizeOutcome::Superseded,
+            Err(error) => {
+                tracing::warn!(
+                    "[AutomationScheduler] failed to persist cancellation: {}",
+                    error
+                );
+                RunFinalizeOutcome::Superseded
             }
         }
     } else {
@@ -2574,11 +3003,12 @@ async fn execute_agent_turn_automation(
             &status,
             session_id.as_deref(),
             &summary,
+            !automation.heartbeat,
         ) {
             Ok(value) => value,
             Err(error) => {
                 tracing::warn!("[AutomationScheduler] failed to persist retry: {}", error);
-                RunFinalizeOutcome::Finished
+                RunFinalizeOutcome::Superseded
             }
         }
     };
@@ -2589,29 +3019,36 @@ async fn execute_agent_turn_automation(
     }
     let retry_scheduled = finalize_outcome == RunFinalizeOutcome::RetryScheduled;
 
-    if !successful && !retry_scheduled && !automation.heartbeat && !was_cancelled {
-        if send_notification(
+    if successful && status == "success" {
+        let body = match session_id.as_deref() {
+            Some(session_id) if summary.is_empty() => {
+                format!("已完成，打开 Deep Student 查看会话（{}）", session_id)
+            }
+            Some(_) => format!("{}\n打开 Deep Student 查看完整会话", summary),
+            None => summary.clone(),
+        };
+        let _ = deliver_run_notification(
+            &db,
             &app_handle,
+            &claimed.run_id,
+            claimed.attempt,
+            "success",
+            &format!("自动化完成：{}", automation.name),
+            &body,
+        );
+    } else if !successful && !retry_scheduled && status != "cancelled" && !automation.heartbeat {
+        let _ = deliver_run_notification(
+            &db,
+            &app_handle,
+            &claimed.run_id,
+            claimed.attempt,
+            &status,
             &format!("自动化失败：{}", automation.name),
             &summary,
-        ) {
-            delivered.push("notification".to_string());
-            let _ = complete_run(
-                &db,
-                &claimed.run_id,
-                claimed.attempt,
-                &status,
-                &delivered,
-                session_id.as_deref(),
-                Some(&summary),
-                Some(&summary),
-            );
-        }
+        );
     }
 
-    let emitted_status = if was_cancelled {
-        "cancelled"
-    } else if retry_scheduled {
+    let emitted_status = if retry_scheduled {
         "retrying"
     } else {
         status.as_str()
@@ -2810,113 +3247,145 @@ const fn default_true() -> bool {
     true
 }
 
-#[tauri::command]
-pub fn chat_v2_automation_list(
-    db: tauri::State<'_, Arc<Database>>,
-) -> std::result::Result<Value, String> {
-    automation_list_response(&db).map_err(|error| error.to_string())
+async fn run_automation_command_blocking<F>(operation: F) -> std::result::Result<Value, String>
+where
+    F: FnOnce() -> std::result::Result<Value, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(operation)
+        .await
+        .map_err(|error| format!("Automation command task failed: {error}"))?
 }
 
 #[tauri::command]
-pub fn chat_v2_automation_create(
+pub async fn chat_v2_automation_list(
+    db: tauri::State<'_, Arc<Database>>,
+) -> std::result::Result<Value, String> {
+    let db = db.inner().clone();
+    run_automation_command_blocking(move || {
+        automation_list_response(&db).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn chat_v2_automation_create(
     request: AutomationCreateCommandRequest,
     app_handle: AppHandle,
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    let automation = create_automation(
-        &db,
-        AutomationCreateFields {
-            name: request.name,
-            schedule: request.schedule.into(),
-            prompt: request.prompt,
-            enabled: request.enabled,
-            action_type: request.action_type,
-            heartbeat: false,
-            agent_prompt: request.agent_prompt,
-            session_mode: request.session_mode,
-            model_id: request.model_id,
-            catch_up_policy: request.catch_up_policy,
-            max_retries: request.max_retries,
-            retry_backoff_seconds: request.retry_backoff_seconds,
-            timeout_seconds: request.timeout_seconds,
-            source_session_id: "ui".to_string(),
-        },
-    )
-    .map_err(|error| error.to_string())?;
-    emit_automations_changed(&app_handle, "create", &automation.id);
-    Ok(json!({
-        "success": true,
-        "automation": automation_to_list_item(&automation, Local::now()),
-    }))
+    let db = db.inner().clone();
+    let app_handle = app_handle.clone();
+    run_automation_command_blocking(move || {
+        let automation = create_automation(
+            &db,
+            AutomationCreateFields {
+                name: request.name,
+                schedule: request.schedule.into(),
+                prompt: request.prompt,
+                enabled: request.enabled,
+                action_type: request.action_type,
+                heartbeat: false,
+                agent_prompt: request.agent_prompt,
+                session_mode: request.session_mode,
+                model_id: request.model_id,
+                catch_up_policy: request.catch_up_policy,
+                max_retries: request.max_retries,
+                retry_backoff_seconds: request.retry_backoff_seconds,
+                timeout_seconds: request.timeout_seconds,
+                source_session_id: "ui".to_string(),
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        emit_automations_changed(&app_handle, "create", &automation.id);
+        Ok(json!({
+            "success": true,
+            "automation": automation_to_list_item(&automation, Local::now()),
+        }))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn chat_v2_automation_set_enabled(
+pub async fn chat_v2_automation_set_enabled(
     automation_id: String,
     expected_version: u64,
     enabled: bool,
     app_handle: AppHandle,
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    let (previous, current) =
-        set_automation_enabled(&db, &automation_id, expected_version, enabled)
-            .map_err(|error| serialize_automation_update_error(error, false))?;
-    emit_automations_changed(&app_handle, "set_enabled", &automation_id);
-    Ok(json!({
-        "success": true,
-        "previous": automation_to_list_item(&previous, Local::now()),
-        "current": automation_to_list_item(&current, Local::now()),
-    }))
+    let db = db.inner().clone();
+    let app_handle = app_handle.clone();
+    run_automation_command_blocking(move || {
+        let (previous, current) =
+            set_automation_enabled(&db, &automation_id, expected_version, enabled)
+                .map_err(|error| serialize_automation_update_error(error, false))?;
+        emit_automations_changed(&app_handle, "set_enabled", &automation_id);
+        Ok(json!({
+            "success": true,
+            "previous": automation_to_list_item(&previous, Local::now()),
+            "current": automation_to_list_item(&current, Local::now()),
+        }))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn chat_v2_automation_update(
+pub async fn chat_v2_automation_update(
     request: AutomationUpdateCommandRequest,
     app_handle: AppHandle,
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    let automation_id = request.automation_id.trim().to_string();
-    if automation_id.is_empty() {
-        return Err("automationId must not be empty".to_string());
-    }
-    let (previous, current) = update_automation_full(
-        &db,
-        &automation_id,
-        request.expected_version,
-        AutomationUpdateFields {
-            name: request.name,
-            schedule: request.schedule.map(Into::into),
-            prompt: request.prompt,
-            action_type: request.action_type,
-            agent_prompt: request.agent_prompt,
-            session_mode: request.session_mode,
-            model_id: request.model_id,
-            catch_up_policy: request.catch_up_policy,
-            max_retries: request.max_retries,
-            retry_backoff_seconds: request.retry_backoff_seconds,
-            timeout_seconds: request.timeout_seconds,
-        },
-    )
-    .map_err(|error| serialize_automation_update_error(error, false))?;
-    emit_automations_changed(&app_handle, "update", &automation_id);
-    Ok(json!({
-        "success": true,
-        "previous": automation_to_list_item(&previous, Local::now()),
-        "current": automation_to_list_item(&current, Local::now()),
-        "next_trigger": current.next_run_at,
-    }))
+    let db = db.inner().clone();
+    let app_handle = app_handle.clone();
+    run_automation_command_blocking(move || {
+        let automation_id = request.automation_id.trim().to_string();
+        if automation_id.is_empty() {
+            return Err("automationId must not be empty".to_string());
+        }
+        let (previous, current) = update_automation_full(
+            &db,
+            &automation_id,
+            request.expected_version,
+            AutomationUpdateFields {
+                name: request.name,
+                schedule: request.schedule.map(Into::into),
+                prompt: request.prompt,
+                action_type: request.action_type,
+                agent_prompt: request.agent_prompt,
+                session_mode: request.session_mode,
+                model_id: request.model_id,
+                catch_up_policy: request.catch_up_policy,
+                max_retries: request.max_retries,
+                retry_backoff_seconds: request.retry_backoff_seconds,
+                timeout_seconds: request.timeout_seconds,
+            },
+        )
+        .map_err(|error| serialize_automation_update_error(error, false))?;
+        emit_automations_changed(&app_handle, "update", &automation_id);
+        Ok(json!({
+            "success": true,
+            "previous": automation_to_list_item(&previous, Local::now()),
+            "current": automation_to_list_item(&current, Local::now()),
+            "next_trigger": current.next_run_at,
+        }))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn chat_v2_automation_runs(
+pub async fn chat_v2_automation_runs(
     automation_id: Option<String>,
     limit: Option<usize>,
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    let runs = list_automation_runs(&db, automation_id.as_deref(), limit.unwrap_or(50))
-        .map_err(|error| error.to_string())?;
-    let count = runs.len();
-    Ok(json!({ "runs": runs, "count": count }))
+    let db = db.inner().clone();
+    run_automation_command_blocking(move || {
+        let runs = list_automation_runs(&db, automation_id.as_deref(), limit.unwrap_or(50))
+            .map_err(|error| error.to_string())?;
+        let count = runs.len();
+        Ok(json!({ "runs": runs, "count": count }))
+    })
+    .await
 }
 
 pub fn retry_automation_run(db: &Database, run_id: &str) -> Result<()> {
@@ -2928,7 +3397,14 @@ pub fn retry_automation_run(db: &Database, run_id: &str) -> Result<()> {
         .execute(
             "UPDATE automation_runs
              SET status = 'retrying', next_attempt_at = ?2, finished_at = NULL,
-                 error = NULL, max_attempts = MAX(max_attempts, attempt + 1), updated_at = ?2
+                 error = NULL, trigger_type = 'retry', retry_requested = 1,
+                 lease_expires_at = NULL,
+                 delivered_json = CASE WHEN EXISTS (
+                     SELECT 1 FROM automation_definitions a
+                     WHERE a.id = automation_runs.automation_id
+                       AND a.action_type = 'agent_turn'
+                 ) THEN '[]' ELSE delivered_json END,
+                 max_attempts = MAX(max_attempts, attempt + 1), updated_at = ?2
              WHERE id = ?1 AND status IN ('error', 'timeout', 'spawn_error', 'cancelled')",
             params![run_id, now],
         )
@@ -2948,7 +3424,7 @@ pub fn cancel_automation_run(db: &Database, run_id: &str) -> Result<()> {
         .execute(
             "UPDATE automation_runs
              SET status = 'cancelled', finished_at = ?2, next_attempt_at = NULL,
-                 updated_at = ?2
+                 lease_expires_at = NULL, retry_requested = 0, updated_at = ?2
              WHERE id = ?1 AND status IN ('queued', 'running', 'retrying')",
             params![run_id, now],
         )
@@ -2970,78 +3446,101 @@ pub fn cancel_automation_run(db: &Database, run_id: &str) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn chat_v2_automation_retry_run(
+pub async fn chat_v2_automation_retry_run(
     run_id: String,
     app_handle: AppHandle,
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    retry_automation_run(&db, &run_id).map_err(|error| error.to_string())?;
-    emit_automations_changed(&app_handle, "retry", "");
-    Ok(json!({ "success": true, "runId": run_id }))
+    let db = db.inner().clone();
+    let app_handle = app_handle.clone();
+    run_automation_command_blocking(move || {
+        retry_automation_run(&db, &run_id).map_err(|error| error.to_string())?;
+        emit_automations_changed(&app_handle, "retry", "");
+        Ok(json!({ "success": true, "runId": run_id }))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn chat_v2_automation_cancel_run(
+pub async fn chat_v2_automation_cancel_run(
     run_id: String,
     app_handle: AppHandle,
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    cancel_automation_run(&db, &run_id).map_err(|error| error.to_string())?;
-    emit_automations_changed(&app_handle, "cancel_run", "");
-    Ok(json!({ "success": true, "runId": run_id }))
+    let db = db.inner().clone();
+    let app_handle = app_handle.clone();
+    run_automation_command_blocking(move || {
+        cancel_automation_run(&db, &run_id).map_err(|error| error.to_string())?;
+        emit_automations_changed(&app_handle, "cancel_run", "");
+        Ok(json!({ "success": true, "runId": run_id }))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn chat_v2_automation_summary(
+pub async fn chat_v2_automation_summary(
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    let conn = db.get_conn_safe().map_err(|error| error.to_string())?;
-    let enabled: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM automation_definitions WHERE enabled = 1",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let running: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM automation_runs WHERE status = 'running'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let failed: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM automation_runs
-             WHERE status IN ('error', 'timeout', 'spawn_error')
-               AND finished_at >= ?1",
-            params![(Utc::now() - chrono::Duration::hours(24)).to_rfc3339()],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    let next_run_at: Option<String> = conn
-        .query_row(
-            "SELECT MIN(run_at) FROM (
-                 SELECT next_run_at AS run_at
-                 FROM automation_definitions
-                 WHERE enabled = 1 AND next_run_at IS NOT NULL
-                 UNION ALL
-                 SELECT r.next_attempt_at AS run_at
-                 FROM automation_runs r
-                 JOIN automation_definitions a ON a.id = r.automation_id
-                 WHERE a.enabled = 1 AND r.status = 'retrying'
-                   AND r.next_attempt_at IS NOT NULL
-             )",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
+    let db = db.inner().clone();
+    run_automation_command_blocking(move || automation_summary_response(&db)).await
+}
+
+fn automation_summary_response(db: &Database) -> std::result::Result<Value, String> {
+    let (enabled, running, failed, next_run_at) = {
+        let conn = db.get_conn_safe().map_err(|error| error.to_string())?;
+        let enabled: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM automation_definitions WHERE enabled = 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        let running: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM automation_runs WHERE status = 'running'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        let failed: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM automation_runs
+                 WHERE status IN ('error', 'timeout', 'spawn_error')
+                   AND finished_at >= ?1",
+                params![(Utc::now() - chrono::Duration::hours(24)).to_rfc3339()],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        let next_run_at: Option<String> = conn
+            .query_row(
+                "SELECT MIN(run_at) FROM (
+                     SELECT next_run_at AS run_at
+                     FROM automation_definitions
+                     WHERE enabled = 1 AND next_run_at IS NOT NULL
+                     UNION ALL
+                     SELECT r.next_attempt_at AS run_at
+                     FROM automation_runs r
+                     JOIN automation_definitions a ON a.id = r.automation_id
+                     WHERE r.status = 'retrying'
+                       AND (a.enabled = 1 OR r.retry_requested = 1)
+                       AND r.next_attempt_at IS NOT NULL
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        (enabled, running, failed, next_run_at)
+    };
+
+    // `automation_background_enabled` acquires the same database mutex. Keep
+    // this read outside the summary-query guard to avoid a recursive lock.
+    let background_enabled = automation_background_enabled(db);
     Ok(json!({
         "enabledCount": enabled,
         "runningCount": running,
         "failedCount": failed,
         "nextRunAt": next_run_at,
-        "backgroundEnabled": automation_background_enabled(&db),
+        "backgroundEnabled": background_enabled,
     }))
 }
 
@@ -3061,36 +3560,46 @@ pub fn should_keep_automation_background(db: &Database) -> bool {
 }
 
 #[tauri::command]
-pub fn chat_v2_automation_set_background_enabled(
+pub async fn chat_v2_automation_set_background_enabled(
     enabled: bool,
     app_handle: AppHandle,
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    db.save_setting(
-        AUTOMATION_BACKGROUND_KEY,
-        if enabled { "true" } else { "false" },
-    )
-    .map_err(|error| error.to_string())?;
-    emit_automations_changed(&app_handle, "background", "");
-    Ok(json!({ "success": true, "enabled": enabled }))
+    let db = db.inner().clone();
+    let app_handle = app_handle.clone();
+    run_automation_command_blocking(move || {
+        db.save_setting(
+            AUTOMATION_BACKGROUND_KEY,
+            if enabled { "true" } else { "false" },
+        )
+        .map_err(|error| error.to_string())?;
+        emit_automations_changed(&app_handle, "background", "");
+        Ok(json!({ "success": true, "enabled": enabled }))
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn chat_v2_automation_delete(
+pub async fn chat_v2_automation_delete(
     automation_id: String,
     expected_version: u64,
     app_handle: AppHandle,
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    let deleted = delete_automation(&db, &automation_id, expected_version)
-        .map_err(|error| serialize_automation_update_error(error, false))?;
-    emit_automations_changed(&app_handle, "delete", &automation_id);
-    Ok(json!({
-        "success": true,
-        "automationId": automation_id,
-        "deleted": automation_to_list_item(&deleted, Local::now()),
-        "reversible": false,
-    }))
+    let db = db.inner().clone();
+    let app_handle = app_handle.clone();
+    run_automation_command_blocking(move || {
+        let deleted = delete_automation(&db, &automation_id, expected_version)
+            .map_err(|error| serialize_automation_update_error(error, false))?;
+        emit_automations_changed(&app_handle, "delete", &automation_id);
+        Ok(json!({
+            "success": true,
+            "automationId": automation_id,
+            "deleted": automation_to_list_item(&deleted, Local::now()),
+            "reversible": false,
+        }))
+    })
+    .await
 }
 
 pub fn run_automation_now_core(
@@ -3134,8 +3643,16 @@ pub fn run_automation_now_core(
             let claimed = create_manual_run(&db, automation_id, expected_version)
                 .map_err(|error| serialize_automation_update_error(error, agent_facing))?;
             let run_id = claimed.run_id.clone();
-            process_due_automation(&db, vfs_db.as_ref(), &app_handle, claimed, Local::now());
-            json!({ "status": "notified", "automationId": automation_id, "runId": run_id })
+            process_due_automation(&db, vfs_db.as_ref(), &app_handle, claimed, Local::now())
+                .unwrap_or_else(|| {
+                    json!({
+                        "status": "error",
+                        "automationId": automation_id,
+                        "runId": run_id,
+                        "delivered": [],
+                        "error": "Notify automation did not produce a delivery result",
+                    })
+                })
         }
     };
     emit_automations_changed(&app_handle, "run_now", automation_id);
@@ -3153,13 +3670,12 @@ pub async fn chat_v2_automation_run_now(
     app_handle: AppHandle,
     db: tauri::State<'_, Arc<Database>>,
 ) -> std::result::Result<Value, String> {
-    run_automation_now_core(
-        &automation_id,
-        expected_version,
-        app_handle,
-        db.inner().clone(),
-        false,
-    )
+    let db = db.inner().clone();
+    let app_handle = app_handle.clone();
+    run_automation_command_blocking(move || {
+        run_automation_now_core(&automation_id, expected_version, app_handle, db, false)
+    })
+    .await
 }
 
 pub fn update_automation_last_run_at(
@@ -3184,18 +3700,32 @@ pub fn update_automation_last_run_at(
 pub fn update_automation_agent_session_id(
     db: &Database,
     automation_id: &str,
+    expected_version: u64,
     session_id: &str,
 ) -> Result<()> {
     let conn = db
         .get_conn_safe()
         .map_err(|error| db_error("Failed to open automation database", error))?;
-    conn.execute(
-        "UPDATE automation_definitions
+    let changed = conn
+        .execute(
+            "UPDATE automation_definitions
          SET agent_session_id = ?2, updated_at = ?3
-         WHERE id = ?1",
-        params![automation_id, session_id, Utc::now().to_rfc3339()],
-    )
-    .map_err(|error| db_error("Failed to update automation session", error))?;
+         WHERE id = ?1 AND version = ?4
+           AND action_type = 'agent_turn' AND session_mode = 'named'",
+            params![
+                automation_id,
+                session_id,
+                Utc::now().to_rfc3339(),
+                expected_version as i64,
+            ],
+        )
+        .map_err(|error| db_error("Failed to update automation session", error))?;
+    if changed == 0 {
+        tracing::debug!(
+            "[AutomationScheduler] skipped stale named-session write for '{}'",
+            automation_id
+        );
+    }
     Ok(())
 }
 
@@ -3241,7 +3771,7 @@ fn due_retry_ids(db: &Database, now: DateTime<Utc>) -> Result<Vec<String>> {
             "SELECT r.id
              FROM automation_runs r
              JOIN automation_definitions a ON a.id = r.automation_id
-             WHERE r.status = 'retrying' AND r.next_attempt_at <= ?1 AND a.enabled = 1
+             WHERE r.status = 'retrying' AND r.next_attempt_at <= ?1
              ORDER BY r.next_attempt_at ASC LIMIT 8",
         )
         .map_err(|error| db_error("Failed to prepare automation retries", error))?;
@@ -3265,36 +3795,43 @@ fn claim_retry_run(db: &Database, run_id: &str) -> Result<Option<ClaimedAutomati
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| db_error("Failed to start retry claim", error))?;
-    let run: Option<(String, String, i64)> = tx
+    let run: Option<(String, String, i64, bool)> = tx
         .query_row(
-            "SELECT automation_id, scheduled_for, attempt FROM automation_runs
+            "SELECT automation_id, scheduled_for, attempt, retry_requested
+             FROM automation_runs
              WHERE id = ?1 AND status = 'retrying' AND next_attempt_at <= ?2",
             params![run_id, Utc::now().to_rfc3339()],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .optional()
         .map_err(|error| db_error("Failed to load retry run", error))?;
-    let Some((automation_id, scheduled_for, previous_attempt)) = run else {
+    let Some((automation_id, scheduled_for, previous_attempt, retry_requested)) = run else {
         return Ok(None);
     };
     let automation = tx
         .query_row(
-            "SELECT * FROM automation_definitions WHERE id = ?1 AND enabled = 1",
+            "SELECT * FROM automation_definitions WHERE id = ?1",
             params![automation_id],
             row_to_automation,
         )
         .optional()
         .map_err(|error| db_error("Failed to load retry automation", error))?;
     let Some(automation) = automation else {
+        return Ok(None);
+    };
+    if !automation.enabled && !retry_requested {
         tx.execute(
-            "UPDATE automation_runs SET status = 'cancelled', finished_at = ?2, updated_at = ?2 WHERE id = ?1",
+            "UPDATE automation_runs
+             SET status = 'cancelled', finished_at = ?2, lease_expires_at = NULL,
+                 updated_at = ?2
+             WHERE id = ?1",
             params![run_id, Utc::now().to_rfc3339()],
         )
         .map_err(|error| db_error("Failed to cancel disabled retry", error))?;
         tx.commit()
             .map_err(|error| db_error("Failed to commit retry cancellation", error))?;
         return Ok(None);
-    };
+    }
     let has_other_running: bool = tx
         .query_row(
             "SELECT EXISTS(
@@ -3310,14 +3847,16 @@ fn claim_retry_run(db: &Database, run_id: &str) -> Result<Option<ClaimedAutomati
         return Ok(None);
     }
     let now = Utc::now().to_rfc3339();
+    let lease_expires_at = lease_expires_at(Utc::now(), automation.timeout_seconds);
     let changed = tx
         .execute(
             "UPDATE automation_runs
              SET status = 'running', trigger_type = 'retry', attempt = attempt + 1,
-                 claimed_by = ?2, claimed_at = ?3, started_at = ?3,
-                 finished_at = NULL, next_attempt_at = NULL, updated_at = ?3
+                 claimed_by = ?2, claimed_at = ?3, lease_expires_at = ?4,
+                 started_at = ?3, finished_at = NULL, next_attempt_at = NULL,
+                 updated_at = ?3
              WHERE id = ?1 AND status = 'retrying'",
-            params![run_id, scheduler_identity(), now],
+            params![run_id, scheduler_identity(), now, lease_expires_at],
         )
         .map_err(|error| db_error("Failed to claim retry", error))?;
     if changed != 1 {
@@ -3335,19 +3874,27 @@ fn claim_retry_run(db: &Database, run_id: &str) -> Result<Option<ClaimedAutomati
 }
 
 fn recover_stale_automation_runs(db: &Database) -> Result<usize> {
-    let candidates: Vec<(String, String, String, i64)> = {
+    let candidates: Vec<(String, String, Option<String>, Option<String>, i64, bool)> = {
         let conn = db
             .get_conn_safe()
             .map_err(|error| db_error("Failed to open automation database", error))?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, automation_id, COALESCE(claimed_at, started_at, created_at), attempt
+                "SELECT id, automation_id, claimed_by, lease_expires_at, attempt,
+                        retry_requested
                  FROM automation_runs WHERE status = 'running'",
             )
             .map_err(|error| db_error("Failed to prepare stale runs", error))?;
         let rows = stmt
             .query_map([], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
             })
             .map_err(|error| db_error("Failed to query stale runs", error))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -3355,21 +3902,45 @@ fn recover_stale_automation_runs(db: &Database) -> Result<usize> {
     };
 
     let mut recovered = 0;
-    for (run_id, automation_id, claimed_at, attempt) in candidates {
+    let current_owner = scheduler_identity();
+    let now = Utc::now();
+    for (run_id, automation_id, claimed_by, lease_expires_at, attempt, retry_requested) in
+        candidates
+    {
         let Some(automation) = get_automation(db, &automation_id)? else {
             continue;
         };
-        let claimed_at = parse_utc_datetime(&claimed_at)?;
-        let stale_after = automation.timeout_seconds.saturating_add(60);
-        if Utc::now().signed_duration_since(claimed_at)
-            < chrono::Duration::seconds(stale_after as i64)
-        {
+        let foreign_owner = claimed_by.as_deref() != Some(current_owner.as_str());
+        let lease_expired = lease_expires_at
+            .as_deref()
+            .and_then(|value| parse_utc_datetime(value).ok())
+            .map_or(true, |expires_at| expires_at <= now);
+        if !foreign_owner && !lease_expired {
             continue;
         }
-        if !automation.enabled {
+        if !automation.enabled && !retry_requested {
             cancel_automation_run(db, &run_id)?;
             recovered += 1;
             continue;
+        }
+        if automation.action_type == AutomationActionType::Notify {
+            let delivered = load_run_deliveries(db, &run_id).unwrap_or_default();
+            let notification_done = delivered.iter().any(|entry| entry == "notification");
+            let todo_done = delivered.iter().any(|entry| entry == "todo");
+            if notification_done && todo_done {
+                complete_run(
+                    db,
+                    &run_id,
+                    attempt,
+                    "success",
+                    &delivered,
+                    None,
+                    Some(&automation.prompt),
+                    None,
+                )?;
+                recovered += 1;
+                continue;
+            }
         }
         let _ = retry_or_finish_run(
             db,
@@ -3379,10 +3950,95 @@ fn recover_stale_automation_runs(db: &Database) -> Result<usize> {
             "error",
             None,
             "Application stopped before the automation run completed",
+            automation.action_type == AutomationActionType::AgentTurn && !automation.heartbeat,
         )?;
         recovered += 1;
     }
     Ok(recovered)
+}
+
+fn deliver_pending_agent_notifications(db: &Database, app_handle: &AppHandle) -> Result<usize> {
+    let candidates: Vec<(
+        String,
+        i64,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
+    )> = {
+        let conn = db
+            .get_conn_safe()
+            .map_err(|error| db_error("Failed to open automation database", error))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT r.id, r.attempt, r.status, r.session_id, r.summary, r.error,
+                        r.delivered_json, a.name
+                 FROM automation_runs r
+                 JOIN automation_definitions a ON a.id = r.automation_id
+                 WHERE r.status IN ('success', 'error', 'timeout', 'spawn_error')
+                   AND (r.next_attempt_at IS NULL OR r.next_attempt_at <= ?1)
+                   AND EXISTS (
+                       SELECT 1 FROM json_each(r.delivered_json)
+                       WHERE json_each.value = 'notification_pending'
+                   )
+                 ORDER BY r.updated_at ASC
+                 LIMIT 8",
+            )
+            .map_err(|error| db_error("Failed to prepare pending notifications", error))?;
+        let rows = stmt
+            .query_map(params![Utc::now().to_rfc3339()], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            })
+            .map_err(|error| db_error("Failed to query pending notifications", error))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| db_error("Failed to decode pending notifications", error))?
+    };
+
+    let mut delivered_count = 0;
+    for (run_id, attempt, status, session_id, summary, error, delivered_json, name) in candidates {
+        let delivered: Vec<String> = serde_json::from_str(&delivered_json).unwrap_or_default();
+        if !delivered
+            .iter()
+            .any(|entry| entry == "notification_pending")
+        {
+            continue;
+        }
+        let successful = status == "success";
+        let body = if successful {
+            let summary = summary.unwrap_or_default();
+            match session_id.as_deref() {
+                Some(session_id) if summary.is_empty() => {
+                    format!("已完成，打开 Deep Student 查看会话（{}）", session_id)
+                }
+                Some(_) => format!("{}\n打开 Deep Student 查看完整会话", summary),
+                None => summary,
+            }
+        } else {
+            error
+                .or(summary)
+                .unwrap_or_else(|| "自动化运行失败".to_string())
+        };
+        let title = if successful {
+            format!("自动化完成：{}", name)
+        } else {
+            format!("自动化失败：{}", name)
+        };
+        if deliver_run_notification(db, app_handle, &run_id, attempt, &status, &title, &body) {
+            delivered_count += 1;
+        }
+    }
+    Ok(delivered_count)
 }
 
 pub fn tick_automations(
@@ -3391,6 +4047,7 @@ pub fn tick_automations(
     app_handle: &AppHandle,
 ) -> Result<()> {
     recover_stale_automation_runs(db)?;
+    deliver_pending_agent_notifications(db, app_handle)?;
     let automations = load_automations(db)?;
     let now = Local::now();
 
@@ -3446,32 +4103,60 @@ pub async fn start_automation_scheduler(
 ) {
     tracing::info!("[AutomationScheduler] 自动化调度器已启动");
 
-    if let Err(error) = migrate_legacy_automations(&database) {
-        tracing::warn!("[AutomationScheduler] legacy migration failed: {}", error);
-    }
-    match recover_stale_automation_runs(&database) {
-        Ok(count) if count > 0 => tracing::info!(
-            "[AutomationScheduler] recovered {} stale automation runs",
-            count
-        ),
-        Ok(_) => {}
-        Err(error) => tracing::warn!("[AutomationScheduler] stale run recovery failed: {}", error),
-    }
+    let initialization_database = database.clone();
+    if let Err(error) = tokio::task::spawn_blocking(move || {
+        if let Err(error) = migrate_legacy_automations(&initialization_database) {
+            tracing::warn!("[AutomationScheduler] legacy migration failed: {}", error);
+        }
+        match recover_stale_automation_runs(&initialization_database) {
+            Ok(count) if count > 0 => tracing::info!(
+                "[AutomationScheduler] recovered {} stale automation runs",
+                count
+            ),
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!("[AutomationScheduler] stale run recovery failed: {}", error)
+            }
+        }
 
-    // 幂等预置心跳自动化（默认 disabled，用户显式开启后按 interval 触发）
-    if let Err(e) = ensure_heartbeat_automation(&database) {
+        // 幂等预置心跳自动化（默认 disabled，用户显式开启后按 interval 触发）
+        if let Err(e) = ensure_heartbeat_automation(&initialization_database) {
+            tracing::warn!(
+                "[AutomationScheduler] ensure_heartbeat_automation failed: {}",
+                e
+            );
+        }
+    })
+    .await
+    {
         tracing::warn!(
-            "[AutomationScheduler] ensure_heartbeat_automation failed: {}",
-            e
+            "[AutomationScheduler] initialization task failed: {}",
+            error
         );
     }
 
     loop {
-        if let Err(e) = tick_automations(&database, vfs_db.as_ref(), &app_handle) {
-            tracing::warn!("[AutomationScheduler] tick failed: {}", e);
+        if AUTOMATION_SHUTDOWN_TOKEN.is_cancelled() {
+            break;
         }
-        sleep(Duration::from_secs(SCHEDULER_POLL_SECS)).await;
+        let tick_database = database.clone();
+        let tick_vfs_db = vfs_db.clone();
+        let tick_app_handle = app_handle.clone();
+        match tokio::task::spawn_blocking(move || {
+            tick_automations(&tick_database, tick_vfs_db.as_ref(), &tick_app_handle)
+        })
+        .await
+        {
+            Ok(Err(error)) => tracing::warn!("[AutomationScheduler] tick failed: {}", error),
+            Err(error) => tracing::warn!("[AutomationScheduler] tick task failed: {}", error),
+            Ok(Ok(())) => {}
+        }
+        tokio::select! {
+            _ = AUTOMATION_SHUTDOWN_TOKEN.cancelled() => break,
+            _ = sleep(Duration::from_secs(SCHEDULER_POLL_SECS)) => {}
+        }
     }
+    tracing::info!("[AutomationScheduler] 自动化调度器已停止");
 }
 
 #[cfg(test)]
@@ -3493,8 +4178,37 @@ mod tests {
             "../../migrations/mistakes/V20260714__automation_scheduler.sql"
         ))
         .expect("create automation tables");
+        conn.execute_batch(include_str!(
+            "../../migrations/mistakes/V20260715__harden_automation_runtime.sql"
+        ))
+        .expect("harden automation runtime");
         drop(conn);
         (temp_dir, db)
+    }
+
+    #[test]
+    fn automation_summary_releases_database_guard_before_reading_settings() {
+        let (_temp_dir, db) = setup_automation_db();
+        db.save_setting(AUTOMATION_BACKGROUND_KEY, "false")
+            .expect("disable background automation");
+        let db = Arc::new(db);
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let worker_db = db.clone();
+        let worker = std::thread::spawn(move || {
+            let _ = sender.send(automation_summary_response(&worker_db));
+        });
+
+        let summary = receiver
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("automation summary must not deadlock on the database mutex")
+            .expect("automation summary response");
+        worker.join().expect("summary worker");
+
+        assert_eq!(summary["enabledCount"], 0);
+        assert_eq!(summary["runningCount"], 0);
+        assert_eq!(summary["failedCount"], 0);
+        assert_eq!(summary["nextRunAt"], Value::Null);
+        assert_eq!(summary["backgroundEnabled"], false);
     }
 
     fn local_at(y: i32, m: u32, d: u32, hh: u32, mm: u32) -> DateTime<Local> {
@@ -3869,12 +4583,15 @@ mod tests {
     fn runtime_bookkeeping_does_not_bump_configuration_version() {
         let (_temp_dir, db) = setup_automation_db();
         let mut automation = sample_daily("09:00");
+        automation.action_type = AutomationActionType::AgentTurn;
+        automation.session_mode = Some(HeadlessSessionMode::Named);
         automation.next_run_at = None;
         save_automations(&db, std::slice::from_ref(&automation)).unwrap();
 
         initialize_next_run(&db, &automation).unwrap();
         update_automation_last_run_at(&db, &automation.id, &Utc::now().to_rfc3339()).unwrap();
-        update_automation_agent_session_id(&db, &automation.id, "sess_runtime").unwrap();
+        update_automation_agent_session_id(&db, &automation.id, automation.version, "sess_runtime")
+            .unwrap();
 
         let current = load_automations(&db).unwrap().remove(0);
         assert_eq!(current.version, automation.version);
@@ -3884,7 +4601,7 @@ mod tests {
     }
 
     #[test]
-    fn update_prompt_changes_effective_agent_prompt() {
+    fn update_prompt_preserves_independent_agent_prompt() {
         let (_temp_dir, db) = setup_automation_db();
         let mut definition = sample_daily("09:00");
         definition.action_type = AutomationActionType::AgentTurn;
@@ -3899,10 +4616,10 @@ mod tests {
             Some("new effective prompt".to_string()),
         )
         .expect("update prompt");
-        assert_eq!(effective_agent_prompt(&updated), "new effective prompt");
+        assert_eq!(effective_agent_prompt(&updated), "old effective prompt");
         assert_eq!(
             updated.agent_prompt.as_deref(),
-            Some("new effective prompt")
+            Some("old effective prompt")
         );
     }
 
@@ -4109,7 +4826,7 @@ mod tests {
     fn heartbeat_sentinel_detection() {
         assert!(heartbeat_is_silent("HEARTBEAT_OK"));
         assert!(heartbeat_is_silent("  HEARTBEAT_OK\n"));
-        assert!(heartbeat_is_silent("检查完成：HEARTBEAT_OK"));
+        assert!(!heartbeat_is_silent("检查完成：HEARTBEAT_OK"));
         assert!(!heartbeat_is_silent("今日有 3 张卡片到期，建议复习"));
         assert!(!heartbeat_is_silent(""));
     }
@@ -4325,6 +5042,7 @@ mod tests {
         )
         .unwrap();
 
+        set_automation_enabled(&db, &automation.id, automation.version, false).unwrap();
         retry_automation_run(&db, &run.run_id).unwrap();
         let retrying = list_automation_runs(&db, Some(&automation.id), 1).unwrap();
         assert_eq!(retrying[0].status.as_deref(), Some("retrying"));
@@ -4422,7 +5140,10 @@ mod tests {
         db.get_conn_safe()
             .unwrap()
             .execute(
-                "UPDATE automation_runs SET claimed_at = ?2, started_at = ?2 WHERE id = ?1",
+                "UPDATE automation_runs
+                 SET claimed_by = 'previous-process', claimed_at = ?2,
+                     started_at = ?2, lease_expires_at = ?2, retry_requested = 0
+                 WHERE id = ?1",
                 params![run.run_id, stale_at],
             )
             .unwrap();
@@ -4445,7 +5166,10 @@ mod tests {
         db.get_conn_safe()
             .unwrap()
             .execute(
-                "UPDATE automation_runs SET claimed_at = ?2, started_at = ?2 WHERE id = ?1",
+                "UPDATE automation_runs
+                 SET claimed_by = 'previous-process', claimed_at = ?2,
+                     started_at = ?2, lease_expires_at = ?2, retry_requested = 0
+                 WHERE id = ?1",
                 params![run.run_id, stale_at],
             )
             .unwrap();

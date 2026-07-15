@@ -363,6 +363,16 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             has_json_blobs: false,
             merge_notes: "Dedup prevention",
         },
+        TableClassification {
+            database: "vfs",
+            table_name: "automation_todo_deliveries",
+            primary_key: "run_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "todo_item_id",
+            has_json_blobs: false,
+            merge_notes: "Local idempotency receipts for automation todo side effects",
+        },
         // --- BackupOnly ---
         TableClassification {
             database: "vfs",
@@ -763,6 +773,26 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             business_unique_keys: "name",
             has_json_blobs: true,
             merge_notes: "User-created templates; fields_json/field_extraction_rules_json",
+        },
+        TableClassification {
+            database: "mistakes",
+            table_name: "automation_definitions",
+            primary_key: "id",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Device-local scheduler definitions included in full backups",
+        },
+        TableClassification {
+            database: "mistakes",
+            table_name: "automation_runs",
+            primary_key: "id",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "dedupe_key",
+            has_json_blobs: true,
+            merge_notes: "Durable local execution history and delivery state",
         },
         TableClassification {
             database: "mistakes",

@@ -859,6 +859,7 @@ impl Database {
             .with_context(|| format!("打开数据库连接失败: {:?}", new_path))?;
         new_conn.pragma_update(None, "journal_mode", &"WAL")?;
         new_conn.pragma_update(None, "synchronous", &"NORMAL")?;
+        new_conn.pragma_update(None, "foreign_keys", &"ON")?;
         new_conn.pragma_update(None, "busy_timeout", &3000i64)?;
 
         {
@@ -1176,6 +1177,11 @@ impl Database {
 
         let conn = Connection::open(db_path)
             .with_context(|| format!("打开数据库连接失败: {:?}", db_path))?;
+        // SQLite enables foreign keys per connection. Production constructs the
+        // database through `new` without calling `initialize_schema`, so this
+        // must be applied here for automation run cascades and every other FK.
+        conn.pragma_update(None, "foreign_keys", &"ON")?;
+        conn.pragma_update(None, "busy_timeout", &3000i64)?;
 
         // 初始化安全存储（使用 db_path 的父目录作为 app_data_dir，确保路径稳定）
         let secure_store_config = SecureStoreConfig::default();

@@ -208,6 +208,19 @@ pub const V20260714_AUTOMATION_SCHEDULER: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+/// V20260715: automation process leases, explicit-retry intent, and orphan cleanup
+pub const V20260715_HARDEN_AUTOMATION_RUNTIME: MigrationDef = MigrationDef::new(
+    20260715,
+    "harden_automation_runtime",
+    include_str!("../../../migrations/mistakes/V20260715__harden_automation_runtime.sql"),
+)
+.with_expected_columns(&[
+    ("automation_runs", "lease_expires_at"),
+    ("automation_runs", "retry_requested"),
+])
+.with_expected_indexes(&["idx_automation_runs_owner_lease"])
+.idempotent();
+
 /// V20260201 同步字段索引
 const MISTAKES_V20260201_SYNC_INDEXES: &[&str] = &[
     // mistakes 表同步索引
@@ -341,6 +354,7 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260712_FSRS_UNDO_SNAPSHOT,
         V20260713_APKG_CARD_IDENTITY,
         V20260714_AUTOMATION_SCHEDULER,
+        V20260715_HARDEN_AUTOMATION_RUNTIME,
     ],
 };
 
@@ -548,7 +562,7 @@ mod tests {
 
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260714,
+            20260715,
             "Latest version should track the newest published mistakes migration"
         );
     }

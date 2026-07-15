@@ -648,6 +648,16 @@ pub const V20260714_ADD_VECTOR_INDEX_PROFILES: MigrationDef = MigrationDef::new(
     "idx_lance_orphan_retry_due",
 ]);
 
+/// V20260715: deduplicate todo side effects across automation retries/recovery.
+pub const V20260715_AUTOMATION_TODO_DELIVERY_RECEIPTS: MigrationDef = MigrationDef::new(
+    20260715,
+    "automation_todo_delivery_receipts",
+    include_str!("../../../migrations/vfs/V20260715__automation_todo_delivery_receipts.sql"),
+)
+.with_expected_tables(&["automation_todo_deliveries"])
+.with_expected_indexes(&["idx_automation_todo_deliveries_item"])
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -690,6 +700,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260614_TODO_PARENT_CHECK_SOFTDELETE_FIX,
     V20260615_TODO_CYCLE_CHECK_FULL_GRAPH,
     V20260714_ADD_VECTOR_INDEX_PROFILES,
+    V20260715_AUTOMATION_TODO_DELIVERY_RECEIPTS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -745,6 +756,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     // Todo / Pomodoro
     "todo_lists",
     "todo_items",
+    "automation_todo_deliveries",
     "pomodoro_records",
     // 本地辅助队列
     "__blob_deletion_queue",
@@ -758,7 +770,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 36;
+pub const VFS_TABLE_COUNT: usize = 37;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -803,6 +815,7 @@ mod tests {
         // + V20260614 (todo_parent_check_softdelete_fix)
         // + V20260615 (todo_cycle_check_full_graph)
         // + V20260714 (add_vector_index_profiles)
+        // + V20260715 (automation_todo_delivery_receipts)
         assert_eq!(
             VFS_MIGRATION_SET.migrations.as_ptr(),
             VFS_MIGRATIONS.as_ptr()

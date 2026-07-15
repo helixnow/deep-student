@@ -782,7 +782,7 @@ pub struct HeadlessTurnResult {
     pub session_id: String,
     /// 助手消息 ID
     pub assistant_message_id: String,
-    /// completed | timeout | error
+    /// completed | cancelled | timeout | error
     pub status: String,
     /// 结果摘要（优先使用 attempt_completion 结果，否则使用助手正文；用于通知正文）
     pub summary: String,
@@ -829,7 +829,7 @@ pub struct HeadlessTurnOutcome {
 ///
 /// 基础设施级失败（管线未初始化 / 无可用窗口 / 会话创建失败 / 会话流冲突）
 /// 返回 `Err`；管线执行期的失败（LLM 错误、超时等）返回 `Ok` 且
-/// `status = timeout|error`，因为此时消息/块已按管线取消/错误路径落库，
+/// `status = cancelled|timeout|error`，因为此时消息/块已按管线取消/错误路径落库，
 /// 调用方可据此发失败通知。
 pub async fn run_headless_turn(
     app: AppHandle,
@@ -884,8 +884,15 @@ pub async fn run_headless_turn(
 
     let (status, error) = match exec {
         Ok(()) => ("completed".to_string(), None),
-        Err(e) if e.contains("timed out") => ("timeout".to_string(), Some(e)),
-        Err(e) => ("error".to_string(), Some(e)),
+        Err(HeadlessPipelineTermination::Cancelled) => (
+            "cancelled".to_string(),
+            Some("headless turn was cancelled".to_string()),
+        ),
+        Err(HeadlessPipelineTermination::Timeout { seconds }) => (
+            "timeout".to_string(),
+            Some(format!("headless agent turn timed out after {}s", seconds)),
+        ),
+        Err(HeadlessPipelineTermination::Failed(error)) => ("error".to_string(), Some(error)),
     };
 
     Ok(HeadlessTurnResult {
@@ -937,7 +944,8 @@ pub async fn run_headless_agent_turn(
         None,
         None,
     )
-    .await?;
+    .await
+    .map_err(HeadlessPipelineTermination::into_message)?;
 
     let content = summarize_assistant_message(&chat_v2_db, &assistant_message_id);
 
@@ -1047,6 +1055,25 @@ fn ensure_headless_session(db: &ChatV2Database, req: &HeadlessTurnRequest) -> Ch
 ///
 /// 注入 headless 工具白名单（schema + 执行双层 fail-closed），原子注册流，
 /// 硬超时命中后触发取消并限时等待管线保存部分结果。
+#[derive(Debug)]
+enum HeadlessPipelineTermination {
+    Cancelled,
+    Timeout { seconds: u64 },
+    Failed(String),
+}
+
+impl HeadlessPipelineTermination {
+    fn into_message(self) -> String {
+        match self {
+            Self::Cancelled => "headless turn was cancelled".to_string(),
+            Self::Timeout { seconds } => {
+                format!("headless agent turn timed out after {}s", seconds)
+            }
+            Self::Failed(message) => message,
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn execute_headless_pipeline(
     app: &AppHandle,
@@ -1058,23 +1085,30 @@ async fn execute_headless_pipeline(
     hard_timeout: std::time::Duration,
     max_tool_rounds_override: Option<u32>,
     external_cancellation_token: Option<CancellationToken>,
-) -> Result<(), String> {
+) -> Result<(), HeadlessPipelineTermination> {
     // —— 解析托管状态（缺失说明 Chat V2 降级运行，headless 不可用）
     let pipeline = app
         .try_state::<Arc<ChatV2Pipeline>>()
-        .ok_or_else(|| "ChatV2Pipeline 未初始化，headless 不可用".to_string())?
+        .ok_or_else(|| {
+            HeadlessPipelineTermination::Failed(
+                "ChatV2Pipeline 未初始化，headless 不可用".to_string(),
+            )
+        })?
         .inner()
         .clone();
     let chat_v2_state = app
         .try_state::<Arc<ChatV2State>>()
-        .ok_or_else(|| "ChatV2State 未初始化，headless 不可用".to_string())?
+        .ok_or_else(|| {
+            HeadlessPipelineTermination::Failed("ChatV2State 未初始化，headless 不可用".to_string())
+        })?
         .inner()
         .clone();
 
     // —— 事件发射所需的 Window（AppHandle 全局 emit 语义：无前端监听也无害）。
     //    Tauri 窗口在应用存续期间通常存活（最小化/隐藏不影响 emit）。
-    let window = resolve_emit_window(app)
-        .ok_or_else(|| "没有可用的应用窗口，无法创建事件发射通道".to_string())?;
+    let window = resolve_emit_window(app).ok_or_else(|| {
+        HeadlessPipelineTermination::Failed("没有可用的应用窗口，无法创建事件发射通道".to_string())
+    })?;
 
     let max_tool_rounds = max_tool_rounds_override
         .or_else(|| {
@@ -1124,25 +1158,33 @@ async fn execute_headless_pipeline(
     };
 
     // —— 原子注册流（named 会话可能与用户手动会话冲突，fail fast）
-    let cancel_token = if let Some(token) = external_cancellation_token {
-        if token.is_cancelled() {
-            return Err("headless turn 被外部取消".to_string());
-        }
+    if external_cancellation_token
+        .as_ref()
+        .is_some_and(CancellationToken::is_cancelled)
+    {
+        return Err(HeadlessPipelineTermination::Cancelled);
+    }
+
+    // The pipeline owns an independent token. A hard timeout cancels only this
+    // token; it must never mutate the caller's token because that token carries
+    // user/shutdown intent back to the durable scheduler.
+    let cancel_token = if external_cancellation_token.is_some() {
+        let pipeline_token = CancellationToken::new();
         chat_v2_state
-            .try_register_existing_token(session_id, token.clone())
+            .try_register_existing_token(session_id, pipeline_token.clone())
             .map_err(|_| {
-                format!(
+                HeadlessPipelineTermination::Failed(format!(
                     "会话 {} 已有活跃流，headless turn 取消（会话可能正被使用）",
                     session_id
-                )
+                ))
             })?;
-        token
+        pipeline_token
     } else {
         chat_v2_state.try_register_stream(session_id).map_err(|_| {
-            format!(
+            HeadlessPipelineTermination::Failed(format!(
                 "会话 {} 已有活跃流，headless turn 取消（会话可能正被使用）",
                 session_id
-            )
+            ))
         })?
     };
 
@@ -1164,35 +1206,72 @@ async fn execute_headless_pipeline(
     );
     tokio::pin!(pipeline_fut);
 
-    match tokio::time::timeout(hard_timeout, &mut pipeline_fut).await {
-        Ok(Ok(_msg_id)) => {
-            log::info!(
-                "[ChatV2::headless] headless turn 完成: session={}",
-                session_id
-            );
-            Ok(())
+    let hard_timeout_sleep = tokio::time::sleep(hard_timeout);
+    tokio::pin!(hard_timeout_sleep);
+
+    if let Some(external_token) = external_cancellation_token.as_ref() {
+        tokio::select! {
+            biased;
+            result = &mut pipeline_fut => {
+                return match result {
+                    Ok(_msg_id) => {
+                        log::info!(
+                            "[ChatV2::headless] headless turn 完成: session={}",
+                            session_id
+                        );
+                        Ok(())
+                    }
+                    Err(ChatV2Error::Cancelled) => Err(HeadlessPipelineTermination::Cancelled),
+                    Err(error) => Err(HeadlessPipelineTermination::Failed(error.to_string())),
+                };
+            }
+            _ = external_token.cancelled() => {
+                log::info!(
+                    "[ChatV2::headless] headless turn received external cancellation: session={}",
+                    session_id
+                );
+                cancel_token.cancel();
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(CANCEL_GRACE_SECS),
+                    &mut pipeline_fut,
+                )
+                .await;
+                return Err(HeadlessPipelineTermination::Cancelled);
+            }
+            _ = &mut hard_timeout_sleep => {}
         }
-        Ok(Err(ChatV2Error::Cancelled)) => Err("headless turn 被外部取消".to_string()),
-        Ok(Err(e)) => Err(e.to_string()),
-        Err(_) => {
-            log::warn!(
-                "[ChatV2::headless] headless turn 超过硬超时 {}s，触发取消并等待收尾",
-                hard_timeout.as_secs()
-            );
-            cancel_token.cancel();
-            // 给管线一个收尾窗口保存部分结果（Cancelled 路径会 save_results）
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(CANCEL_GRACE_SECS),
-                &mut pipeline_fut,
-            )
-            .await;
-            // 注意：错误信息必须包含 "timed out"（调用方以此区分 timeout / error）
-            Err(format!(
-                "headless agent turn timed out after {}s",
-                hard_timeout.as_secs()
-            ))
+    } else {
+        tokio::select! {
+            result = &mut pipeline_fut => {
+                return match result {
+                    Ok(_msg_id) => {
+                        log::info!(
+                            "[ChatV2::headless] headless turn 完成: session={}",
+                            session_id
+                        );
+                        Ok(())
+                    }
+                    Err(ChatV2Error::Cancelled) => Err(HeadlessPipelineTermination::Cancelled),
+                    Err(error) => Err(HeadlessPipelineTermination::Failed(error.to_string())),
+                };
+            }
+            _ = &mut hard_timeout_sleep => {}
         }
     }
+
+    log::warn!(
+        "[ChatV2::headless] headless turn 超过硬超时 {}s，触发取消并等待收尾",
+        hard_timeout.as_secs()
+    );
+    cancel_token.cancel();
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(CANCEL_GRACE_SECS),
+        &mut pipeline_fut,
+    )
+    .await;
+    Err(HeadlessPipelineTermination::Timeout {
+        seconds: hard_timeout.as_secs(),
+    })
 }
 
 // ============================================================================

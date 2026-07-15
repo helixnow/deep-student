@@ -1009,6 +1009,16 @@ pub fn run() {
                                 .title("Deep Student 正在后台运行")
                                 .body("已启用的定时任务会继续按计划执行。")
                                 .show();
+                        } else if !crate::chat_v2::automations::automation_app_is_exiting() {
+                            #[cfg(target_os = "macos")]
+                            {
+                                // macOS keeps the process alive after the last
+                                // window closes. Background residency being off
+                                // therefore means "close quits", otherwise
+                                // headless jobs would retain a windowless app.
+                                crate::chat_v2::automations::mark_automation_app_exiting();
+                                app_for_close.exit(0);
+                            }
                         }
                     }
                 });

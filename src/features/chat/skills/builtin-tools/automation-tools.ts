@@ -5,7 +5,7 @@
  * 到点发送系统通知并创建带 reminder 的用户待办。
  * v2（2026-07 headless 基建）：新增 action_type=agent_turn——到点由后端
  * headless runner 真正跑一轮完整 agent turn（工具受 headless 白名单约束，
- * 无 MCP/ask_user/shell/子代理），完成后发系统通知（含结果摘要 + 会话入口），
+ * 无 MCP/ask_user/shell/子代理），完成后发系统通知；运行历史提供会话入口，
  * 支持 isolated / named 两种会话模式与 interval（每 N 分钟）调度。
  */
 
@@ -29,13 +29,13 @@ export const automationToolsSkill: SkillDefinition = {
 两种到点动作（action_type）：
 
 - **notify**（默认，v1 行为）：到点发送系统通知 + 在默认待办收件箱创建带 reminder 的待办；**不会**自动执行 agent 任务，用户需手动打开应用。
-- **agent_turn**（v2）：到点由后端 **headless runner** 真正跑一轮完整 agent turn（无人值守），完成后发系统通知（含结果摘要，可跳转会话）。适合"每天 21:00 检查到期复习卡并生成今日复习简报"这类自动任务。
+- **agent_turn**（v2）：到点由后端 **headless runner** 真正跑一轮完整 agent turn（无人值守），完成后发系统通知（含结果摘要），并可从运行历史打开对应会话。适合"每天 21:00 检查到期复习卡并生成今日复习简报"这类自动任务。
 
 ## agent_turn 的能力边界（重要）
 
 headless 运行时**没有用户在场**，工具集被策略预过滤（fail-closed）：
 
-- 可用：知识库/记忆/网络检索、记忆写入、学习资源只读、用户待办管理、题库只读统计、复习计划只读（review_get_due / review_stats）等 Low 敏感度后端工具
+- 可用：知识库/网络检索、记忆只读、学习资源只读、用户待办只读、题库只读统计、复习计划只读（review_get_due / review_stats）等 Low 敏感度后端工具
 - **不可用**：全部 MCP 外部工具（依赖前端桥）、ask_user、shell、子代理/workspace、以及一切 Medium/High 敏感度写操作（需人工授权）
 - 单次运行硬超时 10 分钟、工具轮次上限 15；运行过程完整落库，用户可随时打开会话查看
 
@@ -61,7 +61,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
 - **builtin-automation_runs**（Low）：查询运行历史、状态、摘要和错误
 - **builtin-automation_retry_run**（Medium）：重试失败、超时、启动失败或已取消的运行
 - **builtin-automation_cancel_run**（Medium）：取消排队、重试等待或正在执行的运行
-- **builtin-automation_delete**（High，不可恢复）：必须先用 builtin-ask_user 列明名称与周期并取得确认，不得记住授权；确认前读取的 version 必须原样传为 expected_version
+- **builtin-automation_delete**（High，不可恢复）：必须先用 builtin-ask_user 列明名称与周期并取得确认，不得记住授权；确认前读取的 version 必须原样传为 expected_version。内置心跳不可删除，只能停用
 
 ## 限制
 
@@ -151,7 +151,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
           agent_prompt: {
             type: 'string',
             description:
-              '仅 action_type=agent_turn 有效：headless agent 的任务提示词（≤4000 字符），如"检查到期复习卡并生成今日复习简报，写入用户待办"。缺省时回退使用 prompt',
+              '仅 action_type=agent_turn 有效：headless agent 的任务提示词（≤4000 字符），如"检查到期复习卡并生成今日复习简报"。缺省时回退使用 prompt；headless 只能读取用户待办，不能写入',
           },
           session_mode: {
             type: 'string',
