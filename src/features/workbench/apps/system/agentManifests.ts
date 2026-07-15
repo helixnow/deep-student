@@ -456,7 +456,6 @@ export function createFlashcardsAgentManifest(
           currentAnkiCardId: current?.ankiCardId ?? null,
           flipped: state.flipped,
           sessionDone: state.queue.length > 0 && state.queueIndex >= state.queue.length,
-          usingMock: state.usingMock,
           error: state.error,
           library: {
             items: libraryItems,
