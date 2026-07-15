@@ -4,7 +4,7 @@
  * 使用 UnifiedSidebar 作为容器和头部，保留专用的 DndFileTree 内容区域
  */
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -105,6 +105,7 @@ const NotesSidebarContent: React.FC = () => {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [referenceDialog, setReferenceDialog] = useState<{
     open: boolean;
     type: 'textbook';
@@ -113,6 +114,20 @@ const NotesSidebarContent: React.FC = () => {
   const [referenceValue, setReferenceValue] = useState('');
   const [referenceSubmitting, setReferenceSubmitting] = useState(false);
   const searchListRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) {
+      setContextMenuPosition(null);
+      return;
+    }
+    const menu = contextMenuRef.current;
+    const maxX = Math.max(8, window.innerWidth - menu.offsetWidth - 8);
+    const maxY = Math.max(8, window.innerHeight - menu.offsetHeight - 8);
+    const x = Math.min(Math.max(contextMenu.x, 8), maxX);
+    const y = Math.min(Math.max(contextMenu.y, 8), maxY);
+    setContextMenuPosition((current) => current?.x === x && current.y === y ? current : { x, y });
+  }, [contextMenu]);
 
   // ESC 键关闭右键菜单
   useEffect(() => {
@@ -238,11 +253,7 @@ const NotesSidebarContent: React.FC = () => {
   const handleContextMenu = useCallback((id: string, e: React.MouseEvent) => {
     e.preventDefault();
     setSelectedNodeId(id);
-    const menuWidth = 160;
-    const menuHeight = 120;
-    const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
-    const y = Math.min(e.clientY, window.innerHeight - menuHeight - 8);
-    setContextMenu({ x, y, id });
+    setContextMenu({ x: e.clientX, y: e.clientY, id });
   }, []);
 
   const buildDstuMenuItems = useCallback((id: string): ContextMenuItem[] => {
@@ -600,7 +611,16 @@ const NotesSidebarContent: React.FC = () => {
             onClick={() => setContextMenu(null)}
             onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
           />
-          <div className="app-menu-content fixed" style={{ left: contextMenu.x, top: contextMenu.y, zIndex: Z_INDEX.contextMenu }}>
+          <div
+            ref={contextMenuRef}
+            className="app-menu-content fixed"
+            style={{
+              left: (contextMenuPosition ?? contextMenu).x,
+              top: (contextMenuPosition ?? contextMenu).y,
+              visibility: contextMenuPosition ? 'visible' : 'hidden',
+              zIndex: Z_INDEX.contextMenu,
+            }}
+          >
             {buildDstuMenuItems(contextMenu.id).map((item) => {
               if (item.type === 'separator') {
                 return <div key={item.id} className="app-menu-separator" />;

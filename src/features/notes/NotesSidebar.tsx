@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -90,6 +90,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
     const [expandedIds, setExpandedIds] = useState<string[]>([]);
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+    const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
     const [referenceDialog, setReferenceDialog] = useState<{
         open: boolean;
         type: 'textbook';
@@ -98,6 +99,20 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
     const [referenceValue, setReferenceValue] = useState('');
     const [referenceSubmitting, setReferenceSubmitting] = useState(false);
     const searchListRef = useRef<HTMLDivElement>(null);
+    const contextMenuRef = useRef<HTMLDivElement>(null);
+
+    useLayoutEffect(() => {
+        if (!contextMenu || !contextMenuRef.current) {
+            setContextMenuPosition(null);
+            return;
+        }
+        const menu = contextMenuRef.current;
+        const maxX = Math.max(8, window.innerWidth - menu.offsetWidth - 8);
+        const maxY = Math.max(8, window.innerHeight - menu.offsetHeight - 8);
+        const x = Math.min(Math.max(contextMenu.x, 8), maxX);
+        const y = Math.min(Math.max(contextMenu.y, 8), maxY);
+        setContextMenuPosition((current) => current?.x === x && current.y === y ? current : { x, y });
+    }, [contextMenu]);
 
     // ESC 键关闭右键菜单
     useEffect(() => {
@@ -247,13 +262,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
         // Also select the node on right click if not already selected
         setSelectedNodeId(id);
         
-        // 边界检测：确保菜单不会超出视口
-        const menuWidth = 160; // 估算菜单宽度
-        const menuHeight = 120; // 估算菜单高度
-        const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
-        const y = Math.min(e.clientY, window.innerHeight - menuHeight - 8);
-        
-        setContextMenu({ x, y, id });
+        setContextMenu({ x: e.clientX, y: e.clientY, id });
     }, []);
 
     // ★ Prompt 8: 使用 buildContextMenu 构建 DSTU 菜单项
@@ -693,8 +702,14 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                         onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
                     />
                     <div
+                        ref={contextMenuRef}
                         className="app-menu-content fixed"
-                        style={{ left: contextMenu.x, top: contextMenu.y, zIndex: Z_INDEX.contextMenu }}
+                        style={{
+                            left: (contextMenuPosition ?? contextMenu).x,
+                            top: (contextMenuPosition ?? contextMenu).y,
+                            visibility: contextMenuPosition ? 'visible' : 'hidden',
+                            zIndex: Z_INDEX.contextMenu,
+                        }}
                     >
                         {/* ★ Prompt 8: DSTU 菜单项 */}
                         {buildDstuMenuItems(contextMenu.id).map((item) => {
