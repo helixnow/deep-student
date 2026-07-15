@@ -52,17 +52,17 @@ interface TagGroup {
 }
 
 const STATUS_CONFIG: Record<QuestionStatus, { color: string; bg: string }> = {
-  new: { color: 'text-slate-500', bg: 'bg-slate-500' },
-  in_progress: { color: 'text-sky-500', bg: 'bg-sky-500' },
-  mastered: { color: 'text-emerald-500', bg: 'bg-emerald-500' },
-  review: { color: 'text-amber-500', bg: 'bg-amber-500' },
+  new: { color: 'text-muted-foreground', bg: 'bg-muted-foreground' },
+  in_progress: { color: 'text-info', bg: 'bg-info' },
+  mastered: { color: 'text-success', bg: 'bg-success' },
+  review: { color: 'text-warning', bg: 'bg-warning' },
 };
 
 const DIFFICULTY_CONFIG: Record<Difficulty, { color: string }> = {
-  easy: { color: 'text-emerald-600' },
-  medium: { color: 'text-amber-600' },
-  hard: { color: 'text-orange-600' },
-  very_hard: { color: 'text-rose-600' },
+  easy: { color: 'text-success' },
+  medium: { color: 'text-warning' },
+  hard: { color: 'text-destructive/80' },
+  very_hard: { color: 'text-destructive' },
 };
 
 /**
@@ -70,53 +70,52 @@ const DIFFICULTY_CONFIG: Record<Difficulty, { color: string }> = {
  */
 const TagStatsSummary: React.FC<{
   tagGroups: TagGroup[];
-  totalQuestions: number;
-}> = ({ tagGroups, totalQuestions }) => {
+  questions: Question[];
+}> = ({ tagGroups, questions }) => {
   const { t } = useTranslation('practice');
-  const totalTags = tagGroups.length;
-  const untaggedCount = totalQuestions - tagGroups.reduce((sum, g) => sum + g.totalCount, 0);
-  const avgQuestionsPerTag = totalTags > 0 ? Math.round(totalQuestions / totalTags) : 0;
-  
-  // 计算总体掌握率
-  const totalMastered = tagGroups.reduce((sum, g) => sum + g.masteredCount, 0);
-  const overallProgress = totalQuestions > 0 ? (totalMastered / totalQuestions) * 100 : 0;
+  const totalTags = tagGroups.filter((group) => group.tag !== '__untagged__').length;
+  const untaggedCount = tagGroups.find((group) => group.tag === '__untagged__')?.totalCount || 0;
+  const taggedQuestions = questions.length - untaggedCount;
+  const avgQuestionsPerTag = totalTags > 0 ? Math.round(taggedQuestions / totalTags) : 0;
+  const totalMastered = questions.filter((question) => question.status === 'mastered').length;
+  const overallProgress = questions.length > 0 ? (totalMastered / questions.length) * 100 : 0;
 
   return (
     <div className="flex items-center justify-between gap-6 px-1">
       <div className="flex items-center gap-6">
         {/* 知识点数量 */}
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-violet-500/10">
-            <Stack size={16} className="text-violet-500" />
+          <div className="rounded-md bg-primary/10 p-1.5">
+            <Stack size={16} className="text-primary" />
           </div>
           <div className="text-sm">
             <span className="font-semibold">{totalTags}</span>
-            <span className="text-muted-foreground ml-1">{t('tagNav.knowledgePoints', '知识点')}</span>
+            <span className="text-muted-foreground ml-1">{t('tagNav.knowledgePoints')}</span>
           </div>
         </div>
         
         {/* 题目数 */}
         <div className="text-sm">
-          <span className="font-medium">{totalQuestions}</span>
-          <span className="text-muted-foreground ml-1">{t('tagNav.totalQuestions', '总题数')}</span>
+          <span className="font-medium">{questions.length}</span>
+          <span className="text-muted-foreground ml-1">{t('tagNav.totalQuestions')}</span>
         </div>
         
         {/* 均题数 */}
         <div className="text-sm text-muted-foreground hidden sm:block">
-          {t('tagNav.avgPerPoint', '均 {{count}} 题/知识点', { count: avgQuestionsPerTag })}
+          {t('tagNav.avgPerPoint', { count: avgQuestionsPerTag })}
         </div>
         
         {/* 掌握率 */}
         <div className="text-sm">
-          <span className="font-medium text-emerald-500">{Math.round(overallProgress)}%</span>
-          <span className="text-muted-foreground ml-1">{t('tagNav.masteryRate', '掌握率')}</span>
+          <span className="font-medium text-success">{Math.round(overallProgress)}%</span>
+          <span className="text-muted-foreground ml-1">{t('tagNav.masteryRate')}</span>
         </div>
       </div>
       
       {/* 未分类提示 */}
       {untaggedCount > 0 && (
-        <div className="text-xs text-amber-500/80">
-          {t('tagNav.untagged', '{{count}} 题未标记', { count: untaggedCount })}
+        <div className="text-xs text-warning">
+          {t('tagNav.untagged', { count: untaggedCount })}
         </div>
       )}
     </div>
@@ -130,23 +129,23 @@ const TagGroupCard: React.FC<{
   group: TagGroup;
   isExpanded: boolean;
   onToggle: () => void;
-  onStartPractice: () => void;
-  onQuestionClick: (questionId: string) => void;
+  onStartPractice?: () => void;
+  onQuestionClick?: (questionId: string) => void;
   originalIndexMap: Map<string, number>;
 }> = ({ group, isExpanded, onToggle, onStartPractice, onQuestionClick, originalIndexMap }) => {
   const { t } = useTranslation('practice');
   // 获取进度颜色
   const getProgressColor = (percent: number) => {
-    if (percent >= 80) return 'bg-emerald-500';
-    if (percent >= 50) return 'bg-sky-500';
-    if (percent >= 20) return 'bg-amber-500';
-    return 'bg-slate-400';
+    if (percent >= 80) return 'bg-success';
+    if (percent >= 50) return 'bg-info';
+    if (percent >= 20) return 'bg-warning';
+    return 'bg-muted-foreground';
   };
 
   return (
     <div className="group">
       {/* 标签头部 - 紧凑行 */}
-      <NotionButton variant="ghost" size="sm" onClick={onToggle} className="!w-full !justify-start !px-2 !py-2 !h-auto !text-left !rounded-lg hover:bg-[var(--interactive-hover)]">
+      <NotionButton variant="ghost" size="sm" onClick={onToggle} aria-expanded={isExpanded} className="!h-auto !w-full !justify-start !rounded-md !px-2 !py-2 !text-left hover:bg-accent">
         {/* 展开/收起图标 */}
         <div className="flex-shrink-0 text-muted-foreground/60">
           {isExpanded ? (
@@ -158,8 +157,8 @@ const TagGroupCard: React.FC<{
 
         {/* 标签图标和名称 */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <Hash size={14} className="text-violet-500 flex-shrink-0" />
-          <span className="text-sm font-medium truncate">{group.tag === '__untagged__' ? t('tagNav.untaggedLabel', '未分类') : group.tag}</span>
+          <Hash size={14} className="flex-shrink-0 text-primary" />
+          <span className="text-sm font-medium truncate">{group.tag === '__untagged__' ? t('tagNav.untaggedLabel') : group.tag}</span>
           <span className="text-xs text-muted-foreground ml-1">{group.totalCount}</span>
         </div>
 
@@ -168,12 +167,12 @@ const TagGroupCard: React.FC<{
           {/* 状态分布 - 简化 */}
           <div className="hidden sm:flex items-center gap-1 text-[11px]">
             {group.masteredCount > 0 && (
-              <span className="text-emerald-500">
+              <span className="text-success">
                 <Check size={12} className="inline" />{group.masteredCount}
               </span>
             )}
             {group.reviewCount > 0 && (
-              <span className="text-amber-500 ml-1">
+              <span className="ml-1 text-warning">
                 <X size={12} className="inline" />{group.reviewCount}
               </span>
             )}
@@ -197,12 +196,14 @@ const TagGroupCard: React.FC<{
         <div className="ml-5 mt-1 mb-2 pl-3 border-l-2 border-border/40">
           {/* 操作按钮 - 内联式 */}
           <div className="flex items-center gap-2 py-1.5 mb-1">
-            <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartPractice(); }} className="!px-2 !py-1 !h-auto text-xs text-violet-600 dark:text-violet-400 hover:bg-violet-500/10">
-              <Play size={12} />
-              {t('tagNav.practice', '练习')}
-            </NotionButton>
+            {onStartPractice && (
+              <NotionButton variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); onStartPractice(); }} className="!h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10">
+                <Play size={12} />
+                {t('tagNav.practice')}
+              </NotionButton>
+            )}
             <span className="text-[11px] text-muted-foreground">
-              {t('tagNav.toMaster', '{{count}} 待掌握', { count: group.totalCount - group.masteredCount })}
+              {t('tagNav.toMaster', { count: group.totalCount - group.masteredCount })}
             </span>
           </div>
 
@@ -217,8 +218,9 @@ const TagGroupCard: React.FC<{
                 <NotionButton
                   key={q.id}
                   variant="ghost" size="sm"
-                  onClick={() => onQuestionClick(q.id)}
-                  className="!w-full !justify-start !px-2 !py-1.5 !h-auto !text-left !rounded hover:bg-[var(--interactive-hover)]"
+                  onClick={() => onQuestionClick?.(q.id)}
+                  disabled={!onQuestionClick}
+                  className="!h-auto !w-full !justify-start !rounded-sm !px-2 !py-1.5 !text-left hover:bg-accent"
                 >
                   {/* 状态指示器 */}
                   <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusConfig.bg)} />
@@ -230,7 +232,7 @@ const TagGroupCard: React.FC<{
 
                   {/* 题目内容 */}
                   <span className="flex-1 text-xs truncate text-foreground/80">
-                    {q.content || q.ocrText || t('tagNav.noContent', '暂无内容')}
+                    {q.content || q.ocrText || t('tagNav.noContent')}
                   </span>
 
                   {/* 难度 */}
@@ -255,15 +257,15 @@ const TagGroupCard: React.FC<{
 const EmptyState: React.FC = () => {
   const { t } = useTranslation('practice');
   return (
-    <div className="flex flex-col items-center justify-center h-full py-16">
-      <div className="p-6 rounded-3xl bg-gradient-to-br from-violet-500/10 to-purple-500/10 mb-6">
-        <Tag size={64} className="text-violet-400" />
+    <div className="flex h-full flex-col items-center justify-center py-12">
+      <div className="mb-3 rounded-md bg-muted p-2">
+        <Tag size={28} className="text-muted-foreground" />
       </div>
-      <h3 className="text-xl font-semibold mb-2">{t('tagNav.emptyTitle', '暂无知识点标签')}</h3>
-      <p className="text-muted-foreground text-center max-w-sm">
-        {t('tagNav.emptyDesc1', '题目还没有添加知识点标签。')}
+      <h3 className="mb-1 text-sm font-medium">{t('tagNav.emptyTitle')}</h3>
+      <p className="max-w-sm text-center text-sm text-muted-foreground">
+        {t('tagNav.emptyDesc1')}
         <br />
-        {t('tagNav.emptyDesc2', '在编辑题目时添加标签，可以按知识点分类练习。')}
+        {t('tagNav.emptyDesc2')}
       </p>
     </div>
   );
@@ -382,9 +384,9 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
     <div className={cn('flex flex-col h-full', className)}>
       {/* 统计摘要 + 搜索框 合并行 */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-border/40">
-        <TagStatsSummary 
+        <TagStatsSummary
           tagGroups={tagGroups}
-          totalQuestions={questions.length}
+          questions={questions}
 />
       </div>
 
@@ -395,7 +397,7 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('tagNav.searchPlaceholder', '搜索知识点...')}
+            placeholder={t('tagNav.searchPlaceholder')}
             className="pl-9 h-8 text-sm bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
 />
         </div>
@@ -404,9 +406,12 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
       {/* 标签列表 - 更紧凑 */}
       <CustomScrollArea className="flex-1" viewportClassName="px-4 pb-4">
         {filteredGroups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-            <MagnifyingGlass size={32} className="mb-2 opacity-40" />
-            <p className="text-sm">{t('tagNav.noResults', '没有找到匹配的知识点')}</p>
+          <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
+            <MagnifyingGlass size={24} className="opacity-60" />
+            <p className="text-sm">{t('tagNav.noResults')}</p>
+            <NotionButton variant="ghost" size="sm" onClick={() => setSearchQuery('')} className="!h-auto !px-2 !py-1 text-xs">
+              {t('common:clear')}
+            </NotionButton>
           </div>
         ) : (
           <div className="space-y-0.5">
@@ -416,8 +421,8 @@ export const TagNavigationView: React.FC<TagNavigationViewProps> = ({
                 group={group}
                 isExpanded={expandedTags.has(group.tag)}
                 onToggle={() => toggleExpand(group.tag)}
-                onStartPractice={() => onStartPracticeByTag?.(group.tag)}
-                onQuestionClick={handleQuestionClick}
+                onStartPractice={onStartPracticeByTag ? () => onStartPracticeByTag(group.tag) : undefined}
+                onQuestionClick={onQuestionClick ? handleQuestionClick : undefined}
                 originalIndexMap={originalIndexMap}
 />
             ))}

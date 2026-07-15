@@ -11,13 +11,15 @@
  * 🆕 2026-01 新增
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card } from '@/components/ui/shad/Card';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   X,
   Eye,
@@ -32,13 +34,13 @@ import {
   SmileySad,
   Smiley,
   Smiley as SmileyIcon,
-  Confetti,
   Timer,
   Lightning,
   Target,
   TrendUp,
   ArrowRight,
   SkipForward,
+  WarningCircle,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -95,10 +97,9 @@ const RatingButton: React.FC<RatingButtonProps> = ({
     onClick={onClick}
     disabled={disabled}
     className={cn(
-      'relative !p-3 !h-auto !rounded-xl flex-col !items-center !gap-1.5',
-      'border-2',
-      'hover:scale-105 active:scale-95',
-      'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100',
+      'relative !p-2 !h-auto !rounded-md flex-col !items-center !gap-1',
+      'border',
+      'disabled:opacity-50 disabled:cursor-not-allowed',
       color
     )}
   >
@@ -139,48 +140,47 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
   const performanceMessage = useMemo(() => {
     if (stats.accuracy >= 90) {
       return {
-        icon: <Confetti className="w-16 h-16 text-amber-500" />,
+        icon: <CheckCircle size={28} className="text-success" />,
         title: t('review:complete.excellent'),
         message: t('review:complete.excellentMsg'),
       };
     }
     if (stats.accuracy >= 70) {
       return {
-        icon: <Trophy className="w-16 h-16 text-emerald-500" />,
+        icon: <Trophy size={28} className="text-success" />,
         title: t('review:complete.good'),
         message: t('review:complete.goodMsg'),
       };
     }
     if (stats.accuracy >= 50) {
       return {
-        icon: <Target className="w-16 h-16 text-sky-500" />,
+        icon: <Target size={28} className="text-primary" />,
         title: t('review:complete.keepGoing'),
         message: t('review:complete.keepGoingMsg'),
       };
     }
     return {
-      icon: <TrendUp className="w-16 h-16 text-purple-500" />,
+      icon: <TrendUp size={28} className="text-warning" />,
         title: t('review:complete.needsPractice'),
         message: t('review:complete.needsPracticeMsg'),
     };
   }, [stats.accuracy, t]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
-      {/* 动画图标 */}
-      <div className="animate-bounce mb-6">{performanceMessage.icon}</div>
+    <div className="flex h-full min-h-0 flex-col items-center justify-center p-4 text-center">
+      <div className="mb-3">{performanceMessage.icon}</div>
 
       {/* 标题 */}
-      <h2 className="text-2xl font-bold text-foreground mb-2">
+      <h2 className="text-lg font-semibold text-foreground mb-1">
         {performanceMessage.title}
       </h2>
-      <p className="text-muted-foreground mb-8">{performanceMessage.message}</p>
+      <p className="text-sm text-muted-foreground mb-5">{performanceMessage.message}</p>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-3 gap-4 w-full max-w-md mb-8">
-        <Card className="p-4 text-center bg-emerald-500/10 border-emerald-500/20">
-          <CheckCircle size={24} className="text-emerald-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+      <div className="grid grid-cols-3 gap-2 w-full max-w-md mb-5">
+        <Card className="p-3 text-center bg-success/10 border-success/20">
+          <CheckCircle size={16} className="text-success mx-auto mb-1" />
+          <p className="text-lg font-semibold text-success">
             {stats.correct}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -188,9 +188,9 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
           </p>
         </Card>
 
-        <Card className="p-4 text-center bg-sky-500/10 border-sky-500/20">
-          <Target size={24} className="text-sky-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-sky-600 dark:text-sky-400">
+        <Card className="p-3 text-center bg-primary/10 border-primary/20">
+          <Target size={16} className="text-primary mx-auto mb-1" />
+          <p className="text-lg font-semibold text-primary">
             {stats.accuracy}%
           </p>
           <p className="text-xs text-muted-foreground">
@@ -198,9 +198,9 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
           </p>
         </Card>
 
-        <Card className="p-4 text-center bg-purple-500/10 border-purple-500/20">
-          <Timer size={24} className="text-purple-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+        <Card className="p-3 text-center bg-muted/40 border-border/50">
+          <Timer size={16} className="text-muted-foreground mx-auto mb-1" />
+          <p className="text-lg font-semibold text-foreground">
             {formatTime(stats.totalTime)}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -252,6 +252,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   // 本地状态
   const [showAnswer, setShowAnswer] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const ratingInFlightRef = useRef(false);
 
   // 当前题目
   const currentItem = getCurrentItem();
@@ -277,7 +279,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   // 处理评分
   const handleRate = useCallback(
     async (quality: ReviewQuality) => {
-      if (isProcessing || !currentItem) return;
+      if (isProcessing || !currentItem || ratingInFlightRef.current) return;
+      ratingInFlightRef.current = true;
 
       try {
         await submitReview(quality);
@@ -303,9 +306,18 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         }
       } catch (err: unknown) {
         console.error('Failed to submit review:', err);
+        showGlobalNotification(
+          'error',
+          err instanceof Error && err.message
+            ? err.message
+            : t('review:session.submitFailed'),
+          t('review:session.submitFailedTitle'),
+        );
+      } finally {
+        ratingInFlightRef.current = false;
       }
     },
-    [isProcessing, currentItem, submitReview, elapsedTime, onComplete]
+    [isProcessing, currentItem, submitReview, elapsedTime, onComplete, t]
   );
 
   // 处理跳过
@@ -353,11 +365,21 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [session.isActive, currentItem, showAnswer, handleRate, handleSkip]);
 
-  // 处理关闭
-  const handleClose = useCallback(() => {
+  const finishSession = useCallback(() => {
     endSession();
     onClose?.();
   }, [endSession, onClose]);
+
+  // 中途离开会丢弃剩余队列的本地进度；已提交的评分已持久化，须让用户明确确认。
+  const handleClose = useCallback(() => {
+    const hasRemainingItems =
+      session.isActive && session.currentIndex < session.queue.length;
+    if (hasRemainingItems) {
+      setShowExitConfirm(true);
+      return;
+    }
+    finishSession();
+  }, [finishSession, session.currentIndex, session.isActive, session.queue.length]);
 
   // 格式化时间
   const formatTime = (seconds: number) => {
@@ -373,7 +395,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     session.queue.length > 0
   ) {
     return (
-      <div className={cn('min-h-screen bg-background', className)}>
+      <div className={cn('h-full min-h-0 bg-background', className)}>
         <CompletionStats
           stats={{
             completed: session.completedCount,
@@ -381,7 +403,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             accuracy: sessionStats.accuracy,
             totalTime: elapsedTime,
           }}
-          onClose={handleClose}
+          onClose={finishSession}
 />
       </div>
     );
@@ -443,8 +465,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           className={cn(
             'text-xs',
             plan.is_difficult
-              ? 'bg-amber-500/10 text-amber-600'
-              : 'bg-sky-500/10 text-sky-600'
+              ? 'bg-warning/10 text-warning'
+              : 'bg-primary/10 text-primary'
           )}
         >
           {plan.is_difficult
@@ -465,13 +487,13 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
 
       {/* 卡片内容区 */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
-        <Card className="max-w-2xl mx-auto p-6 shadow-lg">
+        <Card className="max-w-2xl mx-auto p-4 shadow-sm">
           {/* 题目内容 */}
-          <div className="mb-6">
-            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          <div className="mb-4">
+            <h3 className="text-xs font-medium text-muted-foreground mb-2">
               {t('review:card.question')}
             </h3>
-            <div className="prose prose-sm dark:prose-invert max-w-none text-lg leading-relaxed">
+            <div className="prose prose-sm dark:prose-invert max-w-none text-base leading-relaxed">
               <MarkdownRenderer
                 content={question?.content || t('review:unknownQuestion')}
 />
@@ -481,7 +503,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           {/* 答案区域 */}
           <div
             className={cn(
-              'border-t border-border/50 pt-6 transition-all duration-300',
+              'border-t border-border/50 pt-4 transition-all duration-200',
               showAnswer ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden pt-0 border-t-0'
             )}
           >
@@ -490,10 +512,10 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 {/* 答案 */}
                 {question?.answer && (
                   <div className="mb-4">
-                    <h3 className="text-xs font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">
+                    <h3 className="text-xs font-medium text-success mb-2">
                       {t('review:card.answer')}
                     </h3>
-                    <div className="p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-foreground">
+                    <div className="p-3 rounded-md bg-success/5 border border-success/20 text-foreground">
                       <MarkdownRenderer
                         content={question.answer}
 />
@@ -504,10 +526,10 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 {/* 解析 */}
                 {question?.explanation && (
                   <div>
-                    <h3 className="text-xs font-medium text-sky-600 dark:text-sky-400 uppercase tracking-wider mb-2">
+                    <h3 className="text-xs font-medium text-primary mb-2">
                       {t('review:card.explanation')}
                     </h3>
-                    <div className="p-4 rounded-lg bg-sky-500/5 border border-sky-500/20 text-muted-foreground text-sm">
+                    <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-muted-foreground text-sm">
                       <MarkdownRenderer
                         content={question.explanation}
 />
@@ -534,11 +556,11 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
               {t('review:action.skip')}
             </NotionButton>
             <NotionButton
-              size="lg"
+              size="sm"
               onClick={() => setShowAnswer(true)}
-              className="gap-2 min-w-[200px]"
+              className="gap-2 min-w-[160px]"
             >
-              <Eye size={20} />
+              <Eye size={16} />
               {t('review:action.showAnswer')}
               <kbd className="hidden sm:inline-flex items-center justify-center h-4 px-1.5 rounded border border-current/30 text-[10px] font-mono leading-none opacity-60">
                 {t('review:keyboard.space')}
@@ -559,8 +581,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 quality={0}
                 label={t('review:rating.again')}
                 sublabel={t('review:rating.againDesc')}
-                icon={<SmileySad size={24} />}
-                color="border-red-500/50 bg-red-500/5 text-red-600 hover:bg-red-500/10 hover:border-red-500"
+                icon={<SmileySad size={18} />}
+                color="border-destructive/50 bg-destructive/5 text-destructive hover:bg-destructive/10 hover:border-destructive"
                 onClick={() => handleRate(0)}
                 disabled={isProcessing}
                 shortcutKey="1"
@@ -569,8 +591,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 quality={2}
                 label={t('review:rating.hard')}
                 sublabel={t('review:rating.hardDesc')}
-                icon={<Smiley size={24} />}
-                color="border-amber-500/50 bg-amber-500/5 text-amber-600 hover:bg-amber-500/10 hover:border-amber-500"
+                icon={<Smiley size={18} />}
+                color="border-warning/50 bg-warning/5 text-warning hover:bg-warning/10 hover:border-warning"
                 onClick={() => handleRate(2)}
                 disabled={isProcessing}
                 shortcutKey="2"
@@ -579,8 +601,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 quality={3}
                 label={t('review:rating.good')}
                 sublabel={t('review:rating.goodDesc')}
-                icon={<Smiley size={24} />}
-                color="border-emerald-500/50 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/10 hover:border-emerald-500"
+                icon={<Smiley size={18} />}
+                color="border-success/50 bg-success/5 text-success hover:bg-success/10 hover:border-success"
                 onClick={() => handleRate(3)}
                 disabled={isProcessing}
                 shortcutKey="3"
@@ -589,8 +611,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 quality={5}
                 label={t('review:rating.easy')}
                 sublabel={t('review:rating.easyDesc')}
-                icon={<Lightning size={24} />}
-                color="border-sky-500/50 bg-sky-500/5 text-sky-600 hover:bg-sky-500/10 hover:border-sky-500"
+                icon={<Lightning size={18} />}
+                color="border-primary/50 bg-primary/5 text-primary hover:bg-primary/10 hover:border-primary"
                 onClick={() => handleRate(5)}
                 disabled={isProcessing}
                 shortcutKey="4"
@@ -599,6 +621,20 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           </div>
         )}
       </div>
+      <NotionAlertDialog
+        open={showExitConfirm}
+        onOpenChange={setShowExitConfirm}
+        icon={<WarningCircle size={20} className="text-warning" />}
+        title={t('review:session.exitTitle')}
+        description={t('review:session.exitDescription')}
+        confirmText={t('review:session.exitConfirm')}
+        cancelText={t('common:cancel')}
+        confirmVariant="warning"
+        onConfirm={() => {
+          setShowExitConfirm(false);
+          finishSession();
+        }}
+      />
     </div>
   );
 };

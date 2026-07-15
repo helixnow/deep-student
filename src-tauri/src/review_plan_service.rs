@@ -186,10 +186,44 @@ impl ReviewPlanService {
         user_answer: Option<String>,
         time_spent_seconds: Option<u32>,
     ) -> Result<ProcessReviewResult> {
+        self.process_review_with_expected(
+            plan_id,
+            quality,
+            user_answer,
+            time_spent_seconds,
+            None,
+        )
+    }
+
+    /// 处理复习结果，并在提交时校验 agent 读取到的计划版本。
+    ///
+    /// `expected_updated_at` 为 `None` 时保留桌面端旧调用的行为；Agent
+    /// 工具必须传入 `Some`，以避免基于过期计划重复记录复习历史。
+    pub fn process_review_with_expected(
+        &self,
+        plan_id: &str,
+        quality: u8,
+        user_answer: Option<String>,
+        time_spent_seconds: Option<u32>,
+        expected_updated_at: Option<&str>,
+    ) -> Result<ProcessReviewResult> {
         // 1. 获取当前复习计划
         let plan = VfsReviewPlanRepo::get_plan(&self.vfs_db, plan_id)
             .with_context(|| format!("Failed to get review plan: {}", plan_id))?
             .ok_or_else(|| anyhow::anyhow!("Review plan not found: {}", plan_id))?;
+
+        if let Some(expected_updated_at) = expected_updated_at {
+            if plan.updated_at != expected_updated_at {
+                return Err(crate::vfs::error::VfsError::Conflict {
+                    key: "review_plan.updated_at".to_string(),
+                    message: format!(
+                        "REVIEW_CONFLICT: review plan {} changed after revision {} was read",
+                        plan_id, expected_updated_at
+                    ),
+                }
+                .into());
+            }
+        }
 
         // 2. 使用 SM-2 算法计算新参数
         let (new_interval, new_ease_factor, new_repetitions) = calculate_next_review(
@@ -226,6 +260,7 @@ impl ReviewPlanService {
             },
             consecutive_failures,
             is_difficult,
+            expected_updated_at: expected_updated_at.unwrap_or(&plan.updated_at).to_string(),
         };
 
         let history_params = RecordReviewHistoryParams {
@@ -527,6 +562,23 @@ impl ReviewPlanService {
         Ok(plan)
     }
 
+    /// 暂停复习计划，并校验计划版本。
+    pub fn suspend_plan_if_unchanged(
+        &self,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> Result<ReviewPlan> {
+        let plan = VfsReviewPlanRepo::suspend_plan_if_unchanged(
+            &self.vfs_db,
+            plan_id,
+            expected_updated_at,
+        )
+        .with_context(|| format!("Failed to suspend review plan: {}", plan_id))?;
+
+        info!("[ReviewPlanService] Suspended review plan: {}", plan_id);
+        Ok(plan)
+    }
+
     /// 恢复复习计划
     pub fn resume_plan(&self, plan_id: &str) -> Result<ReviewPlan> {
         let plan = VfsReviewPlanRepo::resume_plan(&self.vfs_db, plan_id)
@@ -537,6 +589,23 @@ impl ReviewPlanService {
         Ok(plan)
     }
 
+    /// 恢复复习计划，并校验计划版本。
+    pub fn resume_plan_if_unchanged(
+        &self,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> Result<ReviewPlan> {
+        let plan = VfsReviewPlanRepo::resume_plan_if_unchanged(
+            &self.vfs_db,
+            plan_id,
+            expected_updated_at,
+        )
+        .with_context(|| format!("Failed to resume review plan: {}", plan_id))?;
+
+        info!("[ReviewPlanService] Resumed review plan: {}", plan_id);
+        Ok(plan)
+    }
+
     /// 删除复习计划
     pub fn delete_plan(&self, plan_id: &str) -> Result<()> {
         VfsReviewPlanRepo::delete_plan(&self.vfs_db, plan_id)
@@ -544,6 +613,19 @@ impl ReviewPlanService {
 
         info!("[ReviewPlanService] Deleted review plan: {}", plan_id);
 
+        Ok(())
+    }
+
+    /// 删除复习计划，并校验计划版本。
+    pub fn delete_plan_if_unchanged(
+        &self,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> Result<()> {
+        VfsReviewPlanRepo::delete_plan_if_unchanged(&self.vfs_db, plan_id, expected_updated_at)
+            .with_context(|| format!("Failed to delete review plan: {}", plan_id))?;
+
+        info!("[ReviewPlanService] Deleted review plan: {}", plan_id);
         Ok(())
     }
 

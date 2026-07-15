@@ -258,6 +258,8 @@ export function getNextQuestionIndex(
 ): number {
   if (questions.length === 0) return 0;
 
+  const safeCurrentIndex = Math.min(Math.max(currentIndex, 0), questions.length - 1);
+
   switch (mode) {
     case 'random':
       return Math.floor(Math.random() * questions.length);
@@ -277,21 +279,36 @@ export function getNextQuestionIndex(
       return fromStartIdx >= 0 ? fromStartIdx : Math.min(currentIndex + 1, questions.length - 1);
     }
     case 'by_tag': {
-      if (!tag) return Math.min(currentIndex + 1, questions.length - 1);
-      
+      // `by_tag` is only meaningful with an explicit tag. Keeping the current
+      // question is preferable to silently continuing in sequential mode.
+      if (!tag) return safeCurrentIndex;
+
       const isUntaggedMode = tag === '__untagged__';
-      
-      const tagIdx = questions.findIndex((q, i) => {
-        if (i <= currentIndex || q.status === 'mastered') return false;
-        return isUntaggedMode ? (!q.tags || q.tags.length === 0) : q.tags?.includes(tag);
-      });
-      if (tagIdx >= 0) return tagIdx;
-      
-      const fromStartIdx = questions.findIndex(q => {
-        if (q.status === 'mastered') return false;
-        return isUntaggedMode ? (!q.tags || q.tags.length === 0) : q.tags?.includes(tag);
-      });
-      return fromStartIdx >= 0 ? fromStartIdx : Math.min(currentIndex + 1, questions.length - 1);
+      const matchesSelectedTag = (question: Question) => (
+        isUntaggedMode
+          ? !question.tags || question.tags.length === 0
+          : question.tags?.includes(tag)
+      );
+
+      const nextUnmastered = questions.findIndex((question, index) => (
+        index > safeCurrentIndex && question.status !== 'mastered' && matchesSelectedTag(question)
+      ));
+      if (nextUnmastered >= 0) return nextUnmastered;
+
+      const firstUnmastered = questions.findIndex((question) => (
+        question.status !== 'mastered' && matchesSelectedTag(question)
+      ));
+      if (firstUnmastered >= 0) return firstUnmastered;
+
+      // A fully mastered tag remains a valid scope. Cycle through its questions
+      // rather than leaking into another tag or falling back to sequential mode.
+      const nextTagged = questions.findIndex((question, index) => (
+        index > safeCurrentIndex && matchesSelectedTag(question)
+      ));
+      if (nextTagged >= 0) return nextTagged;
+
+      const firstTagged = questions.findIndex(matchesSelectedTag);
+      return firstTagged >= 0 ? firstTagged : safeCurrentIndex;
     }
     default:
       return Math.min(currentIndex + 1, questions.length - 1);

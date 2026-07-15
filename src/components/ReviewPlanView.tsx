@@ -43,6 +43,8 @@ import {
 } from '@/stores/reviewPlanStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useQuestionBankStore, type Question } from '../stores/questionBankStore';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { registerDomainListener } from '@/features/workbench/agent/domainEvents';
 
 // ============================================================================
 // 类型定义
@@ -62,6 +64,7 @@ interface ReviewPlanViewProps {
   className?: string;
   onStartReview?: (items: ReviewItemWithQuestion[]) => void;
   onViewCalendar?: () => void;
+  onReviewItemClick?: (item: ReviewItemWithQuestion) => void;
 }
 
 interface StatCardProps {
@@ -87,16 +90,16 @@ const StatCard: React.FC<StatCardProps> = ({
 }) => (
   <div
     className={cn(
-      'group relative flex flex-col gap-2 p-4 rounded-xl',
-      'bg-gradient-to-br from-background to-muted/30',
+      'group relative flex flex-col gap-2 p-3 rounded-md',
+      'bg-muted/20',
       'border border-border/50 hover:border-border',
-      'transition-[background-color,border-color,color,box-shadow] duration-300 hover:shadow-md',
+      'transition-[background-color,border-color] duration-150',
       className
     )}
   >
     <div className="flex items-center justify-between">
-      <div className={cn('p-2 rounded-lg bg-muted/50', color)}>{icon}</div>
-      <span className={cn('text-2xl font-bold tracking-tight', color)}>{value}</span>
+      <div className={cn('p-1.5 rounded-md bg-muted/50', color)}>{icon}</div>
+      <span className={cn('text-lg font-semibold tabular-nums', color)}>{value}</span>
     </div>
     <div>
       <p className="text-sm font-medium text-foreground">{label}</p>
@@ -127,17 +130,17 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
   const { t } = useTranslation(['review']);
 
   const statusColor = useMemo(() => {
-    if (isOverdue) return 'text-red-500 bg-red-500/10';
-    if (plan.is_difficult) return 'text-amber-500 bg-amber-500/10';
+    if (isOverdue) return 'text-destructive bg-destructive/10';
+    if (plan.is_difficult) return 'text-warning bg-warning/10';
     switch (plan.status) {
       case 'new':
-        return 'text-blue-500 bg-blue-500/10';
+        return 'text-primary bg-primary/10';
       case 'learning':
-        return 'text-amber-500 bg-amber-500/10';
+        return 'text-warning bg-warning/10';
       case 'reviewing':
-        return 'text-emerald-500 bg-emerald-500/10';
+        return 'text-success bg-success/10';
       case 'graduated':
-        return 'text-purple-500 bg-purple-500/10';
+        return 'text-muted-foreground bg-muted';
       default:
         return 'text-muted-foreground bg-muted';
     }
@@ -160,24 +163,15 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
     }
   }, [plan.status, plan.is_difficult, isOverdue, t]);
 
-  return (
-    <div
-      onClick={onClick}
-      className={cn(
-        'group flex items-center gap-3 p-3 rounded-lg',
-        'bg-muted/20 hover:bg-[var(--interactive-hover)]',
-        'border border-transparent hover:border-border/50',
-        'cursor-pointer transition-[background-color,border-color,color,box-shadow] duration-200',
-        isOverdue && 'border-red-500/30 bg-red-500/5'
-      )}
-    >
+  const content = (
+    <>
       {/* 状态指示器 */}
       <div
         className={cn(
           'flex-shrink-0 w-2 h-8 rounded-full',
-          isOverdue ? 'bg-red-500' : plan.is_difficult ? 'bg-amber-500' : 'bg-emerald-500'
+          isOverdue ? 'bg-destructive' : plan.is_difficult ? 'bg-warning' : 'bg-success'
         )}
-/>
+      />
 
       {/* 题目信息 */}
       <div className="flex-1 min-w-0">
@@ -204,7 +198,24 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
 
       {/* 箭头 */}
       <CaretRight size={16} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
-    </div>
+    </>
+  );
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className={cn(
+        'group flex w-full items-center gap-3 p-3 rounded-lg text-left',
+        'bg-muted/20 hover:bg-[var(--interactive-hover)]',
+        'border border-transparent hover:border-border/50',
+        'cursor-pointer transition-[background-color,border-color,color,box-shadow] duration-200 disabled:cursor-default disabled:hover:bg-muted/20',
+        isOverdue && 'border-destructive/30 bg-destructive/5'
+      )}
+    >
+      {content}
+    </button>
   );
 };
 
@@ -217,6 +228,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
   className,
   onStartReview,
   onViewCalendar,
+  onReviewItemClick,
 }) => {
   const { t } = useTranslation(['review', 'common']);
 
@@ -249,6 +261,15 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       loadQuestions(examId);
     }
   }, [examId, loadDueReviews, loadStats, loadQuestions]);
+
+  useEffect(() => {
+    return registerDomainListener('review://changed', () => {
+      void Promise.all([
+        loadDueReviews(examId),
+        refreshStats(examId),
+      ]);
+    });
+  }, [examId, loadDueReviews, refreshStats]);
 
   // 刷新数据
   const handleRefresh = useCallback(async () => {
@@ -292,19 +313,52 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
     return map;
   }, [questions]);
 
+  const createReviewItem = useCallback((plan: ReviewPlan): ReviewItemWithQuestion | null => {
+    const question = questionMap.get(plan.question_id);
+    if (!question) return null;
+    return {
+      plan,
+      question: question as ReviewItemWithQuestion['question'],
+    };
+  }, [questionMap]);
+
   // 开始复习
   const handleStartReview = useCallback(() => {
-    const items: ReviewItemWithQuestion[] = dueReviews.map((plan) => ({
-      plan,
-      question: questionMap.get(plan.question_id) as ReviewItemWithQuestion['question'],
-    }));
+    const items = dueReviews.flatMap((plan) => {
+      const item = createReviewItem(plan);
+      return item ? [item] : [];
+    });
+
+    if (items.length === 0) {
+      showGlobalNotification(
+        'warning',
+        t('review:queue.questionUnavailable'),
+      );
+      return;
+    }
 
     if (onStartReview) {
       onStartReview(items);
     } else {
-      startSession(items);
+      startSession(items, examId);
     }
-  }, [dueReviews, questionMap, onStartReview, startSession]);
+  }, [createReviewItem, dueReviews, examId, onStartReview, startSession, t]);
+
+  const handleReviewItemClick = useCallback((plan: ReviewPlan) => {
+    const item = createReviewItem(plan);
+    if (!item) {
+      showGlobalNotification(
+        'warning',
+        t('review:queue.questionUnavailable'),
+      );
+      return;
+    }
+    if (onReviewItemClick) {
+      onReviewItemClick(item);
+    } else {
+      startSession([item], examId);
+    }
+  }, [createReviewItem, examId, onReviewItemClick, startSession, t]);
 
   // 加载状态
   if (isLoading && !stats) {
@@ -312,10 +366,10 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       <div className={cn('space-y-6 p-4', className)}>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-20 rounded-md" />
           ))}
         </div>
-        <Skeleton className="h-32 rounded-xl" />
+        <Skeleton className="h-28 rounded-md" />
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-16 rounded-lg" />
@@ -363,7 +417,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
-          icon={<Clock size={20} />}
+          icon={<Clock size={18} />}
           label={t('review:stats.dueToday')}
           value={todayCount}
           description={
@@ -373,10 +427,10 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
                 })
               : undefined
           }
-          color={overdueCount > 0 ? 'text-red-500' : 'text-sky-500'}
+          color={overdueCount > 0 ? 'text-destructive' : 'text-primary'}
 />
         <StatCard
-          icon={<Flame size={20} />}
+          icon={<Flame size={18} />}
           label={t('review:stats.totalDue')}
           value={dueReviews.length}
           description={
@@ -386,32 +440,32 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
                 })
               : undefined
           }
-          color="text-amber-500"
+          color="text-warning"
 />
         <StatCard
-          icon={<Award size={20} />}
+          icon={<Award size={18} />}
           label={t('review:stats.mastered')}
           value={stats?.graduated_count || 0}
           description={`${progressPercent}% ${t('review:stats.ofTotal')}`}
-          color="text-emerald-500"
+          color="text-success"
 />
         <StatCard
-          icon={<TrendingUp size={20} />}
+          icon={<TrendingUp size={18} />}
           label={t('review:stats.accuracy')}
           value={`${Math.round((stats?.avg_correct_rate || 0) * 100)}%`}
           description={`${stats?.total_reviews || 0} ${t(
             'review:stats.totalReviews'
           )}`}
-          color="text-purple-500"
+          color="text-primary"
 />
       </div>
 
       {/* 今日复习卡片 */}
-      <Card className="p-5 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-        <div className="flex items-center justify-between mb-4">
+      <Card className="p-4 bg-primary/5 border-primary/20">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-primary/10">
-              <Target size={24} className="text-primary" />
+            <div className="p-2 rounded-md bg-primary/10">
+              <Target size={18} className="text-primary" />
             </div>
             <div>
               <h3 className="font-semibold text-foreground">
@@ -429,11 +483,11 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
 
           {dueReviews.length > 0 && (
             <NotionButton
-              size="lg"
+              size="sm"
               onClick={handleStartReview}
-              className="gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
+              className="gap-1.5"
             >
-              <Play size={20} />
+              <Play size={16} />
               {t('review:startReview')}
             </NotionButton>
           )}
@@ -454,20 +508,20 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-blue-500" />
+                  <div className="w-2 h-2 rounded-full bg-primary" />
                   {t('review:status.new')} {stats.new_count}
                 </span>
                 <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-amber-500" />
+                  <div className="w-2 h-2 rounded-full bg-warning" />
                   {t('review:status.learning')} {stats.learning_count}
                 </span>
                 <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <div className="w-2 h-2 rounded-full bg-success" />
                   {t('review:status.reviewing')} {stats.reviewing_count}
                 </span>
               </div>
               <span className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-purple-500" />
+                <div className="w-2 h-2 rounded-full bg-muted-foreground" />
                 {t('review:status.graduated')} {stats.graduated_count}
               </span>
             </div>
@@ -494,6 +548,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
                 plan={plan}
                 question={questionMap.get(plan.question_id)}
                 isOverdue={plan.next_review_date < today}
+                onClick={() => handleReviewItemClick(plan)}
 />
             ))}
             {dueReviews.length > 20 && (
@@ -512,8 +567,8 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       {/* 空状态 */}
       {dueReviews.length === 0 && !isLoading && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="p-4 rounded-full bg-emerald-500/10 mb-4">
-            <CheckCircle size={48} className="text-emerald-500" />
+          <div className="p-2 rounded-md bg-success/10 mb-3">
+            <CheckCircle size={24} className="text-success" />
           </div>
           <h3 className="text-lg font-medium text-foreground mb-1">
             {t('review:empty.title')}

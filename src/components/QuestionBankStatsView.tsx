@@ -130,7 +130,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
     return (
       <div className={cn('flex items-center justify-center p-8', className)}>
         <div className="text-center text-muted-foreground">
-          <ChartBar size={48} className="mx-auto mb-2 opacity-50" />
+          <ChartBar size={28} className="mx-auto mb-2 opacity-50" />
           <p>{t('exam_sheet:questionBank.stats.noData')}</p>
         </div>
       </div>
@@ -145,28 +145,28 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
           icon={<BookOpen size={20} />}
           label={t('exam_sheet:questionBank.stats.total')}
           value={stats.total}
-          color="text-blue-500"
+          color="text-primary"
 />
         <StatCard
           icon={<CheckCircle size={20} />}
           label={t('exam_sheet:questionBank.stats.mastered')}
           value={stats.mastered}
           description={`${progressData.masteredPercent}%`}
-          color="text-green-500"
+          color="text-success"
 />
         <StatCard
           icon={<Clock size={20} />}
           label={t('exam_sheet:questionBank.stats.inProgress')}
           value={stats.inProgress}
           description={`${progressData.inProgressPercent}%`}
-          color="text-amber-500"
+          color="text-warning"
 />
         <StatCard
           icon={<WarningCircle size={20} />}
           label={t('exam_sheet:questionBank.stats.review')}
           value={stats.review}
           description={`${progressData.reviewPercent}%`}
-          color="text-orange-500"
+          color="text-destructive"
 />
       </div>
 
@@ -183,18 +183,18 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
         {/* 进度条 */}
         <div className="relative h-2 rounded-full bg-muted/50 overflow-hidden">
           <div
-            className="absolute left-0 top-0 h-full bg-emerald-500 transition-all"
+            className="absolute left-0 top-0 h-full bg-success transition-all"
             style={{ width: `${progressData.masteredPercent}%` }}
 />
           <div
-            className="absolute top-0 h-full bg-amber-500 transition-all"
+            className="absolute top-0 h-full bg-warning transition-all"
             style={{
               left: `${progressData.masteredPercent}%`,
               width: `${progressData.inProgressPercent}%`,
             }}
 />
           <div
-            className="absolute top-0 h-full bg-orange-500 transition-all"
+            className="absolute top-0 h-full bg-destructive transition-all"
             style={{
               left: `${progressData.masteredPercent + progressData.inProgressPercent}%`,
               width: `${progressData.reviewPercent}%`,
@@ -205,15 +205,15 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
         {/* 图例 */}
         <div className="flex items-center gap-4 text-xs flex-wrap">
           <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+            <div className="w-2 h-2 rounded-full bg-success" />
             <span className="text-muted-foreground">{t('exam_sheet:questionBank.stats.mastered')}</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-amber-500" />
+            <div className="w-2 h-2 rounded-full bg-warning" />
             <span className="text-muted-foreground">{t('exam_sheet:questionBank.stats.inProgress')}</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-orange-500" />
+            <div className="w-2 h-2 rounded-full bg-destructive" />
             <span className="text-muted-foreground">{t('exam_sheet:questionBank.stats.review')}</span>
           </div>
           <div className="flex items-center gap-1">
@@ -237,7 +237,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
                 cx="20" cy="20" r="16"
                 fill="none" stroke="currentColor" strokeWidth="3"
                 strokeDasharray={`${Math.min(correctRatePercent, 100) * 1.005} 100.5`}
-                className="text-emerald-500"
+                className="text-success"
                 strokeLinecap="round"
 />
             </svg>
@@ -246,7 +246,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-1 text-xs">
-            <Star size={12} className="text-amber-400" />
+            <Star size={12} className="text-warning" />
             <span className="text-muted-foreground">
               {correctRatePercent >= 80
                 ? t('exam_sheet:questionBank.stats.excellent')

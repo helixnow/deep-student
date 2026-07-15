@@ -204,21 +204,21 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
             <CheckCircle size={16} />
             <span className="text-sm">
-              {t('exam_sheet:csv.mapping_valid', '字段映射有效，可以开始导入')}
+              {t('exam_sheet:csv.mapping_valid')}
             </span>
           </div>
         ) : hasDuplicateMappings ? (
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
             <WarningCircle size={16} />
             <span className="text-sm">
-              {t('exam_sheet:csv.mapping_duplicate', '存在重复映射，请确保每个目标字段只映射一次')}
+              {t('exam_sheet:csv.mapping_duplicate')}
             </span>
           </div>
         ) : (
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
             <WarningCircle size={16} />
             <span className="text-sm">
-              {t('exam_sheet:csv.mapping_required', '请至少映射「题干内容」字段')}
+              {t('exam_sheet:csv.mapping_required')}
             </span>
           </div>
         )}
@@ -230,14 +230,14 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-[var(--interactive-hover)]">
               <TableHead className="w-[180px] font-medium">
-                {t('exam_sheet:csv.csv_column', 'CSV 列')}
+                {t('exam_sheet:csv.csv_column')}
               </TableHead>
               <TableHead className="w-[180px] font-medium">
-                {t('exam_sheet:csv.target_field', '映射字段')}
+                {t('exam_sheet:csv.target_field')}
               </TableHead>
               {showPreview && (
                 <TableHead className="font-medium">
-                  {t('exam_sheet:csv.preview_value', '预览值')}
+                  {t('exam_sheet:csv.preview_value')}
                 </TableHead>
               )}
             </TableRow>
@@ -278,15 +278,15 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
                       <AppSelect
                         value={currentTarget}
                         onValueChange={(value) => handleMappingChange(header, value as QuestionFieldKey | '')}
-                        placeholder={t('exam_sheet:csv.select_field', '选择字段...')}
+                        placeholder={t('exam_sheet:csv.select_field')}
                         options={[
-                          { value: '', label: t('exam_sheet:csv.no_mapping', '不映射') },
+                          { value: '', label: t('exam_sheet:csv.no_mapping') },
                           ...QUESTION_FIELDS.map((field) => {
                             const isSelected = currentTarget === field.key;
                             const isUsed = !isSelected && mappedFields.has(field.key);
                             const isSuggested = !currentTarget && suggestedTarget === field.key;
                             const fieldLabel = t(`exam_sheet:export.fields.${field.key}`, field.key);
-                            const suffix = field.required ? ` (${t('common:required', '必需')})` : isSuggested && !isUsed ? ` (${t('exam_sheet:csv.suggested', '推荐')})` : '';
+                            const suffix = field.required ? ` (${t('exam_sheet:csv.required')})` : isSuggested && !isUsed ? ` (${t('exam_sheet:csv.suggested')})` : '';
                             return {
                               value: field.key,
                               label: `${fieldLabel}${suffix}`,
@@ -317,7 +317,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
       {showPreview && previewRows.length > 1 && (
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-muted-foreground">
-            {t('exam_sheet:csv.data_preview', '数据预览（前 {{count}} 行）', { count: previewRows.length })}
+            {t('exam_sheet:csv.data_preview', { count: previewRows.length })}
           </h4>
           <div className="rounded-lg border border-border overflow-auto max-h-[200px]">
             <Table>

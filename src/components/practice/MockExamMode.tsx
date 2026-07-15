@@ -56,10 +56,10 @@ const QUESTION_TYPE_KEYS = [
 ];
 
 const DIFFICULTY_KEYS = [
-  { key: 'easy', color: 'text-emerald-600' },
-  { key: 'medium', color: 'text-amber-600' },
-  { key: 'hard', color: 'text-orange-600' },
-  { key: 'very_hard', color: 'text-rose-600' },
+  { key: 'easy', color: 'text-success' },
+  { key: 'medium', color: 'text-warning' },
+  { key: 'hard', color: 'text-warning' },
+  { key: 'very_hard', color: 'text-destructive' },
 ];
 
 export const MockExamMode: React.FC<MockExamModeProps> = ({
@@ -146,14 +146,14 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   );
   
   const getExamTimeColor = () => {
-    if (!targetEndTime) return 'text-sky-600';
+    if (!targetEndTime) return 'text-primary';
     // 用会话自身的时长（恢复的会话可能与当前配置输入不同）
     const totalSeconds = (activeSession?.config.duration_minutes ?? durationMinutes) * 60;
-    if (totalSeconds <= 0) return 'text-rose-600';
+    if (totalSeconds <= 0) return 'text-destructive';
     const ratio = examRemainingSeconds / totalSeconds;
-    if (ratio > 0.5) return 'text-emerald-600';
-    if (ratio > 0.25) return 'text-amber-600';
-    return 'text-rose-600';
+    if (ratio > 0.5) return 'text-success';
+    if (ratio > 0.25) return 'text-warning';
+    return 'text-destructive';
   };
   
   // 计算总配置题数
@@ -197,7 +197,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       onStart?.(session);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      showGlobalNotification('error', msg, t('mockExam.startError', '生成考试失败'));
+      showGlobalNotification('error', msg, t('mockExam.startError'));
     }
   }, [examId, durationMinutes, totalCount, shuffle, includeMistakes, typeDistribution, difficultyDistribution, generateMockExam, onStart]);
 
@@ -238,7 +238,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       autoSubmitTriggeredRef.current = false;
       setTargetEndTime(previousTargetEndTime);
       const msg = err instanceof Error ? err.message : String(err);
-      showGlobalNotification('error', msg, t('mockExam.submitError', '交卷失败'));
+      showGlobalNotification('error', msg, t('mockExam.submitError'));
     }
   }, [activeSession, submitMockExam, onSubmit, t, targetEndTime, buildSubmitSession, setMockExamSession]);
   
@@ -248,51 +248,51 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
     
     return (
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
-        <CardHeader className="text-center pb-4">
-          <div className="flex justify-center mb-4">
-            <div className="p-4 rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
-              <Trophy size={48} className="text-white" />
+        <CardHeader className="pb-3 text-center">
+          <div className="mb-3 flex justify-center">
+            <div className="rounded-md bg-warning/10 p-2">
+              <Trophy size={24} className="text-warning" />
             </div>
           </div>
-          <CardTitle className="text-2xl">{t('mockExam.scoreCard', '成绩单')}</CardTitle>
+          <CardTitle className="text-base">{t('mockExam.scoreCard')}</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           {/* 总分展示 */}
-          <div className="text-center py-4">
-            <div className="text-6xl font-bold text-sky-600">
+          <div className="py-2 text-center">
+            <div className="text-3xl font-semibold text-primary">
               {Math.round(score.correct_rate)}
-              <span className="text-2xl text-muted-foreground">%</span>
+              <span className="text-base text-muted-foreground">%</span>
             </div>
             <div className="mt-2 text-muted-foreground">{score.comment}</div>
           </div>
           
           {/* 统计数据 */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <div className="text-2xl font-bold">{score.total_count}</div>
-              <div className="text-xs text-muted-foreground">{t('mockExam.total', '总题数')}</div>
+          <div className="grid grid-cols-4 gap-2">
+            <div className="rounded-md bg-muted/50 p-2 text-center">
+              <div className="text-lg font-semibold">{score.total_count}</div>
+              <div className="text-xs text-muted-foreground">{t('mockExam.total')}</div>
             </div>
-            <div className="text-center p-3 rounded-lg bg-emerald-500/10">
-              <div className="text-2xl font-bold text-emerald-600">{score.correct_count}</div>
-              <div className="text-xs text-emerald-600">{t('mockExam.correct', '正确')}</div>
+            <div className="rounded-md bg-success/10 p-2 text-center">
+              <div className="text-lg font-semibold text-success">{score.correct_count}</div>
+              <div className="text-xs text-success">{t('mockExam.correct')}</div>
             </div>
-            <div className="text-center p-3 rounded-lg bg-rose-500/10">
-              <div className="text-2xl font-bold text-rose-600">{score.wrong_count}</div>
-              <div className="text-xs text-rose-600">{t('mockExam.wrong', '错误')}</div>
+            <div className="rounded-md bg-destructive/10 p-2 text-center">
+              <div className="text-lg font-semibold text-destructive">{score.wrong_count}</div>
+              <div className="text-xs text-destructive">{t('mockExam.wrong')}</div>
             </div>
-            <div className="text-center p-3 rounded-lg bg-slate-500/10">
-              <div className="text-2xl font-bold text-slate-600">{score.unanswered_count}</div>
-              <div className="text-xs text-slate-600">{t('mockExam.unanswered', '未答')}</div>
+            <div className="rounded-md bg-muted p-2 text-center">
+              <div className="text-lg font-semibold">{score.unanswered_count}</div>
+              <div className="text-xs text-muted-foreground">{t('mockExam.unanswered')}</div>
             </div>
           </div>
           
           {/* 用时 */}
-          <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-sky-500/10">
-            <Clock size={20} className="text-sky-600" />
-            <span className="text-sky-600 font-medium">
-              {t('mockExam.timeSpent', '用时')}：
-              {Math.floor(score.time_spent_seconds / 60)} {t('mockExam.minutes', '分')} 
-              {score.time_spent_seconds % 60} {t('mockExam.seconds', '秒')}
+          <div className="flex items-center justify-center gap-2 rounded-md bg-muted/50 p-2.5">
+            <Clock size={16} className="text-primary" />
+            <span className="font-medium text-foreground">
+              {t('mockExam.timeSpent')}：
+              {Math.floor(score.time_spent_seconds / 60)} {t('mockExam.minutes')}
+              {score.time_spent_seconds % 60} {t('mockExam.seconds')}
             </span>
           </div>
           
@@ -301,7 +301,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
             <div className="space-y-2">
               <div className="text-sm font-medium text-muted-foreground flex items-center gap-1">
                 <ChartBar size={16} />
-                {t('mockExam.typeStats', '题型统计')}
+                {t('mockExam.typeStats')}
               </div>
               <div className="space-y-2">
                 {Object.entries(score.type_stats).map(([type, stat]) => (
@@ -328,7 +328,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               }}
               className="flex-1"
             >
-              {t('mockExam.back', '返回')}
+              {t('mockExam.back')}
             </NotionButton>
             <NotionButton
               onClick={() => {
@@ -340,7 +340,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               }}
               className="flex-1"
             >
-              {t('mockExam.newExam', '再考一次')}
+              {t('mockExam.newExam')}
             </NotionButton>
           </div>
         </CardContent>
@@ -353,16 +353,16 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
     return (
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <FileText size={20} className="text-sky-500" />
-            {t('mockExam.title', '模拟考试')}
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText size={18} className="text-primary" />
+            {t('mockExam.title')}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* 基本配置 */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>{t('mockExam.duration', '考试时长（分钟）')}</Label>
+              <Label>{t('mockExam.duration')}</Label>
               <Input
                 type="number"
                 min={10}
@@ -377,7 +377,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
 />
             </div>
             <div className="space-y-2">
-              <Label>{t('mockExam.totalCount', '题目数量')}</Label>
+              <Label>{t('mockExam.totalCount')}</Label>
               <Input
                 type="number"
                 min={5}
@@ -396,11 +396,11 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           {/* 开关选项 */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label>{t('mockExam.shuffle', '打乱题目顺序')}</Label>
+              <Label>{t('mockExam.shuffle')}</Label>
               <Switch checked={shuffle} onCheckedChange={setShuffle} />
             </div>
             <div className="flex items-center justify-between">
-              <Label>{t('mockExam.includeMistakes', '包含错题')}</Label>
+              <Label>{t('mockExam.includeMistakes')}</Label>
               <Switch checked={includeMistakes} onCheckedChange={setIncludeMistakes} />
             </div>
           </div>
@@ -409,8 +409,8 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           <div className="space-y-3">
             <Label className="flex items-center gap-1">
               <GearSix size={16} />
-              {t('mockExam.typeDistribution', '题型配比')}
-              <span className="text-muted-foreground text-xs">{t('mockExam.optional', '（选填）')}</span>
+              {t('mockExam.typeDistribution')}
+              <span className="text-muted-foreground text-xs">{t('mockExam.optional')}</span>
             </Label>
             <div className="space-y-2">
               {QUESTION_TYPE_KEYS.map((key) => (
@@ -433,8 +433,8 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           <div className="space-y-3">
             <Label className="flex items-center gap-1">
               <Target size={16} />
-              {t('mockExam.difficultyDistribution', '难度配比')}
-              <span className="text-muted-foreground text-xs">{t('mockExam.optional', '（选填）')}</span>
+              {t('mockExam.difficultyDistribution')}
+              <span className="text-muted-foreground text-xs">{t('mockExam.optional')}</span>
             </Label>
             <div className="space-y-2">
               {DIFFICULTY_KEYS.map(({ key, color }) => (
@@ -456,17 +456,17 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           <NotionButton
             onClick={handleStart}
             disabled={isLoadingPractice}
-            className="w-full h-12 text-lg"
+            className="w-full"
           >
             {isLoadingPractice ? (
               <>
-                <CircleNotch size={20} className="mr-2 animate-spin" />
-                {t('mockExam.generating', '生成中...')}
+                <CircleNotch size={16} className="mr-2 animate-spin" />
+                {t('mockExam.generating')}
               </>
             ) : (
               <>
-                <Play size={20} className="mr-2" />
-                {t('mockExam.start', '开始考试')}
+                <Play size={16} className="mr-2" />
+                {t('mockExam.start')}
               </>
             )}
           </NotionButton>
@@ -487,14 +487,14 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           {/* 倒计时显示 */}
           <div className="flex flex-col items-center justify-center py-3">
             <div className={cn(
-              'text-4xl font-mono font-bold tabular-nums transition-colors',
+              'text-3xl font-mono font-semibold tabular-nums transition-colors',
               getExamTimeColor(),
             )}>
               {formatTime(examRemainingSeconds)}
             </div>
             <span className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
               <Clock size={12} />
-              {t('mockExam.remaining', '剩余时间')}
+              {t('mockExam.remaining')}
             </span>
           </div>
 
@@ -502,10 +502,10 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="gap-1">
                 <FileText size={12} />
-                {t('mockExam.inProgress', '考试中')}
+                {t('mockExam.inProgress')}
               </Badge>
               <span className="text-sm text-muted-foreground">
-                {Object.keys(activeSession.answers).length} / {activeSession.question_ids.length} {t('mockExam.questions', '题')}
+                {Object.keys(activeSession.answers).length} / {activeSession.question_ids.length} {t('mockExam.questions')}
               </span>
             </div>
             <NotionButton
@@ -513,16 +513,16 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               size="sm"
               onClick={() => setShowConfirmDialog(true)}
             >
-              {t('mockExam.submit', '交卷')}
+              {t('mockExam.submit')}
             </NotionButton>
           </div>
           <Progress value={progress} className="h-2" />
           
           {/* 时间不足警告 */}
           {examRemainingSeconds > 0 && examRemainingSeconds < 60 && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-rose-500/10 text-rose-600">
-              <WarningCircle size={20} />
-              <span className="text-sm font-medium">{t('mockExam.timeWarning', '考试时间不足 1 分钟！')}</span>
+            <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-2.5 text-destructive">
+              <WarningCircle size={16} />
+              <span className="text-sm font-medium">{t('mockExam.timeWarning')}</span>
             </div>
           )}
         </CardContent>
@@ -532,16 +532,16 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       <NotionAlertDialog
         open={showConfirmDialog}
         onOpenChange={setShowConfirmDialog}
-        title={t('mockExam.confirmTitle', '确认交卷')}
+        title={t('mockExam.confirmTitle')}
         description={
           Object.keys(activeSession.answers).length < activeSession.question_ids.length
-            ? t('mockExam.confirmWarning', '您还有 {{count}} 道题未作答，确定要交卷吗？', {
+            ? t('mockExam.confirmWarning', {
                 count: activeSession.question_ids.length - Object.keys(activeSession.answers).length,
               })
-            : t('mockExam.confirmMessage', '确定要提交考试吗？')
+            : t('mockExam.confirmMessage')
         }
-        confirmText={t('mockExam.confirmSubmit', '确认交卷')}
-        cancelText={t('mockExam.cancel', '取消')}
+        confirmText={t('mockExam.confirmSubmit')}
+        cancelText={t('mockExam.cancel')}
         confirmVariant="primary"
         onConfirm={handleSubmit}
 />

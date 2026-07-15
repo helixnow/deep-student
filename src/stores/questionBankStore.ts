@@ -193,6 +193,8 @@ export interface CsvImportResult {
   exam_id: string;
   /** 总处理行数 */
   total_rows: number;
+  /** 用户取消后返回部分结果时为 true */
+  cancelled?: boolean;
 }
 
 /** CSV 导出请求参数 */
@@ -518,6 +520,271 @@ export interface DailyPracticeResult {
   is_completed: boolean;
 }
 
+export type QbankPracticeHandoffMode = 'timed' | 'mock_exam' | 'daily';
+
+interface QbankPracticeHandoffBase {
+  version: 1;
+  kind: 'qbank_practice_session';
+  handoff_id: string;
+  exam_id: string;
+  mode: QbankPracticeHandoffMode;
+  agentCanAnswer: false;
+}
+
+export type QbankPracticeHandoff =
+  | (QbankPracticeHandoffBase & { mode: 'timed'; session: TimedPracticeSession })
+  | (QbankPracticeHandoffBase & { mode: 'mock_exam'; session: MockExamSession })
+  | (QbankPracticeHandoffBase & { mode: 'daily'; session: DailyPracticeResult });
+
+export type PracticeHandoffHydrationResult =
+  | {
+      ok: true;
+      mode: QbankPracticeHandoffMode;
+      handoffId: string;
+      firstQuestionId: string;
+      questionCount: number;
+    }
+  | {
+      ok: false;
+      code: 'INVALID_PRACTICE_HANDOFF' | 'PRACTICE_HANDOFF_EXAM_MISMATCH';
+      hint: string;
+    };
+
+export type PracticeHandoffHydrationFailure = Extract<
+  PracticeHandoffHydrationResult,
+  { ok: false }
+>;
+
+function practiceRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function practiceString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function practiceInteger(value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): number | null {
+  return typeof value === 'number'
+    && Number.isSafeInteger(value)
+    && value >= min
+    && value <= max
+    ? value
+    : null;
+}
+
+function practiceQuestionIds(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 100) return null;
+  const ids = value.map(practiceString);
+  if (ids.some((id) => id == null)) return null;
+  const normalized = ids as string[];
+  return new Set(normalized).size === normalized.length ? normalized : null;
+}
+
+function validPracticeTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && Number.isFinite(Date.parse(value));
+}
+
+function emptyPracticeRecord(value: unknown): value is Record<string, never> {
+  const record = practiceRecord(value);
+  return Boolean(record && Object.keys(record).length === 0);
+}
+
+function practiceCountMap(value: unknown): Record<string, number> | null {
+  const record = practiceRecord(value);
+  if (!record) return null;
+  const entries = Object.entries(record);
+  if (entries.some(([, count]) => practiceInteger(count, 1, 100) == null)) return null;
+  return Object.fromEntries(entries) as Record<string, number>;
+}
+
+function invalidPracticeHandoff(hint: string): PracticeHandoffHydrationFailure {
+  return { ok: false, code: 'INVALID_PRACTICE_HANDOFF', hint };
+}
+
+/** Validate and normalize a backend-created handoff before it reaches mutable UI state. */
+export function validateQbankPracticeHandoff(
+  value: unknown,
+  expectedExamId: string,
+): QbankPracticeHandoff | PracticeHandoffHydrationFailure {
+  const handoff = practiceRecord(value);
+  if (
+    !handoff
+    || handoff.version !== 1
+    || handoff.kind !== 'qbank_practice_session'
+    || handoff.agentCanAnswer !== false
+  ) {
+    return invalidPracticeHandoff('练习交接版本或来源无效');
+  }
+  const examId = practiceString(handoff.exam_id);
+  const handoffId = practiceString(handoff.handoff_id);
+  const session = practiceRecord(handoff.session);
+  const mode = handoff.mode;
+  if (!examId || !handoffId || !session || !['timed', 'mock_exam', 'daily'].includes(String(mode))) {
+    return invalidPracticeHandoff('练习交接缺少 exam_id、handoff_id、mode 或 session');
+  }
+  if (examId !== expectedExamId || practiceString(session.exam_id) !== expectedExamId) {
+    return {
+      ok: false,
+      code: 'PRACTICE_HANDOFF_EXAM_MISMATCH',
+      hint: '练习交接不属于当前题目集',
+    };
+  }
+  const questionIds = practiceQuestionIds(session.question_ids);
+  if (!questionIds) return invalidPracticeHandoff('练习交接必须包含 1-100 个唯一题目 ID');
+
+  if (mode === 'timed') {
+    const id = practiceString(session.id);
+    const duration = practiceInteger(session.duration_minutes, 1, 480);
+    const questionCount = practiceInteger(session.question_count, 1, 100);
+    if (
+      !id
+      || handoffId !== id
+      || duration == null
+      || questionCount !== questionIds.length
+      || !validPracticeTimestamp(session.started_at)
+      || (session.ended_at != null && !validPracticeTimestamp(session.ended_at))
+      || practiceInteger(session.answered_count, 0, questionIds.length) !== 0
+      || practiceInteger(session.correct_count, 0, questionIds.length) !== 0
+      || session.is_timeout !== false
+      || session.is_submitted !== false
+      || practiceInteger(session.paused_seconds, 0) !== 0
+      || session.is_paused !== false
+    ) {
+      return invalidPracticeHandoff('限时练习 session 无效或包含 Agent 预填进度');
+    }
+    return {
+      version: 1,
+      kind: 'qbank_practice_session',
+      handoff_id: id,
+      exam_id: examId,
+      mode: 'timed',
+      agentCanAnswer: false,
+      session: {
+        id,
+        exam_id: examId,
+        duration_minutes: duration,
+        question_count: questionIds.length,
+        question_ids: [...questionIds],
+        started_at: session.started_at as string,
+        ...(session.ended_at ? { ended_at: session.ended_at as string } : {}),
+        answered_count: 0,
+        correct_count: 0,
+        is_timeout: false,
+        is_submitted: false,
+        paused_seconds: 0,
+        is_paused: false,
+      },
+    };
+  }
+
+  if (mode === 'mock_exam') {
+    const id = practiceString(session.id);
+    const config = practiceRecord(session.config);
+    const duration = practiceInteger(config?.duration_minutes, 1, 480);
+    const totalCount = config?.total_count == null
+      ? undefined
+      : practiceInteger(config.total_count, 1, 100);
+    const typeDistribution = practiceCountMap(config?.type_distribution);
+    const difficultyDistribution = practiceCountMap(config?.difficulty_distribution);
+    const tags = config?.tags == null
+      ? undefined
+      : Array.isArray(config.tags)
+        ? config.tags.map(practiceString)
+        : null;
+    if (
+      !id
+      || handoffId !== id
+      || !config
+      || duration == null
+      || totalCount === null
+      || !typeDistribution
+      || !difficultyDistribution
+      || config.shuffle !== true && config.shuffle !== false
+      || config.include_mistakes !== true && config.include_mistakes !== false
+      || tags === null
+      || tags?.some((tag) => tag == null)
+      || (tags?.length ?? 0) > 20
+      || !validPracticeTimestamp(session.started_at)
+      || session.ended_at != null
+      || !emptyPracticeRecord(session.answers)
+      || !emptyPracticeRecord(session.results)
+      || session.is_submitted !== false
+      || session.score != null
+      || session.correct_rate != null
+    ) {
+      return invalidPracticeHandoff('模拟考 session 无效或包含 Agent 预填答案/成绩');
+    }
+    return {
+      version: 1,
+      kind: 'qbank_practice_session',
+      handoff_id: id,
+      exam_id: examId,
+      mode: 'mock_exam',
+      agentCanAnswer: false,
+      session: {
+        id,
+        exam_id: examId,
+        config: {
+          duration_minutes: duration,
+          type_distribution: typeDistribution,
+          difficulty_distribution: difficultyDistribution,
+          ...(totalCount == null ? {} : { total_count: totalCount }),
+          shuffle: config.shuffle as boolean,
+          include_mistakes: config.include_mistakes as boolean,
+          ...(tags ? { tags: tags as string[] } : {}),
+        },
+        question_ids: [...questionIds],
+        started_at: session.started_at as string,
+        answers: {},
+        results: {},
+        is_submitted: false,
+      },
+    };
+  }
+
+  const date = practiceString(session.date);
+  if (
+    !date
+    || handoffId !== date
+    || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+    || practiceInteger(session.daily_target, 1, 20) == null
+    || practiceInteger(session.completed_count, 0, questionIds.length) !== 0
+    || practiceInteger(session.correct_count, 0, questionIds.length) !== 0
+    || !practiceRecord(session.source_distribution)
+    || practiceInteger((session.source_distribution as Record<string, unknown>).mistake_count, 0, questionIds.length) == null
+    || practiceInteger((session.source_distribution as Record<string, unknown>).new_count, 0, questionIds.length) == null
+    || practiceInteger((session.source_distribution as Record<string, unknown>).review_count, 0, questionIds.length) == null
+    || session.is_completed !== false
+  ) {
+    return invalidPracticeHandoff('每日一练 session 无效或包含 Agent 预填进度');
+  }
+  const distribution = session.source_distribution as Record<string, number>;
+  return {
+    version: 1,
+    kind: 'qbank_practice_session',
+    handoff_id: date,
+    exam_id: examId,
+    mode: 'daily',
+    agentCanAnswer: false,
+    session: {
+      date,
+      exam_id: examId,
+      question_ids: [...questionIds],
+      daily_target: session.daily_target as number,
+      completed_count: 0,
+      correct_count: 0,
+      source_distribution: {
+        mistake_count: distribution.mistake_count as number,
+        new_count: distribution.new_count as number,
+        review_count: distribution.review_count as number,
+      },
+      is_completed: false,
+    },
+  };
+}
+
 /** 试卷导出格式 */
 export type PaperExportFormat = 'preview' | 'pdf' | 'word' | 'markdown';
 
@@ -557,6 +824,8 @@ export interface DailyCheckIn {
 
 /** 打卡日历数据 */
 export interface CheckInCalendar {
+  /** 该日历所属的题目集；null 表示跨题目集汇总。 */
+  exam_id: string | null;
   year: number;
   month: number;
   days: DailyCheckIn[];
@@ -564,6 +833,10 @@ export interface CheckInCalendar {
   month_check_in_days: number;
   month_total_questions: number;
 }
+
+// 日历结果在 store 中只有一个槽位。保留最新请求的结果，避免快速切换题目集或月份时
+// 较慢的旧请求覆盖当前日历。
+let checkInCalendarRequestSeq = 0;
 
 // ============================================================================
 // Store 状态
@@ -598,7 +871,6 @@ interface QuestionBankState {
   
   // UI 状态
   focusMode: boolean;
-  showSettingsPanel: boolean;
   
   // 加载状态
   isLoading: boolean;
@@ -617,7 +889,6 @@ interface QuestionBankState {
   setFilters: (filters: QuestionFilters) => void;
   setPracticeMode: (mode: PracticeMode) => void;
   setFocusMode: (focusMode: boolean) => void;
-  toggleSettingsPanel: () => void;
   setDateRange: (range: DateRange) => void;
   resetFilters: () => void;
   
@@ -674,6 +945,10 @@ interface QuestionBankState {
   setMockExamSession: (session: MockExamSession | null) => void;
   setDailyPractice: (result: DailyPracticeResult | null) => void;
   setGeneratedPaper: (paper: GeneratedPaper | null) => void;
+  hydratePracticeHandoff: (
+    handoff: unknown,
+    expectedExamId: string,
+  ) => PracticeHandoffHydrationResult;
   
   // 同步 API（2026-01 新增）
   checkSyncStatus: (examId: string) => Promise<SyncStatusResult>;
@@ -722,7 +997,6 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       filters: {},
       practiceMode: 'sequential',
       focusMode: false,
-      showSettingsPanel: false,
       isLoading: false,
       isSubmitting: false,
       isLoadingTrend: false,
@@ -757,7 +1031,6 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       setPracticeMode: (mode) => set({ practiceMode: mode }),
       
       setFocusMode: (focusMode) => set({ focusMode }),
-      toggleSettingsPanel: () => set(state => ({ showSettingsPanel: !state.showSettingsPanel })),
       
       setDateRange: (range) => set({ selectedDateRange: range }),
       
@@ -1304,6 +1577,29 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       setMockExamSession: (session) => set({ mockExamSession: session }),
       setDailyPractice: (result) => set({ dailyPractice: result }),
       setGeneratedPaper: (paper) => set({ generatedPaper: paper }),
+      hydratePracticeHandoff: (value, expectedExamId) => {
+        const validated = validateQbankPracticeHandoff(value, expectedExamId);
+        if ('ok' in validated) return validated;
+        const common = {
+          currentExamId: expectedExamId,
+          practiceMode: validated.mode as PracticeMode,
+          error: null,
+        };
+        if (validated.mode === 'timed') {
+          set({ ...common, timedSession: validated.session });
+        } else if (validated.mode === 'mock_exam') {
+          set({ ...common, mockExamSession: validated.session, mockExamScoreCard: null });
+        } else {
+          set({ ...common, dailyPractice: validated.session });
+        }
+        return {
+          ok: true,
+          mode: validated.mode,
+          handoffId: validated.handoff_id,
+          firstQuestionId: validated.session.question_ids[0]!,
+          questionCount: validated.session.question_ids.length,
+        };
+      },
 
       startTimedPractice: async (examId, durationMinutes, questionCount) => {
         set({ isLoadingPractice: true, error: null });
@@ -1413,6 +1709,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       },
 
       getCheckInCalendar: async (examId, year, month) => {
+        const requestId = ++checkInCalendarRequestSeq;
         set({ isLoadingPractice: true, error: null });
         
         try {
@@ -1424,11 +1721,15 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             },
           });
           
-          set({ checkInCalendar: calendar, isLoadingPractice: false });
+          if (requestId === checkInCalendarRequestSeq) {
+            set({ checkInCalendar: calendar, isLoadingPractice: false });
+          }
           return calendar;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] getCheckInCalendar failed:', err);
-          set({ error: String(err), isLoadingPractice: false });
+          if (requestId === checkInCalendarRequestSeq) {
+            set({ error: String(err), isLoadingPractice: false });
+          }
           throw err;
         }
       },

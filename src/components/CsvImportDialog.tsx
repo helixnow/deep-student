@@ -60,7 +60,7 @@ interface CsvPreviewResult {
 
 // CSV 导入进度（来自后端事件）
 interface CsvImportProgressEvent {
-  type: 'Started' | 'Progress' | 'Completed' | 'Failed';
+  type: 'Started' | 'Progress' | 'Completed' | 'Cancelled' | 'Failed';
   total_rows?: number;
   file_path?: string;
   current?: number;
@@ -81,6 +81,15 @@ interface CsvImportResult {
   errors: Array<{ row: number; message: string; raw_data?: string }>;
   exam_id: string;
   total_rows: number;
+  /** Cancelled imports retain rows completed before the cancellation was observed. */
+  cancelled?: boolean;
+}
+
+interface CsvImportAttempt {
+  id: string;
+  session: number;
+  /** `true` only after the Tauri import command has been dispatched. */
+  backendStarted: boolean;
 }
 
 interface CsvImportDialogProps {
@@ -134,6 +143,13 @@ const isLikelyCsvPath = (candidate: string): boolean => {
   }
 };
 
+const createCsvImportId = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `csv-import-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
 export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   open,
   onOpenChange,
@@ -172,15 +188,16 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   } | null>(null);
   const [importResult, setImportResult] = useState<CsvImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [isCancelled, setIsCancelled] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // 事件监听清理函数
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
-  // ★ 2026-07-08（审计 29-P1-3）：导入会话代际守卫。
-  // "取消"只解除事件监听，invoke Promise 仍然悬挂；用户关闭对话框再重新打开后，
-  // 旧任务完成时的续体会把上一次的结果写进新会话（并触发 onImportComplete/成功通知）。
-  // 取消/重置时递增代际，续体比对后丢弃过期结果。
+  // 导入会话代际守卫：对话框关闭或重置后，旧任务的回调不能污染新会话。
   const importSessionRef = useRef(0);
+  const activeImportAttemptRef = useRef<CsvImportAttempt | null>(null);
+  const mountedRef = useRef(true);
 
   // 重置状态
   const resetState = useCallback(() => {
@@ -196,18 +213,42 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     setIsImporting(false);
     setIsLoadingPreview(false);
     setIsCancelled(false);
+    setIsCancelling(false);
+    activeImportAttemptRef.current = null;
   }, []);
 
   // 关闭对话框时重置
   useEffect(() => {
     if (!open) {
+      const attempt = activeImportAttemptRef.current;
+      if (attempt?.backendStarted) {
+        void invoke<boolean>('cancel_questions_csv_import', { import_id: attempt.id })
+          .catch(() => undefined);
+      }
+      // A parent resource/window can close the dialog while an import is still
+      // running. Invalidate that generation immediately so its eventual result
+      // cannot reopen the old progress/result state when this dialog is shown
+      // again, and release its now-stale event listener before another import.
+      if (unlistenRef.current) {
+        unlistenRef.current();
+        unlistenRef.current = null;
+      }
       resetState();
     }
   }, [open, resetState]);
 
-  // 清理事件监听
+  // Stop an orphaned backend import and clean up a listener even when a
+  // resource/window transition unmounts the dialog outside its visible Cancel
+  // button path.
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      const attempt = activeImportAttemptRef.current;
+      if (attempt?.backendStarted) {
+        void invoke<boolean>('cancel_questions_csv_import', { import_id: attempt.id })
+          .catch(() => undefined);
+      }
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
@@ -261,7 +302,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       setCurrentStep('mapping');
     } catch (error: unknown) {
       console.error('[CsvImport] 预览失败:', error);
-      setImportError(t('exam_sheet:csv.preview_failed', '预览 CSV 文件失败：{{error}}', {
+      setImportError(t('exam_sheet:csv.preview_failed', {
         error: String(error),
       }));
     } finally {
@@ -273,20 +314,20 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   const handleSelectFileClick = useCallback(async () => {
     try {
       const filePath = await fileManager.pickSingleFile({
-        title: t('exam_sheet:csv.select_csv_file', '选择 CSV 文件'),
+        title: t('exam_sheet:csv.select_csv_file'),
         // 移除 filters 以支持移动端
       });
       
       if (filePath) {
         if (!isLikelyCsvPath(filePath)) {
-          showGlobalNotification('warning', t('exam_sheet:csv.invalid_file_type', '请选择 CSV 格式的文件'));
+          showGlobalNotification('warning', t('exam_sheet:csv.invalid_file_type'));
           return;
         }
         await handleFileSelect(filePath);
       }
     } catch (error: unknown) {
       console.error('[CsvImport] 选择文件失败:', error);
-      showGlobalNotification('error', t('exam_sheet:csv.select_file_failed', '选择文件失败'));
+      showGlobalNotification('error', t('exam_sheet:csv.select_file_failed'));
     }
   }, [t, handleFileSelect]);
 
@@ -295,7 +336,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     if (paths.length === 0) return;
     const filePath = paths[0];
     if (!isLikelyCsvPath(filePath)) {
-      showGlobalNotification('warning', t('exam_sheet:csv.invalid_file_type', '请选择 CSV 格式的文件'));
+      showGlobalNotification('warning', t('exam_sheet:csv.invalid_file_type'));
       return;
     }
     await handleFileSelect(filePath);
@@ -319,9 +360,19 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     if (!selectedFile || !preview || !isMappingValid) return;
 
     const session = importSessionRef.current;
-    const isStale = () => importSessionRef.current !== session;
+    const attempt: CsvImportAttempt = {
+      id: createCsvImportId(),
+      session,
+      backendStarted: false,
+    };
+    const isStale = () => importSessionRef.current !== attempt.session
+      || !mountedRef.current
+      || activeImportAttemptRef.current !== attempt;
+    activeImportAttemptRef.current = attempt;
 
     setIsImporting(true);
+    setIsCancelling(false);
+    setIsCancelled(false);
     setImportError(null);
     setImportProgress({ current: 0, total: preview.total_rows, success: 0, skipped: 0, failed: 0 });
     setCurrentStep('progress');
@@ -345,9 +396,12 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
           });
         } else if (payload.type === 'Failed') {
           setImportError(payload.error || t('exam_sheet:csv.import_failed_generic'));
-          setIsImporting(false);
         }
       });
+      if (isStale()) {
+        unlisten();
+        return;
+      }
       unlistenRef.current = unlisten;
 
       // 构建字段映射（CSV 列名 -> 目标字段）
@@ -358,6 +412,10 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         }
       });
 
+      // Mark this only immediately before dispatching IPC. Until then the
+      // cancel control can safely stop this local preparation phase.
+      attempt.backendStarted = true;
+
       // 调用后端导入命令
       const result = await invoke<CsvImportResult>('import_questions_csv', {
         request: {
@@ -367,6 +425,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
           duplicate_strategy: duplicateStrategy,
           folder_id: folderId,
           exam_name: examName,
+          import_id: attempt.id,
         },
       });
 
@@ -374,37 +433,54 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       if (isStale()) return;
 
       setImportResult(result);
+      const processedRows = result.cancelled
+        ? result.success_count + result.skipped_count + result.failed_count
+        : result.total_rows;
       setImportProgress({
-        current: result.total_rows,
+        current: processedRows,
         total: result.total_rows,
         success: result.success_count,
         skipped: result.skipped_count,
         failed: result.failed_count,
       });
 
-      // 回调通知
-      onImportComplete?.(result);
+      if (result.cancelled) {
+        setIsCancelled(true);
+        if (result.success_count > 0 || result.skipped_count > 0 || result.failed_count > 0) {
+          onImportComplete?.(result);
+        }
+        showGlobalNotification(
+          'info',
+          t('exam_sheet:csv.import_cancelled'),
+        );
+      } else {
+        // 回调通知
+        onImportComplete?.(result);
 
-      showGlobalNotification(
-        result.failed_count > 0 ? 'warning' : 'success',
-        t('exam_sheet:csv.import_complete', '导入完成：成功 {{success}} 条，跳过 {{skipped}} 条，失败 {{failed}} 条', {
-          success: result.success_count,
-          skipped: result.skipped_count,
-          failed: result.failed_count,
-        })
-      );
+        showGlobalNotification(
+          result.failed_count > 0 ? 'warning' : 'success',
+          t('exam_sheet:csv.import_complete', {
+            success: result.success_count,
+            skipped: result.skipped_count,
+            failed: result.failed_count,
+          })
+        );
+      }
     } catch (error: unknown) {
       if (isStale()) return;
       console.error('[CsvImport] 导入失败:', error);
       setImportError(String(error));
-      showGlobalNotification('error', t('exam_sheet:csv.import_failed', '导入失败：{{error}}', {
+      showGlobalNotification('error', t('exam_sheet:csv.import_failed', {
         error: String(error),
       }));
     } finally {
-      // 过期会话不清 unlistenRef：本会话的监听已在取消时移除，
-      // 此时 ref 中可能已是新会话的监听器，误清会让新会话收不到进度
+      // 过期会话不清监听器：此时 ref 可能已指向新会话，误清会让新会话收不到进度。
       if (!isStale()) {
         setIsImporting(false);
+        setIsCancelling(false);
+        if (activeImportAttemptRef.current === attempt) {
+          activeImportAttemptRef.current = null;
+        }
         if (unlistenRef.current) {
           unlistenRef.current();
           unlistenRef.current = null;
@@ -413,25 +489,61 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     }
   }, [selectedFile, preview, isMappingValid, fieldMapping, duplicateStrategy, examId, examName, folderId, onImportComplete, t]);
 
-  // 取消导入（前端停止监听进度事件，后端任务仍会继续完成）
-  const [isCancelled, setIsCancelled] = useState(false);
+  // 请求后端取消。后端会在当前行完成后停止后续写入，并通过原 invoke 返回部分结果。
+  const handleCancelImport = useCallback(async () => {
+    const attempt = activeImportAttemptRef.current;
+    if (!attempt || isCancelling) return;
 
-  const handleCancelImport = useCallback(() => {
-    // ★ 作废当前会话：悬挂的 invoke Promise 完成后其续体会被代际比对丢弃
-    importSessionRef.current += 1;
-    // 停止监听后端进度事件
-    if (unlistenRef.current) {
-      unlistenRef.current();
-      unlistenRef.current = null;
+    // `listen()` is asynchronous. If the user cancels while the listener is
+    // still being established, no backend request exists yet. Invalidate this
+    // attempt locally so the eventual listener callback cannot dispatch an
+    // import after the UI has reported cancellation.
+    if (!attempt.backendStarted) {
+      importSessionRef.current += 1;
+      activeImportAttemptRef.current = null;
+      setIsImporting(false);
+      setIsCancelling(false);
+      setIsCancelled(false);
+      setImportError(null);
+      setImportProgress(null);
+      setCurrentStep('strategy');
+      if (unlistenRef.current) {
+        unlistenRef.current();
+        unlistenRef.current = null;
+      }
+      showGlobalNotification(
+        'info',
+        t('exam_sheet:csv.import_cancelled_before_start'),
+      );
+      return;
     }
-    setIsCancelled(true);
-    setIsImporting(false);
-    showGlobalNotification('info', t('exam_sheet:csv.import_cancelled', '已取消监听导入进度，后端任务仍会完成'));
-  }, [t]);
+
+    setIsCancelling(true);
+    try {
+      const accepted = await invoke<boolean>('cancel_questions_csv_import', {
+        import_id: attempt.id,
+      });
+      if (activeImportAttemptRef.current !== attempt || !mountedRef.current) return;
+      if (!accepted) {
+        setIsCancelling(false);
+        showGlobalNotification(
+          'warning',
+          t('exam_sheet:csv.import_cancel_unavailable'),
+        );
+      }
+    } catch (error: unknown) {
+      console.error('[CsvImport] 请求取消失败:', error);
+      setIsCancelling(false);
+      showGlobalNotification(
+        'error',
+        t('exam_sheet:csv.import_cancel_failed'),
+      );
+    }
+  }, [isCancelling, t]);
 
   const handleCancel = useCallback(() => {
     if (isImporting) {
-      handleCancelImport();
+      void handleCancelImport();
       return;
     }
     onOpenChange(false);
@@ -439,7 +551,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
 
   const handleDialogOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen && isImporting) {
-      showGlobalNotification('warning', t('exam_sheet:csv.import_in_progress_close_blocked', '导入进行中，请先取消导入后再关闭窗口'));
+      showGlobalNotification('warning', t('exam_sheet:csv.import_in_progress_close_blocked'));
       return;
     }
     onOpenChange(nextOpen);
@@ -449,6 +561,9 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   const handleRetry = useCallback(() => {
     setImportResult(null);
     setImportError(null);
+    setImportProgress(null);
+    setIsCancelled(false);
+    setIsCancelling(false);
     setCurrentStep('strategy');
   }, []);
 
@@ -526,7 +641,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         acceptedFileTypes={[CSV_FILE_TYPE]}
         maxFiles={1}
         showOverlay={true}
-        customOverlayText={t('exam_sheet:csv.drop_csv_here', '松开鼠标上传 CSV 文件')}
+        customOverlayText={t('exam_sheet:csv.drop_csv_here')}
         enabled={!isLoadingPreview}
         className="cursor-pointer"
       >
@@ -548,10 +663,10 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium text-foreground">
-                  {t('exam_sheet:csv.drop_or_click', '拖拽 CSV 文件到此处，或点击选择')}
+                  {t('exam_sheet:csv.drop_or_click')}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {t('exam_sheet:csv.supported_formats', '支持 UTF-8 和 GBK 编码')}
+                  {t('exam_sheet:csv.supported_formats')}
                 </p>
               </div>
             </>
@@ -582,7 +697,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
                 {selectedFile ? extractFileName(selectedFile) : t('exam_sheet:csv.csv_file_fallback')}
               </p>
               <p className="text-xs text-muted-foreground">
-                {t('exam_sheet:csv.file_info', '{{rows}} 行数据，{{cols}} 列，编码：{{encoding}}', {
+                {t('exam_sheet:csv.file_info', {
                   rows: preview.total_rows,
                   cols: preview.headers.length,
                   encoding: preview.encoding,
@@ -608,7 +723,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   const renderStrategyStep = () => (
     <div className="space-y-4">
       <Label className="text-sm font-medium">
-        {t('exam_sheet:csv.duplicate_strategy', '重复数据处理')}
+        {t('exam_sheet:csv.duplicate_strategy')}
       </Label>
       <div className="space-y-2">
         {DUPLICATE_STRATEGY_KEYS.map((strategyKey) => (
@@ -644,7 +759,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
 
       {/* 映射预览 */}
       <div className="p-4 rounded-lg bg-muted/30 space-y-2">
-        <p className="text-sm font-medium">{t('exam_sheet:csv.mapping_preview', '映射配置预览')}</p>
+        <p className="text-sm font-medium">{t('exam_sheet:csv.mapping_preview')}</p>
         <div className="flex flex-wrap gap-2">
           {Object.entries(fieldMapping)
             .filter(([, target]) => target)
@@ -666,31 +781,36 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   );
 
   // 渲染进度和结果步骤
-  const renderProgressStep = () => (
+  const renderProgressStep = () => {
+    const progressPercent = importProgress && importProgress.total > 0
+      ? Math.round((importProgress.current / importProgress.total) * 100)
+      : 0;
+
+    return (
     <div className="space-y-6">
       {/* 进度条 */}
       {isImporting && importProgress && (
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
-              {t('exam_sheet:csv.importing', '正在导入...')}
+              {t('exam_sheet:csv.importing')}
             </span>
             <span className="font-medium">
-              {Math.round((importProgress.current / importProgress.total) * 100)}%
+              {progressPercent}%
             </span>
           </div>
-          <Progress value={(importProgress.current / importProgress.total) * 100} />
+          <Progress value={progressPercent} />
           <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
-              <CheckCircle size={16} className="text-emerald-500" />
+              <CheckCircle size={16} className="text-success" />
               {importProgress.success}
             </span>
             <span className="flex items-center gap-1">
-              <Warning size={16} className="text-amber-500" />
+              <Warning size={16} className="text-warning" />
               {importProgress.skipped}
             </span>
             <span className="flex items-center gap-1">
-              <XCircle size={16} className="text-rose-500" />
+              <XCircle size={16} className="text-destructive" />
               {importProgress.failed}
             </span>
           </div>
@@ -699,24 +819,31 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={handleCancelImport}
+              onClick={() => void handleCancelImport()}
+              disabled={isCancelling}
               className="text-muted-foreground hover:text-destructive"
             >
-              <XCircle size={16} className="mr-1.5" />
-              {t('exam_sheet:csv.cancel_import', '取消导入')}
+              {isCancelling ? (
+                <CircleNotch size={16} className="mr-1.5 animate-spin" />
+              ) : (
+                <XCircle size={16} className="mr-1.5" />
+              )}
+              {isCancelling
+                ? t('exam_sheet:csv.cancelling_import')
+                : t('exam_sheet:csv.cancel_import')}
             </NotionButton>
           </div>
         </div>
       )}
 
       {/* 用户取消导入后的提示 */}
-      {isCancelled && !importResult && !importError && (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-500/10">
-          <Warning size={24} className="text-amber-500" />
+      {isCancelled && !importError && (
+        <div className="flex items-center gap-3 rounded-md bg-warning/10 p-4">
+          <Warning size={20} className="text-warning" />
           <div>
-            <p className="font-medium">{t('exam_sheet:csv.import_cancelled_title', '导入已取消')}</p>
+            <p className="font-medium">{t('exam_sheet:csv.import_cancelled_title')}</p>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {t('exam_sheet:csv.import_cancelled_desc', '已停止监听导入进度。后端任务可能仍在运行，已导入的数据不会回滚。')}
+              {t('exam_sheet:csv.import_cancelled_desc')}
             </p>
           </div>
         </div>
@@ -726,22 +853,24 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       {importResult && !isImporting && (
         <div className="space-y-4">
           <div className={cn(
-            'flex items-center gap-3 p-4 rounded-lg',
-            importResult.failed_count > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10'
+            'flex items-center gap-3 rounded-md p-4',
+            importResult.cancelled || importResult.failed_count > 0 ? 'bg-warning/10' : 'bg-success/10'
           )}>
-            {importResult.failed_count > 0 ? (
-              <Warning size={24} className="text-amber-500" />
+            {importResult.cancelled || importResult.failed_count > 0 ? (
+              <Warning size={20} className="text-warning" />
             ) : (
-              <CheckCircle size={24} className="text-emerald-500" />
+              <CheckCircle size={20} className="text-success" />
             )}
             <div>
               <p className="font-medium">
-                {importResult.failed_count > 0
-                  ? t('exam_sheet:csv.import_partial', '导入完成（部分失败）')
-                  : t('exam_sheet:csv.import_success', '导入成功！')}
+                {importResult.cancelled
+                  ? t('exam_sheet:csv.import_cancelled_title')
+                  : importResult.failed_count > 0
+                  ? t('exam_sheet:csv.import_partial')
+                  : t('exam_sheet:csv.import_success')}
               </p>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {t('exam_sheet:csv.import_summary', '成功 {{success}} 条，跳过 {{skipped}} 条，失败 {{failed}} 条', {
+                {t('exam_sheet:csv.import_summary', {
                   success: importResult.success_count,
                   skipped: importResult.skipped_count,
                   failed: importResult.failed_count,
@@ -753,14 +882,14 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
           {/* 错误详情 */}
           {importResult.errors.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-rose-600">
-                {t('exam_sheet:csv.error_details', '错误详情（前 10 条）')}
+              <Label className="text-sm font-medium text-destructive">
+                {t('exam_sheet:csv.error_details')}
               </Label>
-              <div className="max-h-[150px] overflow-auto rounded-lg border border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/30 p-3 space-y-2">
+              <div className="max-h-[150px] space-y-2 overflow-auto rounded-md border border-destructive/30 bg-destructive/10 p-3">
                 {importResult.errors.slice(0, 10).map((error, index) => (
                   <div key={index} className="text-xs">
-                    <span className="font-mono text-rose-600">{t('exam_sheet:csv.error_row', { row: error.row, message: '' })}</span>
-                    <span className="text-rose-700 dark:text-rose-300">{error.message}</span>
+                    <span className="font-mono text-destructive">{t('exam_sheet:csv.error_row', { row: error.row, message: '' })}</span>
+                    <span className="text-destructive">{error.message}</span>
                   </div>
                 ))}
               </div>
@@ -777,7 +906,8 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         </Alert>
       )}
     </div>
-  );
+    );
+  };
 
   // 渲染当前步骤内容
   const renderStepContent = () => {
@@ -800,6 +930,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     const isFirstStep = stepIndex === 0;
     const isLastStep = stepIndex === STEPS.length - 1;
     const showResult = currentStep === 'progress' && (importResult || importError || isCancelled);
+    const canRetry = !isImporting && (Boolean(importError && !importResult) || Boolean(importResult?.cancelled));
 
     return (
       <NotionDialogFooter>
@@ -807,16 +938,22 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         <NotionButton
           variant="outline"
           onClick={handleCancel}
-          disabled={isImporting}
+          disabled={isCancelling}
         >
-          {showResult ? t('common:close', '关闭') : t('common:cancel', '取消')}
+          {isImporting
+            ? (isCancelling
+              ? t('exam_sheet:csv.cancelling_import')
+              : t('exam_sheet:csv.cancel_import'))
+            : showResult
+              ? t('common:close')
+              : t('common:cancel')}
         </NotionButton>
 
-        {/* 重试按钮（仅错误时显示） */}
-        {importError && !isImporting && !importResult && (
+        {/* 重试按钮（错误或已取消时显示） */}
+        {canRetry && (
           <NotionButton variant="ghost" onClick={handleRetry}>
             <ArrowClockwise size={16} className="mr-2" />
-            {t('common:retry', '重试')}
+            {t('common:retry')}
           </NotionButton>
         )}
 
@@ -824,7 +961,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         {!isFirstStep && !showResult && !isImporting && (
           <NotionButton variant="ghost" onClick={handlePrev}>
             <CaretLeft size={16} className="mr-1" />
-            {t('common:prev', '上一步')}
+            {t('common:prev')}
           </NotionButton>
         )}
 
@@ -838,14 +975,14 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
                 ) : (
                   <Upload size={16} className="mr-2" />
                 )}
-                {t('exam_sheet:csv.start_import', '开始导入')}
+                {t('exam_sheet:csv.start_import')}
               </NotionButton>
             ) : currentStep !== 'progress' && currentStep !== 'select' && (
               <NotionButton
                 onClick={handleNext}
                 disabled={currentStep === 'mapping' && !isMappingValid}
               >
-                {t('common:next', '下一步')}
+                {t('common:next')}
                 <CaretRight size={16} className="ml-1" />
               </NotionButton>
             )}
@@ -865,10 +1002,10 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
             <Table size={20} />
-            {t('exam_sheet:csv.import_title', 'CSV 导入')}
+            {t('exam_sheet:csv.import_title')}
           </NotionDialogTitle>
           <NotionDialogDescription>
-            {t('exam_sheet:csv.import_description', '从 CSV 文件批量导入题目到题目集')}
+            {t('exam_sheet:csv.import_description')}
           </NotionDialogDescription>
         </NotionDialogHeader>
         <NotionDialogBody>

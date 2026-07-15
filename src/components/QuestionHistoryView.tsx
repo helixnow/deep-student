@@ -54,10 +54,10 @@ interface QuestionHistoryViewProps {
 }
 
 const changeTypeIcons: Record<string, React.ReactNode> = {
-  create: <PencilSimple size={16} className="text-green-500" />,
-  update: <PencilSimple size={16} className="text-blue-500" />,
-  answer: <Chat size={16} className="text-purple-500" />,
-  status_change: <CheckCircle size={16} className="text-orange-500" />,
+  create: <PencilSimple size={16} className="text-success" />,
+  update: <PencilSimple size={16} className="text-primary" />,
+  answer: <Chat size={16} className="text-info" />,
+  status_change: <CheckCircle size={16} className="text-warning" />,
 };
 
 const changeTypeLabelKeys: Record<string, string> = {
@@ -148,11 +148,11 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
     
     if (fieldName === 'is_correct') {
       return value === 'true' ? (
-        <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+        <Badge className="bg-success/10 text-success">
           {t('practice:questionBank.correctLabel')}
         </Badge>
       ) : (
-        <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+        <Badge className="bg-destructive/10 text-destructive">
           {t('practice:questionBank.incorrectLabel')}
         </Badge>
       );
@@ -175,10 +175,10 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <ClockCounterClockwise size={20} />
-            {t('exam_sheet:questionBank.history.title', '历史记录')}
+            {t('exam_sheet:questionBank.history.title')}
           </SheetTitle>
           <SheetDescription>
-            {t('exam_sheet:questionBank.history.description', '查看题目的修改历史和答题记录')}
+            {t('exam_sheet:questionBank.history.description')}
           </SheetDescription>
         </SheetHeader>
 
@@ -192,14 +192,14 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
               <XCircle size={32} className="text-destructive mb-2" />
               <p className="text-sm text-muted-foreground">{error}</p>
               <NotionButton variant="ghost" size="sm" className="mt-4" onClick={loadHistory}>
-                {t('common:retry', '重试')}
+                {t('common:retry')}
               </NotionButton>
             </div>
           ) : history.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <ClockCounterClockwise size={32} className="text-muted-foreground mb-2" />
               <p className="text-sm text-muted-foreground">
-                {t('exam_sheet:questionBank.history.empty', '暂无历史记录')}
+                {t('exam_sheet:questionBank.history.empty')}
               </p>
             </div>
           ) : (
@@ -239,7 +239,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
                         <div className="space-y-2 text-sm">
                           <div className="flex items-start gap-2">
                             <span className="text-muted-foreground flex-shrink-0">{t('practice:questionBank.oldValue')}</span>
-                            <div className="flex-1 bg-red-50 dark:bg-red-900/20 rounded px-2 py-1">
+                            <div className="flex-1 rounded bg-destructive/5 px-2 py-1">
                               {renderValue(item.old_value, item.field_name)}
                             </div>
                           </div>
@@ -248,7 +248,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
                           </div>
                           <div className="flex items-start gap-2">
                             <span className="text-muted-foreground flex-shrink-0">{t('practice:questionBank.newValue')}</span>
-                            <div className="flex-1 bg-green-50 dark:bg-green-900/20 rounded px-2 py-1">
+                            <div className="flex-1 rounded bg-success/5 px-2 py-1">
                               {renderValue(item.new_value, item.field_name)}
                             </div>
                           </div>

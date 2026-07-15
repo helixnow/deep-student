@@ -38,13 +38,14 @@ interface QuestionFavoritesViewProps {
   onSelectQuestion?: (question: ApiQuestion) => void;
   onToggleFavorite?: (questionId: string) => Promise<void>;
   onViewHistory?: (questionId: string) => void;
+  onBrowseQuestions?: () => void;
 }
 
 const statusColors: Record<QuestionStatus, string> = {
-  new: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-  in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+  new: 'bg-muted text-muted-foreground',
+  in_progress: 'bg-primary/10 text-primary',
   mastered: 'bg-success/10 text-success',
-  review: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+  review: 'bg-warning/10 text-warning',
 };
 
 const statusLabelKeys: Record<QuestionStatus, string> = {
@@ -59,6 +60,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
   onSelectQuestion,
   onToggleFavorite,
   onViewHistory,
+  onBrowseQuestions,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common', 'practice']);
   const PAGE_SIZE = 500;
@@ -123,7 +125,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
     if (!onToggleFavorite) {
       showGlobalNotification(
         'warning',
-        t('exam_sheet:questionBank.actionUnavailable', '当前操作不可用')
+        t('exam_sheet:questionBank.actionUnavailable')
       );
       return;
     }
@@ -134,7 +136,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
     } catch (err: unknown) {
       showGlobalNotification(
         'error',
-        `${t('exam_sheet:questionBank.favorites.toggleFailed', '更新收藏失败')}: ${err instanceof Error ? err.message : String(err)}`
+        `${t('exam_sheet:questionBank.favorites.toggleFailed')}: ${err instanceof Error ? err.message : String(err)}`
       );
     } finally {
       setActionLoading(null);
@@ -162,7 +164,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             variant="ghost"
             size="icon"
  className="w-8 h-8 flex-shrink-0"
-            title={t('exam_sheet:questionBank.history.title', '历史记录')}
+            title={t('exam_sheet:questionBank.history.title')}
             onClick={(e) => {
               e.stopPropagation();
               onViewHistory?.(question.id);
@@ -183,7 +185,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             {actionLoading === question.id ? (
               <CircleNotch size={16} className="animate-spin" />
             ) : (
-              <Star size={16} className="text-yellow-500" />
+              <Star size={16} className="text-warning" />
             )}
           </NotionButton>
         </div>
@@ -198,7 +200,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
               <CheckCircle size={14} className="text-success" />
             )}
             {question.isCorrect === false && (
-              <XCircle size={14} className="text-red-500" />
+              <XCircle size={14} className="text-destructive" />
             )}
           </div>
           <CaretRight size={16} className="text-muted-foreground" />
@@ -212,7 +214,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
       <div className="flex items-center gap-2 mb-3">
         <Star size={16} />
         <span className="text-sm font-medium">
-          {t('exam_sheet:questionBank.favorites.title', '收藏')}
+          {t('exam_sheet:questionBank.favorites.title')}
         </span>
         {favorites.length > 0 && (
           <Badge variant="secondary" className="ml-1 h-5 px-1.5">
@@ -228,33 +230,36 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <WarningCircle size={40} className="text-destructive/70 mb-3" />
           <p className="text-sm text-muted-foreground">
-            {t('exam_sheet:questionBank.favorites.loadFailed', '收藏加载失败')}
+            {t('exam_sheet:questionBank.favorites.loadFailed')}
           </p>
           <NotionButton variant="ghost" size="sm" className="mt-3" onClick={() => void loadFavorites()}>
-            {t('common:actions.retry', '重试')}
+            {t('common:actions.retry')}
           </NotionButton>
         </div>
       ) : favorites.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <Star size={48} className="text-muted-foreground/50 mb-3" />
+          <Star size={28} className="text-muted-foreground/50 mb-3" />
           <p className="text-sm text-muted-foreground">
-            {t('exam_sheet:questionBank.favorites.empty', '暂无收藏题目')}
+            {t('exam_sheet:questionBank.favorites.empty')}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            {t('exam_sheet:questionBank.favorites.hint', '点击题目上的星星图标可添加收藏')}
+            {t('exam_sheet:questionBank.favorites.hint')}
           </p>
+          {onBrowseQuestions && (
+            <NotionButton variant="ghost" size="sm" className="mt-3" onClick={onBrowseQuestions}>
+              {t('exam_sheet:questionBank.favorites.browse')}
+            </NotionButton>
+          )}
         </div>
       ) : (
-        <CustomScrollArea className="h-[calc(100vh-180px)]">
+        <CustomScrollArea className="flex-1 min-h-0">
           <div className="space-y-2 pr-2">
             {totalCount > PAGE_SIZE && (
               <div className="flex items-center gap-1.5 px-2 py-1.5 mb-1 rounded-md bg-warning/10 text-warning">
                 <WarningCircle size={14} className="flex-shrink-0" />
                 <span className="text-xs">
                   {t(
-                    'exam_sheet:questionBank.favorites.truncated',
-                    '仅显示前 {{count}} 条收藏，共 {{total}} 条',
-                    { count: PAGE_SIZE, total: totalCount }
+                    'exam_sheet:questionBank.favorites.truncated', { count: PAGE_SIZE, total: totalCount }
                   )}
                 </span>
               </div>

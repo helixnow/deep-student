@@ -11,6 +11,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { Input } from '@/components/ui/shad/Input';
 import { Label } from '@/components/ui/shad/Label';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -36,6 +37,7 @@ export interface QuestionInlineEditorProps {
   question: Question | null;
   onSave?: (question: Question) => Promise<void>;
   onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
   mode?: 'edit' | 'create';
   examId?: string;
   onCreate?: (question: Question) => Promise<void>;
@@ -83,6 +85,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   question,
   onSave,
   onCancel,
+  onDirtyChange,
   mode = 'edit',
   examId,
   onCreate,
@@ -107,13 +110,15 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   const [imagePreviewUrls, setImagePreviewUrls] = useState<Record<string, string>>({});
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const initialDataRef = useRef<EditableQuestion | null>(null);
 
   // 初始化编辑数据
   useEffect(() => {
     if (mode === 'create') {
-      setEditData({
+      const initialData: EditableQuestion = {
         content: '',
         questionType: 'single_choice',
         options: [
@@ -128,25 +133,38 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         tags: [],
         userNote: '',
         images: [],
-      });
+      };
+      initialDataRef.current = initialData;
+      setEditData(initialData);
       setError(null);
       setTagInput('');
       setImagePreviewUrls({});
     } else if (question) {
-      setEditData({
+      const initialData: EditableQuestion = {
         content: question.content || '',
         questionType: question.questionType || 'other',
-        options: question.options || [],
+        options: (question.options || []).map((option) => ({ ...option })),
         answer: question.answer || '',
         explanation: question.explanation || '',
         difficulty: question.difficulty || '',
-        tags: question.tags || [],
+        tags: [...(question.tags || [])],
         userNote: question.userNote || '',
-        images: question.images || [],
-      });
+        images: [...(question.images || [])],
+      };
+      initialDataRef.current = initialData;
+      setEditData(initialData);
       loadImagePreviews(question.images || []);
     }
   }, [question, mode]);
+
+  const isDirty = initialDataRef.current !== null
+    && JSON.stringify(editData) !== JSON.stringify(initialDataRef.current);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   // 展开后自动滚动到可见
   useEffect(() => {
@@ -405,6 +423,14 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
     }
   }, [question, editData, onSave, onCancel, mode, examId, onCreate, t]);
 
+  const handleCancelRequest = useCallback(() => {
+    if (!isDirty || isSaving) {
+      onCancel();
+      return;
+    }
+    setDiscardConfirmOpen(true);
+  }, [isDirty, isSaving, onCancel]);
+
   const isChoiceType = editData.questionType === 'single_choice' || editData.questionType === 'multiple_choice' || editData.questionType === 'indefinite_choice';
 
   return (
@@ -564,7 +590,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           <div className="flex items-center justify-between">
             <Label className="flex items-center gap-1 text-xs">
               <ImageIcon size={14} className="text-muted-foreground" />
-              {t('exam_sheet:questionBank.edit.images', '题目图片')}
+              {t('exam_sheet:questionBank.edit.images')}
               {editData.images.length > 0 && (
                 <span className="text-[10px] text-muted-foreground">({editData.images.length}/{MAX_IMAGES})</span>
               )}
@@ -581,7 +607,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               ) : (
                 <Image size={12} className="mr-1" />
               )}
-              {t('exam_sheet:questionBank.edit.addImage', '添加')}
+              {t('exam_sheet:questionBank.edit.addImage')}
             </NotionButton>
             <input
               ref={fileInputRef}
@@ -636,7 +662,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploadingImage} className="w-full !h-auto !p-4 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] flex-col items-center justify-center gap-2">
               <Image size={16} className="text-muted-foreground" />
               <span className="text-xs text-muted-foreground">
-                {t('exam_sheet:questionBank.edit.imagePlaceholder', '点击添加题目图片')}
+                {t('exam_sheet:questionBank.edit.imagePlaceholder')}
               </span>
             </NotionButton>
           )}
@@ -667,7 +693,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             aria-expanded={showPreview}
           >
             <Eye size={14} className="mr-1" />
-            {t('common:preview')}
+            {t('common:actions.preview')}
           </NotionButton>
           {showPreview && (
             <div className="rounded-md border border-border/40 bg-muted/10 p-3 space-y-2 text-sm">
@@ -713,7 +739,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
 
       {/* 底部操作栏 */}
       <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-border/40 bg-muted/20">
-        <NotionButton variant="ghost" size="sm" onClick={onCancel} disabled={isSaving}>
+        <NotionButton variant="ghost" size="sm" onClick={handleCancelRequest} disabled={isSaving}>
           {t('common:actions.cancel')}
         </NotionButton>
         <NotionButton size="sm" onClick={handleSave} disabled={isSaving}>
@@ -727,6 +753,17 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             : t('common:actions.save')}
         </NotionButton>
       </div>
+      <NotionAlertDialog
+        open={discardConfirmOpen}
+        onOpenChange={setDiscardConfirmOpen}
+        icon={<WarningCircle size={20} className="text-warning" />}
+        title={t('common:confirmMessages.unsaved_changes')}
+        description={t('exam_sheet:questionBank.edit.discardDescription')}
+        confirmText={t('common:actions.discard')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={onCancel}
+      />
     </div>
   );
 };

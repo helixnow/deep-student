@@ -27,16 +27,15 @@ import { cn } from '@/utils/cn';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import {
   isWorkbenchBlockRestored,
-  resolveWorkbenchRunId,
 } from '@/features/chat/utils/workbenchBlockRemap';
 import {
   workbenchBus,
   stageManager,
   usePresenceStore,
+  makeAcrSessionRunId,
   type AcrReceipt,
   type AcrReceiptStatus,
 } from '@/features/workbench';
-import { runLedger } from '@/features/workbench/agent/ledger';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
@@ -57,6 +56,13 @@ function asString(value: unknown): string | undefined {
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string');
+}
+
+let uiUndoSequence = 0;
+
+function nextUiUndoNonce(): string {
+  uiUndoSequence += 1;
+  return `${Date.now().toString(36)}-${uiUndoSequence.toString(36)}`;
 }
 
 /** 从 toolInput 提取 typeId / instanceKey（兼容嵌套 target） */
@@ -125,7 +131,25 @@ function parseReceipt(toolOutput: unknown): AcrReceipt | null {
     userPatch: asString(candidate.userPatch),
     suggestionPending: candidate.suggestionPending === true,
     message: asString(candidate.message),
+    resultUnknown:
+      candidate.resultUnknown === true || candidate.code === 'RESULT_UNKNOWN',
+    code: asString(candidate.code),
+    retryable: candidate.retryable === true,
   };
+}
+
+function isResultUnknown(toolOutput: unknown, blockError?: string): boolean {
+  const outer = asRecord(toolOutput);
+  const candidate = asRecord(outer?.result) ?? outer;
+  if (
+    candidate?.resultUnknown === true
+    || candidate?.code === 'RESULT_UNKNOWN'
+  ) {
+    return true;
+  }
+  const strings = [blockError, candidate?.error, outer?.error]
+    .filter((value): value is string => typeof value === 'string');
+  return strings.some((value) => value.includes('RESULT_UNKNOWN'));
 }
 
 interface ParsedAgentActResult {
@@ -169,8 +193,10 @@ function receiptStatusKey(
   receipt: AcrReceipt | null,
   blockStatus: string,
   actResult: ParsedAgentActResult | null,
-): 'running' | 'success' | 'partial' | 'cancelled' | 'error' {
+  resultUnknown = false,
+): 'running' | 'success' | 'partial' | 'cancelled' | 'unknown' | 'error' {
   if (blockStatus === 'running' || blockStatus === 'pending') return 'running';
+  if (resultUnknown) return 'unknown';
   if (actResult?.status === 'partial') return 'partial';
   if (actResult?.status === 'failed') return 'error';
   if (!receipt) {
@@ -194,7 +220,7 @@ function receiptStatusKey(
 // 组件
 // ============================================================================
 
-const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
+const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, store }) => {
   const { t } = useTranslation('chatV2');
   const [undoState, setUndoState] = useState<
     'idle' | 'loading' | 'reverted' | 'incomplete' | 'expired' | 'unavailable'
@@ -209,13 +235,17 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
   const target = useMemo(() => extractTarget(block.toolInput), [block.toolInput]);
   const receipt = useMemo(() => parseReceipt(block.toolOutput), [block.toolOutput]);
   const actResult = useMemo(() => parseAgentActResult(block.toolOutput), [block.toolOutput]);
-  const restoredFromPersistence = isWorkbenchBlockRestored(block.id);
-  const statusKey = receiptStatusKey(receipt, block.status, actResult);
-
-  const runId = resolveWorkbenchRunId(
-    { id: block.id, toolCallId: block.toolCallId },
-    (id) => runLedger.hasRun(id)
+  const resultUnknown = useMemo(
+    () => isResultUnknown(block.toolOutput, block.error),
+    [block.error, block.toolOutput],
   );
+  const restoredFromPersistence = isWorkbenchBlockRestored(block.id);
+  const statusKey = receiptStatusKey(receipt, block.status, actResult, resultUnknown);
+  const sessionId = store?.getState().sessionId;
+  const toolCallId = block.toolCallId;
+  const runId = sessionId && toolCallId
+    ? makeAcrSessionRunId(sessionId, toolCallId)
+    : undefined;
 
   // presence 联动：同 runId 的窗口光环状态（只读订阅，驱动 data-presence-status）
   const presenceStatus = usePresenceStore((s) => {
@@ -227,7 +257,10 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
   });
 
   const ledgerAlive = Boolean(
-    !restoredFromPersistence && runId && runLedger.hasRun(runId)
+    !restoredFromPersistence
+    && runId
+    && sessionId
+    && stageManager.hasReversibleRun(runId, sessionId)
   );
   const hadReversibleEntry = useRef(false);
   if (ledgerAlive) hadReversibleEntry.current = true;
@@ -252,13 +285,15 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
   const persistentUndo = undoToken != null && actResult?.undoDurability === 'persistent';
   const showLegacyUndoChrome =
     receipt?.mode === 'frontend' &&
+    !receipt.resultUnknown &&
     (receipt.status === 'completed' || receipt.status === 'partial') &&
     Boolean(runId);
-  const showUndoChrome = Boolean(undoToken) || showLegacyUndoChrome;
+  const showUndoChrome = !resultUnknown && (Boolean(undoToken) || showLegacyUndoChrome);
 
   /** 持久 token 可跨恢复消费；session token 与旧账本只在当前前端生命周期有效。 */
   const canUndo =
     showUndoChrome &&
+    Boolean(runId && sessionId) &&
     (undoState === 'idle' || undoState === 'incomplete') &&
     (undoToken ? persistentUndo || !restoredFromPersistence : !restoredFromPersistence && ledgerAlive);
 
@@ -272,6 +307,8 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
 
   const undoUnavailable = showUndoChrome && (
     undoState === 'unavailable' ||
+    !runId ||
+    !sessionId ||
     (!undoToken && undoState === 'idle' && !ledgerAlive && !undoExpired)
   );
   const undoRetryAvailable = undoToken ? !undoExpired : ledgerAlive;
@@ -301,6 +338,10 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
   };
 
   const handleUndo = async () => {
+    if (!runId || !sessionId) {
+      setUndoState('unavailable');
+      return;
+    }
     if (restoredFromPersistence && !persistentUndo) {
       setUndoState('expired');
       return;
@@ -309,13 +350,16 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
     if (undoToken) {
       setUndoState('loading');
       try {
+        const undoNonce = nextUiUndoNonce();
         const response = await stageManager.handleBridgeRequest({
-          correlationId: `ui-undo-${block.id}-${Date.now()}`,
+          correlationId: `ui-undo-${block.id}-${undoNonce}`,
           command: 'revert_run',
-          args: { undoToken },
+          // 点击专用控件即为用户本次 High 确认；授权只作用于当前请求且不记忆。
+          args: { undoToken, approvalRiskCeiling: 'high' },
           timeoutMs: 15_000,
-          runId: runId ?? block.toolCallId ?? block.id,
-          sessionId: block.messageId,
+          runId: `${runId}:undo:${undoNonce}`,
+          toolCallId,
+          sessionId,
         });
         const data = asRecord(response.data);
         if (response.ok && data?.reverted === true) {
@@ -330,17 +374,13 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
       }
       return;
     }
-    const currentRunId = resolveWorkbenchRunId(
-      { id: block.id, toolCallId: block.toolCallId },
-      (id) => runLedger.hasRun(id)
-    );
-    if (!currentRunId || !runLedger.hasRun(currentRunId)) {
+    if (!stageManager.hasReversibleRun(runId, sessionId)) {
       setUndoState(hadReversibleEntry.current ? 'expired' : 'unavailable');
       return;
     }
     setUndoState('loading');
     try {
-      const ok = await stageManager.revertRun(currentRunId);
+      const ok = await stageManager.revertRun(runId, sessionId);
       setUndoState(ok ? 'reverted' : 'incomplete');
     } catch {
       setUndoState('incomplete');
@@ -351,6 +391,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
     running: 'bg-primary/10 text-primary',
     success: 'bg-success/10 text-success',
     partial: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+    unknown: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
     cancelled: 'bg-muted text-muted-foreground',
     error: 'bg-destructive/10 text-destructive',
   }[statusKey];
@@ -365,6 +406,8 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
       data-testid="workbench-ops-block"
       data-status={statusKey}
       data-run-id={runId || undefined}
+      data-tool-call-id={toolCallId || undefined}
+      data-result-unknown={resultUnknown || undefined}
       data-presence-status={presenceStatus || undefined}
     >
       {/* 标题行 */}
@@ -558,8 +601,24 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
         </div>
       )}
 
+      {resultUnknown && block.status !== 'running' && block.status !== 'pending' && (
+        <div
+          className="border-t border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
+          data-testid="workbench-result-unknown"
+          role="alert"
+        >
+          <p className="flex items-center gap-1.5 font-medium">
+            <WarningCircle size={14} className="flex-shrink-0" />
+            {t('blocks.workbenchOps.resultUnknownTitle')}
+          </p>
+          <p className="mt-1 text-amber-700/90 dark:text-amber-200/80">
+            {t('blocks.workbenchOps.resultUnknownHint')}
+          </p>
+        </div>
+      )}
+
       {/* 错误（无 receipt 时） */}
-      {block.status === 'error' && !receipt && (
+      {block.status === 'error' && !receipt && !resultUnknown && (
         <div className="px-3 py-2 flex items-center gap-1.5 text-xs text-destructive">
           <WarningCircle size={14} />
           {block.error || t('blocks.mcpTool.unknownError')}
@@ -572,6 +631,13 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
           className="flex flex-wrap gap-2 px-3 py-2.5 border-t border-border/50"
           data-testid="workbench-ops-footer-actions"
         >
+          <p
+            className="flex w-full items-start gap-1.5 text-[11px] text-muted-foreground"
+            data-testid="workbench-undo-risk"
+          >
+            <WarningCircle size={12} className="mt-0.5 flex-shrink-0 text-amber-500" />
+            {t('blocks.workbenchOps.undoHighRisk')}
+          </p>
           <NotionButton
             type="button"
             variant="default"

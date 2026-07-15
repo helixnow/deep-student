@@ -52,6 +52,8 @@ import type { Question, QuestionStatus, Difficulty, QuestionType } from '@/api/q
 interface QuestionBankManageViewProps {
   questions: Question[];
   isLoading?: boolean;
+  /** Controlled by the OS resource view when an agent applies a filter. */
+  filters?: QuestionFilters;
   onSelect?: (questionIds: string[]) => void;
   onDelete?: (questionIds: string[]) => Promise<void>;
   onToggleFavorite?: (questionId: string) => Promise<void>;
@@ -78,14 +80,15 @@ interface QuestionFilters {
   status?: QuestionStatus[];
   difficulty?: Difficulty[];
   questionType?: QuestionType[];
+  tags?: string[];
   isFavorite?: boolean;
 }
 
 const statusColors: Record<QuestionStatus, string> = {
   new: 'text-muted-foreground',
-  in_progress: 'text-sky-600 dark:text-sky-400',
-  mastered: 'text-emerald-600 dark:text-emerald-400',
-  review: 'text-amber-600 dark:text-amber-400',
+  in_progress: 'text-primary',
+  mastered: 'text-success',
+  review: 'text-warning',
 };
 
 const statusLabelKeys: Record<QuestionStatus, string> = {
@@ -96,10 +99,10 @@ const statusLabelKeys: Record<QuestionStatus, string> = {
 };
 
 const difficultyColors: Record<Difficulty, string> = {
-  easy: 'text-emerald-600 dark:text-emerald-400',
-  medium: 'text-amber-600 dark:text-amber-400',
-  hard: 'text-orange-600 dark:text-orange-400',
-  very_hard: 'text-rose-600 dark:text-rose-400',
+  easy: 'text-success',
+  medium: 'text-warning',
+  hard: 'text-warning',
+  very_hard: 'text-destructive',
 };
 
 const difficultyLabelKeys: Record<Difficulty, string> = {
@@ -112,6 +115,7 @@ const difficultyLabelKeys: Record<Difficulty, string> = {
 export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
   questions,
   isLoading = false,
+  filters: controlledFilters,
   onSelect,
   onDelete,
   onToggleFavorite,
@@ -127,7 +131,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
   const { t } = useTranslation(['exam_sheet', 'common', 'practice']);
   
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState<QuestionFilters>({});
+  const [filters, setFilters] = useState<QuestionFilters>(controlledFilters ?? {});
   const [showFilters, setShowFilters] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   
@@ -142,6 +146,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
   const canDelete = Boolean(onDelete);
   const canReset = Boolean(onResetProgress);
   const canToggleFavorite = Boolean(onToggleFavorite);
+
+  useEffect(() => {
+    if (controlledFilters) setFilters(controlledFilters);
+  }, [controlledFilters]);
 
   useEffect(() => {
     setSelectedIds((prev) => {
@@ -192,17 +200,17 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
 
   const handleToggleFavoriteAction = useCallback(async (questionId: string) => {
     if (!onToggleFavorite) {
-      showGlobalNotification('warning', t('exam_sheet:questionBank.actionUnavailable', '当前操作不可用'));
+      showGlobalNotification('warning', t('exam_sheet:questionBank.actionUnavailable'));
       return;
     }
     setActionLoading(`favorite:${questionId}`);
     try {
       await onToggleFavorite(questionId);
-      showGlobalNotification('success', t('exam_sheet:questionBank.favoriteUpdated', '收藏状态已更新'));
+      showGlobalNotification('success', t('exam_sheet:questionBank.favoriteUpdated'));
     } catch (err: unknown) {
       showGlobalNotification(
         'error',
-        `${t('exam_sheet:questionBank.favoriteUpdateFailed', '更新收藏失败')}: ${err instanceof Error ? err.message : String(err)}`
+        `${t('exam_sheet:questionBank.favoriteUpdateFailed')}: ${err instanceof Error ? err.message : String(err)}`
       );
     } finally {
       setActionLoading(null);
@@ -236,7 +244,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
   // 确认删除
   const handleDeleteConfirm = useCallback(async () => {
     if (!onDelete) {
-      showGlobalNotification('warning', t('exam_sheet:questionBank.actionUnavailable', '当前操作不可用'));
+      showGlobalNotification('warning', t('exam_sheet:questionBank.actionUnavailable'));
       return;
     }
     const ids = singleDeleteId ? [singleDeleteId] : Array.from(selectedIds);
@@ -271,7 +279,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
   // 确认重置进度
   const handleResetConfirm = useCallback(async () => {
     if (!onResetProgress) {
-      showGlobalNotification('warning', t('exam_sheet:questionBank.actionUnavailable', '当前操作不可用'));
+      showGlobalNotification('warning', t('exam_sheet:questionBank.actionUnavailable'));
       return;
     }
     const ids = singleResetId ? [singleResetId] : Array.from(selectedIds);
@@ -314,7 +322,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           <div className="relative flex-1">
             <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
-              placeholder={t('exam_sheet:questionBank.search', '搜索题目...')}
+              placeholder={t('exam_sheet:questionBank.search')}
               value={filters.search || ''}
               onChange={(e) => handleFilterChange('search', e.target.value)}
               className="pl-9 h-8 text-sm bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
@@ -325,23 +333,23 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           {showCsvActions && (
             <div className="flex items-center gap-1">
               {onCsvImport && (
-                <NotionButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title', 'CSV 导入')}>
+                <NotionButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title')}>
                   <Upload size={14} />
-                  <span className="hidden sm:inline">{t('exam_sheet:csv.import_title', 'CSV 导入')}</span>
+                  <span className="hidden sm:inline">{t('exam_sheet:csv.import_title')}</span>
                 </NotionButton>
               )}
               {onCsvExport && (
-                <NotionButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title', '导出')}>
+                <NotionButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title')}>
                   <Download size={14} />
-                  <span className="hidden sm:inline">{t('exam_sheet:questionBank.export.title', '导出')}</span>
+                  <span className="hidden sm:inline">{t('exam_sheet:questionBank.export.title')}</span>
                 </NotionButton>
               )}
             </div>
           )}
           
-          <NotionButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+          <NotionButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             <Funnel size={14} />
-            {t('common:filter', '筛选')}
+            {t('common:actions.filter')}
           </NotionButton>
         </div>
 
@@ -374,11 +382,11 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             <span className="text-xs text-muted-foreground">
               {t('practice:questionBank.selectedCount', { count: selectedIds.size })}
             </span>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 text-xs text-sky-600 hover:bg-sky-500/10">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10">
               <ArrowCounterClockwise className={cn('w-3 h-3', actionLoading === 'reset' && 'animate-spin')} />
               {t('practice:questionBank.reset')}
             </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 text-xs text-rose-600 hover:bg-rose-500/10">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 text-xs text-destructive hover:bg-destructive/10">
               <Trash size={12} />
               {t('common:delete')}
             </NotionButton>
@@ -394,7 +402,13 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           </div>
         ) : questions.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <p>{t('exam_sheet:questionBank.empty', '暂无题目')}</p>
+            <p>{t('exam_sheet:questionBank.empty')}</p>
+            {showCsvActions && onCsvImport && (
+              <NotionButton variant="ghost" size="sm" className="mt-3" onClick={onCsvImport}>
+                <Upload size={14} />
+                {t('exam_sheet:questionBank.import')}
+              </NotionButton>
+            )}
           </div>
         ) : (
           <Table>
@@ -406,12 +420,12 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                     onCheckedChange={handleSelectAll}
 />
                 </TableHead>
-                <TableHead className="w-16">{t('exam_sheet:questionBank.label', '题号')}</TableHead>
-                <TableHead>{t('exam_sheet:questionBank.content', '题目')}</TableHead>
+                <TableHead className="w-16">{t('exam_sheet:questionBank.label')}</TableHead>
+                <TableHead>{t('exam_sheet:questionBank.content')}</TableHead>
                 <TableHead className="w-20">{t('practice:questionBank.statusHeader')}</TableHead>
                 {/* 窄屏隐藏次要列，保证题目内容可读 */}
                 <TableHead className="w-20 hidden md:table-cell">{t('practice:questionBank.difficultyHeader')}</TableHead>
-                <TableHead className="w-20 hidden md:table-cell">{t('exam_sheet:questionBank.attempts', '答题')}</TableHead>
+                <TableHead className="w-20 hidden md:table-cell">{t('exam_sheet:questionBank.attempts')}</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
@@ -441,10 +455,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                         {q.content.length > 100 && '...'}
                       </span>
                       {q.isCorrect === true && (
-                        <CheckCircle size={16} className="text-green-500 flex-shrink-0" />
+                        <CheckCircle size={16} className="text-success flex-shrink-0" />
                       )}
                       {q.isCorrect === false && (
-                        <XCircle size={16} className="text-red-500 flex-shrink-0" />
+                        <XCircle size={16} className="text-destructive flex-shrink-0" />
                       )}
                     </div>
                   </TableCell>
@@ -475,7 +489,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                           onClick={() => onViewHistory?.(q.id)}
                           icon={<ClockCounterClockwise size={16} />}
                         >
-                          {t('exam_sheet:questionBank.history.title', '历史记录')}
+                          {t('exam_sheet:questionBank.history.title')}
                         </AppMenuItem>
                         <AppMenuSeparator />
                         <AppMenuItem
@@ -484,8 +498,8 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                           icon={q.isFavorite ? <Star size={16} /> : <Star size={16} />}
                         >
                           {q.isFavorite
-                            ? t('exam_sheet:questionBank.unfavorite', '取消收藏')
-                            : t('exam_sheet:questionBank.favorite', '收藏')}
+                            ? t('exam_sheet:questionBank.unfavorite')
+                            : t('exam_sheet:questionBank.favorite')}
                         </AppMenuItem>
                         <AppMenuSeparator />
                         <AppMenuItem
@@ -493,7 +507,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                           disabled={!canReset}
                           icon={<ArrowCounterClockwise size={16} />}
                         >
-                          {t('exam_sheet:questionBank.resetProgress', '重置进度')}
+                          {t('exam_sheet:questionBank.resetProgress')}
                         </AppMenuItem>
                         <AppMenuItem
                           onClick={() => handleSingleDeleteClick(q.id)}
@@ -501,7 +515,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                           destructive
                           icon={<Trash size={16} />}
                         >
-                          {t('common:delete', '删除')}
+                          {t('common:delete')}
                         </AppMenuItem>
                       </AppMenuContent>
                     </AppMenu>
@@ -517,7 +531,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
       {pagination && totalPages > 1 && (
         <div className="flex-shrink-0 flex items-center justify-between p-3 border-t border-border/50">
           <span className="text-sm text-muted-foreground">
-            {t('common:pagination.info', '共 {{total}} 条', { total: pagination.total })}
+            {t('exam_sheet:questionBank.paginationInfo', { total: pagination.total })}
           </span>
           <div className="flex items-center gap-1">
             <NotionButton
@@ -550,15 +564,15 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           setDeleteConfirmOpen(open);
           if (!open) setSingleDeleteId(null);
         }}
-        icon={<Warning size={20} className="text-rose-500" />}
-        title={t('exam_sheet:questionBank.confirmDelete', '确认删除')}
+        icon={<Warning size={20} className="text-destructive" />}
+        title={t('exam_sheet:questionBank.confirmDelete')}
         description={
           singleDeleteId 
-            ? t('exam_sheet:questionBank.confirmDeleteSingle', '确定要删除这道题目吗？此操作无法撤销。')
-            : t('exam_sheet:questionBank.confirmDeleteBatch', '确定要删除选中的 {{count}} 道题目吗？此操作无法撤销。', { count: selectedIds.size })
+            ? t('exam_sheet:questionBank.confirmDeleteSingle')
+            : t('exam_sheet:questionBank.confirmDeleteBatch', { count: selectedIds.size })
         }
-        confirmText={t('common:delete', '删除')}
-        cancelText={t('common:cancel', '取消')}
+        confirmText={t('common:delete')}
+        cancelText={t('common:cancel')}
         confirmVariant="danger"
         onConfirm={handleDeleteConfirm}
 />
@@ -570,15 +584,15 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           setResetConfirmOpen(open);
           if (!open) setSingleResetId(null);
         }}
-        icon={<Warning size={20} className="text-amber-500" />}
-        title={t('exam_sheet:questionBank.confirmReset', '确认重置进度')}
+        icon={<Warning size={20} className="text-warning" />}
+        title={t('exam_sheet:questionBank.confirmReset')}
         description={
           singleResetId
-            ? t('exam_sheet:questionBank.confirmResetSingle', '确定要重置这道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。')
-            : t('exam_sheet:questionBank.confirmResetBatch', '确定要重置选中的 {{count}} 道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。', { count: selectedIds.size })
+            ? t('exam_sheet:questionBank.confirmResetSingle')
+            : t('exam_sheet:questionBank.confirmResetBatch', { count: selectedIds.size })
         }
-        confirmText={t('exam_sheet:questionBank.resetProgress', '重置进度')}
-        cancelText={t('common:cancel', '取消')}
+        confirmText={t('exam_sheet:questionBank.resetProgress')}
+        cancelText={t('common:cancel')}
         confirmVariant="warning"
         onConfirm={handleResetConfirm}
 />

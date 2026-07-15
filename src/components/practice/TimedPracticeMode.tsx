@@ -104,7 +104,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
       onStart?.(session);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      showGlobalNotification('error', msg, t('timed.startError', '启动限时练习失败'));
+      showGlobalNotification('error', msg, t('timed.startError'));
     }
   }, [examId, durationMinutes, questionCount, startTimedPractice, onStart]);
 
@@ -147,12 +147,12 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   const getTimeColor = () => {
     // 用会话自身的时长（恢复的会话可能与当前配置输入不同）
     const totalSeconds = (activeSession?.duration_minutes ?? durationMinutes) * 60;
-    if (totalSeconds <= 0) return 'text-rose-600';
+    if (totalSeconds <= 0) return 'text-destructive';
     const ratio = remainingSeconds / totalSeconds;
     
-    if (ratio > 0.5) return 'text-emerald-600';
-    if (ratio > 0.25) return 'text-amber-600';
-    return 'text-rose-600';
+    if (ratio > 0.5) return 'text-success';
+    if (ratio > 0.25) return 'text-warning';
+    return 'text-destructive';
   };
   
   // 配置界面
@@ -160,8 +160,8 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
     return (
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
         <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Timer size={20} className="text-sky-500" />
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Timer size={18} className="text-primary" />
             {t('timed.title')}
           </CardTitle>
         </CardHeader>
@@ -181,7 +181,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                   setDurationMinutes(normalizeDurationMinutes(Number(raw)));
                 }}
                 onBlur={(e) => setDurationMinutes(normalizeDurationMinutes(Number(e.target.value)))}
-                className="text-center text-lg font-medium"
+                className="text-center font-medium"
 />
             </div>
             <div className="space-y-2">
@@ -198,20 +198,20 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                   setQuestionCount(normalizeQuestionCount(Number(raw)));
                 }}
                 onBlur={(e) => setQuestionCount(normalizeQuestionCount(Number(e.target.value)))}
-                className="text-center text-lg font-medium"
+                className="text-center font-medium"
 />
             </div>
           </div>
           
-          <div className="flex items-center justify-center gap-4 p-4 rounded-lg bg-muted/30">
+          <div className="flex items-center justify-center gap-4 rounded-md bg-muted/30 p-3">
             <div className="text-center">
               <div className="text-sm text-muted-foreground">{t('timed.estimated')}</div>
-              <div className="text-2xl font-bold text-sky-600">{formatTime(durationMinutes * 60)}</div>
+              <div className="text-xl font-semibold text-primary">{formatTime(durationMinutes * 60)}</div>
             </div>
             <div className="w-px h-10 bg-border" />
             <div className="text-center">
               <div className="text-sm text-muted-foreground">{t('timed.perQuestion')}</div>
-              <div className="text-2xl font-bold text-amber-600">
+              <div className="text-xl font-semibold text-warning">
                 {Math.floor((durationMinutes * 60) / questionCount)}s
               </div>
             </div>
@@ -220,16 +220,16 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           <NotionButton
             onClick={handleStart}
             disabled={isLoadingPractice}
-            className="w-full h-12 text-lg"
+            className="w-full"
           >
             {isLoadingPractice ? (
               <>
-                <CircleNotch size={20} className="mr-2 animate-spin" />
+                <CircleNotch size={16} className="mr-2 animate-spin" />
                 {t('timed.loading')}
               </>
             ) : (
               <>
-                <Play size={20} className="mr-2" />
+                <Play size={16} className="mr-2" />
                 {t('timed.start')}
               </>
             )}
@@ -241,12 +241,12 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   
   // 练习中界面
   return (
-    <Card className={cn('', className)}>
-      <CardContent className="pt-6 space-y-6">
+    <Card className={cn('border-border/50 shadow-none', className)}>
+      <CardContent className="space-y-4 pt-4">
         {/* 倒计时显示 */}
-        <div className="flex flex-col items-center justify-center py-6">
+        <div className="flex flex-col items-center justify-center py-3">
           <div className={cn(
-            'text-6xl font-mono font-bold tabular-nums transition-colors',
+            'text-3xl font-mono font-semibold tabular-nums transition-colors',
             getTimeColor()
           )}>
             {formatTime(remainingSeconds)}
@@ -280,18 +280,18 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
         {/* 统计信息 */}
         {activeSession && (
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10">
-              <CheckCircle size={20} className="text-emerald-500" />
+            <div className="flex items-center gap-2 rounded-md bg-success/10 p-2.5">
+              <CheckCircle size={16} className="text-success" />
               <div>
                 <div className="text-sm text-muted-foreground">{t('timed.correct')}</div>
-                <div className="text-xl font-bold text-emerald-600">{activeSession.correct_count}</div>
+                <div className="text-lg font-semibold text-success">{activeSession.correct_count}</div>
               </div>
             </div>
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-sky-500/10">
-              <Target size={20} className="text-sky-500" />
+            <div className="flex items-center gap-2 rounded-md bg-primary/10 p-2.5">
+              <Target size={16} className="text-primary" />
               <div>
                 <div className="text-sm text-muted-foreground">{t('timed.rate')}</div>
-                <div className="text-xl font-bold text-sky-600">
+                <div className="text-lg font-semibold text-primary">
                   {activeSession.answered_count > 0
                     ? Math.round((activeSession.correct_count / activeSession.answered_count) * 100)
                     : 0}%
@@ -332,8 +332,8 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
         
         {/* 警告提示 */}
         {remainingSeconds < 60 && remainingSeconds > 0 && (
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-rose-500/10 text-rose-600">
-            <WarningCircle size={20} />
+          <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-2.5 text-destructive">
+            <WarningCircle size={16} />
             <span className="text-sm font-medium">{t('timed.warning')}</span>
           </div>
         )}

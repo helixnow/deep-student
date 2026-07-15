@@ -143,6 +143,8 @@ export interface ReviewItemWithQuestion {
 export interface ReviewSessionState {
   /** 是否正在进行复习会话 */
   isActive: boolean;
+  /** 会话所属题目集，防止切换资源后在另一题目集中恢复错误队列 */
+  examId: string | null;
   /** 当前复习队列 */
   queue: ReviewItemWithQuestion[];
   /** 当前复习索引 */
@@ -225,7 +227,7 @@ interface ReviewPlanState {
   getReviewHistory: (planId: string, limit?: number) => Promise<ReviewHistory[]>;
 
   // Actions - 复习会话
-  startSession: (items: ReviewItemWithQuestion[]) => void;
+  startSession: (items: ReviewItemWithQuestion[], examId?: string) => void;
   endSession: () => void;
   submitReview: (quality: ReviewQuality, userAnswer?: string) => Promise<void>;
   skipCurrentQuestion: () => void;
@@ -260,6 +262,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       currentExamId: null,
       session: {
         isActive: false,
+        examId: null,
         queue: [],
         currentIndex: 0,
         startTime: null,
@@ -574,10 +577,11 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       },
 
       // 复习会话
-      startSession: (items) => {
+      startSession: (items, examId) => {
         set({
           session: {
             isActive: true,
+            examId: examId ?? items[0]?.plan.exam_id ?? null,
             queue: items,
             currentIndex: 0,
             startTime: Date.now(),
@@ -593,6 +597,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
         set({
           session: {
             isActive: false,
+            examId: null,
             queue: [],
             currentIndex: 0,
             startTime: null,

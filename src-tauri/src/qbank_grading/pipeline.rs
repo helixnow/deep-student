@@ -470,7 +470,10 @@ fn parse_verdict_and_score(result: &str) -> (Option<Verdict>, Option<i32>) {
 /// 部分 OpenAI 兼容网关只发 `finish_reason: "stop"` 而不发 `data: [DONE]` 哨兵，
 /// 此时也应视为流正常完成，避免把完整结果误判为 Incomplete 而丢弃。
 fn sse_block_signals_finish(line: &str) -> bool {
-    let Some(data) = line.strip_prefix("data: ") else {
+    let Some(data) = line.lines().find_map(|line| {
+        line.strip_prefix("data:")
+            .map(|data| data.strip_prefix(' ').unwrap_or(data))
+    }) else {
         return false;
     };
     let Ok(json_data) = serde_json::from_str::<serde_json::Value>(data) else {
@@ -521,32 +524,49 @@ where
 
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
-        let preq = adapter
-            .build_request(&config.base_url, api_key, &config.model, &request_body)
-            .map_err(|e| AppError::llm(format!("评判请求构建失败: {}", e)))?;
-
-        let mut header_map = reqwest::header::HeaderMap::new();
-        for (k, v) in preq.headers.iter() {
-            if let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                reqwest::header::HeaderValue::from_str(v),
-            ) {
-                header_map.insert(name, val);
-            }
-        }
+        let mut preq = llm
+            .prepare_provider_request(
+                adapter.as_ref(),
+                config,
+                &request_body,
+                Some(api_key),
+                Some(stream_event),
+                "评判请求构建失败",
+            )
+            .await?;
 
         let client = llm.get_http_client();
 
-        llm.consume_pending_cancel(stream_event).await;
+        if llm.consume_pending_cancel(stream_event).await {
+            return Ok(StreamStatus::Cancelled);
+        }
         let mut cancel_rx = llm.subscribe_cancel_stream(stream_event).await;
 
-        let response = client
-            .post(&preq.url)
-            .headers(header_map)
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::llm(format!("评判请求失败: {}", e)))?;
+        let response = if preq.is_codex() {
+            llm.send_codex_stream_request_with_single_refresh(
+                &mut preq,
+                Some(std::time::Duration::from_secs(300)),
+            )
+            .await?
+        } else {
+            let mut header_map = reqwest::header::HeaderMap::new();
+            for (k, v) in &preq.headers {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(v),
+                ) {
+                    header_map.insert(name, val);
+                }
+            }
+
+            client
+                .post(&preq.url)
+                .headers(header_map)
+                .json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::llm(format!("评判请求失败: {}", e)))?
+        };
 
         if !response.status().is_success() {
             let status = response.status();
@@ -558,7 +578,7 @@ where
         }
 
         let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
+        let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut stream_ended = false;
         let mut cancelled = false;
         // 🔧 #56: 部分 OpenAI 兼容网关只发 finish_reason 不发 `data: [DONE]` 哨兵。
@@ -566,13 +586,13 @@ where
         let mut finish_observed = false;
 
         // 处理单个 SSE 块：返回 true 表示流已结束
-        let mut handle_sse_block =
+        let handle_sse_block =
             |line: &str, on_chunk: &mut F, finish_observed: &mut bool| -> bool {
                 if line.is_empty() {
                     return false;
                 }
 
-                if line == "data: [DONE]" {
+                if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(line) {
                     return true;
                 }
 
@@ -612,12 +632,7 @@ where
                     match chunk_result {
                         Some(chunk) => {
                             let bytes = chunk.map_err(|e| AppError::llm(format!("读取流失败: {}", e)))?;
-                            buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-                            while let Some(pos) = buffer.find("\n\n") {
-                                let line = buffer[..pos].trim().to_string();
-                                buffer = buffer[pos + 2..].to_string();
-
+                            for line in sse_buffer.process_bytes(&bytes) {
                                 if handle_sse_block(&line, &mut on_chunk, &mut finish_observed) {
                                     stream_ended = true;
                                     break;
@@ -636,11 +651,10 @@ where
             return Ok(StreamStatus::Cancelled);
         }
 
-        // 🔧 #56: 流自然关闭后 flush 残留 buffer（最后一个事件可能缺少结尾空行）
-        if !stream_ended && !buffer.trim().is_empty() {
-            for raw_line in std::mem::take(&mut buffer).split('\n') {
-                let line = raw_line.trim();
-                if handle_sse_block(line, &mut on_chunk, &mut finish_observed) {
+        // 流自然关闭后 flush 残留事件（最后一个事件可能只有单换行或没有空行）。
+        if !stream_ended {
+            for remaining in sse_buffer.flush() {
+                if handle_sse_block(&remaining, &mut on_chunk, &mut finish_observed) {
                     stream_ended = true;
                     break;
                 }
@@ -672,6 +686,9 @@ mod tests {
         ));
         assert!(sse_block_signals_finish(
             r#"data: {"choices":[{"delta":{"content":"末尾"},"finish_reason":"length"}]}"#
+        ));
+        assert!(sse_block_signals_finish(
+            "event: message\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}"
         ));
     }
 

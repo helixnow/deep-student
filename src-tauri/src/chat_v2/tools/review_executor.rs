@@ -9,6 +9,9 @@
 //! - `review_plan_generate`: 为整个题目集一键生成复习计划（阶段复习计划）
 //! - `review_submit`: 提交一次复习结果（0-5 质量评分），由 SM-2 算法计算下次复习时间
 //! - `review_stats`: 复习统计概览（各状态数量、到期/逾期、正确率、可选日历热力图）
+//! - `review_suspend`: 暂停单个复习计划
+//! - `review_resume`: 恢复单个复习计划
+//! - `review_delete`: 永久删除单个复习计划
 //!
 //! ## 与既有服务的对接
 //! - 全部业务逻辑走 `crate::review_plan_service::ReviewPlanService`（基于 ctx.vfs_db 构造），
@@ -18,8 +21,8 @@
 //! ## 敏感度
 //! - 读（get_due / stats）: Low
 //! - 提交复习结果（review_submit）: Low（用户练习主动作，与 qbank_submit_answer 对齐）
-//! - 写计划（review_schedule / review_plan_generate）: Medium
-//! - 删除类操作不暴露
+//! - 写计划（review_schedule / review_plan_generate / review_suspend / review_resume）: Medium
+//! - 永久删除（review_delete）: High
 //!
 //! ## 事件发射（强制，见 tools/mod.rs 头注释）
 //! - 开始: `ctx.emit_tool_call_start`
@@ -31,8 +34,9 @@ use std::time::Instant;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use serde_json::{json, Value};
+use tauri::Emitter;
 
-use super::arg_utils::get_string_array_arg;
+use super::arg_utils::{get_string_array_arg, with_localized_message};
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -87,9 +91,8 @@ impl ReviewToolExecutor {
             })
     }
 
-    /// 复习计划 → JSON（附题目内容预览，便于 agent 直接组织复习）
-    fn plan_to_json(plan: &ReviewPlan, ctx: &ExecutionContext, with_question: bool) -> Value {
-        let mut item = json!({
+    fn plan_state_to_json(plan: &ReviewPlan) -> Value {
+        json!({
             "plan_id": plan.id,
             "question_id": plan.question_id,
             "exam_id": plan.exam_id,
@@ -102,7 +105,14 @@ impl ReviewToolExecutor {
             "total_reviews": plan.total_reviews,
             "total_correct": plan.total_correct,
             "is_difficult": plan.is_difficult,
-        });
+            // Agent mutations must use this exact revision as expected_updated_at.
+            "updatedAt": plan.updated_at,
+        })
+    }
+
+    /// 复习计划 → JSON（附题目内容预览，便于 agent 直接组织复习）
+    fn plan_to_json(plan: &ReviewPlan, ctx: &ExecutionContext, with_question: bool) -> Value {
+        let mut item = Self::plan_state_to_json(plan);
 
         if with_question {
             if let Some(vfs_db) = ctx.vfs_db.as_ref() {
@@ -125,6 +135,98 @@ impl ReviewToolExecutor {
     fn parse_status_filter(args: &Value) -> Option<Vec<ReviewPlanStatus>> {
         get_string_array_arg(args, "status")
             .map(|list| list.iter().map(|s| ReviewPlanStatus::from_str(s)).collect())
+    }
+
+    fn required_plan_id(args: &Value) -> Result<&str, String> {
+        args.get("plan_id")
+            .or_else(|| args.get("planId"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "Missing required parameter: plan_id (from review_get_due)".to_string())
+    }
+
+    fn required_expected_updated_at(args: &Value) -> Result<&str, String> {
+        args.get("expected_updated_at")
+            .or_else(|| args.get("expectedUpdatedAt"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                "Missing required parameter: expected_updated_at (use updatedAt from review_get_due)"
+                    .to_string()
+            })
+    }
+
+    fn mutation_error(
+        service: &ReviewPlanService,
+        action: &str,
+        plan_id: &str,
+        expected_updated_at: &str,
+        error: anyhow::Error,
+    ) -> String {
+        if error.to_string().contains("REVIEW_CONFLICT") {
+            let current = service
+                .get_plan(plan_id)
+                .ok()
+                .flatten()
+                .map(|plan| Self::plan_state_to_json(&plan))
+                .unwrap_or(Value::Null);
+            return with_localized_message(
+                json!({
+                    "code": "REVIEW_CONFLICT",
+                    "action": action,
+                    "plan_id": plan_id,
+                    "expected_updated_at": expected_updated_at,
+                    "current": current,
+                    "retryable": false,
+                    "hint": "重新读取计划，使用返回的 updatedAt 再决定是否重试；不要用过期版本重复提交。",
+                }),
+                "chat.tools.review.conflict",
+                json!({ "action": action, "plan_id": plan_id }),
+                "复习计划已被其他操作更新，请读取当前计划后再决定下一步。",
+                "The review plan changed elsewhere. Read the current plan before deciding the next step.",
+            )
+            .to_string();
+        }
+
+        format!("复习计划{}失败: {}", action, error)
+    }
+
+    fn review_changed_payload(action: &str, plan_id: &str, run_id: &str) -> Value {
+        json!({
+            "source": "agent",
+            "action": action,
+            "operation": format!("review_{action}"),
+            "planId": plan_id,
+            "plan_id": plan_id,
+            "entityIds": [plan_id],
+            "runId": run_id,
+        })
+    }
+
+    fn after_successful_mutation<F>(
+        result: Result<Value, String>,
+        action: &str,
+        plan_id: &str,
+        run_id: &str,
+        emit: F,
+    ) -> Result<Value, String>
+    where
+        F: FnOnce(Value),
+    {
+        let value = result?;
+        emit(Self::review_changed_payload(action, plan_id, run_id));
+        Ok(value)
+    }
+
+    fn emit_review_changed(ctx: &ExecutionContext, payload: Value) {
+        if let Err(error) = ctx.window.emit("review://changed", payload) {
+            log::debug!(
+                "[ReviewToolExecutor] Failed to emit review://changed: {}",
+                error
+            );
+        }
     }
 
     // ========================================================================
@@ -257,6 +359,7 @@ impl ReviewToolExecutor {
                     "plan_id": p.id,
                     "question_id": p.question_id,
                     "next_review_date": p.next_review_date,
+                    "updatedAt": p.updated_at,
                 })
             })
             .collect();
@@ -277,6 +380,10 @@ impl ReviewToolExecutor {
         if !unresolved_card_ids.is_empty() {
             payload["unresolved_card_ids"] = json!(unresolved_card_ids);
         }
+        Self::emit_review_changed(
+            ctx,
+            json!({ "action": "schedule", "examId": exam_id, "runId": ctx.run_id() }),
+        );
         Ok(payload)
     }
 
@@ -322,6 +429,10 @@ impl ReviewToolExecutor {
                 "overdue": s.overdue_count,
             });
         }
+        Self::emit_review_changed(
+            ctx,
+            json!({ "action": "plan_generate", "examId": exam_id, "runId": ctx.run_id() }),
+        );
         Ok(payload)
     }
 
@@ -348,6 +459,7 @@ impl ReviewToolExecutor {
             ));
         }
         let quality = quality_raw as u8;
+        let expected_updated_at = Self::required_expected_updated_at(args)?;
 
         // plan_id 优先；也支持 question_id 自动解析
         let plan_id = match args.get("plan_id").and_then(|v| v.as_str()) {
@@ -379,10 +491,24 @@ impl ReviewToolExecutor {
             .map(|v| v.min(86_400) as u32);
 
         let result = service
-            .process_review(&plan_id, quality, user_answer, time_spent_seconds)
-            .map_err(|e| format!("提交复习结果失败: {}", e))?;
+            .process_review_with_expected(
+                &plan_id,
+                quality,
+                user_answer,
+                time_spent_seconds,
+                Some(expected_updated_at),
+            )
+            .map_err(|error| {
+                Self::mutation_error(
+                    &service,
+                    "submit",
+                    &plan_id,
+                    expected_updated_at,
+                    error,
+                )
+            })?;
 
-        Ok(json!({
+        let payload = json!({
             "success": true,
             "plan_id": result.plan.id,
             "question_id": result.plan.question_id,
@@ -393,12 +519,18 @@ impl ReviewToolExecutor {
             "repetitions": result.plan.repetitions,
             "ease_factor": result.plan.ease_factor,
             "is_difficult": result.plan.is_difficult,
+            "updatedAt": result.plan.updated_at,
             "message": if result.passed {
                 format!("复习通过，下次复习: {}（间隔 {} 天）", result.next_review_date, result.new_interval)
             } else {
                 format!("本次未通过，计划已重置，明天（{}）重新复习", result.next_review_date)
             },
-        }))
+        });
+        Self::emit_review_changed(
+            ctx,
+            json!({ "action": "submit", "planId": plan_id, "runId": ctx.run_id() }),
+        );
+        Ok(payload)
     }
 
     // ========================================================================
@@ -463,6 +595,130 @@ impl ReviewToolExecutor {
 
         Ok(payload)
     }
+
+    // ========================================================================
+    // review_suspend / review_resume / review_delete
+    // ========================================================================
+
+    fn suspend_plan(
+        service: &ReviewPlanService,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> Result<Value, String> {
+        let plan = service
+            .suspend_plan_if_unchanged(plan_id, expected_updated_at)
+            .map_err(|error| {
+                Self::mutation_error(service, "suspend", plan_id, expected_updated_at, error)
+            })?;
+
+        Ok(json!({
+            "success": true,
+            "plan": Self::plan_state_to_json(&plan),
+            "message_key": "review.plan_suspended",
+            "message_params": { "plan_id": plan.id },
+            "reversible": true,
+        }))
+    }
+
+    fn resume_plan(
+        service: &ReviewPlanService,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> Result<Value, String> {
+        let plan = service
+            .resume_plan_if_unchanged(plan_id, expected_updated_at)
+            .map_err(|error| {
+                Self::mutation_error(service, "resume", plan_id, expected_updated_at, error)
+            })?;
+
+        Ok(json!({
+            "success": true,
+            "plan": Self::plan_state_to_json(&plan),
+            "message_key": "review.plan_resumed",
+            "message_params": { "plan_id": plan.id },
+            "reversible": true,
+        }))
+    }
+
+    fn delete_plan(
+        service: &ReviewPlanService,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> Result<Value, String> {
+        let plan = service
+            .get_plan(plan_id)
+            .map_err(|e| format!("Failed to load review plan before deletion: {}", e))?
+            .ok_or_else(|| format!("Review plan not found: {}", plan_id))?;
+
+        service
+            .delete_plan_if_unchanged(plan_id, expected_updated_at)
+            .map_err(|error| {
+                Self::mutation_error(service, "delete", plan_id, expected_updated_at, error)
+            })?;
+
+        Ok(json!({
+            "success": true,
+            "deleted": true,
+            "plan_id": plan.id,
+            "question_id": plan.question_id,
+            "exam_id": plan.exam_id,
+            "previous_status": plan.status.as_str(),
+            "message_key": "review.plan_deleted",
+            "message_params": { "plan_id": plan.id },
+            "reversible": false,
+        }))
+    }
+
+    async fn execute_suspend(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let service = Self::service(ctx)?;
+        let plan_id = Self::required_plan_id(&call.arguments)?;
+        let expected_updated_at = Self::required_expected_updated_at(&call.arguments)?;
+        Self::after_successful_mutation(
+            Self::suspend_plan(&service, plan_id, expected_updated_at),
+            "suspend",
+            plan_id,
+            ctx.run_id(),
+            |payload| Self::emit_review_changed(ctx, payload),
+        )
+    }
+
+    async fn execute_resume(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let service = Self::service(ctx)?;
+        let plan_id = Self::required_plan_id(&call.arguments)?;
+        let expected_updated_at = Self::required_expected_updated_at(&call.arguments)?;
+        Self::after_successful_mutation(
+            Self::resume_plan(&service, plan_id, expected_updated_at),
+            "resume",
+            plan_id,
+            ctx.run_id(),
+            |payload| Self::emit_review_changed(ctx, payload),
+        )
+    }
+
+    async fn execute_delete(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let service = Self::service(ctx)?;
+        let plan_id = Self::required_plan_id(&call.arguments)?;
+        let expected_updated_at = Self::required_expected_updated_at(&call.arguments)?;
+        Self::after_successful_mutation(
+            Self::delete_plan(&service, plan_id, expected_updated_at),
+            "delete",
+            plan_id,
+            ctx.run_id(),
+            |payload| Self::emit_review_changed(ctx, payload),
+        )
+    }
 }
 
 impl Default for ReviewToolExecutor {
@@ -482,6 +738,9 @@ impl ToolExecutor for ReviewToolExecutor {
                 | "review_plan_generate"
                 | "review_submit"
                 | "review_stats"
+                | "review_suspend"
+                | "review_resume"
+                | "review_delete"
         )
     }
 
@@ -503,6 +762,9 @@ impl ToolExecutor for ReviewToolExecutor {
             "review_plan_generate" => self.execute_plan_generate(call, ctx).await,
             "review_submit" => self.execute_submit(call, ctx).await,
             "review_stats" => self.execute_stats(call, ctx).await,
+            "review_suspend" => self.execute_suspend(call, ctx).await,
+            "review_resume" => self.execute_resume(call, ctx).await,
+            "review_delete" => self.execute_delete(call, ctx).await,
             _ => Err(format!("Unknown review tool: {}", tool_name)),
         };
 
@@ -556,9 +818,16 @@ impl ToolExecutor for ReviewToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
+            "review_delete" => ToolSensitivity::High,
             // 写计划类操作
-            "review_schedule" | "review_plan_generate" => ToolSensitivity::Medium,
-            // 读 + 用户练习主动作（与 qbank_submit_answer 对齐为 Low）
+            "review_schedule"
+            | "review_plan_generate"
+            | "review_submit"
+            | "review_suspend"
+            | "review_resume" => {
+                ToolSensitivity::Medium
+            }
+            // 只读操作。
             _ => ToolSensitivity::Low,
         }
     }
@@ -585,8 +854,9 @@ mod tests {
         assert!(executor.can_handle("review_plan_generate"));
         assert!(executor.can_handle("review_submit"));
         assert!(executor.can_handle("review_stats"));
-
-        assert!(!executor.can_handle("review_delete"));
+        assert!(executor.can_handle("review_suspend"));
+        assert!(executor.can_handle("builtin-review_resume"));
+        assert!(executor.can_handle("review_delete"));
         assert!(!executor.can_handle("review_plan_delete"));
         assert!(!executor.can_handle("qbank_list"));
     }
@@ -601,6 +871,18 @@ mod tests {
         assert_eq!(
             executor.sensitivity_level("builtin-review_plan_generate"),
             ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-review_suspend"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-review_resume"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("builtin-review_delete"),
+            ToolSensitivity::High
         );
         assert_eq!(
             executor.sensitivity_level("review_get_due"),
@@ -647,5 +929,116 @@ mod tests {
             parsed,
             vec![ReviewPlanStatus::Graduated, ReviewPlanStatus::Suspended]
         );
+    }
+
+    #[test]
+    fn review_mutations_require_a_non_empty_plan_id() {
+        assert!(ReviewToolExecutor::required_plan_id(&json!({})).is_err());
+        assert!(ReviewToolExecutor::required_plan_id(&json!({"plan_id": "  "})).is_err());
+        assert_eq!(
+            ReviewToolExecutor::required_plan_id(&json!({"planId": " rp_123 "}))
+                .expect("camelCase alias"),
+            "rp_123"
+        );
+    }
+
+    #[test]
+    fn review_suspend_resume_delete_normal_path() {
+        use crate::vfs::repos::review_plan_repo::{CreateReviewPlanParams, VfsReviewPlanRepo};
+        use std::sync::Arc;
+
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let conn = db.get_conn_safe().expect("open migrated VFS database");
+        conn.pragma_update(None, "foreign_keys", "OFF")
+            .expect("disable foreign keys for isolated review-plan fixture");
+        let plan = VfsReviewPlanRepo::create_plan_with_conn(
+            &conn,
+            &CreateReviewPlanParams {
+                question_id: "question_review_tool_contract".to_string(),
+                exam_id: "exam_review_tool_contract".to_string(),
+                initial_ease_factor: None,
+            },
+        )
+        .expect("create review plan fixture");
+        drop(conn);
+
+        let service = ReviewPlanService::new(Arc::new(db));
+        let suspended = ReviewToolExecutor::suspend_plan(&service, &plan.id, &plan.updated_at)
+            .expect("suspend review plan");
+        assert_eq!(suspended["plan"]["status"], "suspended");
+        assert_eq!(suspended["reversible"], true);
+
+        let suspended_updated_at = suspended["plan"]["updatedAt"]
+            .as_str()
+            .expect("suspended plan revision")
+            .to_string();
+        let resumed = ReviewToolExecutor::resume_plan(&service, &plan.id, &suspended_updated_at)
+            .expect("resume review plan");
+        assert_eq!(resumed["plan"]["status"], "new");
+        assert_eq!(resumed["reversible"], true);
+
+        let resumed_updated_at = resumed["plan"]["updatedAt"]
+            .as_str()
+            .expect("resumed plan revision")
+            .to_string();
+        let deleted = ReviewToolExecutor::delete_plan(&service, &plan.id, &resumed_updated_at)
+            .expect("delete review plan");
+        assert_eq!(deleted["plan_id"], plan.id);
+        assert_eq!(deleted["reversible"], false);
+        assert!(service
+            .get_plan(&plan.id)
+            .expect("read deleted plan")
+            .is_none());
+    }
+
+    #[test]
+    fn review_change_event_emits_after_success_for_each_mutation() {
+        use std::cell::RefCell;
+
+        let emitted = RefCell::new(Vec::new());
+        for action in ["suspend", "resume", "delete"] {
+            let result = ReviewToolExecutor::after_successful_mutation(
+                Ok(json!({ "success": true })),
+                action,
+                "rp_event_contract",
+                "tool_call_event_contract",
+                |payload| emitted.borrow_mut().push(payload),
+            );
+            assert!(result.is_ok());
+        }
+
+        let events = emitted.into_inner();
+        assert_eq!(events.len(), 3);
+        for (event, action) in events.iter().zip(["suspend", "resume", "delete"]) {
+            assert_eq!(event["source"], "agent");
+            assert_eq!(event["action"], action);
+            assert_eq!(event["operation"], format!("review_{action}"));
+            assert_eq!(event["planId"], "rp_event_contract");
+            assert_eq!(event["plan_id"], "rp_event_contract");
+            assert_eq!(event["entityIds"], json!(["rp_event_contract"]));
+            assert_eq!(event["runId"], "tool_call_event_contract");
+        }
+    }
+
+    #[test]
+    fn review_change_event_is_not_emitted_after_mutation_failure() {
+        use std::cell::Cell;
+
+        for action in ["suspend", "resume", "delete"] {
+            let emitted = Cell::new(false);
+            let result = ReviewToolExecutor::after_successful_mutation(
+                Err("mutation failed".to_string()),
+                action,
+                "rp_event_contract",
+                "tool_call_event_contract",
+                |_| emitted.set(true),
+            );
+
+            assert_eq!(
+                result.expect_err("failure must propagate"),
+                "mutation failed"
+            );
+            assert!(!emitted.get(), "{action} failure must not emit an event");
+        }
     }
 }

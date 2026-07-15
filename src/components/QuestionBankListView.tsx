@@ -8,7 +8,7 @@
  * - 柔和的颜色系统
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -34,6 +34,8 @@ import {
   Warning,
   Image as ImageIcon,
   Plus,
+  CircleNotch,
+  UploadSimple,
 } from '@phosphor-icons/react';
 import { ExamIcon } from '@/features/learning-hub/icons/ResourceIcons';
 import { useTranslation } from 'react-i18next';
@@ -65,21 +67,32 @@ export interface QuestionBankListViewProps {
   examId?: string;
   /** 创建新题目回调 */
   onCreateQuestion?: (question: Question) => Promise<void>;
+  /** 空题目集时打开导入流程 */
+  onUploadQuestions?: () => void;
+  /** Reports unsaved inline edits to an owning resource view. */
+  onDraftDirtyChange?: (dirty: boolean) => void;
+  /** Lets an owning resource view confirm a question jump that discards an inline edit. */
+  onDraftNavigationRequested?: (index: number) => void;
   className?: string;
 }
 
+type PendingInlineEditorAction =
+  | { kind: 'edit'; id: string | null }
+  | { kind: 'question'; index: number }
+  | { kind: 'callback'; run: () => void };
+
 const STATUS_CONFIG: Record<QuestionStatus, { labelKey: string; color: string; bg: string }> = {
   new: { labelKey: 'questionBank.statusShort.new', color: 'text-muted-foreground', bg: 'bg-muted-foreground/20' },
-  in_progress: { labelKey: 'questionBank.statusShort.inProgress', color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-500/10' },
-  mastered: { labelKey: 'questionBank.statusShort.mastered', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10' },
-  review: { labelKey: 'questionBank.statusShort.review', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10' },
+  in_progress: { labelKey: 'questionBank.statusShort.inProgress', color: 'text-primary', bg: 'bg-primary/10' },
+  mastered: { labelKey: 'questionBank.statusShort.mastered', color: 'text-success', bg: 'bg-success/10' },
+  review: { labelKey: 'questionBank.statusShort.review', color: 'text-warning', bg: 'bg-warning/10' },
 };
 
 const DIFFICULTY_CONFIG: Record<Difficulty, { labelKey: string; color: string }> = {
-  easy: { labelKey: 'questionBank.difficultyShort.easy', color: 'text-emerald-600 dark:text-emerald-400' },
-  medium: { labelKey: 'questionBank.difficultyShort.medium', color: 'text-amber-600 dark:text-amber-400' },
-  hard: { labelKey: 'questionBank.difficultyShort.hard', color: 'text-orange-600 dark:text-orange-400' },
-  very_hard: { labelKey: 'questionBank.difficultyShort.veryHard', color: 'text-rose-600 dark:text-rose-400' },
+  easy: { labelKey: 'questionBank.difficultyShort.easy', color: 'text-success' },
+  medium: { labelKey: 'questionBank.difficultyShort.medium', color: 'text-warning' },
+  hard: { labelKey: 'questionBank.difficultyShort.hard', color: 'text-warning' },
+  very_hard: { labelKey: 'questionBank.difficultyShort.veryHard', color: 'text-destructive' },
 };
 
 /** 桌面端统计摘要（移动端隐藏） */
@@ -99,7 +112,7 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
                 cx="20" cy="20" r="16"
                 fill="none" stroke="currentColor" strokeWidth="3"
                 strokeDasharray={`${progressPercent * 1.005} 100.5`}
-                className="text-emerald-500"
+                className="text-success"
                 strokeLinecap="round"
 />
             </svg>
@@ -116,8 +129,8 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
         
         {/* 待复习 */}
         {stats.review > 0 && (
-          <div className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          <div className="flex items-center gap-1.5 text-sm text-warning">
+            <span className="w-1.5 h-1.5 rounded-full bg-warning" />
             <span>{t('questionBank.pendingReview', { count: stats.review })}</span>
           </div>
         )}
@@ -169,8 +182,8 @@ const QuestionGridCard: React.FC<{
         'group relative flex flex-col p-4 rounded-lg text-left transition-[background-color,border-color,color,box-shadow] duration-200 cursor-pointer',
         'border border-transparent hover:border-border/60 hover:bg-[var(--interactive-hover)]',
         'hover:shadow-[var(--shadow-notion)]',
-        status === 'mastered' && 'bg-emerald-500/[0.03]',
-        status === 'review' && 'bg-amber-500/[0.03]',
+        status === 'mastered' && 'bg-success/5',
+        status === 'review' && 'bg-warning/5',
         isSelected && 'ring-2 ring-primary/50 bg-primary/5'
       )}
     >
@@ -188,11 +201,11 @@ const QuestionGridCard: React.FC<{
           </span>
         )}
         <div className="flex items-center gap-1.5">
-          {question.isFavorite && <Star size={14} className="fill-amber-400 text-amber-400" />}
+          {question.isFavorite && <Star size={14} className="fill-warning text-warning" />}
           {hasAttempt && (
             <div className={cn(
               'w-4 h-4 rounded-full flex items-center justify-center',
-              isCorrect ? 'bg-emerald-500/20 text-emerald-600' : 'bg-rose-500/20 text-rose-600'
+              isCorrect ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
             )}>
               {isCorrect ? <Check size={10} /> : <X size={10} />}
             </div>
@@ -285,11 +298,11 @@ const QuestionListRow: React.FC<{
       </span>
       
       <div className="flex items-center gap-2 flex-shrink-0">
-        {question.isFavorite && <Star size={14} className="fill-amber-400 text-amber-400" />}
+        {question.isFavorite && <Star size={14} className="fill-warning text-warning" />}
         {hasAttempt && (
           <div className={cn(
             'w-4 h-4 rounded-full flex items-center justify-center',
-            isCorrect ? 'bg-emerald-500/20 text-emerald-600' : 'bg-rose-500/20 text-rose-600'
+            isCorrect ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
           )}>
             {isCorrect ? <Check size={10} /> : <X size={10} />}
           </div>
@@ -318,6 +331,9 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   onUpdateQuestion,
   examId,
   onCreateQuestion,
+  onUploadQuestions,
+  onDraftDirtyChange,
+  onDraftNavigationRequested,
   className,
 }) => {
   const { t } = useTranslation(['practice', 'common']);
@@ -338,6 +354,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   
   // 内联编辑状态（同时只有一个题目展开编辑）
   const [expandedEditId, setExpandedEditId] = useState<string | null>(null);
+  const [inlineEditorDirty, setInlineEditorDirty] = useState(false);
+  const [pendingEditorAction, setPendingEditorAction] = useState<PendingInlineEditorAction | null>(null);
   
   // 支持批量操作
   const hasBatchOperations = !!(onDelete || onResetProgress);
@@ -351,6 +369,14 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     questions.forEach((q, i) => map.set(q.id, i));
     return map;
   }, [questions]);
+
+  const requestInlineEditorDiscard = useCallback((action: PendingInlineEditorAction): boolean => {
+    if (expandedEditId && inlineEditorDirty) {
+      setPendingEditorAction(action);
+      return false;
+    }
+    return true;
+  }, [expandedEditId, inlineEditorDirty]);
 
   // 本地过滤（仅在不使用后端筛选时）
   const filteredQuestions = useMemo(() => {
@@ -402,36 +428,97 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     }
   }, [onFilterChange]);
 
-  const handleSearchChange = useCallback((newSearch: string) => {
+  const applySearchChange = useCallback((newSearch: string) => {
     setSearchQuery(newSearch);
     emitFilterChange(newSearch, statusFilter, difficultyFilter, showFavoriteOnly);
   }, [emitFilterChange, statusFilter, difficultyFilter, showFavoriteOnly]);
 
+  const handleSearchChange = useCallback((newSearch: string) => {
+    const apply = () => applySearchChange(newSearch);
+    if (!requestInlineEditorDiscard({ kind: 'callback', run: apply })) return;
+    apply();
+  }, [applySearchChange, requestInlineEditorDiscard]);
+
   // toggle-to-clear 只作用于用户点击的状态维度
-  const handleStatusToggle = useCallback((newStatus: QuestionStatus | 'all') => {
+  const applyStatusToggle = useCallback((newStatus: QuestionStatus | 'all') => {
     const finalStatus = (newStatus !== 'all' && newStatus === statusFilter) ? 'all' : newStatus;
     setStatusFilter(finalStatus);
     emitFilterChange(searchQuery, finalStatus, difficultyFilter, showFavoriteOnly);
   }, [emitFilterChange, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly]);
 
+  const handleStatusToggle = useCallback((newStatus: QuestionStatus | 'all') => {
+    const apply = () => applyStatusToggle(newStatus);
+    if (!requestInlineEditorDiscard({ kind: 'callback', run: apply })) return;
+    apply();
+  }, [applyStatusToggle, requestInlineEditorDiscard]);
+
   // toggle-to-clear 只作用于用户点击的难度维度
-  const handleDifficultyToggle = useCallback((newDifficulty: Difficulty | 'all') => {
+  const applyDifficultyToggle = useCallback((newDifficulty: Difficulty | 'all') => {
     const finalDifficulty = (newDifficulty !== 'all' && newDifficulty === difficultyFilter) ? 'all' : newDifficulty;
     setDifficultyFilter(finalDifficulty);
     emitFilterChange(searchQuery, statusFilter, finalDifficulty, showFavoriteOnly);
   }, [emitFilterChange, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly]);
 
-  const handleFavoriteToggle = useCallback(() => {
+  const handleDifficultyToggle = useCallback((newDifficulty: Difficulty | 'all') => {
+    const apply = () => applyDifficultyToggle(newDifficulty);
+    if (!requestInlineEditorDiscard({ kind: 'callback', run: apply })) return;
+    apply();
+  }, [applyDifficultyToggle, requestInlineEditorDiscard]);
+
+  const applyFavoriteToggle = useCallback(() => {
     const nextFavorite = !showFavoriteOnly;
     setShowFavoriteOnly(nextFavorite);
     emitFilterChange(searchQuery, statusFilter, difficultyFilter, nextFavorite);
   }, [emitFilterChange, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly]);
+
+  const handleFavoriteToggle = useCallback(() => {
+    if (!requestInlineEditorDiscard({ kind: 'callback', run: applyFavoriteToggle })) return;
+    applyFavoriteToggle();
+  }, [applyFavoriteToggle, requestInlineEditorDiscard]);
+
+  const hasActiveFilters = Boolean(
+    searchQuery || statusFilter !== 'all' || difficultyFilter !== 'all' || showFavoriteOnly,
+  );
+
+  const applyClearFilters = useCallback(() => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setDifficultyFilter('all');
+    setShowFavoriteOnly(false);
+    emitFilterChange('', 'all', 'all', false);
+  }, [emitFilterChange]);
+
+  const clearFilters = useCallback(() => {
+    if (!requestInlineEditorDiscard({ kind: 'callback', run: applyClearFilters })) return;
+    applyClearFilters();
+  }, [applyClearFilters, requestInlineEditorDiscard]);
+
+  const handleViewTypeChange = useCallback((nextViewType: 'grid' | 'list') => {
+    if (nextViewType === viewType) return;
+    const apply = () => setViewType(nextViewType);
+    if (!requestInlineEditorDiscard({ kind: 'callback', run: apply })) return;
+    apply();
+  }, [requestInlineEditorDiscard, viewType]);
   
   const handleQuestionClick = useCallback((index: number) => {
     // 找到原始索引（使用预计算 Map，O(1) 查找）
     const originalIndex = questionIndexMap.get(filteredQuestions[index].id) ?? index;
+    if (expandedEditId && inlineEditorDirty) {
+      if (onDraftNavigationRequested) {
+        onDraftNavigationRequested(originalIndex);
+        return;
+      }
+      setPendingEditorAction({ kind: 'question', index: originalIndex });
+      return;
+    }
     onQuestionClick?.(originalIndex);
-  }, [questionIndexMap, filteredQuestions, onQuestionClick]);
+  }, [expandedEditId, filteredQuestions, inlineEditorDirty, onDraftNavigationRequested, onQuestionClick, questionIndexMap]);
+
+  useEffect(() => {
+    onDraftDirtyChange?.(inlineEditorDirty);
+  }, [inlineEditorDirty, onDraftDirtyChange]);
+
+  useEffect(() => () => onDraftDirtyChange?.(false), [onDraftDirtyChange]);
   
   // 切换选中状态
   const toggleSelect = useCallback((id: string, selected: boolean) => {
@@ -476,7 +563,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     } finally {
       setIsOperating(false);
     }
-  }, [onDelete, selectedIds]);
+  }, [onDelete, selectedIds, t]);
   
   // 批量重置进度（带确认）
   const handleBatchResetClick = useCallback(() => {
@@ -498,7 +585,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     } finally {
       setIsOperating(false);
     }
-  }, [onResetProgress, selectedIds]);
+  }, [onResetProgress, selectedIds, t]);
   
   // 退出编辑模式
   const exitEditMode = useCallback(() => {
@@ -506,9 +593,19 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     setSelectedIds(new Set());
   }, []);
   
+  const requestInlineEditorTarget = useCallback((nextId: string | null) => {
+    if (!requestInlineEditorDiscard({ kind: 'edit', id: nextId })) return;
+    setExpandedEditId(nextId);
+  }, [requestInlineEditorDiscard]);
+
   // 展开内联编辑
   const handleEditQuestion = useCallback((question: Question) => {
-    setExpandedEditId(prev => prev === question.id ? null : question.id);
+    requestInlineEditorTarget(expandedEditId === question.id ? null : question.id);
+  }, [expandedEditId, requestInlineEditorTarget]);
+
+  const closeInlineEditor = useCallback(() => {
+    setExpandedEditId(null);
+    setInlineEditorDirty(false);
   }, []);
   
   // 保存编辑（QuestionInlineEditor 内部已通过 onCancel 收起，此处仅负责回调）
@@ -518,25 +615,67 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     }
   }, [onUpdateQuestion]);
   
+  if (isLoading && questions.length === 0) {
+    return (
+      <div className={cn('flex h-full items-center justify-center text-muted-foreground', className)} role="status">
+        <CircleNotch size={22} className="animate-spin" />
+      </div>
+    );
+  }
+
   // 空状态
   if (questions.length === 0) {
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-16', className)}>
         <div className="mb-5">
-          <ExamIcon size={48} className="opacity-70" />
+          <ExamIcon size={32} className="opacity-70" />
         </div>
-        <h3 className="text-lg font-medium mb-1.5">{t('practice:questionBank.emptyTitle')}</h3>
+        <h3 className="text-base font-medium mb-1.5">{t('practice:questionBank.emptyTitle')}</h3>
         <p className="text-sm text-muted-foreground">{t('practice:questionBank.emptyDesc')}</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {onUploadQuestions && (
+            <NotionButton variant="ghost" size="sm" onClick={onUploadQuestions}>
+              <UploadSimple size={15} />
+              {t('exam_sheet:questionBank.import')}
+            </NotionButton>
+          )}
+          {examId && onCreateQuestion && (
+            expandedEditId === '__new__' ? (
+            <div className="mt-4 w-full max-w-2xl px-4">
+              <QuestionInlineEditor
+                question={null}
+                mode="create"
+                examId={examId}
+                onCreate={async (question) => {
+                  await onCreateQuestion(question);
+                  closeInlineEditor();
+                }}
+                onCancel={closeInlineEditor}
+                onDirtyChange={setInlineEditorDirty}
+              />
+            </div>
+          ) : (
+            <NotionButton
+              variant="primary"
+              size="sm"
+              onClick={() => requestInlineEditorTarget('__new__')}
+            >
+              <Plus size={15} />
+              {t('exam_sheet:questionBank.create.title')}
+            </NotionButton>
+          )
+          )}
+        </div>
       </div>
     );
   }
   
   return (
-    <div className={cn('flex flex-col h-full', className)}>
+    <div className={cn('flex flex-col h-full', className)} aria-busy={isLoading}>
       {/* 桌面端：统计摘要 */}
       {stats && (
         <div className="flex-shrink-0 px-4 py-4 border-b border-border/40 hidden sm:block">
-          <StatsSummary stats={stats} onStartPractice={() => onQuestionClick?.(0)} />
+          <StatsSummary stats={stats} onStartPractice={() => handleQuestionClick(0)} />
         </div>
       )}
       {/* 移动端：紧凑单行统计 */}
@@ -545,19 +684,19 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           <span className="text-muted-foreground">
             {t('practice:questionBank.all')} {stats.total}
           </span>
-          <span className="text-emerald-600 dark:text-emerald-400">
+          <span className="text-success">
             {t('practice:questionBank.masteredFilter')} {stats.mastered}
           </span>
-          <span className="text-amber-600 dark:text-amber-400">
+          <span className="text-warning">
             {t('practice:questionBank.needsReview')} {stats.review}
           </span>
           <NotionButton
             variant="primary"
             size="sm"
-            onClick={() => onQuestionClick?.(0)}
+            onClick={() => handleQuestionClick(0)}
             className="!h-6 !px-2 !py-0 text-xs"
           >
-            {t('practice:questionBank.startPractice', '开始练习')}
+            {t('practice:questionBank.startPractice')}
           </NotionButton>
         </div>
       )}
@@ -572,14 +711,21 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t('practice:questionBank.searchPlaceholder')}
               className="pl-9 h-8 sm:h-9 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm"
-/>
+            />
+            {isLoading && (
+              <CircleNotch
+                size={14}
+                className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground"
+                aria-label={t('common:loading')}
+              />
+            )}
           </div>
           
           <div className="flex items-center p-0.5 rounded-md bg-muted/30 flex-shrink-0">
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => setViewType('grid')}
+              onClick={() => handleViewTypeChange('grid')}
               className={cn('h-7 w-7 p-0', viewType === 'grid' && 'bg-background shadow-sm')}
             >
               <GridNine size={14} />
@@ -587,7 +733,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => setViewType('list')}
+              onClick={() => handleViewTypeChange('list')}
               className={cn('h-7 w-7 p-0', viewType === 'list' && 'bg-background shadow-sm')}
             >
               <List size={14} />
@@ -595,22 +741,32 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           </div>
           
           {/* 收藏和书签按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', showFavoriteOnly ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleFavoriteToggle} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', showFavoriteOnly ? 'bg-warning/20 text-warning' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </NotionButton>
 
           {/* 手动添加题目按钮 */}
           {examId && onCreateQuestion && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setExpandedEditId(prev => prev === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
               <Plus size={16} />
             </NotionButton>
           )}
 
           {/* 编辑模式按钮 */}
           {hasBatchOperations && !isEditMode && (
-            <NotionButton variant="ghost" size="sm" onClick={() => setIsEditMode(true)} className="!h-7 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0" aria-label="batch manage">
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const openBatchMode = () => setIsEditMode(true);
+                if (!requestInlineEditorDiscard({ kind: 'callback', run: openBatchMode })) return;
+                openBatchMode();
+              }}
+              className="!h-7 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
+              aria-label="batch manage"
+            >
               <ListChecks size={14} className="mr-1" />
-              <span className="hidden sm:inline">{t('common:manage')}</span>
+              <span className="hidden sm:inline">{t('exam_sheet:questionBank.manage')}</span>
             </NotionButton>
           )}
         </div>
@@ -629,13 +785,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               {onResetProgress && (
-                <NotionButton variant="ghost" size="sm" onClick={handleBatchResetClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 text-xs text-sky-600 hover:bg-sky-500/10">
+                <NotionButton variant="ghost" size="sm" onClick={handleBatchResetClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10">
                   <ArrowClockwise className={cn('w-3 h-3', isOperating && 'animate-spin')} />
                   <span className="hidden sm:inline">{t('practice:questionBank.reset')}</span>
                 </NotionButton>
               )}
               {onDelete && (
-                <NotionButton variant="ghost" size="sm" onClick={handleBatchDeleteClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 text-xs text-rose-600 hover:bg-rose-500/10">
+                <NotionButton variant="ghost" size="sm" onClick={handleBatchDeleteClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 text-xs text-destructive hover:bg-destructive/10">
                   <Trash size={12} />
                   <span className="hidden sm:inline">{t('common:delete')}</span>
                 </NotionButton>
@@ -651,37 +807,37 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         
         {/* 筛选 Tab */}
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
-          <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('all')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             {t('practice:questionBank.all')} {questions.length}
           </NotionButton>
           {stats && stats.newCount > 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+            <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('new')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
               {t('practice:questionBank.newQuestions')} {stats.newCount}
             </NotionButton>
           )}
           {stats && stats.review > 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'review' ? 'bg-amber-500 text-white font-medium' : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10')}>
+            <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('review')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'review' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
               {t('practice:questionBank.needsReview')} {stats.review}
             </NotionButton>
           )}
           {stats && stats.mastered > 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-emerald-500 text-white font-medium' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10')}>
+            <NotionButton variant="ghost" size="sm" onClick={() => handleStatusToggle('mastered')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'mastered' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
               {t('practice:questionBank.masteredFilter')} {stats.mastered}
             </NotionButton>
           )}
 
           <div className="w-px h-3 bg-border/60 mx-1" />
 
-          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-emerald-500 text-white font-medium' : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10')}>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('easy')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'easy' ? 'bg-accent text-accent-foreground font-medium' : 'text-success hover:bg-success/10')}>
             {t('practice:questionBank.difficultyShort.easy')}
           </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-amber-500 text-white font-medium' : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10')}>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('medium')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'medium' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
             {t('practice:questionBank.difficultyShort.medium')}
           </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-orange-500 text-white font-medium' : 'text-orange-600 dark:text-orange-400 hover:bg-orange-500/10')}>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('hard')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-warning hover:bg-warning/10')}>
             {t('practice:questionBank.difficultyShort.hard')}
           </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-rose-500 text-white font-medium' : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10')}>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleDifficultyToggle('very_hard')} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', difficultyFilter === 'very_hard' ? 'bg-accent text-accent-foreground font-medium' : 'text-destructive hover:bg-destructive/10')}>
             {t('practice:questionBank.difficultyShort.veryHard')}
           </NotionButton>
         </div>
@@ -697,17 +853,24 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               examId={examId}
               onCreate={async (q) => {
                 await onCreateQuestion?.(q);
-                setExpandedEditId(null);
+                closeInlineEditor();
               }}
-              onCancel={() => setExpandedEditId(null)}
+              onCancel={closeInlineEditor}
+              onDirtyChange={setInlineEditorDirty}
 />
           </div>
         )}
 
         {filteredQuestions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <MagnifyingGlass size={32} className="mb-3 opacity-40" />
+            <MagnifyingGlass size={28} className="mb-3 opacity-40" />
             <p className="text-sm">{t('practice:questionBank.noMatch')}</p>
+            {hasActiveFilters && (
+              <NotionButton variant="ghost" size="sm" className="mt-3" onClick={clearFilters}>
+                <X size={14} />
+                {t('common:clear')}
+              </NotionButton>
+            )}
           </div>
         ) : viewType === 'grid' ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-2">
@@ -727,7 +890,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                     <QuestionInlineEditor
                       question={q}
                       onSave={handleSaveQuestion}
-                      onCancel={() => setExpandedEditId(null)}
+                      onCancel={closeInlineEditor}
+                      onDirtyChange={setInlineEditorDirty}
 />
                   </div>
                 )}
@@ -751,7 +915,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   <QuestionInlineEditor
                     question={q}
                     onSave={handleSaveQuestion}
-                    onCancel={() => setExpandedEditId(null)}
+                    onCancel={closeInlineEditor}
+                    onDirtyChange={setInlineEditorDirty}
 />
                 )}
               </React.Fragment>
@@ -764,7 +929,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       <NotionAlertDialog
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
-        icon={<Warning size={20} className="text-rose-500" />}
+        icon={<Warning size={20} className="text-destructive" />}
         title={t('practice:questionBank.confirmDeleteTitle')}
         description={t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size })}
         confirmText={t('common:delete')}
@@ -777,7 +942,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       <NotionAlertDialog
         open={resetConfirmOpen}
         onOpenChange={setResetConfirmOpen}
-        icon={<Warning size={20} className="text-amber-500" />}
+        icon={<Warning size={20} className="text-warning" />}
         title={t('practice:questionBank.confirmResetTitle')}
         description={t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size })}
         confirmText={t('practice:questionBank.resetProgress')}
@@ -785,6 +950,32 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         confirmVariant="warning"
         onConfirm={handleBatchResetConfirm}
 />
+      <NotionAlertDialog
+        open={pendingEditorAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingEditorAction(null);
+        }}
+        icon={<Warning size={20} className="text-warning" />}
+        title={t('common:confirmMessages.unsaved_changes')}
+        description={t('common:confirmMessages.unsaved_changes')}
+        confirmText={t('common:actions.discard')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={() => {
+          const action = pendingEditorAction;
+          setPendingEditorAction(null);
+          setInlineEditorDirty(false);
+          if (action?.kind === 'edit') {
+            setExpandedEditId(action.id);
+          } else if (action?.kind === 'question') {
+            setExpandedEditId(null);
+            onQuestionClick?.(action.index);
+          } else if (action?.kind === 'callback') {
+            setExpandedEditId(null);
+            action.run();
+          }
+        }}
+      />
     </div>
   );
 };

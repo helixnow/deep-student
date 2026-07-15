@@ -1,13 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { StoreApi } from 'zustand';
 
-import type { Block } from '@/features/chat/core/types';
+import type { Block, ChatStore } from '@/features/chat/core/types';
 import { markWorkbenchBlockRestored } from '@/features/chat/utils/workbenchBlockRemap';
 
 const mocks = vi.hoisted(() => ({
   activate: vi.fn(),
-  hasRun: vi.fn<(runId: string) => boolean>(),
-  revertRun: vi.fn<(runId: string) => Promise<boolean>>(),
+  hasRun: vi.fn<(runId: string, sessionId?: string) => boolean>(),
+  revertRun: vi.fn<(runId: string, sessionId?: string) => Promise<boolean>>(),
   handleBridgeRequest: vi.fn(),
 }));
 
@@ -15,17 +16,30 @@ vi.mock('@/features/workbench', () => ({
   workbenchBus: { activate: mocks.activate },
   stageManager: {
     revertRun: mocks.revertRun,
+    hasReversibleRun: mocks.hasRun,
     handleBridgeRequest: mocks.handleBridgeRequest,
   },
+  makeAcrSessionRunId: (sessionId: string, toolCallId: string) =>
+    `acr3:${new TextEncoder().encode(sessionId).byteLength}:${sessionId}:${toolCallId}`,
   usePresenceStore: (selector: (state: { byWindow: Record<string, never> }) => unknown) =>
     selector({ byWindow: {} }),
 }));
 
-vi.mock('@/features/workbench/agent/ledger', () => ({
-  runLedger: { hasRun: mocks.hasRun },
-}));
-
 import { WorkbenchOpsBlock } from '../workbenchOpsBlock';
+
+function scopedRunId(sessionId: string, toolCallId: string): string {
+  return `acr3:${new TextEncoder().encode(sessionId).byteLength}:${sessionId}:${toolCallId}`;
+}
+
+function createStore(sessionId = 'session-a'): StoreApi<ChatStore> {
+  return {
+    getState: () => ({ sessionId }) as ChatStore,
+  } as unknown as StoreApi<ChatStore>;
+}
+
+function renderBlock(block: Block, sessionId = 'session-a') {
+  return render(<WorkbenchOpsBlock block={block} store={createStore(sessionId)} />);
+}
 
 function createBlock(overrides: Partial<Block> = {}): Block {
   return {
@@ -91,7 +105,7 @@ describe('WorkbenchOpsBlock undo semantics', () => {
   });
 
   it('does not enable undo when the ledger has no reversible entry', () => {
-    render(<WorkbenchOpsBlock block={createBlock()} />);
+    renderBlock(createBlock());
 
     const button = screen.getByTestId('workbench-ops-undo');
     expect(button).toBeDisabled();
@@ -105,9 +119,12 @@ describe('WorkbenchOpsBlock undo semantics', () => {
       toolCallId: 'restored-block-id',
     });
     markWorkbenchBlockRestored(block.id);
-    mocks.hasRun.mockImplementation((runId) => runId === 'restored-block-id');
+    mocks.hasRun.mockImplementation(
+      (runId, sessionId) =>
+        runId === scopedRunId('session-a', 'restored-block-id') && sessionId === 'session-a',
+    );
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
     const button = screen.getByTestId('workbench-ops-undo');
     expect(button).toBeDisabled();
@@ -115,11 +132,14 @@ describe('WorkbenchOpsBlock undo semantics', () => {
     expect(mocks.revertRun).not.toHaveBeenCalled();
   });
 
-  it('rechecks both runId candidates and reports LRU expiry before reverting', async () => {
+  it('rechecks the session-scoped run and reports LRU expiry before reverting', async () => {
     let ledgerAlive = true;
-    mocks.hasRun.mockImplementation((runId) => ledgerAlive && runId === 'block-id');
+    const expectedRunId = scopedRunId('session-a', 'tool-call-id');
+    mocks.hasRun.mockImplementation(
+      (runId, sessionId) => ledgerAlive && runId === expectedRunId && sessionId === 'session-a',
+    );
 
-    render(<WorkbenchOpsBlock block={createBlock()} />);
+    renderBlock(createBlock());
     const button = screen.getByTestId('workbench-ops-undo');
     expect(button).toBeEnabled();
 
@@ -133,14 +153,17 @@ describe('WorkbenchOpsBlock undo semantics', () => {
     expect(mocks.revertRun).not.toHaveBeenCalled();
   });
 
-  it('uses the live fallback runId and describes successful undo conservatively', async () => {
-    mocks.hasRun.mockImplementation((runId) => runId === 'block-id');
+  it('uses the session-scoped runId and describes successful undo conservatively', async () => {
+    const expectedRunId = scopedRunId('session-a', 'tool-call-id');
+    mocks.hasRun.mockImplementation(
+      (runId, sessionId) => runId === expectedRunId && sessionId === 'session-a',
+    );
 
-    render(<WorkbenchOpsBlock block={createBlock()} />);
+    renderBlock(createBlock());
     fireEvent.click(screen.getByTestId('workbench-ops-undo'));
 
     await waitFor(() => {
-      expect(mocks.revertRun).toHaveBeenCalledWith('block-id');
+      expect(mocks.revertRun).toHaveBeenCalledWith(expectedRunId, 'session-a');
       expect(screen.getByTestId('workbench-ops-undo')).toHaveTextContent(
         '已撤销可恢复更改'
       );
@@ -148,18 +171,15 @@ describe('WorkbenchOpsBlock undo semantics', () => {
   });
 
   it('allows retry after a partial rollback while the ledger remains reversible', async () => {
-    let fallbackOnly = false;
-    mocks.hasRun.mockImplementation((runId) =>
-      fallbackOnly ? runId === 'block-id' : runId === 'tool-call-id'
+    const expectedRunId = scopedRunId('session-a', 'tool-call-id');
+    mocks.hasRun.mockImplementation(
+      (runId, sessionId) => runId === expectedRunId && sessionId === 'session-a',
     );
     mocks.revertRun
-      .mockImplementationOnce(async () => {
-        fallbackOnly = true;
-        return false;
-      })
+      .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
 
-    render(<WorkbenchOpsBlock block={createBlock()} />);
+    renderBlock(createBlock());
     const button = screen.getByTestId('workbench-ops-undo');
     fireEvent.click(button);
 
@@ -172,8 +192,8 @@ describe('WorkbenchOpsBlock undo semantics', () => {
     fireEvent.click(button);
 
     await waitFor(() => {
-      expect(mocks.revertRun).toHaveBeenNthCalledWith(1, 'tool-call-id');
-      expect(mocks.revertRun).toHaveBeenNthCalledWith(2, 'block-id');
+      expect(mocks.revertRun).toHaveBeenNthCalledWith(1, expectedRunId, 'session-a');
+      expect(mocks.revertRun).toHaveBeenNthCalledWith(2, expectedRunId, 'session-a');
       expect(button).toBeDisabled();
       expect(button).toHaveTextContent('已撤销可恢复更改');
     });
@@ -181,15 +201,17 @@ describe('WorkbenchOpsBlock undo semantics', () => {
 
   it('disables retry when a partial rollback exhausts the ledger', async () => {
     let ledgerAlive = true;
+    const expectedRunId = scopedRunId('session-a', 'tool-call-id');
     mocks.hasRun.mockImplementation(
-      (runId) => ledgerAlive && runId === 'tool-call-id'
+      (runId, sessionId) =>
+        ledgerAlive && runId === expectedRunId && sessionId === 'session-a',
     );
     mocks.revertRun.mockImplementationOnce(async () => {
       ledgerAlive = false;
       return false;
     });
 
-    render(<WorkbenchOpsBlock block={createBlock()} />);
+    renderBlock(createBlock());
     const button = screen.getByTestId('workbench-ops-undo');
     fireEvent.click(button);
 
@@ -207,7 +229,7 @@ describe('WorkbenchOpsBlock undo semantics', () => {
     });
     markWorkbenchBlockRestored(block.id);
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
     expect(screen.getByTestId('workbench-agent-act-receipt')).toHaveTextContent(
       '操作后状态已验证',
@@ -223,7 +245,14 @@ describe('WorkbenchOpsBlock undo semantics', () => {
       expect(mocks.handleBridgeRequest).toHaveBeenCalledWith(
         expect.objectContaining({
           command: 'revert_run',
-          args: { undoToken: 'acr-undo:persisted-1' },
+          args: {
+            undoToken: 'acr-undo:persisted-1',
+            approvalRiskCeiling: 'high',
+          },
+          runId: expect.stringMatching(
+            new RegExp(`^${scopedRunId('session-a', 'persistent-act-call')}:undo:`),
+          ),
+          sessionId: 'session-a',
         }),
       );
       expect(button).toHaveTextContent('已撤销可恢复更改');
@@ -238,11 +267,95 @@ describe('WorkbenchOpsBlock undo semantics', () => {
     });
     markWorkbenchBlockRestored(block.id);
 
-    render(<WorkbenchOpsBlock block={block} />);
+    renderBlock(block);
 
     const button = screen.getByTestId('workbench-ops-undo');
     expect(button).toBeDisabled();
     expect(button).toHaveTextContent('blocks.workbenchOps.undoExpired');
     expect(mocks.handleBridgeRequest).not.toHaveBeenCalled();
+  });
+
+  it('isolates identical toolCallId values by session', () => {
+    const block = createBlock({ toolCallId: 'duplicate-call' });
+    const sessionARun = scopedRunId('session-a', 'duplicate-call');
+    const sessionBRun = scopedRunId('session-b', 'duplicate-call');
+    mocks.hasRun.mockImplementation(
+      (runId, sessionId) => runId === sessionARun && sessionId === 'session-a',
+    );
+
+    const first = renderBlock(block, 'session-a');
+    expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute('data-run-id', sessionARun);
+    expect(screen.getByTestId('workbench-ops-undo')).toBeEnabled();
+    first.unmount();
+
+    renderBlock(block, 'session-b');
+    expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute('data-run-id', sessionBRun);
+    expect(screen.getByTestId('workbench-ops-undo')).toBeDisabled();
+    expect(mocks.hasRun).toHaveBeenCalledWith(sessionBRun, 'session-b');
+  });
+
+  it('renders RESULT_UNKNOWN as a non-retryable warning without undo', () => {
+    renderBlock(createBlock({
+      status: 'error',
+      error: '{"code":"RESULT_UNKNOWN","retryable":false}',
+      toolOutput: {
+        code: 'RESULT_UNKNOWN',
+        resultUnknown: true,
+        retryable: false,
+      },
+    }));
+
+    expect(screen.getByTestId('workbench-ops-block')).toHaveAttribute('data-status', 'unknown');
+    expect(screen.getByTestId('workbench-result-unknown')).toBeInTheDocument();
+    expect(screen.queryByTestId('workbench-ops-undo')).not.toBeInTheDocument();
+    expect(screen.queryByText(/\{"code":"RESULT_UNKNOWN"/)).not.toBeInTheDocument();
+  });
+
+  it('keeps persistent undo disabled when no session store is available', () => {
+    render(<WorkbenchOpsBlock block={createAgentActBlock('acr-undo:no-session', 'persistent')} />);
+
+    expect(screen.getByTestId('workbench-ops-undo')).toBeDisabled();
+    expect(mocks.handleBridgeRequest).not.toHaveBeenCalled();
+  });
+
+  it('prevents a second undo request while the first request is in flight', async () => {
+    let resolveUndo: ((value: unknown) => void) | undefined;
+    mocks.handleBridgeRequest.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveUndo = resolve;
+      }),
+    );
+    renderBlock(createAgentActBlock('acr-undo:single-flight', 'persistent'));
+
+    const button = screen.getByTestId('workbench-ops-undo');
+    fireEvent.click(button);
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(mocks.handleBridgeRequest).toHaveBeenCalledTimes(1);
+
+    resolveUndo?.({ correlationId: 'undo-response', ok: true, data: { reverted: true } });
+    await waitFor(() => expect(button).toHaveTextContent('已撤销可恢复更改'));
+  });
+
+  it('uses a fresh operation runId when persistent undo is retried', async () => {
+    mocks.handleBridgeRequest
+      .mockResolvedValueOnce({ correlationId: 'undo-1', ok: true, data: { reverted: false } })
+      .mockResolvedValueOnce({ correlationId: 'undo-2', ok: true, data: { reverted: true } });
+    renderBlock(createAgentActBlock('acr-undo:retry-operation', 'persistent'));
+
+    const button = screen.getByTestId('workbench-ops-undo');
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveTextContent('部分撤销，重试'));
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveTextContent('已撤销可恢复更改'));
+
+    const operationRunIds = mocks.handleBridgeRequest.mock.calls.map(
+      ([request]) => (request as { runId: string }).runId,
+    );
+    expect(operationRunIds).toHaveLength(2);
+    expect(operationRunIds[0]).not.toBe(operationRunIds[1]);
+    expect(operationRunIds.every((id) => id.startsWith(
+      `${scopedRunId('session-a', 'tool-call-id')}:undo:`,
+    ))).toBe(true);
   });
 });

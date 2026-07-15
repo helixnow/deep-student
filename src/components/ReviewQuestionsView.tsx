@@ -6,23 +6,17 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import {
   Check,
   X,
   CaretRight as CaretRight,
   Trash as Trash,
   ArrowsClockwise as ArrowClockwise,
-  BookOpen,
   Lightning as Lightning,
-  ClockCounterClockwise as ClockCounterClockwise,
-  ArrowsDownUp as ArrowsDownUp,
-  CaretDown as CaretDown,
-  Target,
-  Clock,
   Trophy as Award,
   Warning as Warning,
 } from '@phosphor-icons/react';
-import { Badge } from '@/components/ui/shad/Badge';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useTranslation, Trans } from 'react-i18next';
 import type { Question, QuestionBankStats, Difficulty } from '@/api/questionBankApi';
@@ -44,10 +38,10 @@ export interface ReviewQuestionsViewProps {
 }
 
 const DIFFICULTY_CONFIG: Record<Difficulty, { color: string }> = {
-  easy: { color: 'text-emerald-600' },
-  medium: { color: 'text-amber-600' },
-  hard: { color: 'text-orange-600' },
-  very_hard: { color: 'text-rose-600' },
+  easy: { color: 'text-success' },
+  medium: { color: 'text-warning' },
+  hard: { color: 'text-destructive/80' },
+  very_hard: { color: 'text-destructive' },
 };
 
 /**
@@ -92,12 +86,12 @@ const ReviewStatsCard: React.FC<{
                 cx="20" cy="20" r="16"
                 fill="none" stroke="currentColor" strokeWidth="3"
                 strokeDasharray={`${(1 - progressPercent / 100) * 100.5} 100.5`}
-                className="text-amber-500"
+                className="text-warning"
                 strokeLinecap="round"
 />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xs font-semibold text-amber-600">{reviewCount}</span>
+              <span className="text-xs font-semibold text-warning">{reviewCount}</span>
             </div>
           </div>
           <div className="text-sm">
@@ -107,7 +101,7 @@ const ReviewStatsCard: React.FC<{
         
         {/* 已掌握 */}
         <div className="text-sm">
-          <span className="font-medium text-emerald-500">{masteredCount}</span>
+          <span className="font-medium text-success">{masteredCount}</span>
           <span className="text-muted-foreground ml-1">{t('review:questions.mastered')}</span>
         </div>
         
@@ -127,26 +121,26 @@ const ReviewStatsCard: React.FC<{
       {reviewCount > 0 && (
         <div className="hidden md:flex items-center gap-2 text-xs">
           {byDifficulty.easy > 0 && (
-            <span className="flex items-center gap-1 text-emerald-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span className="flex items-center gap-1 text-success">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
               {byDifficulty.easy}
             </span>
           )}
           {byDifficulty.medium > 0 && (
-            <span className="flex items-center gap-1 text-amber-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span className="flex items-center gap-1 text-warning">
+              <span className="h-1.5 w-1.5 rounded-full bg-warning" />
               {byDifficulty.medium}
             </span>
           )}
           {byDifficulty.hard > 0 && (
-            <span className="flex items-center gap-1 text-orange-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+            <span className="flex items-center gap-1 text-destructive/80">
+              <span className="h-1.5 w-1.5 rounded-full bg-destructive/80" />
               {byDifficulty.hard}
             </span>
           )}
           {byDifficulty.very_hard > 0 && (
-            <span className="flex items-center gap-1 text-rose-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+            <span className="flex items-center gap-1 text-destructive">
+              <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
               {byDifficulty.very_hard}
             </span>
           )}
@@ -164,7 +158,7 @@ const ReviewQuestionCard: React.FC<{
   originalIndex: number;
   isSelected: boolean;
   onSelect: (selected: boolean) => void;
-  onClick: () => void;
+  onClick?: () => void;
 }> = ({ question, originalIndex, isSelected, onSelect, onClick }) => {
   const { t } = useTranslation(['review']);
   const attemptCount = question.attemptCount || 0;
@@ -189,55 +183,57 @@ const ReviewQuestionCard: React.FC<{
   return (
     <div
       className={cn(
-        'group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer',
-        !isSelected && 'hover:bg-[var(--interactive-hover)]',
-        isSelected && 'bg-amber-500/5'
+        'group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors',
+        !isSelected && 'hover:bg-accent',
+        isSelected && 'bg-warning/10'
       )}
-      onClick={onClick}
     >
       {/* 复选框 */}
-      <div 
-        className="flex-shrink-0"
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={isSelected}
+        aria-label={t('review:questions.selectQuestion', { label: question.questionLabel || `Q${originalIndex + 1}` })}
+        className={cn(
+          'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          isSelected
+            ? 'border-warning bg-warning text-warning-foreground'
+            : 'border-muted-foreground/40 text-transparent hover:border-warning'
+        )}
         onClick={(e) => {
           e.stopPropagation();
           onSelect(!isSelected);
         }}
       >
-        <div className={cn(
-          'w-4 h-4 rounded border flex items-center justify-center transition-colors',
-          isSelected 
-            ? 'bg-amber-500 border-amber-500' 
-            : 'border-muted-foreground/30 hover:border-amber-500'
-        )}>
-          {isSelected && <Check size={10} className="text-white" />}
-        </div>
-      </div>
+        {isSelected && <Check size={10} />}
+      </button>
 
-      {/* 题号 */}
-      <span className="text-sm font-medium text-muted-foreground w-10 flex-shrink-0">
-        {question.questionLabel || `Q${originalIndex + 1}`}
-      </span>
-      
-      {/* 难度指示器 */}
-      {question.difficulty && (
-        <span className={cn('text-xs font-medium flex-shrink-0', DIFFICULTY_CONFIG[question.difficulty].color)}>
-          {t(`review:questions.difficulty.${question.difficulty}`)}
+      <button type="button" onClick={onClick} disabled={!onClick} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default">
+        {/* 题号 */}
+        <span className="w-10 shrink-0 text-sm font-medium text-muted-foreground">
+          {question.questionLabel || `Q${originalIndex + 1}`}
         </span>
-      )}
+        {/* 难度指示器 */}
+        {question.difficulty && (
+          <span className={cn('shrink-0 text-xs font-medium', DIFFICULTY_CONFIG[question.difficulty].color)}>
+            {t(`review:questions.difficulty.${question.difficulty}`)}
+          </span>
+        )}
 
-      {/* 题目内容 */}
-      <p className="flex-1 text-sm text-foreground/80 truncate">
-        {question.content || question.ocrText || t('review:questions.noContent')}
-      </p>
+        {/* 题目内容 */}
+        <p className="flex-1 truncate text-sm text-foreground/80">
+          {question.content || question.ocrText || t('review:questions.noContent')}
+        </p>
 
-      {/* 统计信息 */}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground flex-shrink-0">
-        <span>{t('review:questions.attemptCount', { count: attemptCount })}</span>
-        <span className="text-rose-500 font-medium">{errorRate}%</span>
-        <span className="hidden sm:inline">{lastAttemptText}</span>
-      </div>
+        {/* 统计信息 */}
+        <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+          <span>{t('review:questions.attemptCount', { count: attemptCount })}</span>
+          <span className="font-medium text-destructive">{errorRate}%</span>
+          <span className="hidden sm:inline">{lastAttemptText}</span>
+        </div>
 
-      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors flex-shrink-0" />
+        <CaretRight size={16} className="shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/60" />
+      </button>
     </div>
   );
 };
@@ -248,12 +244,12 @@ const ReviewQuestionCard: React.FC<{
 const EmptyState: React.FC = () => {
   const { t } = useTranslation(['review']);
   return (
-    <div className="flex flex-col items-center justify-center h-full py-16">
-      <div className="p-6 rounded-3xl bg-gradient-to-br from-emerald-500/10 to-sky-500/10 mb-6">
-        <Award className="w-16 h-16 text-emerald-500" />
+    <div className="flex h-full flex-col items-center justify-center py-12">
+      <div className="mb-3 rounded-md bg-muted p-2">
+        <Award className="h-7 w-7 text-muted-foreground" />
       </div>
-      <h3 className="text-xl font-semibold mb-2">{t('review:questions.emptyTitle')}</h3>
-      <p className="text-muted-foreground text-center max-w-sm">
+      <h3 className="mb-1 text-sm font-medium">{t('review:questions.emptyTitle')}</h3>
+      <p className="max-w-sm text-center text-sm text-muted-foreground">
         <Trans i18nKey="review:questions.emptyDesc" components={{ br: <br /> }} />
       </p>
     </div>
@@ -269,9 +265,11 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
   onDelete,
   className,
 }) => {
-  const { t } = useTranslation(['review']);
+  const { t } = useTranslation(['review', 'practice', 'common']);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isOperating, setIsOperating] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   // 过滤出需要复习的题目
   const reviewQuestions = useMemo(() => {
@@ -310,13 +308,15 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
   // 重置选中题目进度
   const handleResetProgress = useCallback(async () => {
     if (selectedIds.size === 0 || !onResetProgress) return;
+    setResetConfirmOpen(false);
     setIsOperating(true);
     try {
-      await onResetProgress(Array.from(selectedIds));
+      const questionIds = Array.from(selectedIds);
+      await onResetProgress(questionIds);
       setSelectedIds(new Set());
-      showGlobalNotification('success', t('review:resetSuccess', '重置进度成功'));
+      showGlobalNotification('success', t('practice:questionBank.resetSuccess', { count: questionIds.length }));
     } catch (err: unknown) {
-      showGlobalNotification('error', `${t('review:resetFailed', '重置进度失败')}: ${err instanceof Error ? err.message : String(err)}`);
+      showGlobalNotification('error', `${t('practice:questionBank.resetFailed')}: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsOperating(false);
     }
@@ -325,13 +325,15 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
   // 删除选中题目
   const handleDelete = useCallback(async () => {
     if (selectedIds.size === 0 || !onDelete) return;
+    setDeleteConfirmOpen(false);
     setIsOperating(true);
     try {
-      await onDelete(Array.from(selectedIds));
+      const questionIds = Array.from(selectedIds);
+      await onDelete(questionIds);
       setSelectedIds(new Set());
-      showGlobalNotification('success', t('review:deleteSuccess', '删除成功'));
+      showGlobalNotification('success', t('practice:questionBank.deleteSuccess', { count: questionIds.length }));
     } catch (err: unknown) {
-      showGlobalNotification('error', `${t('review:deleteFailed', '删除失败')}: ${err instanceof Error ? err.message : String(err)}`);
+      showGlobalNotification('error', `${t('practice:questionBank.deleteFailed')}: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsOperating(false);
     }
@@ -365,10 +367,12 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
       <div className="flex-shrink-0 px-4 py-2">
         <div className="flex items-center justify-between gap-3">
           {/* 左侧：开始复习按钮 */}
-          <NotionButton variant="ghost" size="sm" onClick={onStartReview} className="text-sm font-medium text-amber-600 hover:bg-amber-500/10">
-            <Lightning size={14} />
-            {t('review:questions.startReview', { count: reviewQuestions.length })}
-          </NotionButton>
+          {onStartReview && (
+            <NotionButton variant="warning" size="sm" onClick={onStartReview}>
+              <Lightning size={14} />
+              {t('review:questions.startReview', { count: reviewQuestions.length })}
+            </NotionButton>
+          )}
 
           {/* 右侧：批量操作 */}
           <div className="flex items-center gap-1.5">
@@ -378,11 +382,11 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
             
             {selectedIds.size > 0 && (
               <>
-                <NotionButton variant="ghost" size="sm" onClick={handleResetProgress} disabled={isOperating || !onResetProgress} className="!px-2 !py-1 !h-auto text-xs text-sky-600 hover:bg-sky-500/10 disabled:opacity-50">
+                <NotionButton variant="ghost" size="sm" onClick={() => setResetConfirmOpen(true)} disabled={isOperating || !onResetProgress} className="!h-auto !px-2 !py-1 text-xs text-info hover:bg-info/10 disabled:opacity-50">
                   <ArrowClockwise className={cn('w-3 h-3', isOperating && 'animate-spin')} />
                   {t('review:questions.reset')}
                 </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={handleDelete} disabled={isOperating || !onDelete} className="!px-2 !py-1 !h-auto text-xs text-rose-600 hover:bg-rose-500/10 disabled:opacity-50">
+                <NotionButton variant="ghost" size="sm" onClick={() => setDeleteConfirmOpen(true)} disabled={isOperating || !onDelete} className="!h-auto !px-2 !py-1 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50">
                   <Trash size={12} />
                   {t('review:questions.delete')}
                 </NotionButton>
@@ -394,10 +398,10 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
 
       {/* 再掌握流程提示 - 更紧凑 */}
       <div className="flex-shrink-0 px-4 py-1.5">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 text-xs text-muted-foreground">
-          <Warning size={14} className="text-sky-500 flex-shrink-0" />
+        <div className="flex items-center gap-2 rounded-md bg-info/10 px-3 py-2 text-xs text-muted-foreground">
+          <Warning size={14} className="shrink-0 text-info" />
           <span>
-            <Trans i18nKey="review:questions.masteryTip" components={{ highlight: <span className="font-medium text-sky-600" /> }} />
+            <Trans i18nKey="review:questions.masteryTip" components={{ highlight: <span className="font-medium text-info" /> }} />
           </span>
         </div>
       </div>
@@ -412,11 +416,35 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
               originalIndex={originalIndexMap.get(q.id) || 0}
               isSelected={selectedIds.has(q.id)}
               onSelect={(selected) => toggleSelect(q.id, selected)}
-              onClick={() => handleQuestionClick(q.id)}
+              onClick={onQuestionClick ? () => handleQuestionClick(q.id) : undefined}
 />
           ))}
         </div>
       </CustomScrollArea>
+
+      <NotionAlertDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        icon={<Warning size={20} className="text-destructive" />}
+        title={t('practice:questionBank.confirmDeleteTitle')}
+        description={t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size })}
+        confirmText={t('common:delete')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={handleDelete}
+      />
+
+      <NotionAlertDialog
+        open={resetConfirmOpen}
+        onOpenChange={setResetConfirmOpen}
+        icon={<Warning size={20} className="text-warning" />}
+        title={t('practice:questionBank.confirmResetTitle')}
+        description={t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size })}
+        confirmText={t('practice:questionBank.resetProgress')}
+        cancelText={t('common:cancel')}
+        confirmVariant="warning"
+        onConfirm={handleResetProgress}
+      />
     </div>
   );
 };

@@ -133,7 +133,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
                 {data.count}
               </p>
               <p className="text-xs text-muted-foreground">
-                {t('review:calendar.totalReviews', '复习总数')}
+                {t('review:calendar.totalReviews')}
               </p>
             </div>
             <div className="text-center p-2 rounded-lg bg-emerald-500/10">
@@ -142,7 +142,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
                 {data.passed}
               </p>
               <p className="text-xs text-muted-foreground">
-                {t('review:calendar.passed', '通过')}
+                {t('review:calendar.passed')}
               </p>
             </div>
             <div className="text-center p-2 rounded-lg bg-amber-500/10">
@@ -151,7 +151,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
                 {accuracy}%
               </p>
               <p className="text-xs text-muted-foreground">
-                {t('review:calendar.accuracy', '正确率')}
+                {t('review:calendar.accuracy')}
               </p>
             </div>
           </div>
@@ -160,7 +160,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
           {histories.length > 0 && (
             <div>
               <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                {t('review:calendar.history', '复习记录')}
+                {t('review:calendar.history')}
               </h4>
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {histories.slice(0, 10).map((h) => (
@@ -196,7 +196,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
       ) : (
         <div className="text-center py-6 text-muted-foreground">
           <Calendar size={40} className="mx-auto mb-2 opacity-50" />
-          <p>{t('review:calendar.noData', '当日无复习记录')}</p>
+          <p>{t('review:calendar.noData')}</p>
         </div>
       )}
     </Card>
@@ -265,14 +265,14 @@ const HeatmapLegend: React.FC = () => {
 
   return (
     <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
-      <span>{t('review:calendar.less', '少')}</span>
+      <span>{t('review:calendar.less')}</span>
       <div className={cn('w-3 h-3 rounded', getHeatmapColor(0))} />
       <div className={cn('w-3 h-3 rounded', getHeatmapColor(2))} />
       <div className={cn('w-3 h-3 rounded', getHeatmapColor(5))} />
       <div className={cn('w-3 h-3 rounded', getHeatmapColor(10))} />
       <div className={cn('w-3 h-3 rounded', getHeatmapColor(15))} />
       <div className={cn('w-3 h-3 rounded', getHeatmapColor(25))} />
-      <span>{t('review:calendar.more', '多')}</span>
+      <span>{t('review:calendar.more')}</span>
     </div>
   );
 };
@@ -348,7 +348,7 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
           {stats.currentStreak}
         </p>
         <p className="text-[10px] text-muted-foreground">
-          {t('review:calendar.currentStreak', '当前连续')}
+          {t('review:calendar.currentStreak')}
         </p>
       </div>
       <div className="text-center p-2 rounded-lg bg-muted/30">
@@ -357,7 +357,7 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
           {stats.longestStreak}
         </p>
         <p className="text-[10px] text-muted-foreground">
-          {t('review:calendar.longestStreak', '最长连续')}
+          {t('review:calendar.longestStreak')}
         </p>
       </div>
       <div className="text-center p-2 rounded-lg bg-muted/30">
@@ -366,7 +366,7 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
           {stats.totalDays}
         </p>
         <p className="text-[10px] text-muted-foreground">
-          {t('review:calendar.totalDays', '学习天数')}
+          {t('review:calendar.totalDays')}
         </p>
       </div>
       <div className="text-center p-2 rounded-lg bg-muted/30">
@@ -375,7 +375,7 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
           {stats.totalReviews}
         </p>
         <p className="text-[10px] text-muted-foreground">
-          {t('review:calendar.totalReviews', '复习总数')}
+          {t('review:calendar.totalReviews')}
         </p>
       </div>
     </div>
@@ -523,10 +523,10 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-foreground">
-            {t('review:calendar.title', '复习日历')}
+            {t('review:calendar.title')}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {t('review:calendar.subtitle', '追踪你的复习记录')}
+            {t('review:calendar.subtitle')}
           </p>
         </div>
         {onClose && (
@@ -554,7 +554,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
               onClick={goToToday}
               className="h-7 text-xs"
             >
-              {t('review:calendar.today', '今天')}
+              {t('review:calendar.today')}
             </NotionButton>
           </div>
           <NotionButton variant="ghost" iconOnly size="sm" onClick={goToNextMonth}>

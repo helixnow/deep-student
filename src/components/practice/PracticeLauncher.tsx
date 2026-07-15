@@ -27,7 +27,6 @@ import {
   BookOpen,
   CaretLeft,
   Play,
-  Sparkle,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -46,6 +45,9 @@ export interface PracticeLauncherProps {
   stats?: QuestionBankStats | null;
   questions: Array<{ tags?: string[] }>;
   onStartPractice: (mode: PracticeMode, tag?: string) => void;
+  /** Opens configuration for a mode selected from the in-practice toolbar. */
+  requestedMode?: 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper' | null;
+  onRequestedModeHandled?: () => void;
   className?: string;
 }
 
@@ -56,9 +58,12 @@ interface ModeCardConfig {
   icon: React.ElementType;
   label: string;
   desc: string;
-  colorText: string;
-  colorBg: string;
   isAdvanced: boolean;
+}
+
+interface TagOption {
+  tag: string;
+  count: number;
 }
 
 export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
@@ -66,10 +71,13 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   stats,
   questions,
   onStartPractice,
+  requestedMode,
+  onRequestedModeHandled,
   className,
 }) => {
-  const { t } = useTranslation(['exam_sheet', 'practice']);
+  const { t } = useTranslation('practice');
   const [activeAdvanced, setActiveAdvanced] = useState<AdvancedMode>(null);
+  const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
   const timedSession = useQuestionBankStore(state => state.timedSession);
   const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
   const mockExamScoreCard = useQuestionBankStore(state => state.mockExamScoreCard);
@@ -97,11 +105,43 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
     }
   }, [activeMockExamSession, activeTimedSession, mockExamScoreCard, examId]);
 
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    questions.forEach(q => q.tags?.forEach(tag => tagSet.add(tag)));
-    return Array.from(tagSet).sort();
+  useEffect(() => {
+    if (!requestedMode) return;
+    if (requestedMode === 'by_tag') {
+      setActiveAdvanced(null);
+      setIsTagPickerOpen(true);
+    } else {
+      setIsTagPickerOpen(false);
+      setActiveAdvanced(requestedMode);
+    }
+    onRequestedModeHandled?.();
+  }, [onRequestedModeHandled, requestedMode]);
+
+  const tagOptions = useMemo<TagOption[]>(() => {
+    const tagCounts = new Map<string, number>();
+    let untaggedCount = 0;
+
+    questions.forEach((question) => {
+      const questionTags = new Set((question.tags || []).filter((tag) => tag.trim().length > 0));
+      if (questionTags.size === 0) {
+        untaggedCount += 1;
+        return;
+      }
+      questionTags.forEach((tag) => {
+        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+      });
+    });
+
+    const options = Array.from(tagCounts, ([tag, count]) => ({ tag, count }))
+      .sort((a, b) => a.tag.localeCompare(b.tag));
+    if (untaggedCount > 0) options.push({ tag: '__untagged__', count: untaggedCount });
+    return options;
   }, [questions]);
+
+  const allTags = useMemo(
+    () => tagOptions.filter(({ tag }) => tag !== '__untagged__').map(({ tag }) => tag),
+    [tagOptions],
+  );
 
   const modes: ModeCardConfig[] = useMemo(() => [
     {
@@ -109,8 +149,6 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       icon: ListNumbers,
       label: t('practice:modes.sequential.label'),
       desc: t('practice:modes.sequential.desc'),
-      colorText: 'text-slate-600 dark:text-slate-400',
-      colorBg: 'bg-slate-500/10',
       isAdvanced: false,
     },
     {
@@ -118,8 +156,6 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       icon: Shuffle,
       label: t('practice:modes.random.label'),
       desc: t('practice:modes.random.desc'),
-      colorText: 'text-purple-600 dark:text-purple-400',
-      colorBg: 'bg-purple-500/10',
       isAdvanced: false,
     },
     {
@@ -127,8 +163,6 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       icon: ArrowCounterClockwise,
       label: t('practice:modes.reviewFirst.label'),
       desc: t('practice:modes.reviewFirst.desc'),
-      colorText: 'text-amber-600 dark:text-amber-400',
-      colorBg: 'bg-amber-500/10',
       isAdvanced: false,
     },
     {
@@ -136,8 +170,6 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       icon: ArrowCounterClockwise,
       label: t('practice:modes.reviewOnly.label'),
       desc: t('practice:modes.reviewOnly.desc'),
-      colorText: 'text-amber-600 dark:text-amber-400',
-      colorBg: 'bg-amber-500/10',
       isAdvanced: false,
     },
     {
@@ -145,8 +177,6 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       icon: Tag,
       label: t('practice:modes.byTag.label'),
       desc: t('practice:modes.byTag.desc'),
-      colorText: 'text-sky-600 dark:text-sky-400',
-      colorBg: 'bg-sky-500/10',
       isAdvanced: false,
     },
     {
@@ -154,8 +184,6 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       icon: Clock,
       label: t('practice:modes.timed.label'),
       desc: t('practice:modes.timed.desc'),
-      colorText: 'text-rose-600 dark:text-rose-400',
-      colorBg: 'bg-rose-500/10',
       isAdvanced: true,
     },
     {
@@ -163,8 +191,6 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       icon: FileText,
       label: t('practice:modes.mockExam.label'),
       desc: t('practice:modes.mockExam.desc'),
-      colorText: 'text-indigo-600 dark:text-indigo-400',
-      colorBg: 'bg-indigo-500/10',
       isAdvanced: true,
     },
     {
@@ -172,8 +198,6 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       icon: Target,
       label: t('practice:modes.daily.label'),
       desc: t('practice:modes.daily.desc'),
-      colorText: 'text-emerald-600 dark:text-emerald-400',
-      colorBg: 'bg-emerald-500/10',
       isAdvanced: true,
     },
     {
@@ -181,18 +205,29 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       icon: DownloadSimple,
       label: t('practice:modes.paper.label'),
       desc: t('practice:modes.paper.desc'),
-      colorText: 'text-orange-600 dark:text-orange-400',
-      colorBg: 'bg-orange-500/10',
       isAdvanced: true,
     },
   ], [t]);
 
   const handleModeClick = useCallback((mode: PracticeMode, isAdvanced: boolean) => {
+    if (mode === 'by_tag') {
+      setActiveAdvanced(null);
+      setIsTagPickerOpen(prev => !prev);
+      return;
+    }
+
     if (isAdvanced) {
+      setIsTagPickerOpen(false);
       setActiveAdvanced(prev => prev === mode ? null : mode as AdvancedMode);
     } else {
+      setIsTagPickerOpen(false);
       onStartPractice(mode);
     }
+  }, [onStartPractice]);
+
+  const handleStartPracticeByTag = useCallback((tag: string) => {
+    setIsTagPickerOpen(false);
+    onStartPractice('by_tag', tag);
   }, [onStartPractice]);
 
   const hasQuestions = questions.length > 0;
@@ -200,16 +235,16 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   // 空状态
   if (!hasQuestions) {
     return (
-      <div className={cn('flex flex-col items-center justify-center h-full gap-4 px-6', className)}>
-        <div className="p-4 rounded-2xl bg-muted/50">
-          <BookOpen size={40} className="text-muted-foreground" />
+      <div className={cn('flex h-full flex-col items-center justify-center gap-3 px-4', className)}>
+        <div className="rounded-md bg-muted p-2">
+          <BookOpen size={28} className="text-muted-foreground" />
         </div>
         <div className="text-center">
-          <h3 className="text-lg font-semibold mb-1">
-            {t('exam_sheet:questionBank.practice.noQuestions')}
+          <h3 className="mb-1 text-sm font-medium">
+            {t('practice:questionBank.practice.noQuestions')}
           </h3>
           <p className="text-sm text-muted-foreground">
-            {t('exam_sheet:questionBank.practice.addFirst')}
+            {t('practice:questionBank.practice.addFirst')}
           </p>
         </div>
       </div>
@@ -217,19 +252,19 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   }
 
   return (
-    <CustomScrollArea className={cn('h-full', className)} viewportClassName="p-4 space-y-5">
+    <CustomScrollArea className={cn('h-full', className)} viewportClassName="space-y-4 p-3">
       {/* 快速统计 */}
       {stats && (
-        <div className="flex items-center gap-6 px-1">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 relative">
+            <div className="relative h-8 w-8">
               <svg className="w-full h-full transform -rotate-90" viewBox="0 0 40 40">
                 <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/30" />
                 <circle
                   cx="20" cy="20" r="16"
                   fill="none" stroke="currentColor" strokeWidth="3"
                   strokeDasharray={`${stats.total > 0 ? (stats.mastered / stats.total) * 100.5 : 0} 100.5`}
-                  className="text-emerald-500"
+                  className="text-success"
                   strokeLinecap="round"
 />
               </svg>
@@ -240,19 +275,19 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               </div>
             </div>
             <div className="text-sm whitespace-nowrap">
-              <span className="text-muted-foreground">{t('exam_sheet:questionBank.stats.mastered')} </span>
+              <span className="text-muted-foreground">{t('practice:questionBank.stats.mastered')} </span>
               <span className="font-medium">{stats.mastered}</span>
               <span className="text-muted-foreground">/ {stats.total}</span>
             </div>
           </div>
           {stats.review > 0 && (
-            <div className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              <span>{stats.review} {t('exam_sheet:questionBank.stats.toReview')}</span>
+            <div className="flex items-center gap-1.5 text-sm text-warning">
+              <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+              <span>{stats.review} {t('practice:questionBank.stats.toReview')}</span>
             </div>
           )}
           <div className="text-sm text-muted-foreground">
-            {t('exam_sheet:questionBank.stats.correctRate')}{' '}
+            {t('practice:questionBank.stats.correctRate')}{' '}
             <span className="font-medium text-foreground tabular-nums">
               {Math.round(stats.correctRate * 100)}%
             </span>
@@ -264,25 +299,24 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       <div>
         <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-1.5">
           <Play size={14} />
-          {t('exam_sheet:questionBank.practice.chooseMode')}
+          {t('practice:questionBank.practice.chooseMode')}
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {modes.map(({ key, icon: Icon, label, desc, colorText, colorBg, isAdvanced }) => {
-            const isActive = activeAdvanced === key;
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {modes.map(({ key, icon: Icon, label, desc, isAdvanced }) => {
+            const isActive = activeAdvanced === key || (key === 'by_tag' && isTagPickerOpen);
             return (
               <NotionButton
                 key={key}
                 variant="ghost" size="sm"
                 onClick={() => handleModeClick(key, isAdvanced)}
                 className={cn(
-                  '!h-auto !p-4 !rounded-xl !text-left !justify-start !items-start flex-col',
-                  !isActive && 'border border-transparent hover:border-border/60 hover:bg-[var(--interactive-hover)]',
-                  !isActive && 'hover:shadow-[var(--shadow-notion)]',
-                  isActive && 'ring-2 ring-primary/50 bg-primary/5 border-primary/30'
+                  '!relative !h-auto !min-h-[76px] !flex-col !items-start !justify-start !rounded-md !border !p-3 !text-left',
+                  !isActive && 'border-border/60 bg-transparent hover:border-border hover:bg-accent',
+                  isActive && 'border-primary/50 bg-primary/10 text-foreground'
                 )}
               >
-                <div className={cn('p-2.5 rounded-lg transition-colors', isActive ? 'bg-primary/10' : colorBg)}>
-                  <Icon className={cn('w-5 h-5 transition-colors', isActive ? 'text-primary' : colorText)} />
+                <div className={cn('rounded-md p-1.5 transition-colors', isActive ? 'bg-primary/10' : 'bg-muted')}>
+                  <Icon className={cn('h-4 w-4 transition-colors', isActive ? 'text-primary' : 'text-muted-foreground')} />
                 </div>
                 <div>
                   <div className="text-sm font-medium">{label}</div>
@@ -290,19 +324,60 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 </div>
                 {/* 错题数量 badge */}
                 {key === 'review_first' && stats && stats.review > 0 && (
-                  <Badge variant="secondary" className="absolute top-2 right-2 text-[10px] h-5 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Badge variant="secondary" className="absolute right-2 top-2 h-5 bg-warning/10 text-[10px] text-warning">
                     {stats.review}
                   </Badge>
-                )}
-                {/* 高级模式标识 */}
-                {isAdvanced && !isActive && (
-                  <Sparkle size={12} className="absolute top-3 right-3 text-muted-foreground/40" />
                 )}
               </NotionButton>
             );
           })}
         </div>
       </div>
+
+      {isTagPickerOpen && (
+        <section className="border-t border-border/50 pt-3" aria-label={t('practice:tagPicker.title')}>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium">{t('practice:tagPicker.title')}</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t('practice:tagPicker.description')}
+              </p>
+            </div>
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              aria-label={t('common:back')}
+              title={t('common:back')}
+              onClick={() => setIsTagPickerOpen(false)}
+            >
+              <CaretLeft size={16} />
+            </NotionButton>
+          </div>
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 md:grid-cols-3">
+            {tagOptions.map(({ tag, count }) => {
+              const label = tag === '__untagged__'
+                ? t('practice:tagPicker.untagged')
+                : tag;
+              return (
+                <NotionButton
+                  key={tag}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleStartPracticeByTag(tag)}
+                  className="!h-auto !justify-start !rounded-md !border !border-border/60 !px-2.5 !py-2 !text-left hover:border-primary/40 hover:bg-primary/10"
+                >
+                  <Tag size={14} className="shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">{label}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {t('practice:tagPicker.questionCount', { count })}
+                  </span>
+                </NotionButton>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* 高级模式配置面板 */}
       {activeAdvanced && (
@@ -313,12 +388,13 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
             </h3>
             <NotionButton
               variant="ghost"
-              size="sm"
+              size="icon"
+              iconOnly
+              aria-label={t('common:back')}
+              title={t('common:back')}
               onClick={() => setActiveAdvanced(null)}
-              className="h-7 px-2 text-xs"
             >
-              <CaretLeft size={14} className="mr-1" />
-              {t('common:actions.back')}
+              <CaretLeft size={16} />
             </NotionButton>
           </div>
           <Suspense
@@ -333,7 +409,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 examId={examId}
                 onStart={() => onStartPractice('timed')}
                 onTimeout={() => {
-                  showGlobalNotification('info', t('timed.timeoutMessage', '限时练习时间已到'), t('timed.timeoutTitle', '时间到'));
+                  showGlobalNotification('info', t('timed.timeoutMessage'), t('timed.timeoutTitle'));
                 }}
                 onSubmit={() => {
                   setActiveAdvanced(null);

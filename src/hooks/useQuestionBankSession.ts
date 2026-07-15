@@ -5,7 +5,7 @@
  * 完全本地化，不再读写全局 useQuestionBankStore。这确保多个 ExamContentView 实例
  * 在标签页保活场景下数据隔离，互不干扰。
  *
- * 全局 store 仅保留 UI 偏好（focusMode, showSettingsPanel）和功能性 actions。
+ * 全局 store 仅保留跨题目集 UI 偏好（如 focusMode）和功能性 actions。
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';

@@ -315,6 +315,67 @@ impl QuestionBankService {
         })
     }
 
+    /// Atomically soft-delete a batch using one OCC baseline per question.
+    ///
+    /// The complete batch is rolled back when any question is missing or stale. The returned
+    /// entities are the pre-delete values so callers can show the exact impact without another
+    /// race-prone read.
+    pub fn batch_delete_questions_if_versions(
+        &self,
+        expected_versions: &[(String, String)],
+    ) -> Result<Vec<Question>, AppError> {
+        if expected_versions.is_empty() {
+            return Err(AppError::validation("question_ids must not be empty"));
+        }
+
+        let mut seen = HashSet::new();
+        if expected_versions
+            .iter()
+            .any(|(question_id, _)| !seen.insert(question_id.clone()))
+        {
+            return Err(AppError::validation("question_ids contains duplicates"));
+        }
+
+        let mut conn = self
+            .vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let mut previous = Vec::with_capacity(expected_versions.len());
+        let mut exam_ids = HashSet::new();
+
+        for (question_id, expected_updated_at) in expected_versions {
+            let question = VfsQuestionRepo::get_question_with_conn(&tx, question_id)
+                .map_err(|e| AppError::database(e.to_string()))?
+                .ok_or_else(|| {
+                    AppError::not_found(format!("Question not found: {}", question_id))
+                })?;
+            exam_ids.insert(question.exam_id.clone());
+            VfsQuestionRepo::delete_question_if_version_with_conn(
+                &tx,
+                question_id,
+                expected_updated_at,
+            )
+            .map_err(|e| AppError::database(e.to_string()))?;
+            previous.push(question);
+        }
+
+        tx.commit().map_err(|e| AppError::database(e.to_string()))?;
+
+        for exam_id in exam_ids {
+            if let Err(error) = self.refresh_stats(&exam_id) {
+                warn!(
+                    "[QuestionBankService] Failed to refresh stats after OCC delete for {}: {}",
+                    exam_id, error
+                );
+            }
+        }
+
+        Ok(previous)
+    }
+
     // ========================================================================
     // 答题与状态
     // ========================================================================
@@ -1966,6 +2027,7 @@ impl QuestionBankService {
         let streak_days = self.calculate_streak_days(&days);
 
         Ok(CheckInCalendar {
+            exam_id: exam_id.map(str::to_owned),
             year,
             month,
             days: days.clone(),
@@ -2389,6 +2451,8 @@ pub struct DailyCheckIn {
 /// 打卡日历数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckInCalendar {
+    /// 此日历所属的题目集；为空时表示跨题目集汇总。
+    pub exam_id: Option<String>,
     /// 年份
     pub year: i32,
     /// 月份

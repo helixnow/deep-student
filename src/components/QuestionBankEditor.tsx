@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { Card, CardContent, CardHeader } from './ui/shad/Card';
 import { Badge } from './ui/shad/Badge';
 import { Progress } from './ui/shad/Progress';
@@ -57,6 +58,7 @@ import {
   Keyboard,
   Crop,
   ImageIcon,
+  Trash,
 } from '@phosphor-icons/react';
 
 import type {
@@ -71,15 +73,6 @@ import type {
   SubmitResult,
 } from '@/api/questionBankApi';
 import { getNextQuestionIndex } from '@/api/questionBankApi';
-
-/** 编辑模式下的题目更新数据 */
-export interface QuestionUpdateData {
-  answer?: string;
-  explanation?: string;
-  difficulty?: Difficulty;
-  tags?: string[];
-  userNote?: string;
-}
 
 export interface QuestionBankEditorProps {
   sessionId: string;
@@ -100,8 +93,6 @@ export interface QuestionBankEditorProps {
   onMarkCorrect?: (questionId: string, isCorrect: boolean) => Promise<void>;
   onRefreshQuestion?: (questionId: string) => Promise<void>;
   onToggleFavorite?: (questionId: string, isFavorite: boolean) => Promise<void>;
-  /** 编辑模式：更新题目信息 */
-  onUpdateQuestion?: (questionId: string, data: QuestionUpdateData) => Promise<void>;
   /** 编辑模式：删除题目 */
   onDeleteQuestion?: (questionId: string) => Promise<void>;
   onBack?: () => void;
@@ -109,30 +100,37 @@ export interface QuestionBankEditorProps {
   showTimer?: boolean;
   timerDuration?: number;
   timerElapsedSeconds?: number;
+  timerRunning?: boolean;
+  onTimerRunningChange?: (running: boolean) => void;
   allowTimerControl?: boolean;
   /** 专注模式：隐藏统计卡片和标签，聚焦刷题 */
   focusMode?: boolean;
   onFocusModeChange?: (focusMode: boolean) => void;
+  /** 设置侧栏（受控时由宿主维护，便于工作区 action 精确开关） */
+  settingsPanelOpen?: boolean;
+  onSettingsPanelOpenChange?: (open: boolean) => void;
   /** 暗记模式：遮挡答案区域 */
   hideAnswerMode?: boolean;
   onHideAnswerModeChange?: (hideMode: boolean) => void;
   /** 更新用户笔记 */
   onUpdateUserNote?: (questionId: string, note: string) => Promise<void>;
-  /** 答题进度持久化 key */
-  persistKey?: string;
+  /** Reports answer/note drafts to an owning resource view. */
+  onDraftDirtyChange?: (dirty: boolean) => void;
+  /** Lets an owning resource view confirm an externally-triggered navigation. */
+  onDraftNavigationRequested?: (targetIndex: number) => void;
   /** ★ 标签页：当前面板是否为活跃标签页（控制计时器暂停） */
   isActive?: boolean;
 }
 
 const DIFFICULTY_CONFIG: Record<Difficulty, { color: string; bg: string }> = {
-  easy: { color: 'text-emerald-600', bg: 'bg-emerald-500/10' },
+  easy: { color: 'text-success', bg: 'bg-success/10' },
   medium: { color: 'text-warning', bg: 'bg-warning/10' },
-  hard: { color: 'text-orange-600', bg: 'bg-orange-500/10' },
-  very_hard: { color: 'text-rose-600', bg: 'bg-rose-500/10' },
+  hard: { color: 'text-warning', bg: 'bg-warning/10' },
+  very_hard: { color: 'text-destructive', bg: 'bg-destructive/10' },
 };
 
 const STATUS_CONFIG: Record<QuestionStatus, { color: string }> = {
-  new: { color: 'text-slate-500' },
+  new: { color: 'text-muted-foreground' },
   in_progress: { color: 'text-primary' },
   mastered: { color: 'text-success' },
   review: { color: 'text-warning' },
@@ -300,7 +298,7 @@ const OptionButton: React.FC<OptionButtonProps> = ({
         'group w-full !justify-start !h-auto !p-0 !rounded-md',
         !isSubmitted && !isSelected && 'hover:bg-foreground/[0.04]',
         !isSubmitted && isSelected && 'bg-primary/[0.07] dark:bg-primary/[0.15]',
-        showCorrect && 'bg-emerald-600/[0.08] dark:bg-emerald-600/[0.15]',
+        showCorrect && 'bg-success/[0.08] dark:bg-success/[0.15]',
         isWrong && 'bg-destructive/[0.08] dark:bg-destructive/[0.15]',
         isSubmitted && !isSelected && !isThisCorrect && 'opacity-50',
         'disabled:cursor-default'
@@ -316,7 +314,7 @@ const OptionButton: React.FC<OptionButtonProps> = ({
           // 选中 - 蓝色填充
           !isSubmitted && isSelected && 'bg-primary text-primary-foreground',
           // 正确 - 绿色填充
-          showCorrect && 'bg-emerald-600 dark:bg-emerald-500 text-white',
+          showCorrect && 'bg-success text-success-foreground',
           // 错误 - 红色填充
           isWrong && 'bg-destructive text-white',
           // 已提交非选中非正确
@@ -338,7 +336,7 @@ const OptionButton: React.FC<OptionButtonProps> = ({
             className={cn(
               'text-sm leading-relaxed',
               !isSubmitted && 'text-foreground',
-              showCorrect && 'text-emerald-600 dark:text-emerald-400',
+              showCorrect && 'text-success',
               isWrong && 'text-destructive',
               isSubmitted && !isSelected && !isThisCorrect && 'text-foreground/50'
             )}
@@ -347,7 +345,7 @@ const OptionButton: React.FC<OptionButtonProps> = ({
         
         {/* 状态文字 - Notion 风格：简洁文字标识 */}
         {showCorrect && (
-          <span className="flex-shrink-0 text-xs text-emerald-600 dark:text-emerald-400">
+          <span className="flex-shrink-0 text-xs text-success">
             {t('editor.correct')}
           </span>
         )}
@@ -376,27 +374,37 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   onMarkCorrect,
   onRefreshQuestion,
   onToggleFavorite,
-  onUpdateQuestion,
   onDeleteQuestion,
   onBack,
   className,
   showTimer = true,
   timerDuration,
   timerElapsedSeconds,
+  timerRunning,
+  onTimerRunningChange,
   allowTimerControl = true,
   editMode = false,
   focusMode: focusModeProp,
   onFocusModeChange,
+  settingsPanelOpen,
+  onSettingsPanelOpenChange,
   hideAnswerMode: hideAnswerModeProp,
   onHideAnswerModeChange,
   onUpdateUserNote,
-  persistKey,
+  onDraftDirtyChange,
+  onDraftNavigationRequested,
   isActive,
 }) => {
   const { t } = useTranslation('practice');
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isManualGrading, setIsManualGrading] = useState(false);
+  const manualGradeInFlightRef = useRef(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deleteInFlightRef = useRef(false);
   const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
   const [selectedTag, setSelectedTag] = useState<string>(selectedTagProp ?? '');
 
@@ -407,11 +415,32 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   
   // P1-2: 计时功能
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(true);
+  const [localTimerRunning, setLocalTimerRunning] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const isTimerRunning = timerRunning ?? localTimerRunning;
+  const setTimerRunning = useCallback((running: boolean) => {
+    if (onTimerRunningChange) {
+      onTimerRunningChange(running);
+      return;
+    }
+    setLocalTimerRunning(running);
+  }, [onTimerRunningChange]);
+  const resolvedElapsedTime = timerElapsedSeconds ?? elapsedTime;
+  const remainingTime = timerDuration != null
+    ? Math.max(timerDuration - resolvedElapsedTime, 0)
+    : null;
+  const timerDisplay = remainingTime ?? resolvedElapsedTime;
   
-  // P1-3: 设置面板状态（收藏/书签现在从 question 数据读取，不再使用本地状态）
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  // 设置面板可由工作区精确控制；独立使用编辑器时仍保留本地状态。
+  const [localSettingsPanelOpen, setLocalSettingsPanelOpen] = useState(false);
+  const showSettingsPanel = settingsPanelOpen ?? localSettingsPanelOpen;
+  const setShowSettingsPanel = useCallback((open: boolean) => {
+    if (onSettingsPanelOpenChange) {
+      onSettingsPanelOpenChange(open);
+      return;
+    }
+    setLocalSettingsPanelOpen(open);
+  }, [onSettingsPanelOpenChange]);
   
   // P1-1: 专注模式（刷题降噪）
   const [localFocusMode, setLocalFocusMode] = useState(false);
@@ -442,6 +471,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   // 用户笔记编辑
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [noteText, setNoteText] = useState('');
+  const [noteDiscardConfirmOpen, setNoteDiscardConfirmOpen] = useState(false);
   
   // 答案解析折叠
   const [explanationExpanded, setExplanationExpanded] = useState(false);
@@ -472,6 +502,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   
   // 填空题多空位
   const [fillBlankAnswers, setFillBlankAnswers] = useState<string[]>([]);
+  const [pendingNavigationIndex, setPendingNavigationIndex] = useState<number | null>(null);
 
   // 题目图片预览
   const [questionImageUrls, setQuestionImageUrls] = useState<Record<string, string>>({});
@@ -611,26 +642,27 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     };
   }, [isSmallScreen, handleDragStart, handleDragMove, handleDragEnd]);
 
-  // ★ 标签页修复：监听 exam:openSettings 事件（带 targetResourceId 过滤），
-  //   替代全局 store sync，确保只切换当前标签页的设置面板
+  // 兼容旧工作区事件，并支持 action 传入精确的 open 值而不是盲目切换。
   useEffect(() => {
-    const handleToggleSettings = (evt: Event) => {
-      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+    const handleSettingsChange = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ targetResourceId?: string; open?: boolean }>).detail;
       if (detail?.targetResourceId && sessionId && detail.targetResourceId !== sessionId) {
         return;
       }
-      setShowSettingsPanel(prev => !prev);
+      setShowSettingsPanel(
+        typeof detail?.open === 'boolean' ? detail.open : !showSettingsPanel,
+      );
     };
-    window.addEventListener('exam:openSettings', handleToggleSettings);
+    window.addEventListener('exam:openSettings', handleSettingsChange);
     return () => {
-      window.removeEventListener('exam:openSettings', handleToggleSettings);
+      window.removeEventListener('exam:openSettings', handleSettingsChange);
     };
-  }, [sessionId]);
+  }, [sessionId, showSettingsPanel, setShowSettingsPanel]);
 
   // 计时器逻辑
   // ★ 标签页：isActive === false 时暂停计时器
   useEffect(() => {
-    if (showTimer && isTimerRunning && isActive !== false) {
+    if (timerElapsedSeconds === undefined && showTimer && isTimerRunning && isActive !== false) {
       timerRef.current = setInterval(() => {
         setElapsedTime(prev => prev + 1);
       }, 1000);
@@ -640,7 +672,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         clearInterval(timerRef.current);
       }
     };
-  }, [showTimer, isTimerRunning, isActive]);
+  }, [timerElapsedSeconds, showTimer, isTimerRunning, isActive]);
 
   // 题目切换时重置状态和记录单题用时（使用 ref 避免 stale closure）
   useEffect(() => {
@@ -675,11 +707,22 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   const totalQuestions = questions.length;
   const progressPercent = totalQuestions > 0 ? ((currentIndex + 1) / totalQuestions) * 100 : 0;
 
-  const allTags = useMemo(() => {
+  const tagOptions = useMemo(() => {
     const tagSet = new Set<string>();
-    questions.forEach(q => q.tags?.forEach(t => tagSet.add(t)));
-    return Array.from(tagSet).sort();
-  }, [questions]);
+    let hasUntaggedQuestions = false;
+    questions.forEach((question) => {
+      const tags = question.tags?.filter((tag) => tag.trim().length > 0) ?? [];
+      if (tags.length === 0) hasUntaggedQuestions = true;
+      tags.forEach((tag) => tagSet.add(tag));
+    });
+    const options = Array.from(tagSet)
+      .sort()
+      .map((tag) => ({ value: tag, label: tag }));
+    if (hasUntaggedQuestions) {
+      options.push({ value: '__untagged__', label: t('tagPicker.untagged') });
+    }
+    return options;
+  }, [questions, t]);
 
   // 解析填空题的空位数量
   const fillBlankCount = useMemo(() => {
@@ -823,7 +866,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 onRefreshQuestion(questionId).catch((err) => {
                   debugLog.error('[QuestionBankEditor] refresh after AI grading failed:', err);
                   setSubmitResult(prev => prev ? { ...prev, isCorrect: null, needsManualGrading: true } : null);
-                  showGlobalNotification('error', t('exam_sheet:errors.manual_grade_failed', '评分同步失败，请手动重试'));
+                  showGlobalNotification('error', t('exam_sheet:errors.manual_grade_failed'));
                 });
               }
             }
@@ -859,17 +902,17 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         setCompletionStats({
           totalAnswered: answeredCount,
           correctCount: finalCorrectCount,
-          totalTime: elapsedTime
+          totalTime: resolvedElapsedTime
         });
         setTimeout(() => setShowCompletionCelebration(true), 500);
       }
     } catch (err) {
       debugLog.error('Submit answer failed:', err);
-      showGlobalNotification('error', t('exam_sheet:errors.submit_failed', '提交答案失败，请重试'));
+      showGlobalNotification('error', t('exam_sheet:errors.submit_failed'));
     } finally {
       setIsSubmitting(false);
     }
-  }, [currentQuestion, selectedAnswer, selectedOptions, fillBlankAnswers, fillBlankCount, onSubmitAnswer, onRefreshQuestion, streakCount, totalCorrectCount, currentIndex, totalQuestions, questionTimes, elapsedTime, aiGrading, t, isSubmitting]);
+  }, [currentQuestion, selectedAnswer, selectedOptions, fillBlankAnswers, fillBlankCount, onSubmitAnswer, onRefreshQuestion, streakCount, totalCorrectCount, currentIndex, totalQuestions, questionTimes, resolvedElapsedTime, aiGrading, t, isSubmitting]);
 
   // 重做当前题目
   const handleRetry = useCallback(() => {
@@ -885,7 +928,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   const handleSaveNote = useCallback(async () => {
     if (!currentQuestion) return;
     if (!onUpdateUserNote) {
-      showGlobalNotification('warning', t('exam_sheet:errors.note_update_unavailable', '当前模式不支持保存笔记'));
+      showGlobalNotification('warning', t('exam_sheet:errors.note_update_unavailable'));
       return;
     }
     try {
@@ -893,28 +936,39 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       setIsEditingNote(false);
     } catch (err) {
       debugLog.error('Save note failed:', err);
-      showGlobalNotification('error', t('exam_sheet:errors.save_note_failed', '保存笔记失败'));
+      showGlobalNotification('error', t('exam_sheet:errors.save_note_failed'));
     }
   }, [currentQuestion, noteText, onUpdateUserNote, t]);
 
+  const discardNote = useCallback(() => {
+    setIsEditingNote(false);
+    setNoteText(currentQuestion?.userNote || '');
+    setNoteDiscardConfirmOpen(false);
+  }, [currentQuestion]);
+
+  const handleCancelNote = useCallback(() => {
+    if (noteText !== (currentQuestion?.userNote || '')) {
+      setNoteDiscardConfirmOpen(true);
+      return;
+    }
+    discardNote();
+  }, [currentQuestion, discardNote, noteText]);
+
   const handleManualGrade = useCallback(async (isCorrect: boolean) => {
-    if (!currentQuestion || !onMarkCorrect) return;
+    if (!currentQuestion || !onMarkCorrect || manualGradeInFlightRef.current) return;
+    manualGradeInFlightRef.current = true;
+    setIsManualGrading(true);
     try {
       await onMarkCorrect(currentQuestion.id, isCorrect);
       setSubmitResult(prev => prev ? { ...prev, isCorrect, needsManualGrading: false } : null);
     } catch (err) {
       debugLog.error('Manual grade failed:', err);
-      showGlobalNotification('error', t('exam_sheet:errors.manual_grade_failed', '评分失败，请重试'));
+      showGlobalNotification('error', t('exam_sheet:errors.manual_grade_failed'));
+    } finally {
+      manualGradeInFlightRef.current = false;
+      setIsManualGrading(false);
     }
   }, [currentQuestion, onMarkCorrect, t]);
-
-  const handleNavigate = useCallback((direction: 'prev' | 'next') => {
-    if (!onNavigate) return;
-    const newIndex = direction === 'prev' 
-      ? Math.max(0, currentIndex - 1)
-      : getNextQuestionIndex(questions, currentIndex, practiceMode, selectedTag);
-    onNavigate(newIndex);
-  }, [currentIndex, practiceMode, selectedTag, questions, onNavigate]);
 
   const handleModeChange = useCallback((mode: PracticeMode) => {
     onModeChange?.(mode, mode === 'by_tag' ? selectedTag : undefined);
@@ -934,21 +988,39 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       await onToggleFavorite?.(currentQuestion.id, !currentQuestion.isFavorite);
     } catch (err) {
       debugLog.error('Toggle favorite failed:', err);
-      showGlobalNotification('error', t('exam_sheet:errors.toggle_favorite_failed', '收藏操作失败，请重试'));
+      showGlobalNotification('error', t('exam_sheet:errors.toggle_favorite_failed'));
     }
   }, [currentQuestion, onToggleFavorite, t]);
+
+  const handleRequestDelete = useCallback(() => {
+    if (!currentQuestion || !onDeleteQuestion) return;
+    setDeleteTargetId(currentQuestion.id);
+    setDeleteConfirmOpen(true);
+  }, [currentQuestion, onDeleteQuestion]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTargetId || !onDeleteQuestion || deleteInFlightRef.current) return;
+    deleteInFlightRef.current = true;
+    setIsDeleting(true);
+    try {
+      await onDeleteQuestion(deleteTargetId);
+      setDeleteConfirmOpen(false);
+      setDeleteTargetId(null);
+      onBack?.();
+    } catch (err) {
+      debugLog.error('Delete question failed:', err);
+      showGlobalNotification('error', t('exam_sheet:errors.delete_question_failed'));
+    } finally {
+      deleteInFlightRef.current = false;
+      setIsDeleting(false);
+    }
+  }, [deleteTargetId, onBack, onDeleteQuestion, t]);
 
   // P1-2: 计时器控制
   const toggleTimer = useCallback(() => {
     if (!allowTimerControl) return;
-    setIsTimerRunning(prev => !prev);
-  }, [allowTimerControl]);
-
-  const resolvedElapsedTime = timerElapsedSeconds ?? elapsedTime;
-  const remainingTime = timerDuration != null
-    ? Math.max(timerDuration - resolvedElapsedTime, 0)
-    : null;
-  const timerDisplay = remainingTime ?? resolvedElapsedTime;
+    setTimerRunning(!isTimerRunning);
+  }, [allowTimerControl, isTimerRunning, setTimerRunning]);
 
   // 从 question 数据读取收藏状态（SSOT: store -> question -> UI）
   const isFavorite = currentQuestion?.isFavorite ?? false;
@@ -967,6 +1039,36 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     }
     return selectedAnswer.trim().length > 0;
   }, [currentQuestion?.questionType, selectedAnswer, selectedOptions, submitResult, fillBlankAnswers, fillBlankCount]);
+
+  const hasUnsavedNote = isEditingNote
+    && noteText !== (currentQuestion?.userNote || '');
+  const hasUnsavedDraft = canSubmit || hasUnsavedNote;
+
+  useEffect(() => {
+    onDraftDirtyChange?.(hasUnsavedDraft);
+  }, [hasUnsavedDraft, onDraftDirtyChange]);
+
+  useEffect(() => () => onDraftDirtyChange?.(false), [onDraftDirtyChange]);
+
+  const requestNavigate = useCallback((targetIndex: number) => {
+    if (!onNavigate || targetIndex === currentIndex) return;
+    if (hasUnsavedDraft) {
+      if (onDraftNavigationRequested) {
+        onDraftNavigationRequested(targetIndex);
+        return;
+      }
+      setPendingNavigationIndex(targetIndex);
+      return;
+    }
+    onNavigate(targetIndex);
+  }, [currentIndex, hasUnsavedDraft, onDraftNavigationRequested, onNavigate]);
+
+  const handleNavigate = useCallback((direction: 'prev' | 'next') => {
+    const newIndex = direction === 'prev'
+      ? Math.max(0, currentIndex - 1)
+      : getNextQuestionIndex(questions, currentIndex, practiceMode, selectedTag);
+    requestNavigate(newIndex);
+  }, [currentIndex, practiceMode, questions, requestNavigate, selectedTag]);
 
   // ========== 键盘快捷键支持 ==========
   useEffect(() => {
@@ -1059,8 +1161,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     return (
       <div className={cn('flex items-center justify-center min-h-[400px]', className)}>
         <div className="flex flex-col items-center gap-4 text-center px-6">
-          <div className="p-3 rounded-full bg-rose-500/10">
-            <WarningCircle size={32} className="text-rose-500" />
+          <div className="rounded-md bg-destructive/10 p-2">
+            <WarningCircle size={24} className="text-destructive" />
           </div>
           <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
           {onBack && (
@@ -1075,8 +1177,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     return (
       <div className={cn('flex items-center justify-center min-h-[400px]', className)}>
         <div className="flex flex-col items-center gap-4 text-center px-6">
-          <div className="p-4 rounded-2xl bg-muted/50">
-            <BookOpen size={40} className="text-muted-foreground" />
+          <div className="rounded-md bg-muted/50 p-3">
+            <BookOpen size={24} className="text-muted-foreground" />
           </div>
           <div>
             <h3 className="text-lg font-semibold mb-1">{t('editor.noQuestionsTitle')}</h3>
@@ -1100,8 +1202,17 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   // ========== 右侧设置面板内容 ==========
   const renderSettingsPanel = () => (
     <div className="h-full flex flex-col bg-background">
-      <div className="flex-shrink-0 px-4 py-3 border-b border-border/50">
+      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50">
         <h3 className="font-medium">{t('editor.settings')}</h3>
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={() => setShowSettingsPanel(false)}
+          aria-label={t('common:close')}
+        >
+          <X size={16} />
+        </NotionButton>
       </div>
       <CustomScrollArea className="flex-1" viewportClassName="p-4 space-y-6">
         {/* 学习统计 */}
@@ -1109,19 +1220,19 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           <div className="space-y-3">
             <h4 className="text-sm font-medium text-muted-foreground">{t('editor.studyStats')}</h4>
             <div className="grid grid-cols-2 gap-2">
-              <div className="p-3 rounded-lg bg-slate-500/10">
+              <div className="rounded-md bg-muted p-2">
                 <div className="text-xs text-muted-foreground">{t('editor.totalQuestions')}</div>
                 <div className="text-lg font-semibold">{stats.total}</div>
               </div>
-              <div className="p-3 rounded-lg bg-emerald-500/10">
-                <div className="text-xs text-emerald-600">{t('editor.mastered')}</div>
-                <div className="text-lg font-semibold text-emerald-600">{stats.mastered}</div>
+              <div className="rounded-md bg-success/10 p-2">
+                <div className="text-xs text-success">{t('editor.mastered')}</div>
+                <div className="text-lg font-semibold text-success">{stats.mastered}</div>
               </div>
-              <div className="p-3 rounded-lg bg-warning/10">
+              <div className="rounded-md bg-warning/10 p-2">
                 <div className="text-xs text-warning">{t('editor.needsReview')}</div>
                 <div className="text-lg font-semibold text-warning">{stats.review}</div>
               </div>
-              <div className="p-3 rounded-lg bg-primary/10">
+              <div className="rounded-md bg-primary/10 p-2">
                 <div className="text-xs text-primary">{t('editor.correctRate')}</div>
                 <div className="text-lg font-semibold text-primary">{Math.round(stats.correctRate * 100)}%</div>
               </div>
@@ -1141,10 +1252,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             {t(`modes.${MODE_I18N_KEY[practiceMode]}.desc`)}
           </p>
 
-          {practiceMode === 'by_tag' && allTags.length > 0 && (
+          {practiceMode === 'by_tag' && tagOptions.length > 0 && (
             <AppSelect value={selectedTag} onValueChange={handleTagChange}
               placeholder={t('editor.selectTag')}
-              options={allTags.map(tag => ({ value: tag, label: tag }))}
+              options={tagOptions}
               variant="outline"
 />
           )}
@@ -1161,7 +1272,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   <span className="text-xl font-mono tabular-nums">{formatTime(timerDisplay)}</span>
                   {remainingTime != null && (
                     <span className="text-[11px] text-muted-foreground">
-                      {t('editor.remainingTime', '剩余时间')}
+                      {t('editor.remainingTime')}
                     </span>
                   )}
                 </div>
@@ -1185,12 +1296,22 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               onClick={handleToggleFavorite}
             >
               {isFavorite ? (
-                <Star size={16} className="fill-amber-400 text-amber-400" />
+                <Star size={16} className="fill-warning text-warning" />
               ) : (
                 <Star size={16} />
               )}
               {isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
             </NotionButton>
+            {onDeleteQuestion && (
+              <NotionButton
+                variant="outline"
+                className="w-full justify-start gap-2 text-destructive hover:bg-destructive/10"
+                onClick={handleRequestDelete}
+              >
+                <Trash size={16} />
+                {t('common:delete')}
+              </NotionButton>
+            )}
           </div>
         </div>
 
@@ -1245,15 +1366,67 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         {streakCount > 0 && (
           <div className="space-y-2">
             <h4 className="text-sm font-medium text-muted-foreground">{t('editor.currentStreak')}</h4>
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-gradient-to-r from-orange-500/10 to-amber-500/10">
-              <Flame size={20} className="text-orange-500" />
-              <span className="text-lg font-bold text-orange-600">{streakCount}</span>
+            <div className="flex items-center gap-2 p-2 rounded-md bg-warning/10">
+              <Flame size={16} className="text-warning" />
+              <span className="text-base font-semibold text-warning">{streakCount}</span>
               <span className="text-sm text-muted-foreground">{t('editor.questionsUnit')}</span>
             </div>
           </div>
         )}
       </CustomScrollArea>
     </div>
+  );
+
+  const deleteConfirmation = (
+    <NotionAlertDialog
+      open={deleteConfirmOpen}
+      onOpenChange={(open) => {
+        setDeleteConfirmOpen(open);
+        if (!open) setDeleteTargetId(null);
+      }}
+      icon={<WarningCircle size={20} className="text-destructive" />}
+      title={t('exam_sheet:questionBank.confirmDelete')}
+      description={t('exam_sheet:questionBank.confirmDeleteSingle')}
+      confirmText={t('common:delete')}
+      cancelText={t('common:cancel')}
+      confirmVariant="danger"
+      loading={isDeleting}
+      onConfirm={() => void handleConfirmDelete()}
+    />
+  );
+
+  const draftNavigationConfirmation = (
+    <NotionAlertDialog
+      open={pendingNavigationIndex !== null}
+      onOpenChange={(open) => {
+        if (!open) setPendingNavigationIndex(null);
+      }}
+      icon={<WarningCircle size={20} className="text-warning" />}
+      title={t('common:confirmMessages.unsaved_changes')}
+      description={t('common:confirmMessages.unsaved_changes')}
+      confirmText={t('common:actions.discard')}
+      cancelText={t('common:cancel')}
+      confirmVariant="danger"
+      onConfirm={() => {
+        const targetIndex = pendingNavigationIndex;
+        setPendingNavigationIndex(null);
+        if (targetIndex !== null) onNavigate?.(targetIndex);
+      }}
+    />
+  );
+
+  const noteDiscardConfirmation = (
+    <NotionAlertDialog
+      open={noteDiscardConfirmOpen}
+      onOpenChange={setNoteDiscardConfirmOpen}
+      icon={<WarningCircle size={20} className="text-warning" />}
+      title={t('common:confirmMessages.unsaved_changes')}
+      description={t('common:confirmMessages.unsaved_changes')}
+      confirmText={t('common:actions.discard')}
+      cancelText={t('common:cancel')}
+      confirmVariant="danger"
+      onConfirm={discardNote}
+    />
   );
 
   // ========== 连对激励动效组件 - Notion 极简风格 ==========
@@ -1274,7 +1447,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             100% { opacity: 0; transform: translate(-50%, -10px); }
           }
         `}</style>
-        <div className="flex items-center gap-2 px-4 py-2 rounded-md bg-foreground text-background">
+        <div className="flex items-center gap-2 rounded-md bg-accent px-3 py-2 text-accent-foreground">
           <span className="text-sm font-medium">{t('editor.streakMessage', { count: streakMilestone })}</span>
           <span className="w-1 h-1 rounded-full bg-current opacity-40" />
           <span className="text-sm opacity-70">{t('editor.keepItUp')}</span>
@@ -1292,31 +1465,31 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
     const celebrationContent = (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
-        <div className="max-w-sm mx-4 p-6 rounded-2xl bg-card border-transparent ring-1 ring-border/40 shadow-lg text-center space-y-4">
+        <div className="max-w-sm mx-4 p-4 rounded-md bg-card border border-border/50 shadow-sm text-center space-y-3">
           <div className="flex justify-center">
-            <div className="p-4 rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
-              <Trophy size={48} className="text-white" />
+            <div className="p-2 rounded-md bg-warning/10">
+              <Trophy size={24} className="text-warning" />
             </div>
           </div>
           <div>
-            <h2 className="text-2xl font-bold flex items-center justify-center gap-2">
-              <Confetti size={24} className="text-warning" />
+            <h2 className="text-lg font-semibold flex items-center justify-center gap-2">
+              <Confetti size={16} className="text-warning" />
               {t('editor.congratulations')}
-              <Confetti size={24} className="text-warning" />
+              <Confetti size={16} className="text-warning" />
             </h2>
             <p className="text-muted-foreground mt-1">{t('editor.completedMessage')}</p>
           </div>
-          <div className="grid grid-cols-3 gap-3 py-4">
-            <div className="p-3 rounded-lg bg-muted/50">
-              <div className="text-2xl font-bold">{completionStats.totalAnswered}</div>
+          <div className="grid grid-cols-3 gap-2 py-2">
+            <div className="p-2 rounded-md bg-muted/50">
+              <div className="text-lg font-semibold">{completionStats.totalAnswered}</div>
               <div className="text-xs text-muted-foreground">{t('editor.answeredCount')}</div>
             </div>
-            <div className="p-3 rounded-lg bg-emerald-500/10">
-              <div className="text-2xl font-bold text-emerald-600">{correctRate}%</div>
-              <div className="text-xs text-emerald-600">{t('editor.correctRate')}</div>
+            <div className="p-2 rounded-md bg-success/10">
+              <div className="text-lg font-semibold text-success">{correctRate}%</div>
+              <div className="text-xs text-success">{t('editor.correctRate')}</div>
             </div>
-            <div className="p-3 rounded-lg bg-primary/10">
-              <div className="text-2xl font-bold text-primary">{formatTime(completionStats.totalTime)}</div>
+            <div className="p-2 rounded-md bg-primary/10">
+              <div className="text-lg font-semibold text-primary">{formatTime(completionStats.totalTime)}</div>
               <div className="text-xs text-primary">{t('editor.timeSpent')}</div>
             </div>
           </div>
@@ -1326,7 +1499,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               className="flex-1"
               onClick={() => {
                 setShowCompletionCelebration(false);
-                onNavigate?.(0);
+                requestNavigate(0);
               }}
             >
               <ArrowClockwise size={16} className="mr-1" />
@@ -1472,7 +1645,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       onClick={() => setCropDialogOpen(true)}
                     >
                       <Crop size={14} className="mr-1.5" />
-                      {t('question_bank.source_images_btn', '从原图裁剪配图')}
+                      {t('question_bank.source_images_btn')}
                     </NotionButton>
 
                     {/* 答题区域 */}
@@ -1484,16 +1657,16 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                               <div
                                 key={opt.key}
                                 className={cn(
-                                  'flex items-start gap-2 p-2.5 rounded-lg border',
+                                  'flex items-start gap-2 rounded-md border p-2.5',
                                   currentQuestion.answer?.includes(opt.key)
-                                    ? 'border-emerald-500/50 bg-emerald-500/5'
+                                    ? 'border-success/50 bg-success/5'
                                     : 'border-border/50'
                                 )}
                               >
                                 <span className={cn(
                                   'flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium',
                                   currentQuestion.answer?.includes(opt.key)
-                                    ? 'bg-emerald-500 text-white'
+                                    ? 'bg-success text-success-foreground'
                                     : 'bg-muted'
                                 )}>
                                   {opt.key}
@@ -1504,16 +1677,16 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           </div>
                         )}
                         {currentQuestion.answer && (
-                          <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/30">
+                          <div className="rounded-md border border-success/30 bg-success/5 p-3">
                             <div className="flex items-center gap-1.5 mb-1">
-                              <Check size={14} className="text-emerald-500" />
-                              <span className="text-xs font-medium text-emerald-600">{t('editor.referenceAnswer')}</span>
+                              <Check size={14} className="text-success" />
+                              <span className="text-xs font-medium text-success">{t('editor.referenceAnswer')}</span>
                             </div>
                             <LatexText content={currentQuestion.answer} className="text-sm" />
                           </div>
                         )}
                         {currentQuestion.explanation && (
-                          <div className="p-3 rounded-lg bg-sky-500/5 border border-sky-500/30">
+                          <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
                             <div className="flex items-center gap-1.5 mb-1">
                               <Lightbulb size={14} className="text-primary" />
                               <span className="text-xs font-medium text-primary">{t('editor.explanation')}</span>
@@ -1612,7 +1785,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             submitResult.needsManualGrading
                               ? 'bg-warning/[0.08] dark:bg-warning/[0.15]'
                               : submitResult.isCorrect 
-                                ? 'bg-emerald-600/[0.08] dark:bg-emerald-600/[0.15]' 
+                                ? 'bg-success/[0.08] dark:bg-success/[0.15]'
                                 : 'bg-destructive/[0.08] dark:bg-destructive/[0.15]'
                           )}>
                             {submitResult.needsManualGrading ? (
@@ -1633,11 +1806,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                 )}
                                 {onMarkCorrect && (
                                   <div className="flex gap-2 pt-1">
-                                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} className="flex-1 !h-8 text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15]">
+                                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
                                       <Check size={14} />
                                       {t('editor.iGotItRight')}
                                     </NotionButton>
-                                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
+                                    <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                                       <X size={14} />
                                       {t('editor.iGotItWrong')}
                                     </NotionButton>
@@ -1650,7 +1823,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                   <div className="flex items-center gap-2.5">
                                     <div className={cn(
                                       'w-5 h-5 rounded-full flex items-center justify-center',
-                                      submitResult.isCorrect ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-destructive'
+                                      submitResult.isCorrect ? 'bg-success' : 'bg-destructive'
                                     )}>
                                       {submitResult.isCorrect 
                                         ? <Check size={12} className="text-white" /> 
@@ -1659,7 +1832,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                     </div>
                                     <span className={cn(
                                       'text-sm font-medium',
-                                      submitResult.isCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'
+                                      submitResult.isCorrect ? 'text-success' : 'text-destructive'
                                     )}>
                                       {submitResult.isCorrect ? t('editor.answerCorrect') : t('editor.answerWrong')}
                                     </span>
@@ -1749,6 +1922,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         {renderStreakAnimation()}
         {/* 完成庆祝 */}
         {renderCompletionCelebration()}
+        {deleteConfirmation}
+        {draftNavigationConfirmation}
+        {noteDiscardConfirmation}
       </div>
     );
   }
@@ -1757,7 +1933,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   return (
     <div
       data-agent-qbank-editor
-      className={cn('relative flex flex-col h-full bg-gradient-to-b from-background to-muted/20', className)}
+      className={cn('relative flex flex-col h-full bg-background', className)}
     >
       <style>{`
         @keyframes fadeSlideUp {
@@ -1775,7 +1951,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 <span className="text-muted-foreground">
                   {t('editor.totalSummary', { count: stats.total })}
                 </span>
-                <span className="text-emerald-600">
+                <span className="text-success">
                   {t('editor.masteredSummary', { count: stats.mastered })}
                 </span>
                 <span className="text-warning">
@@ -1791,14 +1967,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   icon={BookOpen} 
                   label={t('editor.totalQuestions')} 
                   value={stats.total} 
-                  color="bg-slate-500/10 text-slate-600"
+                  color="bg-muted text-muted-foreground"
                   delay={0}
 />
                 <StatCard 
                   icon={Target} 
                   label={t('editor.mastered')} 
                   value={stats.mastered} 
-                  color="bg-emerald-500/10 text-emerald-600"
+                  color="bg-success/10 text-success"
                   delay={50}
 />
                 <StatCard 
@@ -1847,6 +2023,18 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     {t(`questionBank.status.${STATUS_I18N_KEY[currentQuestion.status]}`)}
                   </span>
                 )}
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+                  aria-label={t('editor.settings')}
+                  aria-pressed={showSettingsPanel}
+                  title={t('editor.settings')}
+                  className="ml-auto"
+                >
+                  <GearSix size={16} />
+                </NotionButton>
               </div>
 
               {/* 标签 - 专注模式下隐藏 */}
@@ -1855,7 +2043,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   {currentQuestion.tags.map(tag => (
                     <span 
                       key={tag} 
-                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-muted/80 text-muted-foreground"
+                      className="inline-flex items-center gap-1 rounded-md bg-muted/80 px-2 py-0.5 text-xs text-muted-foreground"
                     >
                       <Tag size={12} />
                       {tag}
@@ -1916,7 +2104,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 onClick={() => setCropDialogOpen(true)}
               >
                 <Crop size={14} className="mr-1.5" />
-                {t('question_bank.source_images_btn', '从原图裁剪配图')}
+                {t('question_bank.source_images_btn')}
               </NotionButton>
 
               {/* 编辑模式：直接显示答案和解析 */}
@@ -1929,23 +2117,23 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         <div
                           key={opt.key}
                           className={cn(
-                            'flex items-start gap-3 p-3 rounded-xl border transition-colors',
+                            'flex items-start gap-3 rounded-md border p-3 transition-colors',
                             currentQuestion.answer?.includes(opt.key)
-                              ? 'border-emerald-500/50 bg-emerald-500/5'
+                              ? 'border-success/50 bg-success/5'
                               : 'border-border/50 bg-card/30'
                           )}
                         >
                           <span className={cn(
                             'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium',
                             currentQuestion.answer?.includes(opt.key)
-                              ? 'bg-emerald-500 text-white'
+                              ? 'bg-success text-success-foreground'
                               : 'bg-muted text-muted-foreground'
                           )}>
                             {opt.key}
                           </span>
                           <LatexText content={opt.content} className="text-sm flex-1" />
                           {currentQuestion.answer?.includes(opt.key) && (
-                            <Check size={16} className="text-emerald-500 flex-shrink-0" />
+                            <Check size={16} className="text-success flex-shrink-0" />
                           )}
                         </div>
                       ))}
@@ -1954,10 +2142,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
                   {/* 答案显示 */}
                   {currentQuestion.answer && (
-                    <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/30">
+                    <div className="rounded-md border border-success/30 bg-success/5 p-3">
                       <div className="flex items-center gap-2 mb-2">
-                        <Check size={16} className="text-emerald-500" />
-                        <span className="text-sm font-medium text-emerald-600">{t('editor.referenceAnswer')}</span>
+                        <Check size={16} className="text-success" />
+                        <span className="text-sm font-medium text-success">{t('editor.referenceAnswer')}</span>
                       </div>
                       <LatexText content={currentQuestion.answer} className="text-sm" />
                     </div>
@@ -1965,7 +2153,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
                   {/* 解析显示 */}
                   {currentQuestion.explanation && (
-                    <div className="p-4 rounded-xl bg-sky-500/5 border border-sky-500/30">
+                    <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
                       <div className="flex items-center gap-2 mb-2">
                         <Lightbulb size={16} className="text-primary" />
                         <span className="text-sm font-medium text-primary">{t('editor.explanation')}</span>
@@ -1980,7 +2168,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
                   {/* 无答案提示 */}
                   {!currentQuestion.answer && !currentQuestion.explanation && (
-                    <div className="p-4 rounded-xl bg-muted/50 text-center">
+                    <div className="rounded-md bg-muted/50 p-3 text-center">
                       <p className="text-sm text-muted-foreground">{t('editor.noAnswerOrExplanation')}</p>
                     </div>
                   )}
@@ -2089,7 +2277,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     submitResult.needsManualGrading 
                       ? 'bg-warning/[0.08] dark:bg-warning/[0.15]'
                       : submitResult.isCorrect 
-                        ? 'bg-emerald-600/[0.08] dark:bg-emerald-600/[0.15]' 
+                        ? 'bg-success/[0.08] dark:bg-success/[0.15]'
                         : 'bg-destructive/[0.08] dark:bg-destructive/[0.15]'
                   )}
                 >
@@ -2099,14 +2287,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       {aiGrading.state.isGrading ? (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center animate-pulse">
-                              <Sparkle size={12} className="text-white" />
+                            <div className="w-5 h-5 rounded-full bg-info flex items-center justify-center">
+                              <Sparkle size={12} className="text-info-foreground" />
                             </div>
-                            <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                            <span className="text-sm font-medium text-info">
                               {t('editor.aiGrading')}
                             </span>
                             <NotionButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
-                              {t('common:cancel', '取消')}
+                              {t('common:cancel')}
                             </NotionButton>
                           </div>
                           {aiGrading.state.feedback && (
@@ -2145,11 +2333,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           )}
                           {onMarkCorrect && (
                             <div className="flex gap-2 pt-1">
-                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} className="flex-1 !h-8 text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15]">
+                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
                                 <Check size={14} />
                                 {t('editor.iGotItRight')}
                               </NotionButton>
-                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
+                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                                 <X size={14} />
                                 {t('editor.iGotItWrong')}
                               </NotionButton>
@@ -2175,11 +2363,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           )}
                           {onMarkCorrect && (
                             <div className="flex gap-2 pt-1">
-                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} className="flex-1 !h-8 text-emerald-600 dark:text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/[0.15]">
+                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 bg-success/10 text-success hover:bg-success/[0.15]">
                                 <Check size={14} />
                                 {t('editor.iGotItRight')}
                               </NotionButton>
-                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
+                              <NotionButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
                                 <X size={14} />
                                 {t('editor.iGotItWrong')}
                               </NotionButton>
@@ -2195,9 +2383,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             <div className="flex items-center gap-2">
                               <span className={cn(
                                 'text-xs font-medium px-2 py-0.5 rounded-full',
-                                aiGrading.state.verdict === 'correct' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                aiGrading.state.verdict === 'correct' ? 'bg-success/10 text-success' :
                                 aiGrading.state.verdict === 'partial' ? 'bg-warning/20 text-warning' :
-                                'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                'bg-destructive/10 text-destructive'
                               )}>
                                 {aiGrading.state.verdict === 'correct' ? t('editor.verdictCorrect') : aiGrading.state.verdict === 'partial' ? t('editor.verdictPartial') : t('editor.verdictIncorrect')}
                               </span>
@@ -2223,7 +2411,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         <div className="flex items-center gap-2.5">
                           <div className={cn(
                             'w-5 h-5 rounded-full flex items-center justify-center',
-                            submitResult.isCorrect ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-destructive'
+                            submitResult.isCorrect ? 'bg-success' : 'bg-destructive'
                           )}>
                             {submitResult.isCorrect ? (
                               <Check size={12} className="text-white" />
@@ -2233,7 +2421,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           </div>
                           <span className={cn(
                             'text-sm font-medium',
-                            submitResult.isCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'
+                            submitResult.isCorrect ? 'text-success' : 'text-destructive'
                           )}>
                             {submitResult.isCorrect ? t('editor.answerCorrect') : t('editor.answerWrong')}
                           </span>
@@ -2275,10 +2463,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         {aiGrading.state.isGrading ? (
                           <div className="space-y-2">
                             <div className="flex items-center gap-2">
-                              <DsAnalysisIconMuted className="w-4 h-4 text-blue-500 animate-pulse" />
-                              <span className="text-sm text-blue-600 dark:text-blue-400">{t('editor.aiAnalyzing')}</span>
+                              <DsAnalysisIconMuted className="w-4 h-4 text-info" />
+                              <span className="text-sm text-info">{t('editor.aiAnalyzing')}</span>
                               <NotionButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
-                                {t('common:cancel', '取消')}
+                                {t('common:cancel')}
                               </NotionButton>
                             </div>
                             {aiGrading.state.feedback && (
@@ -2293,7 +2481,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         ) : aiGrading.state.feedback ? (
                           /* #56: 即使流异常中断（error 态）也保留已输出的解析内容 */
                           <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400">
+                            <div className="flex items-center gap-1.5 text-sm text-info">
                               <DsAnalysisIconMuted className="w-4 h-4" />
                               {t('editor.aiAnalysis')}
                             </div>
@@ -2313,7 +2501,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         ) : (currentQuestion?.ai_feedback || aiFeedbackCacheRef.current.get(currentQuestion?.id ?? '')) ? (
                           /* 展示缓存的 AI 解析（prop 或本地缓存） */
                           <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400">
+                            <div className="flex items-center gap-1.5 text-sm text-info">
                               <DsAnalysisIconMuted className="w-4 h-4" />
                               {t('editor.aiAnalysis')}
                             </div>
@@ -2338,7 +2526,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                   if (feedback) aiFeedbackCacheRef.current.set(qId, feedback);
                                 },
                               ).catch((err) => { debugLog.error('[QBankEditor] AI analyze failed:', err); });
-                            }} className="!h-auto !p-0 text-blue-600 dark:text-blue-400 hover:underline">
+                            }} className="!h-auto !p-0 text-info hover:underline">
                             <DsAnalysisIconMuted className="w-4 h-4" />
                             {t('editor.aiAnalysis')}
                           </NotionButton>
@@ -2363,10 +2551,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           <NotionButton
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                              setIsEditingNote(false);
-                              setNoteText(currentQuestion?.userNote || '');
-                            }}
+                            onClick={handleCancelNote}
                           >
                             {t('editor.cancel')}
                           </NotionButton>
@@ -2394,10 +2579,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       size="sm"
                       onClick={() => setIsEditingNote(true)}
                       disabled={!onUpdateUserNote}
-                      className="w-full !justify-start !h-auto !p-3 !rounded-lg border border-dashed border-border/50 hover:border-border hover:bg-[var(--interactive-hover)] group"
+                      className="w-full !justify-start !h-auto !rounded-md !p-3 border border-dashed border-border/50 hover:border-border hover:bg-[var(--interactive-hover)] group"
                     >
                       <div className="flex items-center gap-2 text-sm w-full">
-                        <Note size={16} className="text-amber-500" />
+                        <Note size={16} className="text-warning" />
                         <span className="font-medium">{t('editor.myNotes')}</span>
                         {!currentQuestion?.userNote && (
                           <span className="text-muted-foreground text-xs group-hover:hidden">{t('editor.clickToAdd')}</span>
@@ -2459,14 +2644,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     const q = questions[idx];
                     const status = q.status || 'new';
                     return (
-                      <NotionButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { onNavigate?.(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 text-xs font-medium', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
+                      <NotionButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { requestNavigate(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 text-xs font-medium', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
                         {idx + 1}
                       </NotionButton>
                     );
                   })}
                 </div>
                 <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border/40 text-[10px] text-muted-foreground">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500/20" /> {t('editor.legendMastered')}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-success/20" /> {t('editor.legendMastered')}</span>
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-warning/20" /> {t('editor.legendReview')}</span>
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-muted" /> {t('editor.legendNew')}</span>
                 </div>
@@ -2486,10 +2671,21 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           </div>
         </div>
       </div>
+      {showSettingsPanel && (
+        <aside
+          className="absolute inset-y-0 right-0 z-20 w-80 max-w-[calc(100%-2rem)] border-l border-border/50 bg-background shadow-[var(--shadow-shell-floating)]"
+          aria-label={t('editor.settings')}
+        >
+          {renderSettingsPanel()}
+        </aside>
+      )}
       {/* 连对激励动效 */}
       {renderStreakAnimation()}
       {/* 完成庆祝 */}
       {renderCompletionCelebration()}
+      {deleteConfirmation}
+      {draftNavigationConfirmation}
+      {noteDiscardConfirmation}
       {/* 原始图片裁剪对话框 */}
       {currentQuestion && (
         <ImageCropDialog
