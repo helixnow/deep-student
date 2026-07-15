@@ -188,7 +188,7 @@ export const SyncQuarantinePanel: React.FC<{
                 ) : (
                   <ArrowClockwise size={14} className="mr-1" />
                 )}
-                {t("data:governance.quarantine_retry_all", "全部重试")}
+                {t("data:governance.quarantine_retry_all")}
               </NotionButton>
               <NotionButton
                 variant="ghost"
@@ -198,7 +198,7 @@ export const SyncQuarantinePanel: React.FC<{
                 className="h-8 text-xs text-destructive hover:text-destructive"
               >
                 <Trash size={14} className="mr-1" />
-                {t("data:governance.quarantine_discard_all", "全部清除")}
+                {t("data:governance.quarantine_discard_all")}
               </NotionButton>
             </>
           )}
@@ -214,7 +214,7 @@ export const SyncQuarantinePanel: React.FC<{
             ) : (
               <ArrowClockwise size={14} className="mr-1.5" />
             )}
-            {t("actions.refresh")}
+            {t("common:actions.refresh")}
           </NotionButton>
         </div>
       </CardHeader>
@@ -300,7 +300,7 @@ export const SyncQuarantinePanel: React.FC<{
         onOpenChange={(open) => { if (!open) setShowRetryAllDialog(false); }}
         title={t("data:governance.quarantine_retry_all_confirm_title", "确认全部重试")}
         description={t("data:governance.quarantine_retry_all_confirm_desc", "将对 {{count}} 条隔离记录执行重试操作。失败的记录会增加重试次数并更新错误信息。", { count: rows.length })}
-        confirmText={t("common:actions.retry_all", "全部重试")}
+        confirmText={t("common:actions.retry")}
         cancelText={t("common:actions.cancel")}
         confirmVariant="primary"
         onConfirm={handleRetryAll}

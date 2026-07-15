@@ -19,7 +19,7 @@ use std::sync::Arc;
 use futures::stream::{self, StreamExt};
 use tokio::sync::mpsc;
 
-use crate::llm_manager::{ImagePayload, LLMManager};
+use crate::llm_manager::{ApiConfig, ImagePayload, LLMManager};
 use crate::models::AppError;
 use crate::multimodal::types::{MultimodalImage, MultimodalIndexingMode, MultimodalInput};
 
@@ -163,13 +163,32 @@ impl MultimodalEmbeddingService {
         inputs: &[MultimodalInput],
         progress_tx: Option<mpsc::Sender<EmbeddingProgress>>,
     ) -> Result<Vec<Vec<f32>>> {
+        let model_config = self.llm_manager.get_vl_embedding_model_config().await?;
+        self.embed_batch_with_progress_for_config(inputs, &model_config, progress_tx)
+            .await
+    }
+
+    /// Run one logical batch against an immutable model configuration.  Every
+    /// physical sub-batch uses the same endpoint/model even if the UI changes
+    /// assignments while the request is in flight.
+    pub async fn embed_batch_with_progress_for_config(
+        &self,
+        inputs: &[MultimodalInput],
+        model_config: &ApiConfig,
+        progress_tx: Option<mpsc::Sender<EmbeddingProgress>>,
+    ) -> Result<Vec<Vec<f32>>> {
         if inputs.is_empty() {
             return Ok(Vec::new());
         }
 
-        // 检查是否配置了多模态模型
-        if !self.is_configured().await {
-            return Err(AppError::configuration("未配置多模态嵌入模型"));
+        if !model_config.enabled
+            || !model_config.is_embedding
+            || !model_config.is_multimodal
+            || model_config.is_reranker
+        {
+            return Err(AppError::configuration(
+                "冻结的多模态嵌入配置已禁用或能力协议不匹配",
+            ));
         }
 
         let batch_size = self.config.batch_size;
@@ -214,7 +233,7 @@ impl MultimodalEmbeddingService {
             // 调用 API
             match self
                 .llm_manager
-                .call_multimodal_embedding_api(&processed_inputs)
+                .call_multimodal_embedding_api_with_config(&processed_inputs, model_config)
                 .await
             {
                 Ok(embeddings) => {

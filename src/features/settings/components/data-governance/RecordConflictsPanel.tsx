@@ -75,11 +75,11 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       const list = await DataGovernanceApi.listRecordConflicts(500, 0);
       setRows(list);
     } catch (e: unknown) {
-      showGlobalNotification('error', `加载冲突列表失败: ${getErrorMessage(e)}`);
+      showGlobalNotification('error', t('data:governance.conflict_load_failed', { error: getErrorMessage(e) }));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void refresh();
@@ -100,17 +100,17 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           resolution,
           merged,
         );
-        showGlobalNotification('success', `已解决 ${p.tableName}/${p.recordId} 的冲突`);
+        showGlobalNotification('success', t('data:governance.conflict_resolved', { table: p.tableName, record: p.recordId }));
         setMergeEditing(null);
         setMergeText('');
         await refresh();
       } catch (e: unknown) {
-        showGlobalNotification('error', `解决冲突失败: ${getErrorMessage(e)}`);
+        showGlobalNotification('error', t('data:governance.conflict_resolve_failed', { error: getErrorMessage(e) }));
       } finally {
         setResolvingKey(null);
       }
     },
-    [refresh],
+    [refresh, t],
   );
 
   const handleStartMerge = useCallback((p: ConflictPair) => {
@@ -126,10 +126,10 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
     setPurging(true);
     try {
       const n = await DataGovernanceApi.purgeResolvedConflicts(30);
-      showGlobalNotification('info', `已清理 ${n} 条 30 天前已解决的冲突记录`);
+      showGlobalNotification('info', t('data:governance.conflict_purged', { count: n }));
       await refresh();
     } catch (e: unknown) {
-      showGlobalNotification('error', `清理失败: ${getErrorMessage(e)}`);
+      showGlobalNotification('error', t('data:governance.conflict_purge_failed', { error: getErrorMessage(e) }));
     } finally {
       setPurging(false);
     }
@@ -195,10 +195,10 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             onClick={handlePurgeResolved}
             disabled={purging}
             className="h-8"
-            title="删除 30 天前已解决的冲突记录"
+            title={t('data:governance.conflict_purge_title')}
           >
             <Trash size={14} className="mr-1.5" />
-            清理历史
+            {t('data:governance.conflict_purge_button')}
           </NotionButton>
         </div>
       </CardHeader>
@@ -206,7 +206,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         {pairs.length === 0 && !loading && (
           <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
             <CheckCircle size={16} className="text-emerald-500" />
-            当前没有未解决的冲突
+            {t('data:governance.conflict_empty')}
           </div>
         )}
         {pairs.map((p) => {
@@ -235,7 +235,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     disabled={isResolving || isEditing || !p.local}
                     className="h-7 text-xs"
                   >
-                    保留本地
+                    {t('data:governance.keep_local')}
                   </NotionButton>
                   <NotionButton
                     variant="ghost"
@@ -243,9 +243,9 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     onClick={() => handleResolve(p, 'keep_cloud')}
                     disabled={isResolving || isEditing || !latestCloud}
                     className="h-7 text-xs"
-                    title={p.clouds.length > 1 ? '采用最新云端候选' : undefined}
+                    title={p.clouds.length > 1 ? t('data:governance.use_cloud_latest', { suffix: '（最新候选）' }) : undefined}
                   >
-                    采用云端{p.clouds.length > 1 ? `（最新/${p.clouds.length}）` : ''}
+                    {t('data:governance.use_cloud_latest', { suffix: p.clouds.length > 1 ? `（最新/${p.clouds.length}）` : '' })}
                   </NotionButton>
                   <NotionButton
                     variant="ghost"
@@ -255,35 +255,35 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     className="h-7 text-xs"
                   >
                      <PencilSimple size={12} className="mr-1" />
-                    手动合并
+                    {t('data:governance.manual_merge')}
                   </NotionButton>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="rounded border border-border/30 bg-muted/20 p-2">
                   <div className="text-muted-foreground mb-1">
-                    本地 {p.local?.winning_device_id && <span>（{p.local.winning_device_id.slice(0, 8)}...）</span>}
+                    {t('data:governance.local')} {p.local?.winning_device_id && <span>（{p.local.winning_device_id.slice(0, 8)}...）</span>}
                     {p.local?.detected_at && <span className="ml-1">{p.local.detected_at.slice(0, 19)}</span>}
                   </div>
                   <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">
-                    {p.local ? tryFormatJson(p.local.data_json) : '(无)'}
+                    {p.local ? tryFormatJson(p.local.data_json) : t('data:governance.none')}
                   </pre>
                 </div>
                 <div className="space-y-2">
                   {p.clouds.length === 0 && (
                     <div className="rounded border border-border/30 bg-muted/20 p-2">
-                      <div className="text-muted-foreground mb-1">云端</div>
-                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">(无)</pre>
+                      <div className="text-muted-foreground mb-1">{t('data:governance.cloud')}</div>
+                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">{t('data:governance.none')}</pre>
                     </div>
                   )}
                   {p.clouds.map((cloud, index) => (
                     <div key={cloud.id} className="rounded border border-border/30 bg-muted/20 p-2">
                       <div className="text-muted-foreground mb-1">
-                        云端{p.clouds.length > 1 ? ` ${index + 1}/${p.clouds.length}` : ''}
+                        {t('data:governance.cloud')}{p.clouds.length > 1 ? ` ${index + 1}/${p.clouds.length}` : ''}
                         {cloud.winning_device_id && <span>（{cloud.winning_device_id.slice(0, 8)}...）</span>}
                         {cloud.detected_at && <span className="ml-1">{cloud.detected_at.slice(0, 19)}</span>}
                         {cloud.id === latestCloud?.id && p.clouds.length > 1 && (
-                          <span className="ml-1">最新</span>
+                          <span className="ml-1">{t('data:governance.latest')}</span>
                         )}
                       </div>
                       <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">
@@ -296,7 +296,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
               {isEditing && (
                 <div className="space-y-2 pt-2 border-t border-border/30">
                   <div className="text-xs text-muted-foreground">
-                    编辑 JSON 后点击"写回"：最终值将作为一次正常的 UPDATE 提交到数据库并在下次同步时推到云端。
+                    {t('data:governance.merge_hint')}
                   </div>
                   <Textarea
                     className="w-full h-32 text-xs font-mono"
@@ -314,7 +314,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       }}
                       className="h-7 text-xs"
                     >
-                      取消
+                      {t('common:actions.cancel')}
                     </NotionButton>
                     <NotionButton
                       variant="default"
@@ -323,7 +323,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                         try {
                           JSON.parse(mergeText);
                         } catch (e: unknown) {
-                          showGlobalNotification('error', `JSON 格式无效: ${getErrorMessage(e)}`);
+                          showGlobalNotification('error', t('data:governance.json_invalid', { error: getErrorMessage(e) }));
                           return;
                         }
                         void handleResolve(p, 'merged', mergeText);
@@ -331,7 +331,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       disabled={isResolving}
                       className="h-7 text-xs"
                     >
-                      写回
+                      {t('data:governance.write_back')}
                     </NotionButton>
                   </div>
                 </div>

@@ -28,8 +28,8 @@ use crate::document_parser::DocumentParser;
 use crate::vfs::ocr_utils::parse_ocr_pages_json;
 use crate::vfs::repos::VfsFileRepo;
 use crate::vfs::types::{
-    resolve_image_inject_modes, resolve_pdf_inject_modes, PdfPreviewJson, VfsContextRefData,
-    VfsResourceRef, VfsResourceType,
+    resolve_image_inject_modes, resolve_pdf_inject_modes, ImageInjectMode, PdfInjectMode,
+    PdfPreviewJson, VfsContextRefData, VfsResourceRef, VfsResourceType,
 };
 
 // ★ 使用已有的 ContentBlock 类型，避免重复定义
@@ -217,7 +217,7 @@ pub fn resolve_context_ref_data_to_content(
 /// ## 注入模式支持
 /// - inject_modes.image 包含 Image: 注入原始图片
 /// - inject_modes.image 包含 Ocr: 注入 OCR 识别的文本
-/// - 如果未指定注入模式或为空，默认返回 image + ocr（最大化）
+/// - 如果未指定注入模式或为空，默认返回原图；OCR 仅显式选择
 ///
 /// ## 2026-02 修复
 /// 用户选择即生效，不再在此处判断模型能力。
@@ -1650,16 +1650,18 @@ fn extract_mindmap_outline(root: &serde_json::Value, output: &mut String) {
 /// 用户选择即生效，默认返回图片+文本后备。
 /// 后端在实际发送给 LLM 时会根据模型能力自动处理。
 ///
-/// ## 文本内容优先级
-/// 1. ocr_pages_json - 页级 OCR 文本（多模态索引生成）
-/// 2. extracted_text - 整体提取文本（上传时解析）
-/// 3. 占位文本（回退）
+/// 默认保留页面原图与 native extracted_text；ocr_pages_json 仅在显式 OCR 模式下加入。
 fn resolve_textbook(
     conn: &Connection,
     blobs_dir: &Path,
     vfs_ref: &VfsResourceRef,
-    is_multimodal: bool,
+    _is_multimodal: bool,
 ) -> Vec<ContentBlock> {
+    let pdf_modes = vfs_ref
+        .inject_modes
+        .as_ref()
+        .and_then(|modes| modes.pdf.as_ref());
+    let (include_text, include_ocr, include_image, _) = resolve_pdf_inject_modes(pdf_modes, true);
     let sql = "SELECT file_name, ocr_pages_json, extracted_text, preview_json FROM files WHERE id = ?1 OR resource_id = ?1 ORDER BY CASE WHEN id = ?1 THEN 0 ELSE 1 END LIMIT 1";
     match conn.query_row(sql, rusqlite::params![vfs_ref.source_id], |row| {
         Ok((
@@ -1677,8 +1679,8 @@ fn resolve_textbook(
             let total_pages = parsed_preview.as_ref().map(|preview| preview.total_pages);
             let meta_block = build_pdf_meta_block(vfs_ref, total_pages);
 
-            // 默认最大化：多模态模型返回图片+文本；文本模型自动降级为文本/OCR
-            if is_multimodal {
+            // 教材默认保留页面图和 native text；OCR 文本必须显式选择。
+            if include_image {
                 if let Some(preview) = parsed_preview.as_ref() {
                     let (mut blocks, truncated) =
                         resolve_textbook_multimodal(conn, blobs_dir, preview, vfs_ref);
@@ -1687,14 +1689,17 @@ fn resolve_textbook(
                         result.push(meta_block);
                         result.append(&mut blocks);
 
-                        // 同时追加文本块作为后备（参考 resolve_pdf）
-                        let text_blocks =
-                            get_textbook_text_blocks(&ocr_pages_json, &extracted_text, vfs_ref);
+                        let text_blocks = get_textbook_text_blocks(
+                            &ocr_pages_json,
+                            &extracted_text,
+                            vfs_ref,
+                            include_ocr,
+                            include_text,
+                        );
                         if !text_blocks.is_empty() {
                             result.extend(text_blocks);
                         }
 
-                        // ★ 2026-01 新增：截断时添加提示信息
                         if truncated {
                             result.push(ContentBlock::Text {
                             text: format!(
@@ -1706,7 +1711,7 @@ fn resolve_textbook(
                         }
 
                         log::debug!(
-                            "[VfsResolver] Textbook {} multimodal: {} blocks{}",
+                            "[VfsResolver] Textbook {} source payload: {} blocks{}",
                             vfs_ref.source_id,
                             result.len(),
                             if truncated { " (truncated)" } else { "" }
@@ -1715,29 +1720,22 @@ fn resolve_textbook(
                     }
                 }
             }
-            if !is_multimodal && parsed_preview.is_some() {
-                log::debug!(
-                    "[VfsResolver] Textbook {} downgraded to text/OCR for non-multimodal model",
-                    vfs_ref.source_id
-                );
-            } else {
-                log::debug!(
-                    "[VfsResolver] Textbook {} no preview, fallback to text",
-                    vfs_ref.source_id
-                );
-            }
+            log::debug!(
+                "[VfsResolver] Textbook {} no usable preview, fallback to text",
+                vfs_ref.source_id
+            );
 
             // 文本模式
-            let text_blocks = get_textbook_text_blocks(&ocr_pages_json, &extracted_text, vfs_ref);
+            let text_blocks = get_textbook_text_blocks(
+                &ocr_pages_json,
+                &extracted_text,
+                vfs_ref,
+                include_ocr,
+                include_text,
+            );
             if !text_blocks.is_empty() {
                 let mut result = Vec::new();
                 result.push(meta_block);
-                if !is_multimodal {
-                    result.push(ContentBlock::Text {
-                        text: "<system_note>模型不支持图片输入，教材已自动降级为 OCR/文本注入。</system_note>"
-                            .to_string(),
-                    });
-                }
                 result.extend(text_blocks);
                 return result;
             }
@@ -1777,48 +1775,53 @@ fn get_textbook_text_blocks(
     ocr_pages_json: &Option<String>,
     extracted_text: &Option<String>,
     vfs_ref: &VfsResourceRef,
+    include_ocr: bool,
+    include_extracted_text: bool,
 ) -> Vec<ContentBlock> {
-    // ★ 优先使用 ocr_pages_json（页级 OCR 文本）
-    if let Some(ref json_str) = ocr_pages_json {
-        if !json_str.trim().is_empty() {
-            let pages = parse_ocr_pages_json(json_str);
-            if let Some(result) = format_pdf_pages_text(vfs_ref, &pages) {
-                log::debug!(
-                    "[VfsResolver] Textbook {} ocr_pages: {} chars",
-                    vfs_ref.source_id,
-                    result.len()
-                );
-                return vec![ContentBlock::Text {
-                    text: format!(
-                        "<textbook title=\"{}\">{}</textbook>",
-                        escape_xml_attr(&vfs_ref.name),
-                        result
-                    ),
-                }];
+    let mut blocks = Vec::new();
+    if include_ocr {
+        if let Some(ref json_str) = ocr_pages_json {
+            if !json_str.trim().is_empty() {
+                let pages = parse_ocr_pages_json(json_str);
+                if let Some(result) = format_pdf_pages_text(vfs_ref, &pages) {
+                    log::debug!(
+                        "[VfsResolver] Textbook {} ocr_pages: {} chars",
+                        vfs_ref.source_id,
+                        result.len()
+                    );
+                    blocks.push(ContentBlock::Text {
+                        text: format!(
+                            "<textbook_ocr title=\"{}\">{}</textbook_ocr>",
+                            escape_xml_attr(&vfs_ref.name),
+                            result
+                        ),
+                    });
+                }
             }
         }
     }
 
-    // ★ 其次使用 extracted_text
-    if let Some(ref text) = extracted_text {
-        if !text.trim().is_empty() {
-            log::debug!(
-                "[VfsResolver] Textbook {} extracted_text: {} chars",
-                vfs_ref.source_id,
-                text.len()
-            );
-            let formatted = format_pdf_text_with_page_markers(vfs_ref, text);
-            return vec![ContentBlock::Text {
-                text: format!(
-                    "<textbook title=\"{}\">{}</textbook>",
-                    escape_xml_attr(&vfs_ref.name),
-                    formatted
-                ),
-            }];
+    if include_extracted_text {
+        if let Some(ref text) = extracted_text {
+            if !text.trim().is_empty() {
+                log::debug!(
+                    "[VfsResolver] Textbook {} extracted_text: {} chars",
+                    vfs_ref.source_id,
+                    text.len()
+                );
+                let formatted = format_pdf_text_with_page_markers(vfs_ref, text);
+                blocks.push(ContentBlock::Text {
+                    text: format!(
+                        "<textbook title=\"{}\">{}</textbook>",
+                        escape_xml_attr(&vfs_ref.name),
+                        formatted
+                    ),
+                });
+            }
         }
     }
 
-    vec![]
+    blocks
 }
 
 /// 教材多模态模式：从 blobs 获取预渲染图片（参考 resolve_pdf_multimodal）
@@ -1952,15 +1955,41 @@ fn resolve_exam(
     conn: &Connection,
     blobs_dir: &Path,
     vfs_ref: &VfsResourceRef,
-    is_multimodal: bool,
+    _is_multimodal: bool,
 ) -> Vec<ContentBlock> {
+    let pdf_modes = vfs_ref
+        .inject_modes
+        .as_ref()
+        .and_then(|modes| modes.pdf.as_ref());
+    let image_modes = vfs_ref
+        .inject_modes
+        .as_ref()
+        .and_then(|modes| modes.image.as_ref());
+    let has_pdf_modes = pdf_modes.is_some_and(|modes| !modes.is_empty());
+    let has_image_modes = image_modes.is_some_and(|modes| !modes.is_empty());
+    let include_images = if has_pdf_modes {
+        pdf_modes.is_some_and(|modes| modes.contains(&PdfInjectMode::Image))
+    } else if has_image_modes {
+        image_modes.is_some_and(|modes| modes.contains(&ImageInjectMode::Image))
+    } else {
+        true
+    };
+    let include_ocr = pdf_modes.is_some_and(|modes| modes.contains(&PdfInjectMode::Ocr))
+        || image_modes.is_some_and(|modes| modes.contains(&ImageInjectMode::Ocr));
     let sql = "SELECT preview_json FROM exam_sheets WHERE id = ?1";
     match conn.query_row(sql, rusqlite::params![vfs_ref.source_id], |row| {
         row.get::<_, Option<String>>(0)
     }) {
         Ok(Some(preview_json)) => {
-            // 默认最大化：多模态模型图文全注入，文本模型自动降级去图片
-            resolve_exam_multimodal(conn, blobs_dir, vfs_ref, &preview_json, is_multimodal)
+            // 始终保留题目页原图；模型能力降级由 context compiler 统一处理。
+            resolve_exam_multimodal(
+                conn,
+                blobs_dir,
+                vfs_ref,
+                &preview_json,
+                include_images,
+                include_ocr,
+            )
         }
         Ok(None) => {
             log::debug!(
@@ -1985,6 +2014,7 @@ fn resolve_exam_multimodal(
     vfs_ref: &VfsResourceRef,
     preview_json: &str,
     include_images: bool,
+    include_ocr_text: bool,
 ) -> Vec<ContentBlock> {
     use crate::vfs::repos::VfsBlobRepo;
     use base64::Engine;
@@ -2000,14 +2030,6 @@ fn resolve_exam_multimodal(
     };
 
     let mut blocks = Vec::new();
-    if !include_images {
-        blocks.push(ContentBlock::Text {
-            text:
-                "<system_note>模型不支持图片输入，题目集已自动降级为文本/OCR 注入。</system_note>"
-                    .to_string(),
-        });
-    }
-
     // 遍历 pages
     if let Some(pages) = preview.get("pages").and_then(|p| p.as_array()) {
         for page in pages {
@@ -2055,21 +2077,23 @@ fn resolve_exam_multimodal(
             }
 
             // 获取该页的 OCR 文本
-            if let Some(cards) = page.get("cards").and_then(|c| c.as_array()) {
-                let mut page_text = String::new();
-                for card in cards {
-                    if let Some(label) = card.get("questionLabel").and_then(|l| l.as_str()) {
-                        if let Some(ocr) = card.get("ocrText").and_then(|o| o.as_str()) {
-                            page_text.push_str(&format!(
-                                "<question label=\"{}\">{}</question>\n",
-                                escape_xml_attr(label),
-                                escape_xml_content(ocr)
-                            ));
+            if include_ocr_text {
+                if let Some(cards) = page.get("cards").and_then(|c| c.as_array()) {
+                    let mut page_text = String::new();
+                    for card in cards {
+                        if let Some(label) = card.get("questionLabel").and_then(|l| l.as_str()) {
+                            if let Some(ocr) = card.get("ocrText").and_then(|o| o.as_str()) {
+                                page_text.push_str(&format!(
+                                    "<question label=\"{}\">{}</question>\n",
+                                    escape_xml_attr(label),
+                                    escape_xml_content(ocr)
+                                ));
+                            }
                         }
                     }
-                }
-                if !page_text.is_empty() {
-                    blocks.push(ContentBlock::Text { text: page_text });
+                    if !page_text.is_empty() {
+                        blocks.push(ContentBlock::Text { text: page_text });
+                    }
                 }
             }
         }
@@ -2559,7 +2583,20 @@ pub fn escape_xml_content(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vfs::types::ResourceInjectModes;
     use rusqlite::Connection;
+
+    fn media_ref(inject_modes: Option<ResourceInjectModes>) -> VfsResourceRef {
+        VfsResourceRef {
+            source_id: "source-1".to_string(),
+            resource_hash: "hash-1".to_string(),
+            resource_type: VfsResourceType::Textbook,
+            name: "book".to_string(),
+            resource_id: Some("resource-1".to_string()),
+            snippet: None,
+            inject_modes,
+        }
+    }
 
     #[test]
     fn test_escape_xml_attr() {
@@ -2604,23 +2641,75 @@ mod tests {
     }
 
     #[test]
-    fn test_default_image_mode_is_maximized() {
+    fn test_default_image_mode_keeps_source_without_implicit_ocr() {
         let (include_image, include_ocr, downgraded) = resolve_image_inject_modes(None, true);
         assert!(include_image);
-        assert!(include_ocr);
+        assert!(!include_ocr);
         assert!(!downgraded);
     }
 
     #[test]
-    fn test_default_pdf_mode_is_maximized_and_downgraded_for_text_model() {
+    fn test_default_pdf_mode_keeps_text_and_images_for_every_model() {
         let (t, o, i, downgraded) = resolve_pdf_inject_modes(None, true);
-        assert!(t && o && i);
+        assert!(t && i);
+        assert!(!o);
         assert!(!downgraded);
 
         let (t2, o2, i2, downgraded2) = resolve_pdf_inject_modes(None, false);
-        assert!(t2 && o2);
-        assert!(!i2);
-        assert!(downgraded2);
+        assert!(t2 && i2);
+        assert!(!o2);
+        assert!(!downgraded2);
+    }
+
+    #[test]
+    fn textbook_default_keeps_native_text_without_ocr_duplicate() {
+        let vfs_ref = media_ref(None);
+        let ocr = Some(r#"["ocr-derived"]"#.to_string());
+        let native = Some("native extracted text".to_string());
+
+        let default_blocks = get_textbook_text_blocks(&ocr, &native, &vfs_ref, false, true);
+        let default_text = default_blocks
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                ContentBlock::Image { .. } => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(default_text.contains("native extracted text"));
+        assert!(!default_text.contains("ocr-derived"));
+        assert!(!default_text.contains("textbook_ocr"));
+
+        let explicit_blocks = get_textbook_text_blocks(&ocr, &native, &vfs_ref, true, true);
+        let explicit_text = explicit_blocks
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                ContentBlock::Image { .. } => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(explicit_text.contains("ocr-derived"));
+        assert!(explicit_text.contains("native extracted text"));
+    }
+
+    #[test]
+    fn exam_default_omits_card_ocr_but_explicit_ocr_includes_it() {
+        let conn = Connection::open_in_memory().unwrap();
+        let vfs_ref = media_ref(None);
+        let preview = r#"{"pages":[{"cards":[{"questionLabel":"1","ocrText":"derived answer"}]}]}"#;
+
+        let default_blocks =
+            resolve_exam_multimodal(&conn, Path::new("."), &vfs_ref, preview, false, false);
+        assert!(!default_blocks.iter().any(|block| {
+            matches!(block, ContentBlock::Text { text } if text.contains("derived answer"))
+        }));
+
+        let explicit_blocks =
+            resolve_exam_multimodal(&conn, Path::new("."), &vfs_ref, preview, false, true);
+        assert!(explicit_blocks.iter().any(|block| {
+            matches!(block, ContentBlock::Text { text } if text.contains("derived answer"))
+        }));
     }
 
     #[test]

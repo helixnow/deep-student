@@ -1035,7 +1035,7 @@ impl BackupTier {
                 "workspaces",
                 "pdf_ocr_sessions",
             ],
-            BackupTier::Rebuildable => vec!["lance"],
+            BackupTier::Rebuildable => vec!["databases/lance/vfs"],
             BackupTier::LargeAssets => {
                 vec!["images", "documents", "audio", "videos", "assets"]
             }
@@ -1332,6 +1332,290 @@ impl BackupManager {
     /// 获取备份目录
     pub fn backup_dir(&self) -> &Path {
         &self.backup_dir
+    }
+
+    fn sqlite_table_columns(
+        conn: &Connection,
+        table_name: &str,
+    ) -> Result<HashSet<String>, BackupError> {
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+            [table_name],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Ok(HashSet::new());
+        }
+
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table_name))?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<HashSet<_>, _>>()?;
+        Ok(columns)
+    }
+
+    fn reset_rebuildable_vfs_index(target_dir: &Path) -> Result<(), BackupError> {
+        let lance_dir = target_dir.join("databases").join("lance").join("vfs");
+        if lance_dir.exists() {
+            fs::remove_dir_all(&lance_dir).map_err(|error| {
+                BackupError::RestoreFailed(format!(
+                    "无法清理恢复目标中的陈旧 Lance 索引 {}: {}",
+                    lance_dir.display(),
+                    error
+                ))
+            })?;
+        }
+
+        let db_path = target_dir.join("databases").join("vfs.db");
+        if !db_path.exists() {
+            return Ok(());
+        }
+        let conn = Connection::open(&db_path)?;
+        let segment_columns = Self::sqlite_table_columns(&conn, "vfs_index_segments")?;
+        let unit_columns = Self::sqlite_table_columns(&conn, "vfs_index_units")?;
+        let dim_columns = Self::sqlite_table_columns(&conn, "vfs_embedding_dims")?;
+        let profile_columns = Self::sqlite_table_columns(&conn, "vfs_index_profiles")?;
+        let resource_columns = Self::sqlite_table_columns(&conn, "resources")?;
+        let file_columns = Self::sqlite_table_columns(&conn, "files")?;
+        let exam_columns = Self::sqlite_table_columns(&conn, "exam_sheets")?;
+        let orphan_columns = Self::sqlite_table_columns(&conn, "__lance_orphan_queue")?;
+        let tx = conn.unchecked_transaction()?;
+        if !segment_columns.is_empty() {
+            tx.execute("DELETE FROM vfs_index_segments", [])?;
+        }
+
+        let mut unit_resets: Vec<String> = Vec::new();
+        if unit_columns.contains("text_state") {
+            unit_resets.push(if unit_columns.contains("text_required") {
+                "text_state = CASE WHEN text_required = 1 THEN 'pending' ELSE 'disabled' END"
+                    .to_string()
+            } else {
+                "text_state = 'pending'".to_string()
+            });
+        }
+        for (column, value) in [
+            ("text_error", "NULL"),
+            ("text_indexed_at", "NULL"),
+            ("text_chunk_count", "0"),
+            ("text_embedding_dim", "NULL"),
+            ("text_profile_id", "NULL"),
+            ("text_generation", "0"),
+        ] {
+            if unit_columns.contains(column) {
+                unit_resets.push(format!("{} = {}", column, value));
+            }
+        }
+        if unit_columns.contains("mm_state") {
+            unit_resets.push(if unit_columns.contains("mm_required") {
+                "mm_state = CASE WHEN mm_required = 1 THEN 'pending' ELSE 'disabled' END"
+                    .to_string()
+            } else {
+                "mm_state = 'disabled'".to_string()
+            });
+        }
+        for (column, value) in [
+            ("mm_error", "NULL"),
+            ("mm_indexed_at", "NULL"),
+            ("mm_embedding_dim", "NULL"),
+            ("mm_profile_id", "NULL"),
+            ("mm_generation", "0"),
+        ] {
+            if unit_columns.contains(column) {
+                unit_resets.push(format!("{} = {}", column, value));
+            }
+        }
+        if !unit_resets.is_empty() {
+            tx.execute(
+                &format!("UPDATE vfs_index_units SET {}", unit_resets.join(", ")),
+                [],
+            )?;
+        }
+
+        let mut dim_resets: Vec<String> = Vec::new();
+        if dim_columns.contains("record_count") {
+            dim_resets.push("record_count = 0".to_string());
+        }
+        if dim_columns.contains("last_used_at") && dim_columns.contains("created_at") {
+            dim_resets.push("last_used_at = created_at".to_string());
+        }
+        if dim_columns.contains("active_generation") {
+            dim_resets.push("active_generation = 0".to_string());
+        }
+        if dim_columns.contains("ann_metric") {
+            dim_resets.push("ann_metric = 'exact'".to_string());
+        }
+        if dim_columns.contains("ann_index_version") {
+            dim_resets.push("ann_index_version = 0".to_string());
+        }
+        if !dim_resets.is_empty() {
+            tx.execute(
+                &format!("UPDATE vfs_embedding_dims SET {}", dim_resets.join(", ")),
+                [],
+            )?;
+        }
+        let mut profile_resets: Vec<String> = Vec::new();
+        if profile_columns.contains("active_generation") {
+            profile_resets.push("active_generation = 0".to_string());
+        }
+        if profile_columns.contains("ann_metric") {
+            profile_resets.push("ann_metric = 'exact'".to_string());
+        }
+        if profile_columns.contains("ann_index_version") {
+            profile_resets.push("ann_index_version = 0".to_string());
+        }
+        if profile_columns.contains("state") {
+            if dim_columns.contains("active_profile_id") {
+                profile_resets.push(
+                    "state = CASE
+                        WHEN id IN (SELECT active_profile_id FROM vfs_embedding_dims
+                                    WHERE active_profile_id IS NOT NULL)
+                        THEN 'active' ELSE 'retired' END"
+                        .to_string(),
+                );
+            } else {
+                profile_resets.push("state = 'retired'".to_string());
+            }
+        }
+        if !profile_resets.is_empty() {
+            tx.execute(
+                &format!(
+                    "UPDATE vfs_index_profiles SET {}",
+                    profile_resets.join(", ")
+                ),
+                [],
+            )?;
+        }
+
+        let mut resource_resets: Vec<String> = Vec::new();
+        if resource_columns.contains("index_state") {
+            resource_resets.push(
+                "index_state = CASE WHEN index_state = 'disabled' THEN 'disabled' ELSE 'pending' END"
+                    .to_string(),
+            );
+        }
+        for (column, value) in [
+            ("index_hash", "NULL"),
+            ("index_error", "NULL"),
+            ("indexed_at", "NULL"),
+            ("index_retry_count", "0"),
+            ("index_next_retry_at", "0"),
+            ("index_generation", "0"),
+        ] {
+            if resource_columns.contains(column) {
+                resource_resets.push(format!("{} = {}", column, value));
+            }
+        }
+        if resource_columns.contains("mm_index_state") {
+            resource_resets.push(
+                "mm_index_state = CASE
+                    WHEN mm_index_state IS NULL THEN NULL
+                    WHEN mm_index_state = 'disabled' THEN 'disabled'
+                    ELSE 'pending' END"
+                    .to_string(),
+            );
+        }
+        for (column, value) in [
+            ("mm_index_error", "NULL"),
+            ("mm_indexed_at", "NULL"),
+            ("mm_embedding_dim", "NULL"),
+            ("mm_indexing_mode", "NULL"),
+            ("mm_indexed_pages_json", "NULL"),
+            ("mm_index_retry_count", "0"),
+            ("mm_index_next_retry_at", "0"),
+            ("mm_index_generation", "0"),
+        ] {
+            if resource_columns.contains(column) {
+                resource_resets.push(format!("{} = {}", column, value));
+            }
+        }
+        if !resource_resets.is_empty() {
+            tx.execute(
+                &format!("UPDATE resources SET {}", resource_resets.join(", ")),
+                [],
+            )?;
+        }
+
+        for (table_name, columns) in [("files", &file_columns), ("exam_sheets", &exam_columns)] {
+            let mut resets: Vec<String> = Vec::new();
+            if columns.contains("mm_index_state") {
+                resets.push(
+                    "mm_index_state = CASE
+                        WHEN mm_index_state IS NULL THEN NULL
+                        WHEN mm_index_state = 'disabled' THEN 'disabled'
+                        ELSE 'pending' END"
+                        .to_string(),
+                );
+            }
+            for column in [
+                "mm_index_error",
+                "mm_indexed_pages_json",
+                "mm_embedding_dim",
+                "mm_indexing_mode",
+                "mm_indexed_at",
+            ] {
+                if columns.contains(column) {
+                    resets.push(format!("{} = NULL", column));
+                }
+            }
+            if !resets.is_empty() {
+                tx.execute(
+                    &format!("UPDATE {} SET {}", table_name, resets.join(", ")),
+                    [],
+                )?;
+            }
+        }
+        if !orphan_columns.is_empty() {
+            tx.execute("DELETE FROM __lance_orphan_queue", [])?;
+        }
+        tx.commit()?;
+        info!(
+            "[Restore] VFS 派生向量索引未随备份完整恢复，已重置账本并等待本机重建: {}",
+            db_path.display()
+        );
+        Ok(())
+    }
+
+    fn has_complete_vfs_lance_component(manifest: &BackupManifest, restore_assets: bool) -> bool {
+        const LANCE_COMPONENT: &str = "rebuildable-root:databases/lance/vfs";
+        restore_assets
+            && manifest
+                .included_components
+                .iter()
+                .any(|component| component == LANCE_COMPONENT)
+    }
+
+    pub(crate) fn prepare_vfs_index_restore(
+        manifest: &BackupManifest,
+        target_dir: &Path,
+        restore_assets: bool,
+    ) -> Result<(), BackupError> {
+        let has_complete_lance = Self::has_complete_vfs_lance_component(manifest, restore_assets);
+
+        let lance_dir = target_dir.join("databases").join("lance").join("vfs");
+        if lance_dir.exists() {
+            fs::remove_dir_all(&lance_dir)?;
+        }
+        if has_complete_lance {
+            fs::create_dir_all(&lance_dir)?;
+            Ok(())
+        } else {
+            Self::reset_rebuildable_vfs_index(target_dir)
+        }
+    }
+
+    pub(crate) fn finalize_vfs_index_restore(
+        manifest: &BackupManifest,
+        target_dir: &Path,
+        restore_assets: bool,
+    ) -> Result<(), BackupError> {
+        if Self::has_complete_vfs_lance_component(manifest, restore_assets) {
+            return Ok(());
+        }
+
+        // Generic manifest restoration may have copied files from a legacy or
+        // partial Lance component after the pre-restore reset. Remove those
+        // files again so the reset SQLite manifest cannot expose stale rows.
+        Self::reset_rebuildable_vfs_index(target_dir)
     }
 
     /// 创建一个新的、不会与现有备份冲突的备份子目录
@@ -1670,6 +1954,13 @@ impl BackupManager {
                 }
                 if file_type.is_file() {
                     if let Some(file_name) = path.file_name() {
+                        // OAuth refresh tokens are device-local sessions, not portable user data.
+                        // Restoring them on another machine can race token rotation and invalidate
+                        // both installations, so never include this encrypted entry in backups.
+                        if file_name == "internal.oauth.openai_codex.session.enc" {
+                            info!("[Backup] 已跳过设备本地 Codex OAuth 会话");
+                            continue;
+                        }
                         let dest = secure_dest.join(file_name);
                         fs::copy(&path, &dest).map_err(|e| {
                             BackupError::RestoreFailed(format!(
@@ -2125,6 +2416,13 @@ impl BackupManager {
             }
         }
 
+        if let Err(error) =
+            Self::prepare_vfs_index_restore(manifest, &active_dir_for_ws, restore_assets)
+        {
+            error!("恢复后处理 VFS 派生索引失败: {}", error);
+            restore_errors.push(format!("VFS 派生索引恢复契约: {}", error));
+        }
+
         // 5. 恢复资产文件（如果需要）
         let mut restored_assets = 0;
         if restore_assets {
@@ -2187,6 +2485,13 @@ impl BackupManager {
                     warn!("备份中无资产文件可恢复 (manifest.assets=None, assets/ 目录不存在)");
                 }
             }
+        }
+
+        if let Err(error) =
+            Self::finalize_vfs_index_restore(manifest, &active_dir_for_ws, restore_assets)
+        {
+            error!("恢复后校验 VFS 派生索引失败: {}", error);
+            restore_errors.push(format!("VFS 派生索引最终校验: {}", error));
         }
 
         // 6. 检查是否有错误
@@ -2304,6 +2609,11 @@ impl BackupManager {
             }
         }
 
+        if let Err(error) = Self::prepare_vfs_index_restore(manifest, target_dir, restore_assets) {
+            error!("恢复后处理 VFS 派生索引失败: {}", error);
+            restore_errors.push(format!("VFS 派生索引恢复契约: {}", error));
+        }
+
         // 5. 恢复资产文件到目标目录
         let mut restored_assets = 0;
         if restore_assets {
@@ -2350,6 +2660,11 @@ impl BackupManager {
                     }
                 }
             }
+        }
+
+        if let Err(error) = Self::finalize_vfs_index_restore(manifest, target_dir, restore_assets) {
+            error!("恢复后校验 VFS 派生索引失败: {}", error);
+            restore_errors.push(format!("VFS 派生索引最终校验: {}", error));
         }
 
         // 6. 检查是否有错误（非活跃插槽恢复失败不回滚，直接报错）
@@ -2920,6 +3235,19 @@ impl BackupManager {
             Err(e) => {
                 warn!("工作区数据库恢复失败（非致命）: {}", e);
             }
+        }
+
+        // This legacy entry point never restores non-database assets. Treat the
+        // Lance component as absent even when the manifest came from an asset
+        // backup, otherwise the restored SQLite manifest could expose rows from
+        // the target device's pre-restore Lance directory.
+        if let Err(error) = Self::prepare_vfs_index_restore(manifest, &active_dir_for_ws, false) {
+            error!("恢复后处理 VFS 派生索引失败: {}", error);
+            restore_errors.push(format!("VFS 派生索引恢复契约: {}", error));
+        }
+        if let Err(error) = Self::finalize_vfs_index_restore(manifest, &active_dir_for_ws, false) {
+            error!("恢复后校验 VFS 派生索引失败: {}", error);
+            restore_errors.push(format!("VFS 派生索引最终校验: {}", error));
         }
 
         // 5. 检查是否有错误
@@ -3783,6 +4111,12 @@ impl BackupManager {
                     &asset_config,
                 )?;
 
+                if dir_name == "databases/lance/vfs" && skipped.is_empty() {
+                    manifest
+                        .included_components
+                        .push("rebuildable-root:databases/lance/vfs".to_string());
+                }
+
                 for file in files {
                     let tier_name = "LargeAssets".to_string();
                     *tier_file_counts.entry(tier_name.clone()).or_insert(0) += 1;
@@ -4088,6 +4422,32 @@ mod tests {
     }
 
     #[test]
+    fn backup_crypto_keys_excludes_codex_oauth_session() {
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let secure_dir = app_data_dir.path().join(".secure");
+        fs::create_dir_all(&secure_dir).unwrap();
+        fs::write(secure_dir.join(".key_seed"), b"seed").unwrap();
+        fs::write(
+            secure_dir.join("internal.oauth.openai_codex.session.enc"),
+            b"device-local-refresh-token",
+        )
+        .unwrap();
+        fs::write(secure_dir.join("regular.api_key.enc"), b"portable-secret").unwrap();
+
+        let backup_subdir = app_data_dir.path().join("backup-output");
+        fs::create_dir_all(&backup_subdir).unwrap();
+        let count = manager.backup_crypto_keys(&backup_subdir).unwrap();
+        let backed_up_secure = backup_subdir.join("crypto").join(".secure");
+
+        assert_eq!(count, 2);
+        assert!(backed_up_secure.join(".key_seed").is_file());
+        assert!(backed_up_secure.join("regular.api_key.enc").is_file());
+        assert!(!backed_up_secure
+            .join("internal.oauth.openai_codex.session.enc")
+            .exists());
+    }
+
+    #[test]
     fn test_new_manager() {
         let dir = TempDir::new().unwrap();
         let manager = BackupManager::new(dir.path().to_path_buf());
@@ -4199,6 +4559,301 @@ mod tests {
     }
 
     #[test]
+    fn incomplete_vfs_lance_restore_removes_partial_files_and_resets_local_manifest() {
+        let (target, db) = crate::vfs::database::setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute(
+            "INSERT INTO resources
+             (id, hash, type, storage_mode, data, ref_count, created_at, updated_at)
+             VALUES ('res_restore_index', 'hash_restore_index', 'note', 'inline', 'text', 0, 1, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE resources SET
+                index_state = 'indexed', index_hash = 'old-hash', index_error = 'old-error',
+                indexed_at = 10, index_retry_count = 9, index_next_retry_at = 99,
+                index_generation = 7, mm_index_state = NULL, mm_index_error = 'old-mm-error',
+                mm_index_retry_count = 8, mm_index_next_retry_at = 88,
+                mm_embedding_dim = 64, mm_indexing_mode = 'old-mode',
+                mm_indexed_at = 11, mm_index_generation = 6
+             WHERE id = 'res_restore_index'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_units
+             (id, resource_id, unit_index, text_required, text_state, text_error,
+              text_indexed_at, text_chunk_count, text_embedding_dim,
+              mm_required, mm_state, mm_error, mm_indexed_at, mm_embedding_dim,
+              created_at, updated_at, text_profile_id, text_generation,
+              mm_profile_id, mm_generation)
+             VALUES ('unit_restore_index', 'res_restore_index', 0, 1, 'indexed', 'old-text',
+                     10, 1, 64, 0, 'disabled', 'old-mm', 11, 64, 1, 1,
+                     'profile_text_old', 7, 'profile_mm_old', 6)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_segments
+             (id, unit_id, segment_index, modality, embedding_dim, lance_row_id,
+              created_at, updated_at, index_profile_id, generation)
+             VALUES ('segment_restore_index', 'unit_restore_index', 0, 'text', 64,
+                     'row_restore_index', 1, 1, 'profile_text_old', 7)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
+             VALUES ('orphan_restore_index', 'res_restore_index')",
+            [],
+        )
+        .unwrap();
+        let profile = crate::vfs::repos::embedding_dim_repo::register_with_model(
+            &conn,
+            128,
+            "text",
+            Some("cfg_restore_profile"),
+            Some("model_restore_profile"),
+        )
+        .unwrap();
+        let restored_profile_id = profile.active_profile_id.unwrap();
+        conn.execute(
+            "UPDATE vfs_embedding_dims SET record_count = 9, active_generation = 4,
+                    ann_metric = 'cosine', ann_index_version = 1
+             WHERE dimension = 128 AND modality = 'text'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE vfs_index_profiles SET state = 'queryable', active_generation = 4,
+                    ann_metric = 'cosine', ann_index_version = 1
+             WHERE id = ?1",
+            [&restored_profile_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO files
+             (id, sha256, file_name, size, created_at, updated_at,
+              mm_index_state, mm_index_error, mm_indexed_pages_json)
+             VALUES ('file_restore_index', 'sha_restore_index', 'restore.pdf', 1, '1', '1',
+                     'indexed', 'old-file-error', '[{\"page\":1}]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO exam_sheets
+             (id, status, temp_id, metadata_json, preview_json, created_at, updated_at,
+              mm_index_state, mm_index_error, mm_indexed_pages_json,
+              mm_embedding_dim, mm_indexing_mode, mm_indexed_at)
+             VALUES ('exam_restore_index', 'completed', 'temp_restore', '{}', '{}', '1', '1',
+                     'indexed', 'old-exam-error', '[{\"page\":1}]', 128, 'old-mode', 12)",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        let lance_dir = target
+            .path()
+            .join("databases/lance/vfs/partial_table.lance");
+        fs::create_dir_all(&lance_dir).unwrap();
+        fs::write(lance_dir.join("partial.bin"), b"partial").unwrap();
+
+        let manifest = BackupManifest::new("1.0.0");
+        BackupManager::finalize_vfs_index_restore(&manifest, target.path(), true).unwrap();
+
+        assert!(!target.path().join("databases/lance/vfs").exists());
+        let conn = db.get_conn_safe().unwrap();
+        let resource: (
+            String,
+            Option<String>,
+            i32,
+            i64,
+            i64,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+            Option<String>,
+            i32,
+            i64,
+            i64,
+        ) = conn
+            .query_row(
+                "SELECT index_state, index_hash, index_retry_count, index_next_retry_at,
+                        index_generation, mm_index_state, mm_index_error, mm_embedding_dim,
+                        mm_indexing_mode, mm_index_retry_count, mm_index_next_retry_at,
+                        mm_index_generation
+                 FROM resources WHERE id = 'res_restore_index'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                        row.get(9)?,
+                        row.get(10)?,
+                        row.get(11)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(resource.0, "pending");
+        assert_eq!(resource.1, None);
+        assert_eq!((resource.2, resource.3, resource.4), (0, 0, 0));
+        assert_eq!(resource.5, None, "non-MM resources must stay non-MM");
+        assert_eq!(resource.6, None);
+        assert_eq!(resource.7, None);
+        assert_eq!(resource.8, None);
+        assert_eq!((resource.9, resource.10, resource.11), (0, 0, 0));
+
+        let unit: (String, Option<String>, i64, String, Option<String>, i64) = conn
+            .query_row(
+                "SELECT text_state, text_profile_id, text_generation,
+                        mm_state, mm_profile_id, mm_generation
+                 FROM vfs_index_units WHERE id = 'unit_restore_index'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            unit,
+            (
+                "pending".to_string(),
+                None,
+                0,
+                "disabled".to_string(),
+                None,
+                0
+            )
+        );
+        let segment_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM vfs_index_segments", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let orphan_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM __lance_orphan_queue", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!((segment_count, orphan_count), (0, 0));
+        let dim_state: (i64, i64, String, i32) = conn
+            .query_row(
+                "SELECT record_count, active_generation, ann_metric, ann_index_version
+                 FROM vfs_embedding_dims WHERE dimension = 128 AND modality = 'text'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(dim_state, (0, 0, "exact".to_string(), 0));
+        let profile_state: (String, i64, String, i32) = conn
+            .query_row(
+                "SELECT state, active_generation, ann_metric, ann_index_version
+                 FROM vfs_index_profiles WHERE id = ?1",
+                [&restored_profile_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            profile_state,
+            ("active".to_string(), 0, "exact".to_string(), 0)
+        );
+        let file_mm: (Option<String>, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT mm_index_state, mm_index_error, mm_indexed_pages_json
+                 FROM files WHERE id = 'file_restore_index'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(file_mm, (Some("pending".to_string()), None, None));
+        let exam_mm: (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+            Option<String>,
+            Option<i64>,
+        ) = conn
+            .query_row(
+                "SELECT mm_index_state, mm_index_error, mm_indexed_pages_json,
+                        mm_embedding_dim, mm_indexing_mode, mm_indexed_at
+                 FROM exam_sheets WHERE id = 'exam_restore_index'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            exam_mm,
+            (Some("pending".to_string()), None, None, None, None, None)
+        );
+    }
+
+    #[test]
+    fn vfs_lance_restore_contract_handles_legacy_schema_and_preserves_complete_component() {
+        let legacy = TempDir::new().unwrap();
+        let db_dir = legacy.path().join("databases");
+        fs::create_dir_all(&db_dir).unwrap();
+        let conn = Connection::open(db_dir.join("vfs.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE legacy_payload (id INTEGER PRIMARY KEY, value TEXT);
+             INSERT INTO legacy_payload (value) VALUES ('kept');",
+        )
+        .unwrap();
+        drop(conn);
+        let partial = db_dir.join("lance/vfs/partial.lance");
+        fs::create_dir_all(&partial).unwrap();
+        fs::write(partial.join("partial.bin"), b"partial").unwrap();
+        BackupManager::finalize_vfs_index_restore(
+            &BackupManifest::new("legacy"),
+            legacy.path(),
+            true,
+        )
+        .unwrap();
+        assert!(!db_dir.join("lance/vfs").exists());
+        let conn = Connection::open(db_dir.join("vfs.db")).unwrap();
+        let kept: String = conn
+            .query_row("SELECT value FROM legacy_payload", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(kept, "kept");
+
+        let complete = TempDir::new().unwrap();
+        let complete_lance = complete.path().join("databases/lance/vfs/table.lance");
+        fs::create_dir_all(&complete_lance).unwrap();
+        fs::write(complete_lance.join("data.bin"), b"complete").unwrap();
+        let mut manifest = BackupManifest::new("complete");
+        manifest
+            .included_components
+            .push("rebuildable-root:databases/lance/vfs".to_string());
+        BackupManager::finalize_vfs_index_restore(&manifest, complete.path(), true).unwrap();
+        assert!(complete_lance.join("data.bin").exists());
+    }
+
+    #[test]
     fn test_backup_and_restore_single_database() {
         let (manager, backup_dir, app_data_dir) = setup_test_env();
 
@@ -4222,12 +4877,19 @@ mod tests {
 
         // 删除原始数据库
         fs::remove_file(&vfs_db_path).unwrap();
+        let stale_lance = active_dir.join("databases/lance/vfs/stale_table.lance");
+        fs::create_dir_all(&stale_lance).unwrap();
+        fs::write(stale_lance.join("stale.bin"), b"stale").unwrap();
 
         // 恢复
         manager.restore(&manifest).unwrap();
 
         // 验证恢复后的数据库
         assert!(vfs_db_path.exists());
+        assert!(
+            !active_dir.join("databases/lance/vfs").exists(),
+            "database-only restore must not retain a different manifest's Lance rows"
+        );
         let conn = Connection::open(&vfs_db_path).unwrap();
         let count: i32 = conn
             .query_row("SELECT COUNT(*) FROM test_table", [], |row| row.get(0))

@@ -1849,6 +1849,42 @@ impl VfsQuestionRepo {
         Ok(())
     }
 
+    /// Soft-delete one question while atomically checking its optimistic-lock baseline.
+    ///
+    /// Callers that delete more than one question should wrap repeated calls in a single
+    /// transaction so a conflict leaves the whole batch untouched.
+    pub fn delete_question_if_version_with_conn(
+        conn: &Connection,
+        question_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let affected = conn.execute(
+            "UPDATE questions SET deleted_at = ?1, updated_at = ?1 \
+             WHERE id = ?2 AND deleted_at IS NULL AND updated_at = ?3",
+            params![now, question_id, expected_updated_at],
+        )?;
+
+        if affected == 0 {
+            if let Some(current) = Self::get_question_with_conn(conn, question_id)? {
+                return Err(VfsError::Other(format!(
+                    "QBANK_CONFLICT: question_id={}, expected_updated_at={}, actual_updated_at={}",
+                    question_id, expected_updated_at, current.updated_at
+                )));
+            }
+            return Err(VfsError::NotFound {
+                resource_type: "question".to_string(),
+                id: question_id.to_string(),
+            });
+        }
+
+        info!(
+            "[VFS::QuestionRepo] OCC soft deleted question id={}",
+            question_id
+        );
+        Ok(())
+    }
+
     /// 批量软删除题目
     pub fn batch_delete_questions(db: &VfsDatabase, question_ids: &[String]) -> VfsResult<usize> {
         let conn = db.get_conn_safe()?;

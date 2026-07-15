@@ -153,10 +153,7 @@ impl VfsIndexService {
         // 由后台索引循环 drain_lance_orphan_queue 真正删除 LanceDB 向量
         if !sync_result.orphaned_lance_row_ids.is_empty() {
             for row_id in &sync_result.orphaned_lance_row_ids {
-                conn.execute(
-                    "INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id) VALUES (?1, ?2)",
-                    rusqlite::params![row_id, input.resource_id],
-                )?;
+                index_segment_repo::enqueue_lance_orphan(conn, row_id, Some(&input.resource_id))?;
             }
             log::info!(
                 "[VfsIndexService] sync_resource_units: enqueued {} orphaned LanceDB vectors for resource {} into __lance_orphan_queue",
@@ -264,17 +261,48 @@ impl VfsIndexService {
     /// 重置 Unit 索引状态（用于重新索引）
     pub fn reset_unit_index(&self, unit_id: &str, mode: &str) -> Result<(), VfsError> {
         let conn = self.db.get_conn()?;
+        let unit =
+            index_unit_repo::get_by_id(&conn, unit_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "Unit".to_string(),
+                id: unit_id.to_string(),
+            })?;
 
         match mode {
             "text" => {
-                index_unit_repo::set_text_state(&conn, unit_id, IndexState::Pending, None)?;
+                let state = if unit.text_required {
+                    IndexState::Pending
+                } else {
+                    IndexState::Disabled
+                };
+                index_unit_repo::set_text_state(&conn, unit_id, state, None)?;
             }
             "mm" => {
-                index_unit_repo::set_mm_state(&conn, unit_id, IndexState::Pending, None)?;
+                let state = if unit.mm_required && unit.image_blob_hash.is_some() {
+                    IndexState::Pending
+                } else {
+                    IndexState::Disabled
+                };
+                index_unit_repo::set_mm_state(&conn, unit_id, state, None)?;
             }
-            "both" | _ => {
-                index_unit_repo::set_text_state(&conn, unit_id, IndexState::Pending, None)?;
-                index_unit_repo::set_mm_state(&conn, unit_id, IndexState::Pending, None)?;
+            "both" => {
+                let text_state = if unit.text_required {
+                    IndexState::Pending
+                } else {
+                    IndexState::Disabled
+                };
+                let mm_state = if unit.mm_required && unit.image_blob_hash.is_some() {
+                    IndexState::Pending
+                } else {
+                    IndexState::Disabled
+                };
+                index_unit_repo::set_text_state(&conn, unit_id, text_state, None)?;
+                index_unit_repo::set_mm_state(&conn, unit_id, mm_state, None)?;
+            }
+            _ => {
+                return Err(VfsError::Other(format!(
+                    "unsupported index reset mode '{}'; expected text, mm, or both",
+                    mode
+                )))
             }
         }
 

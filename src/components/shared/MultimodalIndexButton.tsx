@@ -15,7 +15,7 @@ import { Database, CircleNotch, CheckCircle, WarningCircle, ArrowClockwise } fro
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import multimodalRagService, { type SourceType, MULTIMODAL_INDEX_ENABLED } from '@/services/multimodalRagService';
+import multimodalRagService, { type SourceType, MULTIMODAL_INDEX_SUPPORTED } from '@/services/multimodalRagService';
 import type { VfsMultimodalIndexResourceOutput } from '@/api/vfsRagApi';
 import { cn } from '@/lib/utils';
 
@@ -190,9 +190,8 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
     return t('common:multimodal.indexTooltip');
   };
 
-  // ★ 多模态索引已禁用，不渲染按钮。恢复 MULTIMODAL_INDEX_ENABLED = true 后自动显示
-  // （early return 放在所有 hooks 之后，遵守 rules-of-hooks）
-  if (!MULTIMODAL_INDEX_ENABLED) {
+  // 构建不包含该能力时隐藏入口（early return 放在 hooks 之后）。
+  if (!MULTIMODAL_INDEX_SUPPORTED) {
     return null;
   }
 

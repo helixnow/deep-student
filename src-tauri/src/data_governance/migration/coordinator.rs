@@ -1059,9 +1059,6 @@ impl MigrationCoordinator {
             DatabaseId::LlmUsage => self.create_llm_usage_runner()?,
         };
 
-        // 预修复：对齐已应用迁移的 checksum，避免 Refiner divergent 报错
-        self.repair_refinery_checksums(conn, id, &runner)?;
-
         // 配置 Runner：
         // - set_grouped(false): 逐条迁移，每条成功立即记录到 refinery_schema_history。
         //   **不能用 set_grouped(true)**：SQLite 对 DDL（ALTER TABLE ADD COLUMN）的
@@ -1080,7 +1077,11 @@ impl MigrationCoordinator {
         // 🔧 预修复：处理 schema 不一致问题（旧数据库兼容）
         // 这会检查并修复列缺失/重复的问题，避免迁移失败
         self.pre_repair_schema(conn, id, &runner)?;
-        let schema_repaired = self.repair_recorded_migration_schema_gaps(conn, id)?;
+        let schema_repaired = self.repair_recorded_migration_schema_gaps(conn, id, &runner)?;
+
+        // Schema and DML compatibility repairs need to observe the previous
+        // checksum. Reconcile history only after those repairs have converged.
+        self.repair_refinery_checksums(conn, id, &runner)?;
 
         // 🔧 通用防御：对所有待执行迁移中的 ALTER TABLE ADD COLUMN 做幂等预处理
         // 检查列是否已存在（可能由之前失败的 grouped 事务残留），已存在则预标记迁移完成
@@ -1949,11 +1950,144 @@ impl MigrationCoordinator {
         &self,
         conn: &rusqlite::Connection,
         id: &DatabaseId,
+        runner: &refinery::Runner,
     ) -> Result<bool, MigrationError> {
         match id {
+            DatabaseId::Vfs => self.repair_vfs_v20260714_vector_index_profiles(conn, runner),
             DatabaseId::Mistakes => self.repair_mistakes_v20260523_document_tasks(conn),
             _ => Ok(false),
         }
+    }
+
+    #[cfg(feature = "data_governance")]
+    fn repair_vfs_v20260714_vector_index_profiles(
+        &self,
+        conn: &rusqlite::Connection,
+        runner: &refinery::Runner,
+    ) -> Result<bool, MigrationError> {
+        use super::vfs::V20260714_ADD_VECTOR_INDEX_PROFILES as MIGRATION;
+
+        const VERSION: i32 = 20260714;
+        if !self.is_migration_recorded(conn, VERSION)? || !self.table_exists(conn, "resources")? {
+            return Ok(false);
+        }
+
+        let current_migration = runner
+            .get_migrations()
+            .iter()
+            .find(|migration| migration.version() == VERSION)
+            .ok_or_else(|| {
+                MigrationError::Database(format!(
+                    "VFS migration runner does not contain V{}",
+                    VERSION
+                ))
+            })?;
+        let recorded_checksum: String = conn
+            .query_row(
+                "SELECT checksum FROM refinery_schema_history WHERE version = ?1",
+                [VERSION],
+                |row| row.get(0),
+            )
+            .map_err(|error| MigrationError::Database(error.to_string()))?;
+        let checksum_drift = recorded_checksum != current_migration.checksum().to_string();
+
+        let mut schema_or_data_repair = checksum_drift;
+        if self.table_exists(conn, "vfs_index_profiles")? {
+            for column in [
+                "id",
+                "model_fingerprint",
+                "dimension",
+                "modality",
+                "embedding_protocol",
+                "lance_table_name",
+            ] {
+                if !self.column_exists(conn, "vfs_index_profiles", column)? {
+                    return Err(MigrationError::Database(format!(
+                        "recorded VFS V{} has an incompatible vfs_index_profiles table: missing {}",
+                        VERSION, column
+                    )));
+                }
+            }
+            for (column, definition) in [
+                ("model_config_id", "TEXT"),
+                ("model_name", "TEXT"),
+                ("schema_version", "INTEGER NOT NULL DEFAULT 1"),
+                ("active_generation", "INTEGER NOT NULL DEFAULT 0"),
+                ("state", "TEXT NOT NULL DEFAULT 'active'"),
+                ("ann_metric", "TEXT NOT NULL DEFAULT 'legacy_l2'"),
+                ("ann_index_version", "INTEGER NOT NULL DEFAULT 0"),
+                ("created_at", "INTEGER NOT NULL DEFAULT 0"),
+                ("updated_at", "INTEGER NOT NULL DEFAULT 0"),
+            ] {
+                schema_or_data_repair |=
+                    self.add_column_if_missing(conn, "vfs_index_profiles", column, definition)?;
+            }
+        }
+
+        for (table, column) in Self::parse_alter_add_columns(MIGRATION.sql) {
+            if !self.table_exists(conn, &table)? {
+                return Err(MigrationError::Database(format!(
+                    "recorded VFS V{} requires missing base table {}",
+                    VERSION, table
+                )));
+            }
+            let definition = Self::extract_column_def(MIGRATION.sql, &table, &column);
+            schema_or_data_repair |=
+                self.add_column_if_missing(conn, &table, &column, &definition)?;
+        }
+
+        for table in MIGRATION.expected_tables {
+            schema_or_data_repair |= !self.table_exists(conn, table)?;
+        }
+        for (table, column) in MIGRATION.expected_columns {
+            schema_or_data_repair |= !self.column_exists(conn, table, column)?;
+        }
+        let mut missing_index = false;
+        for index in MIGRATION.expected_indexes {
+            missing_index |= !self.index_exists(conn, index)?;
+        }
+
+        if !schema_or_data_repair && !missing_index {
+            return Ok(false);
+        }
+
+        if schema_or_data_repair {
+            // The migration SQL keeps ALTER statements for fresh databases. For a
+            // recorded older draft, replay the idempotent profile/index DDL and
+            // data backfills after its columns have converged.
+            Self::replay_migration_without_alter_add_columns(conn, MIGRATION.sql, VERSION)?;
+        } else {
+            // Recreating a dropped index must not enqueue every resource for a
+            // vector rebuild. This branch contains DDL only.
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_vfs_index_profiles_route
+                    ON vfs_index_profiles(modality, dimension, state);
+                 CREATE INDEX IF NOT EXISTS idx_vfs_index_profiles_model
+                    ON vfs_index_profiles(model_config_id, state);
+                 CREATE INDEX IF NOT EXISTS idx_vfs_index_segments_profile_generation
+                    ON vfs_index_segments(index_profile_id, generation);
+                 CREATE INDEX IF NOT EXISTS idx_vfs_index_units_text_profile
+                    ON vfs_index_units(text_profile_id, text_generation);
+                 CREATE INDEX IF NOT EXISTS idx_vfs_index_units_mm_profile
+                    ON vfs_index_units(mm_profile_id, mm_generation);
+                 CREATE INDEX IF NOT EXISTS idx_resources_index_retry_due
+                    ON resources(index_state, index_next_retry_at);
+                 CREATE INDEX IF NOT EXISTS idx_resources_mm_index_retry_due
+                    ON resources(mm_index_state, mm_index_next_retry_at);
+                 CREATE INDEX IF NOT EXISTS idx_lance_orphan_retry_due
+                    ON __lance_orphan_queue(next_retry_at, enqueued_at);",
+            )
+            .map_err(|error| MigrationError::Database(error.to_string()))?;
+        }
+
+        MigrationVerifier::verify(conn, &MIGRATION)?;
+
+        tracing::warn!(
+            database = "vfs",
+            version = VERSION,
+            "Repaired recorded vector profile migration schema gap"
+        );
+        Ok(true)
     }
 
     #[cfg(feature = "data_governance")]
@@ -4275,6 +4409,180 @@ mod tests {
 
     #[cfg(feature = "data_governance")]
     #[test]
+    fn test_vfs_recorded_v20260714_schema_gap_is_repaired_idempotently() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("vfs.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        // Simulate a database whose older V20260714 draft was recorded before
+        // the complete profile/generation/retry schema reached disk.
+        conn.execute_batch(
+            "CREATE TABLE refinery_schema_history (
+                version INTEGER PRIMARY KEY,
+                name TEXT,
+                applied_on TEXT,
+                checksum TEXT
+            );
+            INSERT INTO refinery_schema_history VALUES (
+                20260714, 'add_vector_index_profiles',
+                '2026-07-14T00:00:00Z', 'old-draft'
+            );
+            CREATE TABLE vfs_embedding_dims (
+                dimension INTEGER NOT NULL,
+                modality TEXT NOT NULL,
+                lance_table_name TEXT NOT NULL,
+                record_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                last_used_at INTEGER NOT NULL,
+                model_config_id TEXT,
+                model_name TEXT,
+                PRIMARY KEY (dimension, modality)
+            );
+            CREATE TABLE vfs_index_profiles (
+                id TEXT PRIMARY KEY,
+                model_fingerprint TEXT NOT NULL,
+                dimension INTEGER NOT NULL,
+                modality TEXT NOT NULL,
+                embedding_protocol TEXT NOT NULL,
+                lance_table_name TEXT NOT NULL
+            );
+            CREATE TABLE vfs_index_units (
+                id TEXT PRIMARY KEY,
+                text_embedding_dim INTEGER,
+                mm_embedding_dim INTEGER,
+                text_required INTEGER NOT NULL DEFAULT 0,
+                text_state TEXT NOT NULL DEFAULT 'disabled',
+                text_error TEXT,
+                mm_required INTEGER NOT NULL DEFAULT 0,
+                mm_state TEXT NOT NULL DEFAULT 'disabled',
+                mm_error TEXT
+            );
+            CREATE TABLE vfs_index_segments (
+                id TEXT PRIMARY KEY,
+                embedding_dim INTEGER NOT NULL,
+                modality TEXT NOT NULL
+            );
+            CREATE TABLE resources (
+                id TEXT PRIMARY KEY,
+                index_state TEXT,
+                index_error TEXT,
+                index_retry_count INTEGER DEFAULT 0,
+                mm_index_state TEXT,
+                mm_index_error TEXT,
+                mm_index_retry_count INTEGER DEFAULT 0
+            );
+            CREATE TABLE __lance_orphan_queue (
+                lance_row_id TEXT PRIMARY KEY,
+                enqueued_at INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO vfs_embedding_dims VALUES (
+                768, 'text', 'legacy_text_768', 1, 1, 1, 'cfg-text', 'text-model'
+            );
+            INSERT INTO vfs_index_units (
+                id, text_embedding_dim, text_required, text_state
+            ) VALUES ('unit-1', 768, 1, 'indexed');
+            INSERT INTO vfs_index_segments (id, embedding_dim, modality)
+            VALUES ('segment-1', 768, 'text');
+            INSERT INTO resources (
+                id, index_state, index_retry_count, mm_index_state, mm_index_retry_count
+            ) VALUES ('resource-1', 'indexed', 2, NULL, 0);",
+        )
+        .unwrap();
+
+        let runner = coordinator.create_vfs_runner().unwrap();
+        let repaired = coordinator
+            .repair_recorded_migration_schema_gaps(&conn, &DatabaseId::Vfs, &runner)
+            .unwrap();
+        assert!(repaired);
+        coordinator
+            .repair_refinery_checksums(&conn, &DatabaseId::Vfs, &runner)
+            .unwrap();
+
+        MigrationVerifier::verify(
+            &conn,
+            &super::super::vfs::V20260714_ADD_VECTOR_INDEX_PROFILES,
+        )
+        .unwrap();
+
+        let (profile_id, state): (String, String) = conn
+            .query_row(
+                "SELECT u.text_profile_id, r.index_state
+                 FROM vfs_index_units u, resources r
+                 WHERE u.id = 'unit-1' AND r.id = 'resource-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(profile_id, "profile_legacy_text_768");
+        assert_eq!(state, "pending");
+
+        // A complete older draft can still carry incorrect DML semantics: image
+        // embeddings were labelled as text and image-only units were unbound.
+        conn.execute_batch(
+            "INSERT INTO vfs_embedding_dims (
+                dimension, modality, lance_table_name, record_count, created_at,
+                last_used_at, model_config_id, model_name, active_profile_id,
+                model_fingerprint, embedding_protocol, active_generation,
+                ann_metric, ann_index_version
+             ) VALUES (
+                512, 'image', 'legacy_image_512', 1, 1, 1, 'cfg-image',
+                'image-model', 'profile_legacy_image_512',
+                'legacy:model-config:cfg-image', 'text-embedding-v1', 0,
+                'legacy_l2', 0
+             );
+             INSERT INTO vfs_index_profiles (
+                id, model_fingerprint, model_config_id, model_name, dimension,
+                modality, embedding_protocol, schema_version, lance_table_name,
+                active_generation, state, ann_metric, ann_index_version,
+                created_at, updated_at
+             ) VALUES (
+                'profile_legacy_image_512', 'legacy:model-config:cfg-image',
+                'cfg-image', 'image-model', 512, 'image', 'text-embedding-v1',
+                1, 'legacy_image_512', 0, 'active', 'legacy_l2', 0, 1, 1
+             );
+             INSERT INTO vfs_index_units (
+                id, mm_embedding_dim, mm_required, mm_state
+             ) VALUES ('unit-image', 512, 1, 'indexed');
+             UPDATE refinery_schema_history
+             SET checksum = 'old-semantic-draft'
+             WHERE version = 20260714;",
+        )
+        .unwrap();
+
+        let semantic_repaired = coordinator
+            .repair_recorded_migration_schema_gaps(&conn, &DatabaseId::Vfs, &runner)
+            .unwrap();
+        assert!(
+            semantic_repaired,
+            "checksum drift must replay legacy DML fixes"
+        );
+        coordinator
+            .repair_refinery_checksums(&conn, &DatabaseId::Vfs, &runner)
+            .unwrap();
+
+        let (dim_protocol, profile_protocol, image_profile): (String, String, String) = conn
+            .query_row(
+                "SELECT d.embedding_protocol, p.embedding_protocol, u.mm_profile_id
+                 FROM vfs_embedding_dims d
+                 JOIN vfs_index_profiles p ON p.id = d.active_profile_id
+                 JOIN vfs_index_units u ON u.id = 'unit-image'
+                 WHERE d.dimension = 512 AND d.modality = 'image'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(dim_protocol, "multimodal-embedding-v1");
+        assert_eq!(profile_protocol, "multimodal-embedding-v1");
+        assert_eq!(image_profile, "profile_legacy_image_512");
+
+        let repaired_again = coordinator
+            .repair_recorded_migration_schema_gaps(&conn, &DatabaseId::Vfs, &runner)
+            .unwrap();
+        assert!(!repaired_again, "a converged schema must remain stable");
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
     fn test_mistakes_recorded_v20260523_document_tasks_gap_is_repaired_and_rebaselined() {
         let (coordinator, temp_dir) = create_test_coordinator();
         let db_path = temp_dir.path().join("mistakes.db");
@@ -4331,8 +4639,9 @@ mod tests {
         )
         .unwrap();
 
+        let runner = coordinator.create_mistakes_runner().unwrap();
         let repaired = coordinator
-            .repair_recorded_migration_schema_gaps(&conn, &DatabaseId::Mistakes)
+            .repair_recorded_migration_schema_gaps(&conn, &DatabaseId::Mistakes, &runner)
             .unwrap();
         assert!(
             repaired,

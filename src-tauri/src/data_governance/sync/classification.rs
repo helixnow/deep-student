@@ -292,6 +292,16 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             has_json_blobs: false,
             merge_notes: "Rebuildable from segments",
         },
+        TableClassification {
+            database: "vfs",
+            table_name: "vfs_index_profiles",
+            primary_key: "id",
+            category: SyncCategory::DerivedRebuild,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "model_fingerprint,dimension,modality,embedding_protocol,schema_version",
+            has_json_blobs: false,
+            merge_notes: "Local vector-space identity derived from configured embedding models and rebuilt indexes",
+        },
         // --- LocalRuntime ---
         TableClassification {
             database: "vfs",
@@ -629,7 +639,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             has_json_blobs: true,
             // TODO(anki export receipt): anki_note_id / export_status / last_exported_at /
             // content_hash 已加列，字段级 merge 策略待登记（本地 AnkiConnect receipt，暂不参与双向进度同步）
-            merge_notes: "tags_json uses set union; images_json/extra_fields_json use row-level LWW/conflict handling",
+            merge_notes: "tags_json uses set union; images_json/extra_fields_json use row-level LWW/conflict handling; APKG rows use id-based identity while generated cards retain content deduplication",
         },
         TableClassification {
             database: "mistakes",
@@ -658,8 +668,8 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             category: SyncCategory::RowSync,
             conflict_policy: ConflictPolicyClass::Lww,
             business_unique_keys: "",
-            has_json_blobs: false,
-            merge_notes: "Append-only review events; UUID primary keys avoid cross-device collisions",
+            has_json_blobs: true,
+            merge_notes: "Review events carry immutable state_before_json snapshots; undo uses a synced soft-delete tombstone",
         },
         // --- LocalRuntime ---
         TableClassification {

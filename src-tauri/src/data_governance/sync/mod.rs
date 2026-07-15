@@ -3609,7 +3609,7 @@ impl SyncManager {
             })?
             .clone();
 
-        let field_deltas = match obj.remove(SYNC_FIELD_DELTAS_KEY) {
+        let mut field_deltas = match obj.remove(SYNC_FIELD_DELTAS_KEY) {
             Some(serde_json::Value::Object(map)) => Some(map),
             Some(serde_json::Value::Null) | None => None,
             Some(other) => {
@@ -3619,6 +3619,14 @@ impl SyncManager {
                 )));
             }
         };
+
+        // Index lifecycle is local derived state.  Older peers may still send
+        // these columns, so strip them on ingress as well as excluding them on
+        // egress.  A receiving device must build its own Lance rows.
+        obj.retain(|column, _| !Self::is_local_derived_sync_column(table_name, column));
+        if let Some(deltas) = field_deltas.as_mut() {
+            deltas.retain(|column, _| !Self::is_local_derived_sync_column(table_name, column));
+        }
 
         if obj.is_empty() {
             return Err(SyncError::Database(format!("记录数据为空: {}", record_id)));
@@ -3833,6 +3841,101 @@ impl SyncManager {
                         )));
                     }
                 }
+            }
+        }
+
+        if table_name == "resources" {
+            let table_columns: HashSet<String> = Self::table_column_names(conn, table_name)?
+                .into_iter()
+                .collect();
+            let reset_candidates = [
+                (
+                    "index_state",
+                    "index_state = CASE WHEN index_state = 'disabled' THEN 'disabled' ELSE 'pending' END",
+                ),
+                ("index_hash", "index_hash = NULL"),
+                ("index_error", "index_error = NULL"),
+                ("indexed_at", "indexed_at = NULL"),
+                ("index_retry_count", "index_retry_count = 0"),
+                ("index_next_retry_at", "index_next_retry_at = 0"),
+                ("index_generation", "index_generation = 0"),
+                (
+                    "mm_index_state",
+                    "mm_index_state = CASE WHEN mm_index_state IS NULL THEN NULL WHEN mm_index_state = 'disabled' THEN 'disabled' ELSE 'pending' END",
+                ),
+                ("mm_index_error", "mm_index_error = NULL"),
+                ("mm_indexed_at", "mm_indexed_at = NULL"),
+                ("mm_embedding_dim", "mm_embedding_dim = NULL"),
+                ("mm_indexing_mode", "mm_indexing_mode = NULL"),
+                ("mm_index_retry_count", "mm_index_retry_count = 0"),
+                ("mm_index_next_retry_at", "mm_index_next_retry_at = 0"),
+                ("mm_index_generation", "mm_index_generation = 0"),
+            ];
+            let reset_assignments: Vec<&str> = reset_candidates
+                .iter()
+                .filter_map(|(column, assignment)| {
+                    table_columns.contains(*column).then_some(*assignment)
+                })
+                .collect();
+
+            if !reset_assignments.is_empty() {
+                let reset_sql = format!(
+                    "UPDATE {} SET {} WHERE {}",
+                    table_ident,
+                    reset_assignments.join(", "),
+                    pk_predicate
+                );
+                let pk_params: Vec<&dyn rusqlite::ToSql> = pk_values
+                    .iter()
+                    .map(|value| value as &dyn rusqlite::ToSql)
+                    .collect();
+                conn.execute(&reset_sql, pk_params.as_slice())
+                    .map_err(|error| {
+                        SyncError::Database(format!(
+                            "远端资源落地后重置本机派生索引状态失败: {}",
+                            error
+                        ))
+                    })?;
+            }
+        } else if matches!(table_name, "files" | "exam_sheets") {
+            let table_columns: HashSet<String> = Self::table_column_names(conn, table_name)?
+                .into_iter()
+                .collect();
+            let reset_candidates = [
+                (
+                    "mm_index_state",
+                    "mm_index_state = CASE WHEN mm_index_state IS NULL THEN NULL WHEN mm_index_state = 'disabled' THEN 'disabled' ELSE 'pending' END",
+                ),
+                ("mm_index_error", "mm_index_error = NULL"),
+                ("mm_indexed_pages_json", "mm_indexed_pages_json = NULL"),
+                ("mm_embedding_dim", "mm_embedding_dim = NULL"),
+                ("mm_indexing_mode", "mm_indexing_mode = NULL"),
+                ("mm_indexed_at", "mm_indexed_at = NULL"),
+            ];
+            let reset_assignments: Vec<&str> = reset_candidates
+                .iter()
+                .filter_map(|(column, assignment)| {
+                    table_columns.contains(*column).then_some(*assignment)
+                })
+                .collect();
+            if !reset_assignments.is_empty() {
+                let reset_sql = format!(
+                    "UPDATE {} SET {} WHERE {}",
+                    table_ident,
+                    reset_assignments.join(", "),
+                    pk_predicate
+                );
+                let pk_params: Vec<&dyn rusqlite::ToSql> = pk_values
+                    .iter()
+                    .map(|value| value as &dyn rusqlite::ToSql)
+                    .collect();
+                conn.execute(&reset_sql, pk_params.as_slice())
+                    .map_err(|error| {
+                        SyncError::Database(format!(
+                            "远端业务记录落地后重置本机多模态派生状态失败: {}",
+                            error
+                        ))
+                    })?;
             }
         }
 
@@ -7062,6 +7165,39 @@ impl SyncManager {
     }
 
     /// 获取表的所有列名
+    fn is_local_derived_sync_column(table_name: &str, column: &str) -> bool {
+        match table_name {
+            "resources" => matches!(
+                column,
+                "index_state"
+                    | "index_hash"
+                    | "index_error"
+                    | "indexed_at"
+                    | "index_retry_count"
+                    | "index_next_retry_at"
+                    | "index_generation"
+                    | "mm_index_state"
+                    | "mm_index_error"
+                    | "mm_index_retry_count"
+                    | "mm_index_next_retry_at"
+                    | "mm_embedding_dim"
+                    | "mm_indexing_mode"
+                    | "mm_indexed_at"
+                    | "mm_index_generation"
+            ),
+            "files" | "exam_sheets" => matches!(
+                column,
+                "mm_index_state"
+                    | "mm_index_error"
+                    | "mm_indexed_pages_json"
+                    | "mm_embedding_dim"
+                    | "mm_indexing_mode"
+                    | "mm_indexed_at"
+            ),
+            _ => false,
+        }
+    }
+
     fn get_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<String>, SyncError> {
         Self::ensure_table_allowed_and_exists(conn, table_name)?;
         let table_ident = Self::quote_identifier(table_name)?;
@@ -7074,6 +7210,7 @@ impl SyncManager {
             .query_map([], |row| row.get::<_, String>(1))
             .map_err(|e| SyncError::Database(format!("查询列名失败: {}", e)))?
             .filter_map(log_and_skip_err)
+            .filter(|column| !Self::is_local_derived_sync_column(table_name, column))
             .collect();
 
         Ok(columns)
@@ -10615,6 +10752,244 @@ mod tests {
             .unwrap();
         assert_eq!(lv2, 2);
         assert_eq!(sv2, 2); // 已经相等，无变化
+    }
+
+    #[test]
+    fn remote_resource_apply_strips_and_resets_local_vector_index_lifecycle() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute(
+            "INSERT INTO resources
+             (id, hash, type, storage_mode, data, ref_count, created_at, updated_at)
+             VALUES ('res_sync_index', 'hash_sync_index', 'note', 'inline', 'local', 0, 1, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE resources SET
+                index_state = 'indexed', index_hash = 'local-index-hash',
+                index_error = 'local-error', indexed_at = 10,
+                index_retry_count = 4, index_next_retry_at = 99, index_generation = 7,
+                mm_index_state = NULL, mm_index_error = 'local-mm-error',
+                mm_index_retry_count = 5, mm_index_next_retry_at = 88,
+                mm_embedding_dim = 64, mm_indexing_mode = 'local-mode',
+                mm_indexed_at = 11, mm_index_generation = 6
+             WHERE id = 'res_sync_index'",
+            [],
+        )
+        .unwrap();
+
+        SyncManager::apply_single_record(
+            &conn,
+            "resources",
+            "res_sync_index",
+            &json!({
+                "id": "res_sync_index",
+                "hash": "hash_sync_index",
+                "type": "note",
+                "storage_mode": "inline",
+                "data": "remote",
+                "created_at": 1,
+                "updated_at": 2,
+                "index_state": "indexed",
+                "index_hash": "remote-index-hash",
+                "index_retry_count": 999,
+                "index_next_retry_at": 999,
+                "index_generation": 999,
+                "mm_index_state": "indexed",
+                "mm_index_retry_count": 999,
+                "mm_index_next_retry_at": 999,
+                "mm_embedding_dim": 4096,
+                "mm_indexing_mode": "remote-mode",
+                "mm_index_generation": 999
+            }),
+            Some("vfs"),
+            false,
+        )
+        .unwrap();
+
+        let state: (
+            String,
+            String,
+            Option<String>,
+            i32,
+            i64,
+            i64,
+            Option<String>,
+            Option<String>,
+            i32,
+            i64,
+            Option<i32>,
+            Option<String>,
+            i64,
+        ) = conn
+            .query_row(
+                "SELECT data, index_state, index_hash, index_retry_count,
+                        index_next_retry_at, index_generation, mm_index_state,
+                        mm_index_error, mm_index_retry_count, mm_index_next_retry_at,
+                        mm_embedding_dim, mm_indexing_mode, mm_index_generation
+                 FROM resources WHERE id = 'res_sync_index'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                        row.get(9)?,
+                        row.get(10)?,
+                        row.get(11)?,
+                        row.get(12)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(state.0, "remote");
+        assert_eq!(state.1, "pending");
+        assert_eq!(state.2, None);
+        assert_eq!((state.3, state.4, state.5), (0, 0, 0));
+        assert_eq!(state.6, None, "text-only resources stay outside MM queue");
+        assert_eq!(state.7, None);
+        assert_eq!((state.8, state.9), (0, 0));
+        assert_eq!(state.10, None);
+        assert_eq!(state.11, None);
+        assert_eq!(state.12, 0);
+
+        for column in [
+            "index_next_retry_at",
+            "index_generation",
+            "mm_index_next_retry_at",
+            "mm_index_generation",
+        ] {
+            assert!(SyncManager::is_local_derived_sync_column(
+                "resources",
+                column
+            ));
+        }
+    }
+
+    #[test]
+    fn remote_business_rows_keep_multimodal_index_fields_local() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute(
+            "INSERT INTO files
+             (id, sha256, file_name, size, created_at, updated_at,
+              mm_index_state, mm_index_error, mm_indexed_pages_json)
+             VALUES ('file_sync_mm', 'sha_sync_mm', 'local.pdf', 1, '1', '1',
+                     'indexed', 'local-error', '[{\"page\":1}]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO exam_sheets
+             (id, status, temp_id, metadata_json, preview_json, created_at, updated_at,
+              mm_index_state, mm_index_error, mm_indexed_pages_json,
+              mm_embedding_dim, mm_indexing_mode, mm_indexed_at)
+             VALUES ('exam_sync_mm', 'completed', 'temp_sync_mm', '{}', '{}', '1', '1',
+                     'indexed', 'local-error', '[{\"page\":1}]', 128, 'local-mode', 12)",
+            [],
+        )
+        .unwrap();
+
+        SyncManager::apply_single_record(
+            &conn,
+            "files",
+            "file_sync_mm",
+            &json!({
+                "id": "file_sync_mm",
+                "sha256": "sha_sync_mm",
+                "file_name": "remote.pdf",
+                "size": 1,
+                "created_at": "1",
+                "updated_at": "2",
+                "mm_index_state": "indexed",
+                "mm_index_error": "remote-error",
+                "mm_indexed_pages_json": [{"page": 999}]
+            }),
+            Some("vfs"),
+            false,
+        )
+        .unwrap();
+        SyncManager::apply_single_record(
+            &conn,
+            "exam_sheets",
+            "exam_sync_mm",
+            &json!({
+                "id": "exam_sync_mm",
+                "status": "completed",
+                "temp_id": "temp_sync_mm",
+                "metadata_json": "{}",
+                "preview_json": "{}",
+                "created_at": "1",
+                "updated_at": "2",
+                "mm_index_state": "indexed",
+                "mm_index_error": "remote-error",
+                "mm_indexed_pages_json": [{"page": 999}],
+                "mm_embedding_dim": 4096,
+                "mm_indexing_mode": "remote-mode",
+                "mm_indexed_at": 999
+            }),
+            Some("vfs"),
+            false,
+        )
+        .unwrap();
+
+        let file_state: (String, Option<String>, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT file_name, mm_index_state, mm_index_error, mm_indexed_pages_json
+                 FROM files WHERE id = 'file_sync_mm'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            file_state,
+            (
+                "remote.pdf".to_string(),
+                Some("pending".to_string()),
+                None,
+                None
+            )
+        );
+        let exam_state: (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+            Option<String>,
+            Option<i64>,
+        ) = conn
+            .query_row(
+                "SELECT mm_index_state, mm_index_error, mm_indexed_pages_json,
+                        mm_embedding_dim, mm_indexing_mode, mm_indexed_at
+                 FROM exam_sheets WHERE id = 'exam_sync_mm'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            exam_state,
+            (Some("pending".to_string()), None, None, None, None, None)
+        );
+        assert!(SyncManager::is_local_derived_sync_column(
+            "exam_sheets",
+            "mm_indexing_mode"
+        ));
     }
 
     #[test]

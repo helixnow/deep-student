@@ -1045,12 +1045,12 @@ mod integration_tests {
         assert_eq!(VFS_MIGRATION_SET.database_name, "vfs");
         assert_eq!(
             VFS_MIGRATION_SET.count(),
-            39,
+            crate::data_governance::migration::vfs::VFS_MIGRATIONS.len(),
             "VFS migration count mismatch"
         );
         assert_eq!(
             VFS_MIGRATION_SET.latest_version(),
-            20260615,
+            crate::data_governance::migration::vfs::VFS_SCHEMA_VERSION as i32,
             "VFS latest version mismatch"
         );
 

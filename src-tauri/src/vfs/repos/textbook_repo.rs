@@ -7,7 +7,7 @@
 //! - `get_textbook`: 获取教材元数据
 //! - `list_textbooks`: 列出教材
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::Value;
 use std::path::Path;
 use tracing::{debug, error, info, warn};
@@ -266,6 +266,7 @@ impl VfsTextbookRepo {
                 last_opened_at: None,
                 last_page: None,
                 bookmarks: vec![],
+                highlights: vec![],
                 cover_key: None,
                 status: "active".to_string(),
                 created_at: now.clone(),
@@ -427,11 +428,12 @@ impl VfsTextbookRepo {
     ) -> VfsResult<Option<VfsTextbook>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, blob_hash, sha256, file_name, original_path, size, page_count,
-                   tags_json, is_favorite, last_opened_at, last_page, bookmarks_json,
-                   cover_key, status, created_at, updated_at
-            FROM files
-            WHERE id = ?1
+            SELECT f.id, f.resource_id, f.blob_hash, f.sha256, f.file_name, f.original_path, f.size, f.page_count,
+                   f.tags_json, f.is_favorite, f.last_opened_at, f.last_page, f.bookmarks_json,
+                   f.cover_key, f.status, f.created_at, f.updated_at, r.metadata_json
+            FROM files f
+            LEFT JOIN resources r ON r.id = f.resource_id
+            WHERE f.id = ?1
             "#,
         )?;
 
@@ -455,11 +457,12 @@ impl VfsTextbookRepo {
     ) -> VfsResult<Option<VfsTextbook>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, blob_hash, sha256, file_name, original_path, size, page_count,
-                   tags_json, is_favorite, last_opened_at, last_page, bookmarks_json,
-                   cover_key, status, created_at, updated_at
-            FROM files
-            WHERE sha256 = ?1
+            SELECT f.id, f.resource_id, f.blob_hash, f.sha256, f.file_name, f.original_path, f.size, f.page_count,
+                   f.tags_json, f.is_favorite, f.last_opened_at, f.last_page, f.bookmarks_json,
+                   f.cover_key, f.status, f.created_at, f.updated_at, r.metadata_json
+            FROM files f
+            LEFT JOIN resources r ON r.id = f.resource_id
+            WHERE f.sha256 = ?1
             "#,
         )?;
 
@@ -492,12 +495,13 @@ impl VfsTextbookRepo {
     ) -> VfsResult<Vec<VfsTextbook>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, blob_hash, sha256, file_name, original_path, size, page_count,
-                   tags_json, is_favorite, last_opened_at, last_page, bookmarks_json,
-                   cover_key, status, created_at, updated_at
-            FROM files
-            WHERE status = 'active'
-            ORDER BY updated_at DESC
+            SELECT f.id, f.resource_id, f.blob_hash, f.sha256, f.file_name, f.original_path, f.size, f.page_count,
+                   f.tags_json, f.is_favorite, f.last_opened_at, f.last_page, f.bookmarks_json,
+                   f.cover_key, f.status, f.created_at, f.updated_at, r.metadata_json
+            FROM files f
+            LEFT JOIN resources r ON r.id = f.resource_id
+            WHERE f.status = 'active'
+            ORDER BY f.updated_at DESC
             LIMIT ?1 OFFSET ?2
             "#,
         )?;
@@ -531,13 +535,14 @@ impl VfsTextbookRepo {
         );
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, resource_id, blob_hash, sha256, file_name, original_path, size, page_count,
-                   tags_json, is_favorite, last_opened_at, last_page, bookmarks_json,
-                   cover_key, status, created_at, updated_at
-            FROM files
-            WHERE status = 'active'
-              AND (file_name LIKE ?1 ESCAPE '\' OR COALESCE(original_path, '') LIKE ?1 ESCAPE '\')
-            ORDER BY updated_at DESC
+            SELECT f.id, f.resource_id, f.blob_hash, f.sha256, f.file_name, f.original_path, f.size, f.page_count,
+                   f.tags_json, f.is_favorite, f.last_opened_at, f.last_page, f.bookmarks_json,
+                   f.cover_key, f.status, f.created_at, f.updated_at, r.metadata_json
+            FROM files f
+            LEFT JOIN resources r ON r.id = f.resource_id
+            WHERE f.status = 'active'
+              AND (f.file_name LIKE ?1 ESCAPE '\' OR COALESCE(f.original_path, '') LIKE ?1 ESCAPE '\')
+            ORDER BY f.updated_at DESC
             LIMIT ?2 OFFSET ?3
             "#,
         )?;
@@ -704,6 +709,146 @@ impl VfsTextbookRepo {
         )?;
 
         Ok(())
+    }
+
+    /// 以教材 `updated_at` 为 OCC 基线原子替换书签列表。
+    pub fn replace_bookmarks_if_version(
+        db: &VfsDatabase,
+        textbook_id: &str,
+        bookmarks: &[Value],
+        expected_updated_at: &str,
+    ) -> VfsResult<VfsTextbook> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let current =
+            Self::get_textbook_with_conn(&tx, textbook_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "Textbook".to_string(),
+                id: textbook_id.to_string(),
+            })?;
+        ensure_annotation_revision(&current, expected_updated_at)?;
+
+        let bookmarks_json = serde_json::to_string(bookmarks)
+            .map_err(|error| VfsError::Serialization(error.to_string()))?;
+        let next_updated_at = next_annotation_revision(&current.updated_at);
+        let changed = tx.execute(
+            "UPDATE files SET bookmarks_json = ?1, updated_at = ?2 WHERE id = ?3 AND updated_at = ?4",
+            params![bookmarks_json, next_updated_at, textbook_id, current.updated_at],
+        )?;
+        if changed != 1 {
+            return Err(VfsError::Conflict {
+                key: "textbooks.annotations_conflict".to_string(),
+                message: "The textbook annotations changed before the bookmark update committed."
+                    .to_string(),
+            });
+        }
+
+        let updated =
+            Self::get_textbook_with_conn(&tx, textbook_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "Textbook".to_string(),
+                id: textbook_id.to_string(),
+            })?;
+        tx.commit()?;
+        Ok(updated)
+    }
+
+    /// 以教材 `updated_at` 为 OCC 基线，把高亮写入 DSTU resource metadata。
+    pub fn replace_highlights_if_version(
+        db: &VfsDatabase,
+        textbook_id: &str,
+        highlights: &[Value],
+        expected_updated_at: &str,
+    ) -> VfsResult<VfsTextbook> {
+        const MAX_ANNOTATION_METADATA_BYTES: usize = 512 * 1024;
+
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let current =
+            Self::get_textbook_with_conn(&tx, textbook_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "Textbook".to_string(),
+                id: textbook_id.to_string(),
+            })?;
+        ensure_annotation_revision(&current, expected_updated_at)?;
+        let resource_id = current
+            .resource_id
+            .as_deref()
+            .ok_or_else(|| VfsError::InvalidState {
+                message: format!("Textbook {} has no associated VFS resource", textbook_id),
+            })?;
+
+        let raw_metadata: Option<Option<String>> = tx
+            .query_row(
+                "SELECT metadata_json FROM resources WHERE id = ?1",
+                params![resource_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?;
+        let raw_metadata = raw_metadata.ok_or_else(|| VfsError::NotFound {
+            resource_type: "Resource".to_string(),
+            id: resource_id.to_string(),
+        })?;
+        let mut metadata = match raw_metadata {
+            Some(raw) => serde_json::from_str::<Value>(&raw)
+                .map_err(|error| VfsError::Serialization(error.to_string()))?,
+            None => serde_json::json!({}),
+        };
+        let metadata_object = metadata.as_object_mut().ok_or_else(|| {
+            VfsError::Serialization("Textbook resource metadata must be a JSON object".to_string())
+        })?;
+        let extra = metadata_object
+            .entry("extra")
+            .or_insert_with(|| serde_json::json!({}));
+        let extra_object = extra.as_object_mut().ok_or_else(|| {
+            VfsError::Serialization(
+                "Textbook resource metadata.extra must be a JSON object".to_string(),
+            )
+        })?;
+        extra_object.insert("highlights".to_string(), Value::Array(highlights.to_vec()));
+
+        let serialized = serde_json::to_string(&metadata)
+            .map_err(|error| VfsError::Serialization(error.to_string()))?;
+        if serialized.len() > MAX_ANNOTATION_METADATA_BYTES {
+            return Err(VfsError::InvalidArgument {
+                param: "highlights".to_string(),
+                reason: format!(
+                    "serialized annotation metadata exceeds {} bytes",
+                    MAX_ANNOTATION_METADATA_BYTES
+                ),
+            });
+        }
+
+        let next_updated_at = next_annotation_revision(&current.updated_at);
+        let now_ms = chrono::DateTime::parse_from_rfc3339(&next_updated_at)
+            .map(|value| value.timestamp_millis())
+            .unwrap_or_else(|_| chrono::Utc::now().timestamp_millis());
+        let resource_changed = tx.execute(
+            "UPDATE resources SET metadata_json = ?1, updated_at = ?2 WHERE id = ?3",
+            params![serialized, now_ms, resource_id],
+        )?;
+        if resource_changed != 1 {
+            return Err(VfsError::NotFound {
+                resource_type: "Resource".to_string(),
+                id: resource_id.to_string(),
+            });
+        }
+        let file_changed = tx.execute(
+            "UPDATE files SET updated_at = ?1 WHERE id = ?2 AND updated_at = ?3",
+            params![next_updated_at, textbook_id, current.updated_at],
+        )?;
+        if file_changed != 1 {
+            return Err(VfsError::Conflict {
+                key: "textbooks.annotations_conflict".to_string(),
+                message: "The textbook annotations changed before the highlight update committed."
+                    .to_string(),
+            });
+        }
+
+        let updated =
+            Self::get_textbook_with_conn(&tx, textbook_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "Textbook".to_string(),
+                id: textbook_id.to_string(),
+            })?;
+        tx.commit()?;
+        Ok(updated)
     }
 
     // ========================================================================
@@ -1104,12 +1249,13 @@ impl VfsTextbookRepo {
         offset: u32,
     ) -> VfsResult<Vec<VfsTextbook>> {
         let sql = r#"
-            SELECT id, resource_id, blob_hash, sha256, file_name, original_path, size, page_count,
-                   tags_json, is_favorite, last_opened_at, last_page, bookmarks_json,
-                   cover_key, status, created_at, updated_at
-            FROM files
-            WHERE status = 'deleted'
-            ORDER BY updated_at DESC
+            SELECT f.id, f.resource_id, f.blob_hash, f.sha256, f.file_name, f.original_path, f.size, f.page_count,
+                   f.tags_json, f.is_favorite, f.last_opened_at, f.last_page, f.bookmarks_json,
+                   f.cover_key, f.status, f.created_at, f.updated_at, r.metadata_json
+            FROM files f
+            LEFT JOIN resources r ON r.id = f.resource_id
+            WHERE f.status = 'deleted'
+            ORDER BY f.updated_at DESC
             LIMIT ?1 OFFSET ?2
         "#;
 
@@ -1171,9 +1317,21 @@ impl VfsTextbookRepo {
     fn row_to_textbook(row: &rusqlite::Row) -> rusqlite::Result<VfsTextbook> {
         let tags_json: String = row.get(8)?;
         let bookmarks_json: String = row.get(12)?;
+        let resource_metadata_json: Option<String> = row.get(17)?;
 
         let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
         let bookmarks: Vec<Value> = serde_json::from_str(&bookmarks_json).unwrap_or_default();
+        let highlights: Vec<Value> = resource_metadata_json
+            .as_deref()
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            .and_then(|metadata| {
+                metadata
+                    .get("extra")?
+                    .get("highlights")?
+                    .as_array()
+                    .cloned()
+            })
+            .unwrap_or_default();
 
         Ok(VfsTextbook {
             id: row.get(0)?,
@@ -1189,6 +1347,7 @@ impl VfsTextbookRepo {
             last_opened_at: row.get(10)?,
             last_page: row.get(11)?,
             bookmarks,
+            highlights,
             cover_key: row.get(13)?,
             status: row.get(14)?,
             created_at: row.get(15)?,
@@ -1374,8 +1533,9 @@ impl VfsTextbookRepo {
         let sql = r#"
             SELECT t.id, t.resource_id, t.blob_hash, t.sha256, t.file_name, t.original_path, t.size, t.page_count,
                    t.tags_json, t.is_favorite, t.last_opened_at, t.last_page, t.bookmarks_json,
-                   t.cover_key, t.status, t.created_at, t.updated_at
+                   t.cover_key, t.status, t.created_at, t.updated_at, r.metadata_json
             FROM files t
+            LEFT JOIN resources r ON r.id = t.resource_id
             JOIN folder_items fi ON fi.item_type = 'file' AND fi.item_id = t.id
             WHERE fi.folder_id IS ?1 AND t.status = 'active'
             ORDER BY fi.sort_order ASC, t.updated_at DESC
@@ -1865,6 +2025,28 @@ impl VfsTextbookRepo {
         );
         Ok(())
     }
+}
+
+fn ensure_annotation_revision(textbook: &VfsTextbook, expected_updated_at: &str) -> VfsResult<()> {
+    if textbook.updated_at == expected_updated_at {
+        return Ok(());
+    }
+    Err(VfsError::Conflict {
+        key: "textbooks.annotations_conflict".to_string(),
+        message: format!(
+            "The textbook annotations changed (expected {}, current {}).",
+            expected_updated_at, textbook.updated_at
+        ),
+    })
+}
+
+fn next_annotation_revision(current: &str) -> String {
+    let now = chrono::Utc::now();
+    let next = chrono::DateTime::parse_from_rfc3339(current)
+        .map(|value| value.with_timezone(&chrono::Utc) + chrono::Duration::milliseconds(1))
+        .map(|minimum| now.max(minimum))
+        .unwrap_or(now);
+    next.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 
 // ============================================================================

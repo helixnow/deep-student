@@ -658,6 +658,47 @@ impl VfsNoteRepo {
         Self::delete_note_with_conn(&conn, note_id)
     }
 
+    /// Soft-delete a note only when the caller's OCC baseline is current.
+    pub fn delete_note_if_version(
+        db: &VfsDatabase,
+        note_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<()> {
+        let conn = db.get_conn_safe()?;
+        let now = next_updated_at(expected_updated_at);
+        let updated = conn.execute(
+            "UPDATE notes SET deleted_at = ?1, updated_at = ?1 \
+             WHERE id = ?2 AND deleted_at IS NULL AND updated_at = ?3",
+            params![now, note_id, expected_updated_at],
+        )?;
+        if updated == 1 {
+            info!("[VFS::NoteRepo] OCC soft deleted note: {}", note_id);
+            return Ok(());
+        }
+
+        let state: Option<(String, Option<String>)> = conn
+            .query_row(
+                "SELECT updated_at, deleted_at FROM notes WHERE id = ?1",
+                params![note_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        match state {
+            None => Err(VfsError::NotFound {
+                resource_type: "Note".to_string(),
+                id: note_id.to_string(),
+            }),
+            Some((_actual, Some(_))) => Ok(()),
+            Some((actual, None)) => Err(VfsError::Conflict {
+                key: "notes.conflict".to_string(),
+                message: format!(
+                    "The note changed before deletion (expected {}, actual {}).",
+                    expected_updated_at, actual
+                ),
+            }),
+        }
+    }
+
     /// 软删除笔记（使用现有连接）
     ///
     /// ★ M-009 修复：软删除操作为幂等的。

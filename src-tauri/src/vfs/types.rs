@@ -400,6 +400,10 @@ pub struct VfsTextbook {
     #[serde(default)]
     pub bookmarks: Vec<Value>,
 
+    /// PDF 高亮批注（持久化于关联 resources.metadata_json.extra.highlights）
+    #[serde(default)]
+    pub highlights: Vec<Value>,
+
     /// 封面缓存键
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover_key: Option<String>,
@@ -2401,61 +2405,44 @@ pub struct ResourceInjectModes {
 //
 // ref_handlers.rs 和 vfs_resolver.rs 共享同一默认值，
 // 确保首次发送与编辑重发的行为一致。
-// 默认最大化策略：给模型尽可能多的信息。
+// 默认保留源信息，但避免重复注入 OCR：图片为原图，PDF 为原生文本 + 页面原图。
 // ============================================================================
 
 /// 解析图片注入模式，返回 (include_image, include_ocr, downgraded_non_multimodal)
 ///
-/// 当用户未显式选择模式时，使用最大化默认值 (image + ocr)。
-/// 非多模态模型自动降级：移除 image 模式。
+/// 当用户未显式选择模式时，仅注入原图；OCR 只在显式选择时注入。
+/// 模式不随当前模型能力改写，TM 的视觉降级由 Chat context compiler 统一处理。
 pub fn resolve_image_inject_modes(
     image_modes: Option<&Vec<ImageInjectMode>>,
-    is_multimodal: bool,
+    _is_multimodal: bool,
 ) -> (bool, bool, bool) {
-    let (mut include_image, include_ocr) = match image_modes {
+    let (include_image, include_ocr) = match image_modes {
         Some(modes) if !modes.is_empty() => (
             modes.contains(&ImageInjectMode::Image),
             modes.contains(&ImageInjectMode::Ocr),
         ),
-        // 默认最大化：图片 + OCR 同时注入
-        _ => (true, true),
+        _ => (true, false),
     };
-
-    let downgraded_non_multimodal = !is_multimodal && include_image;
-    if downgraded_non_multimodal {
-        include_image = false;
-    }
-    (include_image, include_ocr, downgraded_non_multimodal)
+    (include_image, include_ocr, false)
 }
 
 /// 解析 PDF 注入模式，返回 (include_text, include_ocr, include_image, downgraded_non_multimodal)
 ///
-/// 当用户未显式选择模式时，使用最大化默认值 (text + ocr + image)。
-/// 非多模态模型自动降级：移除 image 模式。
+/// 当用户未显式选择模式时，注入原生文本和页面原图，不重复注入 OCR。
+/// 模式不随当前模型能力改写，TM 的视觉降级由 Chat context compiler 统一处理。
 pub fn resolve_pdf_inject_modes(
     pdf_modes: Option<&Vec<PdfInjectMode>>,
-    is_multimodal: bool,
+    _is_multimodal: bool,
 ) -> (bool, bool, bool, bool) {
-    let (include_text, include_ocr, mut include_image) = match pdf_modes {
+    let (include_text, include_ocr, include_image) = match pdf_modes {
         Some(modes) if !modes.is_empty() => (
             modes.contains(&PdfInjectMode::Text),
             modes.contains(&PdfInjectMode::Ocr),
             modes.contains(&PdfInjectMode::Image),
         ),
-        // 默认最大化：text + ocr + image
-        _ => (true, true, true),
+        _ => (true, false, true),
     };
-
-    let downgraded_non_multimodal = !is_multimodal && include_image;
-    if downgraded_non_multimodal {
-        include_image = false;
-    }
-    (
-        include_text,
-        include_ocr,
-        include_image,
-        downgraded_non_multimodal,
-    )
+    (include_text, include_ocr, include_image, false)
 }
 
 /// VFS 资源引用（用于引用模式上下文注入）
@@ -3177,6 +3164,7 @@ mod tests {
             last_opened_at: None,
             last_page: Some(50),
             bookmarks: vec![],
+            highlights: vec![],
             cover_key: None,
             status: "active".to_string(),
             created_at: "2025-01-01".to_string(),

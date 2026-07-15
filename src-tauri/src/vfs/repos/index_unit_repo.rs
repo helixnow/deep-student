@@ -54,11 +54,15 @@ pub struct VfsIndexUnit {
     pub text_indexed_at: Option<i64>,
     pub text_chunk_count: i32,
     pub text_embedding_dim: Option<i32>,
+    pub text_profile_id: Option<String>,
+    pub text_generation: i64,
     pub mm_required: bool,
     pub mm_state: IndexState,
     pub mm_error: Option<String>,
     pub mm_indexed_at: Option<i64>,
     pub mm_embedding_dim: Option<i32>,
+    pub mm_profile_id: Option<String>,
+    pub mm_generation: i64,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -80,6 +84,15 @@ pub struct SyncUnitsResult {
     /// 同步后的 Units 列表
     pub units: Vec<VfsIndexUnit>,
     /// 被删除的 Units 关联的 LanceDB lance_row_ids（需要调用方清理 LanceDB）
+    pub orphaned_lance_row_ids: Vec<String>,
+}
+
+/// 多模态页面清单同步结果。
+#[derive(Debug, Clone)]
+pub struct SyncMultimodalUnitsResult {
+    /// 当前页面对应的 Units（顺序与输入一致）。
+    pub units: Vec<VfsIndexUnit>,
+    /// 已写入 `__lance_orphan_queue` 的历史 Lance row IDs。
     pub orphaned_lance_row_ids: Vec<String>,
 }
 
@@ -139,11 +152,15 @@ fn row_to_unit(row: &Row) -> rusqlite::Result<VfsIndexUnit> {
         text_indexed_at: row.get("text_indexed_at")?,
         text_chunk_count: row.get::<_, i32>("text_chunk_count").unwrap_or(0),
         text_embedding_dim: row.get("text_embedding_dim")?,
+        text_profile_id: row.get("text_profile_id").ok(),
+        text_generation: row.get("text_generation").unwrap_or(0),
         mm_required: row.get::<_, i32>("mm_required")? != 0,
         mm_state: IndexState::from_str(&row.get::<_, String>("mm_state")?),
         mm_error: row.get("mm_error")?,
         mm_indexed_at: row.get("mm_indexed_at")?,
         mm_embedding_dim: row.get("mm_embedding_dim")?,
+        mm_profile_id: row.get("mm_profile_id").ok(),
+        mm_generation: row.get("mm_generation").unwrap_or(0),
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
@@ -247,11 +264,15 @@ pub fn update(conn: &Connection, unit: &VfsIndexUnit) -> Result<(), VfsError> {
             text_indexed_at = ?10,
             text_chunk_count = ?11,
             text_embedding_dim = ?12,
+            text_profile_id = ?19,
+            text_generation = ?20,
             mm_required = ?13,
             mm_state = ?14,
             mm_error = ?15,
             mm_indexed_at = ?16,
             mm_embedding_dim = ?17,
+            mm_profile_id = ?21,
+            mm_generation = ?22,
             updated_at = ?18
         WHERE id = ?1",
         params![
@@ -273,8 +294,82 @@ pub fn update(conn: &Connection, unit: &VfsIndexUnit) -> Result<(), VfsError> {
             unit.mm_indexed_at,
             unit.mm_embedding_dim,
             now,
+            unit.text_profile_id,
+            unit.text_generation,
+            unit.mm_profile_id,
+            unit.mm_generation,
         ],
     )?;
+    Ok(())
+}
+
+/// Persist the vector-space identity used by a Unit.  Segment creation reads
+/// this value automatically, keeping existing CreateSegmentInput call sites
+/// source-compatible.
+pub fn set_index_profile(
+    conn: &Connection,
+    unit_id: &str,
+    modality: &str,
+    profile_id: &str,
+    generation: i64,
+) -> Result<(), VfsError> {
+    if generation < 0 {
+        return Err(VfsError::InvalidArgument {
+            param: "generation".to_string(),
+            reason: "Generation must be non-negative".to_string(),
+        });
+    }
+    let (profile_column, generation_column) = match modality {
+        "text" => ("text_profile_id", "text_generation"),
+        "image" | "multimodal" => ("mm_profile_id", "mm_generation"),
+        _ => {
+            return Err(VfsError::InvalidArgument {
+                param: "modality".to_string(),
+                reason: format!("Unsupported modality: {}", modality),
+            })
+        }
+    };
+    let writable: bool = conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1
+            FROM vfs_index_profiles p
+            JOIN vfs_embedding_dims d
+              ON d.active_profile_id = p.id
+             AND d.dimension = p.dimension
+             AND d.modality = p.modality
+            WHERE p.id = ?1
+              AND p.modality = ?2
+              AND p.state IN ('active', 'building')
+        )",
+        params![
+            profile_id,
+            if modality == "image" {
+                "multimodal"
+            } else {
+                modality
+            }
+        ],
+        |row| row.get(0),
+    )?;
+    if !writable {
+        return Err(VfsError::InvalidState {
+            message: format!(
+                "Index profile {} is no longer writable for modality {}",
+                profile_id, modality
+            ),
+        });
+    }
+    let sql = format!(
+        "UPDATE vfs_index_units SET {} = ?2, {} = ?3, updated_at = ?4 WHERE id = ?1",
+        profile_column, generation_column
+    );
+    let updated = conn.execute(&sql, params![unit_id, profile_id, generation, now_ms()])?;
+    if updated == 0 {
+        return Err(VfsError::NotFound {
+            resource_type: "IndexUnit".to_string(),
+            id: unit_id.to_string(),
+        });
+    }
     Ok(())
 }
 
@@ -308,11 +403,16 @@ pub fn purge_index_artifacts_by_resource(
     resource_id: &str,
 ) -> Result<i64, VfsError> {
     conn.execute(
-        r#"INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id)
+        r#"INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
            SELECT s.lance_row_id, u.resource_id
            FROM vfs_index_segments s
            JOIN vfs_index_units u ON s.unit_id = u.id
-           WHERE u.resource_id = ?1"#,
+           WHERE u.resource_id = ?1
+           ON CONFLICT(lance_row_id) DO UPDATE SET
+               resource_id = excluded.resource_id,
+               enqueued_at = excluded.enqueued_at,
+               next_retry_at = 0,
+               last_error = NULL"#,
         params![resource_id],
     )?;
     let rows = conn.execute(
@@ -328,11 +428,16 @@ pub fn purge_index_artifacts_by_resource(
 /// 返回清理的 unit 行数。
 pub fn sweep_orphan_index_units(conn: &Connection) -> Result<i64, VfsError> {
     conn.execute(
-        r#"INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id)
+        r#"INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
            SELECT s.lance_row_id, u.resource_id
            FROM vfs_index_segments s
            JOIN vfs_index_units u ON s.unit_id = u.id
-           WHERE NOT EXISTS (SELECT 1 FROM resources r WHERE r.id = u.resource_id)"#,
+           WHERE NOT EXISTS (SELECT 1 FROM resources r WHERE r.id = u.resource_id)
+           ON CONFLICT(lance_row_id) DO UPDATE SET
+               resource_id = excluded.resource_id,
+               enqueued_at = excluded.enqueued_at,
+               next_retry_at = 0,
+               last_error = NULL"#,
         [],
     )?;
     let rows = conn.execute(
@@ -619,6 +724,123 @@ pub fn sync_units(
     })
 }
 
+/// 同步资源的多模态页面，不覆盖已有 OCR/原生文本派生物。
+///
+/// 与 `sync_units` 不同，本函数只拥有 Unit 的图片侧字段和 `mm_*` 状态：
+/// - 页面图片变化或 `force_rebuild` 时将对应 Unit 置为 pending；
+/// - 页面消失时仅禁用该 Unit 的多模态侧，并将旧 Segment 写入孤儿队列；
+/// - Unit 的文本字段和文本索引状态始终保留。
+pub fn sync_multimodal_units(
+    conn: &Connection,
+    resource_id: &str,
+    inputs: Vec<CreateUnitInput>,
+    force_rebuild: bool,
+) -> Result<SyncMultimodalUnitsResult, VfsError> {
+    let existing = get_by_resource(conn, resource_id)?;
+    let existing_map: std::collections::HashMap<i32, VfsIndexUnit> =
+        existing.into_iter().map(|u| (u.unit_index, u)).collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut units = Vec::with_capacity(inputs.len());
+
+    for input in inputs {
+        if !seen.insert(input.unit_index) {
+            return Err(VfsError::Other(format!(
+                "duplicate multimodal page index {} for resource {}",
+                input.unit_index, resource_id
+            )));
+        }
+        if input.image_blob_hash.is_none() {
+            return Err(VfsError::Other(format!(
+                "multimodal page {} for resource {} is missing blob_hash",
+                input.unit_index, resource_id
+            )));
+        }
+
+        if let Some(existing_unit) = existing_map.get(&input.unit_index) {
+            let image_changed = existing_unit.image_blob_hash != input.image_blob_hash
+                || existing_unit.image_mime_type != input.image_mime_type;
+            let mut updated = existing_unit.clone();
+            updated.image_blob_hash = input.image_blob_hash;
+            updated.image_mime_type = input.image_mime_type;
+            updated.mm_required = true;
+            if image_changed || force_rebuild {
+                updated.mm_state = IndexState::Pending;
+                updated.mm_error = None;
+                updated.mm_indexed_at = None;
+                updated.mm_embedding_dim = None;
+            }
+            update(conn, &updated)?;
+            units.push(
+                get_by_id(conn, &updated.id)?.ok_or_else(|| VfsError::NotFound {
+                    resource_type: "Unit".to_string(),
+                    id: updated.id.clone(),
+                })?,
+            );
+        } else {
+            units.push(create(conn, input)?);
+        }
+    }
+
+    let mut orphaned_lance_row_ids = Vec::new();
+    for (index, existing_unit) in existing_map {
+        if seen.contains(&index) {
+            continue;
+        }
+        let ids = super::index_segment_repo::list_lance_row_ids_by_unit_and_modality(
+            conn,
+            &existing_unit.id,
+            super::embedding_repo::MODALITY_MULTIMODAL,
+        )?;
+        orphaned_lance_row_ids.extend(ids);
+        super::index_segment_repo::replace_by_unit_and_modality(
+            conn,
+            resource_id,
+            &existing_unit.id,
+            super::embedding_repo::MODALITY_MULTIMODAL,
+            Vec::new(),
+        )?;
+
+        let mut updated = existing_unit;
+        updated.image_blob_hash = None;
+        updated.image_mime_type = None;
+        updated.mm_required = false;
+        updated.mm_state = IndexState::Disabled;
+        updated.mm_error = None;
+        updated.mm_indexed_at = None;
+        updated.mm_embedding_dim = None;
+        update(conn, &updated)?;
+    }
+
+    Ok(SyncMultimodalUnitsResult {
+        units,
+        orphaned_lance_row_ids,
+    })
+}
+
+/// 清除资源的多模态索引账本，保留 Unit 的文本侧数据。
+pub fn clear_multimodal_index(conn: &Connection, resource_id: &str) -> Result<i64, VfsError> {
+    let removed = super::index_segment_repo::enqueue_and_delete_by_resource_and_modality(
+        conn,
+        resource_id,
+        super::embedding_repo::MODALITY_MULTIMODAL,
+    )?;
+    let now = now_ms();
+    conn.execute(
+        "UPDATE vfs_index_units SET
+            mm_required = 0,
+            mm_state = 'disabled',
+            mm_error = NULL,
+            mm_indexed_at = NULL,
+            mm_embedding_dim = NULL,
+            mm_profile_id = NULL,
+            mm_generation = 0,
+            updated_at = ?2
+         WHERE resource_id = ?1",
+        params![resource_id, now],
+    )?;
+    Ok(removed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -724,5 +946,50 @@ mod tests {
             )
             .unwrap();
         assert_eq!(queued, 1, "orphan lance row must be enqueued");
+    }
+
+    #[test]
+    fn sync_multimodal_page_rehashes_image_and_preserves_text() {
+        let (_tmp, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO resources (id, hash, type, storage_mode, data, ref_count, created_at, updated_at)
+             VALUES ('res_mm_rehash', 'resource_hash', 'file', 'inline', '', 0, ?1, ?1)",
+            params![now],
+        )
+        .unwrap();
+        let created = create(
+            &conn,
+            CreateUnitInput {
+                resource_id: "res_mm_rehash".to_string(),
+                unit_index: 0,
+                image_blob_hash: Some("blob_old".to_string()),
+                image_mime_type: Some("image/png".to_string()),
+                text_content: Some("preserved OCR".to_string()),
+                text_source: Some("ocr".to_string()),
+            },
+        )
+        .unwrap();
+        let old_hash = created.content_hash.unwrap();
+
+        let synced = sync_multimodal_units(
+            &conn,
+            "res_mm_rehash",
+            vec![CreateUnitInput {
+                resource_id: "res_mm_rehash".to_string(),
+                unit_index: 0,
+                image_blob_hash: Some("blob_new".to_string()),
+                image_mime_type: Some("image/webp".to_string()),
+                text_content: None,
+                text_source: None,
+            }],
+            false,
+        )
+        .unwrap();
+        let updated = &synced.units[0];
+        assert_ne!(updated.content_hash.as_deref(), Some(old_hash.as_str()));
+        assert_eq!(updated.text_content.as_deref(), Some("preserved OCR"));
+        assert_eq!(updated.mm_state, IndexState::Pending);
     }
 }

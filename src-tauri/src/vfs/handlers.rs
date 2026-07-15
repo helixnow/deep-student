@@ -1961,7 +1961,7 @@ pub async fn vfs_upload_file(
     params: VfsUploadFileParams,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
-    database: State<'_, crate::database::Database>,
+    database: State<'_, Arc<crate::database::Database>>,
     pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
 ) -> Result<VfsUploadFileResult, String> {
     use crate::document_parser::DocumentParser;
@@ -2645,14 +2645,22 @@ pub struct VfsBlobBase64Result {
 /// ## 使用场景
 /// - RAG 检索结果中引用 PDF 页面时，前端调用此 API 获取页面图片
 /// - 支持 OCR + 文本索引（有预渲染）和多模态索引两种场景
-#[tauri::command]
-pub async fn vfs_get_pdf_page_image(
-    resource_id: String,
+pub(crate) struct PdfPageImageBytes {
+    pub bytes: Vec<u8>,
+    pub mime_type: String,
+    pub stored_size: i64,
+}
+
+/// Shared byte-level source used by both the Tauri command and the bounded
+/// Chat V2 tool. It deliberately selects the existing compressed preview blob
+/// when the PDF pipeline produced one.
+pub(crate) fn read_pdf_page_image_bytes(
+    vfs_db: &VfsDatabase,
+    resource_id: &str,
     page_index: usize,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
-) -> Result<VfsBlobBase64Result, String> {
+    max_bytes: Option<usize>,
+) -> Result<PdfPageImageBytes, String> {
     use crate::vfs::types::PdfPreviewJson;
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
     log::debug!(
         "[VFS::handlers] vfs_get_pdf_page_image: resource_id={}, page_index={}",
@@ -2773,11 +2781,26 @@ pub async fn vfs_get_pdf_page_image(
         .map_err(|e| format!("获取 blob 路径失败: {}", e))?
         .ok_or_else(|| format!("Blob 文件路径不存在: {}", blob_hash))?;
 
+    if let Some(max_bytes) = max_bytes {
+        let source_size = std::fs::metadata(&blob_path)
+            .map_err(|e| format!("读取 blob 元数据失败: {}", e))?
+            .len();
+        if source_size > max_bytes as u64 {
+            return Err(format!(
+                "PDF page image exceeds source limit: {} > {} bytes",
+                source_size, max_bytes
+            ));
+        }
+    }
+
     // 7. 读取文件内容
     let file_data = std::fs::read(&blob_path).map_err(|e| format!("读取 blob 文件失败: {}", e))?;
-
-    // 8. 转换为 base64
-    let base64_data = BASE64.encode(&file_data);
+    if max_bytes.is_some_and(|max_bytes| file_data.len() > max_bytes) {
+        return Err(format!(
+            "PDF page image exceeded source limit while reading: {} bytes",
+            file_data.len()
+        ));
+    }
 
     log::info!(
         "[VFS::handlers] vfs_get_pdf_page_image: resource_id={}, page_index={}, size={} bytes",
@@ -2786,10 +2809,26 @@ pub async fn vfs_get_pdf_page_image(
         file_data.len()
     );
 
-    Ok(VfsBlobBase64Result {
-        base64: base64_data,
+    Ok(PdfPageImageBytes {
+        bytes: file_data,
         mime_type,
-        size: blob.size,
+        stored_size: blob.size,
+    })
+}
+
+#[tauri::command]
+pub async fn vfs_get_pdf_page_image(
+    resource_id: String,
+    page_index: usize,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+) -> Result<VfsBlobBase64Result, String> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    let image = read_pdf_page_image_bytes(vfs_db.inner(), &resource_id, page_index, None)?;
+    Ok(VfsBlobBase64Result {
+        base64: BASE64.encode(&image.bytes),
+        mime_type: image.mime_type,
+        size: image.stored_size,
     })
 }
 
@@ -3035,6 +3074,34 @@ pub async fn vfs_get_pending_resources(
         .map_err(|e| e.to_string())
 }
 
+fn validate_embedding_model_config<'a>(
+    configs: &'a [crate::llm_manager::ApiConfig],
+    model_config_id: &str,
+    modality: &str,
+) -> Result<&'a crate::llm_manager::ApiConfig, String> {
+    let config = configs
+        .iter()
+        .find(|config| config.id == model_config_id)
+        .ok_or_else(|| format!("模型配置 {} 不存在", model_config_id))?;
+    let protocol_matches = match modality {
+        "text" => !config.is_multimodal,
+        "multimodal" => config.is_multimodal,
+        _ => return Err(format!("无效的嵌入模态: {}", modality)),
+    };
+    if !config.enabled
+        || !config.is_embedding
+        || config.is_reranker
+        || !protocol_matches
+        || config.model.trim().is_empty()
+    {
+        return Err(format!(
+            "模型配置 {} 已禁用或不支持 {} 嵌入协议",
+            model_config_id, modality
+        ));
+    }
+    Ok(config)
+}
+
 /// 为维度分配模型（用于跨维度检索）
 ///
 /// 模型分配是配置项，不是数据绑定。用户可以随时更改维度使用的模型。
@@ -3048,6 +3115,7 @@ pub async fn vfs_assign_dimension_model(
     model_config_id: String,
     model_name: String,
     database: State<'_, Arc<crate::database::Database>>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<bool, String> {
     log::info!(
@@ -3057,6 +3125,25 @@ pub async fn vfs_assign_dimension_model(
         model_config_id
     );
 
+    let configs = llm_manager
+        .get_api_configs()
+        .await
+        .map_err(|error| error.to_string())?;
+    let model_config =
+        validate_embedding_model_config(&configs, &model_config_id, &modality)?.clone();
+    if model_name != model_config.model {
+        log::warn!(
+            "[VFS::handlers] Ignoring client model name {:?}; authoritative model is {:?}",
+            model_name,
+            model_config.model
+        );
+    }
+    let model_fingerprint = crate::vfs::repos::embedding_dim_repo::model_fingerprint_for_config(
+        &model_config,
+        &modality,
+    )
+    .map_err(|error| error.to_string())?;
+
     // ★ 审计修复：统一使用 embedding_dim_repo（替代已废弃的 VfsDimensionRepo）
     let conn = vfs_db.get_conn().map_err(|e| e.to_string())?;
     let existing = crate::vfs::repos::embedding_dim_repo::get_by_key(&conn, dimension, &modality)
@@ -3064,12 +3151,13 @@ pub async fn vfs_assign_dimension_model(
     if existing.is_none() {
         return Err(format!("维度 {}:{} 不存在", dimension, modality));
     }
-    crate::vfs::repos::embedding_dim_repo::register_with_model(
+    crate::vfs::repos::embedding_dim_repo::register_with_model_fingerprint(
         &conn,
         dimension,
         &modality,
         Some(&model_config_id),
-        Some(&model_name),
+        Some(&model_config.model),
+        Some(&model_fingerprint),
     )
     .map_err(|e| e.to_string())?;
     drop(conn);
@@ -3113,6 +3201,7 @@ pub async fn vfs_create_dimension(
     modality: String,
     model_config_id: Option<String>,
     model_name: Option<String>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<crate::vfs::repos::embedding_dim_repo::VfsEmbeddingDim, String> {
     log::info!(
@@ -3122,15 +3211,51 @@ pub async fn vfs_create_dimension(
         model_config_id
     );
 
+    let resolved_model = if let Some(model_config_id) = model_config_id.as_deref() {
+        let configs = llm_manager
+            .get_api_configs()
+            .await
+            .map_err(|error| error.to_string())?;
+        let config = validate_embedding_model_config(&configs, model_config_id, &modality)?.clone();
+        if model_name
+            .as_deref()
+            .is_some_and(|name| name != config.model)
+        {
+            log::warn!(
+                "[VFS::handlers] Ignoring client model name for {}; authoritative model is {:?}",
+                model_config_id,
+                config.model
+            );
+        }
+        let fingerprint =
+            crate::vfs::repos::embedding_dim_repo::model_fingerprint_for_config(&config, &modality)
+                .map_err(|error| error.to_string())?;
+        Some((config, fingerprint))
+    } else {
+        if model_name.is_some() {
+            return Err("modelName 不能在 modelConfigId 缺失时单独使用".to_string());
+        }
+        None
+    };
+
     let conn = vfs_db.get_conn().map_err(|e| e.to_string())?;
-    crate::vfs::repos::embedding_dim_repo::create_dimension(
-        &conn,
-        dimension,
-        &modality,
-        model_config_id.as_deref(),
-        model_name.as_deref(),
-    )
-    .map_err(|e| e.to_string())
+    match resolved_model {
+        Some((config, fingerprint)) => {
+            crate::vfs::repos::embedding_dim_repo::register_with_model_fingerprint(
+                &conn,
+                dimension,
+                &modality,
+                Some(&config.id),
+                Some(&config.model),
+                Some(&fingerprint),
+            )
+            .map_err(|error| error.to_string())
+        }
+        None => crate::vfs::repos::embedding_dim_repo::create_dimension(
+            &conn, dimension, &modality, None, None,
+        )
+        .map_err(|error| error.to_string()),
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -4456,24 +4581,18 @@ pub async fn vfs_rag_search(
         top_k: input.top_k,
     };
 
-    // 执行检索（支持跨维度搜索）
-    let results = if input.enable_cross_dimension {
-        // 跨维度搜索：聚合所有已分配模型的维度
-        search_service
-            .search_cross_dimension_with_resource_info(
-                &input.query,
-                &params,
-                input.enable_reranking,
-            )
-            .await
-            .map_err(|e| e.to_string())?
-    } else {
-        // 普通搜索：只使用当前模型的维度
-        search_service
-            .search_with_resource_info(&input.query, &params, input.enable_reranking)
-            .await
-            .map_err(|e| e.to_string())?
-    };
+    // `enableCrossDimension` is retained for frontend compatibility. Both values now use the
+    // profile/fingerprint-aware planner and weighted RRF; `false` must not reopen the legacy
+    // dimension-only Lance path.
+    if !input.enable_cross_dimension {
+        log::debug!(
+            "[VFS::handlers] enableCrossDimension=false is compatibility-only; using unified planner"
+        );
+    }
+    let results = search_service
+        .search_cross_dimension_with_resource_info(&input.query, &params, input.enable_reranking)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let elapsed = start.elapsed();
     let count = results.len();
@@ -5329,10 +5448,14 @@ pub async fn vfs_reset_disabled_to_pending(
 
     let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
 
-    let updated = conn.execute(
-        "UPDATE resources SET index_state = 'pending', index_error = NULL WHERE index_state = 'disabled'",
-        [],
-    ).map_err(|e| e.to_string())?;
+    let updated = conn
+        .execute(
+            "UPDATE resources SET index_state = 'pending', index_error = NULL,
+            index_retry_count = 0, index_next_retry_at = 0
+         WHERE index_state = 'disabled'",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
 
     log::info!(
         "[VFS::handlers] Reset {} disabled resources to pending",
@@ -5356,7 +5479,8 @@ pub async fn vfs_reset_indexed_without_embeddings(
         .execute(
             r#"
         UPDATE resources
-        SET index_state = 'pending', index_error = NULL
+        SET index_state = 'pending', index_error = NULL,
+            index_retry_count = 0, index_next_retry_at = 0
         WHERE index_state = 'indexed'
           AND NOT EXISTS (
             SELECT 1 FROM vfs_index_units u
@@ -5429,9 +5553,11 @@ pub async fn vfs_reset_all_index_state(
             index_hash = NULL,
             index_error = NULL,
             index_retry_count = 0,
+            index_next_retry_at = 0,
             mm_index_state = 'pending',
             mm_index_error = NULL,
             mm_index_retry_count = 0,
+            mm_index_next_retry_at = 0,
             mm_embedding_dim = NULL,
             mm_indexing_mode = NULL,
             mm_indexed_at = NULL
@@ -5596,18 +5722,86 @@ pub async fn vfs_multimodal_index(
 }
 
 /// 多模态检索输入参数
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum VfsMultimodalQueryMode {
+    Text,
+    Image,
+    Mixed,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VfsMultimodalSearchInput {
-    /// 查询文本
-    pub query: String,
+    /// 旧调用方使用的查询文本。新调用方优先使用 `queryText`。
+    #[serde(default)]
+    pub query: Option<String>,
+    /// 多模态查询文本。
+    #[serde(default)]
+    pub query_text: Option<String>,
+    /// 原始图片 Base64（不含 data URL 前缀）。
+    #[serde(default)]
+    pub query_image_base64: Option<String>,
+    /// 图片 MIME；省略时默认 image/png。
+    #[serde(default)]
+    pub query_image_media_type: Option<String>,
+    /// 显式查询模式；省略时根据 text/image 字段推断。
+    #[serde(default)]
+    pub query_mode: Option<VfsMultimodalQueryMode>,
     /// 返回的最大结果数
     #[serde(default = "default_top_k")]
     pub top_k: usize,
     /// 文件夹 ID 过滤
     pub folder_ids: Option<Vec<String>>,
+    /// 资源 ID 过滤
+    pub resource_ids: Option<Vec<String>>,
     /// 资源类型过滤
     pub resource_types: Option<Vec<String>>,
+}
+
+impl VfsMultimodalSearchInput {
+    fn resolved_query(&self) -> Result<crate::multimodal::MultimodalInput, String> {
+        use crate::multimodal::MultimodalInput;
+
+        let text = self
+            .query_text
+            .as_deref()
+            .or(self.query.as_deref())
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let image = self
+            .query_image_base64
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let mode = self.query_mode.unwrap_or(match (text, image) {
+            (Some(_), Some(_)) => VfsMultimodalQueryMode::Mixed,
+            (None, Some(_)) => VfsMultimodalQueryMode::Image,
+            _ => VfsMultimodalQueryMode::Text,
+        });
+        let media_type = self
+            .query_image_media_type
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("image/png");
+
+        match mode {
+            VfsMultimodalQueryMode::Text => text
+                .map(MultimodalInput::text)
+                .ok_or_else(|| "text search requires queryText or query".to_string()),
+            VfsMultimodalQueryMode::Image => image
+                .map(|value| MultimodalInput::image_base64(value, media_type))
+                .ok_or_else(|| "image search requires queryImageBase64".to_string()),
+            VfsMultimodalQueryMode::Mixed => match (text, image) {
+                (Some(text), Some(image)) => {
+                    Ok(MultimodalInput::text_and_image(text, image, media_type))
+                }
+                (None, _) => Err("mixed search requires queryText or query".to_string()),
+                (_, None) => Err("mixed search requires queryImageBase64".to_string()),
+            },
+        }
+    }
 }
 
 fn default_top_k() -> usize {
@@ -5618,6 +5812,8 @@ fn default_top_k() -> usize {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VfsMultimodalSearchOutput {
+    /// Lance 行 ID
+    pub embedding_id: String,
     /// 资源 ID
     pub resource_id: String,
     /// 资源类型
@@ -5632,6 +5828,40 @@ pub struct VfsMultimodalSearchOutput {
     pub score: f32,
     /// 文件夹 ID
     pub folder_id: Option<String>,
+    /// multi-profile RRF 路由来源
+    pub retrieval_provenance: serde_json::Value,
+}
+
+async fn run_vfs_multimodal_search(
+    params: VfsMultimodalSearchInput,
+    vfs_db: Arc<VfsDatabase>,
+    llm_manager: Arc<crate::llm_manager::LLMManager>,
+    lance_store: Arc<crate::vfs::lance_store::VfsLanceStore>,
+) -> Result<crate::vfs::UnifiedRetrievalResponse, String> {
+    use crate::vfs::retrieval_planner::QueryModality;
+    use crate::vfs::{UnifiedRetrievalRequest, VfsUnifiedRetriever};
+
+    let resolved = params.resolved_query()?;
+    let query_modality = match (resolved.text.is_some(), resolved.image.is_some()) {
+        (true, true) => QueryModality::Mixed,
+        (false, true) => QueryModality::Image,
+        _ => QueryModality::Text,
+    };
+    let query_text = params.query_text.clone().or_else(|| params.query.clone());
+    let retriever = VfsUnifiedRetriever::new(vfs_db, lance_store, llm_manager);
+    retriever
+        .search_multimodal(UnifiedRetrievalRequest {
+            query_text,
+            query_image_base64: params.query_image_base64,
+            query_image_media_type: params.query_image_media_type,
+            query_modality,
+            top_k: params.top_k,
+            folder_ids: params.folder_ids,
+            resource_ids: params.resource_ids,
+            resource_types: params.resource_types,
+        })
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 多模态向量检索
@@ -5651,37 +5881,73 @@ pub async fn vfs_multimodal_search(
     llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<Vec<VfsMultimodalSearchOutput>, String> {
-    use crate::vfs::multimodal_service::VfsMultimodalService;
+    let response = run_vfs_multimodal_search(
+        params,
+        Arc::clone(vfs_db.inner()),
+        Arc::clone(llm_manager.inner()),
+        Arc::clone(lance_store.inner()),
+    )
+    .await?;
 
-    let lance_store = Arc::clone(lance_store.inner());
-
-    // 创建多模态服务
-    let service =
-        VfsMultimodalService::new(Arc::clone(&vfs_db), Arc::clone(&llm_manager), lance_store);
-
-    // 执行检索
-    let results = service
-        .search(
-            &params.query,
-            params.top_k,
-            params.folder_ids.as_deref(),
-            params.resource_types.as_deref(),
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(results
+    Ok(response
+        .result
+        .hits
         .into_iter()
-        .map(|r| VfsMultimodalSearchOutput {
-            resource_id: r.resource_id,
-            resource_type: r.resource_type,
-            page_index: r.page_index,
-            text_content: r.text_content,
-            blob_hash: r.blob_hash,
-            score: r.score,
-            folder_id: r.folder_id,
+        .map(|fused| VfsMultimodalSearchOutput {
+            embedding_id: fused.hit.embedding_id,
+            resource_id: fused.hit.identity.resource_id,
+            resource_type: fused
+                .hit
+                .resource_type
+                .unwrap_or_else(|| "unknown".to_string()),
+            page_index: fused
+                .hit
+                .identity
+                .page_index
+                .unwrap_or(fused.hit.identity.chunk_index),
+            text_content: Some(fused.hit.text),
+            blob_hash: fused.hit.blob_hash,
+            score: fused.rrf_score as f32,
+            folder_id: fused.hit.folder_id,
+            retrieval_provenance: serde_json::to_value(fused.provenance)
+                .unwrap_or(serde_json::Value::Null),
         })
         .collect())
+}
+
+/// 返回完整的多路检索诊断信息；旧的 `vfs_multimodal_search` 继续只返回扁平命中列表。
+#[tauri::command]
+pub async fn vfs_multimodal_search_detailed(
+    params: VfsMultimodalSearchInput,
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
+) -> Result<crate::vfs::UnifiedRetrievalResponse, String> {
+    run_vfs_multimodal_search(
+        params,
+        Arc::clone(vfs_db.inner()),
+        Arc::clone(llm_manager.inner()),
+        Arc::clone(lance_store.inner()),
+    )
+    .await
+}
+
+/// 只读能力检查。该命令不会创建、修复或重建 Lance 表/索引。
+#[tauri::command]
+pub async fn vfs_inspect_retrieval_capabilities(
+    vfs_db: State<'_, Arc<VfsDatabase>>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+    lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
+) -> Result<crate::vfs::CapabilitySnapshot, String> {
+    let retriever = crate::vfs::VfsUnifiedRetriever::new(
+        Arc::clone(vfs_db.inner()),
+        Arc::clone(lance_store.inner()),
+        Arc::clone(llm_manager.inner()),
+    );
+    retriever
+        .inspect_capabilities()
+        .await
+        .map_err(|error| error.to_string())
 }
 
 /// 获取 VFS 多模态索引统计
@@ -7266,6 +7532,20 @@ mod tests {
         assert_eq!(input.offset, 0); // default
     }
 
+    #[test]
+    fn rag_search_accepts_legacy_false_cross_dimension_flag() {
+        let input: VfsRagSearchInput = serde_json::from_value(serde_json::json!({
+            "query": "profile aware retrieval",
+            "enableCrossDimension": false,
+            "topK": 7
+        }))
+        .expect("deserialize compatibility flag");
+
+        assert!(!input.enable_cross_dimension);
+        assert_eq!(input.top_k, 7);
+        assert_eq!(input.modality, "text");
+    }
+
     /// 验证 vfs_update_note 参数结构支持自动版本管理
     ///
     /// TODO: 等待 Prompt 2 完成后实现完整的版本管理测试
@@ -7452,5 +7732,91 @@ mod tests {
         assert!(nested_path.starts_with('/'));
         assert!(nested_path.contains("高考复习"));
         assert!(nested_path.contains("函数"));
+    }
+
+    #[test]
+    fn embedding_model_validation_enforces_backend_protocol_contract() {
+        let text = crate::llm_manager::ApiConfig {
+            id: "text-embedding".to_string(),
+            model: "embed-v1".to_string(),
+            enabled: true,
+            is_embedding: true,
+            ..Default::default()
+        };
+        let multimodal = crate::llm_manager::ApiConfig {
+            id: "mm-embedding".to_string(),
+            model: "vl-embed-v1".to_string(),
+            enabled: true,
+            is_embedding: true,
+            is_multimodal: true,
+            ..Default::default()
+        };
+        let reranker = crate::llm_manager::ApiConfig {
+            id: "reranker".to_string(),
+            model: "rerank-v1".to_string(),
+            enabled: true,
+            is_embedding: true,
+            is_reranker: true,
+            ..Default::default()
+        };
+        let configs = vec![text, multimodal, reranker];
+
+        assert!(validate_embedding_model_config(&configs, "text-embedding", "text").is_ok());
+        assert!(validate_embedding_model_config(&configs, "mm-embedding", "multimodal").is_ok());
+        assert!(validate_embedding_model_config(&configs, "mm-embedding", "text").is_err());
+        assert!(validate_embedding_model_config(&configs, "text-embedding", "multimodal").is_err());
+        assert!(validate_embedding_model_config(&configs, "reranker", "text").is_err());
+        assert!(validate_embedding_model_config(&configs, "missing", "text").is_err());
+    }
+
+    #[test]
+    fn multimodal_search_dto_accepts_legacy_query() {
+        let input: VfsMultimodalSearchInput = serde_json::from_value(serde_json::json!({
+            "query": "legacy text",
+            "topK": 7
+        }))
+        .expect("deserialize legacy query");
+        let resolved = input.resolved_query().expect("resolve legacy query");
+        assert_eq!(resolved.text.as_deref(), Some("legacy text"));
+        assert!(resolved.image.is_none());
+        assert_eq!(input.top_k, 7);
+    }
+
+    #[test]
+    fn multimodal_search_dto_accepts_image_and_mixed_camel_case() {
+        let image: VfsMultimodalSearchInput = serde_json::from_value(serde_json::json!({
+            "queryImageBase64": "image-bytes",
+            "queryImageMediaType": "image/jpeg",
+            "queryMode": "image"
+        }))
+        .expect("deserialize image query");
+        let resolved_image = image.resolved_query().expect("resolve image query");
+        assert!(resolved_image.text.is_none());
+        assert!(resolved_image.image.is_some());
+
+        let mixed: VfsMultimodalSearchInput = serde_json::from_value(serde_json::json!({
+            "query": "legacy field remains accepted",
+            "queryText": "preferred text",
+            "queryImageBase64": "image-bytes",
+            "queryImageMediaType": "image/webp",
+            "queryMode": "mixed"
+        }))
+        .expect("deserialize mixed query");
+        let resolved_mixed = mixed.resolved_query().expect("resolve mixed query");
+        assert_eq!(resolved_mixed.text.as_deref(), Some("preferred text"));
+        assert!(resolved_mixed.image.is_some());
+    }
+
+    #[test]
+    fn multimodal_search_dto_rejects_mode_payload_mismatch() {
+        let missing_image: VfsMultimodalSearchInput = serde_json::from_value(serde_json::json!({
+            "queryText": "text",
+            "queryMode": "mixed"
+        }))
+        .expect("deserialize incomplete mixed query");
+        assert!(missing_image
+            .resolved_query()
+            .expect_err("mixed requires image")
+            .contains("queryImageBase64"));
     }
 }

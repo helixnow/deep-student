@@ -170,6 +170,44 @@ pub const V20260711_FSRS_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+/// V20260712: 完整 FSRS 评分前快照，支持无损撤销最后一次评分
+pub const V20260712_FSRS_UNDO_SNAPSHOT: MigrationDef = MigrationDef::new(
+    20260712,
+    "fsrs_undo_snapshot",
+    include_str!("../../../migrations/mistakes/V20260712__fsrs_undo_snapshot.sql"),
+)
+.with_expected_columns(&[("fsrs_review_logs", "state_before_json")])
+.with_expected_indexes(&["idx_fsrs_logs_state_active"])
+.idempotent();
+
+/// V20260713: APKG imports preserve every Anki `cards` row.
+///
+/// Generated cards retain content-based document deduplication. APKG rows use
+/// their local card id because several cards can legitimately share one note.
+pub const V20260713_APKG_CARD_IDENTITY: MigrationDef = MigrationDef::new(
+    20260713,
+    "apkg_card_identity",
+    include_str!("../../../migrations/mistakes/V20260713__apkg_card_identity.sql"),
+)
+.with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
+.idempotent();
+
+/// V20260714: 周期自动化定义、原子领取状态与可查询运行历史
+pub const V20260714_AUTOMATION_SCHEDULER: MigrationDef = MigrationDef::new(
+    20260714,
+    "automation_scheduler",
+    include_str!("../../../migrations/mistakes/V20260714__automation_scheduler.sql"),
+)
+.with_expected_tables(&["automation_definitions", "automation_runs"])
+.with_expected_indexes(&[
+    "idx_automation_definitions_enabled_next",
+    "idx_automation_definitions_updated",
+    "idx_automation_runs_automation_created",
+    "idx_automation_runs_retry_due",
+    "idx_automation_runs_status_updated",
+])
+.idempotent();
+
 /// V20260201 同步字段索引
 const MISTAKES_V20260201_SYNC_INDEXES: &[&str] = &[
     // mistakes 表同步索引
@@ -300,6 +338,9 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260709_FLASHCARD_FSRS,
         V20260710_ANKI_EXPORT_RECEIPT,
         V20260711_FSRS_SYNC_COVERAGE,
+        V20260712_FSRS_UNDO_SNAPSHOT,
+        V20260713_APKG_CARD_IDENTITY,
+        V20260714_AUTOMATION_SCHEDULER,
     ],
 };
 
@@ -475,9 +516,39 @@ mod tests {
             .sql
             .contains("trg_fsrs_cleanup_before_anki_card_delete"));
 
+        let fsrs_undo = MISTAKES_MIGRATIONS
+            .get(20260712)
+            .expect("V20260712 should exist");
+        assert_eq!(fsrs_undo.name, "fsrs_undo_snapshot");
+        assert!(fsrs_undo.idempotent);
+        assert!(fsrs_undo
+            .expected_columns
+            .contains(&("fsrs_review_logs", "state_before_json")));
+        assert!(fsrs_undo
+            .expected_indexes
+            .contains(&"idx_fsrs_logs_state_active"));
+
+        let apkg_identity = MISTAKES_MIGRATIONS
+            .get(20260713)
+            .expect("V20260713 should exist");
+        assert_eq!(apkg_identity.name, "apkg_card_identity");
+        assert!(apkg_identity.idempotent);
+        assert!(apkg_identity
+            .sql
+            .contains("WHEN source_type = 'apkg_import'"));
+
+        let automation_scheduler = MISTAKES_MIGRATIONS
+            .get(20260714)
+            .expect("V20260714 should exist");
+        assert_eq!(automation_scheduler.name, "automation_scheduler");
+        assert!(automation_scheduler.idempotent);
+        assert!(automation_scheduler
+            .expected_tables
+            .contains(&"automation_runs"));
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260711,
+            20260714,
             "Latest version should track the newest published mistakes migration"
         );
     }

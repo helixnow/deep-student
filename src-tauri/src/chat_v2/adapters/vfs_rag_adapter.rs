@@ -210,7 +210,7 @@ impl ChatV2VfsRagAdapter {
         // 3. 执行检索
         let result = self
             .search_service
-            .search_with_resource_info(query, &params, enable_reranking)
+            .search_cross_dimension_with_resource_info(query, &params, enable_reranking)
             .await;
 
         let elapsed = start_time.elapsed();

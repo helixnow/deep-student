@@ -134,6 +134,9 @@ pub struct UpdateReviewPlanParams {
     pub total_correct: u32,
     pub consecutive_failures: u32,
     pub is_difficult: bool,
+    /// Version observed while calculating the next SM-2 state. The write must
+    /// fail instead of recording a second history row over a newer plan.
+    pub expected_updated_at: String,
 }
 
 /// 日历热力图数据（按日期聚合的复习统计）
@@ -214,6 +217,28 @@ pub struct ReviewStats {
 pub struct VfsReviewPlanRepo;
 
 impl VfsReviewPlanRepo {
+    fn revision_conflict(plan_id: &str, expected_updated_at: &str) -> VfsError {
+        VfsError::Conflict {
+            key: "review_plan.updated_at".to_string(),
+            message: format!(
+                "REVIEW_CONFLICT: review plan {} changed after revision {} was read",
+                plan_id, expected_updated_at
+            ),
+        }
+    }
+
+    fn resumed_status(plan: &ReviewPlan) -> &'static str {
+        if plan.repetitions == 0 {
+            "new"
+        } else if plan.repetitions < 2 {
+            "learning"
+        } else if plan.interval_days >= 21 && plan.repetitions >= 3 {
+            "graduated"
+        } else {
+            "reviewing"
+        }
+    }
+
     // ========================================================================
     // 创建
     // ========================================================================
@@ -525,7 +550,7 @@ impl VfsReviewPlanRepo {
                 consecutive_failures = ?9,
                 is_difficult = ?10,
                 updated_at = ?11
-            WHERE id = ?12
+            WHERE id = ?12 AND updated_at = ?13
             "#,
             params![
                 params.ease_factor,
@@ -540,14 +565,12 @@ impl VfsReviewPlanRepo {
                 if params.is_difficult { 1 } else { 0 },
                 now,
                 plan_id,
+                params.expected_updated_at,
             ],
         )?;
 
         if affected == 0 {
-            return Err(VfsError::NotFound {
-                resource_type: "review_plan".to_string(),
-                id: plan_id.to_string(),
-            });
+            return Err(Self::revision_conflict(plan_id, &params.expected_updated_at));
         }
 
         debug!("[VFS::ReviewPlanRepo] Updated review plan id={}", plan_id);
@@ -588,6 +611,38 @@ impl VfsReviewPlanRepo {
         })
     }
 
+    /// 暂停复习计划（乐观并发控制）。
+    pub fn suspend_plan_if_unchanged(
+        db: &VfsDatabase,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<ReviewPlan> {
+        let conn = db.get_conn_safe()?;
+        Self::suspend_plan_if_unchanged_with_conn(&conn, plan_id, expected_updated_at)
+    }
+
+    /// 暂停复习计划（使用现有连接，乐观并发控制）。
+    pub fn suspend_plan_if_unchanged_with_conn(
+        conn: &Connection,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<ReviewPlan> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let affected = conn.execute(
+            "UPDATE review_plans SET status = 'suspended', updated_at = ?1 WHERE id = ?2 AND updated_at = ?3",
+            params![now, plan_id, expected_updated_at],
+        )?;
+
+        if affected == 0 {
+            return Err(Self::revision_conflict(plan_id, expected_updated_at));
+        }
+
+        Self::get_plan_with_conn(conn, plan_id)?.ok_or_else(|| VfsError::NotFound {
+            resource_type: "review_plan".to_string(),
+            id: plan_id.to_string(),
+        })
+    }
+
     /// 恢复复习计划
     pub fn resume_plan(db: &VfsDatabase, plan_id: &str) -> VfsResult<ReviewPlan> {
         let conn = db.get_conn_safe()?;
@@ -606,15 +661,7 @@ impl VfsReviewPlanRepo {
         })?;
 
         // 根据 repetitions 确定恢复后的状态
-        let new_status = if plan.repetitions == 0 {
-            "new"
-        } else if plan.repetitions < 2 {
-            "learning"
-        } else if plan.interval_days >= 21 && plan.repetitions >= 3 {
-            "graduated"
-        } else {
-            "reviewing"
-        };
+        let new_status = Self::resumed_status(&plan);
 
         conn.execute(
             "UPDATE review_plans SET status = ?1, next_review_date = ?2, updated_at = ?3 WHERE id = ?4",
@@ -625,6 +672,44 @@ impl VfsReviewPlanRepo {
             "[VFS::ReviewPlanRepo] Resumed review plan id={} with status={}",
             plan_id, new_status
         );
+
+        Self::get_plan_with_conn(conn, plan_id)?.ok_or_else(|| VfsError::NotFound {
+            resource_type: "review_plan".to_string(),
+            id: plan_id.to_string(),
+        })
+    }
+
+    /// 恢复复习计划（乐观并发控制）。
+    pub fn resume_plan_if_unchanged(
+        db: &VfsDatabase,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<ReviewPlan> {
+        let conn = db.get_conn_safe()?;
+        Self::resume_plan_if_unchanged_with_conn(&conn, plan_id, expected_updated_at)
+    }
+
+    /// 恢复复习计划（使用现有连接，乐观并发控制）。
+    pub fn resume_plan_if_unchanged_with_conn(
+        conn: &Connection,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<ReviewPlan> {
+        let plan = Self::get_plan_with_conn(conn, plan_id)?.ok_or_else(|| VfsError::NotFound {
+            resource_type: "review_plan".to_string(),
+            id: plan_id.to_string(),
+        })?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let new_status = Self::resumed_status(&plan);
+        let affected = conn.execute(
+            "UPDATE review_plans SET status = ?1, next_review_date = ?2, updated_at = ?3 WHERE id = ?4 AND updated_at = ?5",
+            params![new_status, today, now, plan_id, expected_updated_at],
+        )?;
+
+        if affected == 0 {
+            return Err(Self::revision_conflict(plan_id, expected_updated_at));
+        }
 
         Self::get_plan_with_conn(conn, plan_id)?.ok_or_else(|| VfsError::NotFound {
             resource_type: "review_plan".to_string(),
@@ -651,6 +736,35 @@ impl VfsReviewPlanRepo {
                 resource_type: "review_plan".to_string(),
                 id: plan_id.to_string(),
             });
+        }
+
+        info!("[VFS::ReviewPlanRepo] Deleted review plan id={}", plan_id);
+        Ok(())
+    }
+
+    /// 删除复习计划（乐观并发控制）。
+    pub fn delete_plan_if_unchanged(
+        db: &VfsDatabase,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<()> {
+        let conn = db.get_conn_safe()?;
+        Self::delete_plan_if_unchanged_with_conn(&conn, plan_id, expected_updated_at)
+    }
+
+    /// 删除复习计划（使用现有连接，乐观并发控制）。
+    pub fn delete_plan_if_unchanged_with_conn(
+        conn: &Connection,
+        plan_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<()> {
+        let affected = conn.execute(
+            "DELETE FROM review_plans WHERE id = ?1 AND updated_at = ?2",
+            params![plan_id, expected_updated_at],
+        )?;
+
+        if affected == 0 {
+            return Err(Self::revision_conflict(plan_id, expected_updated_at));
         }
 
         info!("[VFS::ReviewPlanRepo] Deleted review plan id={}", plan_id);

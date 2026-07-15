@@ -595,6 +595,59 @@ pub const V20260615_TODO_CYCLE_CHECK_FULL_GRAPH: MigrationDef = MigrationDef::ne
 )
 .idempotent();
 
+/// V20260714: add explicit vector index profiles and generation metadata.
+pub const V20260714_ADD_VECTOR_INDEX_PROFILES: MigrationDef = MigrationDef::new(
+    20260714,
+    "add_vector_index_profiles",
+    include_str!("../../../migrations/vfs/V20260714__add_vector_index_profiles.sql"),
+)
+.with_expected_tables(&["vfs_index_profiles"])
+.with_expected_columns(&[
+    ("vfs_index_profiles", "id"),
+    ("vfs_index_profiles", "model_fingerprint"),
+    ("vfs_index_profiles", "model_config_id"),
+    ("vfs_index_profiles", "model_name"),
+    ("vfs_index_profiles", "dimension"),
+    ("vfs_index_profiles", "modality"),
+    ("vfs_index_profiles", "embedding_protocol"),
+    ("vfs_index_profiles", "schema_version"),
+    ("vfs_index_profiles", "lance_table_name"),
+    ("vfs_index_profiles", "active_generation"),
+    ("vfs_index_profiles", "state"),
+    ("vfs_index_profiles", "ann_metric"),
+    ("vfs_index_profiles", "ann_index_version"),
+    ("vfs_index_profiles", "created_at"),
+    ("vfs_index_profiles", "updated_at"),
+    ("vfs_embedding_dims", "active_profile_id"),
+    ("vfs_embedding_dims", "model_fingerprint"),
+    ("vfs_embedding_dims", "embedding_protocol"),
+    ("vfs_embedding_dims", "active_generation"),
+    ("vfs_embedding_dims", "ann_metric"),
+    ("vfs_embedding_dims", "ann_index_version"),
+    ("vfs_index_segments", "index_profile_id"),
+    ("vfs_index_segments", "generation"),
+    ("vfs_index_units", "text_profile_id"),
+    ("vfs_index_units", "text_generation"),
+    ("vfs_index_units", "mm_profile_id"),
+    ("vfs_index_units", "mm_generation"),
+    ("resources", "index_generation"),
+    ("resources", "mm_index_generation"),
+    ("resources", "index_next_retry_at"),
+    ("resources", "mm_index_next_retry_at"),
+    ("__lance_orphan_queue", "next_retry_at"),
+    ("__lance_orphan_queue", "last_error"),
+])
+.with_expected_indexes(&[
+    "idx_vfs_index_profiles_route",
+    "idx_vfs_index_profiles_model",
+    "idx_vfs_index_segments_profile_generation",
+    "idx_vfs_index_units_text_profile",
+    "idx_vfs_index_units_mm_profile",
+    "idx_resources_index_retry_due",
+    "idx_resources_mm_index_retry_due",
+    "idx_lance_orphan_retry_due",
+]);
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -636,7 +689,14 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260613_POMODORO_TIMESTAMPS_AND_CONSTRAINTS,
     V20260614_TODO_PARENT_CHECK_SOFTDELETE_FIX,
     V20260615_TODO_CYCLE_CHECK_FULL_GRAPH,
+    V20260714_ADD_VECTOR_INDEX_PROFILES,
 ];
+
+/// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
+///
+/// 数据库统计和版本断言应复用此常量，避免新增迁移时维护重复版本号。
+pub const VFS_SCHEMA_VERSION: u32 =
+    VFS_MIGRATIONS[VFS_MIGRATIONS.len() - 1].refinery_version as u32;
 
 /// VFS 迁移集合
 pub const VFS_MIGRATION_SET: MigrationSet = MigrationSet {
@@ -679,6 +739,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "vfs_index_units",
     "vfs_index_segments",
     "vfs_embedding_dims",
+    "vfs_index_profiles",
     // 作答历史
     "answer_submissions",
     // Todo / Pomodoro
@@ -697,7 +758,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 35;
+pub const VFS_TABLE_COUNT: usize = 36;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -712,6 +773,7 @@ pub const VFS_FTS_TABLE_COUNT: usize = 1;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::Connection;
 
     #[test]
     fn test_vfs_migration_set_structure() {
@@ -740,7 +802,15 @@ mod tests {
         // + V20260613 (pomodoro_timestamps_and_constraints)
         // + V20260614 (todo_parent_check_softdelete_fix)
         // + V20260615 (todo_cycle_check_full_graph)
-        assert_eq!(VFS_MIGRATION_SET.count(), 39);
+        // + V20260714 (add_vector_index_profiles)
+        assert_eq!(
+            VFS_MIGRATION_SET.migrations.as_ptr(),
+            VFS_MIGRATIONS.as_ptr()
+        );
+        assert_eq!(VFS_MIGRATION_SET.count(), VFS_MIGRATIONS.len());
+        assert!(VFS_MIGRATIONS
+            .windows(2)
+            .all(|pair| pair[0].refinery_version < pair[1].refinery_version));
     }
 
     #[test]
@@ -835,6 +905,75 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260615);
+        assert_eq!(
+            VFS_MIGRATION_SET.latest_version(),
+            VFS_SCHEMA_VERSION as i32
+        );
+    }
+
+    #[test]
+    fn vector_profile_migration_backfills_legacy_image_as_multimodal_deterministically() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE vfs_embedding_dims (
+                dimension INTEGER NOT NULL, modality TEXT NOT NULL,
+                lance_table_name TEXT NOT NULL, record_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL, last_used_at INTEGER NOT NULL,
+                model_config_id TEXT, model_name TEXT,
+                PRIMARY KEY (dimension, modality));
+             CREATE TABLE vfs_index_units (
+                id TEXT PRIMARY KEY, text_embedding_dim INTEGER, mm_embedding_dim INTEGER,
+                text_required INTEGER NOT NULL DEFAULT 0, text_state TEXT NOT NULL DEFAULT 'disabled',
+                text_error TEXT, mm_required INTEGER NOT NULL DEFAULT 0,
+                mm_state TEXT NOT NULL DEFAULT 'disabled', mm_error TEXT);
+             CREATE TABLE vfs_index_segments (
+                id TEXT PRIMARY KEY, embedding_dim INTEGER NOT NULL, modality TEXT NOT NULL);
+             CREATE TABLE resources (
+                id TEXT PRIMARY KEY, index_state TEXT, index_error TEXT,
+                index_retry_count INTEGER DEFAULT 0, mm_index_state TEXT,
+                mm_index_error TEXT, mm_index_retry_count INTEGER DEFAULT 0);
+             CREATE TABLE __lance_orphan_queue (
+                lance_row_id TEXT PRIMARY KEY, enqueued_at INTEGER NOT NULL DEFAULT 0);
+             INSERT INTO vfs_embedding_dims VALUES
+                (512, 'image', 'legacy_image_512', 1, 1, 1, 'cfg-image', 'image-model'),
+                (1024, 'image', 'legacy_image_1024', 1, 1, 1, 'cfg-image', 'image-model'),
+                (1024, 'multimodal', 'legacy_mm_1024', 1, 1, 1, 'cfg-mm', 'mm-model');
+             INSERT INTO vfs_index_units
+                (id, mm_embedding_dim, mm_required, mm_state)
+             VALUES ('unit-image-only', 512, 1, 'indexed'),
+                    ('unit-both', 1024, 1, 'indexed');",
+        )
+        .unwrap();
+
+        conn.execute_batch(include_str!(
+            "../../../migrations/vfs/V20260714__add_vector_index_profiles.sql"
+        ))
+        .unwrap();
+
+        let image_protocol: String = conn
+            .query_row(
+                "SELECT embedding_protocol FROM vfs_embedding_dims
+                 WHERE dimension = 512 AND modality = 'image'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(image_protocol, "multimodal-embedding-v1");
+        let image_profile: String = conn
+            .query_row(
+                "SELECT mm_profile_id FROM vfs_index_units WHERE id = 'unit-image-only'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(image_profile, "profile_legacy_image_512");
+        let preferred_profile: String = conn
+            .query_row(
+                "SELECT mm_profile_id FROM vfs_index_units WHERE id = 'unit-both'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(preferred_profile, "profile_legacy_multimodal_1024");
     }
 }

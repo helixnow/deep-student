@@ -9,6 +9,7 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::index_service::{IndexStatusSummary, UnitIndexStatus, VfsIndexService};
 use crate::vfs::indexing::{VfsFullIndexingService, VfsIndexingService};
 use crate::vfs::lance_store::VfsLanceStore;
+use crate::vfs::multimodal_service::VfsMultimodalService;
 use crate::vfs::unit_builder::UnitBuildInput;
 use std::sync::Arc;
 use tauri::State;
@@ -69,18 +70,17 @@ pub async fn vfs_unified_batch_index(
         raw_limit
     );
 
-    if mode == "mm" {
-        return Err(
-            "vfs_unified_batch_index: multimodal batch indexing is not supported yet".to_string(),
-        );
-    }
-    if mode == "both" {
-        log::warn!(
-            "[VFS::index_handlers] mode=both currently executes text indexing only; multimodal batch indexing is pending implementation"
-        );
+    if !matches!(mode.as_str(), "text" | "mm" | "both") {
+        return Err(format!(
+            "vfs_unified_batch_index: unsupported mode '{}'; expected text, mm, or both",
+            mode
+        ));
     }
 
-    // 文本模态使用 VfsFullIndexingService
+    let mut success_count = 0usize;
+    let mut fail_count = 0usize;
+
+    // 文本模态使用 VfsFullIndexingService。
     if mode == "text" || mode == "both" {
         // 获取索引配置
         let indexing_service = VfsIndexingService::new(Arc::clone(&vfs_db));
@@ -99,25 +99,36 @@ pub async fn vfs_unified_batch_index(
             .process_pending_batch(limit)
             .await
             .map_err(|e| e.to_string())?;
-
-        log::info!(
-            "[VFS::index_handlers] vfs_unified_batch_index completed: success={}, fail={}",
-            success,
-            fail
-        );
-
-        return Ok(BatchIndexResult {
-            success_count: success as i32,
-            fail_count: fail as i32,
-            total: (success + fail) as i32,
-        });
+        success_count += success;
+        fail_count += fail;
     }
 
-    // 多模态索引暂不支持，返回空结果
+    // 多模态模态复用 Unit/Segment 账本和同一 Lance store。
+    if mode == "mm" || mode == "both" {
+        let multimodal_service = VfsMultimodalService::new(
+            Arc::clone(&vfs_db),
+            Arc::clone(&llm_manager),
+            Arc::clone(lance_store.inner()),
+        );
+        let (success, fail) = multimodal_service
+            .process_pending_batch(limit)
+            .await
+            .map_err(|e| e.to_string())?;
+        success_count += success;
+        fail_count += fail;
+    }
+
+    log::info!(
+        "[VFS::index_handlers] vfs_unified_batch_index completed: mode={}, success={}, fail={}",
+        mode,
+        success_count,
+        fail_count
+    );
+
     Ok(BatchIndexResult {
-        success_count: 0,
-        fail_count: 0,
-        total: 0,
+        success_count: success_count as i32,
+        fail_count: fail_count as i32,
+        total: (success_count + fail_count) as i32,
     })
 }
 

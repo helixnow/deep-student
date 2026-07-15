@@ -695,7 +695,10 @@ impl VfsTranslationRepo {
             } else {
                 // 独占资源：就地更新内容 + 哈希 + 索引状态
                 conn.execute(
-                    "UPDATE resources SET data = ?1, hash = ?2, updated_at = ?3, index_state = 'pending' WHERE id = ?4",
+                    "UPDATE resources SET data = ?1, hash = ?2, updated_at = ?3,
+                        index_state = 'pending', index_error = NULL,
+                        index_retry_count = 0, index_next_retry_at = 0
+                     WHERE id = ?4",
                     params![content_str, salted_hash, now_ms, resource_id],
                 )?;
                 conn.execute(

@@ -13,8 +13,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import multimodalRagService, {
   type MultimodalRetrievalResult,
+  type MultimodalCapabilityStatus,
   type RetrievalConfig,
-  MULTIMODAL_INDEX_ENABLED,
 } from '@/services/multimodalRagService';
 import { t } from '@/utils/i18n';
 
@@ -38,6 +38,8 @@ export interface MultimodalSearchState {
   error: string | null;
   /** 多模态知识库是否已配置 */
   isConfigured: boolean | null;
+  /** 最近一次能力探测状态 */
+  capabilityStatus: MultimodalCapabilityStatus | null;
   /** 最近一次查询 */
   lastQuery: string | null;
 }
@@ -77,25 +79,29 @@ export function useMultimodalSearch(
   const [results, setResults] = useState<MultimodalRetrievalResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
+  const [capabilityStatus, setCapabilityStatus] = useState<MultimodalCapabilityStatus | null>(null);
   const [lastQuery, setLastQuery] = useState<string | null>(null);
 
   // 取消标记
   const cancelRef = useRef(false);
   const requestIdRef = useRef(0);
 
-  // 检查配置状态
-  // ★ 多模态索引已禁用时直接返回 false，避免调用已废弃的 isConfigured()
+  // 检查配置和运行时可用性；服务层不会缓存临时故障。
   const checkConfig = useCallback(async (): Promise<boolean> => {
-    if (!MULTIMODAL_INDEX_ENABLED) {
-      setIsConfigured(false);
-      return false;
-    }
     try {
-      const configured = await multimodalRagService.isConfigured();
+      const status = await multimodalRagService.getCapabilityStatus();
+      const configured = status.configured && status.available;
+      setCapabilityStatus(status);
       setIsConfigured(configured);
       return configured;
     } catch (err: unknown) {
       console.error('检查多模态配置失败:', err);
+      setCapabilityStatus({
+        configured: true,
+        available: false,
+        reason: 'unavailable',
+        error: err instanceof Error ? err.message : String(err),
+      });
       setIsConfigured(false);
       return false;
     }
@@ -260,6 +266,7 @@ export function useMultimodalSearch(
     results,
     error,
     isConfigured,
+    capabilityStatus,
     lastQuery,
     // 操作
     searchByText,

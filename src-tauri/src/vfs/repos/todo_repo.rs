@@ -3,6 +3,8 @@
 //! 提供 todo_lists 和 todo_items 表的 CRUD 操作。
 //! 独立于 VFS 资源系统，直接操作 todo_lists / todo_items 表。
 
+use std::collections::HashSet;
+
 use log::{debug, info, warn};
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -27,6 +29,22 @@ fn escape_like_pattern(query: &str) -> String {
         .replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")
+}
+
+fn fresh_updated_at(previous: &str) -> String {
+    let now = chrono::Utc::now();
+    let now = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now.timestamp_millis())
+        .unwrap_or(now);
+    let previous_time = chrono::DateTime::parse_from_rfc3339(previous)
+        .ok()
+        .map(|value| value.with_timezone(&chrono::Utc));
+    let value = match previous_time {
+        Some(previous_time) if now <= previous_time => {
+            previous_time + chrono::Duration::milliseconds(1)
+        }
+        _ => now,
+    };
+    value.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 
 const VALID_TODO_STATUSES: &[&str] = &["pending", "completed", "cancelled"];
@@ -438,10 +456,176 @@ impl VfsTodoRepo {
         })
     }
 
+    /// Agent-facing list update with an atomic optimistic-lock predicate.
+    pub fn update_todo_list_if_version(
+        db: &VfsDatabase,
+        list_id: &str,
+        params: VfsUpdateTodoListParams,
+        expected_updated_at: &str,
+    ) -> VfsResult<(VfsTodoList, VfsTodoList)> {
+        if expected_updated_at.trim().is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "expected_updated_at".to_string(),
+                reason: "expected_updated_at must not be empty".to_string(),
+            });
+        }
+        if params
+            .title
+            .as_deref()
+            .is_some_and(|title| title.trim().is_empty())
+        {
+            return Err(VfsError::InvalidArgument {
+                param: "title".to_string(),
+                reason: "Todo list title cannot be empty".to_string(),
+            });
+        }
+
+        let conn = db.get_conn_safe()?;
+        let previous =
+            Self::get_todo_list_with_conn(&conn, list_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "TodoList".to_string(),
+                id: list_id.to_string(),
+            })?;
+        let now = fresh_updated_at(expected_updated_at);
+        let affected = conn.execute(
+            r#"
+            UPDATE todo_lists
+            SET title = COALESCE(?1, title), description = COALESCE(?2, description),
+                icon = COALESCE(?3, icon), color = COALESCE(?4, color), updated_at = ?5
+            WHERE id = ?6 AND deleted_at IS NULL AND updated_at = ?7
+            "#,
+            params![
+                params.title,
+                params.description,
+                params.icon,
+                params.color,
+                now,
+                list_id,
+                expected_updated_at,
+            ],
+        )?;
+        if affected == 0 {
+            let actual: Option<String> = conn
+                .query_row(
+                    "SELECT updated_at FROM todo_lists WHERE id = ?1 AND deleted_at IS NULL",
+                    params![list_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            return match actual {
+                Some(actual) => Err(VfsError::Conflict {
+                    key: "todo_lists.conflict".to_string(),
+                    message: format!(
+                        "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                        expected_updated_at, actual
+                    ),
+                }),
+                None => Err(VfsError::NotFound {
+                    resource_type: "TodoList".to_string(),
+                    id: list_id.to_string(),
+                }),
+            };
+        }
+
+        let current =
+            Self::get_todo_list_with_conn(&conn, list_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "TodoList".to_string(),
+                id: list_id.to_string(),
+            })?;
+        Ok((previous, current))
+    }
+
     /// 软删除待办列表
     pub fn delete_todo_list(db: &VfsDatabase, list_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
         Self::delete_todo_list_with_conn(&conn, list_id)
+    }
+
+    /// Agent-facing list deletion with atomic OCC and default-inbox protection.
+    pub fn delete_todo_list_if_version(
+        db: &VfsDatabase,
+        list_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<VfsTodoList> {
+        if expected_updated_at.trim().is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "expected_updated_at".to_string(),
+                reason: "expected_updated_at must not be empty".to_string(),
+            });
+        }
+        let conn = db.get_conn_safe()?;
+        conn.execute("SAVEPOINT delete_todo_list_occ", [])?;
+        let result = (|| -> VfsResult<VfsTodoList> {
+            let previous = conn
+                .query_row(
+                    r#"
+                    SELECT id, title, description, icon, color, sort_order, is_default, is_favorite,
+                           created_at, updated_at, deleted_at
+                    FROM todo_lists WHERE id = ?1 AND deleted_at IS NULL
+                    "#,
+                    params![list_id],
+                    Self::row_to_todo_list,
+                )
+                .optional()?
+                .ok_or_else(|| VfsError::NotFound {
+                    resource_type: "TodoList".to_string(),
+                    id: list_id.to_string(),
+                })?;
+            if previous.is_default {
+                return Err(VfsError::InvalidOperation {
+                    operation: "delete_default_todo_list".to_string(),
+                    reason: "Cannot delete the default inbox list".to_string(),
+                });
+            }
+
+            let now = fresh_updated_at(expected_updated_at);
+            let affected = conn.execute(
+                r#"
+                UPDATE todo_lists SET deleted_at = ?1, updated_at = ?1
+                WHERE id = ?2 AND deleted_at IS NULL AND is_default = 0 AND updated_at = ?3
+                "#,
+                params![now, list_id, expected_updated_at],
+            )?;
+            if affected == 0 {
+                let actual: Option<String> = conn
+                    .query_row(
+                        "SELECT updated_at FROM todo_lists WHERE id = ?1 AND deleted_at IS NULL",
+                        params![list_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                return Err(match actual {
+                    Some(actual) => VfsError::Conflict {
+                        key: "todo_lists.conflict".to_string(),
+                        message: format!(
+                            "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                            expected_updated_at, actual
+                        ),
+                    },
+                    None => VfsError::NotFound {
+                        resource_type: "TodoList".to_string(),
+                        id: list_id.to_string(),
+                    },
+                });
+            }
+            conn.execute(
+                "UPDATE todo_items SET deleted_at = ?1, updated_at = ?1 WHERE todo_list_id = ?2 AND deleted_at IS NULL",
+                params![now, list_id],
+            )?;
+            Ok(previous)
+        })();
+
+        match result {
+            Ok(previous) => {
+                conn.execute("RELEASE SAVEPOINT delete_todo_list_occ", [])?;
+                Ok(previous)
+            }
+            Err(error) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT delete_todo_list_occ", []);
+                let _ = conn.execute("RELEASE SAVEPOINT delete_todo_list_occ", []);
+                Err(error)
+            }
+        }
     }
 
     /// 软删除待办列表（使用现有连接，SAVEPOINT 支持嵌套）
@@ -940,6 +1124,8 @@ impl VfsTodoRepo {
                 id: item_id.to_string(),
             })?;
 
+        let expected_revision = params.expected_updated_at.clone();
+
         // R1-04：乐观锁冲突检测（照抄 note_repo expected_updated_at 模板）
         if let Some(ref expected) = params.expected_updated_at {
             if !expected.is_empty() && *expected != current.updated_at {
@@ -954,9 +1140,7 @@ impl VfsTodoRepo {
             }
         }
 
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
+        let now = fresh_updated_at(&current.updated_at);
 
         let final_title = params.title.unwrap_or(current.title.clone());
         if final_title.trim().is_empty() {
@@ -1111,13 +1295,14 @@ impl VfsTodoRepo {
         conn.execute("SAVEPOINT update_todo_item", [])?;
 
         let write_result = (|| -> VfsResult<()> {
-            conn.execute(
+            let affected = conn.execute(
                 r#"
                 UPDATE todo_items
                 SET title = ?1, description = ?2, status = ?3, priority = ?4, due_date = ?5, due_time = ?6,
                     reminder = ?7, tags_json = ?8, parent_id = ?9, completed_at = ?10, repeat_json = ?11,
                     attachments_json = ?12, updated_at = ?13, estimated_pomodoros = ?15, completed_pomodoros = ?16
-                WHERE id = ?14
+                WHERE id = ?14 AND deleted_at IS NULL
+                  AND (?17 IS NULL OR ?17 = '' OR updated_at = ?17)
                 "#,
                 params![
                     final_title,
@@ -1136,8 +1321,19 @@ impl VfsTodoRepo {
                     item_id,
                     final_estimated_pomodoros,
                     final_completed_pomodoros,
+                    expected_revision,
                 ],
             )?;
+
+            if affected == 0 {
+                return Err(VfsError::Conflict {
+                    key: "todo_items.conflict".to_string(),
+                    message: format!(
+                        "TODO_CONFLICT: expected_updated_at={}, actual_updated_at changed",
+                        expected_revision.as_deref().unwrap_or_default()
+                    ),
+                });
+            }
 
             // 更新列表的 updated_at
             conn.execute(
@@ -1419,6 +1615,91 @@ impl VfsTodoRepo {
         }
     }
 
+    /// Agent-facing item deletion with an atomic optimistic-lock predicate.
+    pub fn delete_todo_item_if_version(
+        db: &VfsDatabase,
+        item_id: &str,
+        expected_updated_at: &str,
+    ) -> VfsResult<VfsTodoItem> {
+        if expected_updated_at.trim().is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "expected_updated_at".to_string(),
+                reason: "expected_updated_at must not be empty".to_string(),
+            });
+        }
+        let conn = db.get_conn_safe()?;
+        conn.execute("SAVEPOINT delete_todo_item_occ", [])?;
+        let result = (|| -> VfsResult<VfsTodoItem> {
+            let previous = Self::get_todo_item_with_conn(&conn, item_id)?.ok_or_else(|| {
+                VfsError::NotFound {
+                    resource_type: "TodoItem".to_string(),
+                    id: item_id.to_string(),
+                }
+            })?;
+            let now = fresh_updated_at(expected_updated_at);
+            let affected = conn.execute(
+                r#"
+                UPDATE todo_items SET deleted_at = ?1, updated_at = ?1
+                WHERE id = ?2 AND deleted_at IS NULL AND updated_at = ?3
+                "#,
+                params![now, item_id, expected_updated_at],
+            )?;
+            if affected == 0 {
+                let actual: Option<String> = conn
+                    .query_row(
+                        "SELECT updated_at FROM todo_items WHERE id = ?1 AND deleted_at IS NULL",
+                        params![item_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                return Err(match actual {
+                    Some(actual) => VfsError::Conflict {
+                        key: "todo_items.conflict".to_string(),
+                        message: format!(
+                            "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                            expected_updated_at, actual
+                        ),
+                    },
+                    None => VfsError::NotFound {
+                        resource_type: "TodoItem".to_string(),
+                        id: item_id.to_string(),
+                    },
+                });
+            }
+            conn.execute(
+                r#"
+                WITH RECURSIVE descendants(id) AS (
+                    SELECT id FROM todo_items WHERE parent_id = ?2 AND deleted_at IS NULL
+                    UNION ALL
+                    SELECT ti.id FROM todo_items ti
+                    JOIN descendants d ON ti.parent_id = d.id
+                    WHERE ti.deleted_at IS NULL
+                )
+                UPDATE todo_items SET deleted_at = ?1, updated_at = ?1
+                WHERE id IN (SELECT id FROM descendants)
+                "#,
+                params![now, item_id],
+            )?;
+            conn.execute(
+                "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
+                params![now, previous.todo_list_id],
+            )?;
+            Ok(previous)
+        })();
+
+        match result {
+            Ok(previous) => {
+                conn.execute("RELEASE SAVEPOINT delete_todo_item_occ", [])?;
+                Ok(previous)
+            }
+            Err(error) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT delete_todo_item_occ", []);
+                let _ = conn.execute("RELEASE SAVEPOINT delete_todo_item_occ", []);
+                Err(error)
+            }
+        }
+    }
+
     /// 恢复软删除的待办项（自身 + 同批次删除的后代子树）
     ///
     /// "同批次"指 deleted_at 与目标项完全一致——列表删除前已单独删除的
@@ -1518,7 +1799,7 @@ impl VfsTodoRepo {
         }
     }
 
-    /// 批量重排序待办项（事务保护；id 必须属于指定列表，否则静默跳过）
+    /// 批量重排序待办项（事务保护；ID 必须去重且精确覆盖清单全部未删除项）
     ///
     /// R1-04：可选 `expected_updated_at` 校验列表 `updated_at`；None 时保持旧行为。
     pub fn reorder_items(
@@ -1528,34 +1809,73 @@ impl VfsTodoRepo {
         expected_updated_at: Option<&str>,
     ) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        let now = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
-
-        if let Some(expected) = expected_updated_at {
-            if !expected.is_empty() {
-                let list = Self::get_todo_list_with_conn(&conn, list_id)?.ok_or_else(|| {
-                    VfsError::NotFound {
-                        resource_type: "TodoList".to_string(),
-                        id: list_id.to_string(),
-                    }
-                })?;
-                if expected != list.updated_at {
-                    warn!(
-                        "[VFS::TodoRepo] Optimistic lock conflict for todo reorder list {}: expected updated_at='{}', actual='{}'",
-                        list_id, expected, list.updated_at
-                    );
-                    return Err(VfsError::Other(format!(
-                        "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
-                        expected, list.updated_at
-                    )));
-                }
-            }
-        }
+        let expected_updated_at = expected_updated_at.filter(|value| !value.is_empty());
+        let now = expected_updated_at.map_or_else(
+            || {
+                chrono::Utc::now()
+                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string()
+            },
+            fresh_updated_at,
+        );
 
         conn.execute("SAVEPOINT reorder_todo_items", [])?;
 
         let result = (|| -> VfsResult<()> {
+            if let Some(expected) = expected_updated_at {
+                let affected = conn.execute(
+                    r#"
+                    UPDATE todo_lists SET updated_at = ?1
+                    WHERE id = ?2 AND deleted_at IS NULL AND updated_at = ?3
+                    "#,
+                    params![now, list_id, expected],
+                )?;
+                if affected == 0 {
+                    let actual: Option<String> = conn
+                        .query_row(
+                            "SELECT updated_at FROM todo_lists WHERE id = ?1 AND deleted_at IS NULL",
+                            params![list_id],
+                            |row| row.get(0),
+                        )
+                        .optional()?;
+                    return Err(match actual {
+                        Some(actual) => VfsError::Conflict {
+                            key: "todo_lists.conflict".to_string(),
+                            message: format!(
+                                "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                                expected, actual
+                            ),
+                        },
+                        None => VfsError::NotFound {
+                            resource_type: "TodoList".to_string(),
+                            id: list_id.to_string(),
+                        },
+                    });
+                }
+            }
+
+            let input_ids: HashSet<&str> = item_ids.iter().map(String::as_str).collect();
+            if input_ids.len() != item_ids.len() {
+                return Err(VfsError::InvalidArgument {
+                    param: "item_ids".to_string(),
+                    reason: "item_ids must not contain duplicates".to_string(),
+                });
+            }
+            let mut stmt = conn.prepare(
+                "SELECT id FROM todo_items WHERE todo_list_id = ?1 AND deleted_at IS NULL",
+            )?;
+            let actual_ids: HashSet<String> = stmt
+                .query_map(params![list_id], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+            if actual_ids.len() != input_ids.len()
+                || !actual_ids.iter().all(|id| input_ids.contains(id.as_str()))
+            {
+                return Err(VfsError::InvalidArgument {
+                    param: "item_ids".to_string(),
+                    reason: "item_ids must exactly match every non-deleted item in the target list"
+                        .to_string(),
+                });
+            }
             for (i, id) in item_ids.iter().enumerate() {
                 conn.execute(
                     "UPDATE todo_items SET sort_order = ?1, updated_at = ?2 WHERE id = ?3 AND todo_list_id = ?4 AND deleted_at IS NULL",
@@ -1563,10 +1883,18 @@ impl VfsTodoRepo {
                 )?;
             }
 
-            conn.execute(
-                "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
-                params![now, list_id],
-            )?;
+            if expected_updated_at.is_none() {
+                let affected = conn.execute(
+                    "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+                    params![now, list_id],
+                )?;
+                if affected == 0 {
+                    return Err(VfsError::NotFound {
+                        resource_type: "TodoList".to_string(),
+                        id: list_id.to_string(),
+                    });
+                }
+            }
             Ok(())
         })();
 
@@ -1796,6 +2124,43 @@ impl VfsTodoRepo {
 
         let rows = stmt.query_map(params![like_pattern], Self::row_to_todo_item)?;
         Ok(rows.filter_map(log_and_skip_err).collect())
+    }
+
+    /// Bounded search for Agent tools, with an exact total for pagination metadata.
+    pub fn search_items_paginated(
+        db: &VfsDatabase,
+        query: &str,
+        limit: u32,
+        offset: u32,
+    ) -> VfsResult<(Vec<VfsTodoItem>, usize)> {
+        let conn = db.get_conn_safe()?;
+        let like_pattern = format!("%{}%", escape_like_pattern(query.trim()));
+        let total: i64 = conn.query_row(
+            r#"
+            SELECT COUNT(*) FROM todo_items
+            WHERE (title LIKE ?1 ESCAPE '\' OR description LIKE ?1 ESCAPE '\')
+              AND deleted_at IS NULL
+            "#,
+            params![like_pattern],
+            |row| row.get(0),
+        )?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json,
+                   estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
+            FROM todo_items
+            WHERE (title LIKE ?1 ESCAPE '\' OR description LIKE ?1 ESCAPE '\')
+              AND deleted_at IS NULL
+            ORDER BY updated_at DESC
+            LIMIT ?2 OFFSET ?3
+            "#,
+        )?;
+        let rows = stmt.query_map(params![like_pattern, limit, offset], Self::row_to_todo_item)?;
+        Ok((
+            rows.filter_map(log_and_skip_err).collect(),
+            total.max(0) as usize,
+        ))
     }
 
     // ========================================================================
@@ -2037,6 +2402,16 @@ impl VfsTodoRepo {
         Ok(lists)
     }
 
+    pub fn count_deleted_todo_lists(db: &VfsDatabase) -> VfsResult<usize> {
+        let conn = db.get_conn_safe()?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM todo_lists WHERE deleted_at IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count.max(0) as usize)
+    }
+
     /// 永久删除单个待办列表（仅允许清除已在回收站中的列表）
     pub fn purge_todo_list(db: &VfsDatabase, list_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
@@ -2171,6 +2546,26 @@ impl VfsTodoRepo {
         debug!("[VFS::TodoRepo] Listed {} deleted todo items", items.len());
 
         Ok(items)
+    }
+
+    pub fn count_deleted_todo_items(db: &VfsDatabase) -> VfsResult<usize> {
+        let conn = db.get_conn_safe()?;
+        let count: i64 = conn.query_row(
+            r#"
+            SELECT COUNT(*) FROM todo_items ti
+            WHERE ti.deleted_at IS NOT NULL
+              AND (ti.parent_id IS NULL OR EXISTS(
+                    SELECT 1 FROM todo_items p WHERE p.id = ti.parent_id AND p.deleted_at IS NULL
+                  ))
+              AND EXISTS(
+                    SELECT 1 FROM todo_lists l
+                    WHERE l.id = ti.todo_list_id AND l.deleted_at IS NULL
+                  )
+            "#,
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count.max(0) as usize)
     }
 
     /// 永久删除单个待办项（仅允许清除已在回收站中的项；连同整棵已删除子树）
@@ -2906,5 +3301,136 @@ mod tests {
         let alive = VfsTodoRepo::list_items_by_list(&db, &list.id, true).expect("list");
         assert_eq!(alive.len(), 1);
         assert_eq!(alive[0].id, keep.id);
+    }
+
+    #[test]
+    fn agent_list_update_and_delete_enforce_atomic_occ() {
+        let (_temp_dir, db) = setup_test_db();
+        let list = create_list(&db, "OCC");
+
+        let (previous, updated) = VfsTodoRepo::update_todo_list_if_version(
+            &db,
+            &list.id,
+            VfsUpdateTodoListParams {
+                title: Some("OCC updated".to_string()),
+                description: None,
+                icon: None,
+                color: None,
+            },
+            &list.updated_at,
+        )
+        .expect("fresh revision updates");
+        assert_eq!(previous.title, "OCC");
+        assert_eq!(updated.title, "OCC updated");
+        assert_ne!(updated.updated_at, list.updated_at);
+
+        let stale_update = VfsTodoRepo::update_todo_list_if_version(
+            &db,
+            &list.id,
+            VfsUpdateTodoListParams {
+                title: Some("stale".to_string()),
+                description: None,
+                icon: None,
+                color: None,
+            },
+            &list.updated_at,
+        )
+        .expect_err("stale revision must conflict");
+        assert!(stale_update.to_string().contains("TODO_CONFLICT"));
+
+        let stale_delete =
+            VfsTodoRepo::delete_todo_list_if_version(&db, &list.id, &list.updated_at)
+                .expect_err("stale delete must conflict");
+        assert!(stale_delete.to_string().contains("TODO_CONFLICT"));
+        assert!(VfsTodoRepo::get_todo_list(&db, &list.id)
+            .expect("read list")
+            .is_some());
+    }
+
+    #[test]
+    fn agent_item_delete_enforces_occ_and_is_restorable() {
+        let (_temp_dir, db) = setup_test_db();
+        let list = create_list(&db, "Item OCC");
+        let item = create_item(&db, &list.id, "Task", None, None);
+        let updated = VfsTodoRepo::update_todo_item(
+            &db,
+            &item.id,
+            VfsUpdateTodoItemParams {
+                title: Some("Task updated".to_string()),
+                expected_updated_at: Some(item.updated_at.clone()),
+                ..Default::default()
+            },
+        )
+        .expect("update item");
+
+        let stale = VfsTodoRepo::delete_todo_item_if_version(&db, &item.id, &item.updated_at)
+            .expect_err("stale delete must conflict");
+        assert!(stale.to_string().contains("TODO_CONFLICT"));
+
+        let previous = VfsTodoRepo::delete_todo_item_if_version(&db, &item.id, &updated.updated_at)
+            .expect("fresh delete");
+        assert_eq!(previous.title, "Task updated");
+        assert!(VfsTodoRepo::get_todo_item(&db, &item.id)
+            .expect("read deleted")
+            .is_none());
+        let restored = VfsTodoRepo::restore_todo_item(&db, &item.id).expect("restore");
+        assert_eq!(restored.id, item.id);
+    }
+
+    #[test]
+    fn agent_cannot_delete_default_inbox() {
+        let (_temp_dir, db) = setup_test_db();
+        let inbox = VfsTodoRepo::ensure_default_inbox(&db).expect("create inbox");
+        let error = VfsTodoRepo::delete_todo_list_if_version(&db, &inbox.id, &inbox.updated_at)
+            .expect_err("default inbox is protected");
+        assert!(error.to_string().contains("delete_default_todo_list"));
+    }
+
+    #[test]
+    fn agent_reorder_requires_exact_unique_list_membership() {
+        let (_temp_dir, db) = setup_test_db();
+        let list = create_list(&db, "Reorder");
+        let first = create_item(&db, &list.id, "First", None, None);
+        let second = create_item(&db, &list.id, "Second", None, None);
+        let other_list = create_list(&db, "Other");
+        let outside = create_item(&db, &other_list.id, "Outside", None, None);
+        let revision = VfsTodoRepo::get_todo_list(&db, &list.id)
+            .unwrap()
+            .unwrap()
+            .updated_at;
+
+        for invalid in [
+            vec![first.id.clone(), first.id.clone()],
+            vec![first.id.clone()],
+            vec![first.id.clone(), outside.id.clone()],
+        ] {
+            let error = VfsTodoRepo::reorder_items(&db, &list.id, &invalid, Some(&revision))
+                .expect_err("partial/duplicate/external reorder must fail");
+            assert!(error.to_string().contains("item_ids"));
+            assert_eq!(
+                VfsTodoRepo::get_todo_list(&db, &list.id)
+                    .unwrap()
+                    .unwrap()
+                    .updated_at,
+                revision,
+                "failed reorder must roll back OCC version claim"
+            );
+        }
+
+        VfsTodoRepo::reorder_items(
+            &db,
+            &list.id,
+            &[second.id.clone(), first.id.clone()],
+            Some(&revision),
+        )
+        .expect("exact reorder succeeds");
+        let ordered = VfsTodoRepo::list_items_by_list(&db, &list.id, true).unwrap();
+        assert_eq!(
+            ordered
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![second.id.as_str(), first.id.as_str()]
+        );
     }
 }

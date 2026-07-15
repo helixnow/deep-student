@@ -28,7 +28,7 @@ const DATABASE_FILENAME: &str = "vfs.db";
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准。
 /// 单测 `test_current_schema_version_in_sync` 会校验它与 VFS_MIGRATION_SET 一致。
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260615;
+pub const CURRENT_SCHEMA_VERSION: u32 = crate::data_governance::migration::vfs::VFS_SCHEMA_VERSION;
 
 /// SQLite 连接池类型
 pub type VfsPool = Pool<SqliteConnectionManager>;

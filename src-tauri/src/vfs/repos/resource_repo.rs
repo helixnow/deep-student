@@ -485,7 +485,7 @@ impl VfsResourceRepo {
         // ★ 2026-06-12（第二轮审阅）：Lance 向量先入列孤儿队列再删 units
         conn.execute(
             r#"
-            INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id)
+            INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
             SELECT s.lance_row_id, u.resource_id
             FROM vfs_index_segments s
             JOIN vfs_index_units u ON s.unit_id = u.id
@@ -493,6 +493,11 @@ impl VfsResourceRepo {
                 SELECT id FROM resources
                 WHERE type = 'retrieval' AND ref_count = 0 AND updated_at < ?1
             )
+            ON CONFLICT(lance_row_id) DO UPDATE SET
+                resource_id = excluded.resource_id,
+                enqueued_at = excluded.enqueued_at,
+                next_retry_at = 0,
+                last_error = NULL
             "#,
             params![cutoff],
         )?;
@@ -557,11 +562,16 @@ impl VfsResourceRepo {
             // ★ 2026-06-12（第二轮审阅）：Lance 向量先入列孤儿队列再删 units
             conn.execute(
                 &format!(
-                    r#"INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id)
+                    r#"INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
                        SELECT s.lance_row_id, u.resource_id
                        FROM vfs_index_segments s
                        JOIN vfs_index_units u ON s.unit_id = u.id
-                       WHERE u.resource_id IN (SELECT id FROM resources WHERE {})"#,
+                       WHERE u.resource_id IN (SELECT id FROM resources WHERE {})
+                       ON CONFLICT(lance_row_id) DO UPDATE SET
+                           resource_id = excluded.resource_id,
+                           enqueued_at = excluded.enqueued_at,
+                           next_retry_at = 0,
+                           last_error = NULL"#,
                     filter
                 ),
                 params![cutoff],
@@ -808,7 +818,10 @@ impl VfsResourceRepo {
         // 3. 更新 data 和 hash
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
-            "UPDATE resources SET data = ?1, hash = ?2, updated_at = ?3, index_state = 'pending' WHERE id = ?4",
+            "UPDATE resources SET data = ?1, hash = ?2, updated_at = ?3,
+                index_state = 'pending', index_error = NULL,
+                index_retry_count = 0, index_next_retry_at = 0
+             WHERE id = ?4",
             params![new_data, new_hash, now, resource_id],
         )?;
 

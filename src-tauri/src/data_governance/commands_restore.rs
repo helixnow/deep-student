@@ -661,6 +661,18 @@ async fn execute_restore_with_progress(
         }
     }
 
+    let restore_assets_enabled = restore_assets != Some(false);
+    if restore_errors.is_empty() && databases_restored.iter().any(|id| id == "vfs") {
+        if let Err(e) = BackupManager::prepare_vfs_index_restore(
+            &manifest,
+            &inactive_dir,
+            restore_assets_enabled,
+        ) {
+            job_ctx.fail(format!("准备恢复 VFS 派生索引失败: {}", e));
+            return;
+        }
+    }
+
     let restored_workspaces = match manager.restore_workspace_manifest_files_to_dir(
         &manifest,
         &backup_subdir,
@@ -819,6 +831,17 @@ async fn execute_restore_with_progress(
     if has_asset_errors {
         job_ctx.fail(format!("资产恢复失败: {}", restore_errors.join("; ")));
         return;
+    }
+
+    if databases_restored.iter().any(|id| id == "vfs") {
+        if let Err(e) = BackupManager::finalize_vfs_index_restore(
+            &manifest,
+            &inactive_dir,
+            should_restore_assets,
+        ) {
+            job_ctx.fail(format!("校验恢复后的 VFS 派生索引失败: {}", e));
+            return;
+        }
     }
 
     // ============ 阶段 4: Cleanup (92-100%) - 插槽切换与审计 ============

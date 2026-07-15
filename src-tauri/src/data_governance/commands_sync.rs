@@ -16,7 +16,10 @@ use super::sync::{
     SyncExecutionResult, SyncManager, SyncManifest, SyncPhase, SyncProgress, SyncProgressEmitter,
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
-use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
+use crate::cloud_storage::{
+    create_storage, CloudStorage, CloudStorageConfig, FtpConfig, S3Config, StorageProvider,
+    WebDavConfig,
+};
 
 use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
 use super::commands_backup::{
@@ -24,6 +27,388 @@ use super::commands_backup::{
     get_app_data_dir, open_sync_connection, resolve_database_path, validate_user_path,
     ApplyToDbsResult,
 };
+
+/// Backend SSOT for the non-secret half of cloud-sync configuration.
+///
+/// Credentials deliberately live in `secure_store` and are never accepted by
+/// the DTOs below. Keeping a separate key also prevents the generic settings
+/// tool from accidentally exposing this configuration.
+pub const CLOUD_CONFIG_SSOT_SETTING_KEY: &str = "cloud_storage.config.safe_v1";
+
+const MAX_ENDPOINT_CHARS: usize = 2_048;
+const MAX_IDENTITY_CHARS: usize = 512;
+const MAX_ROOT_CHARS: usize = 256;
+const MAX_STORED_CONFIG_BYTES: usize = 16 * 1_024;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SafeWebDavConfig {
+    pub endpoint: String,
+    pub username: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SafeS3Config {
+    pub endpoint: String,
+    pub bucket: String,
+    pub access_key_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    #[serde(default)]
+    pub path_style: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SafeFtpConfig {
+    pub host: String,
+    #[serde(default = "safe_default_ftp_port")]
+    pub port: u16,
+    pub username: String,
+    #[serde(default)]
+    pub use_tls: bool,
+}
+
+fn safe_default_ftp_port() -> u16 {
+    21
+}
+
+/// Credential-free cloud configuration accepted from Settings.
+///
+/// The internally tagged enum makes the active provider exclusive: a WebDAV
+/// payload cannot also smuggle an S3/FTP block. `deny_unknown_fields` on both
+/// levels rejects `password`, `secretAccessKey`, `encryptionPassword`, tokens,
+/// and any future field until it is reviewed explicitly.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(tag = "provider", rename_all = "lowercase", deny_unknown_fields)]
+pub enum SafeCloudStorageConfig {
+    Webdav {
+        webdav: SafeWebDavConfig,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        root: Option<String>,
+    },
+    S3 {
+        s3: SafeS3Config,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        root: Option<String>,
+    },
+    Ftp {
+        ftp: SafeFtpConfig,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        root: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudConfigSsotResponse {
+    pub configured: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<SafeCloudStorageConfig>,
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum CloudConfigSsotError {
+    #[error("cloud sync is not configured in the backend SSOT")]
+    NotConfigured,
+    #[error("invalid non-secret cloud configuration: {0}")]
+    Invalid(String),
+    #[error("cloud configuration storage failed: {0}")]
+    Storage(String),
+    #[error("cloud credentials are unavailable or incomplete: {0}")]
+    CredentialsUnavailable(String),
+}
+
+fn bounded_config_text(
+    value: &str,
+    field: &str,
+    max_chars: usize,
+) -> Result<String, CloudConfigSsotError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(CloudConfigSsotError::Invalid(format!(
+            "{field} must not be blank"
+        )));
+    }
+    if value.chars().count() > max_chars {
+        return Err(CloudConfigSsotError::Invalid(format!(
+            "{field} exceeds {max_chars} characters"
+        )));
+    }
+    if value.chars().any(char::is_control) {
+        return Err(CloudConfigSsotError::Invalid(format!(
+            "{field} contains control characters"
+        )));
+    }
+    Ok(value.to_string())
+}
+
+fn validated_http_endpoint(value: &str, field: &str) -> Result<String, CloudConfigSsotError> {
+    let value = bounded_config_text(value, field, MAX_ENDPOINT_CHARS)?;
+    let url = url::Url::parse(&value)
+        .map_err(|_| CloudConfigSsotError::Invalid(format!("{field} must be a valid URL")))?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err(CloudConfigSsotError::Invalid(format!(
+            "{field} must use http or https and include a host"
+        )));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(CloudConfigSsotError::Invalid(format!(
+            "{field} must not embed credentials"
+        )));
+    }
+    Ok(value)
+}
+
+fn validated_root(root: Option<String>) -> Result<Option<String>, CloudConfigSsotError> {
+    let Some(root) = root else {
+        return Ok(None);
+    };
+    let root = root.trim().trim_matches('/').trim();
+    if root.is_empty() {
+        return Ok(None);
+    }
+    if root.chars().count() > MAX_ROOT_CHARS
+        || root.chars().any(char::is_control)
+        || root.contains('\\')
+        || root
+            .split('/')
+            .any(|component| component.is_empty() || matches!(component, "." | ".."))
+    {
+        return Err(CloudConfigSsotError::Invalid(
+            "root must be a bounded relative cloud key without traversal".to_string(),
+        ));
+    }
+    Ok(Some(root.to_string()))
+}
+
+impl SafeCloudStorageConfig {
+    pub fn provider_name(&self) -> &'static str {
+        match self {
+            Self::Webdav { .. } => "webdav",
+            Self::S3 { .. } => "s3",
+            Self::Ftp { .. } => "ftp",
+        }
+    }
+
+    pub fn root(&self) -> Option<&str> {
+        match self {
+            Self::Webdav { root, .. } | Self::S3 { root, .. } | Self::Ftp { root, .. } => {
+                root.as_deref()
+            }
+        }
+    }
+
+    fn validate_and_normalize(self) -> Result<Self, CloudConfigSsotError> {
+        match self {
+            Self::Webdav { webdav, root } => Ok(Self::Webdav {
+                webdav: SafeWebDavConfig {
+                    endpoint: validated_http_endpoint(&webdav.endpoint, "webdav.endpoint")?,
+                    username: bounded_config_text(
+                        &webdav.username,
+                        "webdav.username",
+                        MAX_IDENTITY_CHARS,
+                    )?,
+                },
+                root: validated_root(root)?,
+            }),
+            Self::S3 { s3, root } => Ok(Self::S3 {
+                s3: SafeS3Config {
+                    endpoint: validated_http_endpoint(&s3.endpoint, "s3.endpoint")?,
+                    bucket: bounded_config_text(&s3.bucket, "s3.bucket", MAX_IDENTITY_CHARS)?,
+                    access_key_id: bounded_config_text(
+                        &s3.access_key_id,
+                        "s3.accessKeyId",
+                        MAX_IDENTITY_CHARS,
+                    )?,
+                    region: s3
+                        .region
+                        .map(|region| bounded_config_text(&region, "s3.region", MAX_IDENTITY_CHARS))
+                        .transpose()?,
+                    path_style: s3.path_style,
+                },
+                root: validated_root(root)?,
+            }),
+            Self::Ftp { ftp, root } => {
+                if ftp.port == 0 {
+                    return Err(CloudConfigSsotError::Invalid(
+                        "ftp.port must be between 1 and 65535".to_string(),
+                    ));
+                }
+                let host = bounded_config_text(&ftp.host, "ftp.host", MAX_ENDPOINT_CHARS)?;
+                if host.contains("://") || host.contains('/') || host.contains('@') {
+                    return Err(CloudConfigSsotError::Invalid(
+                        "ftp.host must be a hostname or IP address without scheme or credentials"
+                            .to_string(),
+                    ));
+                }
+                Ok(Self::Ftp {
+                    ftp: SafeFtpConfig {
+                        host,
+                        port: ftp.port,
+                        username: bounded_config_text(
+                            &ftp.username,
+                            "ftp.username",
+                            MAX_IDENTITY_CHARS,
+                        )?,
+                        use_tls: ftp.use_tls,
+                    },
+                    root: validated_root(root)?,
+                })
+            }
+        }
+    }
+
+    fn into_runtime_config(self) -> CloudStorageConfig {
+        match self {
+            Self::Webdav { webdav, root } => CloudStorageConfig {
+                provider: StorageProvider::WebDav,
+                webdav: Some(WebDavConfig {
+                    endpoint: webdav.endpoint,
+                    username: webdav.username,
+                    password: String::new(),
+                }),
+                s3: None,
+                ftp: None,
+                root,
+                encryption_password: None,
+            },
+            Self::S3 { s3, root } => CloudStorageConfig {
+                provider: StorageProvider::S3,
+                webdav: None,
+                s3: Some(S3Config {
+                    endpoint: s3.endpoint,
+                    bucket: s3.bucket,
+                    access_key_id: s3.access_key_id,
+                    secret_access_key: String::new(),
+                    region: s3.region,
+                    path_style: s3.path_style,
+                }),
+                ftp: None,
+                root,
+                encryption_password: None,
+            },
+            Self::Ftp { ftp, root } => CloudStorageConfig {
+                provider: StorageProvider::Ftp,
+                webdav: None,
+                s3: None,
+                ftp: Some(FtpConfig {
+                    host: ftp.host,
+                    port: ftp.port,
+                    username: ftp.username,
+                    password: String::new(),
+                    use_tls: ftp.use_tls,
+                }),
+                root,
+                encryption_password: None,
+            },
+        }
+    }
+}
+
+pub fn save_cloud_config_ssot(
+    database: &crate::database::Database,
+    config: SafeCloudStorageConfig,
+) -> Result<SafeCloudStorageConfig, CloudConfigSsotError> {
+    let config = config.validate_and_normalize()?;
+    let encoded = serde_json::to_string(&config)
+        .map_err(|_| CloudConfigSsotError::Invalid("configuration is not serializable".into()))?;
+    if encoded.len() > MAX_STORED_CONFIG_BYTES {
+        return Err(CloudConfigSsotError::Invalid(
+            "serialized configuration is too large".to_string(),
+        ));
+    }
+    database
+        .save_setting(CLOUD_CONFIG_SSOT_SETTING_KEY, &encoded)
+        .map_err(|error| CloudConfigSsotError::Storage(error.to_string()))?;
+    Ok(config)
+}
+
+pub fn load_cloud_config_ssot(
+    database: &crate::database::Database,
+) -> Result<SafeCloudStorageConfig, CloudConfigSsotError> {
+    let encoded = database
+        .get_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
+        .map_err(|error| CloudConfigSsotError::Storage(error.to_string()))?
+        .ok_or(CloudConfigSsotError::NotConfigured)?;
+    if encoded.len() > MAX_STORED_CONFIG_BYTES {
+        return Err(CloudConfigSsotError::Invalid(
+            "stored configuration is too large".to_string(),
+        ));
+    }
+    serde_json::from_str::<SafeCloudStorageConfig>(&encoded)
+        .map_err(|_| CloudConfigSsotError::Invalid("stored configuration is malformed".into()))?
+        .validate_and_normalize()
+}
+
+pub fn load_hydrated_cloud_config_ssot(
+    app: &tauri::AppHandle,
+    database: &crate::database::Database,
+) -> Result<CloudStorageConfig, CloudConfigSsotError> {
+    let mut config = load_cloud_config_ssot(database)?.into_runtime_config();
+    crate::secure_store::hydrate_cloud_config(app, &mut config);
+    config
+        .validate()
+        .map_err(CloudConfigSsotError::CredentialsUnavailable)?;
+    Ok(config)
+}
+
+#[tauri::command]
+pub async fn data_governance_save_cloud_config_ssot(
+    state: tauri::State<'_, crate::commands::AppState>,
+    config: SafeCloudStorageConfig,
+) -> Result<CloudConfigSsotResponse, String> {
+    let config =
+        save_cloud_config_ssot(&state.database, config).map_err(|error| error.to_string())?;
+    Ok(CloudConfigSsotResponse {
+        configured: true,
+        provider: Some(config.provider_name().to_string()),
+        root: config.root().map(str::to_string),
+        config: Some(config),
+    })
+}
+
+#[tauri::command]
+pub async fn data_governance_get_cloud_config_ssot(
+    state: tauri::State<'_, crate::commands::AppState>,
+) -> Result<CloudConfigSsotResponse, String> {
+    match load_cloud_config_ssot(&state.database) {
+        Ok(config) => Ok(CloudConfigSsotResponse {
+            configured: true,
+            provider: Some(config.provider_name().to_string()),
+            root: config.root().map(str::to_string),
+            config: Some(config),
+        }),
+        Err(CloudConfigSsotError::NotConfigured) => Ok(CloudConfigSsotResponse {
+            configured: false,
+            provider: None,
+            root: None,
+            config: None,
+        }),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn data_governance_clear_cloud_config_ssot(
+    state: tauri::State<'_, crate::commands::AppState>,
+) -> Result<CloudConfigSsotResponse, String> {
+    state
+        .database
+        .delete_setting(CLOUD_CONFIG_SSOT_SETTING_KEY)
+        .map_err(|error| CloudConfigSsotError::Storage(error.to_string()).to_string())?;
+    Ok(CloudConfigSsotResponse {
+        configured: false,
+        provider: None,
+        root: None,
+        config: None,
+    })
+}
 
 /// 便捷函数：获取各表主键列名映射
 fn id_column_map() -> HashMap<String, String> {
