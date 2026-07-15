@@ -11,6 +11,8 @@ set -e
 PDFIUM_VERSION="7350"  # 最新稳定版本
 PDFIUM_BASE_URL="https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F${PDFIUM_VERSION}"
 OUTPUT_DIR="$(dirname "$0")/../src-tauri/resources/pdfium"
+PDFIUM_BINARY_LICENSE="$OUTPUT_DIR/LICENSE.pdfium-binaries"
+PDFIUM_LICENSES_DIR="$OUTPUT_DIR/licenses"
 
 # 颜色输出
 RED='\033[0;31m'
@@ -112,9 +114,9 @@ download_pdfium() {
     
     local output_file="${OUTPUT_DIR}/${lib_name}"
     
-    # 检查是否已存在
-    if [[ -f "$output_file" ]]; then
-        log_warn "文件已存在: $output_file，跳过下载"
+    # 二进制与其法律材料必须同时存在，避免发布包只携带动态库。
+    if [[ -f "$output_file" && -f "$PDFIUM_BINARY_LICENSE" && -f "$PDFIUM_LICENSES_DIR/pdfium.txt" ]]; then
+        log_warn "文件及许可证已存在: $output_file，跳过下载"
         return 0
     fi
     
@@ -143,7 +145,23 @@ download_pdfium() {
     
     # 复制库文件
     mkdir -p "$OUTPUT_DIR"
-    cp "${temp_dir}/extracted/${extract_path}" "$output_file"
+    if [[ ! -f "$output_file" ]]; then
+        cp "${temp_dir}/extracted/${extract_path}" "$output_file"
+    else
+        log_info "保留现有平台库，仅补齐许可证: $output_file"
+    fi
+
+    # 上游压缩包包含 PDFium 主许可证及其静态链接第三方组件的许可证。
+    # 保留整套材料；只复制动态库会使二进制发行缺少必要通知。
+    if [[ ! -f "${temp_dir}/extracted/LICENSE" || ! -d "${temp_dir}/extracted/licenses" ]]; then
+        log_error "PDFium 压缩包缺少 LICENSE 或 licenses/"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    cp "${temp_dir}/extracted/LICENSE" "$PDFIUM_BINARY_LICENSE"
+    rm -rf "$PDFIUM_LICENSES_DIR"
+    mkdir -p "$PDFIUM_LICENSES_DIR"
+    cp -R "${temp_dir}/extracted/licenses/." "$PDFIUM_LICENSES_DIR/"
     
     # 清理
     rm -rf "$temp_dir"

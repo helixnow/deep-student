@@ -3070,6 +3070,7 @@ dependencies = [
  "calamine",
  "cap-std",
  "chrono",
+ "chrono-tz",
  "cocoa",
  "config",
  "criterion",

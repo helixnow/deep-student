@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "analyze": "ANALYZE=1 npm run build",
-    "prebuild": "npm run version:generate && npm run typecheck",
+    "prebuild": "npm run version:generate && npm run licenses:check && npm run typecheck",
     "build": "vite build",
     "build:all": "bash ./scripts/build_all.sh",
     "build:ios": "npm run icons:ios && npm run icons:ios:opaque && tauri ios build",
@@ -62,7 +62,9 @@
     "lint:components:strict": "eslint src/ --rule 'no-restricted-imports: error' --rule 'ds-components/no-native-button: error'",
     "check:i18n": "node scripts/check-i18n.mjs",
     "check:i18n:missing": "node scripts/check-missing-translations.mjs",
-    "check:licenses": "node scripts/check-licenses.mjs",
+    "licenses:generate": "node scripts/generate-third-party-notices.mjs",
+    "licenses:check": "node scripts/check-license-compliance.mjs",
+    "check:licenses": "npm run licenses:check",
     "test:lifecycle-gate": "node scripts/lifecycle-score-gate.mjs",
     "registry:sync": "node scripts/sync-model-registry.mjs"
   },
@@ -166,6 +168,9 @@
     "zustand": "^5.0.6"
   },
   "overrides": {
+    "exceljs": {
+      "unzipper": "0.12.5"
+    },
     "prosemirror-model": "^1.24.1",
     "prosemirror-state": "^1.4.3",
     "prosemirror-view": "^1.37.1",

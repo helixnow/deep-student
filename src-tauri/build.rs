@@ -259,7 +259,9 @@ fn extract_allowed_commands(permission: &str) -> BTreeSet<String> {
 }
 
 /// Assert the exact security property in Tauri's generated build artifacts: the
-/// app manifest is active, while only local `main` windows receive app commands.
+/// app manifest is active, while only the trusted local `main` webview receives
+/// desktop app commands. Mobile remains a single-webview window and is scoped by
+/// its `main` window label.
 fn verify_generated_application_acl() {
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR must be set"));
     let manifests_path = out_dir.join("acl-manifests.json");
@@ -288,6 +290,17 @@ fn verify_generated_application_acl() {
             .any(|command| command.as_str() == Some("test_mcp_connection")),
         "generated app ACL must cover the process-spawning test_mcp_connection command"
     );
+    let browser_input_commands = app_manifest
+        .pointer("/permissions/allow-browser-content-user-input/commands/allow")
+        .and_then(serde_json::Value::as_array)
+        .expect("generated app ACL is missing allow-browser-content-user-input");
+    assert_eq!(
+        browser_input_commands,
+        &[serde_json::Value::String(
+            "browser_content_user_input".into()
+        )],
+        "browser content permission must expose only the trusted-input command"
+    );
 
     let capabilities = capabilities
         .as_object()
@@ -296,16 +309,33 @@ fn verify_generated_application_acl() {
         .get("browser-content")
         .expect("generated capabilities are missing browser-content isolation");
     assert_eq!(
-        browser.get("windows").and_then(serde_json::Value::as_array),
+        browser
+            .get("webviews")
+            .and_then(serde_json::Value::as_array),
         Some(&vec![serde_json::Value::String("browser-content".into())]),
-        "browser-content capability must target only the browser-content window"
+        "browser-content capability must target only the browser-content webview"
     );
     assert!(
+        browser.get("windows").is_none()
+            || browser
+                .get("windows")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(Vec::is_empty),
+        "browser-content capability must not inherit permissions by window label"
+    );
+    assert_eq!(
         browser
             .get("permissions")
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(Vec::is_empty),
-        "browser-content must not receive plugin or application permissions"
+            .and_then(serde_json::Value::as_array),
+        Some(&vec![serde_json::Value::String(
+            "allow-browser-content-user-input".into()
+        )]),
+        "browser-content must receive only its nonce-authenticated input permission"
+    );
+    assert_eq!(
+        browser.get("local").and_then(serde_json::Value::as_bool),
+        Some(false),
+        "browser-content permission is intended only for loaded remote pages"
     );
 
     let mut app_command_capabilities = Vec::new();
@@ -328,15 +358,28 @@ fn verify_generated_application_acl() {
                 capability.get("remote").is_none() || capability.get("remote").unwrap().is_null(),
                 "{identifier} must not grant app commands to remote origins"
             );
+            let selector = if identifier == "default" {
+                assert!(
+                    capability.get("windows").is_none()
+                        || capability
+                            .get("windows")
+                            .and_then(serde_json::Value::as_array)
+                            .is_some_and(Vec::is_empty),
+                    "desktop app commands must not be inherited by every webview in main"
+                );
+                "webviews"
+            } else {
+                "windows"
+            };
             assert!(
                 capability
-                    .get("windows")
+                    .get(selector)
                     .and_then(serde_json::Value::as_array)
-                    .is_some_and(|windows| {
-                        !windows.is_empty()
-                            && windows.iter().all(|window| window.as_str() == Some("main"))
+                    .is_some_and(|targets| {
+                        !targets.is_empty()
+                            && targets.iter().all(|target| target.as_str() == Some("main"))
                     }),
-                "{identifier} must grant app commands only to the main window"
+                "{identifier} must grant app commands only to the trusted main {selector} selector"
             );
             app_command_capabilities.push(identifier.as_str());
         }

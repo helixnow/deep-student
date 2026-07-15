@@ -60,6 +60,9 @@ jobs:
 
       - run: npm ci --legacy-peer-deps
 
+      - name: Verify third-party license notices
+        run: npm run licenses:check
+
       - name: Generate version info
         run: node scripts/generate-version.mjs
 
