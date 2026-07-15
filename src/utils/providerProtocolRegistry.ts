@@ -67,10 +67,16 @@ export const resolvePreferredProtocol = (args: {
   supportsOpenAIResponses?: boolean | null;
 }): ApiProtocol => {
   const normalizedAdapter = normalize(args.adapter);
-  if (normalizedAdapter === 'anthropic') return 'anthropic_messages';
-  if (normalizedAdapter === 'google') return 'google_generate_content';
-
   const allowed = getAllowedProtocolsForProviderType(args.providerType);
+  const nativeProtocol =
+    normalizedAdapter === 'anthropic' || normalizedAdapter === 'claude'
+      ? 'anthropic_messages'
+      : normalizedAdapter === 'google' || normalizedAdapter === 'gemini'
+        ? 'google_generate_content'
+        : undefined;
+  if (nativeProtocol && allowed.includes(nativeProtocol)) {
+    return nativeProtocol;
+  }
 
   // 仅「供应商级显式声明」或「官方 OpenAI 端点」才把默认路由切到 Responses。
   // 注册表级 supports_openai_responses=true 只解锁可选项（如 qwen/doubao 的白名单制

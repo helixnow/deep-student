@@ -530,13 +530,15 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   }
 
   // OpenAI reasoning_effort 支持：o1/o3/o4系列、gpt-5系列（除gpt-5-chat）、gpt-oss、codex-mini
+  const isOpenAiOReasoningBudget =
+    /(?:^|[/_-])o[134](?:[.\-_/]|$)/.test(id) &&
+    !/(?:^|[/_-])o1-(?:preview|mini)(?:[.\-_/]|$)/.test(id);
+  const isGpt5Chat = /(?:^|[/_-])gpt-5(?:\.\d+)?-chat(?:[.\-_/]|$)/.test(id);
   const isOpenaiReasoningBudget =
-    (id.includes('o1') && !id.includes('o1-preview') && !id.includes('o1-mini')) ||
-    id.includes('o3') ||
-    id.includes('o4') ||
-    id.includes('gpt-oss') ||
-    id.includes('codex-mini') ||
-    (id.includes('gpt-5') && !id.includes('gpt-5-chat'));
+    isOpenAiOReasoningBudget ||
+    /(?:^|[/_-])gpt-oss(?:[.\-_/]|$)/.test(id) ||
+    /(?:^|[/_-])codex-mini(?:[.\-_/]|$)/.test(id) ||
+    (!isGpt5Chat && /(?:^|[/_-])gpt-5(?:[.\-_/]|$)/.test(id));
 
   // Grok reasoning_effort 支持：grok-3-mini（legacy）与 grok-4.3（none/low/medium/high，
   // 2026-07 调研 04 §1.3）；grok-4.20-multi-agent 的 effort 语义为协作 agent 数量
@@ -547,6 +549,12 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     id.includes('grok-latest');
 
   const isPerplexityReasoningBudget = id.includes('sonar-deep-research');
+
+  const isMistralReasoningBudget =
+    id.includes('mistral-medium-latest') ||
+    /mistral-medium-3(?:[.-]?5)(?:$|[/_.-])/.test(id) ||
+    id.includes('mistral-small-latest') ||
+    /mistral-small-4(?:$|[/_.-])/.test(id);
 
   const isDeepSeekV4 = DEEPSEEK_V4_REGEX.test(id) || (name ? DEEPSEEK_V4_REGEX.test(name) : false);
   const isDeepSeekLegacyAlias = DEEPSEEK_LEGACY_ALIAS_REGEX.test(id);
@@ -565,7 +573,12 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   const isRegistryHybridReasoning = !!(modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_mode'));
 
   const supportsReasoningEffort = !embedding && !rerank && !imageModel && (
-    isOpenaiReasoningBudget || isGrokReasoningBudget || isPerplexityReasoningBudget || isDeepSeekV4EffortCapable || isRegistryReasoningEffort
+    isOpenaiReasoningBudget ||
+    isGrokReasoningBudget ||
+    isPerplexityReasoningBudget ||
+    isMistralReasoningBudget ||
+    isDeepSeekV4EffortCapable ||
+    isRegistryReasoningEffort
   );
 
   const isGeminiThinking =

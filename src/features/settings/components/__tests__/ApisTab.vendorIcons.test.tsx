@@ -47,6 +47,7 @@ const vendor = (overrides: Partial<VendorConfig>): VendorConfig => ({
 
 interface RenderApisTabOptions {
   selectedVendor?: VendorConfig | null;
+  openAICodexAuthenticated?: boolean;
 }
 
 const renderApisTab = (sortedVendors: VendorConfig[], options: RenderApisTabOptions = {}) => {
@@ -61,6 +62,7 @@ const renderApisTab = (sortedVendors: VendorConfig[], options: RenderApisTabOpti
       setSelectedVendorId={noop}
       selectedVendorModels={[]}
       selectedVendorIsSiliconflow={(selectedVendor?.providerType ?? '').toLowerCase() === 'siliconflow'}
+      openAICodexAuthenticated={options.openAICodexAuthenticated ?? false}
       profileCountByVendor={new Map()}
       vendorBusy={false}
       vendorSaving={false}
@@ -99,6 +101,36 @@ const renderApisTab = (sortedVendors: VendorConfig[], options: RenderApisTabOpti
 describe('ApisTab vendor list icons', () => {
   beforeEach(() => {
     i18nMock.language = 'en-US';
+  });
+
+  it('renders the Codex OAuth vendor with the ChatGPT icon and preserves its auth tone', () => {
+    const codex = vendor({
+      id: 'builtin-openai-codex',
+      name: 'OpenAI Codex',
+      providerType: 'openai_codex',
+      authMode: 'openai_codex_oauth',
+      isBuiltin: true,
+      isReadOnly: true,
+    });
+
+    const signedOut = renderApisTab([codex], { openAICodexAuthenticated: false });
+    const signedOutIcon = screen.getByTestId('vendor-icon-builtin-openai-codex');
+    expect(signedOutIcon).toHaveAttribute('data-icon-tone', 'muted');
+    expect(signedOutIcon.querySelector('path')?.getAttribute('d')).toContain('M9.205 8.658');
+    expect(signedOutIcon.querySelector('img')).not.toBeInTheDocument();
+    signedOut.unmount();
+
+    const signedIn = renderApisTab([codex], {
+      openAICodexAuthenticated: true,
+      selectedVendor: codex,
+    });
+    const signedInIcon = screen.getByTestId('vendor-icon-builtin-openai-codex');
+    expect(signedInIcon).toHaveAttribute('data-icon-tone', 'color');
+    expect(signedInIcon.querySelector('path')?.getAttribute('d')).toContain('M9.205 8.658');
+
+    const detailIcon = signedIn.getByTestId('vendor-detail-icon-builtin-openai-codex');
+    expect(detailIcon.querySelector('path')?.getAttribute('d')).toContain('M9.205 8.658');
+    expect(detailIcon.querySelector('img')).not.toBeInTheDocument();
   });
 
   it('renders SiliconFlow through the Lobe SiliconCloud SVG data', () => {

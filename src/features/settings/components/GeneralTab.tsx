@@ -8,6 +8,7 @@ import { VoiceInputSettingsSection } from './VoiceInputSettingsSection';
 import { MemorySettingsSection } from './MemorySettingsSection';
 import { MarkdownEditorWindowSettings } from './MarkdownEditorWindowSettings';
 import { WorkbenchSettingsSection } from './WorkbenchSettingsSection';
+import { AnkiConnectSettingsSection } from './AnkiConnectSettingsSection';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -219,6 +220,10 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               </NotionButton>
             </SettingRow>
         </SettingsGroup>
+
+        <div className="mt-8">
+          <AnkiConnectSettingsSection />
+        </div>
 
         <div className="mt-8 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4">
           <VoiceInputSettingsSection embedded assignedModel={voiceInputAssignedModel} />

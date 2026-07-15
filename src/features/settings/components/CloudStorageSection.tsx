@@ -211,6 +211,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             };
             localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
           }
+          await cloudApi.saveCloudConfigSsot(config);
           configLoaded = true;
         } catch (e: unknown) {
           console.error('Failed to load cloud storage config:', e);
@@ -271,6 +272,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             encryptionPassword: undefined,
           };
           localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
+          await cloudApi.saveCloudConfigSsot(oldConfig);
           
           // 删除旧配置
           localStorage.removeItem(LEGACY_CONFIG_KEY);
@@ -375,6 +377,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
 
+    try {
+      await cloudApi.saveCloudConfigSsot(config);
+    } catch (e: unknown) {
+      console.error('Failed to save credential-free cloud config SSOT:', e);
+      showGlobalNotification('error', t('cloudStorage:messages.configSsotFailed'));
+      return;
+    }
+
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
     showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
     onConfigChanged?.();
@@ -414,7 +424,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
 
     await doSaveConfig();
-  }, [buildConfig, webdavConfig.password, webdavConfig.endpoint, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, encryptionPassword, t, doSaveConfig]);
+  }, [buildConfig, webdavConfig.password, webdavConfig.endpoint, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
 
   // 实际执行测试连接逻辑
   const doTestConnection = useCallback(async () => {
@@ -476,14 +486,23 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 清除配置
   const clearConfig = useCallback(async () => {
-    // 清除 localStorage
-    localStorage.removeItem(CONFIG_STORAGE_KEY);
+    let clearFailed = false;
+    try {
+      await cloudApi.clearCloudConfigSsot();
+    } catch (e: unknown) {
+      clearFailed = true;
+      console.warn('Failed to clear cloud config backend SSOT:', e);
+    }
     // 清除安全存储中的凭据
     try {
       await cloudApi.deleteCredentials();
     } catch (e: unknown) {
+      clearFailed = true;
       console.warn('Failed to delete credentials from secure storage:', e);
     }
+    // The local copy is only a UI cache; clear it even when one backend cleanup
+    // failed so stale credentials are never reintroduced by the WebView.
+    localStorage.removeItem(CONFIG_STORAGE_KEY);
     // 重置状态
     setOpProgress(null);
     setHasStoredFtpConfig(false);
@@ -495,7 +514,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setConnectionStatus('unknown');
     setSyncStatus(null);
     setVersions([]);
-    showGlobalNotification('info', t('cloudStorage:messages.configCleared'));
+    showGlobalNotification(
+      clearFailed ? 'error' : 'info',
+      t(clearFailed ? 'cloudStorage:messages.configClearPartial' : 'cloudStorage:messages.configCleared'),
+    );
     onConfigChanged?.();
   }, [t, onConfigChanged]);
 
@@ -692,7 +714,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
     setUploading(true);
-    setOpProgress({ operation: 'upload', stageIndex: 1, stageTotal: 4, stageLabel: '正在备份数据库...', bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
+    setOpProgress({ operation: 'upload', stageIndex: 1, stageTotal: 4, stageLabel: t('cloudStorage:progress.backupDatabase'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
     try {
       // 阶段 1/4：创建备份
       let backupId: string;
@@ -708,11 +730,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         backupId = resolveBackupId(backupSummary) ?? '';
         if (!backupId) throw new Error('backup_id missing from backup result');
       } catch (e: unknown) {
-        throw new Error(`备份数据库失败: ${getErrorMessage(e)}`);
+        throw new Error(t('cloudStorage:errors.backupDatabaseFailed', { error: getErrorMessage(e) }));
       }
 
       // 阶段 2/4：导出 ZIP
-      setStage('upload', 2, 4, '正在打包 ZIP...');
+      setStage('upload', 2, 4, t('cloudStorage:progress.packageZip'));
       let zipPath: string;
       try {
         const zipExportJob = await DataGovernanceApi.exportZip(backupId);
@@ -720,21 +742,21 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         zipPath = resolveExportZipPath(zipExportSummary) ?? '';
         if (!zipPath) throw new Error('zip export path missing from export result');
       } catch (e: unknown) {
-        throw new Error(`打包 ZIP 失败: ${getErrorMessage(e)}`);
+        throw new Error(t('cloudStorage:errors.packageZipFailed', { error: getErrorMessage(e) }));
       }
 
       // 阶段 3/4：上传至云端（字节进度由 Tauri 事件驱动）
-      setStage('upload', 3, 4, '正在上传至云端...');
+      setStage('upload', 3, 4, t('cloudStorage:progress.uploadCloud'));
       let result: cloudApi.UploadResult;
       try {
         const appVersion = await TauriAPI.getAppVersion();
         result = await cloudApi.uploadBackup(buildConfig(), zipPath, appVersion);
       } catch (e: unknown) {
-        throw new Error(`上传文件失败: ${getErrorMessage(e)}`);
+        throw new Error(t('cloudStorage:errors.uploadFileFailed', { error: getErrorMessage(e) }));
       }
 
       // 阶段 4/4：刷新状态
-      setStage('upload', 4, 4, '正在刷新状态...');
+      setStage('upload', 4, 4, t('cloudStorage:progress.refreshStatus'));
       await refreshStatus();
 
       setOpProgress(null);
@@ -778,7 +800,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setRestoreConfirmOpen(false);
     setDownloading(true);
     setRestoreVersionId(versionId);
-    setOpProgress({ operation: 'download', stageIndex: 1, stageTotal: 3, stageLabel: '正在从云端下载...', bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
+    setOpProgress({ operation: 'download', stageIndex: 1, stageTotal: 3, stageLabel: t('cloudStorage:progress.downloadCloud'), bytesDone: 0, bytesTotal: 0, isTransferring: false, error: null });
 
     try {
       // 阶段 1/3：下载云端备份（字节进度由 Tauri 事件驱动）
@@ -788,11 +810,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       try {
         downloadResult = await cloudApi.downloadBackup(buildConfig(), versionId, downloadDir);
       } catch (e: unknown) {
-        throw new Error(`下载备份失败: ${getErrorMessage(e)}`);
+        throw new Error(t('cloudStorage:errors.downloadBackupFailed', { error: getErrorMessage(e) }));
       }
 
       // 阶段 2/3：导入 ZIP
-      setStage('download', 2, 3, '正在导入 ZIP...');
+      setStage('download', 2, 3, t('cloudStorage:progress.importZip'));
       let importedBackupId: string;
       try {
         const importJob = await DataGovernanceApi.importZip(downloadResult.localPath);
@@ -800,16 +822,16 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         importedBackupId = resolveBackupId(importSummary) ?? '';
         if (!importedBackupId) throw new Error('backup_id missing from import result');
       } catch (e: unknown) {
-        throw new Error(`导入 ZIP 失败: ${getErrorMessage(e)}`);
+        throw new Error(t('cloudStorage:errors.importZipFailed', { error: getErrorMessage(e) }));
       }
 
       // 阶段 3/3：恢复数据库
-      setStage('download', 3, 3, '正在恢复数据库...');
+      setStage('download', 3, 3, t('cloudStorage:progress.restoreDatabase'));
       try {
         const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
         await waitForGovernanceJob(restoreJob.job_id, 'import');
       } catch (e: unknown) {
-        throw new Error(`恢复数据库失败: ${getErrorMessage(e)}`);
+        throw new Error(t('cloudStorage:errors.restoreDatabaseFailed', { error: getErrorMessage(e) }));
       }
 
       setOpProgress(null);
@@ -1114,12 +1136,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <div className="flex items-center gap-2">
             <WarningCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
             <Label htmlFor="cloud-encryption-password" className="font-medium">
-              端到端加密密码（可选，强烈推荐）
+              {t('cloudStorage:encryption.title')}
             </Label>
           </div>
           <ApiKeyField
             id="cloud-encryption-password"
-            placeholder="留空则不加密；设置后仅你本地存储，云端无法解密"
+            placeholder={t('cloudStorage:encryption.placeholder')}
             value={encryptionPassword}
             onChange={(e) => setEncryptionPassword(e.target.value)}
             autoComplete="new-password"
@@ -1130,9 +1152,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             hideLabel={t('common:securePassword.hidePassword')}
           />
           <p className="text-xs text-muted-foreground leading-relaxed">
-            开启后，上传的 ZIP 备份将使用 AES-256-GCM 加密，云服务商无法读取内容。
-            <span className="text-destructive font-medium"> 密码仅存储在本机系统凭据库（Keychain/Credential Manager），
-            若遗忘则无法恢复任何已加密的云端备份。</span>所有连接此云端的设备必须使用同一密码，否则无法互相解密。
+            {t('cloudStorage:encryption.description')}{' '}
+            <span className="text-destructive font-medium">{t('cloudStorage:encryption.warning')}</span>
           </p>
         </div>
 

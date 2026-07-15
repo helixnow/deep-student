@@ -237,9 +237,21 @@ static ADAPTER_REGISTRY: LazyLock<HashMap<&'static str, Box<dyn RequestAdapter>>
 static DEFAULT_ADAPTER: LazyLock<Box<dyn RequestAdapter>> =
     LazyLock::new(|| Box::new(GenericOpenAIAdapter));
 
-/// 聚合平台列表（这些平台托管多个供应商的模型，不应作为适配器选择依据）
-const AGGREGATOR_PLATFORMS: &[&str] =
-    &["siliconflow", "openrouter", "together", "fireworks", "groq"];
+/// 聚合/反代平台列表（这些宿主使用 OpenAI-compatible 请求方言，
+/// 不应因为模型家族而误发上游供应商的原生 thinking 字段）。
+const AGGREGATOR_PLATFORMS: &[&str] = &[
+    "siliconflow",
+    "openrouter",
+    "together",
+    "fireworks",
+    "groq",
+    "custom",
+    "general",
+    "one-api",
+    "one_api",
+    "sub2api",
+    "cpa",
+];
 
 /// 检查是否是聚合平台
 fn is_aggregator_platform(provider_type: &str) -> bool {
@@ -258,17 +270,53 @@ fn is_aggregator_platform(provider_type: &str) -> bool {
 /// - `model_adapter`: 模型适配器类型（前端推断引擎预设，如 "minimax", "deepseek"）
 ///
 /// # 注意
-/// 聚合平台（siliconflow 等）托管多个供应商的模型，不应作为适配器选择依据。
-/// 对于聚合平台，应使用前端推断引擎预设的 `model_adapter` 字段。
+/// 聚合平台托管多个供应商的模型。SiliconFlow 的 DeepSeek/Qwen 模型需要家族适配器，
+/// 其余模型使用宿主方言优先的通用适配器；其他聚合平台按 `model_adapter` 分派。
 pub fn get_adapter(
     provider_type: Option<&str>,
     provider_scope: Option<&str>,
     model_adapter: &str,
 ) -> &'static dyn RequestAdapter {
+    let siliconflow_host = provider_type
+        .is_some_and(|value| value.eq_ignore_ascii_case("siliconflow"))
+        || provider_scope.is_some_and(|value| value.eq_ignore_ascii_case("siliconflow"));
+    if siliconflow_host {
+        let model_family = model_adapter.to_lowercase();
+        return match model_family.as_str() {
+            "deepseek" => ADAPTER_REGISTRY
+                .get("deepseek")
+                .expect("deepseek adapter must be registered")
+                .as_ref(),
+            "qwen" => ADAPTER_REGISTRY
+                .get("qwen")
+                .expect("qwen adapter must be registered")
+                .as_ref(),
+            _ => ADAPTER_REGISTRY
+                .get("siliconflow")
+                .expect("siliconflow adapter must be registered")
+                .as_ref(),
+        };
+    }
+
+    let aggregator_host = provider_type
+        .is_some_and(|value| is_aggregator_platform(&value.to_lowercase()))
+        || provider_scope.is_some_and(|value| is_aggregator_platform(&value.to_lowercase()));
+    if aggregator_host {
+        return ADAPTER_REGISTRY
+            .get("general")
+            .expect("general adapter must be registered")
+            .as_ref();
+    }
+
     if let Some(scope) = provider_scope {
         let scope_lower = scope.to_lowercase();
-        if let Some(adapter) = ADAPTER_REGISTRY.get(scope_lower.as_str()) {
-            return adapter.as_ref();
+        // provider_scope is host-scoped for aggregator profiles created by the
+        // settings UI (for example `siliconflow`), not the underlying model
+        // family. Let model_adapter choose DeepSeek/Qwen/etc. in that case.
+        if !is_aggregator_platform(&scope_lower) {
+            if let Some(adapter) = ADAPTER_REGISTRY.get(scope_lower.as_str()) {
+                return adapter.as_ref();
+            }
         }
     }
 
@@ -375,9 +423,45 @@ mod tests {
     }
 
     #[test]
-    fn test_get_adapter_by_provider_scope() {
+    fn test_aggregator_host_uses_generic_dialect_over_model_family() {
         let adapter = get_adapter(Some("openrouter"), Some("qwen"), "general");
-        assert_eq!(adapter.id(), "qwen");
+        assert_eq!(adapter.id(), "general");
+
+        for (provider, family) in [
+            ("openrouter", "qwen"),
+            ("together", "moonshot"),
+            ("fireworks", "zhipu"),
+            ("groq", "anthropic"),
+            ("custom", "ernie"),
+            ("sub2api", "minimax"),
+            ("one-api", "google"),
+            ("cpa", "deepseek"),
+        ] {
+            assert_eq!(
+                get_adapter(Some(provider), Some(family), family).id(),
+                "general",
+                "provider={provider}, family={family}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_siliconflow_only_uses_family_adapters_for_host_dialects() {
+        assert_eq!(
+            get_adapter(Some("siliconflow"), Some("siliconflow"), "deepseek").id(),
+            "deepseek"
+        );
+        assert_eq!(
+            get_adapter(Some("siliconflow"), Some("siliconflow"), "qwen").id(),
+            "qwen"
+        );
+        for model_adapter in ["zhipu", "moonshot", "minimax", "anthropic"] {
+            assert_eq!(
+                get_adapter(Some("siliconflow"), Some("siliconflow"), model_adapter).id(),
+                "general",
+                "model_adapter={model_adapter}"
+            );
+        }
     }
 
     #[test]

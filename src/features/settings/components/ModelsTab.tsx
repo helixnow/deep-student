@@ -15,6 +15,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { OcrEngineCard } from './OcrEngineCard';
 import { cn } from '@/lib/utils';
 import type { ApiConfig } from '@/types';
+import { supportsKnowledgeModelCapability } from './knowledgeModelCapabilities';
 
 type TranslationDisplayMode = 'aligned' | 'streaming';
 
@@ -199,6 +200,15 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
   }, []);
 
   const handleSave = async (field: string, value: string | null) => {
+    if (value && (field === 'reranker_model_config_id' || field === 'vl_reranker_model_config_id')) {
+      const model = apiConfigs.find((candidate) => candidate.id === value);
+      const requiredCapability = field === 'vl_reranker_model_config_id'
+        ? 'vl_reranker'
+        : 'text_reranker';
+      if (!model || !supportsKnowledgeModelCapability(model, requiredCapability)) {
+        throw new Error(`Model ${value} does not support ${requiredCapability}`);
+      }
+    }
     return await saveSingleAssignmentField(field, value);
   };
 
@@ -352,7 +362,10 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.rerankerModelConfigId}
               field="reranker_model_config_id"
               configKey="rerankerModelConfigId"
-              models={toUnifiedModelInfo(getRerankerApis(config.rerankerModelConfigId))}
+              models={toUnifiedModelInfo(
+                getRerankerApis(config.rerankerModelConfigId)
+                  .filter((model) => supportsKnowledgeModelCapability(model, 'text_reranker'))
+              )}
               placeholder={t('settings:placeholders.no_reranker')}
               notificationKey={notify('reranker_saved')}
               onSave={handleSave}
@@ -364,7 +377,10 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.vl_reranker_model_config_id}
               field="vl_reranker_model_config_id"
               configKey="vl_reranker_model_config_id"
-              models={toUnifiedModelInfo(getRerankerApis(config.vl_reranker_model_config_id))}
+              models={toUnifiedModelInfo(
+                getRerankerApis(config.vl_reranker_model_config_id)
+                  .filter((model) => supportsKnowledgeModelCapability(model, 'vl_reranker'))
+              )}
               placeholder={t('settings:placeholders.select_vl_reranker')}
               notificationKey={notify('vl_reranker_saved')}
               onSave={handleSave}

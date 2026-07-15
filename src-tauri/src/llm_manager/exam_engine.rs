@@ -5,13 +5,16 @@
 use crate::models::{AppError, AppErrorType, ExamCardBBox};
 use crate::providers::ProviderAdapter;
 use base64::{engine::general_purpose, Engine as _};
+use futures_util::{stream::FuturesUnordered, StreamExt};
 use image::imageops::FilterType;
 use image::{GenericImageView, ImageOutputFormat};
 use log::{debug, error, info, warn};
 use serde_json::{json, Value};
+use std::future::Future;
 use std::io::Cursor;
 use std::path::Path;
 
+use super::model2_pipeline::PreparedProviderRequest;
 use super::{
     build_provider_adapter, normalize_nonstream_response_to_openai, ApiConfig,
     ExamSegmentationCard, LLMManager, Result, EXAM_SEGMENT_MAX_DIMENSION,
@@ -26,11 +29,52 @@ struct PreparedOcrRequest {
     engine_name: String,
     model_name: String,
     model_adapter: String,
+    provider_type: Option<String>,
     api_protocol: Option<String>,
-    url: String,
-    headers: reqwest::header::HeaderMap,
-    body: serde_json::Value,
+    supports_openai_responses: Option<bool>,
+    base_url: String,
+    request: PreparedProviderRequest,
 }
+
+enum PreparedOcrCandidate {
+    Remote(PreparedOcrRequest),
+    SystemOcr { idx: usize, image_bytes: Vec<u8> },
+}
+
+/// Releasing a half-open probe is mandatory even when a caller drops the OCR future on timeout
+/// or cancellation. In Closed/Open states `cancel_probe` is a no-op.
+struct OcrCircuitProbeGuard;
+
+impl Drop for OcrCircuitProbeGuard {
+    fn drop(&mut self) {
+        crate::ocr_circuit_breaker::OCR_CIRCUIT_BREAKER.cancel_probe();
+    }
+}
+
+impl PreparedOcrCandidate {
+    fn idx(&self) -> usize {
+        match self {
+            Self::Remote(request) => request.idx,
+            Self::SystemOcr { idx, .. } => *idx,
+        }
+    }
+
+    fn engine_name(&self) -> &str {
+        match self {
+            Self::Remote(request) => &request.engine_name,
+            Self::SystemOcr { .. } => "system_ocr",
+        }
+    }
+
+    fn model_name(&self) -> &str {
+        match self {
+            Self::Remote(request) => &request.model_name,
+            Self::SystemOcr { .. } => "native",
+        }
+    }
+}
+
+type OcrRequestResult = (usize, std::result::Result<String, String>);
 
 /// 安全截取字符串（避免切断 UTF-8 字符边界）— 模块级别，供 spawn 任务使用
 fn safe_truncate(s: &str, max_bytes: usize) -> &str {
@@ -45,38 +89,10 @@ fn safe_truncate(s: &str, max_bytes: usize) -> &str {
     }
 }
 
-/// 执行单个 OCR 引擎请求（独立于 LLMManager，可 tokio::spawn）
-async fn run_single_ocr_request(
-    client: reqwest::Client,
+async fn parse_single_ocr_response(
     req: PreparedOcrRequest,
-    timeout_secs: u64,
+    response: reqwest::Response,
 ) -> std::result::Result<String, String> {
-    let request_future = client
-        .post(&req.url)
-        .headers(req.headers)
-        .json(&req.body)
-        .send();
-
-    // 硬超时
-    let response =
-        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), request_future)
-            .await
-        {
-            Ok(Ok(resp)) => resp,
-            Ok(Err(e)) => {
-                return Err(format!(
-                    "Engine #{} ({}) network error: {}",
-                    req.idx, req.engine_name, e
-                ))
-            }
-            Err(_) => {
-                return Err(format!(
-                    "Engine #{} ({}) timed out ({}s)",
-                    req.idx, req.engine_name, timeout_secs
-                ))
-            }
-        };
-
     if !response.status().is_success() {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_default();
@@ -96,17 +112,31 @@ async fn run_single_ocr_request(
         )
     })?;
 
-    let response_json: Value = serde_json::from_str(&response_text).map_err(|e| {
-        format!(
-            "Engine #{} ({}) JSON parse failed: {}",
-            req.idx, req.engine_name, e
-        )
-    })?;
+    let response_json: Value = match serde_json::from_str(&response_text) {
+        Ok(value) => value,
+        Err(_) if req.request.is_codex() => {
+            crate::openai_codex::codex_sse_to_responses_json(&response_text).map_err(|error| {
+                format!(
+                    "Engine #{} ({}) Codex SSE parse failed: {}",
+                    req.idx, req.engine_name, error
+                )
+            })?
+        }
+        Err(error) => {
+            return Err(format!(
+                "Engine #{} ({}) JSON parse failed: {}",
+                req.idx, req.engine_name, error
+            ))
+        }
+    };
 
     let temp_config = ApiConfig {
         model: req.model_name.clone(),
         model_adapter: req.model_adapter.clone(),
+        provider_type: req.provider_type.clone(),
         api_protocol: req.api_protocol.clone(),
+        supports_openai_responses: req.supports_openai_responses,
+        base_url: req.base_url.clone(),
         ..ApiConfig::default()
     };
     let openai_like = normalize_nonstream_response_to_openai(&temp_config, &response_json)
@@ -118,6 +148,133 @@ async fn run_single_ocr_request(
         .to_string();
 
     Ok(content)
+}
+
+async fn run_ocr_with_deadline<T, F>(
+    engine_idx: usize,
+    engine_name: &str,
+    timeout: std::time::Duration,
+    operation: F,
+) -> std::result::Result<T, String>
+where
+    F: Future<Output = std::result::Result<T, String>>,
+{
+    tokio::time::timeout(timeout, operation)
+        .await
+        .unwrap_or_else(|_| {
+            let timeout_label = if timeout.subsec_nanos() == 0 {
+                format!("{}s", timeout.as_secs())
+            } else {
+                format!("{}ms", timeout.as_millis())
+            };
+            Err(format!(
+                "Engine #{} ({}) timed out ({})",
+                engine_idx, engine_name, timeout_label
+            ))
+        })
+}
+
+/// 执行普通 OCR 引擎请求（独立于 LLMManager，可 tokio::spawn）。
+async fn run_single_ocr_request(
+    client: reqwest::Client,
+    req: PreparedOcrRequest,
+    timeout_secs: u64,
+) -> std::result::Result<String, String> {
+    debug_assert!(!req.request.is_codex());
+    let engine_idx = req.idx;
+    let engine_name = req.engine_name.clone();
+    let timeout = std::time::Duration::from_secs(timeout_secs);
+    run_ocr_with_deadline(engine_idx, &engine_name, timeout, async move {
+        let mut builder = client.post(&req.request.url);
+        for (name, value) in &req.request.headers {
+            builder = builder.header(name, value);
+        }
+        let response = builder.json(&req.request.body).send().await.map_err(|e| {
+            format!(
+                "Engine #{} ({}) network error: {}",
+                req.idx, req.engine_name, e
+            )
+        })?;
+
+        parse_single_ocr_response(req, response).await
+    })
+    .await
+}
+
+async fn run_single_system_ocr_request(
+    idx: usize,
+    image_bytes: Vec<u8>,
+    timeout_secs: u64,
+) -> std::result::Result<String, String> {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        crate::ocr_adapters::system_ocr::perform_system_ocr(&image_bytes),
+    )
+    .await
+    {
+        Ok(Ok(text)) if !text.trim().is_empty() => Ok(text),
+        Ok(Ok(_)) => Err(format!("Engine #{} (system_ocr) returned no text", idx)),
+        Ok(Err(error)) => Err(format!("Engine #{} (system_ocr) failed: {}", idx, error)),
+        Err(_) => Err(format!(
+            "Engine #{} (system_ocr) timed out after {}s",
+            idx, timeout_secs
+        )),
+    }
+}
+
+/// Codex 请求必须保留 PreparedProviderRequest 中的 OAuth generation/session，才能在 401 后
+/// 刷新并只重发一次。该 future 借用 LLMManager，在调用方的 FuturesUnordered 中与后台引擎并发。
+async fn run_single_codex_ocr_request(
+    manager: &LLMManager,
+    mut req: PreparedOcrRequest,
+    timeout_secs: u64,
+) -> OcrRequestResult {
+    debug_assert!(req.request.is_codex());
+    let engine_idx = req.idx;
+    let engine_name = req.engine_name.clone();
+    let timeout = std::time::Duration::from_secs(timeout_secs);
+    let result = tokio::time::timeout(timeout, async {
+        let response = manager
+            .send_codex_request_with_single_refresh(&mut req.request, Some(timeout))
+            .await
+            .map_err(|error| {
+                format!(
+                    "Engine #{} ({}) Codex request failed: {}",
+                    engine_idx, engine_name, error.message
+                )
+            })?;
+        parse_single_ocr_response(req, response).await
+    })
+    .await
+    .unwrap_or_else(|_| {
+        Err(format!(
+            "Engine #{} ({}) timed out ({}s)",
+            engine_idx, engine_name, timeout_secs
+        ))
+    });
+
+    (engine_idx, result)
+}
+
+async fn next_ocr_result<F>(
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<OcrRequestResult>,
+    local_requests: &mut FuturesUnordered<F>,
+) -> Option<OcrRequestResult>
+where
+    F: Future<Output = OcrRequestResult>,
+{
+    if local_requests.is_empty() {
+        return rx.recv().await;
+    }
+
+    tokio::select! {
+        result = local_requests.next() => result,
+        result = rx.recv() => match result {
+            Some(result) => Some(result),
+            // The standard-request channel may close while a local Codex request is still active.
+            None => local_requests.next().await,
+        },
+    }
 }
 
 impl LLMManager {
@@ -373,14 +530,16 @@ impl LLMManager {
 
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
-        let preq = adapter
-            .build_request(
-                &config.base_url,
-                &config.api_key,
-                &config.model,
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                config,
                 &request_body,
+                None,
+                None,
+                "DeepSeek-OCR 请求构建失败",
             )
-            .map_err(|e| Self::provider_error("DeepSeek-OCR 请求构建失败", e))?;
+            .await?;
 
         // 估算请求体大小（用于诊断日志）
         let body_size_estimate = serde_json::to_string(&preq.body)
@@ -394,16 +553,18 @@ impl LLMManager {
             body_size_estimate / 1024
         );
 
-        let mut request_builder = self.client.post(&preq.url);
-        for (k, v) in preq.headers.iter() {
-            request_builder = request_builder.header(k.as_str(), v.as_str());
-        }
-
-        let response = request_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("DeepSeek-OCR 请求失败: {}", e)))?;
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut request_builder = self.client.post(&preq.url);
+            for (name, value) in &preq.headers {
+                request_builder = request_builder.header(name, value);
+            }
+            request_builder.json(&preq.body).send().await.map_err(|e| {
+                AppError::network(format!("DeepSeek-OCR 请求失败: {}", e.without_url()))
+            })?
+        };
 
         info!(
             "[DeepSeek-OCR] 页面 {} 收到响应: status={}",
@@ -458,7 +619,8 @@ impl LLMManager {
             ))
         })?;
 
-        let content = response_json["choices"][0]["message"]["content"]
+        let openai_like_json = normalize_nonstream_response_to_openai(config, &response_json)?;
+        let content = openai_like_json["choices"][0]["message"]["content"]
             .as_str()
             .ok_or_else(|| AppError::llm("DeepSeek-OCR 模型返回内容为空"))?
             .to_string();
@@ -611,6 +773,31 @@ impl LLMManager {
     /// 4. 每个引擎有独立 60s 硬超时
     /// 5. 采用**最先返回成功结果**的那个引擎
     pub async fn call_ocr_free_text_with_fallback(&self, image_path: &str) -> Result<String> {
+        self.call_ocr_free_text_with_fallback_filtered(
+            image_path,
+            false,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+    }
+
+    /// Chat 的 TM 图片降级只允许真正的 OCR 引擎。通用 VLM 已在上一阶段作为视觉
+    /// observer 使用，不能在失败后再次伪装成 OCR 能力。
+    pub(crate) async fn call_dedicated_ocr_free_text_with_fallback(
+        &self,
+        image_path: &str,
+        cancellation_token: tokio_util::sync::CancellationToken,
+    ) -> Result<String> {
+        self.call_ocr_free_text_with_fallback_filtered(image_path, true, cancellation_token)
+            .await
+    }
+
+    async fn call_ocr_free_text_with_fallback_filtered(
+        &self,
+        image_path: &str,
+        dedicated_only: bool,
+        cancellation_token: tokio_util::sync::CancellationToken,
+    ) -> Result<String> {
         use crate::ocr_adapters::{OcrAdapterFactory, OcrMode};
         use crate::ocr_circuit_breaker::OCR_CIRCUIT_BREAKER;
         use crate::providers::ProviderAdapter;
@@ -626,11 +813,15 @@ impl LLMManager {
                 "OCR 服务暂时不可用（连续失败触发熔断），请稍后重试",
             ));
         }
+        let _probe_guard = OcrCircuitProbeGuard;
 
-        let engines = self
-            .get_ocr_configs_by_priority(crate::ocr_adapters::OcrTaskType::FreeText)
+        let mut engines = self
+            .get_free_text_ocr_candidates_by_priority()
             .await
             .unwrap_or_default();
+        if dedicated_only {
+            engines.retain(|candidate| candidate.engine_type().is_dedicated_ocr());
+        }
         if engines.is_empty() {
             // ★ A3-X1：配置错误（非服务过错）——释放探针，不计失败
             OCR_CIRCUIT_BREAKER.cancel_probe();
@@ -650,10 +841,42 @@ impl LLMManager {
             }
         };
 
-        // ── 阶段 1：预构建所有引擎的 HTTP 请求 ──
-        let mut prepared: Vec<PreparedOcrRequest> = Vec::new();
+        // 系统 OCR 直接读取原图并调用本地 API，不构造虚假的 HTTP ApiConfig。
+        let system_image_bytes = if engines
+            .iter()
+            .any(|candidate| matches!(candidate, super::OcrRuntimeCandidate::SystemOcr))
+        {
+            let path = self.file_manager.resolve_image_path(image_path);
+            match tokio::fs::read(path).await {
+                Ok(bytes) => Some(bytes),
+                Err(error) => {
+                    warn!("[OCR-Hedge] System OCR image read failed: {}", error);
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
-        for (idx, (config, engine_type)) in engines.iter().enumerate() {
+        // ── 阶段 1：预构建远程请求，并把系统 OCR 保留为原生候选 ──
+        let mut prepared: Vec<PreparedOcrCandidate> = Vec::new();
+
+        for (idx, candidate) in engines.iter().enumerate() {
+            let (config, engine_type) = match candidate {
+                super::OcrRuntimeCandidate::SystemOcr => {
+                    if let Some(image_bytes) = system_image_bytes.as_ref() {
+                        prepared.push(PreparedOcrCandidate::SystemOcr {
+                            idx,
+                            image_bytes: image_bytes.clone(),
+                        });
+                    }
+                    continue;
+                }
+                super::OcrRuntimeCandidate::Remote {
+                    config,
+                    engine_type,
+                } => (config, engine_type),
+            };
             let api_key = match self.decrypt_api_key_if_needed(&config.api_key) {
                 Ok(k) => k,
                 Err(e) => {
@@ -721,50 +944,42 @@ impl LLMManager {
                 }
             }
 
-            let provider: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-                _ => Box::new(crate::providers::OpenAIAdapter),
-            };
+            let provider: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
-            let preq = match provider.build_request(
-                &config.base_url,
-                &api_key,
-                &config.model,
-                &request_body,
-            ) {
+            let preq = match self
+                .prepare_provider_request(
+                    provider.as_ref(),
+                    config,
+                    &request_body,
+                    Some(&api_key),
+                    None,
+                    "OCR 对冲请求构建失败",
+                )
+                .await
+            {
                 Ok(p) => p,
                 Err(e) => {
                     warn!(
                         "[OCR-Hedge] Engine #{} ({}) request build failed: {}",
                         idx,
                         engine_type.as_str(),
-                        e
+                        e.message
                     );
                     continue;
                 }
             };
 
-            let mut header_map = reqwest::header::HeaderMap::new();
-            for (k, v) in preq.headers.iter() {
-                if let (Ok(name), Ok(val)) = (
-                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(v),
-                ) {
-                    header_map.insert(name, val);
-                }
-            }
-
-            prepared.push(PreparedOcrRequest {
+            prepared.push(PreparedOcrCandidate::Remote(PreparedOcrRequest {
                 idx,
                 engine_name: engine_type.as_str().to_string(),
                 model_name: config.model.clone(),
                 model_adapter: config.model_adapter.clone(),
+                provider_type: config.provider_type.clone(),
                 api_protocol: config.api_protocol.clone(),
-                url: preq.url,
-                headers: header_map,
-                body: preq.body,
-            });
+                supports_openai_responses: config.supports_openai_responses,
+                base_url: config.base_url.clone(),
+                request: preq,
+            }));
         }
 
         if prepared.is_empty() {
@@ -777,23 +992,55 @@ impl LLMManager {
 
         // ── 阶段 2：渐进对冲执行 ──
         let total = prepared.len();
-        let (tx, mut rx) =
-            tokio::sync::mpsc::unbounded_channel::<(usize, std::result::Result<String, String>)>();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OcrRequestResult>();
+        let mut local_codex_requests = FuturesUnordered::new();
         let mut spawned = 0usize;
         let mut completed = 0usize;
         let mut last_err_msg: Option<String> = None;
 
-        for (seq, req) in prepared.into_iter().enumerate() {
-            let engine_name = req.engine_name.clone();
-            let model_name = req.model_name.clone();
-            let engine_idx = req.idx;
+        for (seq, candidate) in prepared.into_iter().enumerate() {
+            let engine_name = candidate.engine_name().to_string();
+            let model_name = candidate.model_name().to_string();
+            let engine_idx = candidate.idx();
 
-            let client = self.client.clone();
-            let tx_clone = tx.clone();
-            crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
-                let result = run_single_ocr_request(client, req, ENGINE_TIMEOUT_SECS).await;
-                let _ = tx_clone.send((engine_idx, result));
-            });
+            match candidate {
+                PreparedOcrCandidate::Remote(req) if req.request.is_codex() => {
+                    local_codex_requests.push(run_single_codex_ocr_request(
+                        self,
+                        req,
+                        ENGINE_TIMEOUT_SECS,
+                    ));
+                }
+                PreparedOcrCandidate::Remote(req) => {
+                    let client = self.client.clone();
+                    let tx_clone = tx.clone();
+                    let candidate_cancellation = cancellation_token.clone();
+                    crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
+                        let result = tokio::select! {
+                            biased;
+                            _ = candidate_cancellation.cancelled() => Err("OCR cancelled".to_string()),
+                            result = run_single_ocr_request(client, req, ENGINE_TIMEOUT_SECS) => result,
+                        };
+                        let _ = tx_clone.send((engine_idx, result));
+                    });
+                }
+                PreparedOcrCandidate::SystemOcr { image_bytes, .. } => {
+                    let tx_clone = tx.clone();
+                    let candidate_cancellation = cancellation_token.clone();
+                    crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
+                        let result = tokio::select! {
+                            biased;
+                            _ = candidate_cancellation.cancelled() => Err("OCR cancelled".to_string()),
+                            result = run_single_system_ocr_request(
+                                engine_idx,
+                                image_bytes,
+                                ENGINE_TIMEOUT_SECS,
+                            ) => result,
+                        };
+                        let _ = tx_clone.send((engine_idx, result));
+                    });
+                }
+            }
             spawned += 1;
 
             info!(
@@ -813,7 +1060,12 @@ impl LLMManager {
 
                 loop {
                     tokio::select! {
-                        msg = rx.recv() => {
+                        biased;
+                        _ = cancellation_token.cancelled() => {
+                            OCR_CIRCUIT_BREAKER.cancel_probe();
+                            return Err(AppError::llm("OCR cancelled"));
+                        }
+                        msg = next_ocr_result(&mut rx, &mut local_codex_requests) => {
                             match msg {
                                 Some((eidx, Ok(text))) => {
                                     info!(
@@ -852,7 +1104,15 @@ impl LLMManager {
 
         // ── 等待剩余已启动的引擎返回 ──
         while completed < spawned {
-            match rx.recv().await {
+            let next = tokio::select! {
+                biased;
+                _ = cancellation_token.cancelled() => {
+                    OCR_CIRCUIT_BREAKER.cancel_probe();
+                    return Err(AppError::llm("OCR cancelled"));
+                }
+                result = next_ocr_result(&mut rx, &mut local_codex_requests) => result,
+            };
+            match next {
                 Some((eidx, Ok(text))) => {
                     info!(
                         "[OCR-Hedge] Engine #{} succeeded ({} chars)",
@@ -1148,5 +1408,105 @@ impl LLMManager {
         );
 
         Ok(cards)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hyper::service::{make_service_fn, service_fn};
+    use hyper::{Body, Request, Response};
+    use std::convert::Infallible;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn local_codex_result_survives_closed_background_channel() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OcrRequestResult>();
+        drop(tx);
+
+        let mut local_requests = FuturesUnordered::new();
+        local_requests.push(async {
+            tokio::task::yield_now().await;
+            (7, Ok("codex-result".to_string()))
+        });
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            next_ocr_result(&mut rx, &mut local_requests),
+        )
+        .await
+        .expect("local request should not be starved by the closed channel")
+        .expect("local request should produce a result");
+
+        assert_eq!(result, (7, Ok("codex-result".to_string())));
+    }
+
+    #[tokio::test]
+    async fn ocr_deadline_covers_stalled_response_body() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let body_started = Arc::new(AtomicBool::new(false));
+        let body_started_for_server = body_started.clone();
+        let server = hyper::Server::from_tcp(listener)
+            .unwrap()
+            .serve(make_service_fn(move |_| {
+                let body_started = body_started_for_server.clone();
+                async move {
+                    Ok::<_, Infallible>(service_fn(move |_request: Request<Body>| {
+                        let body_started = body_started.clone();
+                        async move {
+                            let prefix = futures_util::stream::once(async move {
+                                body_started.store(true, Ordering::SeqCst);
+                                Ok::<_, Infallible>(hyper::body::Bytes::from_static(
+                                    br#"{"choices":["#,
+                                ))
+                            });
+                            let stalled = futures_util::stream::pending::<
+                                std::result::Result<hyper::body::Bytes, Infallible>,
+                            >();
+                            Ok::<_, Infallible>(Response::new(Body::wrap_stream(
+                                prefix.chain(stalled),
+                            )))
+                        }
+                    }))
+                }
+            }));
+        let server_task = tokio::spawn(server);
+
+        let operation = async move {
+            let response = reqwest::Client::new()
+                .get(format!("http://{address}/ocr"))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!("unexpected HTTP status: {}", response.status()));
+            }
+            let body = response.text().await.map_err(|error| error.to_string())?;
+            serde_json::from_str::<Value>(&body)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        };
+
+        let error = run_ocr_with_deadline(
+            2,
+            "stalled-body",
+            std::time::Duration::from_millis(250),
+            operation,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error,
+            "Engine #2 (stalled-body) timed out (250ms)".to_string()
+        );
+        assert!(
+            body_started.load(Ordering::SeqCst),
+            "the response body must start before the total request deadline fires"
+        );
+
+        server_task.abort();
     }
 }

@@ -4,13 +4,14 @@
 
 use crate::json_validator::{validate, Stage as ValidateStage};
 use crate::models::AppError;
-use crate::providers::ProviderAdapter;
 use crate::utils::text::safe_truncate_chars;
 use log::{debug, error, info, warn};
 use serde_json::{json, Value};
 use url::Url;
 
-use super::{ApiConfig, LLMManager, Result};
+use super::{
+    build_provider_adapter, normalize_nonstream_response_to_openai, ApiConfig, LLMManager, Result,
+};
 
 // ==================== RAG相关扩展方法 ====================
 
@@ -40,12 +41,18 @@ impl LLMManager {
         };
 
         let configs = self.get_api_configs().await?;
-        configs
+        let config = configs
             .into_iter()
             .find(|config| config.id == embedding_model_id)
             .ok_or_else(|| {
                 AppError::configuration("找不到嵌入模型配置，请检查维度绑定的模型是否存在")
-            })
+            })?;
+        if !config.enabled || !config.is_embedding || config.is_multimodal || config.is_reranker {
+            return Err(AppError::configuration(
+                "默认文本嵌入配置已禁用或能力协议不匹配",
+            ));
+        }
+        Ok(config)
     }
 
     /// M13 fix: 自动检测嵌入模型ID
@@ -68,7 +75,7 @@ impl LLMManager {
         if let Ok(configs) = self.get_api_configs().await {
             let embedding_configs: Vec<_> = configs
                 .iter()
-                .filter(|c| c.enabled && c.is_embedding && !c.is_reranker)
+                .filter(|c| c.enabled && c.is_embedding && !c.is_multimodal && !c.is_reranker)
                 .collect();
 
             if embedding_configs.len() == 1 {
@@ -101,10 +108,16 @@ impl LLMManager {
             .ok_or_else(|| AppError::configuration("未配置重排序模型"))?;
 
         let configs = self.get_api_configs().await?;
-        configs
+        let config = configs
             .into_iter()
             .find(|config| config.id == reranker_model_id)
-            .ok_or_else(|| AppError::configuration("找不到重排序模型配置"))
+            .ok_or_else(|| AppError::configuration("找不到重排序模型配置"))?;
+        if !config.enabled || !config.is_reranker || config.is_multimodal || config.is_embedding {
+            return Err(AppError::configuration(
+                "文本重排序配置已禁用或能力协议不匹配",
+            ));
+        }
+        Ok(config)
     }
 
     // ==================== 多模态知识库模型配置获取 ====================
@@ -125,12 +138,18 @@ impl LLMManager {
             })?;
 
         let configs = self.get_api_configs().await?;
-        configs
+        let config = configs
             .into_iter()
             .find(|config| config.id == vl_embedding_model_id)
             .ok_or_else(|| {
                 AppError::configuration("找不到多模态嵌入模型配置，请检查维度绑定的模型是否存在")
-            })
+            })?;
+        if !config.enabled || !config.is_embedding || !config.is_multimodal || config.is_reranker {
+            return Err(AppError::configuration(
+                "默认多模态嵌入配置已禁用或能力协议不匹配",
+            ));
+        }
+        Ok(config)
     }
 
     /// 获取多模态重排序模型配置（Qwen3-VL-Reranker）
@@ -143,10 +162,16 @@ impl LLMManager {
             .ok_or_else(|| AppError::configuration("未配置多模态重排序模型 (VL-Reranker)"))?;
 
         let configs = self.get_api_configs().await?;
-        configs
+        let config = configs
             .into_iter()
             .find(|config| config.id == vl_reranker_model_id)
-            .ok_or_else(|| AppError::configuration("找不到多模态重排序模型配置"))
+            .ok_or_else(|| AppError::configuration("找不到多模态重排序模型配置"))?;
+        if !config.enabled || !config.is_reranker || !config.is_multimodal || config.is_embedding {
+            return Err(AppError::configuration(
+                "多模态重排序配置已禁用或能力协议不匹配",
+            ));
+        }
+        Ok(config)
     }
 
     /// 检查多模态知识库模型是否已配置
@@ -158,12 +183,7 @@ impl LLMManager {
     /// 只要任一方案可用即返回 true
     pub async fn is_multimodal_rag_configured(&self) -> bool {
         // 方案一：VL-Embedding 直接向量化（从维度管理获取）
-        let mode1_available = self
-            .db
-            .get_setting("embedding.default_multimodal_model_config_id")
-            .ok()
-            .flatten()
-            .is_some();
+        let mode1_available = self.get_vl_embedding_model_config().await.is_ok();
 
         // 方案二：VL 摘要 + 文本嵌入已废弃
         mode1_available
@@ -171,12 +191,7 @@ impl LLMManager {
 
     /// 检查多模态精排是否已配置
     pub async fn is_multimodal_reranking_configured(&self) -> bool {
-        let assignments = match self.get_model_assignments().await {
-            Ok(a) => a,
-            Err(_) => return false,
-        };
-
-        assignments.vl_reranker_model_config_id.is_some()
+        self.get_vl_reranker_model_config().await.is_ok()
     }
 
     /// 调用多模态嵌入API（Qwen3-VL-Embedding）
@@ -193,6 +208,41 @@ impl LLMManager {
         &self,
         inputs: &[crate::multimodal::MultimodalInput],
     ) -> Result<Vec<Vec<f32>>> {
+        let config = self.get_vl_embedding_model_config().await?;
+        self.call_multimodal_embedding_api_with_config(inputs, &config)
+            .await
+    }
+
+    /// Call the multimodal embedding protocol with a specific model configuration.
+    ///
+    /// Multi-space retrieval uses the model bound to each active index profile. This is
+    /// intentionally separate from `call_embedding_api`: an image query must never be
+    /// serialized as a plain text-embedding request merely because dimensions match.
+    pub async fn call_multimodal_embedding_api_for_model(
+        &self,
+        inputs: &[crate::multimodal::MultimodalInput],
+        model_config_id: &str,
+    ) -> Result<Vec<Vec<f32>>> {
+        let configs = self.get_api_configs().await?;
+        let config = configs
+            .iter()
+            .find(|config| config.id == model_config_id)
+            .ok_or_else(|| AppError::configuration("找不到多模态嵌入模型配置"))?;
+        if !config.enabled {
+            return Err(AppError::configuration("多模态嵌入模型配置已禁用"));
+        }
+        if !config.is_embedding || !config.is_multimodal || config.is_reranker {
+            return Err(AppError::configuration("指定模型不支持多模态嵌入协议"));
+        }
+        self.call_multimodal_embedding_api_with_config(inputs, config)
+            .await
+    }
+
+    pub(crate) async fn call_multimodal_embedding_api_with_config(
+        &self,
+        inputs: &[crate::multimodal::MultimodalInput],
+        config: &ApiConfig,
+    ) -> Result<Vec<Vec<f32>>> {
         use crate::multimodal::VLEmbeddingInputItem;
 
         if inputs.is_empty() {
@@ -201,8 +251,6 @@ impl LLMManager {
 
         debug!("调用多模态嵌入API，输入数量: {}", inputs.len());
 
-        // 获取多模态嵌入模型配置
-        let config = self.get_vl_embedding_model_config().await?;
         let api_key = self.decrypt_api_key_if_needed(&config.api_key)?;
 
         // 将 MultimodalInput 转换为 API 请求格式
@@ -525,35 +573,32 @@ impl LLMManager {
             "stream": false,
         });
 
-        // 构造适配器
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter = build_provider_adapter(&config);
+        let mut preq = self
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "翻译请求构建失败",
+            )
+            .await?;
 
-        let preq = adapter
-            .build_request(&config.base_url, &api_key, &config.model, &request_body)
-            .map_err(|e| Self::provider_error("翻译请求构建失败", e))?;
-
-        let mut header_map = reqwest::header::HeaderMap::new();
-        for (k, v) in preq.headers.iter() {
-            if let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                reqwest::header::HeaderValue::from_str(v),
-            ) {
-                header_map.insert(name, val);
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, None)
+                .await?
+        } else {
+            let mut request_builder = self.client.post(&preq.url);
+            for (name, value) in &preq.headers {
+                request_builder = request_builder.header(name, value);
             }
-        }
-
-        let response = self
-            .client
-            .post(&preq.url)
-            .headers(header_map)
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::llm(format!("翻译请求失败: {}", e)))?;
+            request_builder
+                .json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::llm(format!("翻译请求失败: {}", e)))?
+        };
 
         if !response.status().is_success() {
             let status = response.status();
@@ -583,8 +628,10 @@ impl LLMManager {
             ))
         })?;
 
+        let openai_like = normalize_nonstream_response_to_openai(&config, &response_json)?;
+
         // 提取翻译结果
-        let translated_text = response_json["choices"][0]["message"]["content"]
+        let translated_text = openai_like["choices"][0]["message"]["content"]
             .as_str()
             .ok_or_else(|| AppError::llm("翻译响应中未找到内容"))?;
 
@@ -625,6 +672,11 @@ impl LLMManager {
             .iter()
             .find(|c| c.id == model_config_id)
             .ok_or_else(|| AppError::configuration("找不到嵌入模型配置"))?;
+        if !config.enabled || !config.is_embedding || config.is_multimodal || config.is_reranker {
+            return Err(AppError::configuration(
+                "指定模型不支持文本嵌入协议或已禁用",
+            ));
+        }
 
         // 获取模型的 token 限制并创建分块器
         let token_limits = crate::multimodal::embedding_chunker::EmbeddingTokenLimits::default();
@@ -850,6 +902,11 @@ impl LLMManager {
             .iter()
             .find(|c| c.id == model_config_id)
             .ok_or_else(|| AppError::configuration("找不到重排序模型配置"))?;
+        if !config.enabled || !config.is_reranker || config.is_multimodal || config.is_embedding {
+            return Err(AppError::configuration(
+                "指定模型不支持文本重排序协议或已禁用",
+            ));
+        }
 
         // 解密API密钥
         let api_key = self.decrypt_api_key_if_needed(&config.api_key)?;

@@ -77,6 +77,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
     <div
       data-shell-layer={!isSmallScreen ? 'navigation' : undefined}
       data-shell-surface={!isSmallScreen ? 'navigation' : undefined}
+      data-settings-sidebar
       className={cn(
         'study-shell-sidebar-frame font-sidebar-study-ui h-full w-full min-w-0 flex flex-col overflow-hidden bg-[color:var(--shell-navigation-panel)] text-[color:var(--shell-navigation-foreground)]',
         !isSmallScreen && 'border-r border-[color:var(--shell-navigation-border)]'

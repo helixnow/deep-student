@@ -15,6 +15,8 @@ describe('ProviderIconEngine', () => {
       expect(detectProviderBrand('o1-preview')).toBe('openai');
       expect(detectProviderBrand('dall-e-3')).toBe('openai');
       expect(detectProviderBrand('text-embedding-ada-002')).toBe('openai');
+      expect(detectProviderBrand('openai_codex')).toBe('openai');
+      expect(detectProviderBrand('Codex Subscription')).toBe('openai');
     });
 
     it('应该正确识别 Anthropic 模型', () => {
@@ -178,6 +180,7 @@ describe('ProviderIconEngine', () => {
   describe('getProviderIcon', () => {
     it('应该返回正确的图标路径', () => {
       expect(getProviderIcon('gpt-4o')).toBe('/icons/providers/openai.svg');
+      expect(getProviderIcon('openai_codex')).toBe('/icons/providers/openai.svg');
       expect(getProviderIcon('claude-3-opus')).toBe('/icons/providers/anthropic.svg');
       expect(getProviderIcon('gemini-2.0')).toBe('/icons/providers/gemini.svg');
       expect(getProviderIcon('deepseek-v3.1')).toBe('/icons/providers/deepseek.svg');

@@ -5,6 +5,8 @@
 //! ## 模型
 //! - grok-4.3（别名 grok-4.3-latest / grok-latest）: 当前旗舰，1M 上下文，
 //!   支持 `reasoning_effort`（none / low(默认) / medium / high）
+//! - grok-4.20-*-multi-agent: 多智能体变体，支持 low / medium / high / xhigh，
+//!   其中 xhigh 会使用更多协作 agent，不能关闭推理
 //! - grok-4.20-0309-reasoning / -non-reasoning: 上一代旗舰家族
 //! - grok-4-1-fast-reasoning / -non-reasoning: 高吞吐低价档（不支持 reasoning_effort）
 //! - grok-build-0.1: agentic coding（early access）
@@ -75,13 +77,22 @@ impl GrokAdapter {
     /// grok-4.3 及之后的推理模型支持 `reasoning_effort`（none/low/medium/high）。
     /// `-non-reasoning` 变体不发送。
     fn supports_reasoning_effort(model: &str) -> bool {
-        if model.to_lowercase().contains("non-reasoning") {
+        let model_lower = model.to_lowercase();
+        if model_lower.contains("non-reasoning") {
             return false;
+        }
+        if model_lower == "grok-latest" || model_lower.ends_with("/grok-latest") {
+            return true;
         }
         match Self::parse_grok_version(model) {
             Some((major, minor)) => major > 4 || (major == 4 && minor >= 3),
             None => false,
         }
+    }
+
+    fn is_grok420_multi_agent(model: &str) -> bool {
+        Self::parse_grok_version(model) == Some((4, 20))
+            && model.to_lowercase().contains("multi-agent")
     }
 
     /// 检查是否是 Grok-4 系列（推理模型，不支持 penalties/stop）
@@ -108,17 +119,26 @@ impl RequestAdapter for GrokAdapter {
         &self,
         body: &mut Map<String, Value>,
         config: &ApiConfig,
-        _enable_thinking: Option<bool>,
+        enable_thinking: Option<bool>,
     ) -> bool {
         // reasoning_effort: grok-4.3 及之后的推理模型透传
         // （旧实现只对已退役的 grok-3-mini 发送，grok-4.3 的 effort 被静默丢弃）
         if Self::supports_reasoning_effort(&config.model) {
-            if let Some(effort) = get_trimmed_effort(config) {
-                // xAI 取值 none / low（默认）/ medium / high；归一化超集取值
+            let is_multi_agent = Self::is_grok420_multi_agent(&config.model);
+            let requested_effort = if enable_thinking == Some(false) {
+                Some(if is_multi_agent { "low" } else { "none" })
+            } else {
+                get_trimmed_effort(config)
+            };
+            if let Some(effort) = requested_effort {
+                // multi-agent 额外支持 xhigh，且不接受 none；其他 Grok
+                // 模型仍按 none / low（默认）/ medium / high 归一化。
                 let normalized = match effort.to_lowercase().as_str() {
+                    "none" if is_multi_agent => "low",
                     "none" => "none",
                     "minimal" | "low" => "low",
                     "medium" => "medium",
+                    "xhigh" if is_multi_agent => "xhigh",
                     "high" | "xhigh" | "max" => "high",
                     _ => "low",
                 };
@@ -192,6 +212,21 @@ mod tests {
     }
 
     #[test]
+    fn test_grok_latest_alias_reasoning_effort_passthrough() {
+        let adapter = GrokAdapter;
+        let config = ApiConfig {
+            reasoning_effort: Some("medium".to_string()),
+            model: "grok-latest".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("medium")));
+    }
+
+    #[test]
     fn test_grok43_reasoning_effort_none() {
         let adapter = GrokAdapter;
         let config = ApiConfig {
@@ -204,6 +239,21 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         // none（关闭推理）应可透传
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("none")));
+    }
+
+    #[test]
+    fn test_grok43_runtime_disable_maps_to_none() {
+        let adapter = GrokAdapter;
+        let config = ApiConfig {
+            model: "grok-4.3".to_string(),
+            reasoning_effort: Some("high".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, Some(false));
+
         assert_eq!(body.get("reasoning_effort"), Some(&json!("none")));
     }
 
@@ -221,6 +271,45 @@ mod tests {
 
         // 4.20 > 4.3，推理变体透传
         assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+    }
+
+    #[test]
+    fn test_grok420_multi_agent_preserves_xhigh() {
+        for model in [
+            "grok-4.20-0309-multi-agent",
+            "xai/grok-4.20-beta-multi-agent",
+        ] {
+            let config = ApiConfig {
+                reasoning_effort: Some("xhigh".to_string()),
+                model: model.to_string(),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+
+            GrokAdapter.apply_reasoning_config(&mut body, &config, None);
+
+            assert_eq!(
+                body.get("reasoning_effort"),
+                Some(&json!("xhigh")),
+                "model={model}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_grok420_multi_agent_cannot_disable_reasoning() {
+        for (saved_effort, runtime_override) in [("none", None), ("high", Some(false))] {
+            let config = ApiConfig {
+                reasoning_effort: Some(saved_effort.to_string()),
+                model: "grok-4.20-0309-multi-agent".to_string(),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+
+            GrokAdapter.apply_reasoning_config(&mut body, &config, runtime_override);
+
+            assert_eq!(body.get("reasoning_effort"), Some(&json!("low")));
+        }
     }
 
     #[test]

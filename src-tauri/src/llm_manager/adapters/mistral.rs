@@ -84,7 +84,12 @@ impl RequestAdapter for MistralAdapter {
     ) -> bool {
         // 现行推理控制：Medium 3.5 / Small 4 的 reasoning_effort 透传
         if Self::supports_reasoning_effort(&config.model) {
-            if let Some(effort) = get_trimmed_effort(config) {
+            let requested_effort = if enable_thinking == Some(false) {
+                Some("none")
+            } else {
+                get_trimmed_effort(config)
+            };
+            if let Some(effort) = requested_effort {
                 // Mistral 取值 none / low / medium / high；归一化超集取值
                 let normalized = match effort.to_lowercase().as_str() {
                     "none" => "none",
@@ -225,6 +230,21 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         // Small 4 支持 none（关闭推理，content 保持纯字符串）
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("none")));
+    }
+
+    #[test]
+    fn test_runtime_disable_maps_effort_models_to_none() {
+        let adapter = MistralAdapter;
+        let config = ApiConfig {
+            model: "mistral-medium-latest".to_string(),
+            reasoning_effort: Some("high".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, Some(false));
+
         assert_eq!(body.get("reasoning_effort"), Some(&json!("none")));
     }
 

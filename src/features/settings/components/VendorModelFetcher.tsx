@@ -17,13 +17,17 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
 import { groupByModelFamily } from './modelFamily';
+import {
+  buildVendorModelsUrl,
+  mergeVendorModelRequestHeaders,
+} from './vendorModelService';
 import type { VendorConfig } from '@/types';
 
 const GEMINI_PROVIDER = 'gemini';
 
-/** 检查供应商是否支持模型列表获取 — 所有有 baseUrl 的供应商均可尝试（默认 OpenAI 兼容） */
-export function supportsModelFetching(_providerType?: string | null): boolean {
-  return true;
+/** Codex OAuth requires a native authenticated transport, not the generic API-key fetcher. */
+export function supportsModelFetching(providerType?: string | null): boolean {
+  return providerType?.trim().toLowerCase() !== 'openai_codex';
 }
 
 /** OpenAI 兼容 API 返回的模型对象 */
@@ -219,12 +223,11 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
 
   /** 获取 OpenAI 兼容 API 的模型列表 */
   const fetchOpenAICompatible = async (doFetch: typeof fetch): Promise<FetchedModel[]> => {
-    const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
-    const headers: Record<string, string> = {};
-    if (resolvedApiKey) {
-      headers['Authorization'] = `Bearer ${resolvedApiKey}`;
-    }
-    const response = await doFetch(`${baseUrl}/models`, {
+    const headers = mergeVendorModelRequestHeaders(
+      vendor.headers,
+      resolvedApiKey ? { Authorization: `Bearer ${resolvedApiKey}` } : {}
+    );
+    const response = await doFetch(buildVendorModelsUrl(vendor.baseUrl), {
       method: 'GET',
       headers,
     });
@@ -265,10 +268,10 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
     // 安全修复（审阅 26 P1-3）：Key 改用 x-goog-api-key 请求头传递，
     // 避免进入代理/网关/供应商访问日志，且规避 URL 特殊字符导致的畸形请求。
-    const headers: Record<string, string> = {};
-    if (resolvedApiKey) {
-      headers['x-goog-api-key'] = resolvedApiKey;
-    }
+    const headers = mergeVendorModelRequestHeaders(
+      vendor.headers,
+      resolvedApiKey ? { 'x-goog-api-key': resolvedApiKey } : {}
+    );
     const response = await doFetch(`${baseUrl}/v1beta/models?pageSize=100`, {
       method: 'GET',
       headers,
@@ -312,12 +315,10 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
     // 默认 base URL 为 https://api.anthropic.com（不带版本段）；若用户已带 /v1 则不重复追加
     const versionedBase = /\/v\d+$/.test(baseUrl) ? baseUrl : `${baseUrl}/v1`;
-    const headers: Record<string, string> = {
+    const headers = mergeVendorModelRequestHeaders(vendor.headers, {
       'anthropic-version': '2023-06-01',
-    };
-    if (resolvedApiKey) {
-      headers['x-api-key'] = resolvedApiKey;
-    }
+      ...(resolvedApiKey ? { 'x-api-key': resolvedApiKey } : {}),
+    });
     const response = await doFetch(`${versionedBase}/models?limit=1000`, {
       method: 'GET',
       headers,
@@ -387,7 +388,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [hasApiKey, hasBaseUrl, isGemini, isAnthropic, loadCache, saveCache, t, vendor.id, resolvedApiKey, vendor.baseUrl]);
+  }, [hasApiKey, hasBaseUrl, isGemini, isAnthropic, loadCache, saveCache, t, vendor.id, resolvedApiKey, vendor.baseUrl, vendor.headers]);
 
   // 过滤 + 分组
   const existingSet = useMemo(() => new Set(existingModelIds.map(id => id.toLowerCase())), [existingModelIds]);

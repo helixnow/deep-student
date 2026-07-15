@@ -147,9 +147,14 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           apiProtocol: api.apiProtocol,
           supports_openai_responses: api.supportsOpenAIResponses,
           supportsOpenAIResponses: api.supportsOpenAIResponses,
+          provider_type: api.providerType,
+          providerType: api.providerType,
+          model_adapter: api.modelAdapter,
+          modelAdapter: api.modelAdapter,
           model: api.model, // 传递用户指定的模型名称
           vendor_id: vendorId, // 传递供应商 ID 以便后端获取真实密钥
           vendorId: vendorId,
+          headers: api.headers,
         });
         
         if (result) {

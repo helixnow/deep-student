@@ -26,6 +26,10 @@ import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { setMaterialTier, type MaterialTierSetting } from '@/features/workbench/core/materialTier';
 import { WALLPAPER_PRESETS, DEFAULT_WALLPAPER, type WallpaperConfig } from '@/features/workbench/components/WallpaperLayer';
 import { AgentCapabilitySummary } from '@/features/workbench/components/AgentControlCenter';
+import {
+  persistBrowserNetworkModeSelection,
+  type BrowserNetworkMode,
+} from './browserNetworkModePersistence';
 
 export type PerformanceProfile = 'quality' | 'balanced' | 'performance' | 'custom';
 
@@ -49,7 +53,7 @@ export const WORKBENCH_SETTING_KEYS = {
   agentPacing: 'desktop.workbenchAgentPacing',
 } as const;
 
-export type BrowserNetworkMode = 'local_whitelist' | 'full';
+export type { BrowserNetworkMode } from './browserNetworkModePersistence';
 
 /** ACR 桌面操控档（DESIGN §6） */
 export type WorkbenchAgentControl = 'off' | 'background' | 'follow';
@@ -154,6 +158,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const [devPanel, setDevPanel] = useState(false);
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [browserNetworkMode, setBrowserNetworkMode] = useState<BrowserNetworkMode>('local_whitelist');
+  const [browserNetworkModeSaving, setBrowserNetworkModeSaving] = useState(false);
   const [browserAgentControl, setBrowserAgentControl] = useState(false);
   const [browserCdpWindows, setBrowserCdpWindows] = useState(false);
   const [browserAdvancedOpen, setBrowserAdvancedOpen] = useState(false);
@@ -340,25 +345,48 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         '在学习桌面中打开独立浏览器窗口（页面在隔离 WebView 中运行）。需先启用学习桌面。',
       );
 
+  const saveBrowserNetworkMode = useCallback(
+    async (next: BrowserNetworkMode) => {
+      if (browserNetworkModeSaving || next === browserNetworkMode) return;
+      const previous = browserNetworkMode;
+      setBrowserNetworkModeSaving(true);
+      try {
+        await persistBrowserNetworkModeSelection({
+          previous,
+          next,
+          apply: setBrowserNetworkMode,
+          persist: (mode) => persist(WORKBENCH_SETTING_KEYS.browserNetworkMode, mode, mode),
+        });
+      } finally {
+        setBrowserNetworkModeSaving(false);
+      }
+    },
+    [browserNetworkMode, browserNetworkModeSaving, persist],
+  );
+
   const handleBrowserNetworkModeChange = useCallback(
     (next: BrowserNetworkMode) => {
-      if (!loaded || browserControlsDisabled) return;
+      if (!loaded || browserControlsDisabled || browserNetworkModeSaving) return;
       if (next === 'full' && browserNetworkMode !== 'full') {
         setBrowserFullNetworkConfirmOpen(true);
         return;
       }
       setBrowserFullNetworkConfirmOpen(false);
-      setBrowserNetworkMode(next);
-      void persist(WORKBENCH_SETTING_KEYS.browserNetworkMode, next, next);
+      void saveBrowserNetworkMode(next);
     },
-    [browserControlsDisabled, browserNetworkMode, loaded, persist],
+    [
+      browserControlsDisabled,
+      browserNetworkMode,
+      browserNetworkModeSaving,
+      loaded,
+      saveBrowserNetworkMode,
+    ],
   );
 
   const confirmBrowserFullNetworkMode = useCallback(() => {
     setBrowserFullNetworkConfirmOpen(false);
-    setBrowserNetworkMode('full');
-    void persist(WORKBENCH_SETTING_KEYS.browserNetworkMode, 'full', 'full');
-  }, [persist]);
+    void saveBrowserNetworkMode('full');
+  }, [saveBrowserNetworkMode]);
 
   return (
     <SettingsGroup
@@ -602,19 +630,22 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       />
 
       <SettingRow
-        title={t('workbench:settings.browserNetworkMode.title', '网络范围')}
+        title={t('workbench:settings.browserNetworkMode.title', '助手 HTTP 范围')}
         description={
           browserControlsDisabled
             ? t(
                 'workbench:settings.browserEnabled.needWorkbench',
                 '请先启用学习桌面，才能打开内置浏览器相关选项。',
               )
-            : t('workbench:settings.browserNetworkMode.desc', '限制可访问的地址范围。')
+            : t(
+                'workbench:settings.browserNetworkMode.desc',
+                '限制助手控制浏览器时能否访问公网 HTTP；你手动浏览不受此项限制。',
+              )
         }
         className="items-center"
       >
         <SegmentedControl
-          ariaLabel={t('workbench:settings.browserNetworkMode.title', '网络范围')}
+          ariaLabel={t('workbench:settings.browserNetworkMode.title', '助手 HTTP 范围')}
           value={browserNetworkMode}
           onValueChange={(next) => {
             handleBrowserNetworkModeChange(next as BrowserNetworkMode);
@@ -625,14 +656,17 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               value: 'local_whitelist',
               label: t(
                 'workbench:settings.browserNetworkMode.local_whitelist',
-                '本地与白名单',
+                '仅 HTTPS 公网',
               ),
-              disabled: browserControlsDisabled,
+              disabled: browserControlsDisabled || browserNetworkModeSaving,
             },
             {
               value: 'full',
-              label: t('workbench:settings.browserNetworkMode.full', '完整上网（需确认）'),
-              disabled: browserControlsDisabled,
+              label: t(
+                'workbench:settings.browserNetworkMode.full',
+                '允许公网 HTTP（需确认）',
+              ),
+              disabled: browserControlsDisabled || browserNetworkModeSaving,
             },
           ]}
         />
@@ -823,10 +857,13 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       <NotionAlertDialog
         open={browserFullNetworkConfirmOpen}
         onOpenChange={setBrowserFullNetworkConfirmOpen}
-        title={t('workbench:settings.browserNetworkMode.fullConfirmTitle', '启用完整上网？')}
+        title={t(
+          'workbench:settings.browserNetworkMode.fullConfirmTitle',
+          '允许助手访问公网 HTTP？',
+        )}
         description={t(
           'workbench:settings.browserNetworkMode.fullConfirm',
-          '完整上网将允许访问公网地址，请确认你了解相关风险。是否继续？',
+          '允许助手访问公网 HTTP 会使用未加密连接，页面和传输内容可能被篡改。是否继续？',
         )}
         confirmText={t('common:actions.confirm', '确认')}
         cancelText={t('common:actions.cancel', '取消')}

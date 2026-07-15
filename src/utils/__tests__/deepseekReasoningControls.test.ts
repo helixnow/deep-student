@@ -6,7 +6,7 @@ import {
 } from '../deepseekReasoningControls';
 
 describe('DeepSeek runtime reasoning controls', () => {
-  it('uses low/medium/high/xhigh runtime options for OpenAI GPT-5 family', () => {
+  it('uses modern runtime options for OpenAI GPT-5.5 and represents none as off', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'gpt-5.5',
       providerType: 'openai',
@@ -16,6 +16,27 @@ describe('DeepSeek runtime reasoning controls', () => {
 
     expect(control.kind).toBe('openai-effort');
     expect(control.options.map((option) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh']);
+    expect(control.canDisable).toBe(true);
+  });
+
+  it.each([
+    ['gpt-5', 'openai', ['minimal', 'low', 'medium', 'high'], false],
+    ['gpt-5-pro', 'openai', ['high'], false],
+    ['gpt-5.5-pro', 'openai', ['medium', 'high', 'xhigh'], false],
+    ['gpt-oss-120b', 'openai-compatible', ['low', 'medium', 'high'], false],
+    ['gpt-5.1', 'openai', ['low', 'medium', 'high'], true],
+    ['gpt-5.5', 'openai_codex', ['low', 'medium', 'high', 'xhigh'], false],
+    ['codex-mini-latest', 'openai_codex', ['low', 'medium', 'high'], false],
+    ['gpt-5', 'openai_codex', ['minimal', 'low', 'medium', 'high'], false],
+  ] as const)('crops OpenAI/Codex effort levels for %s', (model, providerType, values, canDisable) => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model,
+      providerType,
+      providerScope: providerType,
+    });
+
+    expect(control.options.map((option) => option.value)).toEqual(values);
+    expect(control.canDisable).toBe(canDisable);
   });
 
   it('uses high/max runtime options for official DeepSeek V4', () => {
@@ -54,6 +75,29 @@ describe('DeepSeek runtime reasoning controls', () => {
     expect(control.options.map((option) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh']);
   });
 
+  it('uses SiliconFlow budget presets instead of the hosted model effort dialect', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'THUDM/GLM-5.2',
+      providerType: 'siliconflow',
+      providerScope: 'siliconflow',
+      baseUrl: 'https://api.siliconflow.cn/v1',
+    });
+
+    expect(control.kind).toBe('v32-budget-effort');
+    expect(control.options.map((option) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh']);
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control,
+        enableThinking: true,
+        reasoningEffort: 'high',
+      })
+    ).toEqual({
+      enableThinking: true,
+      reasoningEffort: 'high',
+      thinkingBudget: 16384,
+    });
+  });
+
   it('keeps unknown non-DeepSeek models toggle-only', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'gpt-4o-mini',
@@ -63,6 +107,122 @@ describe('DeepSeek runtime reasoning controls', () => {
 
     expect(control.kind).toBe('toggle-only');
     expect(control.options).toEqual([]);
+  });
+
+  it.each([
+    'grok-4.10-non-reasoning',
+    'gpt-5.1-chat-latest',
+    'foo1-model',
+    'vision-o3cr-model',
+  ])('does not classify incidental OpenAI-family substrings as reasoning models: %s', (model) => {
+    const control = resolveDeepSeekRuntimeReasoningControl({ model });
+
+    expect(control.kind).toBe('toggle-only');
+    expect(control.options).toEqual([]);
+  });
+
+  it.each([
+    ['gemini-3.1-pro-preview', 'gemini-pro-effort', ['low', 'high'], false],
+    ['gemini-3.5-flash', 'gemini-flash-effort', ['minimal', 'low', 'medium', 'high'], false],
+    ['claude-opus-4-8', 'anthropic-adaptive-effort', ['low', 'medium', 'high', 'xhigh', 'max'], true],
+    ['claude-sonnet-4-6', 'anthropic-adaptive-effort', ['low', 'medium', 'high', 'max'], true],
+    ['claude-haiku-5', 'anthropic-adaptive-effort', ['low', 'medium', 'high', 'max'], true],
+    ['claude-fable-5', 'anthropic-adaptive-effort', ['low', 'medium', 'high', 'xhigh', 'max'], false],
+    ['glm-5.2', 'glm-effort', ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], true],
+    ['grok-4.3-latest', 'grok-effort', ['low', 'medium', 'high'], true],
+    ['grok-latest', 'grok-effort', ['low', 'medium', 'high'], true],
+    ['grok-4.20-multi-agent-0309', 'grok-effort', ['low', 'medium', 'high', 'xhigh'], false],
+    ['mistral-medium-latest', 'mistral-effort', ['low', 'medium', 'high'], true],
+    ['ernie-5.0-thinking', 'ernie-effort', ['high', 'max'], true],
+  ] as const)('exposes the official runtime effort matrix for %s', (model, kind, values, canDisable) => {
+    const control = resolveDeepSeekRuntimeReasoningControl({ model });
+
+    expect(control.kind).toBe(kind);
+    expect(control.options.map((option) => option.value)).toEqual(values);
+    expect(control.canDisable).toBe(canDisable);
+  });
+
+  it.each([
+    ['gemini-3.5-flash', 'medium'],
+    ['gemini-3.1-flash-lite', 'minimal'],
+    ['gemini-3-flash-preview', 'high'],
+    ['gemini-3.1-pro-preview', 'high'],
+  ] as const)('uses the provider default reasoning depth for %s', (model, expected) => {
+    const control = resolveDeepSeekRuntimeReasoningControl({ model });
+
+    expect(resolveDeepSeekRuntimeReasoningSelection({ control, enableThinking: true })).toEqual({
+      enableThinking: true,
+      reasoningEffort: expected,
+      thinkingBudget: undefined,
+    });
+  });
+
+  it.each([
+    'qwen3.7-plus',
+    'doubao-seed-1-6-thinking',
+    'MiniMax-M3',
+    'mimo-v2.5-pro',
+    'kimi-k2.6',
+  ])('keeps budget/toggle-only reasoning models without invented effort levels: %s', (model) => {
+    const control = resolveDeepSeekRuntimeReasoningControl({ model });
+
+    expect(control.kind).toBe('toggle-only');
+    expect(control.options).toEqual([]);
+  });
+
+  it.each([
+    'gpt-5.3-codex',
+    'gemini-2.5-pro',
+    'kimi-k2.7-code',
+    'kimi-k2-thinking',
+    'kimi-thinking-preview',
+    'kimi-vl-a3b-thinking',
+    'MiniMax-M2.7',
+    'deepseek-ai/DeepSeek-R1',
+    'QwQ-32B',
+    'qwen3.7-max-preview',
+    'qwen3.7-max-2026-05-17',
+    'Qwen/Qwen3-235B-A22B-Thinking-2507',
+    'Qwen/Qwen3-VL-235B-A22B-Thinking',
+  ])('marks forced-thinking models as non-disableable: %s', (model) => {
+    const control = resolveDeepSeekRuntimeReasoningControl({ model });
+    expect(control.canDisable).toBe(false);
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control,
+        enableThinking: false,
+      }).enableThinking
+    ).toBe(true);
+  });
+
+  it.each([
+    'kimi-k2.5',
+    'kimi-k2.6',
+    'MiniMax-M3',
+  ])('keeps modern adaptive thinking models disableable: %s', (model) => {
+    expect(resolveDeepSeekRuntimeReasoningControl({ model }).canDisable).toBe(true);
+  });
+
+  it.each([
+    'qwen3.7-plus',
+    'qwen3.7-max-2026-06-08',
+    'qwen-plus',
+    'qwen-turbo',
+  ])('keeps hybrid Qwen models disableable: %s', (model) => {
+    expect(resolveDeepSeekRuntimeReasoningControl({ model }).canDisable).toBe(true);
+  });
+
+  it('normalizes vendor effort choices and clears stale budgets', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({ model: 'gemini-3.5-flash' });
+
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control,
+        enableThinking: true,
+        reasoningEffort: 'minimal',
+        thinkingBudget: 32768,
+      })
+    ).toEqual({ enableThinking: true, reasoningEffort: 'minimal', thinkingBudget: undefined });
   });
 
   it('normalizes OpenAI runtime depth to reasoning effort only', () => {

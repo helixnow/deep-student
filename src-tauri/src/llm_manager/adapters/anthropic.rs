@@ -1,10 +1,9 @@
 //! Anthropic/Claude 专用适配器
 //!
 //! ## thinking 请求形态按代际分叉（2026-07，研报 02）
-//! - **旧代际（manual extended thinking）**：Haiku 4.5、Sonnet 4.5、Opus 4.5 及更早，
-//!   Opus 4.6 / Sonnet 4.6（仍接受但已弃用）——
+//! - **旧代际（manual extended thinking）**：Haiku 4.5、Sonnet 4.5、Opus 4.5 及更早——
 //!   发送 `thinking: {type:"enabled", budget_tokens:N}`，N >= 1024 且 < max_tokens。
-//! - **新代际（adaptive thinking）**：Opus 4.7/4.8、Sonnet 5、Fable 5、Mythos 5 及未来默认——
+//! - **新代际（adaptive thinking）**：Opus/Sonnet 4.6+、Sonnet 5、Fable 5、Mythos 5 及未来默认——
 //!   发送 `thinking: {type:"adaptive"}`（可选 `display`）+ `output_config: {effort}`；
 //!   传 `enabled` 会直接 **400**。
 //!
@@ -31,9 +30,6 @@ pub struct AnthropicAdapter;
 /// 旧代际 budget_tokens 的上限（官方建议超过 32k 使用 batch processing）
 const MAX_BUDGET_TOKENS: i32 = 32768;
 
-/// 4.6 代（128K 输出）manual thinking 的 budget_tokens 上限
-const MAX_BUDGET_TOKENS_128K: i32 = 131072;
-
 /// budget_tokens 的下限
 const MIN_BUDGET_TOKENS: i32 = 1024;
 
@@ -51,7 +47,7 @@ pub enum ClaudeGeneration {
     /// 覆盖：Opus 4.7/4.8、Sonnet 5、Fable 5、Mythos 5 及未来更高版本（默认按新代际处理）。
     Adaptive,
     /// 旧代际 manual extended thinking：`{type:"enabled", budget_tokens}`。
-    /// 覆盖：Opus/Sonnet 4 ~ 4.6、Haiku 4.x、Sonnet 3.7。
+    /// 覆盖：Opus/Sonnet 4 ~ 4.5、Haiku 4.x、Sonnet 3.7。
     Manual,
     /// 不支持 extended thinking（Claude 3.5/3 及更早，或无法识别的模型）。
     Unsupported,
@@ -119,14 +115,15 @@ pub fn claude_generation(model: &str) -> ClaudeGeneration {
         "opus" => match (major, minor) {
             (0, _) => ClaudeGeneration::Unsupported,
             (m, _) if m >= 5 => ClaudeGeneration::Adaptive,
-            (4, Some(n)) if n >= 7 => ClaudeGeneration::Adaptive,
-            // Opus 4 / 4.1 / 4.5 / 4.6：manual（4.6 仍接受 enabled，已弃用）
+            (4, Some(n)) if n >= 6 => ClaudeGeneration::Adaptive,
+            // Opus 4 / 4.1 / 4.5：manual
             (4, _) => ClaudeGeneration::Manual,
             _ => ClaudeGeneration::Unsupported,
         },
         "sonnet" => match (major, minor) {
             (0, _) => ClaudeGeneration::Unsupported,
             (m, _) if m >= 5 => ClaudeGeneration::Adaptive,
+            (4, Some(n)) if n >= 6 => ClaudeGeneration::Adaptive,
             (4, _) => ClaudeGeneration::Manual,
             (3, Some(7)) => ClaudeGeneration::Manual,
             _ => ClaudeGeneration::Unsupported,
@@ -182,15 +179,9 @@ impl AnthropicAdapter {
         )
     }
 
-    /// 旧代际 manual thinking 的 budget_tokens 上限
-    ///
-    /// 4.6 代（Opus 4.6 / Sonnet 4.6，128K 输出）放宽至 128K；
-    /// 更早的 manual 模型保留 32K 钳制。
-    fn manual_budget_cap(model: &str) -> i32 {
-        match parse_claude_model(model) {
-            Some(("opus" | "sonnet", 4, Some(n))) if n >= 6 => MAX_BUDGET_TOKENS_128K,
-            _ => MAX_BUDGET_TOKENS,
-        }
+    /// 旧代际 manual thinking 的 budget_tokens 上限。
+    fn manual_budget_cap(_model: &str) -> i32 {
+        MAX_BUDGET_TOKENS
     }
 
     /// 限制 top_p 到 Extended Thinking 允许的范围 (0.95-1.0)
@@ -202,7 +193,7 @@ impl AnthropicAdapter {
     ///
     /// 规则：
     /// - 最小值：1024
-    /// - 最大值：按模型代际（32768，4.6 代放宽到 131072）
+    /// - 最大值：32768（4.6+ 已走 adaptive effort）
     /// - 必须小于 max_tokens（如果提供）
     fn validate_budget_tokens(
         budget: Option<i32>,
@@ -346,7 +337,7 @@ impl AnthropicAdapter {
             if generation == ClaudeGeneration::Unsupported {
                 log::warn!(
                     "[AnthropicAdapter] ⚠️ Model {} may not support Extended Thinking. \
-                     Manual thinking models: Claude Opus/Sonnet 4.x(≤4.6), Haiku 4.5, Sonnet 3.7",
+                     Manual thinking models: Claude Opus/Sonnet 4.x(≤4.5), Haiku 4.5, Sonnet 3.7",
                     config.model
                 );
             }
@@ -560,14 +551,15 @@ mod tests {
             claude_generation("claude-sonnet-4"),
             ClaudeGeneration::Manual
         );
-        // 4.6 代仍接受 enabled（已弃用），保留 manual 通路
+        // 4.6 supports legacy manual requests, but the application uses the
+        // current adaptive + output_config.effort contract.
         assert_eq!(
             claude_generation("claude-opus-4-6"),
-            ClaudeGeneration::Manual
+            ClaudeGeneration::Adaptive
         );
         assert_eq!(
             claude_generation("claude-sonnet-4-6"),
-            ClaudeGeneration::Manual
+            ClaudeGeneration::Adaptive
         );
         // 版本前置 / 点号变体
         assert_eq!(
@@ -917,38 +909,20 @@ mod tests {
     }
 
     #[test]
-    fn test_budget_tokens_relaxed_for_46_generation() {
-        // 4.6 代（128K 输出）manual thinking 放宽 budget 钳制
-        assert_eq!(
-            AnthropicAdapter::manual_budget_cap("claude-opus-4-6"),
-            MAX_BUDGET_TOKENS_128K
-        );
-        assert_eq!(
-            AnthropicAdapter::manual_budget_cap("claude-sonnet-4-6"),
-            MAX_BUDGET_TOKENS_128K
-        );
-        // 4.5 及更早保留 32K 钳制
-        assert_eq!(
-            AnthropicAdapter::manual_budget_cap("claude-sonnet-4-5-20250929"),
-            MAX_BUDGET_TOKENS
-        );
-        assert_eq!(
-            AnthropicAdapter::manual_budget_cap("claude-haiku-4-5"),
-            MAX_BUDGET_TOKENS
-        );
-
+    fn test_46_generation_uses_adaptive_effort() {
         let adapter = AnthropicAdapter;
         let config = ApiConfig {
             thinking_enabled: true,
-            thinking_budget: Some(50000),
+            reasoning_effort: Some("max".to_string()),
             model: "claude-opus-4-6".to_string(),
             ..Default::default()
         };
         let mut body = Map::new();
         adapter.apply_reasoning_config(&mut body, &config, None);
         let thinking = body.get("thinking").unwrap();
-        // 未再被钳到 32768
-        assert_eq!(thinking.get("budget_tokens"), Some(&json!(50000)));
+        assert_eq!(thinking.get("type"), Some(&json!("adaptive")));
+        assert!(thinking.get("budget_tokens").is_none());
+        assert_eq!(body.get("effort"), Some(&json!("max")));
     }
 
     #[test]

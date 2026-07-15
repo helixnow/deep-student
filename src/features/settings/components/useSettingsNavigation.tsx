@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   BookOpen,
   ChartBar,
+  ClockCountdown,
   Flask,
   Globe,
   Keyboard,
@@ -38,6 +39,7 @@ export function useSettingsNavigation() {
     [
       { value: 'general', icon: SlidersHorizontal, label: t('settings:tabs.general') },
       { value: 'appearance', icon: Palette, label: t('settings:tabs.appearance') },
+      { value: 'automation', icon: ClockCountdown, label: t('settings:tabs.automation') },
     ],
     [
       { value: 'mcp', icon: Plug, label: t('settings:tabs.mcp_tools') },
@@ -70,6 +72,7 @@ export function useSettingsNavigation() {
       label: t('settings:voice_input.title'),
       keywords: ['voice input', 'dictation', 'asr', 'microphone', 'speech to text', '听写', '语音输入'],
     },
+    { tab: 'automation', label: t('settings:automation.title'), keywords: ['automation', 'schedule', 'reminder', 'agent', '自动化', '定时', '调度'] },
     {
       tab: 'general',
       label: t('settings:voice_input.shortcut_title'),

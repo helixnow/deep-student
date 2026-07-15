@@ -43,6 +43,8 @@ import { GeneralTab } from './GeneralTab';
 import { ApisTab } from './ApisTab';
 import { ParamsTab } from './ParamsTab';
 import { ExternalSearchTab } from './ExternalSearchTab';
+import { AutomationSettingsSection } from './AutomationSettingsSection';
+import type { AutomationListen } from './automationSettingsApi';
 import { useSettingsNavigation } from './useSettingsNavigation';
 import { type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
@@ -256,6 +258,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     modelProfiles,
     modelAssignments,
     resolvedApiConfigs,
+    openAICodexAuthenticated,
     loading: vendorLoading,
     saving: vendorSaving,
     upsertVendor,
@@ -999,6 +1002,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             setSelectedVendorId={setSelectedVendorId}
             selectedVendorModels={selectedVendorModels}
             selectedVendorIsSiliconflow={selectedVendorIsSiliconflow}
+            openAICodexAuthenticated={openAICodexAuthenticated}
             profileCountByVendor={profileCountByVendor}
             vendorBusy={vendorBusy}
             vendorSaving={vendorSaving}
@@ -1211,6 +1215,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         {/* 数据统计 */}
         {activeTab === 'statistics' && (
           <DataImportExport embedded={true} mode="stats" />
+        )}
+        {activeTab === 'automation' && (
+          <AutomationSettingsSection
+            invoke={invoke}
+            listen={isTauri ? tauriListen as unknown as AutomationListen : null}
+          />
         )}
         {/* 数据治理 */}
         {activeTab === 'data-governance' && (

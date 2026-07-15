@@ -15,7 +15,7 @@ describe('UI style lab navigation contract', () => {
     expect(navigationTypesSource).toContain("| 'ui-lab'");
     expect(canonicalViewSource).toContain("'ui-lab'");
     expect(navigationConfigSource).toContain("view: 'ui-lab'");
-    expect(navigationConfigSource).toContain("'样式调试'");
+    expect(navigationConfigSource).toContain("'sidebar:navigation.ui_lab'");
     expect(modernSidebarSource).toContain("'ui-lab'");
     expect(appSource).toContain("renderViewLayer('ui-lab'");
   });

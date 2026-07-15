@@ -153,6 +153,26 @@ describe('providerProtocolRegistry', () => {
     ).toBe('openai_responses');
   });
 
+  it('uses OpenAI-compatible defaults for Claude and Gemini on proxy hosts', () => {
+    for (const adapter of ['anthropic', 'google']) {
+      expect(
+        resolvePreferredProtocol({
+          providerType: 'custom',
+          baseUrl: 'https://one-api.example.com/v1',
+          adapter,
+        }),
+      ).toBe('openai_chat_completions');
+      expect(
+        resolvePreferredProtocol({
+          providerType: 'openrouter',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          adapter,
+          supportsOpenAIResponses: true,
+        }),
+      ).toBe('openai_responses');
+    }
+  });
+
   it('exposes only native protocols for Anthropic and Gemini', () => {
     expect(getAllowedProtocolsForProviderType('anthropic')).toEqual(['anthropic_messages']);
     expect(getAllowedProtocolsForProviderType('gemini')).toEqual(['google_generate_content']);

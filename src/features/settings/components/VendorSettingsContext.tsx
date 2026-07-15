@@ -23,6 +23,7 @@ export interface VendorSettingsContextValue {
   setSelectedVendorId: (id: string | null) => void;
   selectedVendorModels: Array<{ profile: ModelProfile; api: ApiConfig }>;
   selectedVendorIsSiliconflow: boolean;
+  openAICodexAuthenticated?: boolean;
   profileCountByVendor: Map<string, number>;
   vendorBusy: boolean;
   vendorSaving: boolean;

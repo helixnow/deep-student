@@ -17,6 +17,7 @@ pub struct BuiltinVendor {
     pub id: &'static str,
     pub name: &'static str,
     pub provider_type: &'static str,
+    pub auth_mode: Option<&'static str>,
     pub base_url: &'static str,
     pub notes: &'static str,
     /// 供应商 API 的 max_tokens 限制（None 表示无限制）
@@ -97,6 +98,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         id: "builtin-siliconflow",
         name: "SiliconFlow",
         provider_type: "siliconflow",
+        auth_mode: None,
         base_url: "https://api.siliconflow.cn/v1",
         notes: "Built-in template for SiliconFlow. Please enter your API Key.",
         max_tokens_limit: None,
@@ -107,6 +109,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         id: "builtin-deepseek",
         name: "DeepSeek",
         provider_type: "deepseek",
+        auth_mode: None,
         base_url: "https://api.deepseek.com/v1",
         notes: "DeepSeek 官方 API。推荐模型: deepseek-v4-flash, deepseek-v4-pro（1M 上下文，最大输出 384K）。旧别名 deepseek-chat / deepseek-reasoner 于 2026-07-24 15:59 UTC 停用，已从内置列表移除。reasoning_effort=max 时官方建议预留 ≥384K token 输出预算。",
         max_tokens_limit: Some(393_216),
@@ -117,6 +120,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         id: "builtin-qwen",
         name: "通义千问",
         provider_type: "qwen",
+        auth_mode: None,
         base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
         notes: "阿里云百炼 API（兼容 OpenAI Chat；平台亦支持 Responses / DashScope 原生）。推荐模型: qwen3.7-max(旗舰), qwen3.7-plus(官方默认推荐/多模态), qwen3.6-flash, qwen3.5-plus, qwen3.5-flash, qwen3-max, qwen3.5-397b-a17b, qwen3.5-122b-a10b",
         max_tokens_limit: None,
@@ -127,6 +131,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         id: "builtin-zhipu",
         name: "智谱AI",
         provider_type: "zhipu",
+        auth_mode: None,
         base_url: "https://open.bigmodel.cn/api/paas/v4",
         notes: "智谱AI 开放平台。可用模型: glm-5.2(当前旗舰, 1M 上下文, 支持 reasoning_effort), glm-5.1, glm-5, glm-4.7, glm-4.6, glm-4.7-flash(免费)",
         max_tokens_limit: None,
@@ -137,6 +142,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         id: "builtin-doubao",
         name: "字节豆包",
         provider_type: "doubao",
+        auth_mode: None,
         base_url: "https://ark.cn-beijing.volces.com/api/v3",
         notes: "火山方舟大模型平台。推荐模型: doubao-seed-2-1-pro-260628 / doubao-seed-2-1-turbo-260628 (2.1 旗舰, 256K 上下文), doubao-seed-evolving (滚动更新 ID), Seed 2.0 全系, Seed 1.8 (doubao-seed-1-8-251228)。可直接用模型名或 ep-* 接入点调用。",
         max_tokens_limit: None,
@@ -147,6 +153,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         id: "builtin-minimax",
         name: "MiniMax",
         provider_type: "minimax",
+        auth_mode: None,
         base_url: "https://api.minimax.io/v1",
         notes: "MiniMax API。可用模型: MiniMax-M3(最新旗舰, 1M 上下文/多模态), MiniMax-M2.7, MiniMax-M2.5, M2.5-highspeed, M2.1",
         max_tokens_limit: None,
@@ -157,6 +164,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         id: "builtin-moonshot",
         name: "月之暗面",
         provider_type: "moonshot",
+        auth_mode: None,
         base_url: "https://api.moonshot.cn/v1",
         notes: "Kimi API。可用模型: kimi-k2.6(旗舰/多模态), kimi-k2.7-code(编程/强制思考), kimi-k2.5(多模态), moonshot-v1 系列。kimi-k2 全系与 kimi-k2-thinking 已于 2026-05-25 停服、kimi-latest 已于 2026-01-28 停服。注意: K2.5/K2.6 采样参数锁定，自定义 temperature/top_p 会直接报错。",
         max_tokens_limit: None,
@@ -167,16 +175,29 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         id: "builtin-openai",
         name: "OpenAI",
         provider_type: "openai",
+        auth_mode: None,
         base_url: "https://api.openai.com/v1",
         notes: "OpenAI 官方 API。根据 OpenAI 官方模型文档，当前 GPT-5.x 家族可用模型包括: gpt-5.5, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano；全部模型页仍列出 gpt-5.2, gpt-5.2-pro, gpt-5.1, gpt-5, gpt-5-pro, gpt-5-mini, gpt-5-nano，以及 o3-pro/o3/o4-mini。o 系列已进入退役期: o1/o3-mini/o4-mini 于 2026-10-23 关停，o3/o3-pro 于 2026-12-11 关停。默认协议建议使用 Responses。",
         max_tokens_limit: None,
         website_url: "https://platform.openai.com",
+    },
+    // OpenAI Codex subscription (ChatGPT OAuth)
+    BuiltinVendor {
+        id: "builtin-openai-codex",
+        name: "Codex Subscription",
+        provider_type: "openai_codex",
+        auth_mode: Some(super::AUTH_MODE_OPENAI_CODEX_OAUTH),
+        base_url: "https://chatgpt.com/backend-api/codex",
+        notes: "OpenAI Codex subscription access via ChatGPT OAuth. Sign in with ChatGPT instead of entering an API key.",
+        max_tokens_limit: None,
+        website_url: "https://chatgpt.com/codex",
     },
     // NVIDIA NIM / API Catalog
     BuiltinVendor {
         id: "builtin-nvidia",
         name: "NVIDIA",
         provider_type: "nvidia",
+        auth_mode: None,
         base_url: "https://integrate.api.nvidia.com/v1",
         notes: "NVIDIA NIM hosted API。OpenAI-compatible Chat Completions；模型可通过 /models 拉取。默认不注入 thinking/reasoning 专用参数，避免不同 NIM 模型参数格式不一致。",
         max_tokens_limit: None,
@@ -187,6 +208,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         id: "builtin-mimo",
         name: "Xiaomi MiMo",
         provider_type: "mimo",
+        auth_mode: None,
         base_url: "https://api.xiaomimimo.com/v1",
         notes: "Xiaomi MiMo API。优先内置 MiMo V2.5-Pro 与 MiMo V2.5（1M context，OpenAI-compatible Chat Completions）；Token Plan 可将 Base URL 改为 token-plan-*.xiaomimimo.com/v1。支持 thinking: { type } 与 reasoning_content 回传。V2.5 TTS/ASR 属语音专项能力，当前不放入聊天模型默认列表。",
         max_tokens_limit: None,
@@ -786,6 +808,73 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 100000,
         temperature: 1.0,
     },
+    // ===== OpenAI Codex subscription models =====
+    BuiltinModel {
+        id: "builtin-codex-gpt-5.6-sol",
+        vendor_id: "builtin-openai-codex",
+        label: "GPT-5.6 Sol",
+        model: "gpt-5.6-sol",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-codex-gpt-5.6-terra",
+        vendor_id: "builtin-openai-codex",
+        label: "GPT-5.6 Terra",
+        model: "gpt-5.6-terra",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-codex-gpt-5.6-luna",
+        vendor_id: "builtin-openai-codex",
+        label: "GPT-5.6 Luna",
+        model: "gpt-5.6-luna",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-codex-gpt-5.5",
+        vendor_id: "builtin-openai-codex",
+        label: "GPT-5.5",
+        model: "gpt-5.5",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-codex-gpt-5.4",
+        vendor_id: "builtin-openai-codex",
+        label: "GPT-5.4",
+        model: "gpt-5.4",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-codex-gpt-5.4-mini",
+        vendor_id: "builtin-openai-codex",
+        label: "GPT-5.4 Mini",
+        model: "gpt-5.4-mini",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
     // ===== NVIDIA NIM 模型 =====
     BuiltinModel {
         id: "builtin-nvidia-nemotron-3-nano",
@@ -843,6 +932,7 @@ impl BuiltinVendor {
             id: self.id.to_string(),
             name: self.name.to_string(),
             provider_type: self.provider_type.to_string(),
+            auth_mode: self.auth_mode.map(str::to_string),
             api_protocol: Some(super::resolve_preferred_protocol_for_provider(
                 Some(self.provider_type),
                 Some(self.provider_type),
@@ -911,7 +1001,9 @@ impl BuiltinModel {
         };
         let reasoning_effort = if self.vendor_id == "builtin-deepseek" && self.is_reasoning {
             Some("high".to_string())
-        } else if self.vendor_id == "builtin-openai" && self.is_reasoning {
+        } else if matches!(self.vendor_id, "builtin-openai" | "builtin-openai-codex")
+            && self.is_reasoning
+        {
             Some(
                 if matches!(
                     self.model,
@@ -928,7 +1020,9 @@ impl BuiltinModel {
         } else {
             None
         };
-        let verbosity = if self.vendor_id == "builtin-openai" && self.is_reasoning {
+        let verbosity = if matches!(self.vendor_id, "builtin-openai" | "builtin-openai-codex")
+            && self.is_reasoning
+        {
             Some(
                 if self.model == "gpt-5.4-nano" {
                     "low"
@@ -987,6 +1081,7 @@ impl GeminiBuiltinVendor {
             id: self.id.clone(),
             name: self.name.clone(),
             provider_type: self.provider_type.clone(),
+            auth_mode: None,
             api_protocol: Some(super::resolve_preferred_protocol_for_provider(
                 Some(self.provider_type.as_str()),
                 Some(self.provider_type.as_str()),
@@ -1182,6 +1277,47 @@ mod tests {
             .iter()
             .find(|vendor| vendor.id == "builtin-mimo")
             .expect("builtin Xiaomi MiMo vendor should exist")
+    }
+
+    #[test]
+    fn codex_subscription_catalog_is_separate_and_oauth_only() {
+        let vendor = BUILTIN_VENDORS
+            .iter()
+            .find(|vendor| vendor.id == "builtin-openai-codex")
+            .expect("builtin Codex subscription vendor should exist")
+            .to_vendor_config();
+
+        assert_eq!(vendor.provider_type, "openai_codex");
+        assert_eq!(
+            vendor.auth_mode.as_deref(),
+            Some(super::super::AUTH_MODE_OPENAI_CODEX_OAUTH)
+        );
+        assert!(vendor.api_key.is_empty());
+        assert_eq!(vendor.api_protocol.as_deref(), Some("openai_responses"));
+        assert_eq!(vendor.supports_openai_responses, Some(true));
+
+        let expected_models = [
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+        ];
+        let models: Vec<_> = BUILTIN_MODELS
+            .iter()
+            .filter(|model| model.vendor_id == "builtin-openai-codex")
+            .collect();
+        assert_eq!(models.len(), expected_models.len());
+        for model_id in expected_models {
+            let model = models
+                .iter()
+                .find(|model| model.model == model_id)
+                .unwrap_or_else(|| panic!("missing Codex subscription model {model_id}"));
+            assert!(model.is_multimodal);
+            assert!(model.is_reasoning);
+            assert!(model.supports_tools);
+        }
     }
 
     #[test]

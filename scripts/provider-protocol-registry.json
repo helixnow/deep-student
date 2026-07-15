@@ -14,6 +14,16 @@
       "supports_openai_responses": true
     },
     {
+      "provider_type": "openai_codex",
+      "allowed_protocols": [
+        "openai_responses"
+      ],
+      "default_protocol": "openai_responses",
+      "official": false,
+      "supports_openai_responses": true,
+      "notes": "ChatGPT/Codex subscription OAuth transport. Responses-only; authentication is provided by the native OpenAI Codex OAuth session rather than an API key."
+    },
+    {
       "provider_type": "anthropic",
       "allowed_protocols": [
         "anthropic_messages"

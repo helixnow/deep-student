@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { ListChecks } from '@phosphor-icons/react';
+import { ArrowLeft, FileText, ListChecks } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
   NotionDialog,
@@ -79,9 +79,45 @@ const ACKNOWLEDGEMENT_GROUPS = [
   },
 ] as const;
 
+type LegalDocument = 'project' | 'thirdParty';
+
+const LEGAL_DOCUMENT_PATHS: Record<LegalDocument, string> = {
+  project: './legal/DEEPSTUDENT_LICENSE.txt',
+  thirdParty: './legal/THIRD_PARTY_NOTICES.txt',
+};
+
 export const OpenSourceAcknowledgementsSection: React.FC = () => {
   const { t } = useTranslation('settings');
   const [open, setOpen] = useState(false);
+  const [legalDocument, setLegalDocument] = useState<LegalDocument | null>(null);
+  const [legalText, setLegalText] = useState('');
+  const [legalLoading, setLegalLoading] = useState(false);
+  const [legalError, setLegalError] = useState(false);
+
+  const openLegalDocument = async (document: LegalDocument) => {
+    setLegalDocument(document);
+    setLegalText('');
+    setLegalError(false);
+    setLegalLoading(true);
+    try {
+      const response = await fetch(LEGAL_DOCUMENT_PATHS[document]);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setLegalText(await response.text());
+    } catch {
+      setLegalError(true);
+    } finally {
+      setLegalLoading(false);
+    }
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      setLegalDocument(null);
+      setLegalText('');
+      setLegalError(false);
+    }
+  };
 
   const container = {
     hidden: { opacity: 0 },
@@ -119,66 +155,134 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
         </p>
       </div>
 
-      <NotionDialog open={open} onOpenChange={setOpen} maxWidth="max-w-[760px]">
+      <NotionDialog open={open} onOpenChange={handleOpenChange} maxWidth="max-w-[760px]">
         <NotionDialogHeader>
           <div className="min-w-0 pr-8">
-            <NotionDialogTitle>{t('acknowledgements.openSource.title')}</NotionDialogTitle>
+            <NotionDialogTitle>
+              {legalDocument
+                ? t(`acknowledgements.openSource.${legalDocument}License`)
+                : t('acknowledgements.openSource.title')}
+            </NotionDialogTitle>
             <NotionDialogDescription>
-              {t('acknowledgements.openSource.description')}
+              {legalDocument
+                ? t(`acknowledgements.openSource.${legalDocument}LicenseDescription`)
+                : t('acknowledgements.openSource.description')}
             </NotionDialogDescription>
           </div>
         </NotionDialogHeader>
 
         <NotionDialogBody className="py-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {ACKNOWLEDGEMENT_GROUPS.map((group) => (
-              <section
-                key={group.key}
-                className="rounded-lg border border-border/45 bg-muted/15 p-3.5"
-              >
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h4 className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-foreground/90">
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/45" />
-                    <span className="truncate">{t(`acknowledgements.openSource.categories.${group.key}`)}</span>
-                  </h4>
+          {legalDocument ? (
+            <div className="min-h-[320px]">
+              {legalLoading && (
+                <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">
+                  {t('acknowledgements.openSource.loadingLicenses')}
                 </div>
-                <motion.div
-                  role="list"
-                  variants={container}
-                  initial="hidden"
-                  animate="show"
-                  className="flex flex-wrap gap-1.5"
+              )}
+              {legalError && (
+                <div className="flex min-h-[320px] items-center justify-center text-sm text-destructive">
+                  {t('acknowledgements.openSource.licenseLoadError')}
+                </div>
+              )}
+              {!legalLoading && !legalError && (
+                <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/45 bg-muted/15 p-4 text-[11px] leading-5 text-foreground/80 select-text">
+                  {legalText}
+                </pre>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {ACKNOWLEDGEMENT_GROUPS.map((group) => (
+                <section
+                  key={group.key}
+                  className="rounded-lg border border-border/45 bg-muted/15 p-3.5"
                 >
-                  {group.items.map((item) => (
-                    <motion.span
-                      role="listitem"
-                      variants={itemAnim}
-                      key={item}
-                      className="
-                        inline-block cursor-default select-none rounded-md
-                        border border-border/45 bg-background/70 px-2.5 py-1
-                        text-[11.5px] font-medium text-foreground/70 shadow-sm
-                        transition-colors duration-150
-                      "
-                    >
-                      {item}
-                    </motion.span>
-                  ))}
-                </motion.div>
-              </section>
-            ))}
-          </div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h4 className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-foreground/90">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/45" />
+                      <span className="truncate">{t(`acknowledgements.openSource.categories.${group.key}`)}</span>
+                    </h4>
+                  </div>
+                  <motion.div
+                    role="list"
+                    variants={container}
+                    initial="hidden"
+                    animate="show"
+                    className="flex flex-wrap gap-1.5"
+                  >
+                    {group.items.map((item) => (
+                      <motion.span
+                        role="listitem"
+                        variants={itemAnim}
+                        key={item}
+                        className="
+                          inline-block cursor-default select-none rounded-md
+                          border border-border/45 bg-background/70 px-2.5 py-1
+                          text-[11.5px] font-medium text-foreground/70 shadow-sm
+                          transition-colors duration-150
+                        "
+                      >
+                        {item}
+                      </motion.span>
+                    ))}
+                  </motion.div>
+                </section>
+              ))}
+            </div>
+          )}
         </NotionDialogBody>
 
         <NotionDialogFooter>
-          <NotionButton
-            variant="default"
-            size="sm"
-            className="w-full justify-center"
-            onClick={() => setOpen(false)}
-          >
-            {t('acknowledgements.openSource.closeDialog')}
-          </NotionButton>
+          {legalDocument ? (
+            <div className="flex w-full gap-2">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="flex-1 justify-center"
+                onClick={() => setLegalDocument(null)}
+              >
+                <ArrowLeft size={14} />
+                {t('acknowledgements.openSource.backToAcknowledgements')}
+              </NotionButton>
+              <NotionButton
+                variant="default"
+                size="sm"
+                className="flex-1 justify-center"
+                onClick={() => handleOpenChange(false)}
+              >
+                {t('acknowledgements.openSource.closeDialog')}
+              </NotionButton>
+            </div>
+          ) : (
+            <div className="flex w-full flex-col gap-2 sm:flex-row">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="flex-1 justify-center"
+                onClick={() => void openLegalDocument('project')}
+              >
+                <FileText size={14} />
+                {t('acknowledgements.openSource.projectLicense')}
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="flex-1 justify-center"
+                onClick={() => void openLegalDocument('thirdParty')}
+              >
+                <ListChecks size={14} />
+                {t('acknowledgements.openSource.thirdPartyLicense')}
+              </NotionButton>
+              <NotionButton
+                variant="default"
+                size="sm"
+                className="flex-1 justify-center"
+                onClick={() => handleOpenChange(false)}
+              >
+                {t('acknowledgements.openSource.closeDialog')}
+              </NotionButton>
+            </div>
+          )}
         </NotionDialogFooter>
       </NotionDialog>
     </>

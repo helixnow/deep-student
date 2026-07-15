@@ -591,9 +591,9 @@ pub fn build_gemini_request_with_version(
                 "none" | "unset" => Some(0),
                 _ => None,
             };
-            if let Some(b) = budget {
-                let clamped = b.clamp(-1, 2_147_483_647);
-                thinking_budget = Some(clamped);
+            // 显式 thinkingConfig 是 Gemini 原生配置，旧 reasoning_effort 仅作回退。
+            if thinking_budget.is_none() {
+                thinking_budget = budget.map(|b| b.clamp(-1, 2_147_483_647));
             }
         }
     }
@@ -755,9 +755,12 @@ pub fn parse_gemini_stream_line(
     pending_tool_calls: &Arc<Mutex<HashMap<i64, (String, String)>>>,
 ) -> Vec<StreamEvent> {
     let mut events = Vec::new();
+    let Some(payload) = crate::utils::sse_buffer::extract_stream_data_payload(line) else {
+        return events;
+    };
 
     // 检查是否是结束标记
-    if line.trim() == "data: [DONE]" {
+    if payload.trim() == "[DONE]" {
         events.push(StreamEvent::Done);
         if let Ok(mut state) = pending_tool_calls.lock() {
             state.clear();
@@ -765,16 +768,8 @@ pub fn parse_gemini_stream_line(
         return events;
     }
 
-    // 检查是否以"data: "开头
-    if !line.starts_with("data: ") {
-        return events;
-    }
-
-    // 提取JSON部分
-    let json_str = &line[6..]; // 跳过"data: "
-
     // 尝试解析JSON
-    let json_value: Value = match serde_json::from_str(json_str) {
+    let json_value: Value = match serde_json::from_str(&payload) {
         Ok(v) => v,
         Err(_) => return events, // 忽略非JSON行
     };
@@ -2142,6 +2137,33 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_gemini_stream_line_accepts_bare_ndjson() {
+        let line = r#"{"candidates":[{"content":{"parts":[{"text":"NDJSON"}]}}]}"#;
+        let state = Arc::new(Mutex::new(HashMap::new()));
+        let events = parse_gemini_stream_line(line, &state);
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "NDJSON"
+        ));
+    }
+
+    #[test]
+    fn test_parse_gemini_stream_event_and_data_block() {
+        let line = concat!(
+            "event: message\n",
+            r#"data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}"#,
+        );
+        let state = Arc::new(Mutex::new(HashMap::new()));
+        let events = parse_gemini_stream_line(line, &state);
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "Hello"
+        ));
+    }
+
+    #[test]
     fn test_parse_gemini_stream_line_done() {
         let line = "data: [DONE]";
         let state = Arc::new(Mutex::new(HashMap::new()));
@@ -2474,6 +2496,77 @@ mod tests {
         .expect("req");
 
         assert!(req.url.contains("/v1beta/"));
+    }
+
+    #[test]
+    fn test_gemini_25_explicit_thinking_budget_overrides_reasoning_effort() {
+        let cases = [
+            (
+                json!({
+                    "model": "gemini-2.5-flash",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "reasoning_effort": "high",
+                    "thinkingConfig": {
+                        "thinkingBudget": 0,
+                        "includeThoughts": false
+                    }
+                }),
+                0,
+            ),
+            (
+                json!({
+                    "model": "gemini-2.5-pro",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "reasoning_effort": "minimal",
+                    "google_thinking_config": {
+                        "thinking_budget": -1,
+                        "include_thoughts": true
+                    }
+                }),
+                -1,
+            ),
+        ];
+
+        for (openai_body, expected_budget) in cases {
+            let req = build_gemini_request(
+                "https://generativelanguage.googleapis.com",
+                "k",
+                openai_body.get("model").and_then(Value::as_str).unwrap(),
+                &openai_body,
+            )
+            .expect("request");
+
+            assert_eq!(
+                req.body
+                    .pointer("/generationConfig/thinkingConfig/thinkingBudget")
+                    .and_then(Value::as_i64),
+                Some(expected_budget)
+            );
+        }
+    }
+
+    #[test]
+    fn test_gemini_25_reasoning_effort_supplies_budget_without_explicit_config() {
+        let openai_body = json!({
+            "model": "gemini-2.5-flash",
+            "messages": [{"role": "user", "content": "hi"}],
+            "reasoning_effort": "high"
+        });
+
+        let req = build_gemini_request(
+            "https://generativelanguage.googleapis.com",
+            "k",
+            "gemini-2.5-flash",
+            &openai_body,
+        )
+        .expect("request");
+
+        assert_eq!(
+            req.body
+                .pointer("/generationConfig/thinkingConfig/thinkingBudget")
+                .and_then(Value::as_i64),
+            Some(24576)
+        );
     }
 
     #[test]

@@ -162,6 +162,25 @@ describe('apiCapabilityEngine 2026-07 model refresh', () => {
     expect(caps.contextWindow).toBe(1_000_000);
   });
 
+  it.each([
+    'grok-4.10-non-reasoning',
+    'gpt-5.1-chat-latest',
+    'vision-o3cr-model',
+  ])('does not infer OpenAI reasoning effort from incidental family substrings: %s', (model) => {
+    expect(inferApiCapabilities({ id: model }).supportsReasoningEffort).toBe(false);
+  });
+
+  it.each([
+    'mistral-medium-latest',
+    'mistral-medium-3-5',
+    'mistral-small-latest',
+    'mistral-small-4',
+  ])('treats %s as reasoning-effort capable', (model) => {
+    const caps = inferApiCapabilities({ id: model });
+
+    expect(caps.supportsReasoningEffort).toBe(true);
+  });
+
   it('keeps qwen3.7-max text-only but thinking-capable with 1M context', () => {
     const caps = inferApiCapabilities({ id: 'qwen3.7-max' });
     expect(caps.vision).toBe(false);

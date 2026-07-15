@@ -128,7 +128,11 @@ impl RequestAdapter for MiniMaxAdapter {
             body.remove("thinking");
         }
 
-        // reasoning_split 会在 apply_common_params 中处理
+        // This adapter returns early to prevent generic reasoning fields from being
+        // reintroduced, so MiniMax-specific fields must be applied before returning.
+        if let Some(reasoning_split) = config.reasoning_split {
+            body.insert("reasoning_split".to_string(), json!(reasoning_split));
+        }
 
         true // 提前返回，阻止后续代码添加 enable_thinking
     }
@@ -337,5 +341,27 @@ mod tests {
         adapter.apply_common_params(&mut body, &config);
 
         assert_eq!(body.get("reasoning_split"), Some(&json!(true)));
+    }
+
+    #[test]
+    fn test_reasoning_split_is_applied_through_llm_manager_pipeline() {
+        let config = ApiConfig {
+            model: "MiniMax-M3".to_string(),
+            model_adapter: "minimax".to_string(),
+            provider_type: Some("minimax".to_string()),
+            reasoning_split: Some(true),
+            ..create_test_config()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "stream": true
+        });
+
+        crate::llm_manager::LLMManager::apply_reasoning_config(&mut body, &config, Some(true));
+
+        assert_eq!(body.get("reasoning_split"), Some(&json!(true)));
+        assert_eq!(body.get("thinking"), Some(&json!({"type": "adaptive"})));
+        assert!(!body.as_object().unwrap().contains_key("enable_thinking"));
     }
 }

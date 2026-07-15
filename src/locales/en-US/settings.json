@@ -21,7 +21,9 @@
     "rag_models": "RAG & Knowledge Base",
     "search_engines": "Search Engine Configuration",
     "appearance": "Appearance",
-    "voice_input": "Voice Input"
+    "voice_input": "Voice Input",
+    "search_engines_list": "Search Engines",
+    "global_search_settings": "Global Search Settings"
   },
   "voice_input": {
     "title": "Dictation",
@@ -169,6 +171,7 @@
       "subtitle": "Configure your AI model endpoints and base settings",
       "protocol_label": "OpenAI Protocol",
       "protocol_hint": "Choose explicitly between OpenAI Chat and OpenAI Responses; the provider only supplies a default.",
+      "responses_unavailable": "Enable OpenAI Responses in the provider settings before selecting it for a model.",
       "protocols": {
         "openai_chat_completions": {
           "label": "OpenAI Chat",
@@ -207,6 +210,7 @@
           "medium": "Medium",
           "high": "High"
         },
+        "verbosity_label": "Verbosity",
         "enable_thinking": "Enable Thinking mode",
         "enable_thinking_hint": "Send the enable_thinking flag when this model supports it.",
         "thinking_disabled_hint": "This model is not marked as reasoning-capable; options are disabled automatically.",
@@ -217,6 +221,8 @@
         "note": "These settings map to provider-specific options (OpenAI reasoning.effort, Claude thinking, Gemini thinkingBudget/include_thoughts)."
       },
       "fields": {
+        "api_key": "API Key",
+        "model_adapter": "Model Adapter",
         "thinking_budget": "thinking_budget",
         "thinking_budget_placeholder": "e.g. 4096",
         "thinking_budget_hint": "Note: Anthropic (Claude) models require minimum 1024; other reasoning models (e.g. Gemini) support smaller values (e.g. 256)",
@@ -237,8 +243,14 @@
         "context_window": "Context Window Size",
         "context_window_placeholder": "Leave empty to use auto-inferred value",
         "context_window_hint": "The model's context window size (tokens). Leave empty to auto-infer from model name. Current inferred value:",
-        "context_window_auto_inferred": "Auto-inferred"
+        "context_window_auto_inferred": "Auto-inferred",
+        "repetition_penalty": "Repetition Penalty",
+        "repetition_penalty_placeholder": "Qwen: >1.0, Doubao: >0",
+        "repetition_penalty_hint": "Qwen/Doubao models: penalize repeated tokens",
+        "reasoning_split": "MiniMax Reasoning Split",
+        "reasoning_split_hint": "Separate thinking content into the reasoning_details field"
       },
+      "connection_info": "Connection Information",
       "min_p_hint": "Note: min_p is ignored by Gemini",
       "anthropic": {
         "title": "Enable Claude Extended Thinking",
@@ -261,6 +273,8 @@
         "enable_thinking": "Enable Thinking Mode",
         "enable_thinking_hint": "When enabled, the model outputs reasoning_content with its thought process",
         "v31_warning": "DeepSeek V3.1 automatically disables thinking mode when using tools",
+        "v32_depth_hint": "DeepSeek V3.2 maps depth presets to SiliconFlow thinking_budget.",
+        "reasoning_effort_hint": "DeepSeek V4 supports high or max reasoning effort.",
         "depth": {
           "low": "Low",
           "medium": "Medium",
@@ -387,6 +401,10 @@
     "notes": "Notes",
     "siliconflow_hint": "SiliconFlow quick import & one-click assignment",
     "model_list_title": "Models",
+    "no_api_key_short": "No API key",
+    "api_key_configured_short": "API key configured",
+    "connection_not_configured": "Connection not configured",
+    "no_api_key_hint": "Add an API key to enable this provider.",
     "model_list_desc": "{{count}} models total",
     "model_empty": "No models under this provider yet",
     "create_vendor_cta": "Create a provider to centralize API credentials and defaults.",
@@ -404,7 +422,66 @@
     "select_model_to_edit": "Select a model to edit",
     "reorder_failed": "Reorder failed",
     "api_key_configured": "API Key configured",
-    "fetch_models_button": "Fetch Models"
+    "fetch_models_button": "Fetch Models",
+    "codex_oauth": {
+      "title": "ChatGPT account",
+      "status": {
+        "checking": "Checking",
+        "signed_out": "Signed out",
+        "pending_browser": "Waiting for browser",
+        "pending_device_code": "Waiting for code",
+        "signed_in": "Signed in",
+        "reauth_required": "Sign-in required"
+      },
+      "plans": {
+        "free": "Free",
+        "plus": "Plus",
+        "pro": "Pro",
+        "team": "Team",
+        "business": "Business",
+        "enterprise": "Enterprise",
+        "edu": "Edu"
+      },
+      "signed_out_description": "Sign in with ChatGPT to use your Codex plan allowance.",
+      "pending_description": "Complete sign-in in the browser.",
+      "reauth_description": "Your ChatGPT session needs to be renewed.",
+      "checking": "Checking account status…",
+      "sign_in_browser": "Sign in with browser",
+      "sign_in_device": "Use device code",
+      "sign_in_again": "Sign in again",
+      "cancel_sign_in": "Cancel sign-in",
+      "sign_out": "Sign out",
+      "remove_account": "Remove account",
+      "retry": "Retry",
+      "refresh_usage": "Refresh usage",
+      "device_code": "One-time code",
+      "copy_code": "Copy code",
+      "code_copied": "Code copied",
+      "reopen_sign_in": "Reopen sign-in page",
+      "open_verification": "Open verification page",
+      "expires_at": "Expires {{time}}",
+      "usage_title": "Codex allowance",
+      "usage_empty": "Usage data is not available yet.",
+      "primary_window": "Primary window",
+      "secondary_window": "Secondary window",
+      "usage_percent": "{{percent}}% used",
+      "usage_unknown": "Usage unavailable",
+      "window_minutes": "{{count}} minute window",
+      "window_hours": "{{count}} hour window",
+      "window_days": "{{count}} day window",
+      "window_weeks": "{{count}} week window",
+      "resets_at": "Resets {{time}}",
+      "operation_failed": "Could not update the Codex account. Try again.",
+      "errors": {
+        "login_busy": "Another sign-in is already in progress. Cancel it or wait.",
+        "callback_bind_failed": "Browser sign-in could not start locally. Use device-code sign-in instead.",
+        "network": "Could not reach OpenAI. Check your network and try again.",
+        "authorization_denied": "Authorization was not completed. Start sign-in again.",
+        "credential_store": "Secure credential storage is unavailable. Restart the app and try again.",
+        "security": "The sign-in response could not be verified. Start sign-in again.",
+        "reauthentication": "Your ChatGPT session changed or expired. Sign in again."
+      }
+    }
   },
   "vendor_model_fetcher": {
     "fetch_button": "Fetch Model List",
@@ -431,7 +508,11 @@
     "add_success": "Successfully added {{count}} models",
     "add_failed": "Failed to add models: {{error}}",
     "dialog_title": "Fetch available models from API",
-    "dialog_description": "{{vendor}}: pick items to add to your model list"
+    "dialog_description": "{{vendor}}: pick items to add to your model list",
+    "search_placeholder_empty": "Fetch the model list before searching...",
+    "add_all_new": "Add all ({{count}})",
+    "click_fetch": "Click the button above to fetch available models",
+    "need_config": "Configure the base URL and API key first"
   },
   "vendor_modal": {
     "title_new": "Add Provider",
@@ -450,6 +531,7 @@
     },
     "providers": {
       "openai": "OpenAI",
+      "openai_codex": "OpenAI Codex",
       "anthropic": "Anthropic",
       "google": "Google",
       "general": "General Adapter",
@@ -545,6 +627,11 @@
       "accent": "Accent: {{accent}}"
     }
   },
+  "appearance": {
+    "theme": { "title": "Theme", "description": "Switch the application theme." },
+    "font": { "title": "Font", "size_label": "Font Size", "heading_label": "Heading Font", "body_label": "Body Font" },
+    "sidebar": { "title": "Sidebar", "position": "Sidebar Position" }
+  },
   "zoom": {
     "title": "Global UI Zoom (Experimental)",
     "badge": "TEST",
@@ -622,24 +709,143 @@
     "data_governance": "Data Governance",
     "general": "General",
     "appearance": "Appearance",
+    "automation": "Automations",
     "app": "App Settings",
     "theme": "Theme",
     "params": "Parameters",
     "shortcuts": "Shortcuts",
     "about": "About"
   },
+  "automation": {
+    "title": "Automations",
+    "description": "Manage scheduled reminders and unattended Agent tasks.",
+    "capacity": "{{count}} / {{max}}",
+    "loading": "Loading automations",
+    "saving": "Saving",
+    "never": "Not run yet",
+    "paused": "Paused",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "heartbeat": "Heartbeat",
+    "prompt_empty": "No task instructions",
+    "last_run": "Last run",
+    "next_run": "Next run",
+    "action_type": {
+      "notify": "Notification + todo",
+      "agent_turn": "Agent task"
+    },
+    "kind": {
+      "daily": "Daily",
+      "weekdays": "Weekdays",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "interval": "Interval"
+    },
+    "schedule": {
+      "daily": "Every day at {{time}}",
+      "weekdays": "Weekdays at {{time}}",
+      "weekly": "Every {{weekday}} at {{time}}",
+      "monthly": "Day {{day}} of each month at {{time}}",
+      "interval": "Every {{count}} minutes",
+      "timezone": " · {{timezone}}"
+    },
+    "catch_up": {
+      "run_once": "Run once after resume",
+      "catch_up_all": "Run each missed occurrence",
+      "skip": "Skip missed occurrences"
+    },
+    "session_mode": {
+      "isolated": "New session each run",
+      "named": "Reuse one session"
+    },
+    "weekdays": {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday"
+    },
+    "actions": {
+      "refresh": "Refresh automations",
+      "retry": "Retry",
+      "toggle": "Enable or disable {{name}}",
+      "run_now": "Run {{name}} now",
+      "run_now_short": "Run now",
+      "edit": "Edit {{name}}",
+      "edit_short": "Edit",
+      "delete": "Delete {{name}}",
+      "delete_short": "Delete"
+    },
+    "empty": {
+      "title": "No automations yet",
+      "description": "There are no scheduled tasks yet."
+    },
+    "edit": {
+      "title": "Edit {{name}}",
+      "description": "Change the task, schedule, Agent session, and failure recovery policy.",
+      "name": "Name",
+      "action_type": "Action",
+      "schedule_kind": "Schedule",
+      "weekday": "Weekday",
+      "day_of_month": "Day of month",
+      "time": "Time",
+      "timezone": "Time zone",
+      "interval_minutes": "Interval in minutes",
+      "catch_up_policy": "Missed runs",
+      "session_mode": "Agent session",
+      "model_id": "Model configuration ID",
+      "default_model": "Use default model",
+      "max_retries": "Failure retries",
+      "retry_backoff_seconds": "Retry delay (seconds)",
+      "timeout_seconds": "Timeout (seconds)",
+      "prompt": "Task instructions"
+    },
+    "delete": {
+      "title": "Delete automation?",
+      "description": "{{name}} will be permanently deleted, will no longer run, and cannot be restored.",
+      "confirm": "Delete permanently"
+    },
+    "notices": {
+      "enabled": "Enabled {{name}}.",
+      "disabled": "Disabled {{name}}.",
+      "started": "Started {{name}}.",
+      "updated": "Updated {{name}}.",
+      "deleted": "Deleted {{name}}."
+    },
+    "errors": {
+      "desktop_only": "Automation management requires the Deep Student desktop app.",
+      "invalid_response": "The automation list returned invalid data.",
+      "version_conflict": "This automation changed while it was open. The latest version has been reloaded; review it before editing again.",
+      "name_required": "Name cannot be empty.",
+      "name_too_long": "Name cannot exceed 100 characters.",
+      "prompt_required": "Task instructions cannot be empty.",
+      "prompt_too_long": "Task instructions cannot exceed 4,000 characters.",
+      "invalid_time": "Enter a valid 24-hour time.",
+      "invalid_timezone": "Enter a valid IANA time zone, such as Asia/Shanghai.",
+      "invalid_day_of_month": "Day of month must be an integer from 1 to 31.",
+      "invalid_interval": "The interval must be an integer from 5 to 1,440 minutes.",
+      "invalid_retries": "Failure retries must be an integer from 0 to 10.",
+      "invalid_backoff": "Retry delay must be an integer from 5 to 86,400 seconds.",
+      "invalid_timeout": "Timeout must be an integer from 30 to 3,600 seconds."
+    }
+  },
   "sidebar": {
     "search_placeholder": "Search settings...",
     "no_results": "No matching settings found",
     "expand": "Expand",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "back_to_home": "Back to Home",
+    "navigation_label": "Settings navigation"
   },
   "language": {
     "title": "Language Settings",
     "description": "Choose your preferred language",
     "switch_language": "Switch Language",
     "chinese": "中文",
-    "english": "English"
+    "english": "English",
+    "select_label": "Select language"
   },
   "system_notification": {
     "title": "System Notifications",
@@ -759,6 +965,13 @@
       "description": "DeepStudent grows thanks to the open-source communities listed below. Thank you for keeping the ecosystem moving forward.",
       "openDialog": "View acknowledgements",
       "closeDialog": "Close",
+      "projectLicense": "Project license",
+      "thirdPartyLicense": "Third-party licenses",
+      "projectLicenseDescription": "GNU Affero General Public License for DeepStudent.",
+      "thirdPartyLicenseDescription": "License and attribution notices for components distributed with DeepStudent.",
+      "backToAcknowledgements": "Back to acknowledgements",
+      "loadingLicenses": "Loading license text...",
+      "licenseLoadError": "The license text could not be loaded.",
       "expand": "Expand {{category}}",
       "collapse": "Collapse {{category}}",
       "categories": {
@@ -1488,7 +1701,12 @@
     "not_configured": "Not Configured",
     "testing": "Testing…",
     "test_availability": "Test Availability",
-    "in_development": "In Development"
+    "in_development": "In Development",
+    "offline": "Offline",
+    "thinking_label": "Thinking Mode",
+    "thinking_desc": "Allow the OCR model to use extended reasoning when supported.",
+    "thinking_on": "On",
+    "thinking_off": "Off"
   },
   "descriptions": {
     "model1_desc": "Deprecated: OCR uses dedicated engines (DeepSeek-OCR / PaddleOCR-VL-1.5)",
@@ -1503,7 +1721,14 @@
     "qbank_ai_grading_desc": "Used for AI grading and AI analysis in question banks. If not configured, it falls back to \"Second Model\".",
     "voice_input_asr_desc": "Used for speech-to-text in the input layer. All ASR-capable models stay visible here; unsupported providers are shown as coming soon, and transcripts are inserted without auto-send.",
     "image_generation_desc": "Used by the built-in Chat V2 image generation tool. Pick a model that supports the OpenAI-compatible /images/generations API. Results are saved to VFS.",
-    "vl_reranker_desc": "Used to rerank multimodal RAG retrieval results, improving relevance for mixed image-text retrieval (optional configuration)"
+    "vl_reranker_desc": "Used to rerank multimodal RAG retrieval results, improving relevance for mixed image-text retrieval (optional configuration)",
+    "google_cse_desc": "Google Custom Search API for accurate and comprehensive web search.",
+    "serpapi_desc": "An aggregation API wrapping Google, Bing, and other search engines.",
+    "tavily_desc": "A retrieval-optimized search engine designed for large language models.",
+    "brave_desc": "An independent web search engine focused on privacy.",
+    "searxng_desc": "An open-source metasearch engine that aggregates multiple sources.",
+    "zhipu_desc": "A China-based internet search aggregation service from Zhipu.",
+    "bocha_desc": "A lightweight retrieval service focused on Chinese-language indexes."
   },
   "common_labels": {
     "no_data": "No data",
@@ -1698,7 +1923,11 @@
     "api_config_desc": "Manage available model services and their keys, capability markers",
     "mcp_section_desc": "Manage MCP servers, tool cache and connection status",
     "semantic_fts_desc": "When enabled, first use FTS to quickly filter candidates, then do semantic similarity; enabled by default.",
-    "timeout_desc": "Search request timeout (milliseconds), avoid long waits affecting user experience"
+    "timeout_desc": "Search request timeout (milliseconds), avoid long waits affecting user experience",
+    "select_tool_to_edit": "Select a tool to edit",
+    "select_policy_to_edit": "Select a policy to edit",
+    "policy_title": "MCP Tool Permissions",
+    "advertise_all": "Advertise all tools"
   },
   "advanced_search": {
     "reranker": {
@@ -1738,6 +1967,8 @@
       "rate_limit_per_minute": "Rate limit per minute",
       "cache_ttl_seconds": "Cache TTL (seconds)",
       "cache_max_entries": "Cache max entries",
+      "strategy_title": "Strategy Configuration",
+      "strategy_hint": "Falls back to the default strategy when unconfigured.",
       "save_button": "Save strategies",
       "names": {
         "default": "Default",
@@ -2021,6 +2252,12 @@
     "memoryEnabledDesc": "When enabled, AI automatically extracts and uses information about you to personalize conversations. When disabled, memory extraction, retrieval, and injection are all stopped.",
     "memoryEnabledToast": "Memory enabled",
     "memoryDisabledToast": "Memory disabled"
+    ,"autoSubfoldersUpdated": "Memory subfolders updated",
+    "defaultCategoryUpdated": "Default memory category updated",
+    "autoSubfolders": "Create subfolders automatically",
+    "autoSubfoldersDesc": "Create category subfolders automatically when saving memories.",
+    "defaultCategory": "Default category",
+    "defaultCategoryDesc": "The default subfolder used when no category is specified."
   },
   "data_governance": {
     "backup_tiers": {

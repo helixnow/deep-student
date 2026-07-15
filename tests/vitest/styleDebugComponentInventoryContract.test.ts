@@ -3,6 +3,29 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('style debug component inventory contract', () => {
+  const scanData = JSON.parse(
+    readFileSync(
+      resolve(process.cwd(), 'src/components/style-lab/scan-data.json'),
+      'utf-8',
+    ),
+  ) as {
+    components: {
+      NotionButton: { refs: number };
+      ShadButton: { refs: number };
+      NativeButton: {
+        refs: number;
+        files: number;
+        topFiles: string[];
+        totalFileCount: number;
+      };
+    };
+    migrationProgress: Array<{
+      id: string;
+      targetRefs: number;
+      legacyRefs: number;
+      total: number;
+    }>;
+  };
   const source = [
     'src/components/style-lab/StyleDebugPage.tsx',
     'src/components/style-lab/MigrationOverviewTab.tsx',
@@ -20,6 +43,29 @@ describe('style debug component inventory contract', () => {
     expect(source).toContain('"files": 310');
     expect(source).toContain('"label": "CSS !important"');
     expect(source).toContain('"count": 1061');
+  });
+
+  it('removes deleted CardForge files from the native button inventory', () => {
+    const nativeButton = scanData.components.NativeButton;
+    const buttonProgress = scanData.migrationProgress.find(({ id }) => id === 'button');
+
+    expect(nativeButton.refs).toBe(191);
+    expect(nativeButton.files).toBe(70);
+    expect(nativeButton.totalFileCount).toBe(70);
+    expect(nativeButton.topFiles).toHaveLength(20);
+    expect(nativeButton.topFiles).not.toContain(
+      'src/components/anki/cardforge/engines/TaskController.examples.ts',
+    );
+    expect(nativeButton.topFiles).not.toContain(
+      'src/components/anki/cardforge/hooks/useCardForge.ts',
+    );
+    expect(buttonProgress?.targetRefs).toBe(scanData.components.NotionButton.refs);
+    expect(buttonProgress?.legacyRefs).toBe(
+      scanData.components.ShadButton.refs + nativeButton.refs,
+    );
+    expect(buttonProgress?.total).toBe(
+      (buttonProgress?.targetRefs ?? 0) + (buttonProgress?.legacyRefs ?? 0),
+    );
   });
 
   it('surfaces the current DeepStudent UI entry systems for human page-state review', () => {

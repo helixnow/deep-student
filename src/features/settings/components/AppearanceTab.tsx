@@ -101,7 +101,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const loadSidebarTranslucent = async () => {
       try {
         const val = await tauriInvoke<string | null>('get_setting', { key: SIDEBAR_TRANSLUCENT_KEY }).catch(() => null);
         if (cancelled) return;
@@ -112,9 +112,19 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         if (cancelled) return;
         setSidebarTranslucent(false);
       }
-    })();
+    };
+    void loadSidebarTranslucent();
+
+    const handleSettingsChange = (event: CustomEvent<{ settingKey?: string }>) => {
+      if (event.detail?.settingKey === SIDEBAR_TRANSLUCENT_KEY) {
+        void loadSidebarTranslucent();
+      }
+    };
+    window.addEventListener('systemSettingsChanged', handleSettingsChange as EventListener);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('systemSettingsChanged', handleSettingsChange as EventListener);
     };
   }, []);
 

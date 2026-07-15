@@ -27,6 +27,7 @@ interface ApisTabProps {
   setSelectedVendorId: (id: string | null) => void;
   selectedVendorModels: Array<{ profile: ModelProfile; api: ApiConfig }>;
   selectedVendorIsSiliconflow: boolean;
+  openAICodexAuthenticated?: boolean;
   profileCountByVendor: Map<string, number>;
   vendorBusy: boolean;
   vendorSaving: boolean;
@@ -75,6 +76,7 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
     setSelectedVendorId: props.setSelectedVendorId,
     selectedVendorModels: props.selectedVendorModels,
     selectedVendorIsSiliconflow: props.selectedVendorIsSiliconflow,
+    openAICodexAuthenticated: props.openAICodexAuthenticated ?? false,
     profileCountByVendor: props.profileCountByVendor,
     vendorBusy: props.vendorBusy,
     vendorSaving: props.vendorSaving,

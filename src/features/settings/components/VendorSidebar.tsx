@@ -24,24 +24,15 @@ import {
 } from './SettingsCommon';
 import { useVendorSettings } from './VendorSettingsContext';
 import type { VendorConfig } from '@/types';
+import { isVendorConfiguredForSidebar } from '@/utils/vendorAuth';
 
 // --- Helpers ---
 
-const hasConfiguredApiKey = (apiKey?: string | null): boolean => {
-  const trimmed = apiKey?.trim() ?? '';
-  return Boolean(trimmed);
-};
-
-/** 供应商是否已配置（有 apiKey，或 noApiKey 模式且有 baseUrl） */
-const isVendorConfigured = (vendor: VendorConfig): boolean => {
-  if (vendor.noApiKey) {
-    return !!(vendor.baseUrl?.trim());
-  }
-  return hasConfiguredApiKey(vendor.apiKey);
-};
-
-const getVendorIconStyle = (vendor: VendorConfig): React.CSSProperties => {
-  if (isVendorConfigured(vendor)) {
+const getVendorIconStyle = (
+  vendor: VendorConfig,
+  openAICodexAuthenticated: boolean,
+): React.CSSProperties => {
+  if (isVendorConfiguredForSidebar(vendor, openAICodexAuthenticated)) {
     return {};
   }
   return {
@@ -50,15 +41,21 @@ const getVendorIconStyle = (vendor: VendorConfig): React.CSSProperties => {
   };
 };
 
-const getVendorIconTone = (vendor: VendorConfig): 'color' | 'muted' => (
-  isVendorConfigured(vendor) ? 'color' : 'muted'
+const getVendorIconTone = (
+  vendor: VendorConfig,
+  openAICodexAuthenticated: boolean,
+): 'color' | 'muted' => (
+  isVendorConfiguredForSidebar(vendor, openAICodexAuthenticated) ? 'color' : 'muted'
 );
 
-const getVendorIconBadgeStyle = (vendor: VendorConfig): React.CSSProperties => {
+const getVendorIconBadgeStyle = (
+  vendor: VendorConfig,
+  openAICodexAuthenticated: boolean,
+): React.CSSProperties => {
   const modelId = vendor.providerType || vendor.name || '';
   return {
     ...getProviderBadgeChromeStyle(modelId),
-    ...getVendorIconStyle(vendor),
+    ...getVendorIconStyle(vendor, openAICodexAuthenticated),
     alignItems: 'center',
     borderRadius: 9999,
     boxSizing: 'border-box',
@@ -78,6 +75,7 @@ const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) =
   const normalizedProviderType = providerType.toLowerCase();
   const map: Record<string, string> = {
     openai: 'OpenAI',
+    openai_codex: 'OpenAI Codex',
     anthropic: 'Anthropic',
     google: 'Google',
     siliconflow: 'SiliconFlow',
@@ -119,6 +117,7 @@ export const VendorSidebar: React.FC = () => {
     selectedVendor,
     setSelectedVendorId,
     profileCountByVendor,
+    openAICodexAuthenticated = false,
     vendorBusy,
     handleOpenVendorModal,
     onReorderVendors,
@@ -173,10 +172,10 @@ export const VendorSidebar: React.FC = () => {
       >
         <span
           data-testid={`vendor-icon-${vendor.id}`}
-          data-icon-tone={getVendorIconTone(vendor)}
+          data-icon-tone={getVendorIconTone(vendor, openAICodexAuthenticated)}
           data-icon-chrome="badge"
           className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color,background-color,border-color] duration-150"
-          style={getVendorIconBadgeStyle(vendor)}
+          style={getVendorIconBadgeStyle(vendor, openAICodexAuthenticated)}
         >
           <ProviderIcon
             modelId={vendor.providerType || vendor.name || ''}

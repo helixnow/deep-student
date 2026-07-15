@@ -38,6 +38,10 @@ import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { vfsUnifiedIndexApi, type VfsEmbeddingDimension } from '@/api/vfsUnifiedIndexApi';
 import { ApiConfig } from '@/types';
+import {
+  embeddingCapabilityForModality,
+  supportsKnowledgeModelCapability,
+} from './knowledgeModelCapabilities';
 
 /** 默认维度状态 */
 interface DefaultDimensions {
@@ -101,20 +105,31 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
 
   // 过滤出嵌入模型：优先使用传入的 getEmbeddingApis 函数，否则 fallback
   // 用于更换模型对话框（需要包含当前已选模型）
-  const embeddingModels = getEmbeddingApis
+  const selectedModality = selectedDimension?.modality ?? 'text';
+  const embeddingModels = (getEmbeddingApis
     ? getEmbeddingApis(selectedDimension?.modelConfigId)
-    : apiConfigs.filter(
-        (config) => config.enabled && config.isEmbedding === true && config.isReranker !== true
-      );
+    : apiConfigs.filter((config) => config.enabled)
+  ).filter((config) => (
+    config.enabled
+    && supportsKnowledgeModelCapability(
+      config,
+      embeddingCapabilityForModality(selectedModality),
+    )
+  ));
 
   // 用于创建对话框的嵌入模型列表（不依赖 selectedDimension）
   const allEmbeddingModels = useMemo(() => {
-    return getEmbeddingApis
+    const candidates = getEmbeddingApis
       ? getEmbeddingApis()
-      : apiConfigs.filter(
-          (config) => config.enabled && config.isEmbedding === true && config.isReranker !== true
-        );
-  }, [apiConfigs, getEmbeddingApis]);
+      : apiConfigs.filter((config) => config.enabled);
+    return candidates.filter((config) => (
+      config.enabled
+      && supportsKnowledgeModelCapability(
+        config,
+        embeddingCapabilityForModality(newModality),
+      )
+    ));
+  }, [apiConfigs, getEmbeddingApis, newModality]);
 
   // 加载默认维度设置
   const loadDefaultDimensions = useCallback(async () => {
@@ -202,7 +217,13 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
     if (!selectedDimension || !selectedModelId) return;
 
     const selectedModel = embeddingModels.find((m) => m.id === selectedModelId);
-    if (!selectedModel) return;
+    if (!selectedModel || !selectedModel.enabled || !supportsKnowledgeModelCapability(
+      selectedModel,
+      embeddingCapabilityForModality(selectedDimension.modality),
+    )) {
+      showGlobalNotification('error', t('settings:dimension_management.assign_failed'));
+      return;
+    }
 
     setUpdating(true);
     try {
@@ -210,7 +231,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
         selectedDimension.dimension,
         selectedDimension.modality,
         selectedModelId,
-        selectedModel.name
+        selectedModel.model
       );
       
       if (success) {
@@ -258,11 +279,18 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
       const selectedModel = newModelId !== '__none__' 
         ? allEmbeddingModels.find(m => m.id === newModelId) 
         : null;
+      if (newModelId !== '__none__' && (!selectedModel || !supportsKnowledgeModelCapability(
+        selectedModel,
+        embeddingCapabilityForModality(newModality),
+      ))) {
+        showGlobalNotification('error', t('settings:dimension_management.assign_failed'));
+        return;
+      }
       await vfsUnifiedIndexApi.createDimension(
         dim, 
         newModality,
         selectedModel?.id,
-        selectedModel?.name
+        selectedModel?.model
       );
       showGlobalNotification('success', t('settings:dimension_management.create_success'));
       setIsAddingNew(false);

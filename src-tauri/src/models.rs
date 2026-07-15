@@ -1380,13 +1380,21 @@ pub struct AnkiCard {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AnkiLibraryCard {
     #[serde(flatten)]
     pub card: AnkiCard,
-    #[serde(rename = "sourceType")]
     pub source_type: Option<String>,
-    #[serde(rename = "sourceId")]
     pub source_id: Option<String>,
+    pub state_id: Option<String>,
+    pub state: Option<i32>,
+    pub due_ms: Option<i64>,
+    #[serde(default)]
+    pub suspended: bool,
+    #[serde(default)]
+    pub enqueued: bool,
+    #[serde(default)]
+    pub is_due: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

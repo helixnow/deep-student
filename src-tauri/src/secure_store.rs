@@ -68,6 +68,7 @@ impl Default for SecureStoreConfig {
 /// 敏感键模式
 /// 🔒 P0-21 安全修复: 添加 MCP 相关敏感键模式
 const SENSITIVE_KEY_PATTERNS: &[&str] = &[
+    "internal.oauth.", // 后端专用 OAuth 会话，严禁落入明文设置
     "web_search.api_key.",
     "web_search.searxng.api_key",
     "api_configs",

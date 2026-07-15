@@ -63,6 +63,42 @@ const isStreamChannelError = (error: unknown): boolean => {
   return message.includes('fetch_read_body') && message.includes('streamChannel');
 };
 
+/**
+ * Merge user-configured vendor headers with headers required by the selected
+ * transport. Transport headers win case-insensitively so a stale custom
+ * `authorization` value cannot replace the active API key.
+ */
+export function mergeVendorModelRequestHeaders(
+  vendorHeaders: Record<string, string> | undefined,
+  transportHeaders: Record<string, string>
+): Record<string, string> {
+  const merged: Record<string, string> = { ...(vendorHeaders ?? {}) };
+
+  for (const [transportName, transportValue] of Object.entries(transportHeaders)) {
+    for (const existingName of Object.keys(merged)) {
+      if (existingName.toLowerCase() === transportName.toLowerCase()) {
+        delete merged[existingName];
+      }
+    }
+    merged[transportName] = transportValue;
+  }
+
+  return merged;
+}
+
+/** Build an OpenAI-compatible model-list URL from either a root/base URL or a request endpoint. */
+export function buildVendorModelsUrl(baseUrl: string): string {
+  const url = new URL(baseUrl.trim());
+  const pathWithoutTrailingSlash = url.pathname.replace(/\/+$/u, '');
+  const endpointRoot = pathWithoutTrailingSlash.replace(
+    /\/(?:chat\/completions|responses|models)$/iu,
+    ''
+  );
+  url.pathname = `${endpointRoot.replace(/\/+$/u, '')}/models`;
+  url.hash = '';
+  return url.toString();
+}
+
 // ============================================================================
 // 1. resolveApiKey - 解析供应商的真实 API Key
 // ============================================================================
@@ -128,7 +164,7 @@ export async function fetchModelsFromVendor(
   vendor: VendorConfig,
   resolvedApiKey: string
 ): Promise<FetchedModel[]> {
-  const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
+  const baseUrl = vendor.baseUrl.trim().replace(/\/+$/u, '');
   if (!baseUrl) {
     throw new Error('Vendor base URL is empty');
   }
@@ -140,12 +176,12 @@ export async function fetchModelsFromVendor(
 
   const doFetch = async (fetcher: typeof fetch): Promise<FetchedModel[]> => {
     if (isGemini) {
-      return fetchGemini(fetcher, baseUrl, resolvedApiKey);
+      return fetchGemini(fetcher, baseUrl, resolvedApiKey, vendor.headers);
     }
     if (isAnthropic) {
-      return fetchAnthropic(fetcher, baseUrl, resolvedApiKey);
+      return fetchAnthropic(fetcher, baseUrl, resolvedApiKey, vendor.headers);
     }
-    return fetchOpenAICompatible(fetcher, baseUrl, resolvedApiKey);
+    return fetchOpenAICompatible(fetcher, baseUrl, resolvedApiKey, vendor.headers);
   };
 
   try {
@@ -162,13 +198,14 @@ export async function fetchModelsFromVendor(
 async function fetchOpenAICompatible(
   doFetch: typeof fetch,
   baseUrl: string,
-  apiKey: string
+  apiKey: string,
+  vendorHeaders?: Record<string, string>
 ): Promise<FetchedModel[]> {
-  const headers: Record<string, string> = {};
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
-  }
-  const response = await doFetch(`${baseUrl}/models`, {
+  const headers = mergeVendorModelRequestHeaders(
+    vendorHeaders,
+    apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+  );
+  const response = await doFetch(buildVendorModelsUrl(baseUrl), {
     method: 'GET',
     headers,
   });
@@ -216,14 +253,15 @@ async function fetchOpenAICompatible(
 async function fetchGemini(
   doFetch: typeof fetch,
   baseUrl: string,
-  apiKey: string
+  apiKey: string,
+  vendorHeaders?: Record<string, string>
 ): Promise<FetchedModel[]> {
   // 安全修复（审阅 26 P1-3）：Key 改用 x-goog-api-key 请求头传递，
   // 避免进入代理/网关/供应商访问日志，且规避 URL 特殊字符导致的畸形请求。
-  const headers: Record<string, string> = {};
-  if (apiKey) {
-    headers['x-goog-api-key'] = apiKey;
-  }
+  const headers = mergeVendorModelRequestHeaders(
+    vendorHeaders,
+    apiKey ? { 'x-goog-api-key': apiKey } : {}
+  );
   const response = await doFetch(`${baseUrl}/v1beta/models?pageSize=100`, {
     method: 'GET',
     headers,
@@ -270,16 +308,15 @@ async function fetchGemini(
 async function fetchAnthropic(
   doFetch: typeof fetch,
   baseUrl: string,
-  apiKey: string
+  apiKey: string,
+  vendorHeaders?: Record<string, string>
 ): Promise<FetchedModel[]> {
   // 默认 base URL 为 https://api.anthropic.com（不带版本段）；若用户已带 /v1 则不重复追加
   const versionedBase = /\/v\d+$/.test(baseUrl) ? baseUrl : `${baseUrl}/v1`;
-  const headers: Record<string, string> = {
+  const headers = mergeVendorModelRequestHeaders(vendorHeaders, {
     'anthropic-version': '2023-06-01',
-  };
-  if (apiKey) {
-    headers['x-api-key'] = apiKey;
-  }
+    ...(apiKey ? { 'x-api-key': apiKey } : {}),
+  });
   const response = await doFetch(`${versionedBase}/models?limit=1000`, {
     method: 'GET',
     headers,

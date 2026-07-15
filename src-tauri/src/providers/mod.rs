@@ -36,6 +36,9 @@ impl std::error::Error for ProviderError {}
 pub enum StreamEvent {
     ContentChunk(String),
     ReasoningChunk(String),
+    /// OpenAI Responses reasoning output item. Stateless tool continuations must
+    /// replay this item so encrypted reasoning context is not lost.
+    ResponseReasoningItem(Value),
     /// Gemini 3 思维签名（工具调用必需）
     /// 在工具调用场景下，需要缓存此签名并在后续请求中回传
     ThoughtSignature(String),
@@ -54,11 +57,46 @@ pub trait ProviderAdapter: Send + Sync {
         model: &str,
         body: &Value,
     ) -> Result<ProviderRequest, ProviderError>;
+    /// Whether a streaming response is successful only after a protocol-level
+    /// terminal event. OpenAI Responses must not treat transport EOF as success.
+    fn requires_explicit_stream_completion(&self) -> bool {
+        false
+    }
     /// 解析流式响应行，返回事件列表
     fn parse_stream(&self, line: &str) -> Vec<StreamEvent>;
 }
 
 pub struct OpenAIAdapter;
+
+fn openai_endpoint_url(base_url: &str, endpoint: &str) -> String {
+    let tail_start = base_url.find(['?', '#']).unwrap_or(base_url.len());
+    let (base_path, tail) = base_url.split_at(tail_start);
+    let base_path = base_path.trim_end_matches('/');
+    let endpoint = endpoint.trim_matches('/');
+    let suffix = format!("/{endpoint}");
+
+    let lowercase_path = base_path.to_ascii_lowercase();
+    let lowercase_suffix = suffix.to_ascii_lowercase();
+    let resolved_path = if lowercase_path.ends_with(&lowercase_suffix) {
+        base_path.to_string()
+    } else if let Some(existing_suffix) = ["/chat/completions", "/responses"]
+        .into_iter()
+        .find(|candidate| lowercase_path.ends_with(candidate))
+    {
+        format!(
+            "{}{suffix}",
+            &base_path[..base_path.len() - existing_suffix.len()]
+        )
+    } else {
+        format!("{base_path}{suffix}")
+    };
+
+    format!("{resolved_path}{tail}")
+}
+
+fn sse_data_payload(block: &str) -> Option<String> {
+    crate::utils::sse_buffer::extract_stream_data_payload(block)
+}
 
 impl ProviderAdapter for OpenAIAdapter {
     fn build_request(
@@ -68,7 +106,7 @@ impl ProviderAdapter for OpenAIAdapter {
         _model: &str,
         body: &Value,
     ) -> Result<ProviderRequest, ProviderError> {
-        let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+        let url = openai_endpoint_url(base_url, "chat/completions");
         // 确保 API key 被 trim，移除首尾空白字符
         let trimmed_key = api_key.trim();
         let sanitized_body = sanitize_openai_request_body(body);
@@ -92,14 +130,13 @@ impl ProviderAdapter for OpenAIAdapter {
         // 🔧 SSE 规范允许 "data:" 后不带空格（部分供应商/中转站省略空格），
         // 与 OpenAIResponsesAdapter/AnthropicAdapter 的宽容解析保持一致，
         // 否则这些流的所有数据行会被静默丢弃（表现为"健康连接但无任何输出"）
-        if let Some(raw) = line.strip_prefix("data:") {
-            let data = raw.strip_prefix(' ').unwrap_or(raw);
+        if let Some(data) = sse_data_payload(line) {
             if data.trim() == "[DONE]" {
                 events.push(StreamEvent::Done);
                 return events;
             }
 
-            if let Ok(json_data) = serde_json::from_str::<Value>(data) {
+            if let Ok(json_data) = serde_json::from_str::<Value>(&data) {
                 // 流中错误注入：OpenRouter 等聚合网关会以 {"error":{...}} 数据行
                 // 报告中途错误（研报 09 §1），必须上报而非静默忽略
                 if let Some(error) = json_data.get("error") {
@@ -115,8 +152,11 @@ impl ProviderAdapter for OpenAIAdapter {
                     }
                 }
 
+                let mut choices_finished = false;
+
                 // OpenAI 走 choices[].delta 路径
                 if let Some(choices) = json_data["choices"].as_array() {
+                    choices_finished = openai_choices_finished(choices);
                     for choice in choices {
                         if let Some(delta) = choice["delta"].as_object() {
                             // 内容块（使用 get 避免缺键 panic）
@@ -185,20 +225,40 @@ impl ProviderAdapter for OpenAIAdapter {
                                 }
                             }
                         }
-                        // finish_reason
-                        if let Some(_reason) = choice["finish_reason"].as_str() {
-                            // OpenAI 在完成时不额外处理
-                        }
                     }
                 }
                 // usage 信息
                 if let Some(usage) = json_data["usage"].as_object() {
                     events.push(StreamEvent::Usage(Value::Object(usage.clone())));
                 }
+                // 部分 OpenAI 兼容网关（one-api/sub2api 等）在最后一个 JSON
+                // 块中只发送 finish_reason，不再发送 `[DONE]`。必须等本块的
+                // content/reasoning/tool/usage 全部入队后再发 Done，避免调用方
+                // 提前退出而丢失同块事件。
+                if choices_finished {
+                    events.push(StreamEvent::Done);
+                }
             }
         }
 
         events
+    }
+}
+
+fn openai_choices_finished(choices: &[Value]) -> bool {
+    let has_finish_reason = |choice: &Value| {
+        choice
+            .get("finish_reason")
+            .and_then(Value::as_str)
+            .is_some_and(|reason| !reason.trim().is_empty())
+    };
+
+    match choices {
+        [] => false,
+        [choice] => has_finish_reason(choice),
+        // With multiple choices in one chunk, one choice can finish before the
+        // others. Do not terminate consumers until every included choice is done.
+        _ => choices.iter().all(has_finish_reason),
     }
 }
 
@@ -432,6 +492,10 @@ fn sanitize_openai_request_body(body: &Value) -> Value {
 }
 
 pub struct OpenAIResponsesAdapter {
+    /// Whether any output-text delta has been received for this response.
+    saw_content_delta: std::sync::atomic::AtomicBool,
+    /// Whether user-visible output text has already been emitted by any fallback path.
+    emitted_content: std::sync::atomic::AtomicBool,
     /// 是否已收到过 reasoning 增量（`.delta` 事件）。
     /// `.done` 事件携带的是全量文本，仅在未收到任何增量时才作为兜底推送，
     /// 否则思维链会被重复推送（研报 01 §1.4）。
@@ -440,6 +504,11 @@ pub struct OpenAIResponsesAdapter {
     /// `response.completed` 中的 extract_reasoning_text 仅在此前完全没有
     /// reasoning 输出时才兜底推送一次。
     emitted_reasoning: std::sync::atomic::AtomicBool,
+    /// Whether a complete reasoning output item has already been emitted.
+    saw_reasoning_item: std::sync::atomic::AtomicBool,
+    /// Tool calls can be repeated by `response.function_call_arguments.done`,
+    /// `response.output_item.done`, and the terminal response fallback.
+    emitted_tool_call_ids: Mutex<HashSet<String>>,
 }
 
 impl Default for OpenAIResponsesAdapter {
@@ -449,10 +518,51 @@ impl Default for OpenAIResponsesAdapter {
 }
 
 impl OpenAIResponsesAdapter {
+    fn preserves_provider_reasoning_extensions(base_url: &str) -> bool {
+        let Some(host) = url::Url::parse(base_url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_lowercase))
+        else {
+            return false;
+        };
+        host == "dashscope.aliyuncs.com"
+            || host == "dashscope-intl.aliyuncs.com"
+            || host.ends_with(".maas.aliyuncs.com")
+            || host == "qianfan.baidubce.com"
+            || host.ends_with(".volces.com")
+    }
+
     pub fn new() -> Self {
         Self {
+            saw_content_delta: std::sync::atomic::AtomicBool::new(false),
+            emitted_content: std::sync::atomic::AtomicBool::new(false),
             saw_reasoning_delta: std::sync::atomic::AtomicBool::new(false),
             emitted_reasoning: std::sync::atomic::AtomicBool::new(false),
+            saw_reasoning_item: std::sync::atomic::AtomicBool::new(false),
+            emitted_tool_call_ids: Mutex::new(HashSet::new()),
+        }
+    }
+
+    fn is_reasoning_item(item: &Value) -> bool {
+        item.get("type").and_then(|v| v.as_str()) == Some("reasoning")
+    }
+
+    fn emit_reasoning_items_from_response(&self, response: &Value, events: &mut Vec<StreamEvent>) {
+        if self
+            .saw_reasoning_item
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return;
+        }
+
+        if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
+            for item in output {
+                if Self::is_reasoning_item(item) {
+                    events.push(StreamEvent::ResponseReasoningItem(item.clone()));
+                    self.saw_reasoning_item
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
         }
     }
 
@@ -675,7 +785,7 @@ impl OpenAIResponsesAdapter {
         response_format.clone()
     }
 
-    fn convert_response_tool_call(item: &Value) -> Option<Value> {
+    fn convert_response_tool_call(item: &Value, output_index: i64) -> Option<Value> {
         let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if item_type != "function_call" {
             return None;
@@ -695,6 +805,7 @@ impl OpenAIResponsesAdapter {
             .unwrap_or_else(|| format!("resp_call_{}", uuid::Uuid::new_v4()));
 
         Some(json!({
+            "index": output_index,
             "id": id,
             "type": "function",
             "function": {
@@ -704,8 +815,46 @@ impl OpenAIResponsesAdapter {
         }))
     }
 
+    fn emit_response_tool_call(
+        &self,
+        item: &Value,
+        output_index: i64,
+        events: &mut Vec<StreamEvent>,
+    ) {
+        let Some(tool_call) = Self::convert_response_tool_call(item, output_index) else {
+            return;
+        };
+        let Some(call_id) = tool_call.get("id").and_then(Value::as_str) else {
+            return;
+        };
+        let is_new = self
+            .emitted_tool_call_ids
+            .lock()
+            .map(|mut emitted| emitted.insert(call_id.to_string()))
+            .unwrap_or(true);
+        if is_new {
+            events.push(StreamEvent::ToolCall(tool_call));
+        }
+    }
+
+    fn emit_tool_calls_from_response(&self, response: &Value, events: &mut Vec<StreamEvent>) {
+        if let Some(output) = response.get("output").and_then(Value::as_array) {
+            for (index, item) in output.iter().enumerate() {
+                self.emit_response_tool_call(item, index as i64, events);
+            }
+        }
+    }
+
     /// 将 Chat Completions 兼容格式转换为 Responses API 请求格式。
     fn convert_to_responses_format(model: &str, body: &Value) -> Value {
+        Self::convert_to_responses_format_for_endpoint(model, body, "")
+    }
+
+    fn convert_to_responses_format_for_endpoint(
+        model: &str,
+        body: &Value,
+        base_url: &str,
+    ) -> Value {
         let body = sanitize_openai_request_body(body);
         let mut input_blocks: Vec<Value> = Vec::new();
         let mut instructions: Vec<String> = Vec::new();
@@ -745,6 +894,17 @@ impl OpenAIResponsesAdapter {
                         input_blocks.push(item);
                     }
                     continue;
+                }
+
+                // Internal provider state attached by the Chat V2 tool loop.
+                // Replay it before the assistant function call, matching the
+                // order returned by the Responses API.
+                if role == "assistant" {
+                    if let Some(item) = message.get("response_reasoning_item") {
+                        if Self::is_reasoning_item(item) {
+                            input_blocks.push(item.clone());
+                        }
+                    }
                 }
 
                 let mut parts: Vec<Value> = Vec::new();
@@ -819,6 +979,20 @@ impl OpenAIResponsesAdapter {
             }
         }
 
+        if let Some(include) = body.get("include") {
+            payload["include"] = include.clone();
+        } else {
+            let lower = model.to_lowercase();
+            if lower.contains("gpt-5")
+                || lower.contains("codex")
+                || lower.starts_with("o1")
+                || lower.starts_with("o3")
+                || lower.starts_with("o4")
+            {
+                payload["include"] = json!(["reasoning.encrypted_content"]);
+            }
+        }
+
         if let Some(max_tokens) = body
             .get("max_completion_tokens")
             .or_else(|| body.get("max_total_tokens"))
@@ -867,6 +1041,17 @@ impl OpenAIResponsesAdapter {
 
         if let Some(parallel_tool_calls) = body.get("parallel_tool_calls") {
             payload["parallel_tool_calls"] = parallel_tool_calls.clone();
+        }
+
+        // Some native provider endpoints expose a Responses-compatible API while
+        // retaining their thinking extension. Unknown gateways and api.openai.com
+        // must not receive these non-standard top-level fields.
+        if Self::preserves_provider_reasoning_extensions(base_url) {
+            for key in ["thinking", "enable_thinking", "thinking_budget"] {
+                if let Some(value) = body.get(key) {
+                    payload[key] = value.clone();
+                }
+            }
         }
 
         payload
@@ -918,9 +1103,77 @@ impl OpenAIResponsesAdapter {
             Some(reasoning_segments.join("\n\n"))
         }
     }
+
+    fn collect_output_text(content: &Value, segments: &mut Vec<String>) {
+        match content {
+            Value::String(text) if !text.is_empty() => segments.push(text.clone()),
+            Value::Array(parts) => {
+                for part in parts {
+                    let part_type = part.get("type").and_then(Value::as_str).unwrap_or("");
+                    if matches!(part_type, "output_text" | "text" | "") {
+                        if let Some(text) = part.get("text").and_then(Value::as_str) {
+                            if !text.is_empty() {
+                                segments.push(text.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn extract_output_text(response: &Value) -> Option<String> {
+        let mut segments = Vec::new();
+        if let Some(output) = response.get("output") {
+            match output {
+                Value::String(text) if !text.is_empty() => segments.push(text.clone()),
+                Value::Array(items) => {
+                    for item in items {
+                        if let Some(content) = item.get("content") {
+                            Self::collect_output_text(content, &mut segments);
+                        } else if matches!(
+                            item.get("type").and_then(Value::as_str),
+                            Some("output_text" | "text")
+                        ) {
+                            if let Some(text) = item.get("text").and_then(Value::as_str) {
+                                if !text.is_empty() {
+                                    segments.push(text.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if segments.is_empty() {
+            if let Some(content) = response.get("content") {
+                Self::collect_output_text(content, &mut segments);
+            }
+        }
+        if segments.is_empty() {
+            if let Some(output_text) = response.get("output_text").and_then(Value::as_str) {
+                if !output_text.is_empty() {
+                    segments.push(output_text.to_string());
+                }
+            }
+        }
+
+        if segments.is_empty() {
+            None
+        } else {
+            Some(segments.join(""))
+        }
+    }
 }
 
 impl ProviderAdapter for OpenAIResponsesAdapter {
+    fn requires_explicit_stream_completion(&self) -> bool {
+        true
+    }
+
     fn build_request(
         &self,
         base_url: &str,
@@ -928,7 +1181,7 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
         model: &str,
         body: &Value,
     ) -> Result<ProviderRequest, ProviderError> {
-        let url = format!("{}/responses", base_url.trim_end_matches('/'));
+        let url = openai_endpoint_url(base_url, "responses");
         let trimmed_key = api_key.trim();
 
         Ok(ProviderRequest {
@@ -940,33 +1193,75 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                 ),
                 ("Content-Type".to_string(), "application/json".to_string()),
             ],
-            body: Self::convert_to_responses_format(model, body),
+            body: Self::convert_to_responses_format_for_endpoint(model, body, base_url),
         })
     }
 
     fn parse_stream(&self, line: &str) -> Vec<StreamEvent> {
         let mut events = Vec::new();
-        if !line.starts_with("data:") {
-            return events;
+        let mut event_name: Option<&str> = None;
+        for raw_line in line.lines() {
+            let raw_line = raw_line.trim_end_matches('\r');
+            if let Some(name) = raw_line.strip_prefix("event:") {
+                event_name = Some(name.trim());
+            }
         }
-
-        let data = line["data:".len()..].trim_start();
+        let Some(data) = sse_data_payload(line) else {
+            return events;
+        };
         if data == "[DONE]" {
             events.push(StreamEvent::Done);
             return events;
         }
 
-        let parsed = match serde_json::from_str::<Value>(data) {
+        let mut parsed = match serde_json::from_str::<Value>(&data) {
             Ok(v) => v,
             Err(_) => return events,
         };
+        if parsed.get("type").is_none() {
+            if let (Some(name), Some(object)) = (event_name, parsed.as_object_mut()) {
+                object.insert("type".to_string(), Value::String(name.to_string()));
+            }
+        }
 
         let event_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if event_type.is_empty() {
+            if let Some(error) = parsed.get("error").filter(|error| !error.is_null()) {
+                log::error!("[OpenAIResponsesAdapter] Untyped stream error: {}", error);
+                events.push(StreamEvent::SafetyBlocked(json!({
+                    "type": "provider_error",
+                    "reason": "stream_error",
+                    "details": error.clone()
+                })));
+                return events;
+            }
+        }
+
         match event_type {
             "response.output_text.delta" => {
                 if let Some(delta) = parsed.get("delta").and_then(|v| v.as_str()) {
                     if !delta.is_empty() {
+                        self.saw_content_delta
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        self.emitted_content
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
                         events.push(StreamEvent::ContentChunk(delta.to_string()));
+                    }
+                }
+            }
+            "response.output_text.done" => {
+                if !self
+                    .saw_content_delta
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    let text = parsed
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .or_else(|| parsed.get("delta").and_then(Value::as_str));
+                    if let Some(text) = text.filter(|text| !text.is_empty()) {
+                        self.emitted_content
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        events.push(StreamEvent::ContentChunk(text.to_string()));
                     }
                 }
             }
@@ -1007,9 +1302,17 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
             }
             "response.output_item.done" => {
                 if let Some(item) = parsed.get("item") {
-                    if let Some(tool_call) = Self::convert_response_tool_call(item) {
-                        events.push(StreamEvent::ToolCall(tool_call));
+                    if Self::is_reasoning_item(item) {
+                        self.saw_reasoning_item
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        events.push(StreamEvent::ResponseReasoningItem(item.clone()));
                     }
+                    let output_index = parsed
+                        .get("output_index")
+                        .and_then(Value::as_i64)
+                        .or_else(|| item.get("index").and_then(Value::as_i64))
+                        .unwrap_or(0);
+                    self.emit_response_tool_call(item, output_index, &mut events);
                 }
             }
             "response.function_call_arguments.done" | "response.function_call.arguments.done" => {
@@ -1020,35 +1323,85 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                     .and_then(|v| v.as_str())
                     .or_else(|| parsed.get("item_id").and_then(|v| v.as_str()));
                 if let (Some(name), Some(call_id)) = (name, call_id) {
-                    events.push(StreamEvent::ToolCall(json!({
-                        "id": call_id,
-                        "type": "function",
-                        "function": {
-                            "name": name,
-                            "arguments": arguments.unwrap_or("{}")
-                        }
-                    })));
+                    let item = json!({
+                        "type": "function_call",
+                        "call_id": call_id,
+                        "name": name,
+                        "arguments": arguments.unwrap_or("{}")
+                    });
+                    let output_index = parsed
+                        .get("output_index")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0);
+                    self.emit_response_tool_call(&item, output_index, &mut events);
                 }
             }
-            "response.completed" => {
+            "response.completed" | "response.done" => {
+                let response = parsed.get("response").unwrap_or(&parsed);
+                if !self
+                    .emitted_content
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    if let Some(content) = Self::extract_output_text(response) {
+                        self.emitted_content
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        events.push(StreamEvent::ContentChunk(content));
+                    }
+                }
                 // 仅在整个流中没有收到任何 reasoning 内容（.delta 增量或 .done 兜底）
                 // 时，才从最终 response.output 中兜底提取一次，避免重复推送
                 if !self
                     .emitted_reasoning
                     .load(std::sync::atomic::Ordering::Relaxed)
                 {
-                    if let Some(response) = parsed.get("response") {
-                        if let Some(reasoning) = Self::extract_reasoning_text(response) {
-                            if !reasoning.is_empty() {
-                                events.push(StreamEvent::ReasoningChunk(reasoning));
-                            }
+                    if let Some(reasoning) = Self::extract_reasoning_text(response) {
+                        if !reasoning.is_empty() {
+                            self.emitted_reasoning
+                                .store(true, std::sync::atomic::Ordering::Relaxed);
+                            events.push(StreamEvent::ReasoningChunk(reasoning));
                         }
                     }
                 }
-                if let Some(usage) = parsed.get("response").and_then(|v| v.get("usage")) {
+                if let Some(usage) = response.get("usage") {
                     events.push(StreamEvent::Usage(usage.clone()));
                 }
+                // Keep the complete encrypted reasoning item available for stateless tool
+                // continuation, but emit it after user-visible reasoning/usage so existing
+                // stream consumers retain their established event ordering.
+                self.emit_reasoning_items_from_response(response, &mut events);
+                self.emit_tool_calls_from_response(response, &mut events);
                 events.push(StreamEvent::Done);
+            }
+            "response.incomplete" | "response.cancelled" | "response.canceled" => {
+                if let Some(response) = parsed.get("response") {
+                    // An incomplete response can still contain useful output. Preserve it
+                    // before reporting the terminal failure, but never turn that failure
+                    // into `Done`: callers must not persist a partial answer as success.
+                    if !self
+                        .emitted_content
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        if let Some(content) = Self::extract_output_text(response) {
+                            self.emitted_content
+                                .store(true, std::sync::atomic::Ordering::Relaxed);
+                            events.push(StreamEvent::ContentChunk(content));
+                        }
+                    }
+                    self.emit_reasoning_items_from_response(response, &mut events);
+                    if let Some(usage) = response.get("usage") {
+                        events.push(StreamEvent::Usage(usage.clone()));
+                    }
+                }
+                let details = parsed
+                    .get("response")
+                    .and_then(|response| response.get("incomplete_details"))
+                    .cloned()
+                    .unwrap_or_else(|| parsed.clone());
+                events.push(StreamEvent::SafetyBlocked(json!({
+                    "type": "provider_error",
+                    "reason": event_type,
+                    "details": details
+                })));
             }
             "response.failed" | "error" => {
                 // 🔧 之前直接吞掉错误只发 Done，供应商返回的失败原因（配额不足/参数错误等）
@@ -1064,12 +1417,14 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                     "[OpenAIResponsesAdapter] Stream failed event: {}",
                     error_detail
                 );
+                if let Some(usage) = parsed.get("response").and_then(|r| r.get("usage")) {
+                    events.push(StreamEvent::Usage(usage.clone()));
+                }
                 events.push(StreamEvent::SafetyBlocked(json!({
                     "type": "provider_error",
                     "reason": event_type,
                     "details": error_detail
                 })));
-                events.push(StreamEvent::Done);
             }
             _ => {}
         }
@@ -1426,11 +1781,10 @@ impl ProviderAdapter for AnthropicAdapter {
     fn parse_stream(&self, line: &str) -> Vec<StreamEvent> {
         let mut events = Vec::new();
 
-        if !line.starts_with("data:") {
+        let Some(payload) = sse_data_payload(line) else {
             return events;
-        }
-
-        let payload = line.trim_start_matches("data:").trim();
+        };
+        let payload = payload.trim();
         if payload.is_empty() {
             return events;
         }
@@ -2515,7 +2869,14 @@ mod tests {
         build_usage_event, is_meaningful_openai_tool_delta, sanitize_openai_request_body,
         AnthropicAdapter, OpenAIAdapter, OpenAIResponsesAdapter, ProviderAdapter, StreamEvent,
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn only_responses_adapter_requires_explicit_stream_completion() {
+        assert!(OpenAIResponsesAdapter::new().requires_explicit_stream_completion());
+        assert!(!OpenAIAdapter.requires_explicit_stream_completion());
+        assert!(!AnthropicAdapter::new().requires_explicit_stream_completion());
+    }
 
     #[test]
     fn openai_tool_delta_filter_skips_empty_fragments() {
@@ -2568,6 +2929,82 @@ mod tests {
 
         let done = adapter.parse_stream("data:[DONE]");
         assert!(matches!(done.first(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn openai_adapter_parse_stream_accepts_bare_ndjson() {
+        let events = OpenAIAdapter.parse_stream(r#"{"choices":[{"delta":{"content":"ndjson"}}]}"#);
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(content)) if content == "ndjson"
+        ));
+    }
+
+    #[test]
+    fn openai_adapter_finish_reason_emits_done_after_same_sse_chunk_events() {
+        let events = OpenAIAdapter.parse_stream(
+            r#"data: {"choices":[{"delta":{"content":"tail","reasoning_content":"thought","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}"#,
+        );
+
+        assert_eq!(events.len(), 5);
+        assert!(matches!(&events[0], StreamEvent::ContentChunk(content) if content == "tail"));
+        assert!(
+            matches!(&events[1], StreamEvent::ReasoningChunk(reasoning) if reasoning == "thought")
+        );
+        assert!(matches!(&events[2], StreamEvent::ToolCall(tool) if tool["id"] == json!("call_1")));
+        assert!(
+            matches!(&events[3], StreamEvent::Usage(usage) if usage["total_tokens"] == json!(5))
+        );
+        assert!(matches!(&events[4], StreamEvent::Done));
+    }
+
+    #[test]
+    fn openai_adapter_bare_ndjson_finish_reason_emits_done_without_done_marker() {
+        let events = OpenAIAdapter.parse_stream(
+            r#"{"choices":[{"index":0,"delta":{"content":"ndjson tail"},"finish_reason":"stop"}]}"#,
+        );
+
+        assert_eq!(events.len(), 2);
+        assert!(
+            matches!(&events[0], StreamEvent::ContentChunk(content) if content == "ndjson tail")
+        );
+        assert!(matches!(&events[1], StreamEvent::Done));
+    }
+
+    #[test]
+    fn openai_adapter_finish_reason_ignores_empty_and_partial_multi_choice_completion() {
+        for finish_reason in [Value::Null, json!(""), json!("   ")] {
+            let chunk = json!({
+                "choices": [{
+                    "index": 0,
+                    "delta": { "content": "tail" },
+                    "finish_reason": finish_reason
+                }]
+            });
+            let events = OpenAIAdapter.parse_stream(&format!("data: {chunk}"));
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, StreamEvent::Done)),
+                "null or empty finish_reason must not finish the stream"
+            );
+        }
+
+        let partially_finished = OpenAIAdapter.parse_stream(
+            r#"data: {"choices":[{"index":0,"delta":{"content":"first"},"finish_reason":"stop"},{"index":1,"delta":{"content":"second"},"finish_reason":null}]}"#,
+        );
+        assert!(
+            !partially_finished
+                .iter()
+                .any(|event| matches!(event, StreamEvent::Done)),
+            "one finished choice must not terminate other choices in the same chunk"
+        );
+
+        let all_finished = OpenAIAdapter.parse_stream(
+            r#"data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"},{"index":1,"delta":{},"finish_reason":"length"}]}"#,
+        );
+        assert!(matches!(all_finished.last(), Some(StreamEvent::Done)));
     }
 
     #[test]
@@ -2684,6 +3121,100 @@ mod tests {
     }
 
     #[test]
+    fn openai_adapters_do_not_duplicate_complete_endpoint_paths() {
+        let chat = OpenAIAdapter
+            .build_request(
+                "https://proxy.example.com/v1/chat/completions/",
+                "test-key",
+                "gpt-test",
+                &json!({"messages": []}),
+            )
+            .expect("chat request should build");
+        assert_eq!(chat.url, "https://proxy.example.com/v1/chat/completions");
+
+        let responses = OpenAIResponsesAdapter::new()
+            .build_request(
+                "https://proxy.example.com/v1/responses/",
+                "test-key",
+                "gpt-test",
+                &json!({"messages": []}),
+            )
+            .expect("responses request should build");
+        assert_eq!(responses.url, "https://proxy.example.com/v1/responses");
+
+        let responses_from_root = OpenAIResponsesAdapter::new()
+            .build_request(
+                "https://proxy.example.com/v1",
+                "test-key",
+                "gpt-test",
+                &json!({"messages": []}),
+            )
+            .expect("responses request should build");
+        assert_eq!(
+            responses_from_root.url,
+            "https://proxy.example.com/v1/responses"
+        );
+    }
+
+    #[test]
+    fn openai_adapters_insert_endpoint_before_query_and_fragment() {
+        let chat = OpenAIAdapter
+            .build_request(
+                "https://proxy.example.com/v1/?token=signed#tenant-a",
+                "test-key",
+                "gpt-test",
+                &json!({"messages": []}),
+            )
+            .expect("chat request should build");
+        assert_eq!(
+            chat.url,
+            "https://proxy.example.com/v1/chat/completions?token=signed#tenant-a"
+        );
+
+        let responses = OpenAIResponsesAdapter::new()
+            .build_request(
+                "https://proxy.example.com/v1/responses/?token=signed#tenant-a",
+                "test-key",
+                "gpt-test",
+                &json!({"messages": []}),
+            )
+            .expect("responses request should build");
+        assert_eq!(
+            responses.url,
+            "https://proxy.example.com/v1/responses?token=signed#tenant-a"
+        );
+    }
+
+    #[test]
+    fn openai_adapters_replace_cross_protocol_endpoints_and_preserve_url_tail() {
+        let chat = OpenAIAdapter
+            .build_request(
+                "https://proxy.example.com/v1/responses/?token=signed#tenant-a",
+                "test-key",
+                "gpt-test",
+                &json!({"messages": []}),
+            )
+            .expect("chat request should build");
+        assert_eq!(
+            chat.url,
+            "https://proxy.example.com/v1/chat/completions?token=signed#tenant-a"
+        );
+
+        let responses = OpenAIResponsesAdapter::new()
+            .build_request(
+                "https://proxy.example.com/v1/chat/completions/?token=signed#tenant-a",
+                "test-key",
+                "gpt-test",
+                &json!({"messages": []}),
+            )
+            .expect("responses request should build");
+        assert_eq!(
+            responses.url,
+            "https://proxy.example.com/v1/responses?token=signed#tenant-a"
+        );
+    }
+
+    #[test]
     fn sanitize_openai_request_body_passes_through_non_function_tools() {
         let body = json!({
             "messages": [{ "role": "user", "content": "hi" }],
@@ -2756,6 +3287,162 @@ mod tests {
         assert_eq!(payload["reasoning"]["effort"], json!("high"));
         assert_eq!(payload["reasoning"]["summary"], json!("auto"));
         assert_eq!(payload["text"]["verbosity"], json!("low"));
+    }
+
+    #[test]
+    fn openai_responses_adapter_maps_runtime_off_to_reasoning_none() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "reasoning_effort": "none"
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5", &body);
+
+        assert_eq!(payload["reasoning"]["effort"], json!("none"));
+        assert_eq!(payload["reasoning"]["summary"], json!("auto"));
+    }
+
+    #[test]
+    fn openai_responses_adapter_preserves_known_provider_thinking_extensions() {
+        for (model, base_url, extension) in [
+            (
+                "qwen3.7-plus",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                json!({ "enable_thinking": true, "thinking_budget": 8192 }),
+            ),
+            (
+                "doubao-seed-1-6-thinking",
+                "https://ark.cn-beijing.volces.com/api/v3",
+                json!({ "thinking": { "type": "enabled" } }),
+            ),
+            (
+                "ernie-5.0-thinking",
+                "https://qianfan.baidubce.com/v2",
+                json!({ "thinking": { "type": "enabled" } }),
+            ),
+        ] {
+            let mut body = json!({ "messages": [{ "role": "user", "content": "hi" }] });
+            body.as_object_mut().expect("body should be object").extend(
+                extension
+                    .as_object()
+                    .expect("extension should be object")
+                    .clone(),
+            );
+
+            let payload = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+                model, &body, base_url,
+            );
+            for key in ["thinking", "enable_thinking", "thinking_budget"] {
+                assert_eq!(
+                    payload.get(key),
+                    extension.get(key),
+                    "model={model}, key={key}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn openai_responses_adapter_drops_provider_thinking_extensions_for_openai() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "thinking": { "type": "enabled" },
+            "enable_thinking": true,
+            "thinking_budget": 8192
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        let deployment_alias_payload =
+            OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+                "ep-openai-alias",
+                &body,
+                "https://api.openai.com/v1",
+            );
+
+        for key in ["thinking", "enable_thinking", "thinking_budget"] {
+            assert!(!payload.as_object().unwrap().contains_key(key));
+            assert!(!deployment_alias_payload
+                .as_object()
+                .unwrap()
+                .contains_key(key));
+        }
+    }
+
+    #[test]
+    fn openai_responses_adapter_preserves_extensions_for_provider_deployment_alias() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "thinking": { "type": "enabled" },
+            "thinking_budget": 8192
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+            "ep-20260714-abcd",
+            &body,
+            "https://ark.cn-beijing.volces.com/api/v3",
+        );
+
+        assert_eq!(payload["thinking"]["type"], json!("enabled"));
+        assert_eq!(payload["thinking_budget"], json!(8192));
+    }
+
+    #[test]
+    fn openai_responses_adapter_preserves_extensions_for_dashscope_intl() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "enable_thinking": true,
+            "thinking_budget": 8192
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+            "deployment-alias",
+            &body,
+            "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        );
+
+        assert_eq!(payload["enable_thinking"], json!(true));
+        assert_eq!(payload["thinking_budget"], json!(8192));
+    }
+
+    #[test]
+    fn openai_responses_adapter_preserves_extensions_for_qwen_workspace_maas() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "enable_thinking": true,
+            "thinking_budget": 8192
+        });
+
+        for base_url in [
+            "https://workspace-id.cn-beijing.maas.aliyuncs.com/v1",
+            "https://workspace-id.ap-southeast-1.maas.aliyuncs.com/v1",
+        ] {
+            let payload = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+                "deployment-alias",
+                &body,
+                base_url,
+            );
+
+            assert_eq!(payload["enable_thinking"], json!(true));
+            assert_eq!(payload["thinking_budget"], json!(8192));
+        }
+    }
+
+    #[test]
+    fn openai_responses_adapter_drops_extensions_for_openrouter_qwen() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "enable_thinking": true,
+            "thinking_budget": 8192
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format_for_endpoint(
+            "qwen/qwen3.7-plus",
+            &body,
+            "https://openrouter.ai/api/v1",
+        );
+
+        assert!(!payload.as_object().unwrap().contains_key("enable_thinking"));
+        assert!(!payload.as_object().unwrap().contains_key("thinking_budget"));
     }
 
     #[test]
@@ -3093,11 +3780,181 @@ mod tests {
         assert!(matches!(completed.last(), Some(StreamEvent::Done)));
 
         let tool_item = adapter.parse_stream(
-            r#"data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_1","name":"lookup_weather","arguments":"{\"city\":\"Paris\"}"}}"#,
+            r#"data: {"type":"response.output_item.done","output_index":2,"item":{"type":"function_call","call_id":"call_1","name":"lookup_weather","arguments":"{\"city\":\"Paris\"}"}}"#,
         );
-        assert!(
-            matches!(tool_item.first(), Some(StreamEvent::ToolCall(v)) if v["function"]["name"] == json!("lookup_weather"))
+        assert!(matches!(tool_item.first(), Some(StreamEvent::ToolCall(v))
+                if v["index"] == json!(2)
+                    && v["function"]["name"] == json!("lookup_weather")));
+    }
+
+    #[test]
+    fn openai_responses_adapter_accepts_bare_ndjson() {
+        let events = OpenAIResponsesAdapter::new()
+            .parse_stream(r#"{"type":"response.output_text.delta","delta":"ndjson"}"#);
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(content)) if content == "ndjson"
+        ));
+    }
+
+    #[test]
+    fn openai_responses_adapter_parses_event_and_data_sse_blocks() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let events =
+            adapter.parse_stream("event: response.output_text.delta\ndata: {\"delta\":\"framed\"}");
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "framed"
+        ));
+    }
+
+    #[test]
+    fn openai_responses_adapter_parses_buffered_event_only_type() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let mut buffer = crate::utils::sse_buffer::SseEventBuffer::new();
+        assert!(buffer
+            .process_bytes(b"event: response.output_text.delta\nda")
+            .is_empty());
+        let blocks = buffer.process_bytes(b"ta: {\"delta\":\"buffered\"}\n");
+        assert_eq!(blocks.len(), 1);
+
+        let events = adapter.parse_stream(&blocks[0]);
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "buffered"
+        ));
+    }
+
+    #[test]
+    fn openai_chat_adapter_accepts_event_and_data_sse_blocks() {
+        let events = OpenAIAdapter.parse_stream(
+            "event: message\ndata: {\"choices\":[{\"delta\":{\"content\":\"framed\"}}]}",
         );
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "framed"
+        ));
+    }
+
+    #[test]
+    fn openai_responses_adapter_falls_back_to_terminal_tool_calls_without_duplicates() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let first = adapter.parse_stream(
+            r#"data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"first_tool","arguments":"{}"}}"#,
+        );
+        assert!(matches!(
+            first.first(),
+            Some(StreamEvent::ToolCall(value))
+                if value["index"] == json!(0) && value["id"] == json!("call_1")
+        ));
+
+        let terminal = adapter.parse_stream(
+            r#"data: {"type":"response.done","response":{"output":[{"type":"function_call","call_id":"call_1","name":"first_tool","arguments":"{}"},{"type":"function_call","call_id":"call_2","name":"second_tool","arguments":"{\"value\":2}"}]}}"#,
+        );
+        let tool_calls: Vec<_> = terminal
+            .iter()
+            .filter_map(|event| match event {
+                StreamEvent::ToolCall(value) => Some(value),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0]["index"], json!(1));
+        assert_eq!(tool_calls[0]["id"], json!("call_2"));
+        assert!(matches!(terminal.last(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn openai_responses_adapter_reports_untyped_error_objects() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let events = adapter
+            .parse_stream(r#"data: {"error":{"code":402,"message":"Insufficient credits"}}"#);
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::SafetyBlocked(value))
+                if value["reason"] == json!("stream_error")
+                    && value["details"]["message"] == json!("Insufficient credits")
+        ));
+        assert!(!events
+            .iter()
+            .any(|event| matches!(event, StreamEvent::Done)));
+    }
+
+    #[test]
+    fn openai_responses_adapter_preserves_incomplete_output_without_marking_done() {
+        let adapter = OpenAIResponsesAdapter::new();
+        let events = adapter.parse_stream(
+            r#"data: {"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","content":[{"type":"output_text","text":"partial answer"}]}],"usage":{"output_tokens":128}}}"#,
+        );
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "partial answer"
+        ));
+        assert!(events.iter().any(
+            |event| matches!(event, StreamEvent::Usage(usage) if usage["output_tokens"] == json!(128))
+        ));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            StreamEvent::SafetyBlocked(value)
+                if value["reason"] == json!("response.incomplete")
+                    && value["details"]["reason"] == json!("max_output_tokens")
+        )));
+        assert!(!events
+            .iter()
+            .any(|event| matches!(event, StreamEvent::Done)));
+    }
+
+    #[test]
+    fn openai_responses_adapter_uses_output_text_fallbacks_without_duplication() {
+        let done_only = OpenAIResponsesAdapter::new();
+        let done_events = done_only
+            .parse_stream(r#"data: {"type":"response.output_text.done","text":"complete text"}"#);
+        assert!(matches!(
+            done_events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "complete text"
+        ));
+        let completed_after_done = done_only.parse_stream(
+            r#"data: {"type":"response.completed","response":{"output_text":"complete text"}}"#,
+        );
+        assert!(!completed_after_done
+            .iter()
+            .any(|event| matches!(event, StreamEvent::ContentChunk(_))));
+
+        let delta_first = OpenAIResponsesAdapter::new();
+        let delta_events = delta_first
+            .parse_stream(r#"data: {"type":"response.output_text.delta","delta":"streamed"}"#);
+        assert!(matches!(
+            delta_events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "streamed"
+        ));
+        assert!(delta_first
+            .parse_stream(r#"data: {"type":"response.output_text.done","text":"streamed"}"#)
+            .is_empty());
+        let completed_after_delta = delta_first.parse_stream(
+            r#"data: {"type":"response.completed","response":{"output":[{"type":"message","content":[{"type":"output_text","text":"streamed"}]}]}}"#,
+        );
+        assert!(!completed_after_delta
+            .iter()
+            .any(|event| matches!(event, StreamEvent::ContentChunk(_))));
+
+        let completed_only = OpenAIResponsesAdapter::new();
+        let completed_events = completed_only.parse_stream(
+            r#"data: {"type":"response.completed","response":{"output_text":"duplicate convenience value","output":[{"type":"message","content":[{"type":"output_text","text":"first"},{"type":"output_text","text":" second"}]}]}}"#,
+        );
+        let content: Vec<_> = completed_events
+            .iter()
+            .filter_map(|event| match event {
+                StreamEvent::ContentChunk(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(content, vec!["first second"]);
+        assert!(matches!(completed_events.last(), Some(StreamEvent::Done)));
     }
 
     #[test]
@@ -3113,6 +3970,13 @@ mod tests {
         );
         assert!(matches!(events.get(1), Some(StreamEvent::Usage(_))));
         assert!(matches!(events.last(), Some(StreamEvent::Done)));
+
+        let duplicate_terminal = adapter.parse_stream(
+            r#"data: {"type":"response.done","response":{"output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"first"},{"type":"summary_text","text":"second"}]}]}}"#,
+        );
+        assert!(!duplicate_terminal
+            .iter()
+            .any(|event| matches!(event, StreamEvent::ReasoningChunk(_))));
     }
 
     #[test]
@@ -3252,6 +4116,11 @@ mod tests {
                 {
                     "role": "assistant",
                     "content": "Calling tool",
+                    "response_reasoning_item": {
+                        "type": "reasoning",
+                        "id": "reasoning_1",
+                        "encrypted_content": "encrypted-state"
+                    },
                     "tool_calls": [{
                         "id": "call_1",
                         "type": "function",
@@ -3271,6 +4140,19 @@ mod tests {
 
         let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
         let input = payload["input"].as_array().expect("input should be array");
+        let reasoning_index = input
+            .iter()
+            .position(|item| item["type"] == json!("reasoning"))
+            .expect("reasoning item should be preserved");
+        let function_call_index = input
+            .iter()
+            .position(|item| item["type"] == json!("function_call"))
+            .expect("function call should be preserved");
+        assert!(reasoning_index < function_call_index);
+        assert_eq!(
+            input[reasoning_index]["encrypted_content"],
+            "encrypted-state"
+        );
         assert!(input
             .iter()
             .any(|item| item["type"] == json!("function_call")));
@@ -3419,6 +4301,32 @@ mod tests {
         assert!(matches!(
             stop.first(),
             Some(StreamEvent::ThoughtSignature(sig)) if sig == "EqQBCgXYZ123"
+        ));
+    }
+
+    #[test]
+    fn anthropic_parse_stream_accepts_event_and_data_sse_blocks() {
+        let adapter = AnthropicAdapter::new();
+        let events = adapter.parse_stream(
+            r#"event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"framed"}}"#,
+        );
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(text)) if text == "framed"
+        ));
+    }
+
+    #[test]
+    fn anthropic_parse_stream_accepts_bare_ndjson() {
+        let events = AnthropicAdapter::new().parse_stream(
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ndjson"}}"#,
+        );
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::ContentChunk(content)) if content == "ndjson"
         ));
     }
 

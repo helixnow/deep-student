@@ -43,11 +43,41 @@ impl GeminiAdapter {
             && model_lower.contains("flash")
     }
 
+    fn is_flash(model: &str) -> bool {
+        model.to_lowercase().contains("flash")
+    }
+
+    fn clamp_gemini_25_budget(model: &str, budget: i32) -> i32 {
+        if budget <= -1 {
+            return -1;
+        }
+        if Self::is_flash(model) {
+            budget.clamp(0, 24576)
+        } else {
+            budget.clamp(128, 32768)
+        }
+    }
+
     /// 将 reasoning_effort 映射到 thinkingLevel
     ///
     /// Gemini 3.x Pro: 仅支持 "low", "high"
     /// Gemini 3.x Flash: 支持 "minimal", "low", "medium", "high"
-    fn map_effort_to_level(effort: Option<&str>, is_flash: bool) -> &'static str {
+    fn default_thinking_level(model: &str, is_flash: bool) -> &'static str {
+        let lower = model.to_lowercase();
+        if lower.contains("gemini-3.5-flash") {
+            "medium"
+        } else if lower.contains("gemini-3.1-flash-lite") {
+            "minimal"
+        } else if lower.contains("gemini-3-flash") {
+            "high"
+        } else if is_flash {
+            "low"
+        } else {
+            "high"
+        }
+    }
+
+    fn map_effort_to_level(effort: Option<&str>, model: &str, is_flash: bool) -> &'static str {
         match effort {
             Some(e) if e.eq_ignore_ascii_case("high") || e.eq_ignore_ascii_case("xhigh") => "high",
             Some(e) if e.eq_ignore_ascii_case("medium") => {
@@ -64,7 +94,7 @@ impl GeminiAdapter {
                     "low"
                 } // Pro 不支持 minimal，映射到 low
             }
-            _ => "low", // 默认使用 low
+            _ => Self::default_thinking_level(model, is_flash),
         }
     }
 }
@@ -102,7 +132,7 @@ impl RequestAdapter for GeminiAdapter {
             // Gemini 3: 使用 thinkingLevel
             // 注意：Gemini 3 Pro 不能完全禁用 thinking，最低是 "low"
             if enable_thinking_value {
-                let level = Self::map_effort_to_level(effort, is_gemini3_flash);
+                let level = Self::map_effort_to_level(effort, &config.model, is_gemini3_flash);
                 thinking_map.insert("thinkingLevel".to_string(), json!(level));
             } else {
                 // 即使用户想禁用，Gemini 3 也要设置最低级别
@@ -115,7 +145,7 @@ impl RequestAdapter for GeminiAdapter {
                 if let Some(budget) = config.thinking_budget {
                     // Gemini 2.5 Pro: 128-32768, 不能禁用
                     // Gemini 2.5 Flash: 0-24576, 可禁用
-                    let clamped = if budget < -1 { -1 } else { budget };
+                    let clamped = Self::clamp_gemini_25_budget(&config.model, budget);
                     thinking_map.insert("thinkingBudget".to_string(), json!(clamped));
                 } else {
                     // 默认使用动态思维 (-1)
@@ -128,13 +158,6 @@ impl RequestAdapter for GeminiAdapter {
                     thinking_map.insert("thinkingBudget".to_string(), json!(0));
                 }
                 // 2.5 Pro 不能禁用，不添加参数让其使用默认动态模式
-            }
-
-            // Gemini 2.5 可能支持 reasoning_effort（兼容 OpenAI 格式）
-            if let Some(e) = effort {
-                if !e.eq_ignore_ascii_case("none") && !e.eq_ignore_ascii_case("unset") {
-                    body.insert("reasoning_effort".to_string(), json!(e));
-                }
             }
         }
 
@@ -215,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_gemini_3_flash_default_level() {
-        // Gemini 3.5 Flash 默认使用 "low"
+        // Gemini 3.5 Flash 默认使用 "medium"
         let adapter = GeminiAdapter;
         let config = ApiConfig {
             thinking_enabled: true,
@@ -227,7 +250,22 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         let thinking_config = body.get("thinkingConfig").unwrap();
-        assert_eq!(thinking_config.get("thinkingLevel"), Some(&json!("low")));
+        assert_eq!(thinking_config.get("thinkingLevel"), Some(&json!("medium")));
+    }
+
+    #[test]
+    fn test_gemini_3_pro_default_level_is_high() {
+        let adapter = GeminiAdapter;
+        let config = ApiConfig {
+            thinking_enabled: true,
+            model: "gemini-3.1-pro-preview".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body["thinkingConfig"]["thinkingLevel"], json!("high"));
     }
 
     #[test]
@@ -288,9 +326,10 @@ mod tests {
     }
 
     #[test]
-    fn test_reasoning_effort_gemini_25_only() {
+    fn test_gemini_25_drops_openai_compat_reasoning_effort() {
         let adapter = GeminiAdapter;
         let config = ApiConfig {
+            thinking_enabled: true,
             reasoning_effort: Some("high".to_string()),
             model: "gemini-2.5-flash".to_string(),
             ..Default::default()
@@ -299,7 +338,8 @@ mod tests {
 
         adapter.apply_reasoning_config(&mut body, &config, None);
 
-        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+        assert!(!body.contains_key("reasoning_effort"));
+        assert_eq!(body["thinkingConfig"]["thinkingBudget"], json!(-1));
     }
 
     #[test]
@@ -349,6 +389,61 @@ mod tests {
 
         let thinking_config = body.get("thinkingConfig").unwrap();
         assert_eq!(thinking_config.get("thinkingBudget"), Some(&json!(0)));
+    }
+
+    #[test]
+    fn test_gemini_25_pro_budget_bounds() {
+        for (budget, expected) in [(-2, -1), (-1, -1), (0, 128), (32768, 32768), (50000, 32768)] {
+            let config = ApiConfig {
+                thinking_enabled: true,
+                thinking_budget: Some(budget),
+                model: "gemini-2.5-pro".to_string(),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+            GeminiAdapter.apply_reasoning_config(&mut body, &config, None);
+            assert_eq!(body["thinkingConfig"]["thinkingBudget"], json!(expected));
+        }
+    }
+
+    #[test]
+    fn test_gemini_25_flash_budget_bounds() {
+        for (budget, expected) in [(-2, -1), (-1, -1), (0, 0), (24576, 24576), (50000, 24576)] {
+            let config = ApiConfig {
+                thinking_enabled: true,
+                thinking_budget: Some(budget),
+                model: "gemini-2.5-flash".to_string(),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+            GeminiAdapter.apply_reasoning_config(&mut body, &config, None);
+            assert_eq!(body["thinkingConfig"]["thinkingBudget"], json!(expected));
+        }
+    }
+
+    #[test]
+    fn test_gemini_3_model_specific_default_levels() {
+        for (model, expected) in [
+            ("gemini-3.5-flash", "medium"),
+            ("gemini-3.1-flash-lite", "minimal"),
+            ("gemini-3-flash-preview", "high"),
+            ("gemini-3.1-pro-preview", "high"),
+        ] {
+            let config = ApiConfig {
+                thinking_enabled: true,
+                model: model.to_string(),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+
+            GeminiAdapter.apply_reasoning_config(&mut body, &config, None);
+
+            assert_eq!(
+                body["thinkingConfig"]["thinkingLevel"],
+                json!(expected),
+                "model={model}"
+            );
+        }
     }
 
     #[test]

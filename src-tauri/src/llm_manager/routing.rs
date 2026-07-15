@@ -436,7 +436,15 @@ pub(crate) struct FailoverRun {
     pub window: Option<tauri::Window>,
     /// 尝试函数内部是否已自带 429 短退避重试（流式建立循环自带；raw 非流式不带）
     pub attempts_handle_429_internally: bool,
+    /// 已编译请求要求的模型能力。`Some(false)` 表示 TM 编译形态，`Some(true)` 表示
+    /// MM 编译形态；模型级 failover 必须保持完全相同的能力。`None` 仅用于尚未按
+    /// TM/MM 编译的通用后台文本任务。
+    pub required_is_multimodal: Option<bool>,
     pub param_overrides: ParamOverrides,
+}
+
+fn supports_required_modality(config: &ApiConfig, required_is_multimodal: Option<bool>) -> bool {
+    required_is_multimodal.is_none_or(|required| config.is_multimodal == required)
 }
 
 fn short_reason(err: &AppError, class: LlmErrorClass) -> String {
@@ -513,6 +521,21 @@ impl LLMManager {
                 primary.id
             )));
         }
+        if !supports_required_modality(&primary, run.required_is_multimodal) {
+            return Err(AppError::configuration(format!(
+                "模型配置 {} 不满足已编译请求的 {:?} 能力要求",
+                primary.id, run.required_is_multimodal
+            )));
+        }
+
+        // ChatGPT/Codex OAuth is a single authenticated transport, not an API-key pool.
+        // Its intentionally empty api_key must never be filtered by the key planner, and
+        // auth/quota failures must not rotate keys or silently consume a fallback model.
+        if primary.auth_mode.as_deref() == Some(super::AUTH_MODE_OPENAI_CODEX_OAUTH) {
+            let mut config = primary;
+            run.param_overrides.apply(&mut config);
+            return attempt(config, ESTABLISH_RETRIES_WITHOUT_FALLBACK).await;
+        }
 
         // 总开关关闭时完全绕过 key 轮换、冷却与模型 fallback，保持单模型旧行为。
         if !policy.enabled {
@@ -533,7 +556,14 @@ impl LLMManager {
                                 continue;
                             }
                             if let Some(cfg) = resolve_enabled_text_model(&all, [target.as_str()]) {
-                                models.push(cfg.clone());
+                                if supports_required_modality(cfg, run.required_is_multimodal) {
+                                    models.push(cfg.clone());
+                                } else {
+                                    warn!(
+                                        "[Failover] fallback 模型配置 {} 与当前请求的 TM/MM 编译形态不兼容，跳过",
+                                        target,
+                                    );
+                                }
                             } else {
                                 warn!(
                                     "[Failover] fallback 模型配置 {} 未找到、已禁用或不支持文本调用，跳过",
@@ -870,6 +900,7 @@ mod tests {
                     user_pinned: false,
                     window: None,
                     attempts_handle_429_internally: false,
+                    required_is_multimodal: None,
                     param_overrides: ParamOverrides::default(),
                 },
                 primary,
@@ -885,6 +916,110 @@ mod tests {
             .await;
 
         assert!(result.is_err());
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn multimodal_request_rejects_text_primary_before_any_attempt() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_manager(&temp_dir);
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_call = attempts.clone();
+        let primary = ApiConfig {
+            id: "text-primary".into(),
+            enabled: true,
+            is_multimodal: false,
+            api_key: "key-primary".into(),
+            ..ApiConfig::default()
+        };
+
+        let error = manager
+            .run_with_failover(
+                FailoverRun {
+                    task: "default".into(),
+                    scenario: FailoverScenario::ChatMain,
+                    user_pinned: true,
+                    window: None,
+                    attempts_handle_429_internally: true,
+                    required_is_multimodal: Some(true),
+                    param_overrides: ParamOverrides::default(),
+                },
+                primary,
+                move |_config, _| {
+                    let attempts = attempts_for_call.clone();
+                    async move {
+                        attempts.fetch_add(1, Ordering::SeqCst);
+                        Ok::<_, AppError>(())
+                    }
+                },
+            )
+            .await
+            .expect_err("text model must not receive an image request");
+
+        assert!(error.message.contains("能力要求"));
+        assert_eq!(attempts.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn failover_candidates_must_match_the_compiled_tm_or_mm_shape() {
+        let text = ApiConfig {
+            enabled: true,
+            is_multimodal: false,
+            ..ApiConfig::default()
+        };
+        let multimodal = ApiConfig {
+            enabled: true,
+            is_multimodal: true,
+            ..ApiConfig::default()
+        };
+        assert!(!supports_required_modality(&text, Some(true)));
+        assert!(supports_required_modality(&multimodal, Some(true)));
+        assert!(supports_required_modality(&text, Some(false)));
+        assert!(!supports_required_modality(&multimodal, Some(false)));
+        assert!(supports_required_modality(&text, None));
+        assert!(supports_required_modality(&multimodal, None));
+    }
+
+    #[tokio::test]
+    async fn codex_oauth_bypasses_empty_api_key_plan_and_fallback() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_manager(&temp_dir);
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_call = attempts.clone();
+        let primary = ApiConfig {
+            id: "builtin-codex".into(),
+            enabled: true,
+            auth_mode: Some(super::super::AUTH_MODE_OPENAI_CODEX_OAUTH.to_string()),
+            api_key: String::new(),
+            ..ApiConfig::default()
+        };
+
+        let result = manager
+            .run_with_failover(
+                FailoverRun {
+                    task: "default".into(),
+                    scenario: FailoverScenario::ChatMain,
+                    user_pinned: true,
+                    window: None,
+                    attempts_handle_429_internally: true,
+                    required_is_multimodal: None,
+                    param_overrides: ParamOverrides::default(),
+                },
+                primary,
+                move |config, establish_retries| {
+                    let attempts = attempts_for_call.clone();
+                    async move {
+                        attempts.fetch_add(1, Ordering::SeqCst);
+                        assert!(config.api_key.is_empty());
+                        assert_eq!(establish_retries, ESTABLISH_RETRIES_WITHOUT_FALLBACK);
+                        Ok::<_, AppError>("oauth-attempted")
+                    }
+                },
+            )
+            .await
+            .expect("OAuth transport should execute without an API key");
+
+        assert_eq!(result, "oauth-attempted");
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
     }
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -27,6 +27,13 @@ vi.mock('react-i18next', () => ({
         'acknowledgements.openSource.description': 'DeepStudent 依托以下成熟的开源生态快速发展，感谢所有社区长期的维护与创新。',
         'acknowledgements.openSource.openDialog': '查看致谢名单',
         'acknowledgements.openSource.closeDialog': '关闭',
+        'acknowledgements.openSource.projectLicense': '项目许可证',
+        'acknowledgements.openSource.thirdPartyLicense': '第三方许可证',
+        'acknowledgements.openSource.projectLicenseDescription': '项目许可证说明',
+        'acknowledgements.openSource.thirdPartyLicenseDescription': '第三方许可证说明',
+        'acknowledgements.openSource.backToAcknowledgements': '返回致谢名单',
+        'acknowledgements.openSource.loadingLicenses': '正在加载许可证...',
+        'acknowledgements.openSource.licenseLoadError': '无法加载许可证文本。',
         'acknowledgements.openSource.categories.coreStack': '核心框架与构建',
         'acknowledgements.openSource.categories.uiAndInteraction': '界面与交互',
         'acknowledgements.openSource.categories.contentEditing': '内容与编辑',
@@ -49,6 +56,10 @@ vi.mock('react-i18next', () => ({
 import { OpenSourceAcknowledgementsSection } from '@/features/settings';
 
 describe('OpenSourceAcknowledgementsSection', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('keeps the acknowledgements collapsed until the user opens the dialog', () => {
     render(<OpenSourceAcknowledgementsSection />);
 
@@ -90,5 +101,25 @@ describe('OpenSourceAcknowledgementsSection', () => {
     await user.click(screen.getByRole('button', { name: '关闭' }));
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('loads the bundled third-party notices and returns to the acknowledgement list', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      text: async () => 'DEEPSTUDENT THIRD-PARTY NOTICES\nrs-fsrs@1.2.1',
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<OpenSourceAcknowledgementsSection />);
+    await user.click(screen.getByRole('button', { name: '查看致谢名单' }));
+    await user.click(screen.getByRole('button', { name: '第三方许可证' }));
+
+    expect(await screen.findByText(/DEEPSTUDENT THIRD-PARTY NOTICES/)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('./legal/THIRD_PARTY_NOTICES.txt');
+    expect(screen.queryByText('React 18')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '返回致谢名单' }));
+    expect(screen.getByText('React 18')).toBeInTheDocument();
   });
 });

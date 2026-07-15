@@ -3,7 +3,8 @@
  * 从 ApisTab 拆分，负责渲染选中供应商的配置和模型列表
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowSquareOut, CaretDown, CaretUp, Check, DotsThree, DownloadSimple, Key, LinkSimple, NotePencil, PencilSimple, Plus, Prohibit, Pulse, Spinner, Star, Trash } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -28,10 +29,13 @@ import { SiliconFlowSection } from './SiliconFlowSection';
 import { VendorApiKeySection } from './VendorApiKeySection';
 import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher';
 import { ShadApiEditModal } from './ShadApiEditModal';
+import { OpenAICodexAccountSection } from './OpenAICodexAccountSection';
 import { useVendorSettings } from './VendorSettingsContext';
 import { convertProfileToApiConfig } from './modelConverters';
 import { groupByModelFamily } from './modelFamily';
 import type { VendorConfig } from '@/types';
+import { isOpenAICodexOAuthVendor } from '@/utils/vendorAuth';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 
 // --- Save Status Indicator ---
 type SaveStatus = 'idle' | 'saving' | 'saved';
@@ -54,7 +58,9 @@ const INLINE_EDITOR_MOTION_MS = 400;
 const InlineEditorCollapse: React.FC<{
   open: boolean;
   children: React.ReactNode;
-}> = ({ open, children }) => {
+  className?: string;
+  fill?: boolean;
+}> = ({ open, children, className, fill = false }) => {
   const [shouldRender, setShouldRender] = useState(open);
   const lastChildrenRef = useRef<React.ReactNode>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -86,15 +92,67 @@ const InlineEditorCollapse: React.FC<{
   return (
     <div
       ref={rootRef}
-      className="settings-inline-editor"
+      className={cn('settings-inline-editor', className)}
       data-open={open ? 'true' : 'false'}
       aria-hidden={!open}
     >
-      <div className="settings-inline-editor-clip">
-        <div className="settings-inline-editor-body">
+      <div className={cn('settings-inline-editor-clip', fill && 'h-full')}>
+        <div className={cn('settings-inline-editor-body', fill && 'h-full min-h-0')}>
           {shouldRender ? (hasChildren ? children : lastChildrenRef.current) : null}
         </div>
       </div>
+    </div>
+  );
+};
+
+const ResponsiveInlineEditorHost: React.FC<{
+  floating: boolean;
+  testId: string;
+  surfaceTestId: string;
+  ariaLabel: string;
+  children: React.ReactNode;
+}> = ({ floating, testId, surfaceTestId, ariaLabel, children }) => {
+  const placeholderRef = useRef<HTMLDivElement | null>(null);
+  const [host] = useState<HTMLDivElement | null>(() =>
+    typeof document === 'undefined' ? null : document.createElement('div')
+  );
+
+  // Keep one portal target for the lifetime of the form. Moving that target preserves
+  // ShadApiEditModal's local draft state while escaping transformed/contained ancestors.
+  useLayoutEffect(() => {
+    if (!host) return;
+    const target = floating ? document.body : placeholderRef.current;
+    target?.appendChild(host);
+  }, [floating, host]);
+
+  useLayoutEffect(() => () => host?.remove(), [host]);
+
+  const content = (
+    <div
+      data-testid={testId}
+      role={floating ? 'dialog' : undefined}
+      aria-modal={floating ? true : undefined}
+      aria-label={floating ? ariaLabel : undefined}
+      className={cn(
+        floating &&
+          'fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:py-8'
+      )}
+    >
+      <div
+        data-testid={surfaceTestId}
+        className={cn(
+          floating &&
+            'h-[min(760px,calc(100dvh-4rem))] w-full max-w-[672px] overflow-hidden rounded-lg border border-border/60 bg-background shadow-2xl'
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+
+  return (
+    <div ref={placeholderRef}>
+      {host ? createPortal(content, host) : content}
     </div>
   );
 };
@@ -110,6 +168,7 @@ const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) =
   const normalizedProviderType = providerType.toLowerCase();
   const map: Record<string, string> = {
     openai: 'OpenAI',
+    openai_codex: 'OpenAI Codex',
     anthropic: 'Anthropic',
     google: 'Google',
     siliconflow: 'SiliconFlow',
@@ -140,6 +199,7 @@ const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
     minimax: 'https://platform.minimaxi.com',
     moonshot: 'https://platform.moonshot.cn',
     openai: 'https://platform.openai.com',
+    openai_codex: 'https://chatgpt.com',
     gemini: 'https://aistudio.google.com',
     anthropic: 'https://console.anthropic.com',
     google: 'https://aistudio.google.com',
@@ -153,6 +213,7 @@ const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
 
 export const VendorDetailPanel: React.FC = () => {
   const { t } = useTranslation(['settings', 'common']);
+  const { isXl } = useBreakpoint();
   const {
     selectedVendor,
     selectedVendorModels,
@@ -188,6 +249,8 @@ export const VendorDetailPanel: React.FC = () => {
     triggerPostSaveAutoFlow,
     isSmallScreen,
   } = useVendorSettings();
+  const usePanelModelEditor = isSmallScreen || !isXl;
+  const useResponsiveInlineDialog = !isSmallScreen && !isXl;
 
   const [baseUrlDraft, setBaseUrlDraft] = useState('');
   const [baseUrlSaveStatus, setBaseUrlSaveStatus] = useState<SaveStatus>('idle');
@@ -197,15 +260,17 @@ export const VendorDetailPanel: React.FC = () => {
   // 移动端不使用 Dialog（契约：移动端弹层禁承载列表流程），改为模型列表上方的内联卡片
   const [isMobileFetcherOpen, setIsMobileFetcherOpen] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isCodexOAuthVendor = isOpenAICodexOAuthVendor(selectedVendor);
 
   // 判断连接是否已配置（有 baseUrl 且有 apiKey，或 noApiKey 模式）
   const isConnectionConfigured = useMemo(() => {
     if (!selectedVendor) return false;
     const hasUrl = !!(selectedVendor.baseUrl?.trim());
-    if (selectedVendor.noApiKey) return hasUrl;
+    if (isCodexOAuthVendor) return true;
+    if (selectedVendor.noApiKey || selectedVendor.authMode === 'none') return hasUrl;
     const hasKey = !!(selectedVendor.apiKey?.trim());
     return hasUrl && hasKey;
-  }, [selectedVendor?.baseUrl, selectedVendor?.apiKey, selectedVendor?.noApiKey]);
+  }, [selectedVendor, isCodexOAuthVendor]);
 
   // 模型按家族分组（GPT-4 / Claude Opus / Gemini 2.5 …）
   const familyGroups = useMemo(
@@ -274,8 +339,9 @@ export const VendorDetailPanel: React.FC = () => {
     const isEditing = !isAddingNewModel && inlineEditState?.profileId === profile.id;
 
     const handleEditClick = () => {
-      // 移动端：编辑走统一三屏右侧面板（顶栏返回箭头）；桌面端在卡片内展开内联编辑
-      if (isSmallScreen) {
+      // 移动端走三屏右侧面板；中等宽度走居中 Dialog，避免双侧栏把内联表单压窄。
+      // 只有 >= xl 的宽桌面才在模型卡片内展开编辑器。
+      if (usePanelModelEditor) {
         if (isAddingNewModel) handleCancelAddModel();
         setInlineEditState(null);
         handleOpenModelEditor(selectedVendor, profile);
@@ -339,17 +405,19 @@ export const VendorDetailPanel: React.FC = () => {
                 >
                   <Star className="h-3.5 w-3.5" weight={profile.isFavorite ? 'fill' : 'regular'} />
                 </NotionButton>
-                <NotionButton
-                  size="sm"
-                  variant="ghost"
-                  iconOnly
-                  className="max-md:hidden"
-                  onClick={() => void testApiConnection(api)}
-                  disabled={testingApi === api.id || vendorBusy}
-                  title={t('settings:api_config.test_button')}
-                >
-                  {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
-                </NotionButton>
+                {!isCodexOAuthVendor && (
+                  <NotionButton
+                    size="sm"
+                    variant="ghost"
+                    iconOnly
+                    className="max-md:hidden"
+                    onClick={() => void testApiConnection(api)}
+                    disabled={testingApi === api.id || vendorBusy}
+                    title={t('settings:api_config.test_button')}
+                  >
+                    {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
+                  </NotionButton>
+                )}
 
                 {/* 删除：触发全局确认对话框 */}
                 {!isReadOnly ? (
@@ -390,28 +458,42 @@ export const VendorDetailPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* 内联编辑区：桌面端在卡片内展开，带高度动画 */}
+        {/* 内联编辑区：宽桌面在卡片内展开；编辑过程中缩窗则原地提升为浮层，保留未保存表单状态。 */}
         {!isSmallScreen && (
-          <InlineEditorCollapse open={isEditing}>
-            {isEditing && inlineEditState && (
-              <div className="px-3 pb-3 pt-1">
-                <ShadApiEditModal
-                  api={inlineEditState.api}
-                  onSave={async (editedApi) => {
-                    await handleSaveInlineEdit(editedApi);
-                  }}
-                  onCancel={() => setInlineEditState(null)}
-                  hideConnectionFields
-                  lockedVendorInfo={{
-                    name: selectedVendor.name,
-                    baseUrl: selectedVendor.baseUrl,
-                    providerType: selectedVendor.providerType,
-                  }}
-                  embeddedMode={true}
-                />
-              </div>
-            )}
-          </InlineEditorCollapse>
+          <ResponsiveInlineEditorHost
+            floating={isEditing && useResponsiveInlineDialog}
+            testId={`responsive-inline-model-editor-${profile.id}`}
+            surfaceTestId={`responsive-inline-model-editor-surface-${profile.id}`}
+            ariaLabel={profile.label || api.name}
+          >
+            <InlineEditorCollapse
+              open={isEditing}
+              className={cn(isEditing && useResponsiveInlineDialog && 'h-full')}
+              fill={isEditing && useResponsiveInlineDialog}
+            >
+              {isEditing && inlineEditState && (
+                <div className={cn(
+                  'px-3 pb-3 pt-1',
+                  useResponsiveInlineDialog && 'h-full p-3'
+                )}>
+                  <ShadApiEditModal
+                    api={inlineEditState.api}
+                    onSave={async (editedApi) => {
+                      await handleSaveInlineEdit(editedApi);
+                    }}
+                    onCancel={() => setInlineEditState(null)}
+                    hideConnectionFields
+                    lockedVendorInfo={{
+                      name: selectedVendor.name,
+                      baseUrl: selectedVendor.baseUrl,
+                      providerType: selectedVendor.providerType,
+                    }}
+                    embeddedMode={true}
+                  />
+                </div>
+              )}
+            </InlineEditorCollapse>
+          </ResponsiveInlineEditorHost>
         )}
       </div>
     );
@@ -425,6 +507,18 @@ export const VendorDetailPanel: React.FC = () => {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
               {selectedVendorIsSiliconflow && <SiliconFlowLogo className="h-5" />}
+              {isCodexOAuthVendor && (
+                <span
+                  data-testid={`vendor-detail-icon-${selectedVendor.id}`}
+                  className="inline-flex shrink-0 items-center justify-center"
+                >
+                  <ProviderIcon
+                    modelId={selectedVendor.providerType || selectedVendor.name || ''}
+                    size={18}
+                    showTooltip={false}
+                  />
+                </span>
+              )}
               <h3 className="text-lg font-medium text-foreground truncate">
                 {vendorDisplayName}
               </h3>
@@ -449,7 +543,7 @@ export const VendorDetailPanel: React.FC = () => {
                 ) : null;
               })()}
             </div>
-            <div className="flex flex-wrap gap-2">
+            {!isCodexOAuthVendor && <div className="flex flex-wrap gap-2">
               {isEditingVendor ? (
                 <>
                   <NotionButton size="sm" variant="ghost" onClick={handleCancelEditVendor}>{t('common:actions.cancel')}</NotionButton>
@@ -463,12 +557,14 @@ export const VendorDetailPanel: React.FC = () => {
                   )}
                 </>
               )}
-            </div>
+            </div>}
           </div>
         </div>
 
         {/* 连接配置区 — 可折叠 */}
-        {isEditingVendor ? (
+        {isCodexOAuthVendor ? (
+          <OpenAICodexAccountSection />
+        ) : isEditingVendor ? (
           /* 编辑模式：始终展开完整表单 */
           <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
             <div className="md:col-span-2 space-y-2">
@@ -637,7 +733,7 @@ export const VendorDetailPanel: React.FC = () => {
                 <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.model_list_desc', { count: selectedVendorModels.length })}</p>
               </div>
               <div className="flex flex-shrink-0 items-center gap-2">
-                {onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
+                {!isCodexOAuthVendor && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
                   <NotionButton
                     size="sm"
                     variant="ghost"
@@ -654,6 +750,12 @@ export const VendorDetailPanel: React.FC = () => {
                   </NotionButton>
                 )}
                 <NotionButton size="sm" variant="primary" onClick={() => {
+                  if (usePanelModelEditor) {
+                    if (isAddingNewModel) handleCancelAddModel();
+                    setInlineEditState(null);
+                    handleOpenModelEditor(selectedVendor);
+                    return;
+                  }
                   handleAddModelInline(selectedVendor);
                 }}>
                   <Plus className="h-3.5 w-3.5" />{t('settings:vendor_panel.add_model_button')}
@@ -669,7 +771,7 @@ export const VendorDetailPanel: React.FC = () => {
               </div>
             )}
             {/* 移动端：获取模型列表内联卡片（替代桌面 Dialog，遵循移动端无弹层契约） */}
-            {isSmallScreen && isMobileFetcherOpen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
+            {!isCodexOAuthVendor && isSmallScreen && isMobileFetcherOpen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
               <div className="mb-4">
                 <VendorModelFetcher
                   key={selectedVendor.id}
@@ -680,32 +782,48 @@ export const VendorDetailPanel: React.FC = () => {
                 />
               </div>
             )}
-            {/* 内联新增模型：桌面端在列表顶部展开，带高度动画 */}
+            {/* 内联新增模型：宽桌面在列表顶部展开；缩窗后原地提升为浮层。 */}
             {!isSmallScreen && (
-              <InlineEditorCollapse open={!!(isAddingNewModel && inlineEditState)}>
-                {isAddingNewModel && inlineEditState && (
-                  <div className="pb-3">
-                    <div className={cn(settingsQuietRowBaseClassName, settingsQuietActiveSurfaceClassName, "border border-primary/20")}>
-                      <div className="px-3 pt-3 pb-3">
-                        <ShadApiEditModal
-                          api={inlineEditState.api}
-                          onSave={async (editedApi) => {
-                            await handleSaveInlineEdit(editedApi);
-                          }}
-                          onCancel={handleCancelAddModel}
-                          hideConnectionFields
-                          lockedVendorInfo={{
-                            name: selectedVendor.name,
-                            baseUrl: selectedVendor.baseUrl,
-                            providerType: selectedVendor.providerType,
-                          }}
-                          embeddedMode={true}
-                        />
+              <ResponsiveInlineEditorHost
+                floating={!!(isAddingNewModel && inlineEditState && useResponsiveInlineDialog)}
+                testId="responsive-inline-new-model-editor"
+                surfaceTestId="responsive-inline-new-model-editor-surface"
+                ariaLabel={t('settings:vendor_panel.add_model_button')}
+              >
+                <InlineEditorCollapse
+                  open={!!(isAddingNewModel && inlineEditState)}
+                  className={cn(isAddingNewModel && inlineEditState && useResponsiveInlineDialog && 'h-full')}
+                  fill={!!(isAddingNewModel && inlineEditState && useResponsiveInlineDialog)}
+                >
+                  {isAddingNewModel && inlineEditState && (
+                    <div className={cn('pb-3', useResponsiveInlineDialog && 'h-full p-3')}>
+                      <div className={cn(
+                        settingsQuietRowBaseClassName,
+                        settingsQuietActiveSurfaceClassName,
+                        'border border-primary/20',
+                        useResponsiveInlineDialog && 'h-full overflow-hidden'
+                      )}>
+                        <div className={cn('px-3 pb-3 pt-3', useResponsiveInlineDialog && 'h-full')}>
+                          <ShadApiEditModal
+                            api={inlineEditState.api}
+                            onSave={async (editedApi) => {
+                              await handleSaveInlineEdit(editedApi);
+                            }}
+                            onCancel={handleCancelAddModel}
+                            hideConnectionFields
+                            lockedVendorInfo={{
+                              name: selectedVendor.name,
+                              baseUrl: selectedVendor.baseUrl,
+                              providerType: selectedVendor.providerType,
+                            }}
+                            embeddedMode={true}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              </InlineEditorCollapse>
+                  )}
+                </InlineEditorCollapse>
+              </ResponsiveInlineEditorHost>
             )}
             <div className="space-y-3">
               {selectedVendorModels.length === 0 && !isAddingNewModel ? (
@@ -770,7 +888,7 @@ export const VendorDetailPanel: React.FC = () => {
       </div>
 
       {/* 获取模型列表 Dialog（仅桌面端；移动端使用上方内联卡片） */}
-      {!isSmallScreen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
+      {!isCodexOAuthVendor && !isSmallScreen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
         <Dialog open={isModelFetcherDialogOpen} onOpenChange={setIsModelFetcherDialogOpen}>
           <DialogContent className="w-full max-w-2xl p-0 overflow-hidden">
             <DialogHeader className="px-5 pt-5 pb-4 border-b border-border/40">
