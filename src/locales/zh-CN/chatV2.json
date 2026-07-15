@@ -489,6 +489,7 @@
       "status": {
         "pending": "等待执行",
         "running": "执行中",
+        "started": "已启动，正在后台处理",
         "success": "执行完成",
         "error": "执行失败"
       },
@@ -573,8 +574,11 @@
       "showMore": "加载更多（剩余 {{remaining}} 张）",
       "showAll": "显示全部（{{total}} 张）",
       "save": "保存",
+      "addToLibrary": "加入卡片库",
+      "addedToLibrary": "已加入卡片库",
       "export": "导出",
       "sync": "同步",
+      "moreActions": "更多卡片操作",
       "reviewBatch": "复习这批",
       "reviewBatchNeedsRealIds": "卡片生成完成并保存、取得真实 ID 后才能复习这批卡片",
       "pause": "暂停",
@@ -610,7 +614,8 @@
           "label": "AnkiConnect",
           "checking": "检查中",
           "connected": "已连接",
-          "notConnected": "未连接"
+          "notConnected": "未连接",
+          "refresh": "刷新 AnkiConnect 状态"
         },
         "segments": {
           "pending": "待处理",
@@ -632,6 +637,7 @@
           "paused": "已暂停，可稍后继续。",
           "cancelled": "已取消生成。",
           "completedWithErrors": "已完成，但部分分段失败（failed={{failed}}, truncated={{truncated}}）。可在面板中重试失败分段。",
+          "recovered": "自动生成未完成，已通过备用方式补齐 {{count}} 张可用卡片。",
           "limitReached": "已达到设定的卡片数量上限（{{limit}} 张），生成正常结束。"
         }
       },
@@ -642,6 +648,7 @@
         "startFailed": "启动制卡失败。请重试或调整模板/设置。",
         "pipelineTimeout": "生成耗时过长，已停止自动更新。可稍后用 chatanki_status 查询或重新生成。",
         "contextRefInvalid": "附件引用数据无效，请移除并重新添加附件后重试。",
+        "generationFailed": "自动生成失败，且没有产出可用卡片。请检查模型配置或错误详情。",
         "partialSegmentsFailed": "部分分段失败。请在面板中重试失败分段。",
         "waitInvalidArgs": "chatanki_wait 需要 ankiBlockId 或 documentId，请补充后重试。",
         "waitNotFound": "尚未找到卡片块，请稍等或用 documentId 调用 chatanki_status。",
@@ -665,6 +672,7 @@
         "ankiSyncEmpty": "未导入任何卡片。请检查 Anki 是否运行、笔记类型是否存在、卡片字段是否为空。"
       },
       "warnings": {
+        "generationRecovered": "自动生成出现问题，已通过备用方式提供 {{count}} 张可用卡片。",
         "imageTruncated": "仅使用了前 {{shown}} 张图片（上限 {{limit}}，共 {{total}} 张）。建议拆分附件后重试。",
         "contextRefInvalid": "{{count}} 个附件无法解析，必要时移除并重新添加。",
         "textTruncated": "文档内容超过 {{limitMB}}MB 上限，仅处理了前 {{limitMB}}MB 部分。建议拆分文档分批制卡。",
@@ -1079,6 +1087,16 @@
   },
   "agentPanel": {
     "plan": "计划",
+    "environment": "环境信息",
+    "local": "本地",
+    "activityCount": "{{count}} 项活动",
+    "blockedCount": "{{count}} 项拦截",
+    "environmentBoundary": "工作边界",
+    "sandbox": "沙盒",
+    "network": "网络",
+    "networkEnabled": "已启用",
+    "networkDisabled": "已关闭",
+    "recentActivity": "近期活动 {{count}}",
     "sources": "来源",
     "artifacts": "产物",
     "runtime": "运行时",
@@ -1181,6 +1199,17 @@
       "moreItems": "...还有 {{count}} 条",
       "loadedSkills": "已加载技能",
       "loadedTools": "已加载工具"
+    },
+    "shell": {
+      "checking": "正在检查",
+      "checked": "已检查",
+      "blocked": "已拦截",
+      "running": "正在运行",
+      "ran": "已运行",
+      "failed": "运行失败",
+      "pending": "等待运行",
+      "preflight": "Shell 检查",
+      "commandUnavailable": "命令内容不可用"
     },
     "noteTool": {
       "read": "读取笔记",

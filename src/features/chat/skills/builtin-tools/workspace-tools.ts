@@ -100,6 +100,13 @@ export const workspaceToolsSkill: SkillDefinition = {
 
 本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 固定使用受信任 System32 路径下的 Windows PowerShell（\`-NoProfile -NonInteractive\`，UTF-8 输出）；其他平台当前不支持本地 shell。每次真实执行都必须经过用户审批，网络默认禁止，只有显式 \`allow_network=true\` 的独立审批 scope 才可放行。
 
+### 本地命令的执行根选择
+- 与用户项目文件相关的命令使用 \`root_id=workspace\`；如果 workspace 未配置，应提示用户选择工作区，不要在其他 root 中猜测项目位置。
+- 与项目文件无关的系统查询和能力测试（例如 \`uname -a\`、版本查询）直接使用 \`root_id=temp\`。
+- 明确需要生成交付文件时使用 \`root_id=artifacts\`。
+- \`temp\` 和 \`artifacts\` 是会话自带的内部根，预检会自动确保目录存在。禁止为了“初始化目录”写 README、占位文件或空产物。
+- 同一命令只做一次有效预检；预检通过后直接提交 execute。不要在 workspace、temp、artifacts 之间重复试探。
+
 不确定自己有哪些 runtime root、技能或 MCP 时，先用 self-service-tools 技能组的 **builtin-self_inspect** 自查（只读、脱敏）。
 
 ## 处理用户发送的附件
@@ -510,7 +517,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           root_id: {
             type: 'string',
-            description: 'Runtime root id，默认为 workspace；可填 artifacts、temp 或 authorized_* 授权目录 id。skill:<skillId> 包目录不能作为 cwd；运行包内脚本请使用 skill_root_id。',
+            description: 'Runtime root id。项目命令使用 workspace；无项目关联的系统查询使用 temp；交付文件使用 artifacts。temp/artifacts 会自动初始化，禁止写占位文件创建目录。也可填 authorized_* 授权目录 id。skill:<skillId> 包目录不能作为 cwd；运行包内脚本请使用 skill_root_id。',
           },
           cwd: {
             type: 'string',
@@ -549,7 +556,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           root_id: {
             type: 'string',
-            description: 'Runtime root id，默认为 workspace；可填 artifacts、temp 或 Settings > 工具权限里显示的 authorized_* 目录 id。当前不支持直接在 skill:<skillId> 包目录内执行；要运行 Skill 包内脚本请改用 skill_root_id + SKILL_DIR。',
+            description: 'Runtime root id，必须与通过的 preflight 一致。项目命令使用 workspace；无项目关联的系统查询使用 temp；交付文件使用 artifacts。也可填 Settings > 工具权限里显示的 authorized_* 目录 id。当前不支持直接在 skill:<skillId> 包目录内执行；要运行 Skill 包内脚本请改用 skill_root_id + SKILL_DIR。',
           },
           cwd: {
             type: 'string',

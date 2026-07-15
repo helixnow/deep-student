@@ -732,10 +732,11 @@ impl ChatV2Pipeline {
                 .into_iter()
                 .filter(|b| b.block_type == block_types::ANKI_CARDS)
                 .collect();
-        let _preserved_anki_cards_block_ids: Vec<String> = preserved_anki_cards_blocks
-            .iter()
-            .map(|b| b.id.clone())
-            .collect();
+        let preserved_anki_cards_block_ids: std::collections::HashSet<String> =
+            preserved_anki_cards_blocks
+                .iter()
+                .map(|b| b.id.clone())
+                .collect();
 
         // 🔧 P37 修复：合并数据库中已有的 block_ids（保留前端追加的块）
         // 问题：前端在工具执行后创建 workspace_status 块并追加到消息的 block_ids，
@@ -754,6 +755,11 @@ impl ChatV2Pipeline {
                     if let Ok(existing_block_ids) = serde_json::from_str::<Vec<String>>(&json_str) {
                         // 找出前端追加的块（在数据库中但不在当前 block_ids 中）
                         for existing_id in existing_block_ids {
+                            // anki_cards 按原始 block_index 在下方插入；这里直接 append
+                            // 会让它永久落到消息尾部，并使后续插入逻辑失效。
+                            if preserved_anki_cards_block_ids.contains(&existing_id) {
+                                continue;
+                            }
                             if !merged_block_ids.contains(&existing_id) {
                                 log::info!(
                                     "[ChatV2::pipeline] 🔧 P37: Preserving frontend-appended block_id: {}",
@@ -791,6 +797,11 @@ impl ChatV2Pipeline {
         let _pipeline_block_count = blocks_to_save.len() as u32;
         let pipeline_block_id_set: std::collections::HashSet<String> =
             blocks_to_save.iter().map(|b| b.id.clone()).collect();
+        let final_block_positions: std::collections::HashMap<String, u32> = final_block_ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| (id.clone(), index as u32))
+            .collect();
 
         // 构建 chatParams 快照（从 SendOptions 中提取相关参数）
         let chat_params_snapshot = json!({
@@ -893,9 +904,11 @@ impl ChatV2Pipeline {
         }
 
         // 保存所有助手消息块（无论是创建还是更新消息，块都需要保存）
-        for (index, mut block) in blocks_to_save.into_iter().enumerate() {
-            // 确保 block_index 正确设置
-            block.block_index = index as u32;
+        for mut block in blocks_to_save {
+            block.block_index = final_block_positions
+                .get(block.id.as_str())
+                .copied()
+                .unwrap_or(block.block_index);
             // 确保 message_id 正确
             block.message_id = ctx.assistant_message_id.clone();
             ChatV2Repo::create_block_with_conn(&conn, &block)?;
@@ -910,9 +923,12 @@ impl ChatV2Pipeline {
                     continue;
                 }
 
-                // 保持原始 block_index 不变，这样刷新后位置不会跳到末尾
                 let mut block_to_save = preserved;
                 block_to_save.message_id = ctx.assistant_message_id.clone();
+                block_to_save.block_index = final_block_positions
+                    .get(block_to_save.id.as_str())
+                    .copied()
+                    .unwrap_or(block_to_save.block_index);
 
                 if let Err(e) = ChatV2Repo::create_block_with_conn(&conn, &block_to_save) {
                     log::error!(

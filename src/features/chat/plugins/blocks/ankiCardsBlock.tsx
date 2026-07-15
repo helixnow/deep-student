@@ -33,7 +33,15 @@ import {
   Stop,
   Stack,
   ArrowClockwise,
+  DotsThree,
 } from '@phosphor-icons/react';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuGroup,
+  AppMenuItem,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu/AppMenu';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { controlDocumentTask } from '@/features/anki/taskControl';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
@@ -72,7 +80,18 @@ export interface AnkiCardsWarning {
   message?: string;
 }
 
+export interface AnkiCardsIssue {
+  scope: string;
+  code: string;
+  severity: 'warning' | 'error';
+  retryable: boolean;
+  recovered: boolean;
+  detail?: string;
+}
+
 export interface AnkiCardsBlockData {
+  schemaVersion?: number;
+  stateRevision?: number;
   /** 卡片列表 */
   cards: AnkiCard[];
   /** Agent 删除墓碑：阻止迟到/重放的生成结果复活已删除卡片。 */
@@ -117,6 +136,13 @@ export interface AnkiCardsBlockData {
   finalStatus?: string;
   /** 后端错误信息（用于 UI 显示） */
   finalError?: string;
+  workflowStatus?: 'running' | 'paused' | 'completed' | 'completed_with_warnings' | 'failed' | 'cancelled';
+  generationStatus?: 'running' | 'paused' | 'completed' | 'partial' | 'failed' | 'cancelled';
+  deliveryStatus?: 'empty' | 'incomplete' | 'ready';
+  recoveryStatus?: 'none' | 'manual' | 'existing_cards' | 'retry';
+  availableCards?: number;
+  recoveredCards?: number;
+  issues?: AnkiCardsIssue[];
   /** 后端警告信息（用于 UI 显示） */
   warnings?: AnkiCardsWarning[];
 }
@@ -458,10 +484,12 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
           <div className="flex items-center gap-1">
             <NotionButton
               type="button"
-              size="sm"
               variant="ghost"
               onClick={() => onDelete(index)}
-              className="text-destructive hover:text-destructive h-7 px-2"
+              className="!h-10 !w-10 text-destructive hover:text-destructive"
+              size="icon"
+              iconOnly
+              aria-label={t('chatV2.deleteCard')}
             >
               <Trash size={14} />
             </NotionButton>
@@ -553,8 +581,8 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
             className={cn(
               'absolute top-2 right-2 z-10 bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
               isTouchPrimary
-                ? '!w-8 !h-8 opacity-100'
-                : '!w-6 !h-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+                ? '!h-10 !w-10 opacity-100'
+                : '!h-10 !w-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
             )}
             aria-label="edit"
           >
@@ -572,12 +600,12 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         {card.tags && card.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 px-3 pb-2 -mt-1">
             {card.tags.slice(0, 4).map((tag, i) => (
-              <span key={i} className="px-1.5 py-0.5 text-[10px] bg-muted rounded">
+              <span key={i} className="rounded bg-muted px-1.5 py-0.5 text-xs">
                 {tag}
               </span>
             ))}
             {card.tags.length > 4 && (
-              <span className="text-[10px] text-muted-foreground">+{card.tags.length - 4}</span>
+              <span className="text-xs text-muted-foreground">+{card.tags.length - 4}</span>
             )}
           </div>
         )}
@@ -597,6 +625,14 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         .filter(Boolean)
         .join(' ')}
       onClick={disabled ? undefined : () => onToggleEdit(index)}
+      onKeyDown={(event) => {
+        if (disabled || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        onToggleEdit(index);
+      }}
+      role={disabled ? undefined : 'button'}
+      tabIndex={disabled ? undefined : 0}
+      aria-label={disabled ? undefined : t('chatV2.editCard', { index: index + 1 })}
     >
       <div className="flex items-start gap-3 p-3">
         {/* 序号 */}
@@ -614,12 +650,12 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
           {card.tags && card.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1.5">
               {card.tags.slice(0, 4).map((tag, i) => (
-                <span key={i} className="px-1.5 py-0.5 text-[10px] bg-muted rounded">
+                <span key={i} className="rounded bg-muted px-1.5 py-0.5 text-xs">
                   {tag}
                 </span>
               ))}
               {card.tags.length > 4 && (
-                <span className="text-[10px] text-muted-foreground">+{card.tags.length - 4}</span>
+                <span className="text-xs text-muted-foreground">+{card.tags.length - 4}</span>
               )}
             </div>
           )}
@@ -989,7 +1025,7 @@ const ActionButtons: React.FC<{
         disabled={retryStatus === 'loading'}
         aria-busy={retryStatus === 'loading'}
         variant={retryStatus === 'error' ? 'danger' : 'default'}
-        className="w-full text-xs sm:w-auto sm:text-sm"
+        className="min-h-10 w-full text-xs sm:w-auto sm:text-sm"
       >
         {renderIcon(retryStatus, ArrowClockwise)}
         {t('blocks.ankiCards.retryFailedSegments')}
@@ -997,7 +1033,7 @@ const ActionButtons: React.FC<{
       {retryStatus === 'error' && retryError && (
         <span
           role="alert"
-          className="max-w-full text-[11px] leading-snug text-destructive"
+          className="max-w-full text-xs leading-snug text-destructive"
           data-testid="chatanki-retry-failed-segments-error"
         >
           {retryError}
@@ -1015,7 +1051,7 @@ const ActionButtons: React.FC<{
   }
 
   return (
-    <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-3 pt-3 border-t border-border/50">
+    <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/50 pt-3 sm:flex sm:flex-wrap">
       {retryAction}
 
       {/* 运行中：暂停 / 继续 / 取消（有 documentId 时） */}
@@ -1027,7 +1063,7 @@ const ActionButtons: React.FC<{
               onClick={() => void handleTaskControl('resume')}
               disabled={taskControlStatus === 'loading'}
               variant="primary"
-              className="text-xs sm:text-sm"
+              className="min-h-10 text-xs sm:text-sm"
             >
               {taskControlStatus === 'loading' ? (
                 <CircleNotch size={14} className="animate-spin" />
@@ -1042,7 +1078,7 @@ const ActionButtons: React.FC<{
               onClick={() => void handleTaskControl('pause')}
               disabled={taskControlStatus === 'loading'}
               variant="default"
-              className="text-xs sm:text-sm"
+              className="min-h-10 text-xs sm:text-sm"
             >
               {taskControlStatus === 'loading' ? (
                 <CircleNotch size={14} className="animate-spin" />
@@ -1057,7 +1093,7 @@ const ActionButtons: React.FC<{
             onClick={() => void handleTaskControl('cancel')}
             disabled={taskControlStatus === 'loading'}
             variant="danger"
-            className="text-xs sm:text-sm"
+            className="min-h-10 text-xs sm:text-sm"
           >
             {taskControlStatus === 'loading' ? (
               <CircleNotch size={14} className="animate-spin" />
@@ -1069,67 +1105,86 @@ const ActionButtons: React.FC<{
         </>
       )}
 
-      {/* 内联展开/折叠编辑 */}
-      <NotionButton
-        type="button"
-        onClick={onToggleExpand}
-        disabled={isDisabled}
-        variant={isExpanded ? 'default' : 'primary'}
-        className="text-xs sm:text-sm"
-      >
-        {isExpanded ? <CaretUp size={14} /> : <Pencil size={14} />}
-        {isExpanded ? t('blocks.ankiCards.collapse') : t('blocks.ankiCards.edit')}
-      </NotionButton>
+      {cards.length > 0 && (
+        <>
+          {/* 内联展开/折叠编辑 */}
+          <NotionButton
+            type="button"
+            onClick={onToggleExpand}
+            disabled={isDisabled}
+            variant={isExpanded ? 'default' : 'primary'}
+            className="min-h-10 text-xs sm:text-sm"
+          >
+            {isExpanded ? <CaretUp size={14} /> : <Pencil size={14} />}
+            {isExpanded ? t('blocks.ankiCards.collapse') : t('blocks.ankiCards.edit')}
+          </NotionButton>
 
-      {/* 保存到库 */}
-      <NotionButton
-        type="button"
-        onClick={handleSave}
-        disabled={isDisabled || saveStatus === 'loading'}
-        variant={saveStatus === 'success' ? 'success' : saveStatus === 'error' ? 'danger' : 'default'}
-        className="text-xs sm:text-sm"
-      >
-        {renderIcon(saveStatus, FloppyDisk)}
-        {t('blocks.ankiCards.save')}
-      </NotionButton>
+          {/* 加入本地卡片库 */}
+          <NotionButton
+            type="button"
+            onClick={handleSave}
+            disabled={isDisabled || saveStatus === 'loading'}
+            variant={saveStatus === 'success' ? 'success' : saveStatus === 'error' ? 'danger' : canReviewBatch ? 'default' : 'primary'}
+            className="min-h-10 text-xs sm:text-sm"
+          >
+            {renderIcon(saveStatus, FloppyDisk)}
+            {t(
+              saveStatus === 'success'
+                ? 'blocks.ankiCards.addedToLibrary'
+                : 'blocks.ankiCards.addToLibrary'
+            )}
+          </NotionButton>
 
-      {/* 导出 APKG */}
-      <NotionButton
-        type="button"
-        onClick={handleExport}
-        disabled={isDisabled || exportStatus === 'loading'}
-        variant={exportStatus === 'success' ? 'success' : exportStatus === 'error' ? 'danger' : 'default'}
-        className="text-xs sm:text-sm"
-      >
-        {renderIcon(exportStatus, DownloadSimple)}
-        {t('blocks.ankiCards.export')}
-      </NotionButton>
+          {/* 复习这批 → workbench 闪卡会话 */}
+          <NotionButton
+            type="button"
+            onClick={handleReviewBatch}
+            disabled={isDisabled || !canReviewBatch}
+            title={!canReviewBatch ? t('blocks.ankiCards.reviewBatchNeedsRealIds') : undefined}
+            variant="primary"
+            className="min-h-10 text-xs sm:text-sm"
+          >
+            <Stack size={16} />
+            {t('blocks.ankiCards.reviewBatch')}
+          </NotionButton>
 
-      {/* 同步到 Anki */}
-      <NotionButton
-        type="button"
-        onClick={handleSync}
-        disabled={isDisabled || syncStatus === 'loading' || !isAnkiConnectAvailable}
-        title={syncDisabledReason}
-        variant={syncStatus === 'success' ? 'success' : syncStatus === 'error' ? 'danger' : 'default'}
-        className="text-xs sm:text-sm"
-      >
-        {renderIcon(syncStatus, PaperPlaneRight)}
-        {t('blocks.ankiCards.sync')}
-      </NotionButton>
-
-      {/* 复习这批 → workbench 闪卡会话 */}
-      <NotionButton
-        type="button"
-        onClick={handleReviewBatch}
-        disabled={isDisabled || !canReviewBatch}
-        title={!canReviewBatch ? t('blocks.ankiCards.reviewBatchNeedsRealIds') : undefined}
-        variant="default"
-        className="text-xs sm:text-sm"
-      >
-        <Stack size={16} />
-        {t('blocks.ankiCards.reviewBatch')}
-      </NotionButton>
+          {/* 低频交付动作收进菜单，避免与编辑/复习争夺主层级。 */}
+          <AppMenu>
+            <AppMenuTrigger asChild>
+              <NotionButton
+                type="button"
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="!h-10 !w-10 justify-self-end"
+                aria-label={t('blocks.ankiCards.moreActions')}
+                title={t('blocks.ankiCards.moreActions')}
+              >
+                <DotsThree size={20} />
+              </NotionButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="end" width={240}>
+              <AppMenuGroup>
+                <AppMenuItem
+                  icon={renderIcon(exportStatus, DownloadSimple)}
+                  onClick={() => void handleExport()}
+                  disabled={isDisabled || exportStatus === 'loading'}
+                >
+                  {t('blocks.ankiCards.export')}
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={renderIcon(syncStatus, PaperPlaneRight)}
+                  onClick={() => void handleSync()}
+                  disabled={isDisabled || syncStatus === 'loading' || !isAnkiConnectAvailable}
+                >
+                  {t('blocks.ankiCards.sync')}
+                  {syncDisabledReason ? ` · ${syncDisabledReason}` : ''}
+                </AppMenuItem>
+              </AppMenuGroup>
+            </AppMenuContent>
+          </AppMenu>
+        </>
+      )}
     </div>
   );
 };
@@ -1272,6 +1327,10 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     retryableCountHint.failed,
     retryableCountHint.truncated,
   ]);
+  const generationRetryBlocked = useMemo(() => {
+    const generationIssues = data?.issues?.filter((issue) => issue.scope === 'generation') ?? [];
+    return generationIssues.length > 0 && generationIssues.every((issue) => !issue.retryable);
+  }, [data?.issues]);
 
   useEffect(() => {
     retryScopeRef.current += 1;
@@ -1282,7 +1341,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   }, [documentId]);
 
   useEffect(() => {
-    if (!documentId || !retryInspectionKey) {
+    if (!documentId || !retryInspectionKey || generationRetryBlocked) {
       setRetryableTaskIds([]);
       return;
     }
@@ -1304,7 +1363,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     return () => {
       cancelled = true;
     };
-  }, [documentId, retryInspectionKey]);
+  }, [documentId, retryInspectionKey, generationRetryBlocked]);
 
   const handleRetryFailedSegments = useCallback(async () => {
     if (!documentId || retryableTaskIds.length === 0 || retryActionLockRef.current) return;
@@ -1834,10 +1893,11 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     [t]
   );
 
-  const errorMessage = useMemo(
-    () => resolveChatAnkiError(block.error || data?.syncError || data?.finalError),
-    [block.error, data?.syncError, data?.finalError, resolveChatAnkiError]
-  );
+  const deliveryRecovered = data?.deliveryStatus === 'ready' && cards.length > 0;
+  const errorMessage = useMemo(() => {
+    const generationError = deliveryRecovered ? undefined : block.error || data?.finalError;
+    return resolveChatAnkiError(generationError || data?.syncError);
+  }, [block.error, data?.syncError, data?.finalError, deliveryRecovered, resolveChatAnkiError]);
 
   return (
     <div className="chat-v2-anki-cards-block">
@@ -1854,7 +1914,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
             documentId: data?.documentId,
           }}
           lastUpdatedAt={block.endedAt || block.startedAt}
-          errorMessage={errorMessage}
+          errorMessage={shouldShowChatAnkiProgress ? undefined : errorMessage}
           stableId={data?.messageStableId || block.messageId}
           disabled={isActionDisabled}
           onClick={cards.length > 0 && !isActionDisabled ? handleToggleExpand : undefined}
@@ -1874,7 +1934,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               size="sm"
               variant="ghost"
               onClick={handleToggleExpand}
-              className="h-7 px-2"
+              className="min-h-10 px-2"
             >
               <CaretUp size={14} />
               {t('blocks.ankiCards.collapse')}
@@ -1905,7 +1965,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   size="sm"
                   variant="ghost"
                   onClick={() => setVisibleCount((prev) => prev + CARDS_PAGE_SIZE)}
-                  className="text-xs"
+                  className="min-h-10 text-xs"
                 >
                   {t('blocks.ankiCards.showMore', { remaining: cards.length - visibleCount })}
                 </NotionButton>
@@ -1914,19 +1974,19 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   size="sm"
                   variant="ghost"
                   onClick={() => setVisibleCount(cards.length)}
-                  className="text-xs text-muted-foreground"
+                  className="min-h-10 text-xs text-muted-foreground"
                 >
                   {t('blocks.ankiCards.showAll', { total: cards.length })}
                 </NotionButton>
               </div>
             )}
             {/* 滚动锚点：新卡片到来时自动滚动到此处 */}
-            <div ref={cardsEndRef} />
+            <div ref={cardsEndRef} className="scroll-mb-48" />
           </div>
 
           {/* 错误/状态信息 */}
-          {errorMessage && (
-            <div className="mt-2 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1">
+          {errorMessage && !shouldShowChatAnkiProgress && (
+            <div role="alert" className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-sm text-destructive">
               {errorMessage}
             </div>
           )}
@@ -1950,6 +2010,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               cardsCount={cards.length}
               blockStatus={block.status}
               finalStatus={data?.finalStatus}
+              errorMessage={errorMessage}
               onRefreshAnkiConnect={handleRefreshAnkiConnect}
             />
           )}

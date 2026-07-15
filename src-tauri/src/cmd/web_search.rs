@@ -101,6 +101,7 @@ pub async fn test_all_search_engines(state: State<'_, AppState>) -> Result<serde
 
     // 定义所有可能的搜索引擎
     let engines = vec![
+        ("bing_rss", "Bing RSS（免费）"),
         ("google_cse", "Google CSE"),
         ("serpapi", "SerpAPI"),
         ("tavily", "Tavily"),
@@ -118,6 +119,7 @@ pub async fn test_all_search_engines(state: State<'_, AppState>) -> Result<serde
 
         // 检查是否有必要的配置
         let has_config = match engine_id {
+            "bing_rss" => true,
             "google_cse" => cfg.keys.google_cse.is_some() && cfg.keys.google_cse_cx.is_some(),
             "serpapi" => cfg.keys.serpapi.is_some(),
             "tavily" => cfg.keys.tavily.is_some(),

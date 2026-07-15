@@ -43,15 +43,11 @@ describe('activity timeline thinking summary source', () => {
     expect(activityTimelineSource).toContain('flex w-full max-w-full items-center');
   });
 
-  it('uses a semantic solid band with a bottom fade aligned to the shared scroll-fade curve', () => {
-    expect(activityTimelineCssSource).toContain('.thinking-summary-sticky::before');
-    expect(activityTimelineCssSource).toContain('inset: 0;');
-    expect(activityTimelineCssSource).toContain('background: var(--surface-panel-strong);');
-    expect(activityTimelineCssSource).toContain('.thinking-summary-sticky::after');
-    expect(activityTimelineCssSource).toContain('bottom: -16px;');
-    expect(activityTimelineCssSource).toContain('color-mix(in srgb, var(--surface-panel-strong) 96%, transparent) 0%');
-    expect(activityTimelineCssSource).toContain('color-mix(in srgb, var(--surface-panel-strong) 72%, transparent) 38%');
-    expect(activityTimelineCssSource).not.toContain('backdrop-blur-sm');
+  it('keeps the sticky summary transparent so it matches adjacent timeline entries', () => {
+    expect(activityTimelineCssSource).not.toContain('.thinking-summary-sticky::before');
+    expect(activityTimelineCssSource).not.toContain('.thinking-summary-sticky::after');
+    expect(activityTimelineCssSource).not.toContain('.thinking-summary-row {');
+    expect(activityTimelineCssSource).not.toContain('--surface-panel-strong');
     expect(activityTimelineSource).not.toContain('border-[color:var(--surface-divider)]');
   });
 

@@ -30,7 +30,7 @@ export function setAvailableSearchEngines(engines: string[]): void {
 
 /**
  * 获取可用的搜索引擎列表
- * 需要用户配置 API Key 才能使用搜索引擎
+ * 内置 Bing RSS 无需配置，其他搜索引擎需要用户提供凭据或端点。
  */
 export function getAvailableSearchEngines(): string[] {
   // 检查缓存是否有效
@@ -38,8 +38,8 @@ export function getAvailableSearchEngines(): string[] {
     return cachedAvailableEngines;
   }
   
-  // 缓存过期或未初始化，返回空列表（无免费引擎可用）
-  return [];
+  // 缓存过期或尚未初始化时，内置免费源仍然可用。
+  return ['bing_rss'];
 }
 
 /**

@@ -2117,26 +2117,24 @@ impl ChatV2Pipeline {
 
     /// 🆕 2026-07: 保守判断工具是否可能进入审批流程
     ///
-    /// 与 `execute_single_tool` 内的 effective_sensitivity 逻辑对齐但方向保守：
-    /// - 注册表敏感度非 Low（或无执行器）→ 可能审批 → 串行。
-    ///   （即使全局旁路 global_bypass 打开也按串行处理，只损失并行度不损失正确性）
-    /// - 敏感度为 Low 但存在把它**升级**为 medium/high 的单工具覆盖 → 串行。
+    /// 与 `execute_single_tool` 内的 effective_sensitivity 逻辑共用同一个解析器：
+    /// - 最终敏感度非 Low（或无执行器）→ 可能审批 → 串行；
+    /// - 来源、能力域或单工具规则把 Low 升级后，也会自动转为串行。
     fn tool_may_require_approval(&self, tool_name: &str, arguments: &Value) -> bool {
-        let sensitivity = self
+        let base_sensitivity = self
             .executor_registry
             .get_sensitivity_for_call(tool_name, arguments);
-        if sensitivity != Some(ToolSensitivity::Low) {
-            return true;
-        }
-        if let Some(ref db) = self.main_db {
-            let override_key = format!("tool_approval.override.{}", tool_name);
-            if let Some(v) = db.get_setting(&override_key).ok().flatten() {
-                if v == "medium" || v == "high" {
-                    return true;
-                }
-            }
-        }
-        false
+        let effective_sensitivity = if let Some(ref db) = self.main_db {
+            crate::chat_v2::tool_approval_policy::resolve_effective_sensitivity(
+                base_sensitivity,
+                tool_name,
+                arguments,
+                |key| db.get_setting(key).ok().flatten(),
+            )
+        } else {
+            base_sensitivity
+        };
+        effective_sensitivity != Some(ToolSensitivity::Low)
     }
 
     /// 🆕 2026-07: 带瞬时失败自动重试的单工具执行封装
@@ -2538,6 +2536,44 @@ impl ChatV2Pipeline {
             ));
         }
 
+        // Command-list denies apply before any remembered approval and to both
+        // backend-owned and external MCP shell implementations. Allow is only
+        // effective for the dedicated local executor after its safety gate.
+        let shell_command_decision =
+            if crate::chat_v2::approval_scope::is_shell_runtime_tool_for_args(
+                &tool_call.name,
+                &tool_call.arguments,
+            ) {
+                tool_call
+                    .arguments
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .map(|command| {
+                        let raw_policy = self.main_db.as_ref().and_then(|db| {
+                            db.get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
+                                .ok()
+                                .flatten()
+                        });
+                        crate::chat_v2::shell_command_policy::enforce_for_call(
+                            raw_policy.as_deref(),
+                            command,
+                            crate::chat_v2::approval_scope::is_local_shell_execute_tool(
+                                &tool_call.name,
+                                &tool_call.arguments,
+                            ),
+                        )
+                    })
+            } else {
+                None
+            };
+        if shell_command_decision.as_ref().is_some_and(|decision| {
+            decision.effective_effect == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+        }) {
+            return Ok(build_preflight_blocked_result(
+                "终端命令被用户配置的拒绝规则拦截".to_string(),
+            ));
+        }
+
         // Shell approval is bound to backend-resolved filesystem authority,
         // never to model-supplied root labels. The original ToolCall remains
         // untouched and is the only value passed to the executor.
@@ -2570,46 +2606,24 @@ impl ChatV2Pipeline {
             .executor_registry
             .get_sensitivity_for_call(&tool_call.name, &tool_call.arguments);
 
-        // 🆕 全局免审批开关和单工具覆盖：
-        // 1. 全局开关 tool_approval.global_bypass = "true" → 所有工具跳过审批
-        // 2. 单工具覆盖 tool_approval.override.{tool_name} = "low" → 此工具跳过审批
-        let effective_sensitivity = if let Some(ref db) = self.main_db {
-            let ignores_broad_bypass =
-                crate::chat_v2::approval_scope::ignores_broad_approval_bypass(&tool_call.name);
-            // 检查全局旁路开关
-            let global_bypass = db
-                .get_setting("tool_approval.global_bypass")
-                .ok()
-                .flatten()
-                .map(|v| v == "true")
-                .unwrap_or(false);
-
-            if global_bypass && !ignores_broad_bypass {
-                Some(ToolSensitivity::Low)
-            } else {
-                // 检查单工具覆盖
-                let override_key = format!("tool_approval.override.{}", tool_call.name);
-                if let Some(override_val) = db.get_setting(&override_key).ok().flatten() {
-                    match override_val.as_str() {
-                        "low" if !ignores_broad_bypass => Some(ToolSensitivity::Low),
-                        "low" => {
-                            log::warn!(
-                                "[ChatV2::pipeline] Ignoring broad low-sensitivity override for precise-approval runtime tool {}",
-                                tool_call.name
-                            );
-                            sensitivity
-                        }
-                        "medium" => Some(ToolSensitivity::Medium),
-                        "high" => Some(ToolSensitivity::High),
-                        _ => sensitivity,
-                    }
-                } else {
-                    sensitivity
-                }
-            }
+        // Resolve source-qualified tool, legacy tool, source, domain, and global
+        // rules in one place. Precise runtime-authority approvals remain locked.
+        let mut effective_sensitivity = if let Some(ref db) = self.main_db {
+            crate::chat_v2::tool_approval_policy::resolve_effective_sensitivity(
+                sensitivity,
+                &tool_call.name,
+                &tool_call.arguments,
+                |key| db.get_setting(key).ok().flatten(),
+            )
         } else {
             sensitivity
         };
+        if let Some(decision) = shell_command_decision.as_ref() {
+            effective_sensitivity = crate::chat_v2::shell_command_policy::apply_to_sensitivity(
+                decision,
+                effective_sensitivity,
+            );
+        }
 
         if approval_manager_required(effective_sensitivity) {
             let Some(approval_manager) = &self.approval_manager else {

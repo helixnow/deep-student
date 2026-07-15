@@ -69,26 +69,20 @@ Output JSON now:"#;
             .replace("{assistant_content}", &assistant_summary);
 
         // 调用 LLM（一次返回 title + tags）
-        let response = match self.call_llm_for_summary(&prompt).await {
-            Ok(r) => r,
+        let metadata = match self.call_llm_for_summary(&prompt).await {
+            Ok(response) => Self::parse_session_metadata_response(&response)
+                .unwrap_or_else(|| {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to parse session metadata JSON; using local fallback"
+                    );
+                    Self::fallback_session_metadata(user_content)
+                }),
             Err(e) => {
                 log::warn!(
-                    "[ChatV2::pipeline] Failed to generate session metadata: {}",
+                    "[ChatV2::pipeline] Failed to generate session metadata; using local fallback: {}",
                     e
                 );
-                return;
-            }
-        };
-
-        // 解析 JSON 响应
-        let metadata = match Self::parse_session_metadata_response(&response) {
-            Some(m) => m,
-            None => {
-                log::warn!(
-                    "[ChatV2::pipeline] Failed to parse session metadata JSON: {}",
-                    response
-                );
-                return;
+                Self::fallback_session_metadata(user_content)
             }
         };
 
@@ -180,6 +174,24 @@ Output JSON now:"#;
             .unwrap_or_default();
 
         Some(SessionMetadata { title, tags })
+    }
+
+    fn fallback_session_metadata(user_content: &str) -> SessionMetadata {
+        let normalized = user_content
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim_matches(|c: char| c.is_ascii_punctuation() || "，。！？；：、".contains(c))
+            .to_string();
+        let title = if normalized.is_empty() {
+            "新对话".to_string()
+        } else {
+            normalized.chars().take(20).collect()
+        };
+        SessionMetadata {
+            title,
+            tags: Vec::new(),
+        }
     }
 
     /// 计算内容哈希（用于持久化记录"已生成过"的指纹）
@@ -433,5 +445,20 @@ mod tests {
         assert_eq!(h1, h2);
         assert_ne!(h1, h3);
         assert_eq!(h1.len(), 32); // 16 bytes -> 32 hex chars
+    }
+
+    #[test]
+    fn local_metadata_fallback_is_stable_and_cjk_safe() {
+        let metadata =
+            ChatV2Pipeline::fallback_session_metadata("  帮我做三张关于高中数学的 Anki 卡片。  ");
+        assert_eq!(metadata.title, "帮我做三张关于高中数学的 Anki 卡片");
+        assert!(metadata.title.chars().count() <= 20);
+        assert!(metadata.tags.is_empty());
+    }
+
+    #[test]
+    fn local_metadata_fallback_handles_empty_content() {
+        let metadata = ChatV2Pipeline::fallback_session_metadata("  \n\t ");
+        assert_eq!(metadata.title, "新对话");
     }
 }

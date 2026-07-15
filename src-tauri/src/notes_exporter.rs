@@ -2175,7 +2175,8 @@ impl NotesImporter {
                 if file.read_to_string(&mut content).is_ok() {
                     let full_key = format!("notes.pref.{}", pref.key);
                     tx.execute(
-                        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                         rusqlite::params![full_key, content, Utc::now().to_rfc3339()],
                     ).ok();
                     log::info!("导入偏好设置：{}", pref.key);
@@ -2189,7 +2190,8 @@ impl NotesImporter {
             let key = "notes.pref.notes_folders".to_string();
             let serialized = serde_json::to_string(&pref_value).unwrap_or_default();
             tx.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                 rusqlite::params![key, serialized, Utc::now().to_rfc3339()],
             )
             .ok();
@@ -2553,7 +2555,8 @@ impl NotesImporter {
                         let full_key = format!("notes.pref.{}", pref.key);
                         legacy_conn
                             .execute(
-                                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                                "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                                 rusqlite::params![full_key, pref_content, Utc::now().to_rfc3339()],
                             )
                             .ok();
@@ -2569,7 +2572,8 @@ impl NotesImporter {
                 let serialized = serde_json::to_string(&pref_value).unwrap_or_default();
                 legacy_conn
                     .execute(
-                        "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                         rusqlite::params![key, serialized, Utc::now().to_rfc3339()],
                     )
                     .ok();
@@ -2911,7 +2915,8 @@ impl NotesImporter {
             let serialized = serde_json::to_string(&pref_value)
                 .map_err(|e| AppError::internal(e.to_string()))?;
             tx.execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+                "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
                 rusqlite::params![key, serialized, Utc::now().to_rfc3339()],
             )
             .map_err(|e| AppError::database(format!("保存文件夹偏好失败: {}", e)))?;

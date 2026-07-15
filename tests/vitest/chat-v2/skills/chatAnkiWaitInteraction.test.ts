@@ -50,4 +50,15 @@ describe('ChatAnki skill: wait interaction', () => {
     expect(content).toContain('找不到 `ankiBlockId`');
     expect(content).toContain('`anki_cards`');
   });
+
+  it('skill prompt should gate general-knowledge fallback and avoid retrying quota failures', () => {
+    const content = chatAnkiSkill.content ?? '';
+
+    expect(content).toContain('由 AI 按通用知识生成');
+    expect(content).toContain('只有用户明确选择');
+    expect(content).toContain('不可重试的认证/额度问题');
+    expect(content).toContain('禁止盲目 retry');
+    expect(content).toContain('builtin-chatanki_add_cards');
+    expect(content).toContain('再次 `get_cards` 验收');
+  });
 });

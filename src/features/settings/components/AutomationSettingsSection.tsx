@@ -399,17 +399,25 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   };
 
   return (
-    <section aria-labelledby="automation-settings-title" className={cn('space-y-5', embedded && 'mt-5')}>
+    <section
+      aria-labelledby="automation-settings-title"
+      className={cn(
+        'space-y-4',
+        embedded
+          ? 'mt-5 rounded-[var(--radius-shell-control)] border border-[color:var(--border-default)]/60 bg-[color:var(--surface-raised,transparent)] px-4 py-4 sm:px-5'
+          : 'rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4',
+      )}
+    >
       {embedded ? <h2 id="automation-settings-title" className="sr-only">{t('settings:automation.title')}</h2> : (
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <header className="flex flex-col gap-3 px-1 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <CalendarBlank className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
-            <h2 id="automation-settings-title" className="text-lg font-semibold text-foreground">
+            <h2 id="automation-settings-title" className="text-base font-semibold text-foreground">
               {t('settings:automation.title')}
             </h2>
           </div>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground/80">
             {t('settings:automation.description')}
           </p>
         </div>
@@ -436,7 +444,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
 
       <div aria-live="polite" className="min-h-0">
         {error && (
-          <div role="alert" className="flex items-start justify-between gap-3 border-y border-destructive/30 bg-destructive/5 px-3 py-3 text-sm text-destructive">
+          <div role="alert" className="flex items-start justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-3 text-sm text-destructive">
             <span className="flex min-w-0 items-start gap-2">
               <WarningCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="break-words">{error}</span>
@@ -447,14 +455,14 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
           </div>
         )}
         {!error && notice && (
-          <p className="border-y border-success/30 bg-success/5 px-3 py-2.5 text-sm text-foreground">
+          <p className="rounded-md border border-success/30 bg-success/5 px-3 py-2.5 text-sm text-foreground">
             {notice}
           </p>
         )}
       </div>
 
       {loading && automations.length === 0 ? (
-        <div aria-label={t('settings:automation.loading')} className="divide-y divide-border border-y border-border">
+        <div aria-label={t('settings:automation.loading')} className="divide-y divide-border/50">
           {[0, 1, 2].map((index) => (
             <div key={index} className="flex min-h-28 animate-pulse items-center gap-4 py-4">
               <div className="h-10 w-10 rounded-md bg-muted" />
@@ -466,7 +474,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
           ))}
         </div>
       ) : error && automations.length === 0 ? null : automations.length === 0 ? (
-        <div className="border-y border-dashed border-border px-4 py-12 text-center">
+        <div className="rounded-md border border-dashed border-border px-4 py-12 text-center">
           <Robot className="mx-auto h-7 w-7 text-muted-foreground" aria-hidden="true" />
           <h3 className="mt-3 text-sm font-medium text-foreground">{t('settings:automation.empty.title')}</h3>
           <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
@@ -474,12 +482,12 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-border border-y border-border" data-testid="automation-list">
+        <div className="divide-y divide-border/50" data-testid="automation-list">
           {automations.map((automation) => {
             const rowBusy = busyKey?.endsWith(`:${automation.id}`) ?? false;
             const enabledBusy = busyKey === `enabled:${automation.id}`;
             return (
-              <article key={automation.id} className="grid min-w-0 gap-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+              <article key={automation.id} className="grid min-w-0 gap-4 rounded-md px-1 py-3 transition-colors hover:bg-muted/30 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                 <div className="min-w-0 space-y-2">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <h3 className="min-w-0 truncate text-sm font-semibold text-foreground" title={automation.name}>

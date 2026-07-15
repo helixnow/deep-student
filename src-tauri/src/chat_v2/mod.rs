@@ -30,9 +30,11 @@ pub mod repo;
 pub mod resource_repo; // ⚠️ DEPRECATED: 资源存储已迁移到 VFS (vfs.db)，由 vfs/repos/resource_repo.rs 替代。参见 P1-#9。
 pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（类型仍被 pipeline/context 使用，暂不废弃）
 pub mod runtime_roots;
+pub mod shell_command_policy;
 pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
 pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
+pub mod tool_approval_policy;
 pub mod tool_policy;
 pub mod tools;
 pub mod types;

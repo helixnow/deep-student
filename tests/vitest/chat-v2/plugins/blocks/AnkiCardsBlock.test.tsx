@@ -22,12 +22,18 @@ vi.mock('react-i18next', () => ({
       const dict: Record<string, string> = {
         'blocks.ankiCards.edit': 'Edit',
         'blocks.ankiCards.save': 'Save',
+        'blocks.ankiCards.addToLibrary': 'Add to card library',
+        'blocks.ankiCards.addedToLibrary': 'Added to card library',
         'blocks.ankiCards.export': 'Export',
         'blocks.ankiCards.sync': 'Sync',
+        'blocks.ankiCards.moreActions': 'More card actions',
         'blocks.ankiCards.reviewBatch': 'Review batch',
         'blocks.ankiCards.reviewBatchNeedsRealIds': 'Save every card to get real IDs before reviewing',
         'blocks.ankiCards.retryFailedSegments': 'Retry failed segments',
         'blocks.ankiCards.progress.segments.completedWithErrors': 'Completed with some failed segments',
+        'blocks.ankiCards.progress.ankiConnect.refresh': 'Refresh AnkiConnect status',
+        'blocks.ankiCards.progress.ankiConnect.checking': 'checking',
+        'blocks.ankiCards.progress.ankiConnect.notConnected': 'not connected',
       };
       if (dict[key]) return dict[key];
       if (options?.defaultValue) return options.defaultValue;
@@ -50,16 +56,19 @@ vi.mock('@/features/chat/anki', () => ({
   exportCardsAsApkg: (...args: unknown[]) => mockExportCardsAsApkg(...args),
   importCardsViaAnkiConnect: (...args: unknown[]) => mockImportCardsViaAnkiConnect(...args),
   logChatAnkiEvent: (...args: unknown[]) => mockLogChatAnkiEvent(...args),
-  AnkiCardStackPreview: ({ status, cards, onClick }: any) => (
-    <button
-      type="button"
-      data-testid="anki-preview"
-      data-status={status}
-      data-count={cards?.length ?? 0}
-      onClick={onClick}
-    >
-      preview
-    </button>
+  AnkiCardStackPreview: ({ status, cards, onClick, errorMessage }: any) => (
+    <div>
+      <button
+        type="button"
+        data-testid="anki-preview"
+        data-status={status}
+        data-count={cards?.length ?? 0}
+        onClick={onClick}
+      >
+        preview
+      </button>
+      {errorMessage && <span data-testid="anki-preview-error">{errorMessage}</span>}
+    </div>
   ),
   FullWidthCardWrapper: ({ children, className }: any) => (
     <div className={className}>{children}</div>
@@ -251,10 +260,11 @@ describe('AnkiCardsBlock', () => {
 
     // Error 状态但有卡片时，操作按钮不应被错误地禁用（只有流式时才禁用）
     expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Export' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to card library' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'More card actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Export' })).toBeEnabled();
     // 未提供 ankiConnect 状态时，同步按钮应禁用
-    expect(screen.getByRole('button', { name: 'Sync' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Sync · checking' })).toBeDisabled();
   });
 
   it('should render action buttons when has cards and disable them while streaming', () => {
@@ -264,9 +274,10 @@ describe('AnkiCardsBlock', () => {
     render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} isStreaming={true} />);
 
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Export' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Sync' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to card library' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'More card actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Export' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Sync · checking' })).toBeDisabled();
   });
 
   it('should disable batch review when any card is missing a real id', () => {
@@ -402,7 +413,7 @@ describe('AnkiCardsBlock', () => {
     );
     expect(screen.getByRole('button', { name: 'Review batch' })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to card library' }));
     await waitFor(() => expect(updateBlock).toHaveBeenCalledTimes(1));
 
     const persistedData = storeBlock.toolOutput as AnkiCardsBlockData;
@@ -482,7 +493,7 @@ describe('AnkiCardsBlock', () => {
     const view = render(
       <AnkiCardsBlock block={{ ...block, toolOutput: staleData }} store={store} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to card library' }));
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith(
@@ -529,6 +540,58 @@ describe('AnkiCardsBlock', () => {
     expect(screen.getByTestId('chatanki-progress-percent')).toHaveTextContent('25%');
     expect(screen.getByTestId('chatanki-progress-metrics')).toHaveTextContent('10');
     expect(screen.getByTestId('chatanki-progress-message')).toHaveTextContent('Routing...');
+    expect(
+      screen.getByRole('button', { name: 'Refresh AnkiConnect status' }),
+    ).toHaveClass('!h-10', '!w-10');
+  });
+
+  it('only shows importing when the selected route uses an import phase', () => {
+    const block = createBlock({ status: 'running' });
+    const simpleData = createData({
+      cards: [],
+      progress: { stage: 'generating', route: 'simple_text' },
+    });
+    const view = render(<AnkiCardsBlock block={{ ...block, toolOutput: simpleData }} />);
+
+    expect(screen.queryByTestId('chatanki-progress-step-importing')).not.toBeInTheDocument();
+    expect(screen.getByTestId('chatanki-progress-step-generating')).toBeInTheDocument();
+
+    const visionData = createData({
+      cards: [],
+      progress: { stage: 'generating', route: 'vlm_light' },
+    });
+    view.rerender(<AnkiCardsBlock block={{ ...block, toolOutput: visionData }} />);
+
+    expect(screen.getByTestId('chatanki-progress-step-importing')).toBeInTheDocument();
+  });
+
+  it('does not mark or render unreached phases after an early failure', () => {
+    const block = createBlock({ status: 'error', error: 'Routing failed' });
+    const data = createData({
+      cards: [],
+      progress: { stage: 'failed', route: 'simple_text', completedRatio: 0 },
+    });
+
+    render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
+
+    expect(screen.getByTestId('chatanki-progress-step-routing')).toBeInTheDocument();
+    expect(screen.queryByTestId('chatanki-progress-step-generating')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chatanki-progress-step-completed')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chatanki-progress-step-failed')).not.toBeInTheDocument();
+  });
+
+  it('renders a workflow error once when the progress summary is visible', () => {
+    const block = createBlock({ status: 'error', error: 'Generation failed' });
+    const data = createData({
+      cards: [{ id: 'card-1', front: 'Q1', back: 'A1' } as any],
+      progress: { stage: 'failed', completedRatio: 0.5 },
+    });
+
+    render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
+
+    expect(screen.getByTestId('chatanki-progress-error')).toHaveTextContent('Generation failed');
+    expect(screen.queryByTestId('anki-preview-error')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Generation failed')).toHaveLength(1);
   });
 
   it('should render warnings when progress is available', () => {

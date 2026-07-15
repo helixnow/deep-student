@@ -743,6 +743,15 @@ pub fn temp_root(app: &AppHandle, session_id: &str, create: bool) -> Result<Runt
     })
 }
 
+/// Ensure the app-owned, session-scoped runtime roots exist before tools need
+/// them. These roots are part of the session environment, not user-selected
+/// filesystem authority, so creating them does not broaden the sandbox.
+pub fn ensure_session_runtime_roots(app: &AppHandle, session_id: &str) -> Result<(), String> {
+    artifact_root(app, session_id, true)?;
+    temp_root(app, session_id, true)?;
+    Ok(())
+}
+
 pub(crate) fn canonicalize_authorized_dir(raw_path: &str) -> Result<PathBuf, String> {
     canonicalize_existing_dir(raw_path, "authorized runtime root")
 }

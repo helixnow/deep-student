@@ -1170,6 +1170,14 @@ impl Database {
 
     /// 创建新的数据库连接并初始化/迁移数据库
     pub fn new(db_path: &Path) -> Result<Self> {
+        const MIN_SAFE_SQLITE_VERSION: i32 = 3_051_003;
+        let sqlite_version = rusqlite::version_number();
+        anyhow::ensure!(
+            sqlite_version >= MIN_SAFE_SQLITE_VERSION,
+            "SQLite {} is too old; 3.51.3 or newer is required to avoid the WAL-reset corruption bug",
+            rusqlite::version()
+        );
+
         if let Some(parent) = db_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("创建数据库目录失败: {:?}", parent))?;
@@ -3946,7 +3954,11 @@ impl Database {
     pub fn save_setting(&self, key: &str, value: &str) -> Result<()> {
         let conn = self.get_conn_safe()?;
         conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET
+               value = excluded.value,
+               updated_at = excluded.updated_at
+             WHERE settings.value IS NOT excluded.value",
             params![key, value, Utc::now().to_rfc3339()],
         )?;
         Ok(())
@@ -6324,7 +6336,7 @@ impl Database {
              LIMIT ?2 OFFSET ?3"
         )?;
 
-        let rows = stmt.query_map(params![sub_library_id, page_size, offset], |row| {
+        let rows = stmt.query_map(params![sub_library_id, page_size as i64, offset as i64], |row| {
             Ok(serde_json::json!({
                 "id": row.get::<_, String>(0)?,
                 "file_name": row.get::<_, String>(1)?,
@@ -6984,7 +6996,11 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('default_template_id', ?1, ?2)",
+            "INSERT INTO settings (key, value, updated_at) VALUES ('default_template_id', ?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET
+               value = excluded.value,
+               updated_at = excluded.updated_at
+             WHERE settings.value IS NOT excluded.value",
             params![template_id, now]
         )?;
 
@@ -7015,6 +7031,10 @@ impl Database {
         response_time_ms: Option<u64>,
     ) -> Result<()> {
         let conn = self.get_conn_safe()?;
+        let response_time_ms = response_time_ms
+            .map(i64::try_from)
+            .transpose()
+            .map_err(|_| anyhow::anyhow!("response_time_ms exceeds SQLite INTEGER range"))?;
         conn.execute(
             "INSERT INTO search_logs (query, search_type, results_count, response_time_ms, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -7650,6 +7670,52 @@ mod tests {
             )?;
         }
         Ok(db)
+    }
+
+    #[test]
+    fn bundled_sqlite_contains_wal_reset_corruption_fix() {
+        assert!(
+            rusqlite::version_number() >= 3_051_003,
+            "bundled SQLite {} must be at least 3.51.3",
+            rusqlite::version()
+        );
+    }
+
+    #[test]
+    fn large_setting_upsert_preserves_rowid_and_integrity() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "builtin_model_profiles_snapshot";
+
+        db.save_setting(key, &"a".repeat(29_081))?;
+        let original_rowid: i64 = db.get_conn_safe()?.query_row(
+            "SELECT rowid FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )?;
+
+        for iteration in 0..64 {
+            let value = if iteration % 2 == 0 {
+                "b".repeat(49_186)
+            } else {
+                "c".repeat(29_081)
+            };
+            db.save_setting(key, &value)?;
+            db.get_conn_safe()?
+                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        }
+
+        let conn = db.get_conn_safe()?;
+        let final_rowid: i64 = conn.query_row(
+            "SELECT rowid FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )?;
+        let integrity: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+
+        assert_eq!(final_rowid, original_rowid, "UPSERT must not replace the row");
+        assert_eq!(integrity, "ok");
+        Ok(())
     }
 
     #[test]

@@ -186,13 +186,7 @@ impl ReviewPlanService {
         user_answer: Option<String>,
         time_spent_seconds: Option<u32>,
     ) -> Result<ProcessReviewResult> {
-        self.process_review_with_expected(
-            plan_id,
-            quality,
-            user_answer,
-            time_spent_seconds,
-            None,
-        )
+        self.process_review_with_expected(plan_id, quality, user_answer, time_spent_seconds, None)
     }
 
     /// 处理复习结果，并在提交时校验 agent 读取到的计划版本。
@@ -595,12 +589,9 @@ impl ReviewPlanService {
         plan_id: &str,
         expected_updated_at: &str,
     ) -> Result<ReviewPlan> {
-        let plan = VfsReviewPlanRepo::resume_plan_if_unchanged(
-            &self.vfs_db,
-            plan_id,
-            expected_updated_at,
-        )
-        .with_context(|| format!("Failed to resume review plan: {}", plan_id))?;
+        let plan =
+            VfsReviewPlanRepo::resume_plan_if_unchanged(&self.vfs_db, plan_id, expected_updated_at)
+                .with_context(|| format!("Failed to resume review plan: {}", plan_id))?;
 
         info!("[ReviewPlanService] Resumed review plan: {}", plan_id);
         Ok(plan)
@@ -617,11 +608,7 @@ impl ReviewPlanService {
     }
 
     /// 删除复习计划，并校验计划版本。
-    pub fn delete_plan_if_unchanged(
-        &self,
-        plan_id: &str,
-        expected_updated_at: &str,
-    ) -> Result<()> {
+    pub fn delete_plan_if_unchanged(&self, plan_id: &str, expected_updated_at: &str) -> Result<()> {
         VfsReviewPlanRepo::delete_plan_if_unchanged(&self.vfs_db, plan_id, expected_updated_at)
             .with_context(|| format!("Failed to delete review plan: {}", plan_id))?;
 

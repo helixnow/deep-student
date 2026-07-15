@@ -103,15 +103,13 @@ describe("ankiCards event handler", () => {
     ankiCardsEventHandler.onError(
       store as any,
       blockId,
-      "blocks.ankiCards.errors.partialSegmentsFailed",
+      "API access denied (HTTP 403)",
     );
 
     const block = blocks.get(blockId);
     expect(block.status).toBe("success");
     expect(block.toolOutput.finalStatus).toBe("completed_with_errors");
-    expect(block.toolOutput.finalError).toBe(
-      "blocks.ankiCards.errors.partialSegmentsFailed",
-    );
+    expect(block.toolOutput.finalError).toBeUndefined();
     expect(block.toolOutput.progress.stage).toBe("completed_with_errors");
     expect(block.toolOutput.cards).toEqual([card]);
     expect(block.toolOutput.syncStatus).toBe("pending");
@@ -125,16 +123,19 @@ describe("ankiCards event handler", () => {
     ankiCardsEventHandler.onError(
       store as any,
       blockId,
-      "blocks.ankiCards.errors.partialSegmentsFailed",
+      "API access denied (HTTP 403)",
     );
 
     const block = blocks.get(blockId);
     expect(block.status).toBe("error");
-    expect(block.error).toBe("blocks.ankiCards.errors.partialSegmentsFailed");
+    expect(block.error).toBe("API access denied (HTTP 403)");
     expect(block.toolOutput.finalStatus).toBe("error");
-    expect(block.toolOutput.finalError).toBe(
-      "blocks.ankiCards.errors.partialSegmentsFailed",
-    );
+    expect(block.toolOutput.finalError).toBe("API access denied (HTTP 403)");
+    expect(block.toolOutput.workflowStatus).toBe("failed");
+    expect(block.toolOutput.generationStatus).toBe("failed");
+    expect(block.toolOutput.issues).toEqual([
+      expect.objectContaining({ code: "provider_forbidden", retryable: false }),
+    ]);
   });
 
   it("does not downgrade terminal error block on end", () => {
@@ -191,6 +192,81 @@ describe("ankiCards event handler", () => {
     expect(block.toolOutput.cards).toEqual([
       { id: "c1", front: "q1-fixed", back: "a1-fixed" },
     ]);
+  });
+
+  it("converges an error block to recovered success after an authoritative card mutation", () => {
+    const { store, blockId, blocks } = createStore("error", {
+      schemaVersion: 2,
+      stateRevision: 10,
+      cards: [],
+      documentId: "doc-recovered",
+      finalStatus: "error",
+      deliveryStatus: "empty",
+    });
+    blocks.get(blockId).error = "blocks.ankiCards.errors.generationFailed";
+
+    ankiCardsEventHandler.onChunk(
+      store as any,
+      blockId,
+      JSON.stringify({
+        cardMutation: "upsert",
+        _blockStatus: "success",
+        _blockError: null,
+        schemaVersion: 2,
+        stateRevision: 20,
+        workflowStatus: "completed_with_warnings",
+        generationStatus: "failed",
+        deliveryStatus: "ready",
+        recoveryStatus: "manual",
+        finalStatus: "completed_with_errors",
+        finalError: null,
+        cards: [{ id: "c1", front: "q1", back: "a1" }],
+        progress: { stage: "completed_with_errors", cardsGenerated: 1 },
+      }),
+    );
+
+    ankiCardsEventHandler.onError(
+      store as any,
+      blockId,
+      "blocks.ankiCards.errors.generationFailed",
+    );
+
+    const block = blocks.get(blockId);
+    expect(block.status).toBe("success");
+    expect(block.error).toBeUndefined();
+    expect(block.toolOutput.deliveryStatus).toBe("ready");
+    expect(block.toolOutput.recoveryStatus).toBe("manual");
+    expect(block.toolOutput.finalError).toBeNull();
+    expect(block.toolOutput.cards).toHaveLength(1);
+  });
+
+  it("ignores an equal-revision workflow snapshot after recovery", () => {
+    const { store, blockId, blocks } = createStore("success", {
+      stateRevision: 20,
+      cards: [{ id: "c1", front: "q1", back: "a1" }],
+      deliveryStatus: "ready",
+      finalStatus: "completed_with_errors",
+    });
+
+    ankiCardsEventHandler.onChunk(
+      store as any,
+      blockId,
+      JSON.stringify({
+        cardMutation: "upsert",
+        stateRevision: 20,
+        _blockStatus: "error",
+        _blockError: "stale",
+        deliveryStatus: "empty",
+        finalStatus: "error",
+        cards: [],
+      }),
+    );
+
+    const block = blocks.get(blockId);
+    expect(block.status).toBe("success");
+    expect(block.error).toBeUndefined();
+    expect(block.toolOutput.deliveryStatus).toBe("ready");
+    expect(block.toolOutput.cards).toHaveLength(1);
   });
 
   it("applies explicit card deletions to a terminal block", () => {

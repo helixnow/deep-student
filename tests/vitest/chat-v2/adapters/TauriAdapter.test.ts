@@ -1584,6 +1584,33 @@ describe('ChatV2TauriAdapter', () => {
       expect(blockB.toolOutput.cards[0].id).toBe('card-b1');
     });
 
+    it('keeps the document running when only one task completes', async () => {
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_document_tasks') {
+          return [
+            { id: 'task-done', status: 'Completed' },
+            { id: 'task-running', status: 'Processing' },
+          ];
+        }
+        return undefined;
+      });
+      seedAnkiBlock('anki-block-multi', { documentId: 'doc-multi', status: 'running' });
+
+      ankiEventCallback({
+        payload: {
+          type: 'TaskCompleted',
+          data: { document_id: 'doc-multi', task_id: 'task-done' },
+        },
+      });
+
+      await vi.waitFor(() => {
+        const block = mockStore.blocks.get('anki-block-multi') as any;
+        expect(block.status).toBe('running');
+        expect(block.toolOutput.finalStatus).toBe('generating');
+        expect(block.toolOutput.workflowStatus).toBe('running');
+      });
+    });
+
     it('does not stamp foreign documentId onto an unmatched active block', () => {
       // Active block without documentId — old bug would fallback + ensureDocumentId write doc-x here
       seedAnkiBlock('anki-block-orphan', { status: 'running' });
@@ -1744,7 +1771,17 @@ describe('ChatV2TauriAdapter', () => {
         expect(block.toolOutput.progress.counts).toEqual(
           expect.objectContaining({ completed: 2, failed: 1 }),
         );
-        expect(block.toolOutput.finalError).toBe('still failed');
+        expect(block.toolOutput.finalError).toBeUndefined();
+        expect(block.toolOutput.workflowStatus).toBe('completed_with_warnings');
+        expect(block.toolOutput.deliveryStatus).toBe('ready');
+        expect(block.toolOutput.issues).toEqual([
+          expect.objectContaining({
+            code: 'generation_failed',
+            severity: 'warning',
+            retryable: true,
+            recovered: true,
+          }),
+        ]);
       });
     });
 
@@ -1774,11 +1811,14 @@ describe('ChatV2TauriAdapter', () => {
         },
       });
       await vi.waitFor(() => {
-        expect((mockStore.blocks.get('anki-block-failed-retry') as any).status).toBe('running');
+        const block = mockStore.blocks.get('anki-block-failed-retry') as any;
+        expect(block.status).toBe('running');
+        expect(block.toolOutput.workflowStatus).toBe('running');
+        expect(block.toolOutput.generationStatus).toBe('running');
       });
 
       tasks = [
-        { id: 'task-a', status: 'Failed', error_message: 'retry failed' },
+        { id: 'task-a', status: 'Failed', error_message: '401 API key invalid' },
         { id: 'task-b', status: 'Truncated', error_message: 'retry truncated' },
       ];
       ankiEventCallback({
@@ -1792,6 +1832,16 @@ describe('ChatV2TauriAdapter', () => {
         const block = mockStore.blocks.get('anki-block-failed-retry') as any;
         expect(block.status).toBe('error');
         expect(block.toolOutput.finalStatus).toBe('error');
+        expect(block.toolOutput.workflowStatus).toBe('failed');
+        expect(block.toolOutput.generationStatus).toBe('failed');
+        expect(block.toolOutput.issues).toEqual([
+          expect.objectContaining({
+            code: 'provider_auth_failed',
+            severity: 'error',
+            retryable: false,
+            recovered: false,
+          }),
+        ]);
         expect(block.toolOutput.progress.counts).toEqual(
           expect.objectContaining({ failed: 1, truncated: 1 }),
         );
@@ -1819,7 +1869,7 @@ describe('ChatV2TauriAdapter', () => {
       expect((mockStore.blocks.get('anki-block-completed') as any).status).toBe('success');
     });
 
-    it('preserves current user edits and a real sync error while reconciling a partial retry', async () => {
+    it('uses the SQLite card snapshot while preserving a real sync error', async () => {
       const tasks = [
         { id: 'task-completed', status: 'Completed' },
         { id: 'task-failed', status: 'Failed', error_message: 'generation failed' },
@@ -1850,7 +1900,7 @@ describe('ChatV2TauriAdapter', () => {
       await vi.waitFor(() => {
         const block = mockStore.blocks.get('anki-block-edited-partial') as any;
         expect(block.toolOutput.cards).toEqual([
-          expect.objectContaining({ id: 'card-edited', front: 'user front', back: 'user back' }),
+          expect.objectContaining({ id: 'card-edited', front: 'backend front', back: 'backend back' }),
         ]);
         expect(block.toolOutput.syncStatus).toBe('error');
         expect(block.toolOutput.syncError).toBe('anki-connect-down');

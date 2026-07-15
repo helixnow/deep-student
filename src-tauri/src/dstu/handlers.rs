@@ -66,7 +66,6 @@ use super::handler_utils::{
     update_content_by_type,
 };
 
-
 use crate::vfs::{
     canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
     VfsCreateExamSheetParams, VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase,

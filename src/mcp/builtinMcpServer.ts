@@ -1694,6 +1694,7 @@ export function hasToolDisplayName(toolName: string): boolean {
  * 所有支持的搜索引擎 ID
  */
 export const ALL_SEARCH_ENGINE_IDS = [
+  'bing_rss',
   'google_cse',
   'serpapi',
   'tavily',

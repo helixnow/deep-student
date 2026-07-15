@@ -5,7 +5,8 @@ use log::{debug, error, info, warn};
 use crate::database::{Database, DatabaseManager};
 use crate::exam_sheet_service::ExamSheetService;
 use crate::llm_manager::{
-    should_use_openai_responses_for_config, ApiConfig, ModelProfile, VendorConfig,
+    build_provider_adapter, should_use_openai_responses_for_config, ApiConfig, ModelProfile,
+    VendorConfig, AUTH_MODE_OPENAI_CODEX_OAUTH,
 };
 #[cfg(feature = "mcp")]
 use crate::mcp::McpConfig;
@@ -1850,6 +1851,24 @@ fn build_test_provider_request(
     adapter.build_request(api_base, api_key, model, request_body)
 }
 
+fn is_openai_codex_oauth_test(
+    persisted_vendor: Option<&VendorConfig>,
+    provider_type: Option<&str>,
+    auth_mode: Option<&str>,
+) -> bool {
+    let effective_provider_type = persisted_vendor
+        .map(|vendor| vendor.provider_type.as_str())
+        .or(provider_type)
+        .unwrap_or_default();
+    let effective_auth_mode = persisted_vendor
+        .and_then(|vendor| vendor.auth_mode.as_deref())
+        .or(auth_mode)
+        .unwrap_or_default();
+
+    effective_provider_type.eq_ignore_ascii_case("openai_codex")
+        && effective_auth_mode.eq_ignore_ascii_case(AUTH_MODE_OPENAI_CODEX_OAUTH)
+}
+
 #[tauri::command]
 pub async fn test_api_connection(
     api_key: String,
@@ -1857,6 +1876,7 @@ pub async fn test_api_connection(
     api_protocol: Option<String>,
     supports_openai_responses: Option<bool>,
     provider_type: Option<String>,
+    auth_mode: Option<String>,
     model_adapter: Option<String>,
     model: Option<String>,
     vendor_id: Option<String>,
@@ -1873,6 +1893,30 @@ pub async fn test_api_connection(
         vendor_id
     );
 
+    let persisted_vendor = if let Some(vid) = vendor_id.as_deref() {
+        state
+            .llm_manager
+            .get_vendor_configs()
+            .await?
+            .into_iter()
+            .find(|vendor| vendor.id == vid)
+    } else {
+        None
+    };
+    let effective_provider_type = persisted_vendor
+        .as_ref()
+        .map(|vendor| vendor.provider_type.clone())
+        .or(provider_type.clone());
+    let effective_auth_mode = persisted_vendor
+        .as_ref()
+        .and_then(|vendor| vendor.auth_mode.clone())
+        .or(auth_mode.clone());
+    let is_codex_oauth = is_openai_codex_oauth_test(
+        persisted_vendor.as_ref(),
+        provider_type.as_deref(),
+        auth_mode.as_deref(),
+    );
+
     // 解析真实的 API 密钥
     // 如果 api_key 是占位符（*** 或空），尝试从安全存储获取真实密钥
     let effective_api_key = {
@@ -1880,7 +1924,9 @@ pub async fn test_api_connection(
         let is_placeholder =
             trimmed.is_empty() || trimmed == "***" || trimmed.chars().all(|c| c == '*');
 
-        if is_placeholder {
+        if is_codex_oauth {
+            String::new()
+        } else if is_placeholder {
             // 尝试从安全存储获取真实密钥
             if let Some(vid) = &vendor_id {
                 // 尝试标准格式：{vendor_id}.api_key
@@ -1945,7 +1991,7 @@ pub async fn test_api_connection(
         api_protocol.as_deref(),
         model.as_deref(),
         supports_openai_responses,
-        provider_type.as_deref(),
+        effective_provider_type.as_deref(),
         model_adapter.as_deref(),
     );
 
@@ -1956,13 +2002,70 @@ pub async fn test_api_connection(
         "max_tokens": 1,
         "stream": false
     });
+
+    if is_codex_oauth {
+        let config = ApiConfig {
+            id: "connection-test".to_string(),
+            name: "OpenAI Codex connection test".to_string(),
+            vendor_id: vendor_id.clone(),
+            provider_type: effective_provider_type,
+            auth_mode: effective_auth_mode,
+            api_protocol: Some(protocol.to_string()),
+            supports_openai_responses: Some(true),
+            api_key: String::new(),
+            base_url: persisted_vendor
+                .as_ref()
+                .map(|vendor| vendor.base_url.clone())
+                .filter(|base_url| !base_url.trim().is_empty())
+                .unwrap_or_else(|| api_base.clone()),
+            model: model_id.clone(),
+            model_adapter: model_adapter.unwrap_or_else(|| "openai".to_string()),
+            headers: persisted_vendor
+                .as_ref()
+                .map(|vendor| vendor.headers.clone())
+                .filter(|headers| !headers.is_empty())
+                .or(headers),
+            ..Default::default()
+        };
+        let adapter = build_provider_adapter(&config);
+        let mut request = state
+            .llm_manager
+            .prepare_provider_request(
+                adapter.as_ref(),
+                &config,
+                &request_body,
+                None,
+                None,
+                "Codex 连接测试请求构建失败",
+            )
+            .await?;
+        let response = state
+            .llm_manager
+            .send_codex_request_with_single_refresh(&mut request, Some(Duration::from_secs(10)))
+            .await?;
+        let status = response.status();
+        if status.is_success() {
+            info!("[API测试] Codex OAuth 连接成功");
+            return Ok(true);
+        }
+        let error_text = response.text().await.unwrap_or_default();
+        error!(
+            "[API测试] Codex OAuth 连接失败: {} - {}",
+            status, error_text
+        );
+        return Err(AppError::network(format!(
+            "Codex 连接测试失败: {} - {}",
+            status, error_text
+        )));
+    }
+
     let provider_request = build_test_provider_request(
         &api_base,
         effective_api_key.trim(),
         &model_id,
         &request_body,
         protocol,
-        provider_type.as_deref(),
+        effective_provider_type.as_deref(),
         model_adapter.as_deref(),
     )
     .map_err(|error| AppError::validation(format!("API连接测试请求构建失败: {error}")))?;
@@ -3415,9 +3518,11 @@ fn parse_version_parts(version: &str) -> Option<Vec<u64>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_test_provider_request, compare_template_version, resolve_test_api_protocol,
-        resolve_test_provider_adapter, should_update_builtin_template, TestProviderAdapter,
+        build_test_provider_request, compare_template_version, is_openai_codex_oauth_test,
+        resolve_test_api_protocol, resolve_test_provider_adapter, should_update_builtin_template,
+        TestProviderAdapter,
     };
+    use crate::llm_manager::{VendorConfig, AUTH_MODE_OPENAI_CODEX_OAUTH};
     use serde_json::json;
     use std::cmp::Ordering;
 
@@ -3646,6 +3751,48 @@ mod tests {
             .headers
             .iter()
             .any(|(name, value)| name == "Authorization" && value == "Bearer openai-key"));
+    }
+
+    #[test]
+    fn codex_connection_test_prefers_persisted_vendor_authentication() {
+        let codex_vendor = VendorConfig {
+            id: "builtin-openai-codex".to_string(),
+            provider_type: "openai_codex".to_string(),
+            auth_mode: Some(AUTH_MODE_OPENAI_CODEX_OAUTH.to_string()),
+            ..Default::default()
+        };
+
+        assert!(is_openai_codex_oauth_test(
+            Some(&codex_vendor),
+            Some("openai"),
+            Some("api_key"),
+        ));
+
+        let api_key_vendor = VendorConfig {
+            id: "custom-openai".to_string(),
+            provider_type: "openai".to_string(),
+            auth_mode: Some("api_key".to_string()),
+            ..Default::default()
+        };
+        assert!(!is_openai_codex_oauth_test(
+            Some(&api_key_vendor),
+            Some("openai_codex"),
+            Some(AUTH_MODE_OPENAI_CODEX_OAUTH),
+        ));
+    }
+
+    #[test]
+    fn codex_connection_test_supports_unsaved_oauth_context() {
+        assert!(is_openai_codex_oauth_test(
+            None,
+            Some("openai_codex"),
+            Some(AUTH_MODE_OPENAI_CODEX_OAUTH),
+        ));
+        assert!(!is_openai_codex_oauth_test(
+            None,
+            Some("openai_codex"),
+            None,
+        ));
     }
 }
 

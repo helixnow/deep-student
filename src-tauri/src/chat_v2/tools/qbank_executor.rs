@@ -588,13 +588,18 @@ fn write_qbank_export(
     extension: &str,
     bytes: &[u8],
 ) -> Result<String, String> {
-    let app_data_dir = ctx.window.app_handle().path().app_data_dir().map_err(|error| {
-        qbank_error(
-            "QBANK_EXPORT_FAILED",
-            format!("无法解析应用数据目录: {error}"),
-            "重新打开应用后重试",
-        )
-    })?;
+    let app_data_dir = ctx
+        .window
+        .app_handle()
+        .path()
+        .app_data_dir()
+        .map_err(|error| {
+            qbank_error(
+                "QBANK_EXPORT_FAILED",
+                format!("无法解析应用数据目录: {error}"),
+                "重新打开应用后重试",
+            )
+        })?;
     let export_dir = app_data_dir.join("exports").join("qbank");
     std::fs::create_dir_all(&export_dir).map_err(|error| {
         qbank_error(
@@ -603,7 +608,12 @@ fn write_qbank_export(
             "检查应用数据目录权限后重试",
         )
     })?;
-    let filename = format!("{}-{}.{}", safe_file_component(name), uuid::Uuid::new_v4(), extension);
+    let filename = format!(
+        "{}-{}.{}",
+        safe_file_component(name),
+        uuid::Uuid::new_v4(),
+        extension
+    );
     let path = export_dir.join(filename);
     let temporary_path = path.with_extension(format!("{extension}.tmp"));
     std::fs::write(&temporary_path, bytes).map_err(|error| {
@@ -646,7 +656,10 @@ fn render_question_export_markdown(name: &str, questions: &[Value]) -> String {
         markdown.push_str(&format!("## 题目 {}\n\n", index + 1));
         markdown.push_str(&format!(
             "**题干**\n{}\n\n",
-            question.get("content").and_then(Value::as_str).unwrap_or("")
+            question
+                .get("content")
+                .and_then(Value::as_str)
+                .unwrap_or("")
         ));
         if let Some(answer) = question.get("answer").and_then(Value::as_str) {
             markdown.push_str(&format!("**答案**\n{answer}\n\n"));
@@ -664,12 +677,15 @@ fn render_question_export_docx(name: &str, questions: &[Value]) -> Result<Vec<u8
 
     let mut blocks = Vec::new();
     for (index, question) in questions.iter().enumerate() {
-        blocks.push(json!({ "type": "heading", "level": 2, "text": format!("题目 {}", index + 1) }));
+        blocks
+            .push(json!({ "type": "heading", "level": 2, "text": format!("题目 {}", index + 1) }));
         if let Some(content) = question.get("content").and_then(Value::as_str) {
             blocks.push(json!({ "type": "paragraph", "text": content }));
         }
         if let Some(answer) = question.get("answer").and_then(Value::as_str) {
-            blocks.push(json!({ "type": "paragraph", "text": format!("答案：{answer}"), "bold": true }));
+            blocks.push(
+                json!({ "type": "paragraph", "text": format!("答案：{answer}"), "bold": true }),
+            );
         }
         if let Some(explanation) = question.get("explanation").and_then(Value::as_str) {
             blocks.push(json!({ "type": "paragraph", "text": format!("解析：{explanation}"), "italic": true }));
@@ -3166,30 +3182,43 @@ impl QBankExecutor {
             ));
         }
 
-        let (name, questions, source, degraded) = if let Some(service) = &ctx.question_bank_service {
-            let name = ctx.vfs_db.as_ref()
+        let (name, questions, source, degraded) = if let Some(service) = &ctx.question_bank_service
+        {
+            let name = ctx
+                .vfs_db
+                .as_ref()
                 .and_then(|db| VfsExamRepo::get_exam_sheet(db, session_id).ok().flatten())
                 .and_then(|exam| exam.exam_name)
                 .unwrap_or_else(|| "题目集".to_string());
             let status = filter_status
                 .and_then(|value| serde_json::from_value(json!(value)).ok())
                 .map(|value| vec![value]);
-            let questions = self.list_all_questions(service, session_id, &QuestionFilters { status, ..Default::default() })?
+            let questions = self
+                .list_all_questions(
+                    service,
+                    session_id,
+                    &QuestionFilters {
+                        status,
+                        ..Default::default()
+                    },
+                )?
                 .iter()
-                .map(|question| json!({
-                    "label": question.question_label,
-                    "content": question.content,
-                    "question_type": question.question_type,
-                    "answer": question.answer,
-                    "explanation": question.explanation,
-                    "difficulty": question.difficulty,
-                    "tags": question.tags,
-                    "status": question.status,
-                    "attempt_count": question.attempt_count,
-                    "correct_count": question.correct_count,
-                    "user_note": question.user_note,
-                    "images": question.images,
-                }))
+                .map(|question| {
+                    json!({
+                        "label": question.question_label,
+                        "content": question.content,
+                        "question_type": question.question_type,
+                        "answer": question.answer,
+                        "explanation": question.explanation,
+                        "difficulty": question.difficulty,
+                        "tags": question.tags,
+                        "status": question.status,
+                        "attempt_count": question.attempt_count,
+                        "correct_count": question.correct_count,
+                        "user_note": question.user_note,
+                        "images": question.images,
+                    })
+                })
                 .collect::<Vec<Value>>();
             (name, questions, "questions_table", false)
         } else {
@@ -3200,33 +3229,50 @@ impl QBankExecutor {
             let name = exam.exam_name.unwrap_or_else(|| "题目集".to_string());
             let preview: ExamSheetPreviewResult = serde_json::from_value(exam.preview_json)
                 .map_err(|error| format!("Failed to parse preview: {error}"))?;
-            let questions = preview.pages.iter().flat_map(|page| &page.cards).filter_map(|card| {
-                let card_status = serde_json::to_value(&card.status).ok()?;
-                if filter_status.is_some_and(|status| card_status.as_str() != Some(status)) {
-                    return None;
-                }
-                Some(json!({
-                    "label": card.question_label,
-                    "content": card.ocr_text,
-                    "question_type": card.question_type,
-                    "answer": card.answer,
-                    "explanation": card.explanation,
-                    "difficulty": card.difficulty,
-                    "tags": card.tags,
-                    "status": card.status,
-                    "attempt_count": card.attempt_count,
-                    "correct_count": card.correct_count,
-                    "user_note": card.user_note,
-                }))
-            }).collect::<Vec<Value>>();
+            let questions = preview
+                .pages
+                .iter()
+                .flat_map(|page| &page.cards)
+                .filter_map(|card| {
+                    let card_status = serde_json::to_value(&card.status).ok()?;
+                    if filter_status.is_some_and(|status| card_status.as_str() != Some(status)) {
+                        return None;
+                    }
+                    Some(json!({
+                        "label": card.question_label,
+                        "content": card.ocr_text,
+                        "question_type": card.question_type,
+                        "answer": card.answer,
+                        "explanation": card.explanation,
+                        "difficulty": card.difficulty,
+                        "tags": card.tags,
+                        "status": card.status,
+                        "attempt_count": card.attempt_count,
+                        "correct_count": card.correct_count,
+                        "user_note": card.user_note,
+                    }))
+                })
+                .collect::<Vec<Value>>();
             (name, questions, "preview_json", true)
         };
 
         let (extension, bytes) = match format {
-            "markdown" => ("md", render_question_export_markdown(&name, &questions).into_bytes()),
+            "markdown" => (
+                "md",
+                render_question_export_markdown(&name, &questions).into_bytes(),
+            ),
             "docx" => ("docx", render_question_export_docx(&name, &questions)?),
-            _ => ("json", serde_json::to_vec_pretty(&json!({ "name": name, "questions": questions }))
-                .map_err(|error| qbank_error("QBANK_EXPORT_FAILED", format!("JSON 序列化失败: {error}"), "重新导出"))?),
+            _ => (
+                "json",
+                serde_json::to_vec_pretty(&json!({ "name": name, "questions": questions }))
+                    .map_err(|error| {
+                        qbank_error(
+                            "QBANK_EXPORT_FAILED",
+                            format!("JSON 序列化失败: {error}"),
+                            "重新导出",
+                        )
+                    })?,
+            ),
         };
         let export_path = write_qbank_export(ctx, &name, extension, &bytes)?;
         let mut result = json!({

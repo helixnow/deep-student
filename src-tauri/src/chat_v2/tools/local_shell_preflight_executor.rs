@@ -201,12 +201,22 @@ impl LocalShellPreflightExecutor {
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
             root_id_input,
-            false,
+            true,
         );
         let cwd_result = normalize_runtime_relative_path(cwd_input);
         let analysis = analyze_shell_command(&command);
         let (display_command, command_redacted) = redact_shell_command_for_display(&command);
         let display_analysis = analyze_shell_command(&display_command);
+        let raw_command_policy = state
+            .database
+            .get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
+            .ok()
+            .flatten();
+        let command_policy = crate::chat_v2::shell_command_policy::enforce_for_call(
+            raw_command_policy.as_deref(),
+            &command,
+            true,
+        );
 
         if command.is_empty() {
             reasons.push("command is required".to_string());
@@ -233,6 +243,19 @@ impl LocalShellPreflightExecutor {
         }
         if Self::has_dangerous_command_prefix(&command) {
             reasons.push("command prefix is write-capable or externally effectful".to_string());
+        }
+        if command_policy.effective_effect
+            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+        {
+            reasons.push("command is denied by the configured terminal command rules".to_string());
+        } else if command_policy.configured_effect
+            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Allow
+            && command_policy.effective_effect
+                != crate::chat_v2::shell_command_policy::ShellRuleEffect::Allow
+        {
+            reasons.push(
+                "matching allow rule cannot bypass approval for a protected command".to_string(),
+            );
         }
 
         let (root, root_error) = match root_result {
@@ -299,7 +322,7 @@ impl LocalShellPreflightExecutor {
                     &ctx.session_id,
                     ctx.skill_package_roots.as_ref(),
                     Some(skill_root_id),
-                    false,
+                    true,
                 );
                 match resolved {
                     Ok(root) if root.kind == RuntimeRootKind::SkillPackage => Some(root.id),
@@ -325,6 +348,8 @@ impl LocalShellPreflightExecutor {
         let blocked = command.is_empty()
             || command.len() > 8192
             || !shell.execution_supported
+            || command_policy.effective_effect
+                == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
             || touches_skills_directory
             || skill_cwd_blocked
             || readonly_write_blocked
@@ -367,6 +392,7 @@ impl LocalShellPreflightExecutor {
             "purpose": purpose,
             "risk_level": risk_level,
             "reasons": reasons,
+            "command_policy": command_policy,
             "has_shell_operators": analysis.has_shell_operators,
             "uses_script_runner": analysis.uses_script_runner,
             "would_execute": false,
@@ -382,7 +408,8 @@ impl LocalShellPreflightExecutor {
             "persistent_shell_session": false,
             "network_default": "deny",
             "execution_supported": shell.execution_supported,
-            "requires_approval_before_execute": true,
+            "requires_approval_before_execute": command_policy.effective_effect
+                != crate::chat_v2::shell_command_policy::ShellRuleEffect::Allow,
         }))
     }
 }

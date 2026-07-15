@@ -33,6 +33,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -74,6 +75,19 @@ use crate::utils::text::safe_truncate_chars;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo, VfsResourceRepo};
 use crate::vfs::types::{VfsContextRefData, VfsResourceRef, VfsResourceType};
+
+static CHATANKI_STATE_REVISION: AtomicI64 = AtomicI64::new(0);
+
+fn next_chatanki_state_revision() -> i64 {
+    let now = chrono::Utc::now().timestamp_micros();
+    CHATANKI_STATE_REVISION
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+            Some(now.max(current.saturating_add(1)))
+        })
+        .unwrap_or(0)
+        .max(now.saturating_sub(1))
+        .saturating_add(1)
+}
 
 // ============================================================================
 // Args
@@ -1439,9 +1453,11 @@ impl ChatAnkiToolExecutor {
             .get_cards_for_document(&document_id)
             .map_err(|e| e.to_string())?;
         let counts = compute_task_counts(&tasks);
-        let (status, error, should_retry) = derive_status_snapshot(&tasks, cards.len());
+        let (status, error, should_retry) = derive_status_snapshot(&tasks, &cards);
+        let projection =
+            (!tasks.is_empty()).then(|| project_chatanki_workflow(&tasks, &cards, None, 0));
 
-        let output = json!({
+        let mut output = json!({
             "status": status,
             "documentId": document_id,
             "counts": counts,
@@ -1451,6 +1467,9 @@ impl ChatAnkiToolExecutor {
             "error": error,
             "shouldRetry": should_retry,
         });
+        if let Some(projection) = projection {
+            deep_merge_value(&mut output, projection.output_patch);
+        }
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         if output.get("status").and_then(|v| v.as_str()) == Some("not_found") {
@@ -3273,14 +3292,6 @@ impl ChatAnkiToolExecutor {
                                 | crate::models::TaskStatus::Streaming
                         )
                     });
-                    let has_failed_or_truncated = tasks.iter().any(|t| {
-                        matches!(
-                            t.status,
-                            crate::models::TaskStatus::Failed
-                                | crate::models::TaskStatus::Truncated
-                        )
-                    });
-                    let user_cancelled = tasks_user_cancelled(&tasks);
                     if tasks_limit_reached(&tasks) {
                         final_limit_reached = true;
                     }
@@ -3297,13 +3308,9 @@ impl ChatAnkiToolExecutor {
                             break;
                         }
                         if !is_in_progress {
-                            final_status = if user_cancelled {
-                                "cancelled".to_string()
-                            } else if has_failed_or_truncated {
-                                "completed_with_errors".to_string()
-                            } else {
-                                "completed".to_string()
-                            };
+                            final_status = classify_generation_terminal(&tasks, &cards)
+                                .as_stage()
+                                .to_string();
                             break;
                         }
                     }
@@ -3392,24 +3399,15 @@ impl ChatAnkiToolExecutor {
                                     .get_tasks_for_document(doc_id)
                                     .map_err(|e| e.to_string())?;
                                 if !tasks.is_empty() {
-                                    let has_failed_or_truncated = tasks.iter().any(|t| {
-                                        matches!(
-                                            t.status,
-                                            crate::models::TaskStatus::Failed
-                                                | crate::models::TaskStatus::Truncated
-                                        )
-                                    });
-                                    let user_cancelled = tasks_user_cancelled(&tasks);
                                     if tasks_limit_reached(&tasks) {
                                         final_limit_reached = true;
                                     }
-                                    final_status = if user_cancelled {
-                                        "cancelled".to_string()
-                                    } else if has_failed_or_truncated {
-                                        "completed_with_errors".to_string()
-                                    } else {
-                                        "completed".to_string()
-                                    };
+                                    let cards = db
+                                        .get_cards_for_document(doc_id)
+                                        .map_err(|e| e.to_string())?;
+                                    final_status = classify_generation_terminal(&tasks, &cards)
+                                        .as_stage()
+                                        .to_string();
                                 } else {
                                     final_status = "completed".to_string();
                                 }
@@ -3461,14 +3459,6 @@ impl ChatAnkiToolExecutor {
                                 | crate::models::TaskStatus::Streaming
                         )
                     });
-                    let has_failed_or_truncated = tasks.iter().any(|t| {
-                        matches!(
-                            t.status,
-                            crate::models::TaskStatus::Failed
-                                | crate::models::TaskStatus::Truncated
-                        )
-                    });
-                    let user_cancelled = tasks_user_cancelled(&tasks);
                     if tasks_limit_reached(&tasks) {
                         final_limit_reached = true;
                     }
@@ -3485,13 +3475,9 @@ impl ChatAnkiToolExecutor {
                             break;
                         }
                         if !is_in_progress {
-                            final_status = if user_cancelled {
-                                "cancelled".to_string()
-                            } else if has_failed_or_truncated {
-                                "completed_with_errors".to_string()
-                            } else {
-                                "completed".to_string()
-                            };
+                            final_status = classify_generation_terminal(&tasks, &cards)
+                                .as_stage()
+                                .to_string();
                             break;
                         }
                     }
@@ -3550,7 +3536,7 @@ impl ChatAnkiToolExecutor {
         let should_retry = matches!(final_status.as_str(), "timeout" | "not_found");
 
         // Always return a structured result (avoid tool failure for "not found" / "timeout").
-        let tool_output = json!({
+        let mut tool_output = json!({
             "status": final_status,
             "ankiBlockId": final_anki_block_id.or_else(|| args.anki_block_id.clone()).unwrap_or_default(),
             "documentId": final_document_id,
@@ -3562,6 +3548,23 @@ impl ChatAnkiToolExecutor {
             "error": final_error,
             "shouldRetry": should_retry,
         });
+        if !matches!(
+            final_status.as_str(),
+            "timeout" | "not_found" | "invalid_args"
+        ) {
+            if let (Some(db), Some(document_id)) = (&anki_db, final_document_id.as_deref()) {
+                let tasks = db
+                    .get_tasks_for_document(document_id)
+                    .map_err(|error| error.to_string())?;
+                let cards = db
+                    .get_cards_for_document(document_id)
+                    .map_err(|error| error.to_string())?;
+                if !tasks.is_empty() {
+                    let projection = project_chatanki_workflow(&tasks, &cards, None, 0);
+                    deep_merge_value(&mut tool_output, projection.output_patch);
+                }
+            }
+        }
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
         if matches!(final_status.as_str(), "invalid_args" | "not_found") {
@@ -4857,6 +4860,11 @@ impl ChatAnkiToolExecutor {
             .clone();
 
         let anki_block_id = format!("blk_{}", uuid::Uuid::new_v4());
+        let anki_block_index = ChatV2Repo::get_block_v2(&chat_db, &ctx.block_id)
+            .ok()
+            .flatten()
+            .map(|block| block.block_index.saturating_add(1))
+            .unwrap_or(1);
         // 预分配 document_id，确保 tool output 立即包含真实 ID，
         // 避免 LLM 在 chatanki_wait 超时后因无 documentId 而编造假 ID
         let pre_allocated_document_id = uuid::Uuid::new_v4().to_string();
@@ -4915,12 +4923,18 @@ impl ChatAnkiToolExecutor {
         });
 
         let initial_tool_output = json!({
+            "schemaVersion": 2,
+            "stateRevision": next_chatanki_state_revision(),
             "cards": [],
             "documentId": pre_allocated_document_id,
             "templateId": template_id_for_ui.clone(),
             "templateIds": template_ids_for_ui.clone(),
             "templateMode": template_mode_for_ui,
             "syncStatus": "pending",
+            "workflowStatus": "running",
+            "generationStatus": "running",
+            "deliveryStatus": "empty",
+            "recoveryStatus": "none",
             "businessSessionId": ctx.session_id,
             "messageStableId": ctx.message_id,
             "options": options_for_ui,
@@ -4950,7 +4964,7 @@ impl ChatAnkiToolExecutor {
             started_at: Some(now_ms),
             ended_at: None,
             first_chunk_at: Some(now_ms),
-            block_index: 1,
+            block_index: anki_block_index,
         };
         upsert_block_allow_orphan(&chat_db, &anki_block)?;
 
@@ -6239,16 +6253,9 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             }
 
             let terminal_kind = classify_generation_terminal(&tasks, &cards);
-            let has_partial_failure = terminal_kind == GenerationTerminalKind::CompletedWithErrors;
             let has_complete_failure = terminal_kind == GenerationTerminalKind::Failed;
-            let failed_count = tasks
-                .iter()
-                .filter(|t| matches!(t.status, crate::models::TaskStatus::Failed))
-                .count();
-            let truncated_count = tasks
-                .iter()
-                .filter(|t| matches!(t.status, crate::models::TaskStatus::Truncated))
-                .count();
+            let visible_cards = &cards[..visible_card_count.min(cards.len())];
+            let projection = project_chatanki_workflow(&tasks, visible_cards, None, 0);
             // limit 取消视为正常完成（C1 修复）
             let final_stage = terminal_kind.as_stage();
             let template_id = params.template_id.clone();
@@ -6257,26 +6264,18 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             let template_mode = params.template_mode.as_str();
             let final_message_key = if has_user_cancelled {
                 Some("blocks.ankiCards.progress.messages.cancelled")
-            } else if has_partial_failure {
-                Some("blocks.ankiCards.progress.messages.completedWithErrors")
             } else if has_limit_cancelled {
                 Some("blocks.ankiCards.progress.messages.limitReached")
             } else {
                 None
             };
-            let final_message_params = if has_partial_failure {
-                Some(json!({ "failed": failed_count, "truncated": truncated_count }))
-            } else if !has_user_cancelled && has_limit_cancelled {
+            let final_message_params = if !has_user_cancelled && has_limit_cancelled {
                 Some(json!({ "limit": global_card_limit.unwrap_or(0) }))
             } else {
                 None
             };
-            let final_error_key = if has_complete_failure {
-                Some("blocks.ankiCards.errors.partialSegmentsFailed".to_string())
-            } else {
-                None
-            };
-            let final_output = json!({
+            let final_error_key = projection.block_error.clone();
+            let mut final_output = json!({
                 "cards": final_cards,
                 "documentId": document_id,
                 "templateId": template_id,
@@ -6294,7 +6293,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     "enable_images": false,
                     "max_cards_per_source": 0
                 },
-                "warnings": warnings,
+                "warnings": warnings.clone(),
                 "status": final_stage,
                 // 达到 maxCards 上限提前停止时为 true（C1 修复）
                 "limitReached": has_limit_cancelled,
@@ -6315,54 +6314,43 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 },
                 "debug": if params.debug_enabled { debug_ref } else { None },
             });
+            deep_merge_value(&mut final_output, projection.output_patch.clone());
+            let mut combined_warnings = warnings;
+            if let Some(projected) = projection
+                .output_patch
+                .get("warnings")
+                .and_then(Value::as_array)
+            {
+                for warning in projected {
+                    if !combined_warnings.contains(warning) {
+                        combined_warnings.push(warning.clone());
+                    }
+                }
+            }
+            final_output["warnings"] = Value::Array(combined_warnings);
+            if has_limit_cancelled {
+                final_output["progress"]["messageKey"] = json!(final_message_key);
+                final_output["progress"]["messageParams"] = json!(final_message_params);
+            }
 
             // Persist final block (best-effort).
-            let now_ms = chrono::Utc::now().timestamp_millis();
-            let block = MessageBlock {
-                id: params.anki_block_id.clone(),
-                message_id: params.message_id.clone(),
-                block_type: block_types::ANKI_CARDS.to_string(),
-                status: if has_complete_failure {
-                    block_status::ERROR.to_string()
-                } else {
-                    block_status::SUCCESS.to_string()
-                },
-                content: None,
-                tool_name: Some(params.tool_name.clone()),
-                tool_input: None,
-                tool_output: Some(final_output.clone()),
-                citations: None,
-                error: final_error_key.clone(),
-                started_at: Some(now_ms),
-                ended_at: Some(now_ms),
-                first_chunk_at: Some(now_ms),
-                block_index: 1,
-            };
-            let _ = upsert_block_allow_orphan(&params.chat_db, &block);
+            persist_anki_cards_terminal_block(
+                &params.chat_db,
+                &params.message_id,
+                &params.anki_block_id,
+                &params.tool_name,
+                projection.block_status,
+                Some(final_output.clone()),
+                final_error_key.clone(),
+            );
 
             if has_complete_failure {
-                // Ensure UI receives a final progress snapshot before switching to error status.
-                emit_anki_cards_chunk(
-                    &params.emitter,
-                    &params.anki_block_id,
-                    json!({
-                        "documentId": document_id,
-                        "progress": {
-                            "stage": final_stage,
-                            "route": route.as_str(),
-                            "messageKey": final_message_key,
-                            "messageParams": final_message_params.clone(),
-                            "cardsGenerated": cards.len(),
-                            "counts": counts.get("counts").cloned().unwrap_or(json!({})),
-                            "completedRatio": ratio,
-                            "lastUpdatedAt": chrono::Utc::now().to_rfc3339(),
-                        }
-                    }),
-                );
+                // Send the authoritative v2 snapshot before the terminal error event.
+                emit_anki_cards_chunk(&params.emitter, &params.anki_block_id, final_output.clone());
 
                 // Notify UI as error (cards are preserved); do not emit_end to avoid flipping to success.
                 let error_key = final_error_key
-                    .unwrap_or_else(|| "blocks.ankiCards.errors.partialSegmentsFailed".to_string());
+                    .unwrap_or_else(|| "blocks.ankiCards.errors.generationFailed".to_string());
                 emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
             } else {
                 params.emitter.emit_end(
@@ -8918,6 +8906,24 @@ fn persist_card_mutation(
     deleted_ids.sort();
     object.insert("deletedCardIds".to_string(), json!(deleted_ids));
     object.insert("documentId".to_string(), json!(document_id));
+    let mut metadata_patch = event_patch.clone();
+    if let Some(metadata) = metadata_patch.as_object_mut() {
+        metadata.remove("cardMutation");
+        metadata.remove("cards");
+        metadata.remove("deletedCardIds");
+        metadata.remove("_blockStatus");
+        metadata.remove("_blockError");
+    }
+    deep_merge_value(&mut output, metadata_patch);
+    if let Some(status) = event_patch.get("_blockStatus").and_then(Value::as_str) {
+        block.status = status.to_string();
+    }
+    if event_patch.get("_blockError").is_some() {
+        block.error = event_patch
+            .get("_blockError")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+    }
     block.tool_output = Some(output);
     ChatV2Repo::update_block_v2(chat_db, &block)
         .map_err(|error| format!("chatanki_mutation_block_persist_failed: {}", error))?;
@@ -8928,8 +8934,49 @@ fn persist_and_emit_card_mutation(
     ctx: &ExecutionContext,
     target: &AnkiCardsMutationTarget,
     document_id: &str,
-    event_patch: Value,
+    mut event_patch: Value,
 ) -> MutationUiSyncResult {
+    if let Some(anki_db) = ctx.anki_db.as_deref() {
+        let tasks = anki_db
+            .get_tasks_for_document(document_id)
+            .map_err(|error| MutationUiSyncFailure {
+                block_id: target.block_id.clone(),
+                event_attempted: false,
+                error: format!("chatanki_mutation_tasks_load_failed: {error}"),
+            })?;
+        let cards = anki_db
+            .get_cards_for_document(document_id)
+            .map_err(|error| MutationUiSyncFailure {
+                block_id: target.block_id.clone(),
+                event_attempted: false,
+                error: format!("chatanki_mutation_cards_load_failed: {error}"),
+            })?;
+        let has_failures = tasks.iter().any(|task| {
+            matches!(
+                task.status,
+                crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
+            )
+        });
+        let mutation_kind = event_patch.get("cardMutation").and_then(Value::as_str);
+        let recovered_delta = if has_failures && mutation_kind == Some("upsert") {
+            event_patch
+                .get("cards")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let projection = project_chatanki_workflow(
+            &tasks,
+            &cards,
+            (recovered_delta > 0).then_some("manual"),
+            recovered_delta,
+        );
+        deep_merge_value(&mut event_patch, projection.output_patch);
+        event_patch["_blockStatus"] = json!(projection.block_status);
+        event_patch["_blockError"] = json!(projection.block_error);
+    }
     persist_and_emit_card_mutation_with(
         ctx.chat_v2_db.as_deref(),
         target,
@@ -9200,6 +9247,219 @@ enum GenerationTerminalKind {
     Cancelled,
 }
 
+#[derive(Debug)]
+struct ChatAnkiWorkflowProjection {
+    block_status: &'static str,
+    block_error: Option<String>,
+    output_patch: Value,
+}
+
+fn classify_generation_issue(error: &str) -> (&'static str, bool) {
+    let normalized = error.to_lowercase();
+    if normalized.contains("balance is insufficient")
+        || normalized.contains("余额不足")
+        || normalized.contains("额度不足")
+    {
+        ("provider_quota_exhausted", false)
+    } else if normalized.contains("403") || normalized.contains("访问被拒绝") {
+        ("provider_forbidden", false)
+    } else if normalized.contains("401")
+        || normalized.contains("api key")
+        || normalized.contains("认证失败")
+    {
+        ("provider_auth_failed", false)
+    } else {
+        ("generation_failed", true)
+    }
+}
+
+fn project_chatanki_workflow(
+    tasks: &[crate::models::DocumentTask],
+    cards: &[crate::models::AnkiCard],
+    recovery_hint: Option<&str>,
+    recovered_cards: usize,
+) -> ChatAnkiWorkflowProjection {
+    let counts = compute_task_counts(tasks);
+    let counts_value = counts.get("counts").cloned().unwrap_or_else(|| json!({}));
+    let completed_ratio = counts
+        .get("completedRatio")
+        .cloned()
+        .unwrap_or_else(|| json!(0.0));
+    let usable_cards = cards.iter().filter(|card| !card.is_error_card).count();
+    let has_in_flight = tasks.iter().any(|task| {
+        matches!(
+            task.status,
+            crate::models::TaskStatus::Pending
+                | crate::models::TaskStatus::Processing
+                | crate::models::TaskStatus::Streaming
+        )
+    });
+    let is_paused = tasks
+        .iter()
+        .any(|task| matches!(task.status, crate::models::TaskStatus::Paused));
+    let terminal_kind = classify_generation_terminal(tasks, cards);
+    let has_generation_failure = tasks.iter().any(|task| {
+        matches!(
+            task.status,
+            crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
+        )
+    });
+    let has_completed_segment = tasks
+        .iter()
+        .any(|task| matches!(task.status, crate::models::TaskStatus::Completed));
+    let recovery_status = if has_generation_failure && usable_cards > 0 {
+        recovery_hint.unwrap_or(if has_completed_segment {
+            "none"
+        } else {
+            "existing_cards"
+        })
+    } else {
+        "none"
+    };
+
+    let (workflow_status, generation_status, final_status, block_status, block_error) =
+        if has_in_flight {
+            (
+                "running",
+                "running",
+                "generating",
+                block_status::RUNNING,
+                None,
+            )
+        } else if is_paused {
+            ("paused", "paused", "paused", block_status::RUNNING, None)
+        } else {
+            match terminal_kind {
+                GenerationTerminalKind::Completed => (
+                    "completed",
+                    "completed",
+                    "completed",
+                    block_status::SUCCESS,
+                    None,
+                ),
+                GenerationTerminalKind::CompletedWithErrors => (
+                    "completed_with_warnings",
+                    if has_completed_segment {
+                        "partial"
+                    } else {
+                        "failed"
+                    },
+                    "completed_with_errors",
+                    block_status::SUCCESS,
+                    None,
+                ),
+                GenerationTerminalKind::Failed => (
+                    "failed",
+                    "failed",
+                    "error",
+                    block_status::ERROR,
+                    Some("blocks.ankiCards.errors.generationFailed".to_string()),
+                ),
+                GenerationTerminalKind::Cancelled => (
+                    "cancelled",
+                    "cancelled",
+                    "cancelled",
+                    block_status::SUCCESS,
+                    None,
+                ),
+            }
+        };
+
+    let generation_errors: Vec<&str> = tasks
+        .iter()
+        .filter(|task| {
+            matches!(
+                task.status,
+                crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
+            )
+        })
+        .filter_map(|task| {
+            task.error_message
+                .as_deref()
+                .map(str::trim)
+                .filter(|error| !error.is_empty())
+        })
+        .collect();
+    let primary_error = generation_errors.first().copied();
+    let primary_retryable = generation_errors
+        .iter()
+        .any(|error| classify_generation_issue(error).1);
+    let issues: Vec<Value> = generation_errors
+        .iter()
+        .map(|error| {
+            let (code, retryable) = classify_generation_issue(error);
+            json!({
+                "scope": "generation",
+                "code": code,
+                "severity": if usable_cards > 0 { "warning" } else { "error" },
+                "retryable": retryable,
+                "recovered": usable_cards > 0,
+                "detail": error,
+            })
+        })
+        .collect();
+    let was_recovered = workflow_status == "completed_with_warnings" && recovery_status != "none";
+    let warnings = if workflow_status == "completed_with_warnings" {
+        vec![json!({
+            "code": if was_recovered { "generation_recovered" } else { "partial_generation" },
+            "messageKey": if was_recovered {
+                "blocks.ankiCards.warnings.generationRecovered"
+            } else {
+                "blocks.ankiCards.progress.messages.completedWithErrors"
+            },
+            "messageParams": {
+                "count": usable_cards,
+                "recovered": recovered_cards,
+            }
+        })]
+    } else {
+        Vec::new()
+    };
+
+    ChatAnkiWorkflowProjection {
+        block_status,
+        block_error,
+        output_patch: json!({
+            "schemaVersion": 2,
+            "stateRevision": next_chatanki_state_revision(),
+            "workflowStatus": workflow_status,
+            "generationStatus": generation_status,
+            "deliveryStatus": if usable_cards > 0 { "ready" } else { "empty" },
+            "recoveryStatus": recovery_status,
+            "availableCards": usable_cards,
+            "recoveredCards": recovered_cards,
+            "status": final_status,
+            "finalStatus": final_status,
+            "finalError": if block_status == block_status::ERROR { primary_error } else { None },
+            "error": if block_status == block_status::ERROR { primary_error } else { None },
+            "shouldRetry": has_generation_failure && primary_retryable,
+            "issues": issues,
+            "warnings": warnings,
+            "progress": {
+                "stage": final_status,
+                "messageKey": if workflow_status == "completed_with_warnings" {
+                    Some(if was_recovered {
+                        "blocks.ankiCards.progress.messages.recovered"
+                    } else {
+                        "blocks.ankiCards.progress.messages.completedWithErrors"
+                    })
+                } else {
+                    None
+                },
+                "messageParams": if workflow_status == "completed_with_warnings" {
+                    Some(json!({ "count": usable_cards }))
+                } else {
+                    None
+                },
+                "cardsGenerated": usable_cards,
+                "counts": counts_value,
+                "completedRatio": completed_ratio,
+                "lastUpdatedAt": chrono::Utc::now().to_rfc3339(),
+            },
+        }),
+    }
+}
+
 impl GenerationTerminalKind {
     fn as_stage(self) -> &'static str {
         match self {
@@ -9242,7 +9502,7 @@ fn classify_generation_terminal(
 
 fn derive_status_snapshot(
     tasks: &[crate::models::DocumentTask],
-    cards_len: usize,
+    cards: &[crate::models::AnkiCard],
 ) -> (String, Option<String>, bool) {
     let is_paused = tasks
         .iter()
@@ -9255,26 +9515,16 @@ fn derive_status_snapshot(
                 | crate::models::TaskStatus::Streaming
         )
     });
-    let has_failed_or_truncated = tasks.iter().any(|t| {
-        matches!(
-            t.status,
-            crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
-        )
-    });
-    let user_cancelled = tasks_user_cancelled(tasks);
-    let status = if tasks.is_empty() && cards_len == 0 {
+    let status = if tasks.is_empty() && cards.is_empty() {
         "not_found".to_string()
     } else if is_in_progress {
         "running".to_string()
     } else if is_paused {
         "paused".to_string()
-    } else if user_cancelled {
-        "cancelled".to_string()
-    } else if has_failed_or_truncated {
-        "completed_with_errors".to_string()
     } else {
-        // limit 取消的任务也走这里：对用户/AI 而言任务"已按上限完成"
-        "completed".to_string()
+        classify_generation_terminal(tasks, cards)
+            .as_stage()
+            .to_string()
     };
     let error = if status == "not_found" {
         Some("blocks.ankiCards.errors.statusNotFound".to_string())
@@ -9346,8 +9596,9 @@ fn compute_task_counts(tasks: &[crate::models::DocumentTask]) -> Value {
     counts.insert("truncated".to_string(), json!(truncated));
     counts.insert("cancelled".to_string(), json!(cancelled));
 
+    let terminal = completed + failed + truncated + cancelled;
     let completed_ratio = if total > 0 {
-        completed as f32 / total as f32
+        terminal as f32 / total as f32
     } else {
         0.0
     };
@@ -9499,6 +9750,7 @@ fn persist_anki_cards_running_patch(
         .as_ref()
         .and_then(|b| b.first_chunk_at)
         .unwrap_or(now_ms);
+    let block_index = existing.as_ref().map(|b| b.block_index).unwrap_or(1);
 
     let mut tool_output = existing
         .as_ref()
@@ -9520,7 +9772,7 @@ fn persist_anki_cards_running_patch(
         started_at: Some(started_at),
         ended_at: None,
         first_chunk_at: Some(first_chunk_at),
-        block_index: 1,
+        block_index,
     };
 
     let _ = upsert_block_allow_orphan(chat_db, &block);
@@ -9537,18 +9789,59 @@ fn persist_anki_cards_terminal_block(
 ) {
     let now_ms = chrono::Utc::now().timestamp_millis();
 
-    // Best-effort: preserve message_id/tool_output from existing row if present.
+    // Best-effort: preserve identity, ordering and timing metadata from the existing row.
     let existing = ChatV2Repo::get_block_v2(chat_db, block_id).ok().flatten();
     let message_id = existing
         .as_ref()
         .map(|b| b.message_id.clone())
         .unwrap_or_else(|| fallback_message_id.to_string());
-    let tool_output = tool_output_override
-        .or_else(|| existing.and_then(|b| b.tool_output))
+    let started_at = existing
+        .as_ref()
+        .and_then(|b| b.started_at)
+        .unwrap_or(now_ms);
+    let first_chunk_at = existing
+        .as_ref()
+        .and_then(|b| b.first_chunk_at)
+        .unwrap_or(now_ms);
+    let block_index = existing.as_ref().map(|b| b.block_index).unwrap_or(1);
+    let mut tool_output = tool_output_override
+        .or_else(|| existing.as_ref().and_then(|b| b.tool_output.clone()))
         .or_else(|| {
             // Minimal shape so UI doesn't explode after refresh.
             Some(json!({ "cards": [], "documentId": null }))
         });
+    if status == block_status::ERROR {
+        let detail = error.as_deref().unwrap_or("generation_failed");
+        let (code, retryable) = classify_generation_issue(detail);
+        if let Some(output) = tool_output.as_mut() {
+            deep_merge_value(
+                output,
+                json!({
+                    "schemaVersion": 2,
+                    "stateRevision": next_chatanki_state_revision(),
+                    "workflowStatus": "failed",
+                    "generationStatus": "failed",
+                    "deliveryStatus": "empty",
+                    "recoveryStatus": "none",
+                    "availableCards": 0,
+                    "status": "error",
+                    "finalStatus": "error",
+                    "finalError": detail,
+                    "error": detail,
+                    "shouldRetry": retryable,
+                    "issues": [{
+                        "scope": "generation",
+                        "code": code,
+                        "severity": "error",
+                        "retryable": retryable,
+                        "recovered": false,
+                        "detail": detail,
+                    }],
+                    "progress": { "stage": "error" },
+                }),
+            );
+        }
+    }
 
     let block = MessageBlock {
         id: block_id.to_string(),
@@ -9561,10 +9854,10 @@ fn persist_anki_cards_terminal_block(
         tool_output,
         citations: None,
         error,
-        started_at: Some(now_ms),
+        started_at: Some(started_at),
         ended_at: Some(now_ms),
-        first_chunk_at: Some(now_ms),
-        block_index: 1,
+        first_chunk_at: Some(first_chunk_at),
+        block_index,
     };
 
     let _ = upsert_block_allow_orphan(chat_db, &block);
@@ -11357,6 +11650,69 @@ mod tests {
     }
 
     #[test]
+    fn test_chatanki_persistence_preserves_existing_block_timing_and_order() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target = seed_anki_cards_block(
+            &chat_db,
+            "session-block-metadata",
+            "doc-block-metadata",
+            Vec::new(),
+            Vec::new(),
+        );
+        let block_id = required_mutation_block_id(&target).to_string();
+        let mut original = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load seeded block")
+            .expect("seeded block exists");
+        let message_id = original.message_id.clone();
+        original.started_at = Some(101);
+        original.first_chunk_at = Some(202);
+        original.ended_at = None;
+        ChatV2Repo::update_block_v2(&chat_db, &original).expect("seed block metadata");
+        chat_db
+            .get_conn_safe()
+            .expect("open chat db")
+            .execute(
+                "UPDATE chat_v2_blocks SET block_index = 7 WHERE id = ?1",
+                rusqlite::params![block_id],
+            )
+            .expect("seed block index");
+
+        persist_anki_cards_running_patch(
+            &chat_db,
+            "wrong-fallback-message",
+            &block_id,
+            "chatanki_start",
+            json!({ "progress": { "stage": "generating" } }),
+        );
+        let running = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load running block")
+            .expect("running block exists");
+        assert_eq!(running.message_id, message_id);
+        assert_eq!(running.started_at, Some(101));
+        assert_eq!(running.first_chunk_at, Some(202));
+        assert_eq!(running.ended_at, None);
+        assert_eq!(running.block_index, 7);
+
+        persist_anki_cards_terminal_block(
+            &chat_db,
+            "wrong-fallback-message",
+            &block_id,
+            "chatanki_start",
+            block_status::SUCCESS,
+            Some(json!({ "documentId": "doc-block-metadata", "cards": [] })),
+            None,
+        );
+        let terminal = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load terminal block")
+            .expect("terminal block exists");
+        assert_eq!(terminal.message_id, message_id);
+        assert_eq!(terminal.started_at, Some(101));
+        assert_eq!(terminal.first_chunk_at, Some(202));
+        assert!(terminal.ended_at.is_some());
+        assert_eq!(terminal.block_index, 7);
+    }
+
+    #[test]
     fn test_chatanki_mutation_preflight_failure_prevents_database_write() {
         let (db, _tmp) = make_test_db();
         let task_id = seed_chatanki_document(&db, "doc-preflight", "session-preflight");
@@ -11485,6 +11841,60 @@ mod tests {
                 {"id": "card-late", "front": "created after preflight"}
             ])
         );
+    }
+
+    #[test]
+    fn test_chatanki_mutation_persists_recovered_workflow_and_clears_block_error() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let target = seed_anki_cards_block(
+            &chat_db,
+            "session-recovered-preview",
+            "doc-recovered-preview",
+            Vec::new(),
+            Vec::new(),
+        );
+        let block_id = required_mutation_block_id(&target).to_string();
+        let mut failed_block = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load preview")
+            .expect("preview exists");
+        failed_block.status = block_status::ERROR.to_string();
+        failed_block.error = Some("blocks.ankiCards.errors.generationFailed".to_string());
+        ChatV2Repo::update_block_v2(&chat_db, &failed_block).expect("seed failed block");
+
+        persist_and_emit_card_mutation_with(
+            Some(&chat_db),
+            &target,
+            "doc-recovered-preview",
+            json!({
+                "documentId": "doc-recovered-preview",
+                "cardMutation": "upsert",
+                "cards": [{"id": "card-recovered", "front": "question", "back": "answer"}],
+                "_blockStatus": "success",
+                "_blockError": null,
+                "schemaVersion": 2,
+                "workflowStatus": "completed_with_warnings",
+                "deliveryStatus": "ready",
+                "recoveryStatus": "manual",
+                "finalStatus": "completed_with_errors",
+                "finalError": null,
+            }),
+            |_block_id, _event_patch| {},
+        )
+        .expect("persist recovered mutation");
+
+        let recovered = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("reload preview")
+            .expect("preview remains");
+        assert_eq!(recovered.status, block_status::SUCCESS);
+        assert!(recovered.error.is_none());
+        let output = recovered.tool_output.expect("recovered output");
+        assert_eq!(output["schemaVersion"], 2);
+        assert_eq!(output["workflowStatus"], "completed_with_warnings");
+        assert_eq!(output["deliveryStatus"], "ready");
+        assert_eq!(output["recoveryStatus"], "manual");
+        assert_eq!(output["cards"].as_array().map(Vec::len), Some(1));
+        assert!(output.get("_blockStatus").is_none());
+        assert!(output.get("_blockError").is_none());
     }
 
     #[test]
@@ -12594,7 +13004,7 @@ mod tests {
 
     #[test]
     fn test_derive_status_snapshot_not_found() {
-        let (status, error, should_retry) = derive_status_snapshot(&[], 0);
+        let (status, error, should_retry) = derive_status_snapshot(&[], &[]);
         assert_eq!(status, "not_found");
         assert_eq!(
             error,
@@ -12606,16 +13016,26 @@ mod tests {
     #[test]
     fn test_derive_status_snapshot_running_and_completed_with_errors() {
         let (status_running, error_running, should_retry_running) =
-            derive_status_snapshot(&[make_task(TaskStatus::Pending)], 0);
+            derive_status_snapshot(&[make_task(TaskStatus::Pending)], &[]);
         assert_eq!(status_running, "running");
         assert!(error_running.is_none());
         assert!(!should_retry_running);
 
+        let cards = vec![
+            make_chatanki_card("status-card-1", "task-Failed", "front 1", "back 1"),
+            make_chatanki_card("status-card-2", "task-Failed", "front 2", "back 2"),
+        ];
         let (status_error, error_error, should_retry_error) =
-            derive_status_snapshot(&[make_task(TaskStatus::Failed)], 2);
+            derive_status_snapshot(&[make_task(TaskStatus::Failed)], &cards);
         assert_eq!(status_error, "completed_with_errors");
         assert!(error_error.is_none());
         assert!(!should_retry_error);
+
+        let (status_failed, error_failed, should_retry_failed) =
+            derive_status_snapshot(&[make_task(TaskStatus::Failed)], &[]);
+        assert_eq!(status_failed, "error");
+        assert!(error_failed.is_none());
+        assert!(!should_retry_failed);
     }
 
     #[test]
@@ -12668,6 +13088,59 @@ mod tests {
             classify_generation_terminal(&tasks, &[error_card]),
             GenerationTerminalKind::Failed
         );
+    }
+
+    #[test]
+    fn test_workflow_projection_recovers_failed_generation_with_manual_cards() {
+        let mut task = make_task(TaskStatus::Failed);
+        task.error_message =
+            Some("API 访问被拒绝，请检查账户权限 (HTTP 403): balance is insufficient".to_string());
+        let cards = vec![
+            make_chatanki_card("recovered-1", "task-Failed", "front 1", "back 1"),
+            make_chatanki_card("recovered-2", "task-Failed", "front 2", "back 2"),
+            make_chatanki_card("recovered-3", "task-Failed", "front 3", "back 3"),
+        ];
+
+        let projection = project_chatanki_workflow(&[task], &cards, Some("manual"), 3);
+
+        assert_eq!(projection.block_status, block_status::SUCCESS);
+        assert!(projection.block_error.is_none());
+        assert_eq!(projection.output_patch["schemaVersion"], 2);
+        assert_eq!(
+            projection.output_patch["workflowStatus"],
+            "completed_with_warnings"
+        );
+        assert_eq!(projection.output_patch["generationStatus"], "failed");
+        assert_eq!(projection.output_patch["deliveryStatus"], "ready");
+        assert_eq!(projection.output_patch["recoveryStatus"], "manual");
+        assert_eq!(projection.output_patch["availableCards"], 3);
+        assert_eq!(projection.output_patch["recoveredCards"], 3);
+        assert_eq!(projection.output_patch["progress"]["cardsGenerated"], 3);
+        assert_eq!(projection.output_patch["progress"]["completedRatio"], 1.0);
+        assert_eq!(
+            projection.output_patch["issues"][0]["code"],
+            "provider_quota_exhausted"
+        );
+        assert_eq!(projection.output_patch["issues"][0]["retryable"], false);
+        assert!(projection.output_patch["finalError"].is_null());
+    }
+
+    #[test]
+    fn test_workflow_projection_keeps_unrecovered_failure_terminal() {
+        let mut task = make_task(TaskStatus::Failed);
+        task.error_message = Some("HTTP 403".to_string());
+
+        let projection = project_chatanki_workflow(&[task], &[], None, 0);
+
+        assert_eq!(projection.block_status, block_status::ERROR);
+        assert_eq!(
+            projection.block_error.as_deref(),
+            Some("blocks.ankiCards.errors.generationFailed")
+        );
+        assert_eq!(projection.output_patch["workflowStatus"], "failed");
+        assert_eq!(projection.output_patch["deliveryStatus"], "empty");
+        assert_eq!(projection.output_patch["finalStatus"], "error");
+        assert_eq!(projection.output_patch["progress"]["completedRatio"], 1.0);
     }
 
     #[test]
@@ -12740,7 +13213,7 @@ mod tests {
     #[test]
     fn test_derive_status_snapshot_cancelled() {
         let (status, error, should_retry) =
-            derive_status_snapshot(&[make_task(TaskStatus::Cancelled)], 1);
+            derive_status_snapshot(&[make_task(TaskStatus::Cancelled)], &[]);
         assert_eq!(status, "cancelled");
         assert!(error.is_none());
         assert!(!should_retry);
@@ -12753,12 +13226,17 @@ mod tests {
         limit_task.error_message = Some(GLOBAL_CARD_LIMIT_MARKER.to_string());
         let tasks = vec![make_task(TaskStatus::Completed), limit_task];
 
-        let (status, error, should_retry) = derive_status_snapshot(&tasks, 10);
+        let (status, error, should_retry) = derive_status_snapshot(&tasks, &[]);
         assert_eq!(status, "completed");
         assert!(error.is_none());
         assert!(!should_retry);
         assert!(tasks_limit_reached(&tasks));
         assert!(!tasks_user_cancelled(&tasks));
+
+        let projection = project_chatanki_workflow(&tasks, &[], None, 0);
+        assert_eq!(projection.output_patch["workflowStatus"], "completed");
+        assert_eq!(projection.output_patch["issues"], json!([]));
+        assert_eq!(projection.output_patch["warnings"], json!([]));
     }
 
     #[test]
@@ -12769,7 +13247,7 @@ mod tests {
         let user_task = make_task(TaskStatus::Cancelled);
         let tasks = vec![limit_task, user_task];
 
-        let (status, _, _) = derive_status_snapshot(&tasks, 5);
+        let (status, _, _) = derive_status_snapshot(&tasks, &[]);
         assert_eq!(status, "cancelled");
         assert!(tasks_user_cancelled(&tasks));
     }
@@ -12777,7 +13255,7 @@ mod tests {
     #[test]
     fn test_derive_status_snapshot_paused() {
         let (status, error, should_retry) =
-            derive_status_snapshot(&[make_task(TaskStatus::Paused)], 0);
+            derive_status_snapshot(&[make_task(TaskStatus::Paused)], &[]);
         assert_eq!(status, "paused");
         assert!(error.is_none());
         assert!(!should_retry);

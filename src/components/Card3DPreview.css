@@ -397,19 +397,14 @@
   }
 }
 
-/* ============================================================================
- * 聊天内紧凑模式 — .chat-card3d-compact 包裹时覆盖
- * 突破 max-w-3xl mx-auto 限制，占满 group px-4 py-4 bg-background 的全宽
- * 利用 .chat-container overflow:hidden 自动裁剪到主区域宽度
- * ============================================================================ */
-
-/* 让 wrapper 自身突破 max-w-3xl 容器
- * 桌面端：使用经典 100vw + calc 负边距突破（效果可靠）
- * 移动端：FullWidthCardWrapper 通过 JS inline style 精确覆盖（修正头像偏移） */
+/* 聊天内紧凑模式始终受消息列约束，避免视口级负边距造成裁切和跳动。 */
 .chat-card3d-compact {
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
   position: relative;
+  overflow: hidden;
 }
 
 .chat-card3d-compact .card-3d-preview-container {
@@ -418,7 +413,7 @@
   background: transparent;
   border-radius: 0;
   padding: 0 24px;
-  --card-width: 300px;
+  --card-width: min(300px, calc(100% - 48px));
   --card-top-offset: 80px;
   --card-height-buffer: 40px;
   min-height: 0;
@@ -438,9 +433,9 @@
 }
 
 .chat-card3d-compact .control-btn {
-  width: 28px;
-  height: 28px;
-  font-size: 12px;
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
   background: hsl(var(--muted) / 0.6);
   color: hsl(var(--foreground));
   box-shadow: none;
@@ -457,7 +452,7 @@
   padding: 4px 10px;
   background: hsl(var(--muted) / 0.6);
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
   box-shadow: none;
@@ -490,8 +485,8 @@
 }
 
 .chat-card3d-compact .nav-btn {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   font-size: 16px;
   background: hsl(var(--muted) / 0.5);
   color: hsl(var(--foreground));
@@ -506,14 +501,32 @@
 }
 
 .chat-card3d-compact .nav-dot {
-  background: hsl(var(--muted-foreground) / 0.2);
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  background: transparent;
 }
 
-.chat-card3d-compact .nav-dot:hover {
-  background: hsl(var(--muted-foreground) / 0.4);
+.chat-card3d-compact .nav-dot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: hsl(var(--muted-foreground) / 0.25);
+  transform: translate(-50%, -50%);
+  transition: width 0.2s ease, background-color 0.2s ease;
 }
 
-.chat-card3d-compact .nav-dot.active {
+.chat-card3d-compact .nav-dot:hover::after {
+  background: hsl(var(--muted-foreground) / 0.45);
+}
+
+.chat-card3d-compact .nav-dot.active::after {
+  width: 24px;
   background: hsl(var(--foreground) / 0.6);
 }
 
@@ -530,10 +543,9 @@
     box-sizing: border-box;
   }
 
-  /* 全宽定位由 FullWidthCardWrapper JS 精确控制，此处仅调整内部样式 */
   .chat-card3d-compact .card-3d-preview-container {
     padding: 8px 4px 32px;
-    --card-width: min(260px, 72vw);
+    --card-width: min(260px, calc(100% - 16px));
     --card-top-offset: 20px;
     --card-height-buffer: 16px;
   }
@@ -545,14 +557,14 @@
   }
 
   .chat-card3d-compact .control-btn {
-    width: 24px;
-    height: 24px;
-    font-size: 10px;
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
   }
 
   .chat-card3d-compact .card-counter {
     padding: 2px 6px;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .chat-card3d-compact .card-3d-scene {
@@ -560,8 +572,8 @@
   }
 
   .chat-card3d-compact .nav-btn {
-    width: 28px;
-    height: 28px;
+    width: 40px;
+    height: 40px;
     font-size: 14px;
   }
 
@@ -571,8 +583,8 @@
   }
 
   .chat-card3d-compact .nav-dots {
-    max-width: 120px;
-    gap: 4px;
+    max-width: 160px;
+    gap: 0;
   }
 
   .chat-card3d-compact .card-3d-shadow {
@@ -583,7 +595,7 @@
 /* 更小屏幕 (<400px) */
 @media (max-width: 400px) {
   .chat-card3d-compact .card-3d-preview-container {
-    --card-width: min(220px, 66vw);
+    --card-width: min(220px, calc(100% - 12px));
     --card-top-offset: 16px;
     --card-height-buffer: 12px;
     padding: 4px 2px 24px;
@@ -595,9 +607,9 @@
   }
 
   .chat-card3d-compact .nav-btn {
-    width: 24px;
-    height: 24px;
-    font-size: 12px;
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
   }
 
   .chat-card3d-compact .nav-dots {

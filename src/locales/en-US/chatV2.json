@@ -489,6 +489,7 @@
       "status": {
         "pending": "Pending",
         "running": "Running",
+        "started": "Started in the background",
         "success": "Completed",
         "error": "Failed"
       },
@@ -573,8 +574,11 @@
       "showMore": "Load more ({{remaining}} remaining)",
       "showAll": "Show all ({{total}})",
       "save": "Save",
+      "addToLibrary": "Add to card library",
+      "addedToLibrary": "Added to card library",
       "export": "Export",
       "sync": "Sync",
+      "moreActions": "More card actions",
       "reviewBatch": "Review batch",
       "reviewBatchNeedsRealIds": "Finish generating and save every card to get real IDs before reviewing this batch",
       "pause": "Pause",
@@ -610,7 +614,8 @@
           "label": "AnkiConnect",
           "checking": "checking",
           "connected": "connected",
-          "notConnected": "not connected"
+          "notConnected": "not connected",
+          "refresh": "Refresh AnkiConnect status"
         },
         "segments": {
           "pending": "Pending",
@@ -632,6 +637,7 @@
           "paused": "Paused — resume when you're ready.",
           "cancelled": "Generation cancelled.",
           "completedWithErrors": "Completed with some segment failures (failed={{failed}}, truncated={{truncated}}). Retry failed segments when ready.",
+          "recovered": "Automatic generation did not finish; {{count}} usable cards were supplied by the fallback path.",
           "limitReached": "Reached the configured card limit ({{limit}} cards); generation finished normally."
         }
       },
@@ -642,6 +648,7 @@
         "startFailed": "Failed to start card generation. Retry or adjust your template/settings.",
         "pipelineTimeout": "Generation took too long and stopped updating. Use chatanki_status later or retry the run.",
         "contextRefInvalid": "Attachment references are invalid. Remove and reattach the files, then retry.",
+        "generationFailed": "Automatic generation failed without producing usable cards. Check the model configuration or error details.",
         "partialSegmentsFailed": "Some segments failed. Use retry in the panel to re-run failed segments.",
         "waitInvalidArgs": "chatanki_wait needs an ankiBlockId or documentId. Re-run the tool with one of them.",
         "waitNotFound": "The cards block isn't available yet. Wait a moment or call chatanki_status with the documentId.",
@@ -665,6 +672,7 @@
         "ankiSyncEmpty": "No cards were imported. Check that Anki is running, the note type exists, and card fields are not empty."
       },
       "warnings": {
+        "generationRecovered": "Automatic generation encountered a problem; the fallback path supplied {{count}} usable cards.",
         "imageTruncated": "Only the first {{shown}} of {{total}} images were used (limit {{limit}}). Split attachments and retry if needed.",
         "contextRefInvalid": "{{count}} attachments could not be parsed. Remove and reattach them if needed.",
         "textTruncated": "Document exceeds {{limitMB}}MB text limit. Only the first {{limitMB}}MB was processed. Consider splitting the document.",
@@ -1079,6 +1087,16 @@
   },
   "agentPanel": {
     "plan": "Plan",
+    "environment": "Environment",
+    "local": "Local",
+    "activityCount": "{{count}} activities",
+    "blockedCount": "{{count}} blocked",
+    "environmentBoundary": "Boundary",
+    "sandbox": "Sandbox",
+    "network": "Network",
+    "networkEnabled": "Enabled",
+    "networkDisabled": "Disabled",
+    "recentActivity": "Recent activity {{count}}",
     "sources": "Sources",
     "artifacts": "Artifacts",
     "runtime": "Runtime",
@@ -1181,6 +1199,17 @@
       "moreItems": "...and {{count}} more",
       "loadedSkills": "Loaded skills",
       "loadedTools": "Loaded tools"
+    },
+    "shell": {
+      "checking": "Checking",
+      "checked": "Checked",
+      "blocked": "Blocked",
+      "running": "Running",
+      "ran": "Ran",
+      "failed": "Command failed",
+      "pending": "Pending",
+      "preflight": "Shell check",
+      "commandUnavailable": "Command unavailable"
     },
     "noteTool": {
       "read": "Read Note",

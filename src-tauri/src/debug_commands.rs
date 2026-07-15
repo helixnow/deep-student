@@ -76,18 +76,18 @@ pub async fn debug_get_database_stats(
         .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
 
     // 总错题数
-    let total_mistakes: usize = conn
-        .query_row("SELECT COUNT(*) FROM mistakes", [], |row| row.get(0))
-        .unwrap_or(0);
+    let total_mistakes = conn
+        .query_row("SELECT COUNT(*) FROM mistakes", [], |row| row.get::<_, i64>(0))
+        .unwrap_or(0) as usize;
 
     // 有聊天记录的错题数
-    let mistakes_with_chat: usize = conn
+    let mistakes_with_chat = conn
         .query_row(
             "SELECT COUNT(*) FROM mistakes WHERE json_array_length(chat_history) > 0",
             [],
-            |row| row.get(0),
+            |row| row.get::<_, i64>(0),
         )
-        .unwrap_or(0);
+        .unwrap_or(0) as usize;
 
     // 统计所有消息
     let mut total_messages = 0;

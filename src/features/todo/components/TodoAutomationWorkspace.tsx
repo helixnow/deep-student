@@ -301,46 +301,47 @@ export const TodoAutomationWorkspace: React.FC = () => {
             </div>
           ) : null}
 
-          <section className="grid grid-cols-2 border-y border-border sm:grid-cols-4" aria-label={t('todo:automation.summary', '自动化概览')}>
-            {[
-              [t('todo:automation.enabled', '已启用'), summary?.enabledCount ?? 0],
-              [t('todo:automation.running', '运行中'), summary?.runningCount ?? 0],
-              [t('todo:automation.failed24h', '24 小时失败'), summary?.failedCount ?? 0],
-              [t('todo:automation.next', '下次执行'), formatDate(summary?.nextRunAt)],
-            ].map(([label, value], index) => (
-              <div key={String(label)} className={cn('min-w-0 px-3 py-3', index > 0 && 'border-l border-border', index === 2 && 'max-sm:border-l-0', index >= 2 && 'max-sm:border-t')}>
-                <div className="text-[11px] text-muted-foreground">{label}</div>
-                <div className="mt-1 truncate text-sm font-semibold tabular-nums text-foreground" title={String(value)}>{value}</div>
-              </div>
-            ))}
-          </section>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-            <div className="flex min-w-0 items-center gap-2">
-              <ClockCountdown size={16} className="text-muted-foreground" />
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-foreground">{t('todo:automation.background', '关闭窗口后继续运行')}</div>
-                <div className="text-xs text-muted-foreground">{t('todo:automation.backgroundHint', '显式退出应用或关机会停止任务，重新打开后按补偿策略恢复')}</div>
-              </div>
+          <section className="overflow-hidden rounded-[var(--radius-shell-control)] border border-[color:var(--border-default)]/60 bg-[color:var(--surface-raised,transparent)]" aria-label={t('todo:automation.summary', '自动化概览')}>
+            <div className="grid grid-cols-2 sm:grid-cols-4">
+              {[
+                [t('todo:automation.enabled', '已启用'), summary?.enabledCount ?? 0],
+                [t('todo:automation.running', '运行中'), summary?.runningCount ?? 0],
+                [t('todo:automation.failed24h', '24 小时失败'), summary?.failedCount ?? 0],
+                [t('todo:automation.next', '下次执行'), formatDate(summary?.nextRunAt)],
+              ].map(([label, value], index) => (
+                <div key={String(label)} className={cn('min-w-0 px-4 py-3.5', index > 0 && 'border-l border-border/50', index === 2 && 'max-sm:border-l-0', index >= 2 && 'max-sm:border-t max-sm:border-border/50')}>
+                  <div className="text-[11px] text-muted-foreground">{label}</div>
+                  <div className="mt-1 truncate text-sm font-semibold tabular-nums text-foreground" title={String(value)}>{value}</div>
+                </div>
+              ))}
             </div>
-            <Switch
-              size="sm"
-              checked={summary?.backgroundEnabled ?? true}
-              disabled={busy === 'background'}
-              aria-label={t('todo:automation.background')}
-              onCheckedChange={(enabled) => {
-                setBusy('background');
-                void setAutomationBackgroundEnabled(tauriInvoke, enabled)
-                  .then(refresh)
-                  .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
-                  .finally(() => setBusy(null));
-              }}
-            />
-          </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 px-4 py-3.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <ClockCountdown size={16} className="text-muted-foreground" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-foreground">{t('todo:automation.background', '关闭窗口后继续运行')}</div>
+                  <div className="text-xs text-muted-foreground">{t('todo:automation.backgroundHint', '显式退出应用或关机会停止任务，重新打开后按补偿策略恢复')}</div>
+                </div>
+              </div>
+              <Switch
+                size="sm"
+                checked={summary?.backgroundEnabled ?? true}
+                disabled={busy === 'background'}
+                aria-label={t('todo:automation.background')}
+                onCheckedChange={(enabled) => {
+                  setBusy('background');
+                  void setAutomationBackgroundEnabled(tauriInvoke, enabled)
+                    .then(refresh)
+                    .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
+                    .finally(() => setBusy(null));
+                }}
+              />
+            </div>
+          </section>
 
           <AutomationSettingsSection invoke={tauriInvoke} listen={tauriListen} embedded />
 
-          <section className="mt-6 border-t border-border pt-4">
+          <section className="mt-5 rounded-[var(--radius-shell-control)] border border-[color:var(--border-default)]/60 bg-[color:var(--surface-raised,transparent)] px-4 py-4 sm:px-5">
             <NotionButton
               variant="ghost"
               className="h-auto w-full justify-between px-0 py-0 text-left hover:bg-transparent"
@@ -351,7 +352,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
               <span className="text-xs tabular-nums text-muted-foreground">{runs.length}</span>
             </NotionButton>
             {historyOpen ? (
-              <div className="mt-3 divide-y divide-border border-y border-border">
+              <div className="mt-3 divide-y divide-border/50 border-t border-border/50">
                 {runs.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">{t('todo:automation.noHistory', '暂无运行记录')}</div> : runs.map((run) => {
                   const cancellable = run.status === 'running' || run.status === 'retrying' || run.status === 'queued';
                   const retryable = ['error', 'timeout', 'spawn_error', 'cancelled'].includes(run.status);

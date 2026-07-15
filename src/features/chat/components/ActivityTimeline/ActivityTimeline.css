@@ -28,35 +28,6 @@ button.timeline-node-dot {
   overflow: visible;
 }
 
-.thinking-summary-sticky::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  background: var(--surface-panel-strong);
-}
-
-.thinking-summary-sticky::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -16px;
-  height: 28px;
-  pointer-events: none;
-  z-index: -1;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--surface-panel-strong) 96%, transparent) 0%,
-    color-mix(in srgb, var(--surface-panel-strong) 72%, transparent) 38%,
-    transparent 100%
-  );
-}
-
-.thinking-summary-row {
-  background: var(--surface-panel-strong);
-}
-
 .thinking-summary-trigger:hover,
 .thinking-summary-trigger:focus-visible {
   background: transparent;

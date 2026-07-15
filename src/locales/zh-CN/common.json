@@ -3723,6 +3723,7 @@
     "unhandled_promise_rejection": "未处理的 Promise 拒绝"
   },
   "search_engines": {
+    "bing_rss": "Bing RSS（免费）",
     "zhipu": "智谱 AI 搜索",
     "bocha": "博查 AI 搜索",
     "unnamed_mcp": "未命名MCP项"

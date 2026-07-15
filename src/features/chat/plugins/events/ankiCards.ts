@@ -60,6 +60,8 @@ type AnkiCardsChunk =
         cards?: AnkiCard[];
         deletedCardIds?: string[];
         cardMutation?: 'upsert' | 'delete';
+        _blockStatus?: 'running' | 'success' | 'error';
+        _blockError?: string | null;
       };
     };
 
@@ -99,6 +101,20 @@ function parseAnkiCardsChunk(chunk: string): AnkiCardsChunk | null {
     console.warn('[ankiCards] Failed to parse card chunk:', chunk);
     return null;
   }
+}
+
+function classifyGenerationIssue(error: string): { code: string; retryable: boolean } {
+  const normalized = error.toLowerCase();
+  if (normalized.includes('balance is insufficient') || normalized.includes('余额不足') || normalized.includes('额度不足')) {
+    return { code: 'provider_quota_exhausted', retryable: false };
+  }
+  if (normalized.includes('403') || normalized.includes('访问被拒绝')) {
+    return { code: 'provider_forbidden', retryable: false };
+  }
+  if (normalized.includes('401') || normalized.includes('api key') || normalized.includes('认证失败')) {
+    return { code: 'provider_auth_failed', retryable: false };
+  }
+  return { code: 'generation_failed', retryable: true };
 }
 
 /**
@@ -462,6 +478,14 @@ const ankiCardsEventHandler: EventHandler = {
 
     const parsed = parseAnkiCardsChunk(chunk);
     if (!parsed) return;
+    if (
+      parsed.kind === 'patch' &&
+      typeof parsed.patch.stateRevision === 'number' &&
+      typeof currentData?.stateRevision === 'number' &&
+      parsed.patch.stateRevision <= currentData.stateRevision
+    ) {
+      return;
+    }
     const terminal = isTerminalBlockStatus(block.status);
     const isCardMutation = parsed.kind === 'patch' && parsed.patch.cardMutation !== undefined;
     if (terminal && !isCardMutation) {
@@ -505,6 +529,8 @@ const ankiCardsEventHandler: EventHandler = {
       cards: patchCards,
       deletedCardIds,
       cardMutation: _cardMutation,
+      _blockStatus,
+      _blockError,
       ...restPatch
     } = parsed.patch;
     const deletedIds = new Set(currentData?.deletedCardIds ?? []);
@@ -522,6 +548,9 @@ const ankiCardsEventHandler: EventHandler = {
       ? mergeCardsUnique(cardsAfterDelete, patchCards)
       : cardsAfterDelete;
 
+    const authoritativeStatus = ['running', 'success', 'error'].includes(_blockStatus ?? '')
+      ? _blockStatus
+      : undefined;
     store.updateBlock(blockId, {
       toolOutput: {
         ...currentData,
@@ -533,8 +562,12 @@ const ankiCardsEventHandler: EventHandler = {
         templateMode: (restPatch as any)?.templateMode ?? currentData?.templateMode,
         syncStatus: (restPatch as any)?.syncStatus ?? currentData?.syncStatus ?? 'pending',
       } as AnkiCardsBlockData,
-      status: terminal ? block.status : 'running',
+      status: authoritativeStatus ?? (terminal ? block.status : 'running'),
+      ...(authoritativeStatus ? { error: _blockError ?? undefined } : {}),
     });
+    if (authoritativeStatus) {
+      store.updateBlockStatus(blockId, authoritativeStatus);
+    }
     const docIdForLog =
       ((restPatch as unknown as Record<string, unknown>)?.documentId as string | undefined) ??
       currentData?.documentId;
@@ -720,7 +753,10 @@ const ankiCardsEventHandler: EventHandler = {
     const block = store.blocks.get(blockId);
     if (block) {
       const currentData = block.toolOutput as AnkiCardsBlockData | undefined;
-      const isCompletedWithErrors = signalsCompletedWithErrors(currentData);
+      const hasUsableDelivery =
+        currentData?.deliveryStatus === 'ready' && (currentData.cards?.length ?? 0) > 0;
+      const isCompletedWithErrors = signalsCompletedWithErrors(currentData) || hasUsableDelivery;
+      const fallbackIssue = classifyGenerationIssue(error);
       // 保留已有卡片，并把部分成功与完整失败写成不同终态。
       if (currentData) {
         store.updateBlock(blockId, {
@@ -731,7 +767,24 @@ const ankiCardsEventHandler: EventHandler = {
               : 'error',
             syncError: isCompletedWithErrors ? currentData.syncError : error,
             finalStatus: isCompletedWithErrors ? 'completed_with_errors' : 'error',
-            finalError: currentData.finalError ?? error,
+            finalError: isCompletedWithErrors ? currentData.finalError : currentData.finalError ?? error,
+            ...(!isCompletedWithErrors ? {
+              schemaVersion: 2,
+              stateRevision: Math.max(Date.now(), (currentData.stateRevision ?? 0) + 1),
+              workflowStatus: 'failed',
+              generationStatus: 'failed',
+              deliveryStatus: 'empty',
+              recoveryStatus: 'none',
+              shouldRetry: fallbackIssue.retryable,
+              issues: [{
+                scope: 'generation',
+                code: fallbackIssue.code,
+                severity: 'error',
+                retryable: fallbackIssue.retryable,
+                recovered: false,
+                detail: error,
+              }],
+            } : {}),
           } as AnkiCardsBlockData,
         });
       }

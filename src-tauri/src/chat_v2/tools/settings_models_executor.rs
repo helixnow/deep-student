@@ -1170,7 +1170,11 @@ fn update_model_assignment_atomic(
         })?;
         transaction
             .execute(
-                "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('model_assignments', ?1, ?2)",
+                "INSERT INTO settings (key, value, updated_at) VALUES ('model_assignments', ?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET
+                   value = excluded.value,
+                   updated_at = excluded.updated_at
+                 WHERE settings.value IS NOT excluded.value",
                 params![serialized, Utc::now().to_rfc3339()],
             )
             .map_err(|error| {

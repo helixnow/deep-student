@@ -365,7 +365,7 @@ describe('AgentTaskPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Runtime visibility/i }));
 
-    expect(screen.getByText('Runtime')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /本地|Local/i })).toBeInTheDocument();
     expect(screen.getByText('List')).toBeInTheDocument();
     expect(screen.getByText('Read')).toBeInTheDocument();
     expect(screen.getByText('workspace')).toBeInTheDocument();
@@ -414,7 +414,7 @@ describe('AgentTaskPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Runtime blocked/i }));
 
-    expect(screen.getByText('Runtime')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /本地|Local/i })).toBeInTheDocument();
     expect(screen.getByText('Blocked')).toBeInTheDocument();
     expect(screen.getByText('secret')).toBeInTheDocument();
     expect(screen.getByText('private.txt')).toBeInTheDocument();
@@ -463,7 +463,7 @@ describe('AgentTaskPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Shell preflight/i }));
 
-    expect(screen.getByText('Runtime')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /本地|Local/i })).toBeInTheDocument();
     expect(screen.getByText('Check')).toBeInTheDocument();
     expect(screen.getByText('workspace')).toBeInTheDocument();
     expect(screen.getByText('git status --short')).toBeInTheDocument();
@@ -499,6 +499,12 @@ describe('AgentTaskPanel', () => {
               command: 'git status --short',
               root_id: 'workspace',
               cwd: '.',
+              sandbox: {
+                backend: 'macos_seatbelt',
+              },
+              network_policy: {
+                allow_network: false,
+              },
               exit_code: 0,
               success: true,
               timed_out: false,
@@ -528,11 +534,14 @@ describe('AgentTaskPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Shell execution/i }));
 
-    expect(screen.getByText('Runtime')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /本地|Local/i })).toBeInTheDocument();
     expect(screen.getByText('Check')).toBeInTheDocument();
     expect(screen.getByText('workspace')).toBeInTheDocument();
     expect(screen.getByText('git status --short')).toBeInTheDocument();
     expect(screen.getByText('exit 0 / .')).toBeInTheDocument();
+    expect(screen.getByText(/工作边界|Boundary/)).toBeInTheDocument();
+    expect(screen.getByText('macos_seatbelt')).toBeInTheDocument();
+    expect(screen.getByText(/已关闭|Disabled/)).toBeInTheDocument();
     expect(screen.getByText('Changes')).toBeInTheDocument();
     expect(screen.getByText('reports/shell-output.txt')).toBeInTheDocument();
   });

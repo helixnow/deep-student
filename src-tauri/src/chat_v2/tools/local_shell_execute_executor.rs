@@ -1230,6 +1230,22 @@ impl LocalShellExecuteExecutor {
         if command.len() > 8192 {
             return Err("command is too long for local shell execution".to_string());
         }
+        let state = ctx.window.state::<AppState>();
+        let raw_command_policy = state
+            .database
+            .get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
+            .ok()
+            .flatten();
+        let command_policy = crate::chat_v2::shell_command_policy::enforce_for_call(
+            raw_command_policy.as_deref(),
+            &command,
+            true,
+        );
+        if command_policy.effective_effect
+            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+        {
+            return Err("Command is denied by the configured terminal command rules".to_string());
+        }
         let (display_command, command_hash, command_redacted) = Self::command_audit(&command);
         // 🔒 封侧门：命令正文命中技能包目录即拒绝执行。安装/修改技能必须走
         // skill_install 工具（scan → install 两段式审批）或技能管理 UI，

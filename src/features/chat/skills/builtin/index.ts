@@ -940,7 +940,7 @@ export const chatAnkiSkill: SkillDefinition = {
 
 ## 内容确认（重要 — 必须遵守）
 
-- **禁止在没有制卡内容时调用 chatanki_run/chatanki_start**。如果用户只说"帮我做卡片"但没有提供任何学习材料（没上传文件、没粘贴内容），你**必须先用 \`builtin-ask_user\` 询问用户补充材料**（例如“上传文件 / 粘贴文本 / 稍后提供”），**不要直接调用制卡工具**。
+- **禁止在没有制卡内容或明确内容来源时调用 chatanki_run/chatanki_start**。如果用户只说“帮我做卡片”但没有上传或粘贴材料，必须先用 \`builtin-ask_user\` 让用户选择“上传资料 / 粘贴文本 / 由 AI 按通用知识生成 / 稍后提供”。只有用户明确选择“由 AI 按通用知识生成”后，才可自行整理事实内容并启动制卡；在 goal 中注明内容来源为通用知识，不得伪装成用户材料。
 - 若用户已上传文档/图片等材料：调用 \`builtin-chatanki_run\` 时**必须基于这些上下文引用制卡**（保留并使用全部可用引用）；**禁止**把文档内容改写成你自己的概述后仅放进 \`content\` 作为替代。若需指定目标文件，传 \`resourceId\`（单个）或 \`resourceIds\`（多个）；\`content\` 仅可作补充说明，不可替代文档主体。**此场景不要先调用 \`attachment_list/attachment_read\` 作为前置步骤。**
 - 若你尝试了 \`attachment_list\` 但返回空或失败，而用户明确“已上传资料”：**必须立即改走资源库路径**（\`builtin-resource_list\`/\`builtin-resource_search\`/上下文引用），然后继续 \`chatanki_run\`；**禁止**直接要求用户重传文件。
 - 执行顺序要求（有“已上传资料”语义时）：优先尝试读取当前上下文引用；若为空，再调用 \`builtin-resource_search\` 主动找资源。**搜索 chatanki 素材时必须限制到直接文件类资源**（例如 file / image / textbook），不要把 folder / note / mindmap / exam / essay / translation 结果直接传给 \`chatanki_run\`。拿到结果后，必须先检查返回项的 \`type\` 与 \`chatankiCompatible\`，只把直接文件类结果的 \`id\` 或 \`chatankiTargetId\` 作为 \`resourceId\` / \`resourceIds\` 传入；若结果类型不匹配，应继续筛选或重新搜索。**不要因附件工具失败而中断制卡流程。**
@@ -955,7 +955,8 @@ export const chatAnkiSkill: SkillDefinition = {
   - **优先**传 \`documentId\`；仅当它尚不可用时，才从最近的 \`anki_cards\` 预览块取 \`blockId\` 作为 \`ankiBlockId\`。
   - 若同时传入两个 ID，它们必须来自同一个预览块/同一次 run/start；不要把不同批次的 ID 混用。
   - 若 wait 返回 \`status=timeout\`：不要直接判定失败。应继续 \`builtin-chatanki_wait\`（可延长 timeoutMs）或用 \`builtin-chatanki_status\` 查询 documentId 的分段统计，直到进入 completed/error/cancelled 终态。
-  - 若 wait 返回 \`status=not_found/invalid_args\`：说明缺少正确的 id（或 id 不存在）。请先定位到对应的 \`anki_cards\` 预览块并获取其 blockId/documentId，再重新 wait。
+  - 若 wait 返回 \`status=not_found/invalid_args\`：说明缺少正确的 id（或 id 不存在）。若找不到 \`ankiBlockId\`，请先定位到对应的 \`anki_cards\` 预览块并获取其 blockId/documentId，再重新 wait。
+  - 若 wait 返回 \`status=error\`：先调用 \`builtin-chatanki_get_cards\` 核对是否存在可用卡。没有可用卡且错误为不可重试的认证/额度问题时，禁止盲目 retry；用户已明确允许 AI 通用知识生成、目标不超过 10 张时，可用 \`builtin-chatanki_add_cards\` 进行一次备用补卡并再次 \`get_cards\` 验收。其他情况应报告根因并让用户选择调整模型或内容来源。
 - 当用户要暂停/恢复/取消：用 \`builtin-chatanki_control\`。
 - 当用户要导出：用 \`builtin-chatanki_export\`（APKG/JSON；\`documentId\` 来自 wait 返回或 \`anki_cards\` 块 toolOutput）。
 - 当用户要同步到 Anki：可先用 \`builtin-chatanki_check_anki_connect\` 检查 AnkiConnect 是否可用，再用 \`builtin-chatanki_sync\` 同步（\`documentId\` 来自 wait 返回或 \`anki_cards\` 块 toolOutput）。

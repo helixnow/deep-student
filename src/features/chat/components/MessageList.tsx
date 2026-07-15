@@ -44,6 +44,8 @@ const VIRTUALIZER_INIT_DELAY = 0;
 const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
 /** 超过该数量后启用虚拟滚动，避免长会话全量渲染 */
 const VIRTUALIZATION_THRESHOLD = 80;
+/** 保证最后一条消息可以滚动到 28px 底部渐隐层之上。 */
+const MESSAGE_BOTTOM_SAFE_AREA_PX = 32;
 
 interface PendingScrollCompensation {
   scrollHeight: number;
@@ -798,7 +800,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
           role="log"
           aria-live="polite"
           aria-relevant="additions"
-          style={{ width: '100%' }}
+          style={{ width: '100%', paddingBottom: MESSAGE_BOTTOM_SAFE_AREA_PX }}
         >
           <AnimatePresence>
             {messageOrder.slice(directRenderStart).map((messageId, sliceIndex) => {
@@ -842,7 +844,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
           role="log"
           aria-live="off"
           style={{
-            height: `${virtualizer.getTotalSize()}px`,
+            height: `${virtualizer.getTotalSize() + MESSAGE_BOTTOM_SAFE_AREA_PX}px`,
             width: '100%',
             position: 'relative',
           }}

@@ -8,8 +8,8 @@ use rusqlite::{params, Connection};
 
 use crate::dstu::error::DstuError;
 use crate::vfs::{
-    repos::VfsMindMapRepo, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsFolderRepo,
-    VfsBlobRepo, VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
+    repos::VfsMindMapRepo, VfsBlobRepo, VfsDatabase, VfsEssayRepo, VfsExamRepo, VfsFileRepo,
+    VfsFolderRepo, VfsNoteRepo, VfsTextbookRepo, VfsTranslationRepo,
 };
 
 fn helper_error(action: &str, resource_type: &str, id: &str, error: impl ToString) -> String {
@@ -251,10 +251,8 @@ pub fn purge_resource_by_type_if_trashed(
     let result = (|| -> Result<(), String> {
         let trash_sql = match resource_type {
             "notes" | "note" => "SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NOT NULL",
-            "textbooks" | "textbook" | "images" | "image" | "files" | "file"
-            | "attachments" | "attachment" => {
-                "SELECT 1 FROM files WHERE id = ?1 AND deleted_at IS NOT NULL"
-            }
+            "textbooks" | "textbook" | "images" | "image" | "files" | "file" | "attachments"
+            | "attachment" => "SELECT 1 FROM files WHERE id = ?1 AND deleted_at IS NOT NULL",
             "exams" | "exam" => {
                 "SELECT 1 FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL"
             }
@@ -274,9 +272,7 @@ pub fn purge_resource_by_type_if_trashed(
             _ => return Err(invalid_type_error(resource_type, id)),
         };
 
-        let is_trashed = conn
-            .query_row(trash_sql, params![id], |_| Ok(()))
-            .is_ok();
+        let is_trashed = conn.query_row(trash_sql, params![id], |_| Ok(())).is_ok();
         if !is_trashed {
             return Err(format!(
                 "资源 {} (type={}) 不在回收站中，无法永久删除。请先将其移到回收站。",
@@ -289,7 +285,9 @@ pub fn purge_resource_by_type_if_trashed(
             "textbooks" | "textbook" => {
                 VfsTextbookRepo::purge_textbook_with_conn(&conn, vfs_db.blobs_dir(), id)
             }
-            "translations" | "translation" => VfsTranslationRepo::purge_translation_with_conn(&conn, id),
+            "translations" | "translation" => {
+                VfsTranslationRepo::purge_translation_with_conn(&conn, id)
+            }
             "exams" | "exam" => {
                 VfsExamRepo::purge_exam_sheet_with_conn(&conn, vfs_db.blobs_dir(), id)
             }
@@ -297,7 +295,9 @@ pub fn purge_resource_by_type_if_trashed(
                 VfsEssayRepo::purge_session_with_conn(&conn, id).map(|_| ())
             }
             "essays" | "essay" => VfsEssayRepo::purge_essay_with_conn(&conn, id),
-            "folders" | "folder" => VfsFolderRepo::purge_folder_with_conn(&conn, vfs_db.blobs_dir(), id),
+            "folders" | "folder" => {
+                VfsFolderRepo::purge_folder_with_conn(&conn, vfs_db.blobs_dir(), id)
+            }
             "images" | "files" | "attachments" | "image" | "file" | "attachment" => {
                 VfsFileRepo::purge_file_with_conn(&conn, vfs_db.blobs_dir(), id)
             }
@@ -333,7 +333,9 @@ pub fn purge_resource_by_type_if_trashed(
                     | "attachments"
                     | "attachment"
             ) {
-                if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, vfs_db.blobs_dir()) {
+                if let Err(e) =
+                    VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, vfs_db.blobs_dir())
+                {
                     log::warn!(
                         "[DSTU::delete_helpers] Post-purge blob sweep failed (will retry later): {}",
                         e

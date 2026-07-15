@@ -1185,6 +1185,26 @@ export class ChatV2TauriAdapter {
     });
   }
 
+  private reconcileLoadedAnkiBlocks(): void {
+    const state = this.getCurrentState();
+    for (const block of state.blocks.values()) {
+      if (block.type !== 'anki_cards') continue;
+      const output = block.toolOutput as Record<string, unknown> | undefined;
+      const documentId = typeof output?.documentId === 'string' ? output.documentId.trim() : '';
+      if (!documentId) continue;
+      const cards = Array.isArray(output?.cards) ? output.cards : [];
+      const needsProjectionUpgrade = Number(output?.schemaVersion ?? 0) < 2;
+      const inconsistentTerminal = block.status === 'error' && (
+        output?.workflowStatus !== 'failed' ||
+        output?.generationStatus !== 'failed' ||
+        output?.finalStatus !== 'error'
+      );
+      if (needsProjectionUpgrade || inconsistentTerminal) {
+        this.scheduleAnkiRetryReconcile(block.id, documentId);
+      }
+    }
+  }
+
   private async reconcileAnkiRetryState(
     blockId: string,
     documentId: string,
@@ -1230,18 +1250,9 @@ export class ChatV2TauriAdapter {
     if (block?.type !== 'anki_cards' || output?.documentId !== documentId) return;
 
     const currentCards = Array.isArray(output.cards) ? (output.cards as AnkiCard[]) : [];
-    const mergedCards = cards
-      ? (() => {
-          const byId = new Map<string, AnkiCard>();
-          for (const card of cards) {
-            if (card.id) byId.set(card.id, card);
-          }
-          for (const card of currentCards) {
-            if (card.id) byId.set(card.id, card);
-          }
-          return Array.from(byId.values());
-        })()
-      : currentCards;
+    // Once a terminal SQLite snapshot is available it is authoritative. Re-merging the
+    // serialized UI copy can resurrect deleted cards or overwrite newer database edits.
+    const mergedCards = cards ?? currentCards;
     const hasFailure = counts.failed + counts.truncated > 0;
     const hasUsableCard = mergedCards.some(
       (card) => !(card as AnkiCard & { is_error_card?: boolean }).is_error_card,
@@ -1277,6 +1288,20 @@ export class ChatV2TauriAdapter {
     const taskError = tasks
       .map((task) => task.error_message ?? task.errorMessage)
       .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    const normalizedTaskError = taskError?.toLowerCase() ?? '';
+    const taskIssueCode =
+      normalizedTaskError.includes('balance is insufficient') ||
+      normalizedTaskError.includes('余额不足') ||
+      normalizedTaskError.includes('额度不足')
+        ? 'provider_quota_exhausted'
+        : normalizedTaskError.includes('403') || normalizedTaskError.includes('访问被拒绝')
+          ? 'provider_forbidden'
+        : normalizedTaskError.includes('401') ||
+            normalizedTaskError.includes('api key') ||
+            normalizedTaskError.includes('认证失败')
+          ? 'provider_auth_failed'
+          : 'generation_failed';
+    const taskErrorRetryable = taskIssueCode === 'generation_failed';
     const progress = (output.progress as Record<string, unknown> | undefined) ?? {};
     const recoveredFromGenerationError =
       ['error', 'failed'].includes(String(output.finalStatus ?? '').toLowerCase()) ||
@@ -1293,12 +1318,55 @@ export class ChatV2TauriAdapter {
       error: finalStatus === 'error' ? taskError ?? block.error ?? 'generation_failed' : undefined,
       toolOutput: {
         ...output,
+        schemaVersion: 2,
+        stateRevision: Math.max(Date.now(), Number(output.stateRevision ?? 0) + 1),
         cards: mergedCards,
+        workflowStatus:
+          finalStatus === 'generating'
+            ? 'running'
+            : finalStatus === 'completed_with_errors'
+            ? 'completed_with_warnings'
+            : finalStatus === 'error'
+              ? 'failed'
+              : finalStatus,
+        generationStatus:
+          finalStatus === 'generating'
+            ? 'running'
+            : finalStatus === 'completed_with_errors'
+            ? counts.completed > 0 ? 'partial' : 'failed'
+            : finalStatus === 'error'
+              ? 'failed'
+              : finalStatus,
+        deliveryStatus: hasUsableCard ? 'ready' : 'empty',
+        recoveryStatus:
+          finalStatus === 'completed_with_errors' && counts.completed === 0
+            ? 'existing_cards'
+            : 'none',
+        availableCards: mergedCards.filter(
+          (card) => !(card as AnkiCard & { is_error_card?: boolean }).is_error_card,
+        ).length,
         finalStatus,
         finalError:
-          finalStatus === 'error' || finalStatus === 'completed_with_errors'
+          finalStatus === 'error'
             ? taskError ?? output.finalError
             : undefined,
+        issues: taskError
+          ? [{
+              scope: 'generation',
+              code: taskIssueCode,
+              severity: hasUsableCard ? 'warning' : 'error',
+              retryable: taskErrorRetryable,
+              recovered: hasUsableCard,
+              detail: taskError,
+            }]
+          : [],
+        warnings: finalStatus === 'completed_with_errors'
+          ? [{
+              code: 'generation_recovered',
+              messageKey: 'blocks.ankiCards.warnings.generationRecovered',
+              messageParams: { count: mergedCards.length },
+            }]
+          : output.warnings,
         syncStatus:
           recoveredFromGenerationError && output.syncStatus === 'error'
             ? 'pending'
@@ -1645,7 +1713,17 @@ export class ChatV2TauriAdapter {
       return;
     }
 
-    if (type === 'TaskCompleted' || type === 'DocumentProcessingCompleted') {
+    if (type === 'TaskCompleted') {
+      if ((targetBlock.status === 'success' || targetBlock.status === 'error') && !isRetryFlow) {
+        return;
+      }
+      if (documentId) {
+        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
+      }
+      return;
+    }
+
+    if (type === 'DocumentProcessingCompleted') {
       if (isRetryFlow && documentId) {
         this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
         return;
@@ -1659,7 +1737,7 @@ export class ChatV2TauriAdapter {
         }}));
       } catch { /* */ }
       recordSourceSnapshot(
-        type === 'TaskCompleted' ? 'event-task-completed' : 'event-doc-completed',
+        'event-doc-completed',
         currentCards,
         'success',
         (ensureDocumentId.documentId as string | undefined) ?? (currentOutput.documentId as string | undefined),
@@ -3412,6 +3490,8 @@ export class ChatV2TauriAdapter {
 
       // 使用 Store 的 restoreFromBackend 方法恢复状态
       this.store.restoreFromBackend(response, restoreBaseline);
+
+      this.reconcileLoadedAnkiBlocks();
 
       await this.hydrateDefaultChatModelIfMissing();
 
