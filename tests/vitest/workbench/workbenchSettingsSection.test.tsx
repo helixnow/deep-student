@@ -6,7 +6,7 @@ import { WorkbenchSettingsSection } from '@/features/settings/components/Workben
 // 深路径导入与被测组件保持一致（workbench index 聚合了 chat 等重量级 re-export）
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 
-const { invokeMock, settingsStore } = vi.hoisted(() => {
+const { importCustomWallpaperMock, invokeMock, settingsStore, showGlobalNotificationMock } = vi.hoisted(() => {
   const settingsStore = new Map<string, string>();
   const invokeMock = vi.fn(async (command: string, args?: Record<string, unknown>) => {
     if (command === 'get_setting') {
@@ -18,7 +18,12 @@ const { invokeMock, settingsStore } = vi.hoisted(() => {
     }
     return null;
   });
-  return { invokeMock, settingsStore };
+  return {
+    importCustomWallpaperMock: vi.fn(),
+    invokeMock,
+    settingsStore,
+    showGlobalNotificationMock: vi.fn(),
+  };
 });
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -26,13 +31,20 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({
-  showGlobalNotification: vi.fn(),
+  showGlobalNotification: showGlobalNotificationMock,
+}));
+
+vi.mock('@/features/settings/components/customWallpaperImport', () => ({
+  importCustomWallpaper: importCustomWallpaperMock,
 }));
 
 describe('WorkbenchSettingsSection', () => {
   beforeEach(() => {
     settingsStore.clear();
     invokeMock.mockClear();
+    importCustomWallpaperMock.mockReset();
+    importCustomWallpaperMock.mockResolvedValue({ status: 'cancelled' });
+    showGlobalNotificationMock.mockReset();
     workbenchBus.setEnabled(false);
     document.documentElement.removeAttribute('data-wb-material');
   });
@@ -186,6 +198,101 @@ describe('WorkbenchSettingsSection', () => {
     expect(screen.getByText('间距（px）')).toBeInTheDocument();
     // materialTier 非法值回退 auto
     expect(screen.getByRole('radio', { name: '跟随平台' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('opens the custom wallpaper picker without exposing an editable path', async () => {
+    render(<WorkbenchSettingsSection />);
+    await screen.findByRole('switch', { name: '启用学习桌面' });
+
+    expect(screen.queryByRole('textbox', { name: '图片路径' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: '自定义图片' }));
+
+    await waitFor(() => expect(importCustomWallpaperMock).toHaveBeenCalledTimes(1));
+    expect(importCustomWallpaperMock).toHaveBeenCalledWith(
+      expect.objectContaining({ pickerTitle: '选择壁纸图片', commit: expect.any(Function) }),
+    );
+    expect(screen.getByRole('radio', { name: '主题渐变' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  it('commits a selected managed wallpaper before updating state and dispatching the event', async () => {
+    const managedPath = 'C:/AppData/DeepStudent/workbench-wallpapers/wallpaper-new.png';
+    importCustomWallpaperMock.mockImplementation(async ({ commit }) => {
+      await commit(managedPath);
+      return { status: 'success', value: managedPath, cleanupErrors: [] };
+    });
+    const changedEvents: Array<{ key: string; value: unknown }> = [];
+    const onChanged = (event: Event) => {
+      changedEvents.push((event as CustomEvent<{ key: string; value: unknown }>).detail);
+    };
+    window.addEventListener('workbench:settings-changed', onChanged);
+
+    try {
+      render(<WorkbenchSettingsSection />);
+      await screen.findByRole('switch', { name: '启用学习桌面' });
+      fireEvent.click(screen.getByRole('radio', { name: '自定义图片' }));
+
+      const expected = { kind: 'image', value: managedPath };
+      await waitFor(() => {
+        expect(settingsStore.get('desktop.workbenchWallpaper')).toBe(JSON.stringify(expected));
+      });
+      expect(screen.getByRole('radio', { name: '自定义图片' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+      expect(screen.getByRole('button', { name: '更换图片' })).toBeInTheDocument();
+      expect(changedEvents).toContainEqual({
+        key: 'desktop.workbenchWallpaper',
+        value: expected,
+      });
+    } finally {
+      window.removeEventListener('workbench:settings-changed', onChanged);
+    }
+  });
+
+  it('blocks concurrent custom wallpaper imports', async () => {
+    let resolveImport!: (value: { status: 'cancelled' }) => void;
+    importCustomWallpaperMock.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveImport = resolve;
+      }),
+    );
+    render(<WorkbenchSettingsSection />);
+    await screen.findByRole('switch', { name: '启用学习桌面' });
+
+    const customOption = screen.getByRole('radio', { name: '自定义图片' });
+    fireEvent.click(customOption);
+    fireEvent.click(customOption);
+
+    await waitFor(() => expect(importCustomWallpaperMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('正在导入…')).toBeInTheDocument();
+    resolveImport({ status: 'cancelled' });
+    await waitFor(() => expect(screen.queryByText('正在导入…')).not.toBeInTheDocument());
+  });
+
+  it('preserves the current wallpaper and notifies when replacement fails', async () => {
+    const current = {
+      kind: 'image',
+      value: 'C:/AppData/DeepStudent/workbench-wallpapers/wallpaper-current.jpg',
+    };
+    settingsStore.set('desktop.workbenchWallpaper', JSON.stringify(current));
+    const error = new Error('copy failed');
+    importCustomWallpaperMock.mockResolvedValue({ status: 'error', error });
+    render(<WorkbenchSettingsSection />);
+
+    const changeButton = await screen.findByRole('button', { name: '更换图片' });
+    fireEvent.click(changeButton);
+
+    await waitFor(() => {
+      expect(showGlobalNotificationMock).toHaveBeenCalledWith('error', 'copy failed');
+    });
+    expect(settingsStore.get('desktop.workbenchWallpaper')).toBe(JSON.stringify(current));
+    expect(screen.getByRole('radio', { name: '自定义图片' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
   });
 
   it('explains the assistant capability surface and its explicit learning safeguards', async () => {

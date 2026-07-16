@@ -8,14 +8,16 @@
  * - 总开关变化：workbenchBus.setEnabled(v) + CustomEvent 'workbench:mode-changed' { enabled }
  * - 其余设置变化：CustomEvent 'workbench:settings-changed' { key, value }
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { CircleNotch, Image as ImageIcon } from '@phosphor-icons/react';
 
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
+import { Button } from '@/components/ui/shad/Button';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -30,6 +32,7 @@ import {
   persistBrowserNetworkModeSelection,
   type BrowserNetworkMode,
 } from './browserNetworkModePersistence';
+import { importCustomWallpaper } from './customWallpaperImport';
 
 export type PerformanceProfile = 'quality' | 'balanced' | 'performance' | 'custom';
 
@@ -152,7 +155,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const [materialTier, setMaterialTierState] = useState<MaterialTierSetting>('auto');
   const [dockMagnification, setDockMagnification] = useState(true);
   const [wallpaper, setWallpaper] = useState<WallpaperSetting>(DEFAULT_WALLPAPER);
-  const [imagePathDraft, setImagePathDraft] = useState('');
+  const [wallpaperImportPending, setWallpaperImportPending] = useState(false);
+  const wallpaperImportPendingRef = useRef(false);
   const [tileMargins, setTileMargins] = useState<TileMarginsSetting>(DEFAULT_TILE_MARGINS);
   const [dockAutohide, setDockAutohide] = useState(false);
   const [devPanel, setDevPanel] = useState(false);
@@ -210,7 +214,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       setDockMagnification(String(dockMagVal ?? '') !== 'false');
       const wp = parseJsonSetting<WallpaperSetting>(wallpaperVal, DEFAULT_WALLPAPER);
       setWallpaper(wp);
-      setImagePathDraft(wp.kind === 'image' ? wp.value : '');
       setTileMargins(parseJsonSetting<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
       setDockAutohide(String(autohideVal ?? '') === 'true');
       setDevPanel(String(devPanelVal ?? '') === 'true');
@@ -320,6 +323,37 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
     },
     [persist],
   );
+
+  const chooseCustomWallpaper = useCallback(async () => {
+    if (!loaded || wallpaperImportPendingRef.current) return;
+    wallpaperImportPendingRef.current = true;
+    setWallpaperImportPending(true);
+    try {
+      const result = await importCustomWallpaper({
+        pickerTitle: t('workbench:settings.wallpaper.selectTitle', '选择壁纸图片'),
+        commit: async (managedPath) => {
+          const next: WallpaperSetting = { kind: 'image', value: managedPath };
+          await tauriInvoke('save_setting', {
+            key: WORKBENCH_SETTING_KEYS.wallpaper,
+            value: JSON.stringify(next),
+          });
+          setWallpaper(next);
+          dispatchSettingsChanged(WORKBENCH_SETTING_KEYS.wallpaper, next);
+        },
+      });
+
+      if (result.status === 'success') {
+        if (result.cleanupErrors.length > 0) {
+          console.warn('[WorkbenchSettings] custom wallpaper cleanup failed:', result.cleanupErrors);
+        }
+      } else if (result.status === 'error') {
+        showGlobalNotification('error', getErrorMessage(result.error));
+      }
+    } finally {
+      wallpaperImportPendingRef.current = false;
+      setWallpaperImportPending(false);
+    }
+  }, [loaded, t]);
 
   const saveTileMargins = useCallback(
     (next: TileMarginsSetting) => {
@@ -497,14 +531,14 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             ariaLabel={t('workbench:settings.wallpaper.title', '桌面壁纸')}
             value={wallpaper.kind}
             onValueChange={(kind) => {
-              if (!loaded) return;
+              if (!loaded || wallpaperImportPending) return;
               if (kind === 'theme') {
                 const value = PRESET_IDS.includes(wallpaper.value)
                   ? wallpaper.value
                   : DEFAULT_WALLPAPER.value;
                 saveWallpaper({ kind: 'theme', value });
               } else {
-                saveWallpaper({ kind: 'image', value: imagePathDraft.trim() });
+                void chooseCustomWallpaper();
               }
             }}
             size="compact"
@@ -513,7 +547,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               { value: 'image', label: t('workbench:settings.wallpaper.kindImage', '自定义图片') },
             ]}
           />
-          {wallpaper.kind === 'theme' ? (
+          {wallpaper.kind === 'theme' && !wallpaperImportPending ? (
             <AppSelect
               value={PRESET_IDS.includes(wallpaper.value) ? wallpaper.value : DEFAULT_WALLPAPER.value}
               onValueChange={(value) => {
@@ -527,20 +561,24 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               width={100}
             />
           ) : (
-            <Input
-              type="text"
-              value={imagePathDraft}
-              aria-label={t('workbench:settings.wallpaper.imagePath', '图片路径')}
-              placeholder={t('workbench:settings.wallpaper.imagePlaceholder', '输入本地图片路径…')}
-              onChange={(e) => setImagePathDraft(e.target.value)}
-              onBlur={() => {
-                if (!loaded) return;
-                const value = imagePathDraft.trim();
-                if (value === wallpaper.value) return;
-                saveWallpaper({ kind: 'image', value });
-              }}
-              className="h-8 !w-52 text-xs bg-transparent"
-            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!loaded || wallpaperImportPending}
+              aria-busy={wallpaperImportPending}
+              onClick={() => void chooseCustomWallpaper()}
+              className="h-8 gap-1.5 text-xs"
+            >
+              {wallpaperImportPending ? (
+                <CircleNotch size={14} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <ImageIcon size={14} aria-hidden="true" />
+              )}
+              {wallpaperImportPending
+                ? t('workbench:settings.wallpaper.importing', '正在导入…')
+                : t('workbench:settings.wallpaper.changeImage', '更换图片')}
+            </Button>
           )}
         </div>
       </SettingRow>

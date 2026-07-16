@@ -463,8 +463,9 @@
       "desc": "Pick a built-in nature scene or theme gradient, or use a custom image.",
       "kindTheme": "Built-in",
       "kindImage": "Custom Image",
-      "imagePath": "Image path",
-      "imagePlaceholder": "Enter a local image path…"
+      "selectTitle": "Choose a wallpaper image",
+      "changeImage": "Change Image",
+      "importing": "Importing…"
     },
     "tileMargins": {
       "title": "Tiled Window Margins",

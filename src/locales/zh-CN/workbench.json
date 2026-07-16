@@ -463,8 +463,9 @@
       "desc": "选择内置自然风景或主题渐变，也可以使用自定义图片。",
       "kindTheme": "内置壁纸",
       "kindImage": "自定义图片",
-      "imagePath": "图片路径",
-      "imagePlaceholder": "输入本地图片路径…"
+      "selectTitle": "选择壁纸图片",
+      "changeImage": "更换图片",
+      "importing": "正在导入…"
     },
     "tileMargins": {
       "title": "平铺间距",

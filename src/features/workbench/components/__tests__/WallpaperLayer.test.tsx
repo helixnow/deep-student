@@ -3,8 +3,16 @@
  * 切换交叉淡入（animationend 回收 + 超时兜底）/ 动态流动预设
  */
 import React from 'react';
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
+
+const { convertFileSrcMock } = vi.hoisted(() => ({
+  convertFileSrcMock: vi.fn((path: string) => `asset://localhost/${path}`),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  convertFileSrc: convertFileSrcMock,
+}));
 
 import {
   WallpaperLayer,
@@ -19,6 +27,10 @@ function panesOf(container: HTMLElement): HTMLElement[] {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+beforeEach(() => {
+  convertFileSrcMock.mockClear();
 });
 
 describe('壁纸预设清单', () => {
@@ -97,11 +109,21 @@ describe('自定义图片适配层', () => {
       <WallpaperLayer wallpaper={{ kind: 'image', value: '/wp/pic.jpg' }} />,
     );
     const image = container.querySelector<HTMLElement>('.wb-wallpaper-image');
-    expect(image?.style.backgroundImage).toContain('/wp/pic.jpg');
+    expect(convertFileSrcMock).toHaveBeenCalledWith('/wp/pic.jpg');
+    expect(image?.style.backgroundImage).toContain('asset://localhost//wp/pic.jpg');
     expect(image?.style.filter).toBe('');
     expect(container.querySelector('.wb-wallpaper-scrim')).not.toBeNull();
     expect(container.querySelector('.wb-wallpaper-vignette')).not.toBeNull();
     expect(container.querySelector('.wb-wallpaper-dimmer')).toBeNull();
+  });
+
+  it('已经可用的 URL scheme 原样渲染，不调用 convertFileSrc', () => {
+    const { container } = render(
+      <WallpaperLayer wallpaper={{ kind: 'image', value: 'https://example.com/wallpaper.jpg' }} />,
+    );
+    const image = container.querySelector<HTMLElement>('.wb-wallpaper-image');
+    expect(image?.style.backgroundImage).toContain('https://example.com/wallpaper.jpg');
+    expect(convertFileSrcMock).not.toHaveBeenCalled();
   });
 
   it('url 中引号/反斜杠被转义', () => {

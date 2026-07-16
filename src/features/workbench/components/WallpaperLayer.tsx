@@ -15,6 +15,7 @@
  * - 纯展示层，pointer-events: none，永远垫在窗口层之下（z-index: 0）。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import '../styles/workbench.css';
 import './WallpaperLayer.css';
 
@@ -102,6 +103,12 @@ function toCssUrl(value: string): string {
   return `url("${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}")`;
 }
 
+const USABLE_URL_PATTERN = /^(?:https?:|data:|blob:|asset:|tauri:|file:)/i;
+
+function resolveCustomImageUrl(value: string): string {
+  return USABLE_URL_PATTERN.test(value) ? value : convertFileSrc(value);
+}
+
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
@@ -157,7 +164,7 @@ const PaneContent: React.FC<{ config: WallpaperConfig }> = ({ config }) => {
         <div
           className="wb-wallpaper-image"
           style={{
-            backgroundImage: toCssUrl(config.value),
+            backgroundImage: toCssUrl(resolveCustomImageUrl(config.value)),
             // 模糊时轻微放大，避免边缘出血露底
             filter: blur > 0 ? `blur(${blur}px)` : undefined,
             transform: blur > 0 ? 'scale(1.06)' : undefined,
