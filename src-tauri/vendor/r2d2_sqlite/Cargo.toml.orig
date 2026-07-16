@@ -1,0 +1,48 @@
+[package]
+name = "r2d2_sqlite"
+version = "0.35.0"
+authors = [
+  "Jovansonlee Cesar <ivanceras@gmail.com>",
+  "Hugo Woesthuis <hugo@woesthuis.eu>",
+  "Jerebtw <jeremialp41@gmail.com>",
+]
+license = "MIT"
+description = "SQLite and SQLCipher support for the r2d2 connection pool"
+repository = "https://github.com/ivanceras/r2d2-sqlite"
+documentation = "https://docs.rs/r2d2_sqlite/"
+keywords = ["sqlite", "r2d2", "pool"]
+edition = "2018"
+
+[lib]
+name = "r2d2_sqlite"
+path = "src/lib.rs"
+test = false
+
+
+[[test]]
+name = "test"
+path = "tests/test.rs"
+
+[dependencies]
+r2d2 = "0.8"
+uuid = { version = "1.0", features = ["v4", "fast-rng"] }
+
+[dependencies.rusqlite]
+version = "0.40"
+
+[dev-dependencies]
+tempfile = "3"
+
+[dev-dependencies.rusqlite]
+version = "0.40"
+features = ["trace"]
+
+
+[features]
+default = ["is-valid"]
+bundled = ["rusqlite/bundled"]
+bundled-sqlcipher = ["rusqlite/bundled-sqlcipher"]
+bundled-sqlcipher-vendored-openssl = [
+  "rusqlite/bundled-sqlcipher-vendored-openssl",
+]
+is-valid = []

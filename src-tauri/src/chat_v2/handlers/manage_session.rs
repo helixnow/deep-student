@@ -11,7 +11,7 @@ use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::clear_session_sequence_counter;
 use crate::chat_v2::repo::ChatV2Repo;
-use crate::chat_v2::runtime_roots::cleanup_session_runtime_roots;
+use crate::chat_v2::runtime_roots::{cleanup_session_runtime_roots, ensure_session_runtime_roots};
 use crate::chat_v2::state::ChatV2State;
 use crate::chat_v2::types::{
     ChatSession, PersistStatus, SessionSettings, SessionSkillState, SessionState,
@@ -97,6 +97,7 @@ pub(crate) fn session_has_running_anki_blocks(
 /// - `Err(String)`: 创建失败
 #[tauri::command]
 pub async fn chat_v2_create_session(
+    app: AppHandle,
     mode: String,
     title: Option<String>,
     metadata: Option<Value>,
@@ -152,6 +153,17 @@ pub async fn chat_v2_create_session(
     }
 
     let session = create_session_in_db(&mode, title, metadata, normalized_group_id, &db)?;
+
+    if let Err(error) = ensure_session_runtime_roots(&app, &session.id) {
+        // Session creation remains available even if the filesystem is
+        // temporarily unavailable. Shell/file tools retry this initialization
+        // before use and will surface a scoped error if it still fails.
+        log::warn!(
+            "[ChatV2::handlers] Failed to initialize runtime roots for {}: {}",
+            session.id,
+            error
+        );
+    }
 
     log::info!(
         "[ChatV2::handlers] Created session: id={}, mode={}",

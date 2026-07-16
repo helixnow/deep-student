@@ -92,6 +92,10 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
         if (engineSelection && engineSelection.trim()) {
           const engines = sanitizeIdList(engineSelection.split(','));
           setSelectedSearchEngines(engines);
+        } else if (engineSelection == null) {
+          // 首次安装默认选择内置免费源；空字符串表示用户主动取消选择。
+          setSelectedSearchEngines(['bing_rss']);
+          await TauriAPI.saveSetting('session.selected_search_engines', 'bing_rss');
         }
       } catch (e: unknown) {
         // 加载搜索引擎选择失败（已禁用日志）
@@ -377,7 +381,9 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
         const [bing, gkey, gcx, serp, tav, brave, sxEndpoint, zhipu, bocha] = settingsResults.map(result => 
           result.status === 'fulfilled' ? result.value : null
         );
-        const engines: SearchEngine[] = [];
+        const engines: SearchEngine[] = [
+          { id: 'bing_rss', label: i18n.t('common:search_engines.bing_rss', 'Bing RSS (Free)') },
+        ];
         if ((gkey || '').trim() && (gcx || '').trim()) engines.push({ id: 'google_cse', label: 'Google CSE' });
         if ((serp || '').trim()) engines.push({ id: 'serpapi', label: 'SerpAPI (Google)' });
         if ((tav || '').trim()) engines.push({ id: 'tavily', label: 'Tavily' });
@@ -389,9 +395,10 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
         // 🔧 同步更新搜索引擎缓存，让 TauriAdapter 能获取可用引擎列表
         updateSearchEngineCache(engines.map(e => e.id));
       } catch {
-        // 出错时返回空列表（无免费引擎可用）
-        setAvailableSearchEngines([]);
-        updateSearchEngineCache([]);
+        // 配置读取失败不影响内置免费源。
+        const fallbackEngines = [{ id: 'bing_rss', label: i18n.t('common:search_engines.bing_rss', 'Bing RSS (Free)') }];
+        setAvailableSearchEngines(fallbackEngines);
+        updateSearchEngineCache(['bing_rss']);
       }
       } catch (e: unknown) {
         debugLog.warn('reloadAvailability failed at top level:', e);

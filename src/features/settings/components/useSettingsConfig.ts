@@ -261,7 +261,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           // Web Search 设置（UI 层存储，仅供保存使用）
           // 为保持与其他页面一致，全部使用简单原生控件，不在此定义专门类型
           // 外部搜索设置（不再设置全局启用项）
-          webSearchEngine: webEngine || '',
+          webSearchEngine: webEngine || 'bing_rss',
           webSearchTimeoutMs: parseInt(webTimeoutMs || '15000', 10),
           webSearchGoogleKey: webGoogleKey || '',
           webSearchGoogleCx: webGoogleCx || '',

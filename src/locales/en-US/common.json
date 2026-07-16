@@ -3780,6 +3780,7 @@
     "unhandled_promise_rejection": "Unhandled Promise Rejection"
   },
   "search_engines": {
+    "bing_rss": "Bing RSS (Free)",
     "zhipu": "Zhipu AI Search",
     "bocha": "Bocha AI Search",
     "unnamed_mcp": "Unnamed MCP Item"

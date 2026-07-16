@@ -87,7 +87,7 @@ export const EngineSettingsSection: React.FC<{
   const [engineTesting, setEngineTesting] = React.useState<string | null>(null);
   const [engineResults, setEngineResults] = React.useState<Record<string, { ok: boolean; msg: string; ms?: number }>>({});
   const [providerSaving, setProviderSaving] = React.useState(false);
-  const [activeEngine, setActiveEngine] = React.useState<string>('google_cse');
+  const [activeEngine, setActiveEngine] = React.useState<string>('bing_rss');
 
   React.useEffect(() => {
     const loadData = async () => {
@@ -302,8 +302,9 @@ export const EngineSettingsSection: React.FC<{
             </div>
             
             <div className="flex flex-col gap-1 mt-4">
-              {['google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'].map((id) => {
+              {['bing_rss', 'google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'].map((id) => {
                 const labelMap: Record<string, string> = {
+                  bing_rss: t('settings:external_search.bing_rss_name', 'Bing RSS（免费）'),
                   google_cse: 'Google CSE',
                   serpapi: 'SerpAPI',
                   tavily: 'Tavily',
@@ -313,6 +314,7 @@ export const EngineSettingsSection: React.FC<{
                   bocha: t('settings:external_search.bocha_name', '博查 AI 搜索')
                 };
                 const isConfiguredMap: Record<string, boolean> = {
+                  bing_rss: true,
                   google_cse: !!(config.webSearchGoogleKey && config.webSearchGoogleCx),
                   serpapi: !!config.webSearchSerpApiKey,
                   tavily: !!config.webSearchTavilyKey,
@@ -351,6 +353,20 @@ export const EngineSettingsSection: React.FC<{
         </div>
 
         <div className="space-y-8 w-full min-w-0">
+          {activeEngine === 'bing_rss' && (
+            <div className="w-full ui-rise-in">
+              <div className="flex flex-col gap-2 mb-6">
+                <h3 className="text-base font-medium text-foreground">
+                  {t('settings:external_search.bing_rss_name', 'Bing RSS（免费）')}
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.bing_rss_desc', '无需 API Key 的内置基础搜索源。公共端点可能限流，适合作为 Best Effort 默认源。')}
+                </p>
+              </div>
+              {renderEngineFooter('bing_rss', true)}
+            </div>
+          )}
+
           {activeEngine === 'google_cse' && (
             <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
@@ -580,6 +596,7 @@ export const EngineSettingsSection: React.FC<{
                 placeholder={t('settings:external_search.engine_options.none')}
                 options={[
                   { value: noneValue, label: t('settings:external_search.engine_options.none') },
+                  { value: 'bing_rss', label: t('settings:external_search.engine_options.bing_rss') },
                   { value: 'google_cse', label: t('settings:external_search.engine_options.google_cse'), disabled: !(config.webSearchGoogleKey && config.webSearchGoogleCx) },
                   { value: 'serpapi', label: t('settings:external_search.engine_options.serpapi'), disabled: !config.webSearchSerpApiKey },
                   { value: 'tavily', label: t('settings:external_search.engine_options.tavily'), disabled: !config.webSearchTavilyKey },

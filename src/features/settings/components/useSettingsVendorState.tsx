@@ -149,6 +149,8 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           supportsOpenAIResponses: api.supportsOpenAIResponses,
           provider_type: api.providerType,
           providerType: api.providerType,
+          auth_mode: api.authMode,
+          authMode: api.authMode,
           model_adapter: api.modelAdapter,
           modelAdapter: api.modelAdapter,
           model: api.model, // 传递用户指定的模型名称

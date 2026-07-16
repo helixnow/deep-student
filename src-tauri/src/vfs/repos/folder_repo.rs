@@ -1196,7 +1196,8 @@ impl VfsFolderRepo {
                 &folder_ids,
                 "UPDATE folder_items SET cached_path = NULL WHERE folder_id IN ({})",
             )?;
-            if let Err(e) = VfsPathCacheRepo::invalidate_by_folders_batch_with_conn(conn, &folder_ids)
+            if let Err(e) =
+                VfsPathCacheRepo::invalidate_by_folders_batch_with_conn(conn, &folder_ids)
             {
                 warn!(
                     "[VFS::FolderRepo] Failed to invalidate path_cache after rename for {} folders: {}",
@@ -1742,19 +1743,13 @@ impl VfsFolderRepo {
             // than hard-deleting the restored resource as a side effect.
             let trash_sql = match canonical_item_type.as_str() {
                 "note" => "SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NOT NULL",
-                "file" | "image" => {
-                    "SELECT 1 FROM files WHERE id = ?1 AND deleted_at IS NOT NULL"
-                }
-                "exam" => {
-                    "SELECT 1 FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL"
-                }
+                "file" | "image" => "SELECT 1 FROM files WHERE id = ?1 AND deleted_at IS NOT NULL",
+                "exam" => "SELECT 1 FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL",
                 "translation" => {
                     "SELECT 1 FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL"
                 }
                 "essay" => "SELECT 1 FROM essays WHERE id = ?1 AND deleted_at IS NOT NULL",
-                "mindmap" => {
-                    "SELECT 1 FROM mindmaps WHERE id = ?1 AND deleted_at IS NOT NULL"
-                }
+                "mindmap" => "SELECT 1 FROM mindmaps WHERE id = ?1 AND deleted_at IS NOT NULL",
                 other => {
                     warn!(
                         "[VFS::FolderRepo] Skipping unsupported folder item during purge: type={}, id={}",

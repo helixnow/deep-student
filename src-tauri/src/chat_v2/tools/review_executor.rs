@@ -499,13 +499,7 @@ impl ReviewToolExecutor {
                 Some(expected_updated_at),
             )
             .map_err(|error| {
-                Self::mutation_error(
-                    &service,
-                    "submit",
-                    &plan_id,
-                    expected_updated_at,
-                    error,
-                )
+                Self::mutation_error(&service, "submit", &plan_id, expected_updated_at, error)
             })?;
 
         let payload = json!({
@@ -824,9 +818,7 @@ impl ToolExecutor for ReviewToolExecutor {
             | "review_plan_generate"
             | "review_submit"
             | "review_suspend"
-            | "review_resume" => {
-                ToolSensitivity::Medium
-            }
+            | "review_resume" => ToolSensitivity::Medium,
             // 只读操作。
             _ => ToolSensitivity::Low,
         }

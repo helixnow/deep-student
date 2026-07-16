@@ -640,8 +640,8 @@ impl EssayGradingExecutor {
 
         let sessions = VfsEssayRepo::list_sessions(vfs_db, page_size, offset)
             .map_err(|e| format!("查询批改会话失败: {}", e))?;
-        let total = VfsEssayRepo::count_sessions(vfs_db)
-            .map_err(|e| format!("统计批改会话失败: {}", e))?;
+        let total =
+            VfsEssayRepo::count_sessions(vfs_db).map_err(|e| format!("统计批改会话失败: {}", e))?;
 
         let items: Vec<Value> = sessions
             .iter()
@@ -748,7 +748,8 @@ impl EssayGradingExecutor {
         let result_text = Self::extract_result_text(essay.grading_result.as_ref());
 
         let input_text_truncated = input_text.chars().count() > MAX_RESULT_CHARS_IN_TOOL_OUTPUT;
-        let grading_result_truncated = result_text.chars().count() > MAX_RESULT_CHARS_IN_TOOL_OUTPUT;
+        let grading_result_truncated =
+            result_text.chars().count() > MAX_RESULT_CHARS_IN_TOOL_OUTPUT;
         Ok(json!({
             "session_id": session_id,
             "round_id": essay.id,

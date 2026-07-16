@@ -121,6 +121,17 @@ pub(crate) fn is_shell_runtime_tool(tool_name: &str) -> bool {
     )
 }
 
+/// External MCP servers are free to name command executors however they want.
+/// Treat an MCP call carrying a string `command` argument as shell-capable so
+/// aliases such as `run_command` cannot bypass deny rules or precise approval.
+pub(crate) fn is_shell_runtime_tool_for_args(tool_name: &str, args: &Value) -> bool {
+    if is_shell_runtime_tool(tool_name) {
+        return true;
+    }
+    let (source, _) = tool_source_namespace(tool_name, args);
+    source.starts_with("mcp") && args.get("command").and_then(Value::as_str).is_some()
+}
+
 pub(crate) fn is_local_shell_execute_tool(tool_name: &str, args: &Value) -> bool {
     let (source, _) = tool_source_namespace(tool_name, args);
     matches!(source.as_str(), "builtin" | "local")
@@ -251,9 +262,9 @@ pub fn never_remember_approval_for_args(tool_name: &str, args: &Value) -> bool {
         return true;
     }
     let short = semantic_tool_short_name(tool_name);
-    (is_shell_runtime_tool(tool_name) && short != "local_shell_preflight")
+    (is_shell_runtime_tool_for_args(tool_name, args) && short != "local_shell_preflight")
         || is_high_risk_external_mcp_tool(tool_name)
-        || (is_shell_runtime_tool(tool_name)
+        || (is_shell_runtime_tool_for_args(tool_name, args)
             && args.get("command").and_then(Value::as_str).is_none())
 }
 
@@ -269,6 +280,10 @@ pub fn requires_precise_approval_scope(tool_name: &str) -> bool {
         || is_governance_always_confirm_tool(tool_name)
 }
 
+pub fn ignores_broad_approval_bypass_for_args(tool_name: &str, args: &Value) -> bool {
+    is_shell_runtime_tool_for_args(tool_name, args) || requires_precise_approval_scope(tool_name)
+}
+
 /// Broad approval bypasses are intentionally ignored for local runtime tools
 /// that can execute commands or write/delete files. These operations should be
 /// approved by precise command/path scope, not by a process-wide "all tools are
@@ -281,7 +296,7 @@ pub fn ignores_broad_approval_bypass(tool_name: &str) -> bool {
 /// or persistence boundary. Environment key names remain visible so the user
 /// can understand that execution semantics are being changed.
 pub fn redact_tool_arguments_for_display(tool_name: &str, args: &Value) -> Value {
-    if !is_shell_runtime_tool(tool_name) {
+    if !is_shell_runtime_tool_for_args(tool_name, args) {
         return args.clone();
     }
     let mut redacted = args.clone();
@@ -940,7 +955,7 @@ pub fn make_runtime_approval_scope(
     if let Some(scope) = make_automation_propose_approval_scope(tool_name, args, risk_level) {
         return Some(scope);
     }
-    if !is_shell_runtime_tool(tool_name) {
+    if !is_shell_runtime_tool_for_args(tool_name, args) {
         return None;
     }
     let command = args.get("command").and_then(|v| v.as_str())?;
@@ -2439,6 +2454,25 @@ mod tests {
         assert_eq!(scope.timeout_ms, 30_000);
         assert_eq!(scope.max_output_bytes, 64 * 1024);
         assert!(scope.track_file_changes);
+    }
+
+    #[test]
+    fn arbitrary_external_mcp_command_alias_uses_shell_policy_boundaries() {
+        let args = json!({
+            "_serverId": "custom-terminal",
+            "command": "rm -rf build"
+        });
+        assert!(is_shell_runtime_tool_for_args("mcp_run_command", &args));
+        assert!(never_remember_approval_for_args("mcp_run_command", &args));
+        assert!(ignores_broad_approval_bypass_for_args(
+            "mcp_run_command",
+            &args
+        ));
+        let scope = make_runtime_approval_scope("mcp_run_command", &args, "high")
+            .expect("external command alias must produce a shell approval scope");
+        assert_eq!(scope.kind, "shell");
+        assert_eq!(scope.execution_location.as_deref(), Some("external_mcp"));
+        assert_eq!(scope.remember_disabled, Some(true));
     }
 
     #[test]

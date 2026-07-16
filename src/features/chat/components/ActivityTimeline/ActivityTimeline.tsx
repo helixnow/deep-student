@@ -26,6 +26,7 @@ import {
   CheckCircle,
   WarningCircle,
   Warning,
+  Terminal,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { useStore } from 'zustand';
@@ -41,6 +42,12 @@ import { isTemplateVisualOutput, TemplateToolOutput } from '../../plugins/blocks
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../ui/TextShimmer';
+import {
+  getShellCommandDescriptor,
+  isShellTimelineTool,
+  shellCommandVerb,
+  ShellCommandTimelineView,
+} from './ShellCommandTimelineView';
 import './ActivityTimeline.css';
 
 // ============================================================================
@@ -182,6 +189,46 @@ function extractTodoStepsFromBlocks(todoBlocks: Block[]): {
 }
 
 /**
+ * Shell preflight is an internal phase of one command lifecycle. Keep the
+ * audit blocks in persistence, but avoid rendering every root retry as a
+ * separate user-visible timeline event.
+ */
+function hiddenShellPreflightIds(blocks: Block[]): Set<string> {
+  const groups = new Map<string, { preflightIds: string[]; hasExecute: boolean }>();
+
+  for (const block of blocks) {
+    if (block.type !== 'mcp_tool' || !isShellTimelineTool(block.toolName)) continue;
+    const descriptor = getShellCommandDescriptor({
+      toolName: block.toolName,
+      toolInput: block.toolInput as Record<string, unknown> | undefined,
+      toolOutput: block.toolOutput,
+      toolError: block.error,
+      toolStatus: block.status,
+    });
+    if (!descriptor) continue;
+
+    const commandKey = descriptor.command.trim();
+    if (!commandKey) continue;
+    const group = groups.get(commandKey) ?? { preflightIds: [], hasExecute: false };
+    if (descriptor.kind === 'execute') {
+      group.hasExecute = true;
+    } else {
+      group.preflightIds.push(block.id);
+    }
+    groups.set(commandKey, group);
+  }
+
+  const hidden = new Set<string>();
+  for (const group of groups.values()) {
+    const visiblePreflightCount = group.hasExecute ? 0 : 1;
+    group.preflightIds
+      .slice(0, Math.max(0, group.preflightIds.length - visiblePreflightCount))
+      .forEach((id) => hidden.add(id));
+  }
+  return hidden;
+}
+
+/**
  * 将 blocks 转换为时间线节点数据
  * 按块顺序保持，每个块对应一个节点
  * 🔧 P6修复：每个 TODO 工具调用都完整显示其当时的状态
@@ -194,6 +241,7 @@ function blocksToTimelineNodes(
   isStreaming: boolean = false
 ): TimelineNodeData[] {
   const nodes: TimelineNodeData[] = [];
+  const hiddenPreflightIds = hiddenShellPreflightIds(blocks);
 
   for (const block of blocks) {
     
@@ -219,6 +267,7 @@ function blocksToTimelineNodes(
         isAborted: block.aborted === true,
       });
     } else if (block.type === 'mcp_tool') {
+      if (hiddenPreflightIds.has(block.id)) continue;
       // 🆕 检测是否为 TODO 工具
       if (isTodoTool(block.toolName)) {
         // 🔧 P6修复：每个 TODO 工具调用都完整显示其当时的状态
@@ -820,6 +869,16 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
   const isRunning = node.toolStatus === 'running' && isStreaming;
   const isError = node.toolStatus === 'error';
   const isSuccess = node.toolStatus === 'success';
+  const isShellCommand = isShellTimelineTool(node.toolName);
+  const shellDescriptor = useMemo(() => getShellCommandDescriptor({
+    toolName: node.toolName,
+    toolInput: node.toolInput,
+    toolOutput: node.toolOutput,
+    toolError: node.toolError,
+    toolStatus: node.toolStatus,
+    isPreparing,
+    isRunning,
+  }), [node.toolName, node.toolInput, node.toolOutput, node.toolError, node.toolStatus, isPreparing, isRunning]);
 
   // 获取工具的国际化显示名称
   const displayToolName = useMemo(
@@ -867,12 +926,14 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
 
   // 获取状态颜色
   const statusColor = useMemo(() => {
+    if (shellDescriptor?.tone === 'error') return 'text-destructive';
+    if (shellDescriptor?.tone === 'success') return 'text-success';
     if (isPreparing) return 'text-primary';
     if (isRunning) return 'text-primary';
     if (isError) return 'text-destructive';
     if (isSuccess) return 'text-success';
     return 'text-muted-foreground';
-  }, [isPreparing, isRunning, isError, isSuccess]);
+  }, [shellDescriptor?.tone, isPreparing, isRunning, isError, isSuccess]);
 
   // 是否有详细信息可展开
   const hasDetails = !!(node.toolInput && Object.keys(node.toolInput).length > 0) ||
@@ -899,16 +960,29 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
           aria-expanded={hasDetails ? isExpanded : undefined}
           aria-controls={hasDetails ? contentId : undefined}
           className={cn(
-            '!justify-start !px-0 -mt-0.5 w-fit hover:!bg-transparent',
+            '!justify-start !px-0 -mt-0.5 max-w-full hover:!bg-transparent',
+            isShellCommand ? 'w-full min-w-0' : 'w-fit',
             'text-muted-foreground hover:text-foreground',
             'disabled:cursor-default disabled:hover:text-muted-foreground'
           )}
         >
-          <span className="font-medium text-foreground">
-            {displayToolName}
-          </span>
+          {shellDescriptor ? (
+            <span className="flex min-w-0 items-center gap-1.5 text-foreground">
+              <Terminal size={13} className="shrink-0 text-muted-foreground" />
+              <span className={cn('shrink-0 font-medium', statusColor)}>
+                {shellCommandVerb(shellDescriptor, t)}
+              </span>
+              <code className="min-w-0 truncate font-mono text-xs text-foreground" title={shellDescriptor.command}>
+                {shellDescriptor.command || t('timeline.shell.commandUnavailable', { ns: 'chatV2', defaultValue: '命令内容不可用' })}
+              </code>
+            </span>
+          ) : (
+            <span className="font-medium text-foreground">
+              {displayToolName}
+            </span>
+          )}
 
-          {(isPreparing || isRunning) ? (
+          {!shellDescriptor && (isPreparing || isRunning) ? (
             <TextShimmer
               className={cn('text-xs', statusColor)}
               duration={1.5}
@@ -916,7 +990,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
             >
               {statusText}
             </TextShimmer>
-          ) : (
+          ) : !shellDescriptor ? (
             <>
               {StatusIcon && (
                 <StatusIcon
@@ -933,7 +1007,9 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                 </span>
               )}
             </>
-          )}
+          ) : durationText ? (
+            <span className="ml-auto shrink-0 text-xs text-muted-foreground/70">{durationText}</span>
+          ) : null}
         </NotionButton>
 
         {/* 展开的详细信息 */}
@@ -946,6 +1022,19 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
               aria-label={t('timeline.tool.contentLabel', { ns: 'chatV2' })}
               className="overflow-hidden"
             >
+              {isShellCommand ? (
+                <div className="pb-1 pt-1 text-xs">
+                  <ShellCommandTimelineView
+                    toolName={node.toolName}
+                    toolInput={node.toolInput}
+                    toolOutput={node.toolOutput}
+                    toolError={node.toolError}
+                    toolStatus={node.toolStatus}
+                    isPreparing={isPreparing}
+                    isRunning={isRunning}
+                  />
+                </div>
+              ) : (
               <div className="pl-5 space-y-2 text-xs">
                 {/* 错误信息 */}
                 {isError && node.toolError && (
@@ -1001,6 +1090,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                   </div>
                 )}
               </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

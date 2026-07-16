@@ -173,6 +173,15 @@ interface RuntimeItem {
   toolName: string;
 }
 
+interface RuntimeEnvironment {
+  rootId?: string;
+  rootLabel?: string;
+  cwd?: string;
+  sandboxBackend?: string;
+  platform?: string;
+  networkAllowed?: boolean;
+}
+
 const ORIGIN_ICONS: Record<string, Icon> = {
   web_search: Globe,
   memory: Brain,
@@ -514,7 +523,54 @@ function extractRuntimeItems(blocks: Block[]): RuntimeItem[] {
     });
   }
 
-  return [...runtime.values()];
+  const items = [...runtime.values()];
+  const executedCommands = new Set(
+    items
+      .filter((item) => normalizeToolName(item.toolName) === 'local_shell_execute')
+      .map((item) => item.label),
+  );
+  const lastPreflightByCommand = new Map<string, number>();
+  items.forEach((item, index) => {
+    if (normalizeToolName(item.toolName) === 'local_shell_preflight') {
+      lastPreflightByCommand.set(item.label, index);
+    }
+  });
+
+  return items.filter((item, index) => {
+    if (normalizeToolName(item.toolName) !== 'local_shell_preflight') return true;
+    if (executedCommands.has(item.label)) return false;
+    return lastPreflightByCommand.get(item.label) === index;
+  });
+}
+
+/** Extract the latest effective local boundary instead of treating tool history as environment state. */
+function extractRuntimeEnvironment(blocks: Block[]): RuntimeEnvironment | null {
+  let environment: RuntimeEnvironment | null = null;
+
+  for (const block of blocks) {
+    if (!block.toolName || !isRuntimeTool(block.toolName)) continue;
+    const data = unwrapToolData(block.toolOutput);
+    const input = block.toolInput ?? {};
+    const root = asRecord(data.root);
+    const sandbox = asRecord(data.sandbox);
+    const networkPolicy = asRecord(data.network_policy);
+    const networkAllowed = typeof networkPolicy?.allow_network === 'boolean'
+      ? networkPolicy.allow_network
+      : data.network_default === 'deny'
+        ? false
+        : undefined;
+
+    environment = {
+      rootId: firstString(data.root_id, root?.id, input.root_id),
+      rootLabel: firstString(root?.label),
+      cwd: firstString(data.cwd, input.cwd) ?? '.',
+      sandboxBackend: firstString(sandbox?.backend, data.sandbox_backend),
+      platform: firstString(data.os, data.platform),
+      networkAllowed,
+    };
+  }
+
+  return environment;
 }
 
 /** 从成功块中提取来源（复用 sourceAdapter 的解析逻辑），按 title+url 去重 */
@@ -601,6 +657,7 @@ interface Props {
 export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
   const { t } = useTranslation('chatV2');
   const [expanded, setExpanded] = useState(false);
+  const [runtimeExpanded, setRuntimeExpanded] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
   const blocksMap = useStore(store, (s: any) => s.blocks) as Map<string, any> | undefined;
@@ -656,6 +713,13 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     const all: Block[] = [];
     blocksMap.forEach((b) => all.push(b));
     return extractRuntimeItems(all);
+  }, [blocksMap, expanded]);
+
+  const runtimeEnvironment = useMemo(() => {
+    if (!expanded || !blocksMap) return null;
+    const all: Block[] = [];
+    blocksMap.forEach((b) => all.push(b));
+    return extractRuntimeEnvironment(all);
   }, [blocksMap, expanded]);
 
   const done = steps.filter((s) => s.status === 'completed').length;
@@ -899,6 +963,11 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
   const showChanges = changes.length > 0;
   const showRuntime = runtimeItems.length > 0;
   const showSections = showSources || showArtifacts || showChanges || showRuntime;
+  const runtimeBoundary = runtimeEnvironment
+    ? [runtimeEnvironment.rootLabel || runtimeEnvironment.rootId, runtimeEnvironment.cwd !== '.' ? runtimeEnvironment.cwd : undefined]
+      .filter(Boolean)
+      .join(' / ')
+    : '';
 
   const changeActionLabel = (action: ChangeAction) => {
     const fallback: Record<ChangeAction, string> = {
@@ -953,7 +1022,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               <span className="truncate max-w-[180px]">
                 {running
                   ? running.description
-                  : title || (has ? t('agentPanel.plan', '计划') : t('agentPanel.runtime', '运行时'))}
+                  : title || (has ? t('agentPanel.plan', '计划') : t('agentPanel.environment', '环境信息'))}
               </span>
               <CaretDown size={10} className="text-[color:var(--text-muted)]" />
             </NotionButton>
@@ -993,7 +1062,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   <Terminal size={15} className="text-[color:hsl(var(--primary))] flex-shrink-0" />
                 )}
                 <span className="text-sm font-semibold text-[color:var(--text-primary)] truncate flex-1 min-w-0">
-                  {title || (has ? t('agentPanel.plan', '计划') : t('agentPanel.runtime', '运行时'))}
+                  {title || (has ? t('agentPanel.plan', '计划') : t('agentPanel.environment', '环境信息'))}
                 </span>
                 {has && (
                   <span className="text-[11px] tabular-nums text-[color:var(--text-muted)] flex-shrink-0">
@@ -1092,79 +1161,165 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 </>
               )}
 
-              {/* ── Runtime：文件读写边界 ── */}
+              {/* ── Runtime：Codex 式环境状态行 + 可展开本地活动 ── */}
               {showRuntime && (
                 <>
                   <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
-                  <SectionLabel>
-                    {t('agentPanel.runtime', 'Runtime')}
-                    <span className="ml-1.5 normal-case tracking-normal font-normal">{runtimeItems.length}</span>
-                  </SectionLabel>
-                  <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
-                    {runtimeItems.map((item) => {
-                      const runtimeShortName = normalizeToolName(item.toolName);
-                      const RuntimeIcon = runtimeShortName === 'local_shell_preflight' || runtimeShortName === 'local_shell_execute'
-                        ? Terminal
-                        : FileIcon;
-                      // 授权类拦截：chip 可点击直达 设置 > 工具权限（运行目录）
-                      const canJumpToSettings = item.action === 'blocked' && isRuntimeRootBlockedError(item.error);
-                      const chipContent = (
-                        <>
-                          {item.action === 'blocked' ? (
-                            <X size={11} className="flex-shrink-0 text-[color:hsl(var(--destructive))]" />
-                          ) : (
-                            <RuntimeIcon size={11} className="flex-shrink-0 text-[color:var(--text-muted)]" />
-                          )}
-                          <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                            {runtimeActionLabel(item.action)}
+                  <div className="px-2 py-1">
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setRuntimeExpanded((value) => !value)}
+                      className={cn(
+                        '!flex !h-auto !w-full !min-w-0 !items-center !justify-start !gap-2 rounded-[6px] !px-2 !py-2 text-left',
+                        'text-[13px] text-[color:var(--text-primary)] transition-colors',
+                        '!border-none !bg-transparent !shadow-none hover:!bg-[color:var(--interactive-hover)]',
+                      )}
+                      aria-expanded={runtimeExpanded}
+                    >
+                      <Terminal size={14} className="shrink-0 text-[color:var(--text-secondary)]" />
+                      <span className="font-medium">{t('agentPanel.local', '本地')}</span>
+                      <span className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
+                        {runtimeItems.some((item) => item.action === 'blocked') && (
+                          <span className="text-[color:hsl(var(--destructive))]">
+                            {t('agentPanel.blockedCount', {
+                              count: runtimeItems.filter((item) => item.action === 'blocked').length,
+                              defaultValue: '{{count}} 项拦截',
+                            })}
                           </span>
-                          <span className="font-mono text-[10px] text-[color:var(--text-muted)] flex-shrink-0">
-                            {item.rootId}
-                          </span>
-                          <span className="truncate">{item.label}</span>
-                          {item.detail && (
-                            <span className="text-[10px] text-[color:var(--text-muted)] flex-shrink-0">
-                              {item.detail}
-                            </span>
-                          )}
-                        </>
-                      );
+                        )}
+                        <span>{t('agentPanel.activityCount', { count: runtimeItems.length, defaultValue: '{{count}} 项活动' })}</span>
+                        {runtimeExpanded ? <CaretUp size={11} /> : <CaretDown size={11} />}
+                      </span>
+                    </NotionButton>
 
-                      if (canJumpToSettings) {
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={openToolPermissionSettings}
-                            className={cn(
-                              'inline-flex items-center gap-1.5 h-6 px-2 max-w-[300px]',
-                              'rounded-full border border-[color:var(--border-soft)]',
-                              'bg-transparent text-[11px] text-[color:hsl(var(--destructive))]',
-                              'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
-                            )}
-                            title={`${item.error || item.label} — ${t('agentPanel.goAuthorize', '去授权运行目录')}`}
-                          >
-                            {chipContent}
-                            <ArrowSquareOut size={10} className="flex-shrink-0 text-[color:var(--text-muted)]" />
-                          </button>
-                        );
-                      }
-
-                      return (
-                        <span
-                          key={item.id}
-                          className={cn(
-                            'inline-flex items-center gap-1.5 h-6 px-2 max-w-[300px]',
-                            'rounded-full border border-[color:var(--border-soft)]',
-                            'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
-                            item.action === 'blocked' && 'text-[color:hsl(var(--destructive))]',
-                          )}
-                          title={item.error || item.detail || `${item.rootId}:${item.label}`}
+                    <AnimatePresence initial={false}>
+                      {runtimeExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.14, ease: 'easeOut' }}
+                          className="overflow-hidden"
                         >
-                          {chipContent}
-                        </span>
-                      );
-                    })}
+                          <div className="ml-6 max-h-[220px] overflow-y-auto border-l border-[color:var(--border-soft)] py-1 pl-2">
+                            {runtimeEnvironment && (
+                              <div className="mb-1 border-b border-[color:var(--border-soft)] pb-1">
+                                {runtimeBoundary && (
+                                  <div className="flex min-w-0 items-center gap-2 px-2 py-1 text-[11px]">
+                                    <FolderOpen size={12} className="shrink-0 text-[color:var(--text-muted)]" />
+                                    <span className="shrink-0 text-[color:var(--text-secondary)]">
+                                      {t('agentPanel.environmentBoundary', '工作边界')}
+                                    </span>
+                                    <code className="min-w-0 truncate font-mono text-[color:var(--text-primary)]" title={runtimeBoundary}>
+                                      {runtimeBoundary}
+                                    </code>
+                                  </div>
+                                )}
+                                {runtimeEnvironment.sandboxBackend && (
+                                  <div className="flex min-w-0 items-center gap-2 px-2 py-1 text-[11px]">
+                                    <Terminal size={12} className="shrink-0 text-[color:var(--text-muted)]" />
+                                    <span className="shrink-0 text-[color:var(--text-secondary)]">
+                                      {t('agentPanel.sandbox', '沙盒')}
+                                    </span>
+                                    <code className="min-w-0 truncate font-mono text-[color:var(--text-primary)]">
+                                      {runtimeEnvironment.sandboxBackend}
+                                    </code>
+                                    {runtimeEnvironment.platform && (
+                                      <span className="shrink-0 text-[color:var(--text-muted)]">{runtimeEnvironment.platform}</span>
+                                    )}
+                                  </div>
+                                )}
+                                {runtimeEnvironment.networkAllowed !== undefined && (
+                                  <div className="flex min-w-0 items-center gap-2 px-2 py-1 text-[11px]">
+                                    <Globe size={12} className="shrink-0 text-[color:var(--text-muted)]" />
+                                    <span className="shrink-0 text-[color:var(--text-secondary)]">
+                                      {t('agentPanel.network', '网络')}
+                                    </span>
+                                    <span className={runtimeEnvironment.networkAllowed
+                                      ? 'text-[color:var(--text-primary)]'
+                                      : 'text-[color:var(--text-muted)]'}>
+                                      {runtimeEnvironment.networkAllowed
+                                        ? t('agentPanel.networkEnabled', '已启用')
+                                        : t('agentPanel.networkDisabled', '已关闭')}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="px-2 pb-0.5 pt-1 text-[10px] font-medium text-[color:var(--text-muted)]">
+                                  {t('agentPanel.recentActivity', {
+                                    count: runtimeItems.length,
+                                    defaultValue: '近期活动 {{count}}',
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            {runtimeItems.map((item) => {
+                              const runtimeShortName = normalizeToolName(item.toolName);
+                              const RuntimeIcon = runtimeShortName === 'local_shell_preflight' || runtimeShortName === 'local_shell_execute'
+                                ? Terminal
+                                : FileIcon;
+                              const canJumpToSettings = item.action === 'blocked' && isRuntimeRootBlockedError(item.error);
+                              const content = (
+                                <>
+                                  {item.action === 'blocked' ? (
+                                    <X size={12} className="mt-0.5 shrink-0 text-[color:hsl(var(--destructive))]" />
+                                  ) : (
+                                    <RuntimeIcon size={12} className="mt-0.5 shrink-0 text-[color:var(--text-muted)]" />
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <span className={cn(
+                                        'shrink-0 text-[11px] font-medium',
+                                        item.action === 'blocked'
+                                          ? 'text-[color:hsl(var(--destructive))]'
+                                          : 'text-[color:var(--text-secondary)]',
+                                      )}>
+                                        {runtimeActionLabel(item.action)}
+                                      </span>
+                                      <span className="min-w-0 truncate font-mono text-[11px] text-[color:var(--text-primary)]">
+                                        {item.label}
+                                      </span>
+                                    </div>
+                                    <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[10px] text-[color:var(--text-muted)]">
+                                      {item.rootId !== runtimeEnvironment?.rootId && (
+                                        <code className="shrink-0 font-mono">{item.rootId}</code>
+                                      )}
+                                      {item.detail && <span className="truncate">{item.detail}</span>}
+                                    </div>
+                                  </div>
+                                  {canJumpToSettings && <ArrowSquareOut size={11} className="shrink-0 text-[color:var(--text-muted)]" />}
+                                </>
+                              );
+
+                              if (canJumpToSettings) {
+                                return (
+                                  <NotionButton
+                                    key={item.id}
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={openToolPermissionSettings}
+                                    className="!flex !h-auto !w-full !min-w-0 !items-start !justify-start !gap-2 rounded-[5px] !border-none !bg-transparent !px-2 !py-1.5 text-left !shadow-none hover:!bg-[color:var(--interactive-hover)]"
+                                    title={`${item.error || item.label} — ${t('agentPanel.goAuthorize', '去授权运行目录')}`}
+                                  >
+                                    {content}
+                                  </NotionButton>
+                                );
+                              }
+
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="flex min-w-0 items-start gap-2 rounded-[5px] px-2 py-1.5"
+                                  title={item.error || item.detail || `${item.rootId}:${item.label}`}
+                                >
+                                  {content}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </>
               )}

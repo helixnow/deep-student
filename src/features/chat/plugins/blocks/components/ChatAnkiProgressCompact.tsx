@@ -5,6 +5,7 @@ import { Check, CircleNotch, X, ArrowClockwise } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
+import { NotionButton } from '@/components/ui/NotionButton';
 import type { AnkiCardsBlockData } from '../ankiCardsBlock';
 
 type StepId = 'routing' | 'importing' | 'generating' | 'completed' | 'failed' | 'cancelled';
@@ -66,7 +67,10 @@ function getAnkiConnectState(ankiConnect: AnkiCardsBlockData['ankiConnect']) {
   return { state: 'unknown' as const, label: 'checking', variant: 'secondary' as const, className: '' };
 }
 
-const AnkiConnectRefreshButton: React.FC<{ onRefresh: () => Promise<void> }> = ({ onRefresh }) => {
+const AnkiConnectRefreshButton: React.FC<{
+  onRefresh: () => Promise<void>;
+  label: string;
+}> = ({ onRefresh, label }) => {
   const [refreshing, setRefreshing] = useState(false);
   const handleClick = async () => {
     if (refreshing) return;
@@ -78,16 +82,19 @@ const AnkiConnectRefreshButton: React.FC<{ onRefresh: () => Promise<void> }> = (
     }
   };
   return (
-    <button
+    <NotionButton
       type="button"
+      variant="ghost"
+      size="icon"
+      iconOnly
       onClick={handleClick}
       disabled={refreshing}
-      className="inline-flex items-center justify-center w-5 h-5 rounded-full hover:bg-[var(--interactive-hover)] transition-colors disabled:opacity-50"
-      title="Refresh AnkiConnect status"
-      aria-label="Refresh AnkiConnect status"
+      className="!h-10 !w-10 rounded-full"
+      title={label}
+      aria-label={label}
     >
-      <ArrowClockwise className={cn('w-3 h-3 text-muted-foreground', refreshing && 'animate-spin')} />
-    </button>
+      <ArrowClockwise className={cn('h-4 w-4 text-muted-foreground', refreshing && 'animate-spin')} />
+    </NotionButton>
   );
 };
 
@@ -98,8 +105,18 @@ export const ChatAnkiProgressCompact: React.FC<{
   cardsCount: number;
   blockStatus: string;
   finalStatus?: string;
+  errorMessage?: string;
   onRefreshAnkiConnect?: () => Promise<void>;
-}> = ({ progress, ankiConnect, warnings, cardsCount, blockStatus, finalStatus, onRefreshAnkiConnect }) => {
+}> = ({
+  progress,
+  ankiConnect,
+  warnings,
+  cardsCount,
+  blockStatus,
+  finalStatus,
+  errorMessage,
+  onRefreshAnkiConnect,
+}) => {
   const { t } = useTranslation('chatV2');
 
   const percent = useMemo(() => clampRatioToPercent(progress?.completedRatio), [progress?.completedRatio]);
@@ -118,8 +135,9 @@ export const ChatAnkiProgressCompact: React.FC<{
   const isCancelled = statusHint === 'cancelled' || statusHint === 'canceled';
   const isCompletedWithErrors = statusHint === 'completed_with_errors';
   const isError =
+    !isCancelled &&
     !isCompletedWithErrors &&
-    (blockStatus === 'error' || statusHint === 'error' || statusHint === 'failed');
+    (blockStatus === 'error' || statusHint === 'error' || statusHint === 'failed' || Boolean(errorMessage));
   const isCompleted =
     !isCancelled &&
     !isError &&
@@ -128,22 +146,59 @@ export const ChatAnkiProgressCompact: React.FC<{
       statusHint === 'completed' ||
       statusHint === 'success');
 
-  const step = normalizeStageToStep(statusHint);
-  const terminalStepId: StepId = isError ? 'failed' : isCancelled ? 'cancelled' : 'completed';
+  const route = typeof progress?.route === 'string' ? progress.route : '';
+  const normalizedRoute = route.trim().toLowerCase();
+  const includeImporting =
+    normalizedStage === 'importing' ||
+    (normalizedRoute.length > 0 && normalizedRoute !== 'simple_text');
+  const hasSegmentEvidence =
+    progress?.counts !== null &&
+    typeof progress?.counts === 'object' &&
+    Object.values(progress.counts as Record<string, unknown>).some(
+      value => typeof value === 'number' && value > 0,
+    );
+  const hasGenerationEvidence =
+    cardsCount > 0 ||
+    (typeof progress?.cardsGenerated === 'number' && progress.cardsGenerated > 0) ||
+    (typeof progress?.completedRatio === 'number' && progress.completedRatio > 0) ||
+    hasSegmentEvidence;
+  const normalizedPipelineStep = normalizeStageToStep(normalizedStage);
+  const activePipelineStep: StepId =
+    normalizedPipelineStep === 'routing' ||
+    normalizedPipelineStep === 'importing' ||
+    normalizedPipelineStep === 'generating'
+      ? normalizedPipelineStep
+      : hasGenerationEvidence
+        ? 'generating'
+        : includeImporting
+          ? 'importing'
+          : 'routing';
+  const step = isError || isCancelled
+    ? activePipelineStep
+    : isCompleted
+      ? 'completed'
+      : normalizedPipelineStep;
 
   const steps = useMemo(() => {
     const base = [
       { id: 'routing' as const, label: t('blocks.ankiCards.progress.steps.routing') },
-      { id: 'importing' as const, label: t('blocks.ankiCards.progress.steps.importing') },
+      ...(includeImporting
+        ? [{ id: 'importing' as const, label: t('blocks.ankiCards.progress.steps.importing') }]
+        : []),
       { id: 'generating' as const, label: t('blocks.ankiCards.progress.steps.generating') },
     ];
-    const terminalLabel = isError
-      ? t('blocks.ankiCards.progress.segments.failed')
-      : isCancelled
-        ? t('blocks.ankiCards.progress.segments.cancelled')
-        : t('blocks.ankiCards.progress.steps.completed');
-    return [...base, { id: terminalStepId, label: terminalLabel }] as const;
-  }, [t, isError, isCancelled, terminalStepId]);
+    if (isError || isCancelled) {
+      const activePhaseIndex = Math.max(
+        base.findIndex(item => item.id === activePipelineStep),
+        0,
+      );
+      return base.slice(0, activePhaseIndex + 1);
+    }
+    return [
+      ...base,
+      { id: 'completed' as const, label: t('blocks.ankiCards.progress.steps.completed') },
+    ];
+  }, [t, isError, isCancelled, includeImporting, activePipelineStep]);
 
   const activeIndex = useMemo(() => steps.findIndex(s => s.id === step), [steps, step]);
 
@@ -193,7 +248,6 @@ export const ChatAnkiProgressCompact: React.FC<{
     : '';
   const rawMessage = typeof progress?.message === 'string' ? progress.message.trim() : '';
   const message = localizedMessage || rawMessage;
-  const route = typeof progress?.route === 'string' ? progress.route : '';
   const routeLabel = useMemo(() => {
     if (!route) return '';
     const normalized = route.trim().toLowerCase();
@@ -220,6 +274,9 @@ export const ChatAnkiProgressCompact: React.FC<{
       .filter(Boolean) as string[];
     return Array.from(new Set(resolved));
   }, [warnings, t]);
+  const visibleWarningMessages = warningMessages.filter(
+    warning => warning !== message && warning !== errorMessage,
+  );
 
   let progressValue: number | null = percent;
   if (progressValue == null) {
@@ -238,7 +295,7 @@ export const ChatAnkiProgressCompact: React.FC<{
     <section
       data-testid="chatanki-progress"
       className={cn(
-        'mt-2 rounded-xl border border-border/50 bg-muted/10 px-3 py-2 overflow-hidden',
+        'mt-2 overflow-hidden rounded-lg border border-border/50 bg-muted/10 px-3 py-2',
         isError && 'border-destructive/40 bg-destructive/5',
         isCompletedWithErrors && 'border-amber-500/40 bg-amber-500/5',
         isCancelled && 'border-amber-500/40 bg-amber-100/30'
@@ -264,7 +321,7 @@ export const ChatAnkiProgressCompact: React.FC<{
               status === 'pending' && 'border-border bg-background/40 text-muted-foreground'
             );
             const labelClass = cn(
-              'text-[10px] sm:text-[11px] leading-none whitespace-nowrap',
+              'text-xs leading-none whitespace-nowrap',
               isDone && 'text-emerald-600 dark:text-emerald-400',
               isActive && !isError && !isCancelled && 'text-primary',
               isActive && isError && 'text-destructive',
@@ -308,7 +365,7 @@ export const ChatAnkiProgressCompact: React.FC<{
         <div className="flex items-center gap-2 flex-shrink-0">
           <Badge
             variant={ankiConnectMeta.variant}
-            className={cn('rounded-full px-2 py-0.5 text-[10px] whitespace-nowrap max-w-[180px] sm:max-w-[220px] truncate', ankiConnectMeta.className)}
+            className={cn('max-w-[180px] truncate whitespace-nowrap rounded-full px-2 py-0.5 text-xs sm:max-w-[220px]', ankiConnectMeta.className)}
             data-testid="chatanki-progress-anki-connect"
             title={ankiConnect?.error ?? undefined}
           >
@@ -323,7 +380,10 @@ export const ChatAnkiProgressCompact: React.FC<{
             })}
           </Badge>
           {onRefreshAnkiConnect && ankiConnectMeta.state !== 'connected' && (
-            <AnkiConnectRefreshButton onRefresh={onRefreshAnkiConnect} />
+            <AnkiConnectRefreshButton
+              onRefresh={onRefreshAnkiConnect}
+              label={t('blocks.ankiCards.progress.ankiConnect.refresh')}
+            />
           )}
           {typeof percent === 'number' && (
             <span
@@ -349,10 +409,10 @@ export const ChatAnkiProgressCompact: React.FC<{
       </div>
 
       {/* 指标信息 */}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] text-muted-foreground">
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground sm:gap-2">
         <span data-testid="chatanki-progress-metrics">{metricsText}</span>
         {route && (
-          <Badge variant="outline" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]" data-testid="chatanki-progress-route">
+          <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs" data-testid="chatanki-progress-route">
             {t('blocks.ankiCards.progress.route', { defaultValue: 'route' })}: {routeLabel || route}
           </Badge>
         )}
@@ -363,61 +423,77 @@ export const ChatAnkiProgressCompact: React.FC<{
           {isCompletedWithErrors && (
             <Badge
               variant="destructive"
-              className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]"
+              className="rounded-full px-2 py-0.5 text-xs"
               data-testid="chatanki-progress-completed-with-errors"
             >
               {t('blocks.ankiCards.progress.segments.completedWithErrors')}
             </Badge>
           )}
           {typeof segCounts?.pending === 'number' && segCounts.pending > 0 && (
-            <Badge variant="secondary" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
+            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-xs">
               {t('blocks.ankiCards.progress.segments.pending')}: {segCounts.pending}
             </Badge>
           )}
           {typeof segCounts?.processing === 'number' && segCounts.processing > 0 && (
-            <Badge variant="secondary" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
+            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-xs">
               {t('blocks.ankiCards.progress.segments.processing')}: {segCounts.processing}
             </Badge>
           )}
           {typeof segCounts?.paused === 'number' && segCounts.paused > 0 && (
-            <Badge variant="outline" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
+            <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs">
               {t('blocks.ankiCards.progress.segments.paused')}: {segCounts.paused}
             </Badge>
           )}
           {typeof segCounts?.failed === 'number' && segCounts.failed > 0 && (
-            <Badge variant="destructive" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
+            <Badge variant="destructive" className="rounded-full px-2 py-0.5 text-xs">
               {t('blocks.ankiCards.progress.segments.failed')}: {segCounts.failed}
             </Badge>
           )}
           {typeof segCounts?.truncated === 'number' && segCounts.truncated > 0 && (
-            <Badge variant="destructive" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
+            <Badge variant="destructive" className="rounded-full px-2 py-0.5 text-xs">
               {t('blocks.ankiCards.progress.segments.truncated')}: {segCounts.truncated}
             </Badge>
           )}
           {typeof segCounts?.cancelled === 'number' && segCounts.cancelled > 0 && (
-            <Badge variant="outline" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
+            <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs">
               {t('blocks.ankiCards.progress.segments.cancelled')}: {segCounts.cancelled}
             </Badge>
           )}
         </div>
       )}
 
-      {message && (
+      {errorMessage && (
         <div
-          className={cn('mt-1 text-[11px] text-muted-foreground line-clamp-2', isError && 'text-destructive/80')}
+          role="alert"
+          className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs leading-snug text-destructive"
+          data-testid="chatanki-progress-error"
+        >
+          {errorMessage}
+        </div>
+      )}
+
+      {message && message !== errorMessage && (
+        <div
+          className={cn('mt-1 line-clamp-2 text-xs text-muted-foreground', isError && 'text-destructive/80')}
           data-testid="chatanki-progress-message"
         >
           {message}
         </div>
       )}
 
-      {warningMessages.length > 0 && (
-        <div className="mt-1 text-[11px] text-amber-600" data-testid="chatanki-progress-warnings">
-          {warningMessages.map((warning, index) => (
+      {visibleWarningMessages.length > 0 && (
+        <div className="mt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="chatanki-progress-warnings">
+          {visibleWarningMessages.map((warning, index) => (
             <div key={`${warning}-${index}`} className="leading-snug">
               {warning}
             </div>
           ))}
+        </div>
+      )}
+
+      {ankiConnectMeta.state === 'not_connected' && ankiConnect?.error && (
+        <div className="mt-1 text-xs leading-snug text-amber-700 dark:text-amber-400">
+          {ankiConnect.error}
         </div>
       )}
     </section>

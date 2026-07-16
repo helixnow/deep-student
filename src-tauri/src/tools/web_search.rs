@@ -3,7 +3,7 @@
 #![allow(clippy::large_enum_variant)]
 //! Single-file implementation of `web_search` tool.
 //! - Standardized citations output + optional `inject_text` fallback.
-//! - Multi-provider adapters: google_cse, serpapi, tavily, brave, searxng, zhipu, bocha.
+//! - Multi-provider adapters: bing_rss, google_cse, serpapi, tavily, brave, searxng, zhipu, bocha.
 //! - CLI: read `SearchInput` JSON from stdin -> print `ToolResult` JSON to stdout.
 //! - Optional HTTP server: set `HTTP_MODE=1` (requires axum in Cargo.toml).
 //!
@@ -43,6 +43,8 @@ use async_trait::async_trait;
 use backon::{ExponentialBuilder, Retryable};
 use dashmap::DashMap;
 use lru::LruCache;
+use quick_xml::events::Event as XmlEvent;
+use quick_xml::Reader as XmlReader;
 use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -423,6 +425,7 @@ impl Default for ProviderStrategy {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderStrategies {
     pub default: ProviderStrategy,            // 默认策略
+    pub bing_rss: Option<ProviderStrategy>,   // Bing RSS 免费搜索策略
     pub google_cse: Option<ProviderStrategy>, // Google CSE策略
     pub serpapi: Option<ProviderStrategy>,    // SerpAPI策略
     pub tavily: Option<ProviderStrategy>,     // Tavily策略
@@ -436,6 +439,13 @@ impl Default for ProviderStrategies {
     fn default() -> Self {
         Self {
             default: ProviderStrategy::default(),
+            bing_rss: Some(ProviderStrategy {
+                timeout_ms: Some(10000),
+                max_retries: Some(2),
+                max_concurrent_requests: Some(3),
+                rate_limit_per_minute: Some(20),
+                ..Default::default()
+            }),
             google_cse: Some(ProviderStrategy {
                 timeout_ms: Some(6000), // Google CSE通常很快
                 max_retries: Some(2),
@@ -494,6 +504,7 @@ impl ProviderStrategies {
     /// 获取指定provider的策略，如果没有特定策略则返回默认策略
     pub fn get_strategy(&self, provider: &str) -> &ProviderStrategy {
         match provider {
+            "bing_rss" => self.bing_rss.as_ref().unwrap_or(&self.default),
             "google_cse" => self.google_cse.as_ref().unwrap_or(&self.default),
             "serpapi" => self.serpapi.as_ref().unwrap_or(&self.default),
             "tavily" => self.tavily.as_ref().unwrap_or(&self.default),
@@ -834,6 +845,7 @@ impl ProviderKeys {
     /// 检查指定引擎是否已配置必需的 API key / endpoint
     pub fn has_valid_keys(&self, engine: &str) -> bool {
         match engine {
+            "bing_rss" => true,
             "google_cse" => {
                 self.google_cse.as_ref().is_some_and(|k| !k.is_empty())
                     && self.google_cse_cx.as_ref().is_some_and(|k| !k.is_empty())
@@ -961,7 +973,7 @@ pub struct CnWhitelistConfig {
 impl Default for ToolConfig {
     fn default() -> Self {
         Self {
-            default_engine: Some("google_cse".into()), // 更改默认引擎为Google CSE，因为Bing API已停用
+            default_engine: Some("bing_rss".into()),
             timeout_ms: Some(15_000),
             retry: Some(RetryConfig {
                 max_attempts: default_max_attempts(),
@@ -1576,6 +1588,7 @@ pub trait Provider: Send + Sync {
 
 pub fn build_provider(_cfg: &ToolConfig, engine: &str) -> Result<Box<dyn Provider>, ToolError> {
     match engine {
+        "bing_rss" => Ok(Box::new(BingRssProvider)),
         "google_cse" => Ok(Box::new(GoogleCSEProvider::default())),
         "serpapi" => Ok(Box::new(SerpApiProvider::default())),
         "tavily" => Ok(Box::new(TavilyProvider::default())),
@@ -1616,6 +1629,163 @@ pub fn standardize(mut items: Vec<SearchItem>, top_k: usize) -> Vec<SearchItem> 
 // =============================
 // Providers implementations
 // =============================
+
+#[derive(Default)]
+pub struct BingRssProvider;
+
+#[derive(Default)]
+struct BingRssItem {
+    title: String,
+    link: String,
+    description: String,
+}
+
+fn parse_bing_rss(xml: &str) -> Result<Vec<SearchItem>, ToolError> {
+    let mut reader = XmlReader::from_str(xml);
+    reader.config_mut().trim_text(true);
+
+    let mut items = Vec::new();
+    let mut current: Option<BingRssItem> = None;
+    let mut current_tag = String::new();
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(XmlEvent::Start(ref event)) => {
+                let tag = String::from_utf8_lossy(event.name().as_ref()).to_ascii_lowercase();
+                match tag.as_str() {
+                    "item" => current = Some(BingRssItem::default()),
+                    "title" | "link" | "description" if current.is_some() => current_tag = tag,
+                    _ => {}
+                }
+            }
+            Ok(XmlEvent::Text(ref event)) => {
+                if let Some(item) = current.as_mut() {
+                    let text = event.unescape().unwrap_or_default();
+                    match current_tag.as_str() {
+                        "title" => item.title.push_str(text.trim()),
+                        "link" => item.link.push_str(text.trim()),
+                        "description" => item.description.push_str(text.trim()),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(XmlEvent::CData(ref event)) => {
+                if let Some(item) = current.as_mut() {
+                    let text = String::from_utf8_lossy(event.as_ref());
+                    match current_tag.as_str() {
+                        "title" => item.title.push_str(text.trim()),
+                        "link" => item.link.push_str(text.trim()),
+                        "description" => item.description.push_str(text.trim()),
+                        _ => {}
+                    }
+                }
+            }
+            Ok(XmlEvent::End(ref event)) => {
+                let tag = String::from_utf8_lossy(event.name().as_ref()).to_ascii_lowercase();
+                if tag == "item" {
+                    if let Some(item) = current.take() {
+                        if !item.link.is_empty() {
+                            items.push(SearchItem {
+                                title: html_unescape(&strip_html(&item.title)),
+                                url: html_unescape(&item.link),
+                                snippet: html_unescape(&strip_html(&item.description)),
+                                rank: items.len() + 1,
+                                score_hint: None,
+                            });
+                        }
+                    }
+                }
+                current_tag.clear();
+            }
+            Ok(XmlEvent::Eof) => break,
+            Err(error) => {
+                return Err(ToolError::Provider(format!(
+                    "bing_rss parse error at byte {}: {}",
+                    reader.buffer_position(),
+                    error
+                )))
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(items)
+}
+
+#[async_trait]
+impl Provider for BingRssProvider {
+    fn name(&self) -> &'static str {
+        "bing_rss"
+    }
+
+    async fn search(
+        &self,
+        cfg: &ToolConfig,
+        input: &SearchInput,
+    ) -> Result<(ProviderResponse, Usage), ToolError> {
+        let client = Client::builder()
+            .user_agent("Mozilla/5.0 (compatible; DeepStudent/1.0; +https://github.com/helixnow/deep-student)")
+            .timeout(cfg.timeout())
+            .build()?;
+        let mut query = input.query.trim().to_string();
+        if let Some(site) = input
+            .site
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            query = format!("site:{} {}", site, query);
+        }
+
+        let first = input.start.unwrap_or(1).max(1).to_string();
+        let t0 = Instant::now();
+        let response = client
+            .get("https://www.bing.com/search")
+            .query(&[
+                ("q", query.as_str()),
+                ("format", "rss"),
+                ("first", first.as_str()),
+            ])
+            .header(
+                "Accept",
+                "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8",
+            )
+            .send()
+            .await?;
+        let latency = t0.elapsed().as_millis();
+        let status = response.status();
+        let body = response.text().await?;
+        if !status.is_success() {
+            let snippet: String = body.chars().take(512).collect();
+            return Err(ToolError::Provider(format!(
+                "bing_rss http {}: {}",
+                status, snippet
+            )));
+        }
+
+        let items = parse_bing_rss(&body)?;
+        if items.is_empty() && !body.contains("<rss") {
+            return Err(ToolError::Provider(
+                "bing_rss parse error: response was not RSS".into(),
+            ));
+        }
+
+        let out = ProviderResponse {
+            items,
+            raw: json!({ "format": "rss" }),
+            provider: "bing_rss".into(),
+        };
+        let usage = Usage {
+            elapsed_ms: latency,
+            retries: None,
+            provider_latency_ms: Some(latency),
+            provider: Some("bing_rss".into()),
+        };
+        Ok((out, usage))
+    }
+}
 
 #[derive(Default)]
 pub struct GoogleCSEProvider;
@@ -2681,7 +2851,7 @@ pub async fn do_search(cfg: &ToolConfig, mut input: SearchInput) -> ToolResult {
         .clone()
         .or_else(|| input.engine.clone())
         .or_else(|| cfg.default_engine.clone())
-        .unwrap_or_else(|| "zhipu".into()); // 默认使用智谱作为国内可用的搜索引擎
+        .unwrap_or_else(|| "bing_rss".into());
 
     if let Some(custom_range) = input
         .time_range
@@ -3020,6 +3190,30 @@ mod tests {
         let out = normalize_url(u);
         assert!(out.contains("x=1"));
         assert!(!out.contains("utm_source"));
+    }
+
+    #[test]
+    fn t_default_engine_is_keyless_bing_rss() {
+        let cfg = ToolConfig::default();
+        assert_eq!(cfg.default_engine.as_deref(), Some("bing_rss"));
+        assert!(cfg.keys.has_valid_keys("bing_rss"));
+        assert_eq!(build_provider(&cfg, "bing_rss").unwrap().name(), "bing_rss");
+    }
+
+    #[test]
+    fn t_parse_bing_rss() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+            <rss version="2.0"><channel>
+              <item><title>Rust &amp; Tauri</title><link>https://example.com/a?x=1&amp;y=2</link><description>A &lt;b&gt;desktop&lt;/b&gt; result.</description></item>
+              <item><title><![CDATA[Second result]]></title><link>https://example.org/b</link><description><![CDATA[Plain text]]></description></item>
+            </channel></rss>"#;
+        let items = parse_bing_rss(xml).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].title, "Rust & Tauri");
+        assert_eq!(items[0].url, "https://example.com/a?x=1&y=2");
+        assert_eq!(items[0].snippet, "A desktop result.");
+        assert_eq!(items[1].title, "Second result");
+        assert_eq!(items[1].rank, 2);
     }
 
     #[test]

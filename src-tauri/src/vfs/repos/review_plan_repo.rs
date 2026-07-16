@@ -570,7 +570,10 @@ impl VfsReviewPlanRepo {
         )?;
 
         if affected == 0 {
-            return Err(Self::revision_conflict(plan_id, &params.expected_updated_at));
+            return Err(Self::revision_conflict(
+                plan_id,
+                &params.expected_updated_at,
+            ));
         }
 
         debug!("[VFS::ReviewPlanRepo] Updated review plan id={}", plan_id);

@@ -37,6 +37,10 @@ import {
   ShieldCheck,
   FolderOpen,
   Warning,
+  MagnifyingGlass,
+  Funnel,
+  CaretRight,
+  Stack,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
@@ -45,6 +49,7 @@ import { SettingSection } from './SettingsCommon';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Input } from '@/components/ui/shad/Input';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { ApiKeyField } from './ApiKeyField';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -56,6 +61,29 @@ import {
   type PresetMcpServer 
 } from '@/mcp/presetMcpServers';
 import { assessAuthorizedRootRisk, type AuthorizedRootRisk } from './runtimeRootRisk';
+import {
+  buildManagedPermissionTools,
+  assessShellCommandRuleRisk,
+  filterShellCommandRules,
+  filterManagedPermissionTools,
+  formatToolSource,
+  parseShellCommandPolicy,
+  previewShellCommandPolicy,
+  resolveToolOverride,
+  resolveToolOverrideEntry,
+  serializeShellCommandPolicy,
+  selectedOverrideKeysForReset,
+  SHELL_COMMAND_POLICY_SETTING_KEYS,
+  validateShellCommandPattern,
+  type ShellCommandAction,
+  type ShellCommandMatchType,
+  type ShellCommandRule,
+  type ToolCapability,
+  type ToolLevelFilter,
+  type ToolOverrideFilter,
+  type ToolSensitivityLevel,
+  type ManagedPermissionTool,
+} from './toolPermissionModel';
 
 // Types
 interface McpServer {
@@ -1603,7 +1631,7 @@ function PresetServerSelector({
 // 工具权限管理
 // ============================================================================
 
-type SensitivityLevel = 'low' | 'medium' | 'high';
+type SensitivityLevel = ToolSensitivityLevel;
 
 interface RuntimeRootEntry {
   id: string;
@@ -1621,6 +1649,10 @@ interface ToolOverrideEntry {
   displayName: string;
   level: SensitivityLevel;
 }
+
+const TOOL_CAPABILITIES: ToolCapability[] = [
+  'files', 'web', 'knowledge', 'learning', 'automation', 'data', 'communication', 'other',
+];
 
 /** 敏感等级的颜色和标签配置 */
 const SENSITIVITY_CONFIG: Record<SensitivityLevel, {
@@ -1641,6 +1673,424 @@ const SENSITIVITY_CONFIG: Record<SensitivityLevel, {
   },
 };
 
+const EMPTY_SHELL_RULE_DRAFT = {
+  action: 'ask' as ShellCommandAction,
+  matchType: 'exact' as ShellCommandMatchType,
+  pattern: '',
+  note: '',
+};
+
+const SHELL_EFFECT_RESTRICTIVENESS: Record<ShellCommandAction, number> = {
+  allow: 0,
+  ask: 1,
+  deny: 2,
+};
+
+function shellRuleRemovalRelaxesPolicy(
+  rule: ShellCommandRule,
+  defaultEffect: ShellCommandAction,
+  nextRules: ShellCommandRule[]
+): boolean {
+  if (!rule.enabled || rule.action === 'allow') return false;
+  const nextEffect = previewShellCommandPolicy(rule.pattern, defaultEffect, nextRules).effect;
+  return SHELL_EFFECT_RESTRICTIVENESS[nextEffect] < SHELL_EFFECT_RESTRICTIVENESS[rule.action];
+}
+
+/** Fine-grained policy for the protected local terminal tool. */
+function ShellCommandRulesSection() {
+  const { t } = useTranslation(['settings', 'common']);
+  const [defaultEffect, setDefaultEffect] = useState<ShellCommandAction>('ask');
+  const [rules, setRules] = useState<ShellCommandRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState('');
+  const [actionFilter, setActionFilter] = useState<ShellCommandAction | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState<ShellCommandMatchType | 'all'>('all');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showEditor, setShowEditor] = useState(false);
+  const [draft, setDraft] = useState(EMPTY_SHELL_RULE_DRAFT);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [pendingRisk, setPendingRisk] = useState<string | null>(null);
+  const [pendingDefaultAllow, setPendingDefaultAllow] = useState(false);
+  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
+  const [previewCommand, setPreviewCommand] = useState('');
+
+  const loadPolicy = useCallback(async () => {
+    setLoading(true);
+    try {
+      const raw = await invoke<string>('get_setting', {
+        key: SHELL_COMMAND_POLICY_SETTING_KEYS.policy,
+      }).catch(() => '');
+      const policy = parseShellCommandPolicy(raw);
+      setDefaultEffect(policy.defaultEffect);
+      setRules(policy.rules);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadPolicy(); }, [loadPolicy]);
+
+  const persistPolicy = useCallback(async (
+    nextDefault: ShellCommandAction,
+    nextRules: ShellCommandRule[]
+  ) => {
+    setSaving(true);
+    try {
+      await invoke('save_setting', {
+        key: SHELL_COMMAND_POLICY_SETTING_KEYS.policy,
+        value: serializeShellCommandPolicy(nextDefault, nextRules),
+      });
+      setDefaultEffect(nextDefault);
+      setRules(nextRules);
+      showGlobalNotification('success', t('settings:tool_permissions.shell_rules.saved'));
+      return true;
+    } catch (error) {
+      console.error('[ToolPermissions] Save shell command policy failed:', error);
+      showGlobalNotification('error', t('settings:tool_permissions.shell_rules.save_failed'));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [t]);
+
+  const handleDefaultEffect = useCallback(async (effect: ShellCommandAction) => {
+    if (effect === 'allow' && !pendingDefaultAllow) {
+      setPendingDefaultAllow(true);
+      return;
+    }
+    if (await persistPolicy(effect, rules)) setPendingDefaultAllow(false);
+  }, [pendingDefaultAllow, persistPolicy, rules]);
+
+  const beginAdd = useCallback(() => {
+    setEditingId(null);
+    setDraft(EMPTY_SHELL_RULE_DRAFT);
+    setDraftError(null);
+    setPendingRisk(null);
+    setShowEditor(true);
+  }, []);
+
+  const beginEdit = useCallback((rule: ShellCommandRule) => {
+    setEditingId(rule.id);
+    setDraft({
+      action: rule.action,
+      matchType: rule.matchType,
+      pattern: rule.pattern,
+      note: rule.note ?? '',
+    });
+    setDraftError(null);
+    setPendingRisk(null);
+    setShowEditor(true);
+  }, []);
+
+  const saveDraft = useCallback(async () => {
+    const validationError = validateShellCommandPattern(draft.pattern, draft.matchType);
+    if (validationError) {
+      setDraftError(validationError);
+      return;
+    }
+    const duplicate = rules.some(rule => rule.id !== editingId
+      && rule.matchType === draft.matchType
+      && rule.pattern.toLocaleLowerCase() === draft.pattern.trim().toLocaleLowerCase());
+    if (duplicate) {
+      setDraftError('duplicate');
+      return;
+    }
+    const candidate: ShellCommandRule = {
+      id: editingId ?? `shell-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      action: draft.action,
+      matchType: draft.matchType,
+      pattern: draft.pattern.trim(),
+      enabled: editingId ? rules.find(rule => rule.id === editingId)?.enabled !== false : true,
+      ...(draft.note.trim() ? { note: draft.note.trim() } : {}),
+    };
+    const risk = assessShellCommandRuleRisk(candidate);
+    const riskFingerprint = `${candidate.action}:${candidate.matchType}:${candidate.pattern}`;
+    if (risk && pendingRisk !== riskFingerprint) {
+      setPendingRisk(riskFingerprint);
+      return;
+    }
+    const next = editingId
+      ? rules.map(rule => rule.id === editingId ? candidate : rule)
+      : [...rules, candidate];
+    if (await persistPolicy(defaultEffect, next)) {
+      setShowEditor(false);
+      setEditingId(null);
+      setPendingRisk(null);
+    }
+  }, [defaultEffect, draft, editingId, pendingRisk, persistPolicy, rules]);
+
+  const filteredRules = useMemo(() => filterShellCommandRules(rules, {
+    query,
+    action: actionFilter,
+    matchType: typeFilter,
+  }), [actionFilter, query, rules, typeFilter]);
+  const preview = useMemo(() => previewCommand.trim()
+    ? previewShellCommandPolicy(previewCommand, defaultEffect, rules)
+    : null, [defaultEffect, previewCommand, rules]);
+  const allVisibleSelected = filteredRules.length > 0
+    && filteredRules.every(rule => selectedRuleIds.has(rule.id));
+
+  useEffect(() => {
+    const validIds = new Set(rules.map(rule => rule.id));
+    setSelectedRuleIds(previous => new Set(
+      Array.from(previous).filter(id => validIds.has(id))
+    ));
+  }, [rules]);
+
+  useEffect(() => {
+    setSelectedRuleIds(new Set());
+  }, [actionFilter, query, typeFilter]);
+
+  const selectVisibleRules = useCallback((selected: boolean) => {
+    setSelectedRuleIds(previous => {
+      const next = new Set(previous);
+      for (const rule of filteredRules) {
+        if (selected) next.add(rule.id);
+        else next.delete(rule.id);
+      }
+      return next;
+    });
+  }, [filteredRules]);
+
+  const updateSelectedRules = useCallback(async (operation: 'enable' | 'disable' | 'delete') => {
+    if (selectedRuleIds.size === 0) return;
+    const next = operation === 'delete'
+      ? rules.filter(rule => !selectedRuleIds.has(rule.id))
+      : rules.map(rule => selectedRuleIds.has(rule.id)
+        ? { ...rule, enabled: operation === 'enable' }
+        : rule);
+    const relaxedCount = operation === 'enable' ? 0 : rules.filter(rule => (
+      selectedRuleIds.has(rule.id) && shellRuleRemovalRelaxesPolicy(rule, defaultEffect, next)
+    )).length;
+    // eslint-disable-next-line no-alert -- policy relaxation and destructive removal require explicit confirmation
+    if (relaxedCount > 0 && !window.confirm(t('settings:tool_permissions.shell_rules.relax_confirm', { count: relaxedCount }))) return;
+    // eslint-disable-next-line no-alert -- destructive bulk removal requires explicit confirmation
+    if (operation === 'delete' && relaxedCount === 0 && !window.confirm(t('settings:tool_permissions.shell_rules.bulk_delete_confirm', { count: selectedRuleIds.size }))) return;
+    if (await persistPolicy(defaultEffect, next)) setSelectedRuleIds(new Set());
+  }, [defaultEffect, persistPolicy, rules, selectedRuleIds, t]);
+
+  const setRuleEnabled = useCallback(async (rule: ShellCommandRule, enabled: boolean) => {
+    const next = rules.map(item => item.id === rule.id ? { ...item, enabled } : item);
+    if (!enabled && shellRuleRemovalRelaxesPolicy(rule, defaultEffect, next)) {
+      // eslint-disable-next-line no-alert -- disabling a restrictive rule may widen terminal access
+      if (!window.confirm(t('settings:tool_permissions.shell_rules.relax_confirm', { count: 1 }))) return;
+    }
+    await persistPolicy(defaultEffect, next);
+  }, [defaultEffect, persistPolicy, rules, t]);
+
+  const deleteRule = useCallback(async (rule: ShellCommandRule) => {
+    const next = rules.filter(item => item.id !== rule.id);
+    const key = shellRuleRemovalRelaxesPolicy(rule, defaultEffect, next)
+      ? 'settings:tool_permissions.shell_rules.relax_confirm'
+      : 'settings:tool_permissions.shell_rules.delete_confirm';
+    // eslint-disable-next-line no-alert -- deleting a command rule requires explicit confirmation
+    if (!window.confirm(t(key, { count: 1, pattern: rule.pattern }))) return;
+    await persistPolicy(defaultEffect, next);
+  }, [defaultEffect, persistPolicy, rules, t]);
+
+  const actionClass: Record<ShellCommandAction, string> = {
+    allow: 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-400',
+    ask: 'border-yellow-500/25 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
+    deny: 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-400',
+  };
+
+  return (
+    <div data-testid="shell-command-rules" className="border-t border-border/30 pt-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <CodeBlock className="h-3.5 w-3.5 text-muted-foreground" />
+            <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              {t('settings:tool_permissions.shell_rules.title')}
+            </h4>
+            <span className="text-xs text-muted-foreground">({rules.length})</span>
+          </div>
+          <p className="mt-1 max-w-3xl text-xs text-muted-foreground leading-relaxed">
+            {t('settings:tool_permissions.shell_rules.desc')}
+          </p>
+        </div>
+        <NotionButton variant="ghost" size="sm" onClick={beginAdd} disabled={loading || saving} className="text-xs">
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          {t('settings:tool_permissions.shell_rules.add')}
+        </NotionButton>
+      </div>
+
+      <div className="rounded-lg border border-border/40 bg-muted/10 p-3 mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
+          <div>
+            <div className="text-xs font-medium text-foreground">{t('settings:tool_permissions.shell_rules.default_title')}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{t('settings:tool_permissions.shell_rules.default_desc')}</div>
+          </div>
+          <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5 self-start sm:self-auto" role="group" aria-label={t('settings:tool_permissions.shell_rules.default_title')}>
+            {(['allow', 'ask', 'deny'] as ShellCommandAction[]).map(effect => (
+              <NotionButton
+                key={effect}
+                variant="ghost"
+                size="sm"
+                disabled={saving}
+                onClick={() => void handleDefaultEffect(effect)}
+                aria-pressed={defaultEffect === effect}
+                className={cn('!h-7 !px-2 text-xs', defaultEffect === effect && actionClass[effect])}
+              >
+                {t(`settings:tool_permissions.shell_rules.action_${effect}`)}
+              </NotionButton>
+            ))}
+          </div>
+        </div>
+        {pendingDefaultAllow && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-300">
+            <Warning className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="flex-1">{t('settings:tool_permissions.shell_rules.default_allow_warning')}</span>
+            <NotionButton variant="ghost" size="sm" onClick={() => void handleDefaultEffect('allow')} className="!h-6 text-xs">
+              {t('settings:tool_permissions.shell_rules.confirm_allow')}
+            </NotionButton>
+          </div>
+        )}
+      </div>
+
+      <div className="mb-3 flex items-start gap-2 rounded-md border border-border/30 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+        <Lock className="mt-px h-3.5 w-3.5 flex-shrink-0" />
+        <span>{t('settings:tool_permissions.shell_rules.safety_boundary')}</span>
+      </div>
+
+      <div className="mb-3 rounded-lg border border-border/40 bg-muted/10 p-3">
+        <div className="mb-2 text-xs font-medium text-foreground">{t('settings:tool_permissions.shell_rules.preview_title')}</div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input
+            value={previewCommand}
+            onChange={event => setPreviewCommand(event.target.value)}
+            placeholder={t('settings:tool_permissions.shell_rules.preview_placeholder')}
+            aria-label={t('settings:tool_permissions.shell_rules.preview_title')}
+            className="h-8 min-w-0 flex-1 font-mono text-xs"
+          />
+          {preview && (
+            <div className="flex min-h-8 items-center gap-2 text-xs sm:max-w-[45%]">
+              <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[10px]', actionClass[preview.effect])}>
+                {t(`settings:tool_permissions.shell_rules.action_${preview.effect}`)}
+              </span>
+              <span className="truncate text-muted-foreground" title={preview.matchedRule?.pattern}>
+                {preview.matchedRule
+                  ? t('settings:tool_permissions.shell_rules.preview_matched', { pattern: preview.matchedRule.pattern })
+                  : t('settings:tool_permissions.shell_rules.preview_default')}
+              </span>
+            </div>
+          )}
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground">{t('settings:tool_permissions.shell_rules.preview_hint')}</p>
+      </div>
+
+      {showEditor && (
+        <div className="mb-3 rounded-lg border border-primary/20 bg-primary/[0.025] p-3">
+          <div className="mb-2 text-xs font-medium text-foreground">
+            {t(editingId ? 'settings:tool_permissions.shell_rules.edit_title' : 'settings:tool_permissions.shell_rules.add_title')}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[8rem_10rem_minmax(12rem,1fr)] gap-2">
+            <Select value={draft.action} onValueChange={value => { setDraft(prev => ({ ...prev, action: value as ShellCommandAction })); setPendingRisk(null); }}>
+              <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.shell_rules.effect_label')}><SelectValue /></SelectTrigger>
+              <SelectContent>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent>
+            </Select>
+            <Select value={draft.matchType} onValueChange={value => { setDraft(prev => ({ ...prev, matchType: value as ShellCommandMatchType })); setDraftError(null); setPendingRisk(null); }}>
+              <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.shell_rules.match_label')}><SelectValue /></SelectTrigger>
+              <SelectContent>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent>
+            </Select>
+            <Input
+              value={draft.pattern}
+              onChange={event => { setDraft(prev => ({ ...prev, pattern: event.target.value })); setDraftError(null); setPendingRisk(null); }}
+              placeholder={t(`settings:tool_permissions.shell_rules.placeholder_${draft.matchType}`)}
+              aria-label={t('settings:tool_permissions.shell_rules.pattern_label')}
+              className="h-8 text-xs font-mono"
+              autoFocus
+            />
+          </div>
+          <Input value={draft.note} onChange={event => setDraft(prev => ({ ...prev, note: event.target.value }))} placeholder={t('settings:tool_permissions.shell_rules.note_placeholder')} aria-label={t('settings:tool_permissions.shell_rules.note_label')} className="mt-2 h-8 text-xs" />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">{t(`settings:tool_permissions.shell_rules.help_${draft.matchType}`)}</p>
+          {draftError && <p className="mt-2 text-xs text-destructive">{t(`settings:tool_permissions.shell_rules.error_${draftError}`)}</p>}
+          {pendingRisk && (
+            <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-300">
+              <Warning className="mt-px h-3.5 w-3.5 flex-shrink-0" />
+              <span>{t('settings:tool_permissions.shell_rules.broad_allow_warning')}</span>
+            </div>
+          )}
+          <div className="mt-3 flex justify-end gap-2">
+            <NotionButton variant="ghost" size="sm" onClick={() => { setShowEditor(false); setPendingRisk(null); }} className="text-xs">{t('common:cancel')}</NotionButton>
+            <NotionButton variant="default" size="sm" onClick={() => void saveDraft()} disabled={saving} className="text-xs">
+              {t(pendingRisk ? 'settings:tool_permissions.shell_rules.confirm_allow' : 'common:save')}
+            </NotionButton>
+          </div>
+        </div>
+      )}
+
+      {loading ? <div className="h-24 rounded-lg bg-muted/20 animate-pulse" /> : rules.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/50 py-6 text-center">
+          <CodeBlock className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
+          <p className="text-xs text-muted-foreground">{t('settings:tool_permissions.shell_rules.empty')}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground/80">{t('settings:tool_permissions.shell_rules.empty_hint')}</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-[minmax(10rem,1fr)_9rem_10rem] gap-2 mb-2">
+            <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" /><Input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('settings:tool_permissions.shell_rules.search')} aria-label={t('settings:tool_permissions.shell_rules.search')} className="h-8 pl-8 text-xs" /></div>
+            <Select value={actionFilter} onValueChange={value => setActionFilter(value as ShellCommandAction | 'all')}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_effects')}</SelectItem>{(['allow', 'ask', 'deny'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.action_${value}`)}</SelectItem>)}</SelectContent></Select>
+            <Select value={typeFilter} onValueChange={value => setTypeFilter(value as ShellCommandMatchType | 'all')}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t('settings:tool_permissions.shell_rules.all_matches')}</SelectItem>{(['exact', 'prefix', 'executable'] as const).map(value => <SelectItem key={value} value={value}>{t(`settings:tool_permissions.shell_rules.match_${value}`)}</SelectItem>)}</SelectContent></Select>
+          </div>
+          <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2">
+            <Checkbox
+                      checked={allVisibleSelected ? true : selectedRuleIds.size > 0 ? 'indeterminate' : false}
+              onCheckedChange={checked => selectVisibleRules(checked === true)}
+              aria-label={t('settings:tool_permissions.shell_rules.select_visible')}
+            />
+            <span className="text-[11px] text-muted-foreground">
+              {selectedRuleIds.size > 0
+                ? t('settings:tool_permissions.shell_rules.selected_count', { count: selectedRuleIds.size })
+                : t('settings:tool_permissions.shell_rules.select_visible')}
+            </span>
+            {selectedRuleIds.size > 0 && (
+              <div className="ml-auto flex flex-wrap items-center gap-1">
+                <NotionButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('enable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_enable')}</NotionButton>
+                <NotionButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('disable')} className="!h-7 text-xs">{t('settings:tool_permissions.shell_rules.bulk_disable')}</NotionButton>
+                <NotionButton variant="ghost" size="sm" disabled={saving} onClick={() => void updateSelectedRules('delete')} className="!h-7 text-xs text-destructive">{t('settings:tool_permissions.shell_rules.bulk_delete')}</NotionButton>
+              </div>
+            )}
+          </div>
+          {filteredRules.length === 0 ? <div className="rounded-md border border-dashed border-border/50 py-5 text-center text-xs text-muted-foreground">{t('settings:tool_permissions.shell_rules.no_matches')}</div> : (
+            <div className="overflow-hidden rounded-lg border border-border/40 divide-y divide-border/30">
+              {filteredRules.map(rule => {
+                const risk = assessShellCommandRuleRisk(rule);
+                return <div key={rule.id} className={cn('flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5', !rule.enabled && 'opacity-60')}>
+                  <Checkbox
+                    checked={selectedRuleIds.has(rule.id)}
+                    onCheckedChange={checked => setSelectedRuleIds(previous => {
+                      const next = new Set(previous);
+                      if (checked === true) next.add(rule.id); else next.delete(rule.id);
+                      return next;
+                    })}
+                    aria-label={t('settings:tool_permissions.shell_rules.select_rule', { pattern: rule.pattern })}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <code className="break-all text-xs font-medium text-foreground">{rule.pattern}</code>
+                      <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', actionClass[rule.action])}>{t(`settings:tool_permissions.shell_rules.action_${rule.action}`)}</span>
+                      <span className="rounded border border-border/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">{t(`settings:tool_permissions.shell_rules.match_${rule.matchType}`)}</span>
+                      {risk && <span className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/5 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300"><Warning className="h-3 w-3" />{t('settings:tool_permissions.shell_rules.broad_badge')}</span>}
+                    </div>
+                    {rule.note && <p className="mt-1 truncate text-[11px] text-muted-foreground" title={rule.note}>{rule.note}</p>}
+                  </div>
+                  <div className="flex items-center justify-end gap-1">
+                    <Switch checked={rule.enabled} disabled={saving} onCheckedChange={enabled => void setRuleEnabled(rule, enabled)} aria-label={t('settings:tool_permissions.shell_rules.toggle_rule', { pattern: rule.pattern })} />
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => beginEdit(rule)} className="!h-7 !w-7" title={t('common:edit')} aria-label={t('common:edit')}><PencilSimple className="h-3.5 w-3.5" /></NotionButton>
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => void deleteRule(rule)} className="!h-7 !w-7 text-muted-foreground hover:text-destructive" title={t('common:delete')} aria-label={t('common:delete')}><Trash className="h-3.5 w-3.5" /></NotionButton>
+                  </div>
+                </div>;
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /** 工具权限管理区域 - 非折叠，直接展示 */
 function ToolPermissionsSection({ toolsByServer }: {
   toolsByServer: Record<string, { items: McpCachedTool[]; at?: number }>;
@@ -1649,27 +2099,86 @@ function ToolPermissionsSection({ toolsByServer }: {
   const [isLoading, setIsLoading] = useState(true);
   const [globalBypass, setGlobalBypass] = useState(false);
   const [toolOverrides, setToolOverrides] = useState<ToolOverrideEntry[]>([]);
+  const [sourceOverrides, setSourceOverrides] = useState<Map<string, SensitivityLevel>>(new Map());
+  const [domainOverrides, setDomainOverrides] = useState<Map<string, SensitivityLevel>>(new Map());
   const [historyCount, setHistoryCount] = useState(0);
   const [runtimeRoots, setRuntimeRoots] = useState<RuntimeRootEntry[]>([]);
   const [newRuntimeRootPath, setNewRuntimeRootPath] = useState('');
   const [workspaceAccess, setWorkspaceAccess] = useState<'read_only' | 'read_write'>('read_only');
   const [isSavingRuntimeRoot, setIsSavingRuntimeRoot] = useState(false);
+  const [toolSearch, setToolSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [levelFilter, setLevelFilter] = useState<ToolLevelFilter>('all');
+  const [overrideFilter, setOverrideFilter] = useState<ToolOverrideFilter>('all');
+  const [showAdvancedTools, setShowAdvancedTools] = useState(false);
+  const [groupMode, setGroupMode] = useState<'domain' | 'source'>('domain');
+  const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   /** 待确认的高风险授权（两步确认：第一次点添加只显示警示，再点才真正授权） */
   const [pendingRootRisk, setPendingRootRisk] = useState<Exclude<AuthorizedRootRisk, 'safe'> | null>(null);
   const runtimeRootInputRef = useRef<HTMLInputElement>(null);
 
-  /** 获取所有已注册工具的完整列表（去重） */
-  const allTools = useMemo(() => {
-    const toolMap = new Map<string, string>();
-    for (const entry of Object.values(toolsByServer)) {
-      for (const tool of entry.items || []) {
-        if (tool.name && !toolMap.has(tool.name)) {
-          toolMap.set(tool.name, stripMcpPrefix(tool.name));
-        }
-      }
+  /** 每个来源/工具对都是独立权限主体，同名工具不会跨服务串权。 */
+  const allTools = useMemo(
+    () => buildManagedPermissionTools(toolsByServer),
+    [toolsByServer]
+  );
+
+  useEffect(() => {
+    const validIds = new Set(allTools.map(tool => tool.id));
+    setSelectedTools(prev => new Set(Array.from(prev).filter(id => validIds.has(id))));
+  }, [allTools]);
+
+  const overrideMap = useMemo(
+    () => new Map(toolOverrides.map(override => [override.toolName, override.level])),
+    [toolOverrides]
+  );
+  const toolById = useMemo(
+    () => new Map(allTools.map(tool => [tool.id, tool])),
+    [allTools]
+  );
+
+  const resolveConfiguredPolicy = useCallback((tool: ManagedPermissionTool) => {
+    const direct = resolveToolOverrideEntry(tool, overrideMap);
+    if (direct) return { level: direct.level, origin: direct.scoped ? 'tool' : 'legacy' } as const;
+    const sourceLevel = sourceOverrides.get(tool.source);
+    if (sourceLevel) return { level: sourceLevel, origin: 'source' } as const;
+    const domainLevel = domainOverrides.get(tool.domain);
+    if (domainLevel) return { level: domainLevel, origin: 'domain' } as const;
+    if (globalBypass) return { level: 'low' as const, origin: 'global' } as const;
+    return { level: null, origin: 'default' } as const;
+  }, [domainOverrides, globalBypass, overrideMap, sourceOverrides]);
+
+  const effectiveLevelMap = useMemo(() => {
+    const levels = new Map<string, SensitivityLevel>();
+    for (const tool of allTools) {
+      const level = resolveConfiguredPolicy(tool).level;
+      if (level) levels.set(tool.id, level);
     }
-    return Array.from(toolMap.entries()).map(([name, display]) => ({ name, display }));
-  }, [toolsByServer]);
+    return levels;
+  }, [allTools, resolveConfiguredPolicy]);
+
+  const availableSources = useMemo(() => (
+    Array.from(new Set(allTools.map(tool => tool.source))).sort((a, b) => a.localeCompare(b))
+  ), [allTools]);
+
+  const filteredTools = useMemo(() => filterManagedPermissionTools(allTools, effectiveLevelMap, {
+    query: toolSearch,
+    source: sourceFilter,
+    level: levelFilter,
+    override: overrideFilter,
+  }, overrideMap), [allTools, effectiveLevelMap, levelFilter, overrideFilter, overrideMap, sourceFilter, toolSearch]);
+
+  useEffect(() => {
+    setSelectedTools(new Set());
+  }, [levelFilter, overrideFilter, sourceFilter, toolSearch]);
+
+  const capabilityGroups = useMemo(() => TOOL_CAPABILITIES
+    .map(capability => ({
+      capability,
+      tools: filteredTools.filter(tool => tool.capability === capability),
+    }))
+    .filter(group => group.tools.length > 0), [filteredTools]);
 
   /** 从后端加载所有权限配置 */
   const fetchConfig = useCallback(async () => {
@@ -1685,6 +2194,8 @@ function ToolPermissionsSection({ toolsByServer }: {
 
       let bypass = false;
       const overrides: ToolOverrideEntry[] = [];
+      const sources = new Map<string, SensitivityLevel>();
+      const domains = new Map<string, SensitivityLevel>();
       let histCount = 0;
 
       for (const [key, value] of results) {
@@ -1698,6 +2209,16 @@ function ToolPermissionsSection({ toolsByServer }: {
             displayName: stripMcpPrefix(toolName),
             level,
           });
+        } else if (key.startsWith('tool_approval.source.')) {
+          const source = key.slice('tool_approval.source.'.length);
+          if (source && ['low', 'medium', 'high'].includes(value)) {
+            sources.set(source, value as SensitivityLevel);
+          }
+        } else if (key.startsWith('tool_approval.domain.')) {
+          const domain = key.slice('tool_approval.domain.'.length);
+          if (domain && ['low', 'medium', 'high'].includes(value)) {
+            domains.set(domain, value as SensitivityLevel);
+          }
         } else if (key.startsWith('tool_approval.scope.')) {
           histCount++;
         }
@@ -1705,6 +2226,8 @@ function ToolPermissionsSection({ toolsByServer }: {
 
       setGlobalBypass(bypass);
       setToolOverrides(overrides);
+      setSourceOverrides(sources);
+      setDomainOverrides(domains);
       setHistoryCount(histCount);
       setRuntimeRoots(roots);
     } catch (err) {
@@ -1722,6 +2245,8 @@ function ToolPermissionsSection({ toolsByServer }: {
   /** 切换全局免审批开关 */
   const handleToggleGlobalBypass = useCallback(async (checked: boolean) => {
     const newVal = checked;
+    // eslint-disable-next-line no-alert -- enabling a broad policy requires impact confirmation
+    if (newVal && !window.confirm(t('settings:tool_permissions.bypass_enable_confirm', { count: allTools.length }))) return;
     try {
       await invoke('save_setting', {
         key: 'tool_approval.global_bypass',
@@ -1738,7 +2263,7 @@ function ToolPermissionsSection({ toolsByServer }: {
       console.error('[ToolPermissions] Toggle global bypass failed:', err);
       showGlobalNotification('error', t('settings:tool_permissions.toggle_failed'));
     }
-  }, [t]);
+  }, [allTools.length, t]);
 
   /** 设置单个工具的等级覆盖 */
   const handleSetOverride = useCallback(async (toolName: string, level: SensitivityLevel) => {
@@ -1768,6 +2293,127 @@ function ToolPermissionsSection({ toolsByServer }: {
       console.error('[ToolPermissions] Remove override failed:', err);
     }
   }, []);
+
+  /** 批量更新沿用现有单工具设置键，支持能力域和多选操作。 */
+  const handleBulkOverride = useCallback(async (
+    toolIds: string[],
+    level: SensitivityLevel | null
+  ) => {
+    const ids = Array.from(new Set(toolIds));
+    if (ids.length === 0 || isBulkUpdating) return;
+    if (level === 'low' && ids.length > 1) {
+      // eslint-disable-next-line no-alert -- lowering multiple tools reduces routine approvals
+      if (!window.confirm(t('settings:tool_permissions.bulk_low_confirm', { count: ids.length }))) return;
+    }
+    const settingKeys = level
+      ? ids.map(id => `tool_approval.override.${id}`)
+      : selectedOverrideKeysForReset(allTools, new Set(ids), overrideMap);
+    if (settingKeys.length === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      const results = await Promise.allSettled(settingKeys.map(key => {
+        return level
+          ? invoke('save_setting', { key, value: level })
+          : invoke('delete_setting', { key });
+      }));
+      const succeededKeys = settingKeys.filter((_, index) => results[index].status === 'fulfilled');
+      const failedKeys = new Set(settingKeys.filter((_, index) => results[index].status === 'rejected'));
+      const succeededIds = succeededKeys.map(key => key.slice('tool_approval.override.'.length));
+      const succeededSet = new Set(succeededIds);
+      setToolOverrides(prev => {
+        const unchanged = prev.filter(override => !succeededSet.has(override.toolName));
+        if (!level) return unchanged;
+        return [
+          ...unchanged,
+          ...succeededIds.map(toolName => ({
+            toolName,
+            displayName: stripMcpPrefix(toolName),
+            level,
+          })),
+        ];
+      });
+      setSelectedTools(prev => {
+        const next = new Set(prev);
+        for (const id of ids) {
+          const expectedKey = level
+            ? `tool_approval.override.${id}`
+            : (() => {
+                const tool = toolById.get(id);
+                const entry = tool ? resolveToolOverrideEntry(tool, overrideMap) : null;
+                return entry ? `tool_approval.override.${entry.id}` : null;
+              })();
+          if (expectedKey && !failedKeys.has(expectedKey)) next.delete(id);
+        }
+        return next;
+      });
+      if (succeededKeys.length !== settingKeys.length) {
+        showGlobalNotification('error', t('settings:tool_permissions.bulk_partial_failed', {
+          success: succeededKeys.length,
+          total: settingKeys.length,
+        }));
+      } else {
+        showGlobalNotification('success', t('settings:tool_permissions.bulk_updated', {
+          count: level ? ids.length : succeededKeys.length,
+        }));
+      }
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  }, [allTools, isBulkUpdating, overrideMap, t, toolById]);
+
+  const handleSetGroupOverride = useCallback(async (
+    kind: 'source' | 'domain',
+    group: string,
+    level: SensitivityLevel | null
+  ) => {
+    if (isBulkUpdating) return;
+    const affectedCount = allTools.filter(tool => (
+      kind === 'source' ? tool.source === group : tool.domain === group
+    )).length;
+    if (level === 'low') {
+      // eslint-disable-next-line no-alert -- lowering an entire group requires impact confirmation
+      if (!window.confirm(t('settings:tool_permissions.group_low_confirm', { count: affectedCount }))) return;
+    }
+    const key = `tool_approval.${kind}.${group}`;
+    setIsBulkUpdating(true);
+    try {
+      if (level) await invoke('save_setting', { key, value: level });
+      else await invoke('delete_setting', { key });
+      const setMap = kind === 'source' ? setSourceOverrides : setDomainOverrides;
+      setMap(prev => {
+        const next = new Map(prev);
+        if (level) next.set(group, level);
+        else next.delete(group);
+        return next;
+      });
+      showGlobalNotification('success', t('settings:tool_permissions.group_updated'));
+    } catch (err) {
+      console.error('[ToolPermissions] Set group override failed:', err);
+      showGlobalNotification('error', t('settings:tool_permissions.toggle_failed'));
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  }, [allTools, isBulkUpdating, t]);
+
+  const toggleToolSelection = useCallback((toolName: string, selected: boolean) => {
+    setSelectedTools(prev => {
+      const next = new Set(prev);
+      if (selected) next.add(toolName);
+      else next.delete(toolName);
+      return next;
+    });
+  }, []);
+
+  const selectVisibleTools = useCallback((selected: boolean) => {
+    setSelectedTools(prev => {
+      const next = new Set(prev);
+      for (const tool of filteredTools) {
+        if (selected) next.add(tool.id);
+        else next.delete(tool.id);
+      }
+      return next;
+    });
+  }, [filteredTools]);
 
   /** 清除所有历史审批记录（DB + 内存） */
   const handleClearHistory = useCallback(async () => {
@@ -1888,17 +2534,15 @@ function ToolPermissionsSection({ toolsByServer }: {
     void handleBrowseRuntimeRoot();
   }, [handleBrowseRuntimeRoot]);
 
-  /** 获取工具已设定的覆盖等级（如果有） */
-  const getOverrideLevel = useCallback((toolName: string): SensitivityLevel | null => {
-    const found = toolOverrides.find(o => o.toolName === toolName);
-    return found?.level ?? null;
-  }, [toolOverrides]);
-
   /** 按钮组：等级选择器 */
-  const LevelSelector = useCallback(({ toolName, currentLevel }: { toolName: string; currentLevel: SensitivityLevel | null }) => {
+  const LevelSelector = useCallback(({ toolName, currentLevel, resetOverrideId }: {
+    toolName: string;
+    currentLevel: SensitivityLevel | null;
+    resetOverrideId?: string;
+  }) => {
     const levels: SensitivityLevel[] = ['low', 'medium', 'high'];
     return (
-      <div className="flex items-center gap-0.5 bg-muted/40 rounded-md p-0.5">
+      <div className="flex items-center gap-0.5 bg-muted/40 rounded-md p-0.5" role="group" aria-label={t('settings:tool_permissions.level_filter')}>
         {levels.map(level => {
           const isActive = currentLevel === level;
           const config = SENSITIVITY_CONFIG[level];
@@ -1907,9 +2551,11 @@ function ToolPermissionsSection({ toolsByServer }: {
               key={level}
               variant="ghost"
               size="sm"
+              disabled={isBulkUpdating}
+              aria-pressed={isActive}
               onClick={() => {
                 if (isActive) {
-                  handleRemoveOverride(toolName);
+                  handleRemoveOverride(resetOverrideId ?? toolName);
                 } else {
                   handleSetOverride(toolName, level);
                 }
@@ -1930,10 +2576,101 @@ function ToolPermissionsSection({ toolsByServer }: {
         })}
       </div>
     );
-  }, [handleSetOverride, handleRemoveOverride, t]);
+  }, [handleSetOverride, handleRemoveOverride, isBulkUpdating, t]);
+
+  const BulkLevelSelector = useCallback(({ toolNames }: { toolNames: string[] }) => {
+    const configuredLevels = toolNames.map(id => {
+      const tool = toolById.get(id);
+      return tool ? resolveToolOverride(tool, overrideMap) : null;
+    });
+    const firstLevel = configuredLevels[0] ?? null;
+    const sharedLevel = configuredLevels.every(level => level === firstLevel) ? firstLevel : null;
+    const allInherited = configuredLevels.every(level => level === null);
+    const levels: Array<SensitivityLevel | 'default'> = ['default', 'low', 'medium', 'high'];
+
+    return (
+      <div className="flex items-center gap-0.5 bg-muted/40 rounded-md p-0.5" role="group" aria-label={t('settings:tool_permissions.bulk_level_label')}>
+        {levels.map(level => {
+          const active = level === 'default' ? allInherited : sharedLevel === level;
+          return (
+            <NotionButton
+              key={level}
+              variant="ghost"
+              size="sm"
+              disabled={isBulkUpdating}
+              aria-pressed={active}
+              onClick={() => void handleBulkOverride(toolNames, level === 'default' ? null : level)}
+              className={cn(
+                '!h-6 !px-1.5 text-[11px] font-medium',
+                active && level === 'default' && 'bg-background text-foreground shadow-sm',
+                active && level !== 'default' && SENSITIVITY_CONFIG[level].badge,
+                !active && 'text-muted-foreground hover:text-foreground'
+              )}
+              title={level === 'default'
+                ? t('settings:tool_permissions.reset_group_to_default')
+                : t(`settings:tool_permissions.set_group_to_${level}`)}
+            >
+              {level === 'default'
+                ? t('settings:tool_permissions.level_default')
+                : t(`settings:tool_permissions.level_${level}`)}
+            </NotionButton>
+          );
+        })}
+      </div>
+    );
+  }, [handleBulkOverride, isBulkUpdating, overrideMap, t, toolById]);
+
+  const GroupLevelSelector = useCallback(({ kind, group, currentLevel }: {
+    kind: 'source' | 'domain';
+    group: string;
+    currentLevel: SensitivityLevel | null;
+  }) => {
+    const levels: Array<SensitivityLevel | 'default'> = ['default', 'low', 'medium', 'high'];
+    return (
+      <div className="flex items-center gap-0.5 bg-muted/40 rounded-md p-0.5" role="group" aria-label={t('settings:tool_permissions.group_level_label', { group })}>
+        {levels.map(level => {
+          const active = level === 'default' ? currentLevel === null : currentLevel === level;
+          return (
+            <NotionButton
+              key={level}
+              variant="ghost"
+              size="sm"
+              disabled={isBulkUpdating}
+              aria-pressed={active}
+              onClick={() => void handleSetGroupOverride(kind, group, level === 'default' ? null : level)}
+              className={cn(
+                '!h-6 !px-1.5 text-[11px] font-medium',
+                active && level === 'default' && 'bg-background text-foreground shadow-sm',
+                active && level !== 'default' && SENSITIVITY_CONFIG[level].badge,
+                !active && 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {level === 'default'
+                ? t('settings:tool_permissions.level_default')
+                : t(`settings:tool_permissions.level_${level}`)}
+            </NotionButton>
+          );
+        })}
+      </div>
+    );
+  }, [handleSetGroupOverride, isBulkUpdating, t]);
+
+  const selectedVisibleCount = filteredTools.filter(tool => selectedTools.has(tool.id)).length;
+  const allVisibleSelected = filteredTools.length > 0 && selectedVisibleCount === filteredTools.length;
+  const configuredToolCount = allTools.filter(tool => resolveConfiguredPolicy(tool).level !== null).length;
+  const policyGroups = useMemo(() => {
+    const groups = new Map<string, ManagedPermissionTool[]>();
+    for (const tool of allTools) {
+      const key = groupMode === 'source' ? tool.source : tool.domain;
+      const groupTools = groups.get(key) ?? [];
+      groupTools.push(tool);
+      groups.set(key, groupTools);
+    }
+    return Array.from(groups.entries()).sort(([left], [right]) => left.localeCompare(right));
+  }, [allTools, groupMode]);
 
   return (
-    <div className="mt-8 pt-6 border-t border-border/40">
+    <div className="mt-8 min-w-0 max-w-full pt-6 border-t border-border/40">
       {/* 标题栏 */}
       <h3 className="text-sm font-medium text-foreground mb-4">
         {t('settings:tool_permissions.title')}
@@ -1956,7 +2693,7 @@ function ToolPermissionsSection({ toolsByServer }: {
             )}
           >
             <div className="flex items-center justify-between">
-              <div className="flex-1 mr-4">
+              <div className="min-w-0 flex-1 mr-4">
                 <div className="flex items-center gap-2 mb-1">
                   <ShieldCheck className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium text-foreground">
@@ -1999,7 +2736,7 @@ function ToolPermissionsSection({ toolsByServer }: {
               {t('settings:tool_permissions.runtime_roots_desc')}
             </p>
 
-            <div className="mb-3 flex flex-col sm:flex-row gap-2">
+            <div className="mb-3 flex min-w-0 flex-col sm:flex-row gap-2">
               <Input
                 ref={runtimeRootInputRef}
                 value={newRuntimeRootPath}
@@ -2014,9 +2751,9 @@ function ToolPermissionsSection({ toolsByServer }: {
                   }
                 }}
                 placeholder={t('settings:tool_permissions.runtime_root_path_placeholder')}
-                className="h-8 text-xs font-mono sm:flex-1"
+                className="h-8 min-w-0 text-xs font-mono sm:basis-0 sm:flex-1"
               />
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <Select
                   value={workspaceAccess}
                   onValueChange={(value) => setWorkspaceAccess(value as 'read_only' | 'read_write')}
@@ -2235,32 +2972,33 @@ function ToolPermissionsSection({ toolsByServer }: {
             )}
           </div>
 
-          {/* 2. 单工具等级覆盖 */}
+          <ShellCommandRulesSection />
+
+          {/* 2. 工具策略：默认展示能力域，单工具覆盖收进高级管理。 */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  {t('settings:tool_permissions.per_tool_title')}
-                </h4>
-                <span className="text-xs text-muted-foreground">
-                  ({allTools.length} {t('settings:mcp_server_list.tools').toLowerCase()})
-                </span>
+            <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Stack className="h-3.5 w-3.5 text-muted-foreground" />
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    {t('settings:tool_permissions.policy_overview_title')}
+                  </h4>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                  {t('settings:tool_permissions.policy_overview_desc')}
+                </p>
               </div>
               <NotionButton
                 variant="ghost"
                 size="sm"
                 onClick={fetchConfig}
-                disabled={isLoading}
-                className="text-xs"
+                disabled={isLoading || isBulkUpdating}
+                className="text-xs flex-shrink-0"
               >
-                <ArrowClockwise className={cn('h-3 w-3 mr-1', isLoading && 'animate-spin')} />
+                <ArrowClockwise className={cn('h-3 w-3 mr-1', (isLoading || isBulkUpdating) && 'animate-spin')} />
                 {t('settings:tool_permissions.refresh')}
               </NotionButton>
             </div>
-
-            <p className="text-xs text-muted-foreground mb-3">
-              {t('settings:tool_permissions.per_tool_desc')}
-            </p>
 
             {allTools.length === 0 ? (
               <div className="text-center py-6 rounded-lg border border-dashed border-border/60 bg-muted/5">
@@ -2270,46 +3008,250 @@ function ToolPermissionsSection({ toolsByServer }: {
                 </p>
               </div>
             ) : (
-              <CustomScrollArea
-                fullHeight={false}
-                className="rounded-lg border border-border/30"
-                viewportProps={{ style: { maxHeight: 400 } }}
-              >
-                <div className="space-y-1 p-1">
-                  {allTools.map(({ name, display }) => {
-                    const override = getOverrideLevel(name);
-                    return (
-                      <div
-                        key={name}
+              <>
+                <div className="grid grid-cols-3 border-y border-border/30 mb-3">
+                  <div className="py-2.5 pr-3">
+                    <div className="text-base font-semibold tabular-nums">{allTools.length}</div>
+                    <div className="text-[11px] text-muted-foreground">{t('settings:tool_permissions.summary_tools')}</div>
+                  </div>
+                  <div className="py-2.5 px-3 border-x border-border/30">
+                    <div className="text-base font-semibold tabular-nums">{availableSources.length}</div>
+                    <div className="text-[11px] text-muted-foreground">{t('settings:tool_permissions.summary_sources')}</div>
+                  </div>
+                  <div className="py-2.5 pl-3">
+                    <div className="text-base font-semibold tabular-nums text-primary">{configuredToolCount}</div>
+                    <div className="text-[11px] text-muted-foreground">{t('settings:tool_permissions.summary_overrides')}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[11px] text-muted-foreground">{t('settings:tool_permissions.group_by')}</span>
+                  <div className="flex items-center bg-muted/40 rounded-md p-0.5" role="group" aria-label={t('settings:tool_permissions.group_by')}>
+                    {(['domain', 'source'] as const).map(mode => (
+                      <NotionButton
+                        key={mode}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setGroupMode(mode)}
+                        aria-pressed={groupMode === mode}
                         className={cn(
-                          'flex items-center justify-between px-3 py-2 rounded-lg transition-colors',
-                          override ? 'bg-muted/30' : ''
+                          '!h-6 !px-2 text-[11px]',
+                          groupMode === mode && 'bg-background text-foreground shadow-sm'
                         )}
                       >
-                        <div className="flex items-center gap-2 min-w-0 flex-1 mr-3">
-                          <span
-                            className={cn(
-                              'w-1.5 h-1.5 rounded-full flex-shrink-0',
-                              override
-                                ? SENSITIVITY_CONFIG[override].dot
-                                : 'bg-muted-foreground/40'
-                            )}
-                          />
-                          <span className="text-sm text-foreground truncate font-mono" title={name}>
-                            {display}
-                          </span>
-                          {override && (
-                            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOverride(name)} className="!h-5 !w-5 !p-0 text-muted-foreground hover:text-foreground" title={t('settings:tool_permissions.reset_to_default')} aria-label="reset">
-                              ✕
-                            </NotionButton>
-                          )}
+                        {t(`settings:tool_permissions.group_by_${mode}`)}
+                      </NotionButton>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-border/40 divide-y divide-border/30 overflow-hidden">
+                  {policyGroups.map(([group, tools]) => {
+                    const overriddenCount = tools.filter(tool => resolveToolOverrideEntry(tool, overrideMap) !== null).length;
+                    const currentLevel = groupMode === 'source'
+                      ? sourceOverrides.get(group) ?? null
+                      : domainOverrides.get(group) ?? null;
+                    return (
+                      <div key={group} className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 hover:bg-muted/20 transition-colors">
+                        <div className="flex items-center min-w-0 flex-1 gap-2">
+                          <span className="h-2 w-2 rounded-full bg-muted-foreground/40 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-foreground truncate" title={group}>
+                              {groupMode === 'source' ? formatToolSource(group) : group}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground">
+                              {t('settings:tool_permissions.group_summary', {
+                                count: tools.length,
+                                overridden: overriddenCount,
+                              })}
+                            </div>
+                          </div>
                         </div>
-                        <LevelSelector toolName={name} currentLevel={override} />
+                        <div className="self-end sm:self-auto flex-shrink-0">
+                          <GroupLevelSelector kind={groupMode} group={group} currentLevel={currentLevel} />
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-              </CustomScrollArea>
+
+                <div className="mt-2 flex items-start gap-1.5 text-[11px] text-muted-foreground/80 leading-relaxed">
+                  <Lock className="h-3.5 w-3.5 mt-px flex-shrink-0" />
+                  <span>{t('settings:tool_permissions.dynamic_risk_hint')}</span>
+                </div>
+
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAdvancedTools(value => !value)}
+                  className="mt-2 !px-1 text-xs"
+                  aria-expanded={showAdvancedTools}
+                >
+                  <CaretRight className={cn('h-3.5 w-3.5 mr-1 transition-transform', showAdvancedTools && 'rotate-90')} />
+                  {t('settings:tool_permissions.advanced_title')}
+                  <span className="ml-1 text-muted-foreground">({toolOverrides.length})</span>
+                </NotionButton>
+
+                {showAdvancedTools && (
+                  <div className="mt-3 border-t border-border/30 pt-3">
+                    <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground">
+                      <Funnel className="h-3.5 w-3.5" />
+                      <span>{t('settings:tool_permissions.filters_title')}</span>
+                      <span className="ml-auto tabular-nums">
+                        {t('settings:tool_permissions.filtered_count', { count: filteredTools.length })}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_10rem_9rem_9rem] gap-2 mb-3">
+                      <div className="relative">
+                        <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                        <Input
+                          value={toolSearch}
+                          onChange={event => setToolSearch(event.target.value)}
+                          placeholder={t('settings:tool_permissions.search_placeholder')}
+                          aria-label={t('settings:tool_permissions.search_placeholder')}
+                          className="h-8 pl-8 text-xs"
+                        />
+                      </div>
+                      <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                        <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.source_filter')}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('settings:tool_permissions.source_all')}</SelectItem>
+                          {availableSources.map(source => (
+                            <SelectItem key={source} value={source}>{formatToolSource(source)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={levelFilter} onValueChange={value => setLevelFilter(value as ToolLevelFilter)}>
+                        <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.level_filter')}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('settings:tool_permissions.level_all')}</SelectItem>
+                          <SelectItem value="default">{t('settings:tool_permissions.level_default')}</SelectItem>
+                          <SelectItem value="low">{t('settings:tool_permissions.level_low')}</SelectItem>
+                          <SelectItem value="medium">{t('settings:tool_permissions.level_medium')}</SelectItem>
+                          <SelectItem value="high">{t('settings:tool_permissions.level_high')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={overrideFilter} onValueChange={value => setOverrideFilter(value as ToolOverrideFilter)}>
+                        <SelectTrigger className="h-8 text-xs" aria-label={t('settings:tool_permissions.override_filter')}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('settings:tool_permissions.override_all')}</SelectItem>
+                          <SelectItem value="overridden">{t('settings:tool_permissions.override_only')}</SelectItem>
+                          <SelectItem value="inherited">{t('settings:tool_permissions.inherited_only')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {filteredTools.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/20 border border-border/30 rounded-t-md">
+                        <Checkbox
+                          checked={allVisibleSelected ? true : selectedVisibleCount > 0 ? 'indeterminate' : false}
+                          onCheckedChange={checked => selectVisibleTools(checked === true)}
+                          aria-label={t('settings:tool_permissions.select_visible')}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {selectedTools.size > 0
+                            ? t('settings:tool_permissions.selected_count', { count: selectedTools.size })
+                            : t('settings:tool_permissions.select_visible')}
+                        </span>
+                        {selectedTools.size > 0 && (
+                          <>
+                            <div className="ml-auto">
+                              <BulkLevelSelector toolNames={Array.from(selectedTools)} />
+                            </div>
+                            <NotionButton
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedTools(new Set())}
+                              className="!h-6 text-[11px]"
+                            >
+                              {t('settings:tool_permissions.clear_selection')}
+                            </NotionButton>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {filteredTools.length === 0 ? (
+                      <div className="py-8 text-center border border-dashed border-border/50 rounded-md text-xs text-muted-foreground">
+                        {t('settings:tool_permissions.no_matching_tools')}
+                      </div>
+                    ) : (
+                      <CustomScrollArea
+                        fullHeight={false}
+                        className="border-x border-b border-border/30 rounded-b-md"
+                        viewportProps={{ style: { maxHeight: 480 } }}
+                      >
+                        <div className="divide-y divide-border/20">
+                          {capabilityGroups.flatMap(group => group.tools).map(tool => {
+                            const overrideEntry = resolveToolOverrideEntry(tool, overrideMap);
+                            const policy = resolveConfiguredPolicy(tool);
+                            const statusKey = policy.origin === 'tool' || policy.origin === 'legacy'
+                              ? 'status_overridden'
+                              : `status_${policy.origin}`;
+                            return (
+                              <div
+                                key={tool.id}
+                                className={cn(
+                                  'flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 transition-colors',
+                                  overrideEntry ? 'bg-primary/[0.035]' : 'hover:bg-muted/20'
+                                )}
+                              >
+                                <div className="flex items-start gap-2 min-w-0 flex-1">
+                                  <Checkbox
+                                    checked={selectedTools.has(tool.id)}
+                                    onCheckedChange={checked => toggleToolSelection(tool.id, checked === true)}
+                                    aria-label={t('settings:tool_permissions.select_tool', { name: tool.display })}
+                                    className="mt-0.5"
+                                  />
+                                  <span className={cn(
+                                    'mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0',
+                                    policy.level ? SENSITIVITY_CONFIG[policy.level].dot : 'bg-muted-foreground/30'
+                                  )} />
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <span className="text-sm text-foreground font-mono break-all" title={tool.name}>
+                                        {tool.display}
+                                      </span>
+                                      <span className={cn(
+                                        'text-[10px] px-1.5 py-0.5 rounded border',
+                                        overrideEntry
+                                          ? 'border-primary/20 bg-primary/5 text-primary'
+                                          : 'border-border/40 text-muted-foreground'
+                                      )}>
+                                        {t(`settings:tool_permissions.${statusKey}`)}
+                                      </span>
+                                    </div>
+                                    <div className="mt-0.5 text-[11px] text-muted-foreground truncate" title={tool.description || tool.name}>
+                                      {t(`settings:tool_permissions.capability_${tool.capability}`)}
+                                      <span className="mx-1">·</span>
+                                      {formatToolSource(tool.source)}
+                                      {tool.description && <><span className="mx-1">·</span>{tool.description}</>}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="self-end sm:self-auto flex-shrink-0">
+                                  <LevelSelector
+                                    toolName={tool.id}
+                                    currentLevel={overrideEntry?.level ?? null}
+                                    resetOverrideId={overrideEntry?.id}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CustomScrollArea>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
 

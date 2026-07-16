@@ -729,7 +729,7 @@ impl ApprovalManager {
 
     /// 生成人类可读的工具描述
     pub fn generate_description(tool_name: &str, arguments: &Value) -> String {
-        if approval_scope::is_shell_runtime_tool(tool_name) {
+        if approval_scope::is_shell_runtime_tool_for_args(tool_name, arguments) {
             let command = arguments
                 .get("command")
                 .and_then(Value::as_str)

@@ -2425,7 +2425,7 @@ impl VfsFullIndexingService {
                                 text_embedding_dim = ?1,
                                 updated_at = ?2
                             WHERE id = ?3",
-                                rusqlite::params![dim, now, unit_id],
+                                rusqlite::params![dim as i64, now, unit_id],
                             ) {
                                 log::warn!("[VfsIndexing] Failed to update text_state to 'indexing' for unit {}: {}", unit_id, e);
                             }
@@ -2466,7 +2466,7 @@ impl VfsFullIndexingService {
                             // 更新 unit 状态
                             conn.execute(
                         "UPDATE vfs_index_units SET text_state = 'indexed', text_indexed_at = ?1, text_chunk_count = ?2, text_embedding_dim = ?3, updated_at = ?1 WHERE id = ?4",
-                        rusqlite::params![now, count as i32, dim, unit_id],
+                        rusqlite::params![now, count as i32, dim as i64, unit_id],
                     )?;
 
                             // M12 fix: 确保维度记录存在后再更新计数（register 内部幂等）
@@ -2777,7 +2777,7 @@ impl VfsFullIndexingService {
                         text_embedding_dim = ?1,
                         updated_at = ?2
                     WHERE id = ?3",
-                    rusqlite::params![extra_result.dim, now, unit.id],
+                    rusqlite::params![extra_result.dim as i64, now, unit.id],
                 )?;
 
                 let segment_inputs = extra_chunks
@@ -2814,7 +2814,7 @@ impl VfsFullIndexingService {
                 )?;
                 conn.execute(
                     "UPDATE vfs_index_units SET text_state = 'indexed', text_indexed_at = ?1, text_chunk_count = ?2, text_embedding_dim = ?3, updated_at = ?1 WHERE id = ?4",
-                    rusqlite::params![now, extra_result.count as i32, extra_result.dim, unit.id],
+                    rusqlite::params![now, extra_result.count as i32, extra_result.dim as i64, unit.id],
                 )?;
                 embedding_dim_repo::register(&conn, extra_result.dim as i32, MODALITY_TEXT)?;
                 embedding_dim_repo::increment_count(
@@ -3704,7 +3704,7 @@ impl VfsFullIndexingService {
                             // 更新 unit 状态
                             conn.execute(
                                 "UPDATE vfs_index_units SET text_state = 'indexed', text_indexed_at = ?1, text_chunk_count = ?2, text_embedding_dim = ?3, updated_at = ?1 WHERE id = ?4",
-                                rusqlite::params![now, count as i32, dim, unit_id],
+                                rusqlite::params![now, count as i32, dim as i64, unit_id],
                             )?;
 
                             embedding_dim_repo::refresh_counts_from_segments(&conn)?;

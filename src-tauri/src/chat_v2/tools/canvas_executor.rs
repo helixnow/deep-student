@@ -896,10 +896,7 @@ impl CanvasToolExecutor {
             .unwrap_or(10);
         // Lance search returns ranked top-K results. Fetching one additional result is enough
         // to report whether this ranked page has a following page without exposing it.
-        let search_limit = page
-            .saturating_mul(page_size)
-            .saturating_add(1)
-            .min(201);
+        let search_limit = page.saturating_mul(page_size).saturating_add(1).min(201);
         let folder_id = args
             .get("folder_id")
             .or(args.get("folderId"))

@@ -8,7 +8,7 @@
  * 本模块仅保留卡片管理与预览组件，不负责向 LLM 注册工具。
  */
 
-import React, { useRef, useLayoutEffect, useState, useCallback } from 'react';
+import React from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -374,95 +374,15 @@ export function logChatAnkiEvent(event: string, data?: unknown, _context?: AnkiA
 }
 
 // ============================================================================
-// 全宽包裹器：精确计算偏移实现真正的视口全宽
+// 聊天卡片容器
 // ============================================================================
-
-/**
- * 全宽卡片包裹器
- *
- * 使用 getBoundingClientRect 动态计算元素距视口左侧的精确偏移，
- * 通过负 margin 突破所有父容器（含头像、padding、max-width）限制，
- * 实现真正的 100vw 全宽。解决 `calc(-50vw + 50%)` 在非居中父容器下
- * 偏移不准的问题。
- */
-/**
- * 移动端全宽精确包裹器
- *
- * 桌面端（>768px）：不做任何处理，直接渲染 children + className，
- * 保持原有 CSS 布局（如 calc(-50vw + 50%) 等）。
- *
- * 移动端（<768px）：使用 getBoundingClientRect 精确计算元素距视口
- * 左侧的偏移，通过 inline style 突破所有父容器限制实现真正全宽。
- * 解决移动端头像/padding 导致 CSS calc 偏移不准的问题。
- */
-const MOBILE_BREAKPOINT = 768;
 
 export const FullWidthCardWrapper: React.FC<{
   children: React.ReactNode;
   className?: string;
-}> = ({ children, className }) => {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const [mobileStyle, setMobileStyle] = useState<React.CSSProperties | undefined>(undefined);
-
-  const recalculate = useCallback(() => {
-    const el = wrapperRef.current;
-    if (!el) return;
-
-    // 桌面端（≥768，与 App shell isSmallScreen=<768 边界对齐）：清除所有 inline 定位，完全交给 CSS。
-    // 用 >= 而非 >：768px（如 iPad 竖屏）属桌面双栏布局，不应套用移动端全宽 inline 计算
-    if (window.innerWidth >= MOBILE_BREAKPOINT) {
-      if (el.style.width || el.style.marginLeft) {
-        el.style.width = '';
-        el.style.marginLeft = '';
-        setMobileStyle(undefined);
-      }
-      return;
-    }
-
-    // 移动端：精确计算偏移
-    // 临时清除 inline 定位，回到自然位置以获得真实偏移
-    el.style.width = '';
-    el.style.marginLeft = '';
-
-    const rect = el.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const newLeft = rect.left;
-
-    el.style.width = `${viewportWidth}px`;
-    el.style.marginLeft = `-${newLeft}px`;
-
-    setMobileStyle({
-      width: `${viewportWidth}px`,
-      marginLeft: `-${newLeft}px`,
-      position: 'relative',
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    recalculate();
-    window.addEventListener('resize', recalculate);
-    return () => window.removeEventListener('resize', recalculate);
-  }, [recalculate]);
-
-  // 监听父容器尺寸变化（侧边栏展开/收起等）
-  useLayoutEffect(() => {
-    const el = wrapperRef.current;
-    if (!el?.parentElement) return;
-    const ro = new ResizeObserver(() => recalculate());
-    ro.observe(el.parentElement);
-    return () => ro.disconnect();
-  }, [recalculate]);
-
-  return (
-    <div
-      ref={wrapperRef}
-      className={className}
-      style={mobileStyle}
-    >
-      {children}
-    </div>
-  );
-};
+}> = ({ children, className }) => (
+  <div className={className}>{children}</div>
+);
 
 // ============================================================================
 // 组件
@@ -521,6 +441,12 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
   ]
     .filter(Boolean)
     .join(' ');
+  const activate = (event: React.KeyboardEvent | React.MouseEvent) => {
+    if (disabled || !onClick) return;
+    if ('key' in event && event.key !== 'Enter' && event.key !== ' ') return;
+    if ('key' in event) event.preventDefault();
+    onClick();
+  };
 
   // 是否使用模板渲染：有 templateMap（多模板）或有单模板且有 front_template
   const hasMultiTemplate = templateMap && templateMap.size > 0;
@@ -528,7 +454,13 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
 
   if (status === 'parsing') {
     return (
-      <div className={containerClassName} onClick={disabled ? undefined : onClick}>
+      <div
+        className={containerClassName}
+        onClick={activate}
+        onKeyDown={activate}
+        role={!disabled && onClick ? 'button' : undefined}
+        tabIndex={!disabled && onClick ? 0 : undefined}
+      >
         <div className="text-muted-foreground text-sm animate-pulse">{t('chatV2.generating')}</div>
       </div>
     );
@@ -538,7 +470,13 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
     // 区分"生成完成但没产出卡片"和"还没开始"
     const isReadyButEmpty = status === 'ready' && !isError && !isCancelled;
     return (
-      <div className={containerClassName} onClick={disabled ? undefined : onClick}>
+      <div
+        className={containerClassName}
+        onClick={activate}
+        onKeyDown={activate}
+        role={!disabled && onClick ? 'button' : undefined}
+        tabIndex={!disabled && onClick ? 0 : undefined}
+      >
         <div
           className={
             isError
@@ -601,8 +539,18 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
               onClick={(e) => {
                 if (disabled) return;
                 e.stopPropagation();
-                onCardClick?.(card, index);
+                if (onCardClick) onCardClick(card, index);
+                else onClick?.();
               }}
+              onKeyDown={(e) => {
+                if (disabled || (e.key !== 'Enter' && e.key !== ' ')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (onCardClick) onCardClick(card, index);
+                else onClick?.();
+              }}
+              role={!disabled && (onCardClick || onClick) ? 'button' : undefined}
+              tabIndex={!disabled && (onCardClick || onClick) ? 0 : undefined}
             >
               <div className="text-sm font-medium truncate">{card.front || t('chatV2.frontContent')}</div>
               <div className="text-xs text-muted-foreground truncate mt-1">{card.back || t('chatV2.backContent')}</div>
@@ -617,7 +565,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
       )}
       {/* 底部：总数 + 编辑入口 */}
       <div className="flex items-center justify-between mt-2 gap-2 min-w-0">
-        <div className="text-[10px] sm:text-[11px] text-muted-foreground/50 truncate min-w-0">
+        <div className="text-xs text-muted-foreground truncate min-w-0">
           {cards.length > 0 && t('chatV2.totalCards', { count: cards.length })}
           {status === 'stored' && (
             <span className="text-green-600 ml-1 sm:ml-2">{t('chatV2.saved')}</span>
@@ -625,7 +573,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
         </div>
         {cards.length > 0 && !disabled && (
           // 视觉不变（负 margin 抵消 padding），实际命中区扩大满足触控目标
-          <NotionButton variant="ghost" size="sm" onClick={onClick} className="!h-auto !p-2 -m-2 text-[10px] sm:text-[11px] text-muted-foreground/50 hover:text-muted-foreground">
+          <NotionButton variant="ghost" size="sm" onClick={onClick} className="!min-h-10 !px-2 text-xs text-muted-foreground hover:text-foreground">
             {t('chatV2.clickToEdit')} →
           </NotionButton>
         )}

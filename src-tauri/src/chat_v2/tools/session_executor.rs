@@ -1998,7 +1998,9 @@ impl ToolExecutor for SessionToolExecutor {
             "session_export" => ToolSensitivity::Medium,
             "session_tag_add" | "session_tag_remove" | "session_move" | "session_rename"
             | "session_restore" | "group_create" | "group_update" => ToolSensitivity::Medium,
-            "session_batch_tag" | "session_batch_move" | "session_batch_ops" => ToolSensitivity::Medium,
+            "session_batch_tag" | "session_batch_move" | "session_batch_ops" => {
+                ToolSensitivity::Medium
+            }
             _ => ToolSensitivity::Low,
         }
     }
@@ -2010,10 +2012,7 @@ impl ToolExecutor for SessionToolExecutor {
                 .and_then(Value::as_array)
                 .is_some_and(|operations| {
                     operations.iter().any(|operation| {
-                        operation
-                            .get("action")
-                            .and_then(Value::as_str)
-                            == Some("archive")
+                        operation.get("action").and_then(Value::as_str) == Some("archive")
                     })
                 })
         {

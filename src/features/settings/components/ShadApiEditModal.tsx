@@ -873,7 +873,6 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
   // 测试连接：用当前表单数据实测（保存前即可验证，借鉴 Cherry 供应商连接检查）
   const handleTestConnection = async () => {
-    if (usesCodexOAuth) return;
     if (!invoke) {
       showGlobalNotification('info', t('settings:api.modal.test_connection_unavailable', '当前环境不支持连接测试'));
       return;
@@ -897,6 +896,8 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         supportsOpenAIResponses: (formData as any).supportsOpenAIResponses,
         provider_type: formData.providerType,
         providerType: formData.providerType,
+        auth_mode: formData.authMode,
+        authMode: formData.authMode,
         model_adapter: formData.modelAdapter,
         modelAdapter: formData.modelAdapter,
         model: formData.model,
@@ -2162,32 +2163,30 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
           {/* Footer - Fixed & Minimal */}
           <div className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center gap-2">
-            {!usesCodexOAuth && (
-              <NotionButton
-                type="button"
-                variant="ghost"
-                onClick={() => void handleTestConnection()}
-                disabled={connectionTest.state === 'testing'}
-                className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
-              >
-                {connectionTest.state === 'testing' ? (
-                  <Lightning className="h-4 w-4 animate-pulse" />
-                ) : (
-                  <Lightning className="h-4 w-4" />
-                )}
-                <span>
-                  {connectionTest.state === 'testing'
-                    ? t('settings:api.modal.test_connection_testing', '测试中…')
-                    : t('settings:api.modal.test_connection', '测试连接')}
-                </span>
-                {connectionTest.state === 'success' && (
-                  <span className="text-xs text-emerald-600 dark:text-emerald-400">{connectionTest.latencyMs} ms</span>
-                )}
-                {connectionTest.state === 'failed' && (
-                  <span className="text-xs text-destructive">{t('settings:api.modal.test_connection_failed_short', '失败')}</span>
-                )}
-              </NotionButton>
-            )}
+            <NotionButton
+              type="button"
+              variant="ghost"
+              onClick={() => void handleTestConnection()}
+              disabled={connectionTest.state === 'testing'}
+              className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+            >
+              {connectionTest.state === 'testing' ? (
+                <Lightning className="h-4 w-4 animate-pulse" />
+              ) : (
+                <Lightning className="h-4 w-4" />
+              )}
+              <span>
+                {connectionTest.state === 'testing'
+                  ? t('settings:api.modal.test_connection_testing', '测试中…')
+                  : t('settings:api.modal.test_connection', '测试连接')}
+              </span>
+              {connectionTest.state === 'success' && (
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">{connectionTest.latencyMs} ms</span>
+              )}
+              {connectionTest.state === 'failed' && (
+                <span className="text-xs text-destructive">{t('settings:api.modal.test_connection_failed_short', '失败')}</span>
+              )}
+            </NotionButton>
             <div className="flex-1" />
             {!mobilePanelMode && (
               <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">

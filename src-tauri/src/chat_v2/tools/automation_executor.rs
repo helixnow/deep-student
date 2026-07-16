@@ -685,13 +685,17 @@ impl AutomationExecutor {
             None | Some(Value::Null) => None,
             Some(_) => Some(Self::parse_required_string(args, "automation_id")?),
         };
-        let page = Self::parse_optional_u64(args, "page", 1, i64::MAX as u64)?.unwrap_or(1) as usize;
+        let page =
+            Self::parse_optional_u64(args, "page", 1, i64::MAX as u64)?.unwrap_or(1) as usize;
         let page_size = Self::parse_optional_u64(args, "page_size", 1, 20)?.unwrap_or(20) as usize;
         let offset = page.saturating_sub(1).saturating_mul(page_size);
         Self::with_database(ctx, |db| {
-            let (runs, total) = list_automation_runs_page(db, automation_id.as_deref(), page_size, offset)
-                .map_err(|error| error.to_string())?;
-            Ok(json!({ "runs": runs, "total": total, "page": page, "pageSize": page_size, "hasMore": offset.saturating_add(page_size) < total }))
+            let (runs, total) =
+                list_automation_runs_page(db, automation_id.as_deref(), page_size, offset)
+                    .map_err(|error| error.to_string())?;
+            Ok(
+                json!({ "runs": runs, "total": total, "page": page, "pageSize": page_size, "hasMore": offset.saturating_add(page_size) < total }),
+            )
         })
     }
 

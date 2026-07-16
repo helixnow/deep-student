@@ -237,7 +237,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     mcpTools: [],
 
     // 外部搜索设置（启用与否由消息级选择决定）
-    webSearchEngine: '',  // 默认不使用
+    webSearchEngine: 'bing_rss',
     webSearchTimeoutMs: 15000,
     webSearchGoogleKey: '',
     webSearchGoogleCx: '',
@@ -980,7 +980,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           viewportClassName={cn(
             mobilePageMode
               ? "px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
-              : "px-6 pb-6 pt-4 sm:px-8 sm:pb-7 sm:pt-5",
+              : "px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8",
             effectiveMobilePanelMode && !mobilePageMode && "px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
           )}
           trackOffsetTop={16}

@@ -71,6 +71,7 @@ interface ToolHeaderProps {
   status: string;
   duration?: number;
   isStreaming?: boolean;
+  isStarted?: boolean;
 }
 
 const ToolHeader: React.FC<ToolHeaderProps> = ({
@@ -78,6 +79,7 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
   status,
   duration,
   isStreaming,
+  isStarted,
 }) => {
   const { t } = useTranslation(['chatV2', 'common']);
 
@@ -133,7 +135,7 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
             </TextShimmer>
           ) : (
             <span className="text-xs text-muted-foreground">
-              {t(`blocks.mcpTool.status.${status}`, { ns: 'chatV2' })}
+              {t(`blocks.mcpTool.status.${isStarted && status === 'success' ? 'started' : status}`, { ns: 'chatV2' })}
             </span>
           )}
         </div>
@@ -661,6 +663,13 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     block.startedAt && block.endedAt
       ? block.endedAt - block.startedAt
       : undefined;
+  const outputRecord = toolOutput && typeof toolOutput === 'object'
+    ? toolOutput as Record<string, unknown>
+    : undefined;
+  const nestedResult = outputRecord?.result && typeof outputRecord.result === 'object'
+    ? outputRecord.result as Record<string, unknown>
+    : undefined;
+  const isStarted = outputRecord?.status === 'started' || nestedResult?.status === 'started';
 
   return (
     <div
@@ -679,6 +688,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         status={block.status}
         duration={duration}
         isStreaming={isStreaming}
+        isStarted={isStarted}
       />
 
       {/* 输入参数 */}

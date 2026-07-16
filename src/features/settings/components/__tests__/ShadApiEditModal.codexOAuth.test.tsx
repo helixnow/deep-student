@@ -1,9 +1,25 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ApiConfig } from '@/types';
-import { ShadApiEditModal } from '../ShadApiEditModal';
+
+const invokeMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}));
+
+let ShadApiEditModal: typeof import('../ShadApiEditModal').ShadApiEditModal;
+
+beforeAll(async () => {
+  (window as any).__TAURI_INTERNALS__ = {};
+  ({ ShadApiEditModal } = await import('../ShadApiEditModal'));
+});
+
+beforeEach(() => {
+  invokeMock.mockReset();
+});
 
 const api = (authMode: string): ApiConfig => ({
   id: `model-${authMode}`,
@@ -36,10 +52,20 @@ const renderEditor = (authMode: string) =>
   );
 
 describe('ShadApiEditModal Codex OAuth connection test', () => {
-  it('hides the generic API-key connection test for Codex OAuth models', () => {
+  it('tests Codex OAuth without requiring an API key', async () => {
+    invokeMock.mockResolvedValueOnce(true);
     renderEditor('openai_codex_oauth');
 
-    expect(screen.queryByRole('button', { name: '测试连接' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '测试连接' }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith(
+      'test_api_connection',
+      expect.objectContaining({
+        api_key: '',
+        provider_type: 'openai_codex',
+        auth_mode: 'openai_codex_oauth',
+      }),
+    ));
   });
 
   it('keeps the generic connection test available for API-key models', () => {

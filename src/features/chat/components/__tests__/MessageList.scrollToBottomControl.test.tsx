@@ -199,6 +199,12 @@ describe('MessageList scroll-to-bottom control', () => {
     vi.restoreAllMocks();
   });
 
+  it('keeps the final message above the bottom fade', () => {
+    renderMessageList();
+
+    expect(screen.getByRole('log')).toHaveStyle({ paddingBottom: '32px' });
+  });
+
   it('shows an icon-only scroll-to-bottom control whenever the thread is away from the bottom', async () => {
     renderMessageList();
 

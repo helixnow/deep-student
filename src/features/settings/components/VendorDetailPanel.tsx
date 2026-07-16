@@ -405,19 +405,17 @@ export const VendorDetailPanel: React.FC = () => {
                 >
                   <Star className="h-3.5 w-3.5" weight={profile.isFavorite ? 'fill' : 'regular'} />
                 </NotionButton>
-                {!isCodexOAuthVendor && (
-                  <NotionButton
-                    size="sm"
-                    variant="ghost"
-                    iconOnly
-                    className="max-md:hidden"
-                    onClick={() => void testApiConnection(api)}
-                    disabled={testingApi === api.id || vendorBusy}
-                    title={t('settings:api_config.test_button')}
-                  >
-                    {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
-                  </NotionButton>
-                )}
+                <NotionButton
+                  size="sm"
+                  variant="ghost"
+                  iconOnly
+                  className="max-md:hidden"
+                  onClick={() => void testApiConnection(api)}
+                  disabled={testingApi === api.id || vendorBusy}
+                  title={t('settings:api_config.test_button')}
+                >
+                  {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
+                </NotionButton>
 
                 {/* 删除：触发全局确认对话框 */}
                 {!isReadOnly ? (
