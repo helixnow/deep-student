@@ -1,5 +1,5 @@
 import React from 'react';
-import { NotePencil } from '@phosphor-icons/react';
+import { AppIconImage } from '../../icons/appIcons';
 import i18next from 'i18next';
 import { appRegistry } from '../../core/appRegistry';
 import type { AppDefinition } from '../../core/types';
@@ -25,7 +25,7 @@ async function canCloseNotesWorkspace(_instanceKey: string | null): Promise<bool
 export const notesAppDefinition: AppDefinition = {
   typeId: NOTES_APP_TYPE_ID,
   nameKey: 'workbench:apps.note',
-  icon: React.createElement(NotePencil, { size: 22, weight: 'duotone' }),
+  icon: React.createElement(AppIconImage, { typeId: 'notes', className: 'h-8 w-8' }),
   instanceMode: 'single',
   memoryWeight: 3,
   defaultFrame: { w: 1180, h: 760 },

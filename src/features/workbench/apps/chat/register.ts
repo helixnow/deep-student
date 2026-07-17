@@ -15,7 +15,7 @@
  * chat 核心（sessionManager）一律动态 import，重 UI 走 React.lazy。
  */
 import React from 'react';
-import { ChatCircleDots } from '@phosphor-icons/react';
+import { AppIconImage } from '../../icons/appIcons';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import type { ChatStore } from '@/features/chat/core/types';
@@ -262,7 +262,7 @@ export async function handleChatActivation(ctx: ActivationContext): Promise<Acti
 export const chatAppDefinition: AppDefinition = {
   typeId: CHAT_APP_TYPE_ID,
   nameKey: 'apps.chat.name',
-  icon: React.createElement(ChatCircleDots, { size: 22, weight: 'duotone' }),
+  icon: React.createElement(AppIconImage, { typeId: 'chat', className: 'h-8 w-8' }),
   instanceMode: 'single',
   memoryWeight: 2,
   defaultFrame: { w: 1080, h: 720 },

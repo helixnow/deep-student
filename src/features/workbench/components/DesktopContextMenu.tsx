@@ -256,6 +256,8 @@ const MENU_FALLBACK_H = 320;
 const MENU_EDGE_PAD = 8;
 /** 子菜单展开侧判定用的近似宽度 */
 const SUBMENU_APPROX_W = 190;
+/** 离场编排：wb-kf-window-close(90ms) 播完再卸载 + 余量 */
+const DESK_MENU_EXIT_MS = 180;
 
 interface SubmenuPosition {
   left: number;
@@ -279,11 +281,14 @@ interface ActionItemProps {
   checked?: boolean;
   /** 右缘快捷键提示（仅展示，不参与交互） */
   shortcut?: string;
+  /** 测试/自动化定位（不参与展示） */
+  testId?: string;
   onClick?: () => void;
   onPointerEnter?: () => void;
 }
 
-const ActionItem: React.FC<ActionItemProps> = ({
+/** 桌面玻璃菜单动作行（StatusBarBrandMenu 同款复用） */
+export const ActionItem: React.FC<ActionItemProps> = ({
   icon,
   label,
   disabled,
@@ -291,6 +296,7 @@ const ActionItem: React.FC<ActionItemProps> = ({
   subOpen,
   checked,
   shortcut,
+  testId,
   onClick,
   onPointerEnter,
 }) => (
@@ -300,6 +306,7 @@ const ActionItem: React.FC<ActionItemProps> = ({
     data-wb-desk-item=""
     data-wb-desk-sub={subId}
     data-wb-desk-active={subOpen ? 'true' : undefined}
+    data-testid={testId}
     role={checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
     aria-checked={checked !== undefined ? checked : undefined}
     aria-haspopup={subId ? 'menu' : undefined}
@@ -386,6 +393,35 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
   const open = anchor !== null;
   useLiquidGlassLens(panelRef, open);
   useLiquidGlassLens(subPanelRef, open && openSub !== null);
+
+  // ---- 离场编排：anchor 置空后保留面板播 wb-kf-window-close，播完再卸载 ----
+  const [renderedAnchor, setRenderedAnchor] = useState<DesktopMenuAnchor | null>(anchor);
+  const [closing, setClosing] = useState(false);
+  const renderedAnchorRef = useRef(renderedAnchor);
+  const exitTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    renderedAnchorRef.current = renderedAnchor;
+  }, [renderedAnchor]);
+  useEffect(() => {
+    if (anchor) {
+      // 打开/重开：取消进行中的离场，面板保持挂载复播入场动画
+      if (exitTimerRef.current !== null) {
+        window.clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      setRenderedAnchor(anchor);
+      setClosing(false);
+      return;
+    }
+    // renderedAnchor 走 ref 镜像、不列入依赖：closing 置位不应重触发本 effect
+    if (!renderedAnchorRef.current) return;
+    setClosing(true);
+    exitTimerRef.current = window.setTimeout(() => {
+      exitTimerRef.current = null;
+      setRenderedAnchor(null);
+      setClosing(false);
+    }, DESK_MENU_EXIT_MS);
+  }, [anchor]);
 
   const subOpensLeft = pos.left + (panelRef.current?.offsetWidth || MENU_FALLBACK_W) + SUBMENU_APPROX_W >
     desktopSize.w - MENU_EDGE_PAD;
@@ -590,7 +626,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
     }
   };
 
-  if (!anchor) return null;
+  if (!renderedAnchor) return null;
 
   const showDesktopLabel = hasVisibleWindows
     ? t('workbench:desktopMenu.showDesktop')
@@ -598,20 +634,23 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
 
   return (
     <>
-      <div
-        className="wb-desk-menu-backdrop"
-        data-wb-desk-menu-backdrop
-        aria-hidden="true"
-        onPointerDown={onClose}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onClose();
-        }}
-      />
+      {closing ? null : (
+        <div
+          className="wb-desk-menu-backdrop"
+          data-wb-desk-menu-backdrop
+          aria-hidden="true"
+          onPointerDown={onClose}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onClose();
+          }}
+        />
+      )}
       <div
         ref={panelRef}
         className="wb-desk-menu wb-glass-lens"
         data-wb-desk-menu
+        data-phase={closing ? 'closing' : 'open'}
         role="menu"
         aria-label={t('workbench:desktopMenu.label')}
         tabIndex={-1}

@@ -14,4 +14,10 @@ declare module '@tauri-apps/api/window' {
    * This is a minimal fallback typing for projects that rely on older type shims.
    */
   export function getCurrentWindow(): any;
-} 
+  export function availableMonitors(): Promise<Array<{
+    position: { x: number; y: number };
+    size: { width: number; height: number };
+    scaleFactor: number;
+  }>>;
+  export function cursorPosition(): Promise<{ x: number; y: number }>;
+}

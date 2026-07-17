@@ -5,7 +5,7 @@
  * 宿主窗口；chat 内嵌预览使用各自 owner，不与该单例窗口共享活动指针。
  */
 import React from 'react';
-import { CodeBlock } from '@phosphor-icons/react';
+import { AppIconImage } from '../../icons/appIcons';
 import {
   LEGACY_SANDBOX_OWNER_KEY,
   selectSandboxWorkbenchOwnerState,
@@ -91,7 +91,7 @@ export function registerSandboxApp(): void {
   appRegistry.register({
     typeId: 'sandbox',
     nameKey: 'workbench:apps.sandbox',
-    icon: <CodeBlock size={26} weight="duotone" />,
+    icon: <AppIconImage typeId="sandbox" className="h-8 w-8" />,
     instanceMode: 'single',
     memoryWeight: 2,
     defaultFrame: { w: 960, h: 680 },

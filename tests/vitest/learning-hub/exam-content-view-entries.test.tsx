@@ -196,6 +196,18 @@ const findButton = (patterns: RegExp[]) => {
   });
 };
 
+// 二级视图（管理/统计/收藏等）已收纳进 Tab 栏的「更多」菜单：
+// 先点开菜单触发器，再点击对应的 menuitem
+const openSecondaryMenuItem = async (patterns: RegExp[]) => {
+  const moreTrigger = findButton([/更多/i, /learningHub:exam\.tab\.more/i]);
+  expect(moreTrigger).toBeTruthy();
+  fireEvent.click(moreTrigger!);
+  const items = await screen.findAllByRole('menuitem');
+  const item = items.find((el) => patterns.some((pattern) => pattern.test(el.textContent ?? '')));
+  expect(item).toBeTruthy();
+  fireEvent.click(item!);
+};
+
 describe('ExamContentView secondary entry points', () => {
   beforeEach(() => {
     storeState.focusMode = false;
@@ -246,9 +258,7 @@ describe('ExamContentView secondary entry points', () => {
       expect(mockGetExamSheetSessionDetail).toHaveBeenCalled();
     }, { timeout: 5000 });
 
-    const manageButton = findButton([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
-    expect(manageButton).toBeTruthy();
-    fireEvent.click(manageButton!);
+    await openSecondaryMenuItem([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
 
     await waitFor(() => {
       expect(screen.getByTitle(/CSV 导入|import/i)).toBeInTheDocument();
@@ -288,9 +298,7 @@ describe('ExamContentView secondary entry points', () => {
     fireEvent.click(await screen.findByRole('button', { name: /start sequential practice/i }));
     fireEvent.click(await screen.findByRole('button', { name: /mark answer draft/i }));
 
-    const manageButton = findButton([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
-    expect(manageButton).toBeTruthy();
-    fireEvent.click(manageButton!);
+    await openSecondaryMenuItem([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
 
     expect(await screen.findByText('放弃未提交的内容？')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /放弃/i }));

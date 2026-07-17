@@ -156,8 +156,8 @@ div.wb-dock {
 .wb-dock-item-wrap:focus-within .wb-dock-tip {
   opacity: 1;
   transform: translate(-50%, calc(0px - var(--wb-dock-lift, 0px))) scale(1);
-  /* 出现延迟：扫过 Dock 时不闪一排气泡；消失无延迟 */
-  transition-delay: 160ms;
+  /* 出现延迟：扫过 Dock 时不闪一排气泡；消失无延迟（macOS 基准 300–500ms） */
+  transition-delay: 350ms;
 }
 
 /* ==========================================================================

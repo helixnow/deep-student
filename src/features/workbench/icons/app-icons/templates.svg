@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <rect x="42" y="14" width="88" height="98" rx="10" fill="#5FD0CB" opacity=".55"/>
+  <linearGradient id="tp_mid" x1="76" x2="76" y1="24" y2="122" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#14A5A0" offset="0"/>
+    <stop stop-color="#14607E" offset="1"/>
+  </linearGradient>
+  <rect x="32" y="24" width="88" height="98" rx="10" fill="url(#tp_mid)"/>
+  <linearGradient id="tp_front" x1="66" x2="66" y1="36" y2="134" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F8FDFC" offset="0"/>
+    <stop stop-color="#D4EAE8" offset="1"/>
+  </linearGradient>
+  <rect x="22" y="36" width="88" height="98" rx="10" fill="url(#tp_front)" stroke="#A6C4CB" stroke-width="3"/>
+  <rect x="32" y="48" width="68" height="14" rx="5" fill="#1D3F6E"/>
+  <rect x="32" y="72" width="30" height="50" rx="5" fill="#14A5A0"/>
+  <linearGradient id="tp_accent" x1="86" x2="86" y1="100" y2="122" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <rect x="70" y="72" width="30" height="20" rx="5" fill="#9BD9D4"/>
+  <rect x="70" y="100" width="30" height="22" rx="5" fill="url(#tp_accent)"/>
+</svg>

@@ -224,7 +224,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         title={tab.dstuPath}
         className={cn(
           // Tahoe Finder tab strip: one continuous row with a single active capsule.
-          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 h-[30px] [@media(pointer:coarse)]:h-[36px] rounded-lg cursor-default select-none my-[3px]',
+          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 hover:pr-7 h-[30px] [@media(pointer:coarse)]:h-[36px] [@media(pointer:coarse)]:pr-7 rounded-lg cursor-default select-none my-[3px]',
           'text-[13px] leading-none whitespace-nowrap min-w-0 max-w-[200px] shrink-0 border-r border-border/40 last:border-r-0',
           'transition-[background-color,color,opacity] duration-150',
           isActive
@@ -238,7 +238,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         <Icon size={14} className={cn("shrink-0", isSplitRight && !isActive ? "opacity-100" : "opacity-80")} />
         
         {/* 标题 */}
-        <span className="truncate">{tab.title || t('common:untitled')}</span>
+        <span className="min-w-0 truncate">{tab.title || t('common:untitled')}</span>
         
         {/* ★ 固定指示图标 */}
         {tab.isPinned && (
@@ -250,14 +250,14 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           <SidebarSimple size={13} className="ml-0.5 opacity-60 shrink-0" />
         )}
         
-        {/* 关闭按钮（relative + 伪元素扩大点击热区，视觉尺寸不变） */}
+        {/* 关闭按钮脱离标题排版；伪元素扩大点击热区，视觉尺寸不变 */}
         <span
           role="button"
           tabIndex={-1}
           aria-hidden="true"
           onClick={handleClose}
           className={cn(
-            'relative shrink-0 ml-0.5 rounded-md p-[3px] transition-all duration-100',
+            'absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-inherit p-[3px] transition-opacity duration-100',
             'opacity-0 group-hover/tab:opacity-100 [@media(pointer:coarse)]:opacity-60',
             'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
             'before:absolute before:-inset-[5px] before:content-[""]',

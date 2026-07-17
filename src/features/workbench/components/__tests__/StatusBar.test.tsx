@@ -276,7 +276,7 @@ describe('StatusBar 订阅复用', () => {
 });
 
 describe('StatusBar 学习中心 SB3', () => {
-  it('点击图标入口开合 flyout；点遮罩关闭', () => {
+  it('点击图标入口开合 flyout；点遮罩关闭', async () => {
     render(<StatusBar />);
     const centerBtn = screen.getByTestId('wb-menubar-center');
     expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
@@ -286,11 +286,14 @@ describe('StatusBar 学习中心 SB3', () => {
     expect(centerBtn.getAttribute('aria-expanded')).toBe('true');
 
     fireEvent.click(screen.getByTestId('wb-menubar-flyout-backdrop'));
-    expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
     expect(centerBtn.getAttribute('aria-expanded')).toBe('false');
+    // 离场动画播完才卸载
+    await waitFor(() => {
+      expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    });
   });
 
-  it('Esc 关闭 flyout', () => {
+  it('Esc 关闭 flyout', async () => {
     render(<StatusBar />);
     fireEvent.click(screen.getByTestId('wb-menubar-center'));
     expect(screen.getByTestId('wb-menubar-flyout')).toBeTruthy();
@@ -298,15 +301,19 @@ describe('StatusBar 学习中心 SB3', () => {
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
-    expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    });
   });
 
-  it('今日复习瓷砖带 due session payload', () => {
+  it('今日复习瓷砖带 due session payload', async () => {
     render(<StatusBar />);
     fireEvent.click(screen.getByTestId('wb-menubar-center'));
     fireEvent.click(screen.getByTestId('wb-menubar-module-flashcards'));
     expect(launchSpy).toHaveBeenCalledWith(FLASHCARDS_DUE_LAUNCH);
-    expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    });
   });
 
   it('flyout 为 2×2 网格，aria-labelledby 挂到标题 h2', () => {
@@ -361,7 +368,7 @@ describe('StatusBar 学习中心 SB3', () => {
     expect(last).toHaveFocus();
   });
 
-  it('Expose 打开时关闭学习中心', () => {
+  it('Expose 打开时关闭学习中心', async () => {
     render(<StatusBar />);
     fireEvent.click(screen.getByTestId('wb-menubar-center'));
     expect(screen.getByTestId('wb-menubar-flyout')).toBeTruthy();
@@ -369,7 +376,9 @@ describe('StatusBar 学习中心 SB3', () => {
     act(() => {
       useWorkbenchOverlay.getState().openExpose();
     });
-    expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    });
   });
 
   it('Windows 下 menubar 标记 chrome inset', () => {

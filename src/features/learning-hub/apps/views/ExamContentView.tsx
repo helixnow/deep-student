@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, WarningCircle, ArrowClockwise, Scan, ArrowCounterClockwise, ListNumbers, Shuffle, Tag, Clock, CalendarBlank, FileText, Timer, BookOpen, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download } from '@phosphor-icons/react';
+import { CircleNotch, WarningCircle, ArrowClockwise, Scan, ArrowCounterClockwise, ListNumbers, Shuffle, Tag, Clock, CalendarBlank, FileText, Timer, BookOpen, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
@@ -24,7 +24,7 @@ import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import SyncConflictDialog from '@/components/SyncConflictDialog';
-import { AppSelect } from '@/components/ui/app-menu';
+import { AppSelect, AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
 import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
@@ -166,7 +166,6 @@ const MODE_CONFIG: Record<PracticeMode, { labelKey: string; icon: React.ElementT
 
 const ExamContentView: React.FC<ContentViewProps> = ({
   node,
-  onClose,
   readOnly = false,
   isActive,
   onSaveStateChange,
@@ -202,6 +201,16 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     refreshQuestion,
   } = useQuestionBankSession({ examId: sessionId });
   const hasQuestions = questions.length > 0;
+
+  // 二级视图（收纳进 Tab 栏「更多」菜单）：错题 / 复习 / 收藏 / 知识点 / 统计 / 管理
+  const secondaryTabs = useMemo(() => ([
+    { mode: 'review' as ViewMode, label: t('learningHub:exam.tab.wrongAnswers'), icon: XCircle, badge: stats?.review ?? 0 },
+    { mode: 'sm2' as ViewMode, label: t('review:title'), icon: ClockCounterClockwise, badge: 0 },
+    { mode: 'favorites' as ViewMode, label: t('learningHub:exam.tab.favorites'), icon: Star, badge: 0 },
+    { mode: 'tags' as ViewMode, label: t('learningHub:exam.tab.topics'), icon: Tag, badge: 0 },
+    { mode: 'stats' as ViewMode, label: t('learningHub:exam.tab.stats'), icon: ChartBar, badge: 0 },
+    { mode: 'manage' as ViewMode, label: t('learningHub:exam.tab.manage'), icon: GearSix, badge: 0 },
+  ]), [t, stats?.review]);
 
   // 专注模式（从 Store 获取 — 全局 UI 偏好，不需要本地化）
   const focusMode = useQuestionBankStore(state => state.focusMode);
@@ -254,6 +263,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [pendingSettingsOpen, setPendingSettingsOpen] = useState(false);
   const [launcherRequestedMode, setLauncherRequestedMode] = useState<LauncherRequestedMode | null>(null);
+  // 从题库启动台拖入、待传给识别导入的文件
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
+  // 从「添加题目」菜单请求列表视图打开内联创建编辑器的信号（递增触发）
+  const [listCreateRequestKey, setListCreateRequestKey] = useState(0);
   const [draftState, setDraftState] = useState({ examId: sessionId, dirty: false });
   const [pendingDraftNavigation, setPendingDraftNavigation] = useState<PendingDraftNavigation | null>(null);
   const activeDraftExamIdRef = useRef(sessionId);
@@ -470,6 +483,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setHistoryQuestionId(null);
     setSettingsPanelOpen(false);
     setPendingSettingsOpen(false);
+    setPendingUploadFiles(null);
   }, [sessionId]);
   
   const toggleTimer = useCallback(() => {
@@ -1380,6 +1394,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   const sessionStatus = sessionDetail?.summary?.status ?? null;
 
+  // 当前是否处于「更多」菜单中的二级视图（用于菜单触发器的高亮与文案）
+  const activeSecondaryTab = secondaryTabs.find((tab) => tab.mode === viewMode);
+
   useEffect(() => {
     emitExamSheetDebug('debug', 'frontend:hook-state',
       `[ExamContentView] 渲染决策: isEmptySession=${isEmptySession}, hasQuestions=${hasQuestions}, viewMode=${viewMode}, isLoading=${isLoading}, sessionDetail.status=${sessionStatus ?? 'null'}, error=${error ?? 'null'}`,
@@ -1395,13 +1412,28 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     switchViewMode('list');
   }, [handleSessionUpdate, sessionId, switchViewMode]);
 
+  // 上传页返回：回到题库列表。空集时列表展示「新建/导入」启动台，
+  // 不再直接关闭整个面板（避免误关刚创建的题目集）
   const handleUploaderBack = useCallback(() => {
-    if (hasQuestions) {
-      switchViewMode('list');
-    } else {
-      onClose?.();
-    }
-  }, [hasQuestions, onClose, switchViewMode]);
+    switchViewMode('list');
+  }, [switchViewMode]);
+
+  // 「添加题目」菜单：手动新建 → 切到题库列表并请求打开内联创建编辑器
+  const handleCreateQuestionEntry = useCallback(() => {
+    requestViewMode('list', () => setListCreateRequestKey((key) => key + 1));
+  }, [requestViewMode]);
+
+  // 「添加题目」菜单：识别导入（清空可能残留的拖入文件）
+  const handleOpenUploadEntry = useCallback(() => {
+    setPendingUploadFiles(null);
+    requestViewMode('upload');
+  }, [requestViewMode]);
+
+  // 题库启动台拖入文件：携带文件进入识别导入
+  const handleLauncherFilesDropped = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+    requestViewMode('upload', () => setPendingUploadFiles(files));
+  }, [requestViewMode]);
 
   // 加载失败重试：会话详情与题目一起重试；rejection 已由 hook 的 error 状态呈现
   const handleRetryLoad = useCallback(() => {
@@ -1413,13 +1445,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, [loadSessionDetail, error, loadQuestions]);
 
-  // 空会话自动进入上传模式（只读模式下不自动切换）
-  useEffect(() => {
-    if (isEmptySession && viewMode === 'list' && !readOnly) {
-      emitExamSheetDebug('info', 'frontend:hook-state', `[ExamContentView] 空会话自动切换到 upload 模式`, { sessionId });
-      switchViewMode('upload');
-    }
-  }, [isEmptySession, viewMode, readOnly, sessionId, switchViewMode]);
+  // 空会话停留在题库列表：列表的空状态就是「新建/导入」启动台
 
   // 题目清空（如在管理/练习视图删光题目）后，依赖题目的视图已无内容支撑，
   // 回退到题库列表，保持 Tab 高亮与实际内容一致
@@ -1627,14 +1653,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => requestViewMode('list')}
-              disabled={!hasQuestions && viewMode !== 'upload'}
               aria-pressed={viewMode === 'list'}
               className={cn(
                 'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
                 viewMode === 'list' 
                   ? 'bg-accent text-accent-foreground font-medium'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
-                (!hasQuestions && viewMode !== 'upload') && 'opacity-50 cursor-not-allowed'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
               )}
             >
               {t('learningHub:exam.tab.questionBank')}
@@ -1659,112 +1683,42 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             >
               {t('learningHub:exam.tab.practice')}
             </NotionButton>
-            {hasQuestions && stats && (
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => requestViewMode('review')}
-                aria-pressed={viewMode === 'review'}
-                className={cn(
-                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1 whitespace-nowrap flex-shrink-0',
-                  viewMode === 'review' 
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : stats.review > 0 
-                      ? 'text-warning hover:bg-warning/10'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
-                )}
-              >
-                {t('learningHub:exam.tab.wrongAnswers')}
-                <span className={cn(
-                  "text-xs opacity-80",
-                  stats.review === 0 && viewMode !== 'review' && "text-muted-foreground"
-                )}>{stats.review}</span>
-              </NotionButton>
-            )}
+            {/* 二级视图收纳进「更多」菜单：错题 / 复习 / 收藏 / 知识点 / 统计 / 管理 */}
             {hasQuestions && (
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => requestViewMode('sm2')}
-                aria-pressed={viewMode === 'sm2'}
-                className={cn(
-                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                  viewMode === 'sm2'
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
-                )}
-              >
-                {t('review:title')}
-              </NotionButton>
+              <AppMenu>
+                <AppMenuTrigger asChild>
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={Boolean(activeSecondaryTab)}
+                    aria-label={t('learningHub:exam.tab.more')}
+                    className={cn(
+                      'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1',
+                      activeSecondaryTab
+                        ? 'bg-accent text-accent-foreground font-medium'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
+                    )}
+                  >
+                    {activeSecondaryTab?.label ?? t('learningHub:exam.tab.more')}
+                    <CaretDown size={12} className="opacity-60" />
+                  </NotionButton>
+                </AppMenuTrigger>
+                <AppMenuContent align="start" width={180}>
+                  {secondaryTabs.map(({ mode, label, icon: Icon, badge }) => (
+                    <AppMenuItem
+                      key={mode}
+                      onClick={() => requestViewMode(mode)}
+                      icon={<Icon size={16} />}
+                      checked={viewMode === mode}
+                      suffix={badge > 0 ? <span className="text-xs text-warning">{badge}</span> : undefined}
+                    >
+                      {label}
+                    </AppMenuItem>
+                  ))}
+                </AppMenuContent>
+              </AppMenu>
             )}
-            {hasQuestions && (
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => requestViewMode('manage')}
-                aria-pressed={viewMode === 'manage'}
-                className={cn(
-                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                  viewMode === 'manage'
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
-                )}
-              >
-                <GearSix size={14} className="mr-1.5" />
-                {t('learningHub:exam.tab.manage')}
-              </NotionButton>
-            )}
-            {hasQuestions && (
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => requestViewMode('stats')}
-                aria-pressed={viewMode === 'stats'}
-                className={cn(
-                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                  viewMode === 'stats'
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
-                )}
-              >
-                <ChartBar size={14} className="mr-1.5" />
-                {t('learningHub:exam.tab.stats')}
-              </NotionButton>
-            )}
-            {hasQuestions && (
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => requestViewMode('favorites')}
-                aria-pressed={viewMode === 'favorites'}
-                className={cn(
-                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                  viewMode === 'favorites'
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
-                )}
-              >
-                <Star size={14} className="mr-1.5" />
-                {t('learningHub:exam.tab.favorites')}
-              </NotionButton>
-            )}
-            {hasQuestions && (
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => requestViewMode('tags')}
-                aria-pressed={viewMode === 'tags'}
-                className={cn(
-                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                  viewMode === 'tags' 
-                    ? 'bg-accent text-accent-foreground font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
-                )}
-              >
-                {t('learningHub:exam.tab.topics')}
-              </NotionButton>
-            )}
-            
+
             {(viewMode === 'practice') && hasQuestions && (
               <>
                 <div className="w-px h-4 bg-border/60 mx-1 sm:mx-2 flex-shrink-0" />
@@ -1818,7 +1772,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             )}
           </div>
           
-          {/* 右侧添加按钮（只读模式下隐藏） */}
+          {/* 右侧：导出 + 添加题目菜单（只读模式下隐藏添加） */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {hasQuestions && (
               <NotionButton
@@ -1833,28 +1787,41 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               </NotionButton>
             )}
             {!readOnly && (
-              <NotionButton
-                variant={viewMode === 'upload' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => requestViewMode('upload')}
-                aria-label={t('learningHub:exam.tab.add')}
-                className="h-7 gap-1.5 px-2.5 sm:px-3"
-              >
-                <Scan size={14} />
-                <span className="hidden sm:inline">{t('learningHub:exam.tab.add')}</span>
-              </NotionButton>
-            )}
-            {!readOnly && hasQuestions && (
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowCsvImportDialog(true)}
-                aria-label={t('learningHub:exam.tab.importCsv')}
-                className="h-7 gap-1.5 px-2.5 sm:px-3"
-              >
-                <Scan size={14} />
-                <span className="hidden sm:inline">{t('learningHub:exam.tab.importCsv')}</span>
-              </NotionButton>
+              <AppMenu>
+                <AppMenuTrigger asChild>
+                  <NotionButton
+                    variant={viewMode === 'upload' ? 'default' : 'ghost'}
+                    size="sm"
+                    aria-label={t('learningHub:exam.tab.addQuestion')}
+                    className="h-7 gap-1.5 px-2.5 sm:px-3"
+                  >
+                    <Plus size={14} />
+                    <span className="hidden sm:inline">{t('learningHub:exam.tab.addQuestion')}</span>
+                    <CaretDown size={12} className="opacity-60" />
+                  </NotionButton>
+                </AppMenuTrigger>
+                <AppMenuContent align="end" width={200}>
+                  <AppMenuItem
+                    onClick={handleCreateQuestionEntry}
+                    icon={<PencilSimple size={16} />}
+                  >
+                    {t('exam_sheet:questionBank.create.title')}
+                  </AppMenuItem>
+                  <AppMenuSeparator />
+                  <AppMenuItem
+                    onClick={handleOpenUploadEntry}
+                    icon={<Scan size={16} />}
+                  >
+                    {t('learningHub:exam.tab.add')}
+                  </AppMenuItem>
+                  <AppMenuItem
+                    onClick={() => setShowCsvImportDialog(true)}
+                    icon={<TableIcon size={16} />}
+                  >
+                    {t('learningHub:exam.tab.importCsv')}
+                  </AppMenuItem>
+                </AppMenuContent>
+              </AppMenu>
             )}
           </div>
         </div>
@@ -1934,6 +1901,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <ExamSheetUploader
               sessionId={sessionId}
               sessionName={sessionDetail?.summary?.exam_name || node.name}
+              initialFiles={pendingUploadFiles}
+              onInitialFilesConsumed={() => setPendingUploadFiles(null)}
               onUploadSuccess={handleUploadSuccess}
               onBack={handleUploaderBack}
             />
@@ -1979,7 +1948,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onResetProgress={readOnly ? undefined : handleResetProgress}
               onUpdateQuestion={readOnly ? undefined : handleListChanged}
               onCreateQuestion={readOnly ? undefined : handleListChanged}
-              onUploadQuestions={readOnly ? undefined : () => requestViewMode('upload')}
+              onUploadQuestions={readOnly ? undefined : handleOpenUploadEntry}
+              onUploadFiles={readOnly ? undefined : handleLauncherFilesDropped}
+              onCsvImport={readOnly ? undefined : handleOpenCsvImport}
+              createRequestKey={listCreateRequestKey}
               onDraftDirtyChange={handleInlineEditorDraftDirtyChange}
               onDraftNavigationRequested={(index) => {
                 requestQuestionNavigation(() => handleQuestionClick(index));

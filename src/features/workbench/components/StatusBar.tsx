@@ -14,19 +14,12 @@ import {
   GearSix,
   Lightning,
   MagnifyingGlass,
-  SignOut,
   SquaresFour,
   Timer,
 } from '@phosphor-icons/react';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
-import {
-  AppMenu,
-  AppMenuContent,
-  AppMenuItem,
-  AppMenuSeparator,
-  AppMenuTrigger,
-} from '@/components/ui/app-menu';
 import { toggleAppsPanel } from './appsPanelStore';
+import { StatusBarBrandMenu } from './StatusBarBrandMenu';
 import { persistWorkbenchModeEnabled } from '@/features/settings/components/workbenchMode';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { isMacOS, isWindows } from '@/utils/platform';
@@ -100,11 +93,18 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
   });
 }
 
+/** 学习中心 flyout 离场编排：wb-kf-window-close(90ms) 播完再卸载 + 余量 */
+const MENUBAR_FLYOUT_EXIT_MS = 180;
+
 const StatusBarComponent: React.FC = () => {
   const { t } = useTranslation('workbench');
-  const [centerOpen, setCenterOpen] = useState(false);
+  // 相位机：open → closing（播离场）→ closed（卸载）；closing 中再点入口直接回 open
+  const [centerPhase, setCenterPhase] = useState<'closed' | 'open' | 'closing'>('closed');
+  const centerOpen = centerPhase === 'open';
   const panelRef = useRef<HTMLDivElement | null>(null);
   const backdropRef = useRef<HTMLDivElement | null>(null);
+  const brandButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const titleId = useId();
   const winChromeInset = isWindows();
   const macChrome = isMacOS();
@@ -126,10 +126,17 @@ const StatusBarComponent: React.FC = () => {
 
   useFocusReturn(centerOpen);
 
-  const closeCenter = useCallback(() => setCenterOpen(false), []);
-  const toggleCenter = useCallback(() => setCenterOpen((v) => !v), []);
+  const closeCenter = useCallback(
+    () => setCenterPhase((p) => (p === 'open' ? 'closing' : p)),
+    [],
+  );
+  const toggleCenter = useCallback(
+    () => setCenterPhase((p) => (p === 'open' ? 'closing' : 'open')),
+    [],
+  );
   // 统一搜索入口：打开全部应用面板（应用 + 命令），不再弹独立命令面板
   const openUnifiedSearch = useCallback(() => toggleAppsPanel(), []);
+  const closeBrandMenu = useCallback(() => setBrandMenuOpen(false), []);
 
   // 品牌菜单（macOS 苹果菜单语义）：全部应用 / 系统设置 / 退出学习桌面
   const launchSettingsApp = useCallback(() => {
@@ -141,8 +148,15 @@ const StatusBarComponent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (exposeOpen) setCenterOpen(false);
-  }, [exposeOpen]);
+    if (exposeOpen) closeCenter();
+  }, [exposeOpen, closeCenter]);
+
+  // 离场相位：播完 wb-kf-window-close 再真正卸载（jsdom 无动画也走同一定时器）
+  useEffect(() => {
+    if (centerPhase !== 'closing') return undefined;
+    const timer = window.setTimeout(() => setCenterPhase('closed'), MENUBAR_FLYOUT_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [centerPhase]);
 
   useEffect(() => {
     if (!centerOpen) return undefined;
@@ -240,47 +254,27 @@ const StatusBarComponent: React.FC = () => {
         />
       ) : null}
       <div className="wb-menubar-leading" data-no-drag>
-        <AppMenu>
-          <AppMenuTrigger asChild>
-            <button
-              type="button"
-              className="wb-menubar-item wb-menubar-brand"
-              data-testid="wb-menubar-brand"
-              aria-label={t('menubar.brandMenu')}
-              aria-haspopup="menu"
-              title={t('menubar.appName')}
-            >
-              <DeepStudentMark className="wb-menubar-brand-mark" title="" />
-              <span className="wb-menubar-brand-label">
-                {t('menubar.appName')}
-              </span>
-            </button>
-          </AppMenuTrigger>
-          <AppMenuContent>
-            <AppMenuItem
-              icon={<SquaresFour size={16} />}
-              onClick={() => openAppsPanel()}
-              data-testid="wb-menubar-brand-apps"
-            >
-              {t('workbench:appsPanel.title')}
-            </AppMenuItem>
-            <AppMenuItem
-              icon={<GearSix size={16} />}
-              onClick={launchSettingsApp}
-              data-testid="wb-menubar-brand-settings"
-            >
-              {t('menubar.brandSettings')}
-            </AppMenuItem>
-            <AppMenuSeparator />
-            <AppMenuItem
-              icon={<SignOut size={16} />}
-              onClick={exitWorkbenchMode}
-              data-testid="wb-menubar-brand-exit"
-            >
-              {t('menubar.brandExit')}
-            </AppMenuItem>
-          </AppMenuContent>
-        </AppMenu>
+        <button
+          ref={brandButtonRef}
+          type="button"
+          className="wb-menubar-item wb-menubar-brand"
+          data-testid="wb-menubar-brand"
+          aria-label={t('menubar.brandMenu')}
+          aria-haspopup="menu"
+          aria-expanded={brandMenuOpen}
+          title={t('menubar.appName')}
+          onClick={() => setBrandMenuOpen((v) => !v)}
+        >
+          <DeepStudentMark className="wb-menubar-brand-mark" title="" />
+          <span className="wb-menubar-brand-label">
+            {t('menubar.appName')}
+          </span>
+        </button>
+        <StatusBarBrandMenu
+          open={brandMenuOpen}
+          anchorRef={brandButtonRef}
+          onClose={closeBrandMenu}
+        />
       </div>
       <div className="wb-menubar-trailing" data-no-drag>
         <button
@@ -322,7 +316,7 @@ const StatusBarComponent: React.FC = () => {
           <SquaresFour size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
         </button>
 
-        {centerOpen ? (
+        {centerPhase !== 'closed' ? (
           <>
             <div
               ref={backdropRef}
@@ -335,6 +329,7 @@ const StatusBarComponent: React.FC = () => {
               ref={panelRef}
               className="wb-glass wb-glass-highlight wb-glass-lens wb-menubar-flyout"
               data-open="true"
+              data-phase={centerPhase}
               data-testid="wb-menubar-flyout"
               role="dialog"
               aria-modal="true"

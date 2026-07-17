@@ -156,6 +156,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 # 单实例锁（审阅 34 P1-2）：防止双开进程共享同一套 SQLite/数据空间
 tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2.3.2"
 
 # OAuth2 在 Android 上暂不支持（会引入 native-tls）
 [target.'cfg(not(target_os = "android"))'.dependencies]

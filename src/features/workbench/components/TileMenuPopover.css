@@ -11,7 +11,8 @@
  */
 
 .wb-tilemenu {
-  --wb-tilemenu-in-duration: var(--wb-motion-standard, 230ms);
+  /* 入场 ~220ms：绿灯平铺菜单 macOS 基准 200–230ms（motion.css 无此刻度，用组件值） */
+  --wb-tilemenu-in-duration: 220ms;
   --wb-tilemenu-out-duration: var(--wb-motion-quick, 150ms);
   --wb-tilemenu-hover-duration: var(--wb-motion-quick, 150ms);
   --wb-tilemenu-glyph-bounce: var(--wb-motion-quick, 150ms);

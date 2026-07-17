@@ -1,5 +1,5 @@
 import React from 'react';
-import { GenericFileIcon } from '@/features/learning-hub/icons';
+import { AppIconImage } from '../../icons/appIcons';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { FILE_PREVIEW_APP_TYPE_ID } from '../content/typeMap';
@@ -41,7 +41,7 @@ export async function handleFilePreviewActivation(ctx: ActivationContext): Promi
 export const FILE_PREVIEW_APP_DEFINITION: AppDefinition = {
   typeId: FILE_PREVIEW_APP_TYPE_ID,
   nameKey: 'workbench:apps.filePreview',
-  icon: React.createElement(GenericFileIcon, { className: 'h-full w-full' }),
+  icon: React.createElement(AppIconImage, { typeId: 'file-preview', className: 'h-8 w-8' }),
   instanceMode: 'multi',
   memoryWeight: 3,
   defaultFrame: { w: 920, h: 700 },

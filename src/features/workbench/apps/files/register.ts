@@ -6,7 +6,7 @@
  * 应用群被装配，被删资源的窗口就会自动关闭——不依赖 files 窗口是否打开。
  */
 import React from 'react';
-import { AllFilesIcon } from '@/features/learning-hub/icons';
+import { AppIconImage } from '../../icons/appIcons';
 import { appRegistry } from '../../core/appRegistry';
 import type { AppDefinition } from '../../core/types';
 import { startResourceSync } from './resourceSync';
@@ -17,7 +17,7 @@ import { filesAgentManifest } from './agentManifest';
 export const FILES_APP_DEFINITION: AppDefinition = {
   typeId: 'files',
   nameKey: 'workbench:apps.files',
-  icon: React.createElement(AllFilesIcon, { className: 'h-full w-full' }),
+  icon: React.createElement(AppIconImage, { typeId: 'files', className: 'h-8 w-8' }),
   instanceMode: 'single',
   memoryWeight: 1,
   defaultFrame: { w: 980, h: 660 },

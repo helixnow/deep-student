@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="fc_back" x1="82" x2="82" y1="16" y2="80" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#14A5A0" offset="0"/>
+    <stop stop-color="#127487" offset="1"/>
+  </linearGradient>
+  <g transform="rotate(7 82 48)">
+    <rect x="40" y="16" width="84" height="64" rx="10" fill="url(#fc_back)"/>
+    <rect x="52" y="30" width="40" height="7" rx="3.5" fill="#fff" opacity=".7"/>
+    <rect x="52" y="44" width="28" height="7" rx="3.5" fill="#fff" opacity=".4"/>
+  </g>
+  <linearGradient id="fc_front" x1="66" x2="66" y1="56" y2="128" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F8FDFC" offset="0"/>
+    <stop stop-color="#D6EBE9" offset="1"/>
+  </linearGradient>
+  <rect x="22" y="56" width="88" height="72" rx="10" fill="url(#fc_front)" stroke="#A6C4CB" stroke-width="3"/>
+  <rect x="34" y="72" width="34" height="8" rx="4" fill="#14A5A0" opacity=".75"/>
+  <rect x="34" y="88" width="26" height="8" rx="4" fill="#9BC3CE"/>
+  <rect x="34" y="104" width="30" height="8" rx="4" fill="#B8D6DC"/>
+  <linearGradient id="fc_bolt" x1="94" x2="94" y1="60" y2="124" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <path d="M100 60 82 92h12l-8 32 22-38H96l10-26h-6z" fill="url(#fc_bolt)"/>
+</svg>

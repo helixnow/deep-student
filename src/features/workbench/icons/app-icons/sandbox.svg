@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="sb_top" x1="75" x2="75" y1="34" y2="82" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#5FD0CB" offset="0"/>
+    <stop stop-color="#2BB3A3" offset="1"/>
+  </linearGradient>
+  <polygon points="75,34 122,58 75,82 28,58" fill="url(#sb_top)"/>
+  <linearGradient id="sb_left" x1="51" x2="51" y1="58" y2="130" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#1D3F6E" offset="0"/>
+    <stop stop-color="#16325A" offset="1"/>
+  </linearGradient>
+  <polygon points="28,58 75,82 75,130 28,106" fill="url(#sb_left)"/>
+  <linearGradient id="sb_right" x1="99" x2="99" y1="58" y2="130" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#14A5A0" offset="0"/>
+    <stop stop-color="#127487" offset="1"/>
+  </linearGradient>
+  <polygon points="122,58 75,82 75,130 122,106" fill="url(#sb_right)"/>
+  <polygon points="75,82 122,58 122,62 75,86" fill="#fff" opacity=".2"/>
+  <polygon points="75,82 28,58 28,62 75,86" fill="#fff" opacity=".12"/>
+  <linearGradient id="sb_mini" x1="108" x2="108" y1="18" y2="50" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <polygon points="108,18 124,26 108,34 92,26" fill="url(#sb_mini)"/>
+  <polygon points="92,26 108,34 108,50 92,42" fill="#E8422F"/>
+  <polygon points="124,26 108,34 108,50 124,42" fill="#F0603C"/>
+</svg>

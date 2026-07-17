@@ -120,7 +120,14 @@
     "today": "今天",
     "tomorrow": "明天",
     "nextMonday": "下周一",
-    "clear": "移除日期"
+    "clear": "移除日期",
+    "allToToday": "全部改到今天",
+    "allToTodayHint": "把逾期任务的截止日期统一顺延到今天"
+  },
+  "dates": {
+    "today": "今天",
+    "tomorrow": "明天",
+    "yesterday": "昨天"
   },
   "notifications": {
     "operationFailed": "操作失败",
@@ -163,7 +170,8 @@
     "pending": "待完成",
     "completed": "已完成",
     "pomodoroLoad": "预计 {{count}} 番茄",
-    "pomodoroLoadHint": "今日未完成任务的预估番茄合计"
+    "pomodoroLoadHint": "今日未完成任务的预估番茄合计",
+    "progressTitle": "已完成 {{done}}/{{total}}"
   },
   "empty": {
     "noItems": "暂无待办事项",

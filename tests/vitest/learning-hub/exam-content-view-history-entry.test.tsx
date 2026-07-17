@@ -167,7 +167,9 @@ describe('ExamContentView history entry wiring', () => {
 
     await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled(), { timeout: 5000 });
 
-    fireEvent.click(screen.getByRole('button', { name: /管理|manage|learningHub:exam\.tab\.manage/i }));
+    // 管理入口已收纳进「更多」菜单
+    fireEvent.click(screen.getByRole('button', { name: /更多|learningHub:exam\.tab\.more/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /管理|manage|learningHub:exam\.tab\.manage/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /open history/i })).toBeInTheDocument();

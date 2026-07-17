@@ -7,7 +7,7 @@
  * 2026-02 新增
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -27,6 +27,8 @@ import {
   Image,
   Image as ImageIcon,
   Eye,
+  CaretDown,
+  CaretRight,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -110,6 +112,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   const [imagePreviewUrls, setImagePreviewUrls] = useState<Record<string, string>>({});
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showOptional, setShowOptional] = useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -139,6 +142,8 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
       setError(null);
       setTagInput('');
       setImagePreviewUrls({});
+      // 创建模式：解析/笔记默认折叠，保持表单紧凑
+      setShowOptional(false);
     } else if (question) {
       const initialData: EditableQuestion = {
         content: question.content || '',
@@ -154,6 +159,8 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
       initialDataRef.current = initialData;
       setEditData(initialData);
       loadImagePreviews(question.images || []);
+      // 编辑模式：已有解析/笔记内容时自动展开选填区
+      setShowOptional(Boolean(initialData.explanation || initialData.userNote));
     }
   }, [question, mode]);
 
@@ -433,6 +440,30 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
 
   const isChoiceType = editData.questionType === 'single_choice' || editData.questionType === 'multiple_choice' || editData.questionType === 'indefinite_choice';
 
+  // 选择题：答案即被选中的选项字母集合（点选字母设为答案）。
+  // 存储为排序后用逗号连接的字母串（如 "A" / "B,D"），与判分端的标准化比较兼容
+  const selectedAnswerKeys = useMemo(() => {
+    if (!isChoiceType) return new Set<string>();
+    const letters = editData.answer.toUpperCase().replace(/[^A-Z]/g, '').split('');
+    return new Set(letters.filter((letter) => editData.options.some((option) => option.key === letter)));
+  }, [editData.answer, editData.options, isChoiceType]);
+
+  const toggleAnswerKey = useCallback((key: string) => {
+    if (editData.questionType === 'single_choice') {
+      // 单选：点其他字母直接切换，再点当前字母取消选择
+      handleFieldChange('answer', selectedAnswerKeys.has(key) ? '' : key);
+      return;
+    }
+    const next = new Set(selectedAnswerKeys);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    const ordered = editData.options.map((option) => option.key).filter((optionKey) => next.has(optionKey));
+    handleFieldChange('answer', ordered.join(','));
+  }, [editData.questionType, editData.options, selectedAnswerKeys, handleFieldChange]);
+
   return (
     <div
       ref={containerRef}
@@ -494,37 +525,69 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           </div>
         </div>
 
-        {/* 选项（选择题）— 紧凑双列 */}
+        {/* 选项（选择题）— 字母点选即答案，与选项区合并 */}
         {isChoiceType && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-xs">{t('exam_sheet:questionBank.edit.options')}</Label>
+              <Label className="text-xs">
+                {t('exam_sheet:questionBank.edit.options')}
+                <span className="ml-1.5 font-normal text-muted-foreground/70">
+                  {t('exam_sheet:questionBank.edit.optionsAnswerHint')}
+                </span>
+              </Label>
               <NotionButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="h-5 text-[10px] px-1.5">
                 <Plus size={10} className="mr-0.5" />
                 {t('common:actions.add')}
               </NotionButton>
             </div>
             <div className="grid grid-cols-2 gap-1">
-              {editData.options.map((opt, index) => (
-                <div key={index} className="group flex items-center gap-1 rounded-md border border-border/40 bg-muted/10 px-2 h-7">
-                  <span className="text-xs font-medium text-muted-foreground w-4 flex-shrink-0">{opt.key}</span>
-                  <Input
-                    value={opt.content}
-                    onChange={(e) => handleOptionChange(index, 'content', e.target.value)}
-                    className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
-                    placeholder={`${opt.key} ...`}
+              {editData.options.map((opt, index) => {
+                const isAnswerKey = selectedAnswerKeys.has(opt.key);
+                return (
+                  <div
+                    key={index}
+                    className={cn(
+                      'group flex items-center gap-1.5 rounded-md border px-1.5 h-8 transition-colors',
+                      isAnswerKey
+                        ? 'border-primary/50 bg-primary/5'
+                        : 'border-border/40 bg-muted/10'
+                    )}
+                  >
+                    <NotionButton
+                      variant="ghost"
+                      size="icon"
+                      iconOnly
+                      onClick={() => toggleAnswerKey(opt.key)}
+                      title={t('exam_sheet:questionBank.edit.optionsAnswerHint')}
+                      aria-label={`${t('exam_sheet:questionBank.edit.answer')} ${opt.key}`}
+                      aria-pressed={isAnswerKey}
+                      className={cn(
+                        'flex-shrink-0 !w-5 !h-5 !p-0 rounded text-[11px] font-semibold',
+                        isAnswerKey
+                          ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
+                          : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                      )}
+                    >
+                      {opt.key}
+                    </NotionButton>
+                    <Input
+                      value={opt.content}
+                      onChange={(e) => handleOptionChange(index, 'content', e.target.value)}
+                      className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
+                      placeholder={`${opt.key} ...`}
 />
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 text-muted-foreground hover:text-destructive" aria-label="remove">
-                    <X size={10} />
-                  </NotionButton>
-                </div>
-              ))}
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 text-muted-foreground hover:text-destructive" aria-label="remove">
+                      <X size={10} />
+                    </NotionButton>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* 答案 + 解析 */}
-        <div className="grid grid-cols-1 gap-3">
+        {/* 答案（非选择题）— 选择题直接在选项区点选 */}
+        {!isChoiceType && (
           <div className="space-y-1.5">
             <Label htmlFor="inline-edit-answer" className="text-xs">
               {t('exam_sheet:questionBank.edit.answer')}
@@ -538,20 +601,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               className="text-sm"
 />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="inline-edit-explanation" className="text-xs">
-              {t('exam_sheet:questionBank.edit.explanation')}
-            </Label>
-            <Textarea
-              id="inline-edit-explanation"
-              value={editData.explanation}
-              onChange={(e) => handleFieldChange('explanation', e.target.value)}
-              rows={2}
-              placeholder={t('exam_sheet:questionBank.edit.explanationPlaceholder')}
-              className="text-sm"
-/>
-          </div>
-        </div>
+        )}
 
         {/* 标签 */}
         <div className="space-y-1.5">
@@ -585,51 +635,51 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           )}
         </div>
 
-        {/* 题目图片 */}
+        {/* 题目图片 — 紧凑缩略图条 */}
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label className="flex items-center gap-1 text-xs">
-              <ImageIcon size={14} className="text-muted-foreground" />
-              {t('exam_sheet:questionBank.edit.images')}
-              {editData.images.length > 0 && (
-                <span className="text-[10px] text-muted-foreground">({editData.images.length}/{MAX_IMAGES})</span>
-              )}
-            </Label>
+          <Label className="flex items-center gap-1 text-xs">
+            <ImageIcon size={14} className="text-muted-foreground" />
+            {t('exam_sheet:questionBank.edit.images')}
+            {editData.images.length > 0 && (
+              <span className="text-[10px] text-muted-foreground">({editData.images.length}/{MAX_IMAGES})</span>
+            )}
+          </Label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                handleImageUpload(e.target.files);
+                e.target.value = '';
+              }
+            }}
+/>
+          {editData.images.length === 0 ? (
             <NotionButton
               variant="ghost"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              disabled={editData.images.length >= MAX_IMAGES || isUploadingImage}
-              className="h-6 text-xs"
+              disabled={isUploadingImage}
+              className="w-full !h-9 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] gap-1.5"
             >
               {isUploadingImage ? (
-                <CircleNotch size={12} className="mr-1 animate-spin" />
+                <CircleNotch size={14} className="animate-spin text-muted-foreground" />
               ) : (
-                <Image size={12} className="mr-1" />
+                <Image size={14} className="text-muted-foreground" />
               )}
-              {t('exam_sheet:questionBank.edit.addImage')}
+              <span className="text-xs text-muted-foreground">
+                {t('exam_sheet:questionBank.edit.imagePlaceholder')}
+              </span>
             </NotionButton>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                  handleImageUpload(e.target.files);
-                  e.target.value = '';
-                }
-              }}
-/>
-          </div>
-
-          {editData.images.length > 0 && (
-            <div className="grid grid-cols-4 gap-1.5">
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5">
               {editData.images.map((img) => (
                 <div
                   key={img.id}
-                  className="group relative rounded-md overflow-hidden border border-border/40 bg-muted/20 aspect-square"
+                  className="group relative h-14 w-14 rounded-md overflow-hidden border border-border/40 bg-muted/20"
                 >
                   {imagePreviewUrls[img.id] && imagePreviewUrls[img.id] !== 'error' ? (
                     <img src={imagePreviewUrls[img.id]} alt={img.name} className="w-full h-full object-cover" />
@@ -655,103 +705,147 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   </div>
                 </div>
               ))}
+              {editData.images.length < MAX_IMAGES && (
+                <NotionButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingImage}
+                  aria-label={t('exam_sheet:questionBank.edit.addImage')}
+                  className="!h-14 !w-14 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] text-muted-foreground"
+                >
+                  {isUploadingImage ? (
+                    <CircleNotch size={14} className="animate-spin" />
+                  ) : (
+                    <Plus size={14} />
+                  )}
+                </NotionButton>
+              )}
             </div>
           )}
-
-          {editData.images.length === 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploadingImage} className="w-full !h-auto !p-4 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] flex-col items-center justify-center gap-2">
-              <Image size={16} className="text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">
-                {t('exam_sheet:questionBank.edit.imagePlaceholder')}
-              </span>
-            </NotionButton>
-          )}
         </div>
 
-        {/* 笔记 */}
-        <div className="space-y-1.5">
-          <Label htmlFor="inline-edit-note" className="text-xs">
-            {t('exam_sheet:questionBank.edit.note')}
-          </Label>
-          <Textarea
-            id="inline-edit-note"
-            value={editData.userNote}
-            onChange={(e) => handleFieldChange('userNote', e.target.value)}
-            rows={2}
-            placeholder={t('exam_sheet:questionBank.edit.notePlaceholder')}
-            className="text-sm"
-/>
-        </div>
-
-        {/* 实时预览（复用 LatexText 渲染公式；默认折叠，单题编辑无虚拟列表性能顾虑） */}
+        {/* 解析 + 笔记（选填折叠区，默认收起保持表单紧凑） */}
         <div className="space-y-1.5">
           <NotionButton
             variant="ghost"
             size="sm"
-            onClick={() => setShowPreview((v) => !v)}
-            className="h-6 text-xs"
-            aria-expanded={showPreview}
+            onClick={() => setShowOptional((v) => !v)}
+            className="h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
+            aria-expanded={showOptional}
           >
-            <Eye size={14} className="mr-1" />
-            {t('common:actions.preview')}
+            {showOptional ? (
+              <CaretDown size={12} className="mr-1" />
+            ) : (
+              <CaretRight size={12} className="mr-1" />
+            )}
+            {t('exam_sheet:questionBank.edit.moreOptional')}
+            {!showOptional && (editData.explanation.trim() || editData.userNote.trim()) && (
+              <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-primary" aria-hidden="true" />
+            )}
           </NotionButton>
-          {showPreview && (
-            <div className="rounded-md border border-border/40 bg-muted/10 p-3 space-y-2 text-sm">
-              {editData.content.trim() ? (
-                <LatexText content={editData.content} />
-              ) : (
-                <span className="text-muted-foreground">
-                  {t('exam_sheet:questionBank.edit.contentPlaceholder')}
-                </span>
-              )}
-              {isChoiceType && editData.options.some((o) => o.content.trim()) && (
-                <div className="space-y-1 pt-1">
-                  {editData.options.map((opt, index) =>
-                    opt.content.trim() ? (
-                      <div key={index} className="flex items-start gap-1.5">
-                        <span className="flex-shrink-0 font-medium text-muted-foreground">{opt.key}.</span>
-                        <LatexText content={opt.content} />
-                      </div>
-                    ) : null
-                  )}
-                </div>
-              )}
-              {editData.answer.trim() && (
-                <div className="flex items-start gap-1.5 border-t border-border/30 pt-1">
-                  <span className="flex-shrink-0 text-xs text-muted-foreground">
-                    {t('exam_sheet:questionBank.edit.answer')}:
-                  </span>
-                  <LatexText content={editData.answer} />
-                </div>
-              )}
-              {editData.explanation.trim() && (
-                <div className="flex items-start gap-1.5">
-                  <span className="flex-shrink-0 text-xs text-muted-foreground">
-                    {t('exam_sheet:questionBank.edit.explanation')}:
-                  </span>
-                  <LatexText content={editData.explanation} />
-                </div>
-              )}
+          {showOptional && (
+            <div className="grid grid-cols-1 gap-3 pt-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="inline-edit-explanation" className="text-xs">
+                  {t('exam_sheet:questionBank.edit.explanation')}
+                </Label>
+                <Textarea
+                  id="inline-edit-explanation"
+                  value={editData.explanation}
+                  onChange={(e) => handleFieldChange('explanation', e.target.value)}
+                  rows={2}
+                  placeholder={t('exam_sheet:questionBank.edit.explanationPlaceholder')}
+                  className="text-sm"
+/>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="inline-edit-note" className="text-xs">
+                  {t('exam_sheet:questionBank.edit.note')}
+                </Label>
+                <Textarea
+                  id="inline-edit-note"
+                  value={editData.userNote}
+                  onChange={(e) => handleFieldChange('userNote', e.target.value)}
+                  rows={2}
+                  placeholder={t('exam_sheet:questionBank.edit.notePlaceholder')}
+                  className="text-sm"
+/>
+              </div>
             </div>
           )}
         </div>
+
+        {/* 实时预览（页脚切换；复用 LatexText 渲染公式，单题编辑无虚拟列表性能顾虑） */}
+        {showPreview && (
+          <div className="rounded-md border border-border/40 bg-muted/10 p-3 space-y-2 text-sm">
+            {editData.content.trim() ? (
+              <LatexText content={editData.content} />
+            ) : (
+              <span className="text-muted-foreground">
+                {t('exam_sheet:questionBank.edit.contentPlaceholder')}
+              </span>
+            )}
+            {isChoiceType && editData.options.some((o) => o.content.trim()) && (
+              <div className="space-y-1 pt-1">
+                {editData.options.map((opt, index) =>
+                  opt.content.trim() ? (
+                    <div key={index} className="flex items-start gap-1.5">
+                      <span className="flex-shrink-0 font-medium text-muted-foreground">{opt.key}.</span>
+                      <LatexText content={opt.content} />
+                    </div>
+                  ) : null
+                )}
+              </div>
+            )}
+            {editData.answer.trim() && (
+              <div className="flex items-start gap-1.5 border-t border-border/30 pt-1">
+                <span className="flex-shrink-0 text-xs text-muted-foreground">
+                  {t('exam_sheet:questionBank.edit.answer')}:
+                </span>
+                <LatexText content={editData.answer} />
+              </div>
+            )}
+            {editData.explanation.trim() && (
+              <div className="flex items-start gap-1.5">
+                <span className="flex-shrink-0 text-xs text-muted-foreground">
+                  {t('exam_sheet:questionBank.edit.explanation')}:
+                </span>
+                <LatexText content={editData.explanation} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* 底部操作栏 */}
-      <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-border/40 bg-muted/20">
-        <NotionButton variant="ghost" size="sm" onClick={handleCancelRequest} disabled={isSaving}>
-          {t('common:actions.cancel')}
+      {/* 底部操作栏：左侧预览切换，右侧取消/保存 */}
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-t border-border/40 bg-muted/20">
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowPreview((v) => !v)}
+          className={cn('h-6 text-xs', showPreview ? 'text-primary' : 'text-muted-foreground')}
+          aria-expanded={showPreview}
+        >
+          <Eye size={14} className="mr-1" />
+          {t('common:actions.preview')}
         </NotionButton>
-        <NotionButton size="sm" onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
-            <CircleNotch size={14} className="mr-1.5 animate-spin" />
-          ) : (
-            <FloppyDisk size={14} className="mr-1.5" />
-          )}
-          {mode === 'create'
-            ? t('exam_sheet:questionBank.create.submit')
-            : t('common:actions.save')}
-        </NotionButton>
+        <div className="flex items-center gap-2">
+          <NotionButton variant="ghost" size="sm" onClick={handleCancelRequest} disabled={isSaving}>
+            {t('common:actions.cancel')}
+          </NotionButton>
+          <NotionButton size="sm" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? (
+              <CircleNotch size={14} className="mr-1.5 animate-spin" />
+            ) : (
+              <FloppyDisk size={14} className="mr-1.5" />
+            )}
+            {mode === 'create'
+              ? t('exam_sheet:questionBank.create.submit')
+              : t('common:actions.save')}
+          </NotionButton>
+        </div>
       </div>
       <NotionAlertDialog
         open={discardConfirmOpen}

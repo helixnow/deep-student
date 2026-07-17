@@ -37,3 +37,16 @@ export {
   type ResourceIconProps,
   type ResourceIconType,
 } from './ResourceIcons';
+
+export {
+  // 全彩插画风资源图标(与 workbench 应用图标同套资源)
+  IllustratedFolderIcon,
+  IllustratedNoteIcon,
+  IllustratedTextbookIcon,
+  IllustratedExamIcon,
+  IllustratedTranslationIcon,
+  IllustratedEssayIcon,
+  IllustratedImageIcon,
+  IllustratedGenericFileIcon,
+  IllustratedMindmapIcon,
+} from './IllustratedResourceIcons';

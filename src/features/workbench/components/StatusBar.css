@@ -233,10 +233,17 @@
   box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover);
   outline: none;
   pointer-events: auto;
-  /* 入场：现有 overshoot 弹层手感，锚定入口按钮附近（仅 transform/opacity） */
+  /* 入场：菜单栏下拉基准 ~150ms 轻量 scale+fade，锚定入口按钮附近（仅 transform/opacity） */
   transform-origin: calc(100% - 20px) top;
-  animation: wb-kf-overshoot-in var(--wb-motion-standard, 280ms)
-    var(--wb-ease-overshoot, cubic-bezier(0.34, 1.28, 0.64, 1)) both;
+  animation: wb-kf-window-open var(--wb-motion-quick, 150ms)
+    var(--wb-ease-window-open, cubic-bezier(0.32, 0.72, 0, 1)) both;
+}
+
+/* 离场：~90ms 加速淡出（macOS 菜单消失近乎瞬时；data-phase 由 StatusBar 相位机挂） */
+.wb-menubar-flyout[data-phase='closing'] {
+  pointer-events: none;
+  animation: wb-kf-window-close var(--wb-motion-instant, 90ms)
+    var(--wb-ease-window-close, cubic-bezier(0.42, 0, 1, 1)) both;
 }
 
 .wb-menubar-flyout-title {

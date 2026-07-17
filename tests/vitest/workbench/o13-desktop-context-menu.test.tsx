@@ -129,8 +129,10 @@ describe('O13 桌面右键菜单 / 手势', () => {
     const s1 = useWindowStore.getState();
     const modes = [s1.windows[a].displayMode, s1.windows[b].displayMode].sort();
     expect(modes).toEqual(['tiled-left', 'tiled-right']);
-    // 菜单触发后自动关闭
-    expect(document.querySelector('[data-wb-desk-menu]')).toBeNull();
+    // 菜单触发后自动关闭（离场动画播完才卸载）
+    await waitFor(() => {
+      expect(document.querySelector('[data-wb-desk-menu]')).toBeNull();
+    });
 
     openDesktopMenu(root);
     fireEvent.click(screen.getByText('整理窗口'));

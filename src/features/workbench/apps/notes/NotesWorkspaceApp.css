@@ -446,10 +446,8 @@
 }
 
 .notes-tabs-overflow-menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% - 2px);
-  right: 0;
+  position: fixed;
+  z-index: 2200;
   width: min(280px, calc(100vw - 24px));
   max-height: min(420px, calc(100vh - 64px));
   padding: 4px;
@@ -612,11 +610,6 @@
 
 .notes-tab:focus-within .notes-icon-button {
   opacity: 1;
-}
-
-.notes-tab .notes-tab-split-button[aria-pressed='true'] {
-  opacity: 1;
-  color: hsl(var(--primary));
 }
 
 .notes-pane-content, .notes-document-host {

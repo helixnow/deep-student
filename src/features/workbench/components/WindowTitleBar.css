@@ -14,7 +14,7 @@
  */
 
 .wb-title-bar {
-  --wb-title-fade-duration: 40ms;
+  --wb-title-fade-duration: 130ms;
   --wb-title-key-duration: 130ms;
   --wb-title-ripple-duration: 460ms;
 }

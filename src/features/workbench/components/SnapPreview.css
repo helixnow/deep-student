@@ -39,7 +39,8 @@
   opacity: 1;
   --wb-snap-morph-duration: var(--wb-motion-snap-morph, 200ms);
   --wb-snap-morph-ease: var(--wb-ease-spring, cubic-bezier(0.3, 1.24, 0.32, 1));
-  --wb-snap-fade-duration: var(--wb-motion-quick, 150ms);
+  /* 吸附预览要"即时"：macOS 基准 100–140ms，不用 --wb-motion-quick(150ms) */
+  --wb-snap-fade-duration: 130ms;
   --wb-snap-fade-ease: var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
   /* 仅 transform morph；opacity 淡入淡出也在外层，与 morph 解耦且不受 inline 覆写 */
   transition:

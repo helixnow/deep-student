@@ -19,18 +19,18 @@ import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
-  NoteIcon,
-  TextbookIcon,
-  ExamIcon,
-  EssayIcon,
-  TranslationIcon,
-  MindmapIcon,
-  FolderIcon,
+  IllustratedNoteIcon,
+  IllustratedTextbookIcon,
+  IllustratedExamIcon,
+  IllustratedEssayIcon,
+  IllustratedTranslationIcon,
+  IllustratedMindmapIcon,
+  IllustratedFolderIcon,
   FavoriteIcon,
   RecentIcon,
   AllFilesIcon,
-  ImageFileIcon,
-  GenericFileIcon,
+  IllustratedImageIcon,
+  IllustratedGenericFileIcon,
   TrashIcon as TrashIconSvg,
   type ResourceIconProps,
 } from '../../icons';
@@ -70,55 +70,55 @@ interface DesktopViewProps {
 
 /** 应用类型对应的图标 */
 const APP_TYPE_ICONS: Record<AppType, React.FC<ResourceIconProps>> = {
-  note: NoteIcon,
-  exam: ExamIcon,
-  essay: EssayIcon,
-  translation: TranslationIcon,
-  mindmap: MindmapIcon,
-  textbook: TextbookIcon,
+  note: IllustratedNoteIcon,
+  exam: IllustratedExamIcon,
+  essay: IllustratedEssayIcon,
+  translation: IllustratedTranslationIcon,
+  mindmap: IllustratedMindmapIcon,
+  textbook: IllustratedTextbookIcon,
 };
 
 /** 快捷入口类型对应的图标 */
 const QUICK_ACCESS_ICONS: Partial<Record<QuickAccessType, React.FC<ResourceIconProps>>> = {
-  notes: NoteIcon,
-  exams: ExamIcon,
-  essays: EssayIcon,
-  translations: TranslationIcon,
-  mindmaps: MindmapIcon,
-  textbooks: TextbookIcon,
+  notes: IllustratedNoteIcon,
+  exams: IllustratedExamIcon,
+  essays: IllustratedEssayIcon,
+  translations: IllustratedTranslationIcon,
+  mindmaps: IllustratedMindmapIcon,
+  textbooks: IllustratedTextbookIcon,
   favorites: FavoriteIcon,
   recent: RecentIcon,
   allFiles: AllFilesIcon,
-  images: ImageFileIcon,
-  files: GenericFileIcon,
+  images: IllustratedImageIcon,
+  files: IllustratedGenericFileIcon,
   trash: TrashIconSvg,
 };
 
 /** 获取快捷方式图标 */
 function getShortcutIcon(shortcut: DesktopShortcut): React.FC<ResourceIconProps> {
   if (shortcut.type === 'app' && shortcut.target.appType) {
-    return APP_TYPE_ICONS[shortcut.target.appType] || GenericFileIcon;
+    return APP_TYPE_ICONS[shortcut.target.appType] || IllustratedGenericFileIcon;
   }
   if (shortcut.type === 'quickAccess' && shortcut.target.quickAccessType) {
-    return QUICK_ACCESS_ICONS[shortcut.target.quickAccessType] || GenericFileIcon;
+    return QUICK_ACCESS_ICONS[shortcut.target.quickAccessType] || IllustratedGenericFileIcon;
   }
   if (shortcut.type === 'folder') {
-    return FolderIcon;
+    return IllustratedFolderIcon;
   }
   if (shortcut.type === 'resource' && shortcut.target.resourceType) {
     const typeIconMap: Record<string, React.FC<ResourceIconProps>> = {
-      note: NoteIcon,
-      exam: ExamIcon,
-      essay: EssayIcon,
-      translation: TranslationIcon,
-      mindmap: MindmapIcon,
-      textbook: TextbookIcon,
-      image: ImageFileIcon,
-      folder: FolderIcon,
+      note: IllustratedNoteIcon,
+      exam: IllustratedExamIcon,
+      essay: IllustratedEssayIcon,
+      translation: IllustratedTranslationIcon,
+      mindmap: IllustratedMindmapIcon,
+      textbook: IllustratedTextbookIcon,
+      image: IllustratedImageIcon,
+      folder: IllustratedFolderIcon,
     };
-    return typeIconMap[shortcut.target.resourceType] || GenericFileIcon;
+    return typeIconMap[shortcut.target.resourceType] || IllustratedGenericFileIcon;
   }
-  return GenericFileIcon;
+  return IllustratedGenericFileIcon;
 }
 
 // ============================================================================
@@ -468,7 +468,7 @@ function AddShortcutDialog({
               ? APP_TYPE_ICONS[preset.target.appType]
               : preset.type === 'quickAccess' && preset.target.quickAccessType
                 ? QUICK_ACCESS_ICONS[preset.target.quickAccessType]
-                : GenericFileIcon;
+                : IllustratedGenericFileIcon;
             const added = isPresetAdded(preset);
 
             return (

@@ -1069,7 +1069,9 @@
       "favorites": "Favorites",
       "importCsv": "Import Csv",
       "manage": "Manage",
-      "stats": "Stats"
+      "stats": "Stats",
+      "more": "More",
+      "addQuestion": "Add"
     },
     "partialDeleteFailed": "{{success}} deleted, {{failed}} failed",
     "partialResetFailed": "{{success}} reset, {{failed}} failed",

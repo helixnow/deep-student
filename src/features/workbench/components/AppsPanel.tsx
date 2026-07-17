@@ -29,8 +29,9 @@ export const APPS_PANEL_EXIT_MS = 200;
 
 type ViewMode = 'grid' | 'list';
 
+// 注意用 a[href] 而非 [href]:插画图标内的 SVG <image href> 会被 [href] 误匹配为可聚焦元素
 const FOCUSABLE_SELECTOR =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function getFocusable(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((el) => {

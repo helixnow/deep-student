@@ -88,10 +88,45 @@ import {
   sortTodoItems,
 } from '../types';
 import { parseQuickAddInput } from '../quickAddParser';
-import { aiBreakdownTodo } from '../api';
+import { aiBreakdownTodo, updateTodoItem as updateTodoItemApi } from '../api';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { useViewStore } from '@/stores/viewStore';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+
+// ============================================================================
+// formatDueDateLabel — 到期日期人性化（今天/明天/昨天/近 7 天用星期/其余短日期）
+// 行内元数据与 chip 共用；完整日期通过 title 提示保留
+// ============================================================================
+
+export function formatDueDateLabel(
+  dueDate: string,
+  t: (key: string) => string,
+  lang?: string,
+): string {
+  const now = new Date();
+  const today = formatLocalDate(now);
+  if (dueDate === today) return t('todo:dates.today');
+  if (dueDate === formatLocalDate(addDays(now, 1))) return t('todo:dates.tomorrow');
+  if (dueDate === formatLocalDate(addDays(now, -1))) return t('todo:dates.yesterday');
+  const d = new Date(`${dueDate}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dueDate;
+  const locale = lang?.startsWith('zh') ? 'zh-CN' : 'en-US';
+  try {
+    // 未来 6 天内：星期几（如「周五」/ "Fri"）
+    if (dueDate > today && dueDate <= formatLocalDate(addDays(now, 6))) {
+      return new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(d);
+    }
+    const sameYear = d.getFullYear() === now.getFullYear();
+    return new Intl.DateTimeFormat(
+      locale,
+      sameYear
+        ? { month: 'short', day: 'numeric' }
+        : { year: 'numeric', month: 'short', day: 'numeric' },
+    ).format(d);
+  } catch {
+    return dueDate;
+  }
+}
 
 // ============================================================================
 // MobileDetailOverlay — 移动端子屏全屏覆盖层（详情/回收站/番茄设置等共用）
@@ -154,14 +189,21 @@ export const MobileDetailOverlay: React.FC<{
 // TodoQuickAdd — 扁平输入条
 // ============================================================================
 
-const TodoQuickAdd: React.FC = () => {
+const TodoQuickAdd: React.FC<{
+  /** 智能视图（如「今日」）内使用：无明确日期时的默认截止日 */
+  defaultDueDate?: string;
+}> = ({ defaultDueDate }) => {
   const { t, i18n } = useTranslation(['todo']);
   const {
     createItem,
     activeListId,
+    lists,
     quickAddPreset,
     clearQuickAddPreset,
   } = useTodoStore();
+  // 智能视图下 activeListId 为空，落到默认清单（收件箱）
+  const targetListId =
+    activeListId ?? (lists.find((l) => l.isDefault) || lists[0])?.id ?? null;
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<TodoPriority>('none');
   const [dueDate, setDueDate] = useState('');
@@ -190,15 +232,15 @@ const TodoQuickAdd: React.FC = () => {
   }, [parsed.dueDate, i18n.language]);
 
   const handleSubmit = useCallback(async () => {
-    if (!title.trim() || !activeListId) return;
+    if (!title.trim() || !targetListId) return;
     // 手动设置的字段优先于自然语言解析结果
     const finalTitle = (parsed.title || title).trim();
-    const finalDueDate = dueDate || parsed.dueDate;
+    const finalDueDate = dueDate || parsed.dueDate || defaultDueDate;
     const finalPriority = priority !== 'none' ? priority : (parsed.priority ?? 'none');
     if (!finalTitle) return;
     try {
       await createItem({
-        todoListId: activeListId,
+        todoListId: targetListId,
         title: finalTitle,
         priority: finalPriority,
         dueDate: finalDueDate || undefined,
@@ -213,7 +255,7 @@ const TodoQuickAdd: React.FC = () => {
     } catch {
       // error handled in store
     }
-  }, [title, parsed, priority, dueDate, activeListId, createItem]);
+  }, [title, parsed, priority, dueDate, defaultDueDate, targetListId, createItem]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -226,7 +268,7 @@ const TodoQuickAdd: React.FC = () => {
     [handleSubmit],
   );
 
-  if (!activeListId) return null;
+  if (!targetListId) return null;
 
   return (
     <div>
@@ -243,8 +285,16 @@ const TodoQuickAdd: React.FC = () => {
         />
         {/* 自然语言解析预览 chip（提交时生效） */}
         {title.trim() &&
-          (parsedDateLabel || parsed.dueTime || parsed.priority || parsed.repeat || parsed.tags) && (
+          (parsedDateLabel || parsed.dueTime || parsed.priority || parsed.repeat || parsed.tags ||
+            (defaultDueDate && !dueDate)) && (
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* 智能视图默认截止日提示（如「今日」视图默认落到今天） */}
+            {defaultDueDate && !dueDate && !parsed.dueDate && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                <Calendar size={11} />
+                {formatDueDateLabel(defaultDueDate, t, i18n.language)}
+              </span>
+            )}
             {parsedDateLabel && !dueDate && (
               <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] whitespace-nowrap">
                 <Calendar size={11} />
@@ -338,6 +388,23 @@ const PriorityIcon: React.FC<{ priority: TodoPriority; className?: string }> = (
   };
   const Icon = icons[config.icon] || Minus;
   return <Icon size={16} className={cn(config.color, className)} />;
+};
+
+// 勾选圈按优先级着色（Todoist 式一眼识别轻重；none 保持中性并在 hover 时转主色）
+const PRIORITY_CHECKBOX_CLASS: Record<TodoPriority, string> = {
+  none: 'border-[color:var(--border-default)] group-hover:border-[color:hsl(var(--primary))] group-focus-within:border-[color:hsl(var(--primary))]',
+  low: 'border-[color:hsl(var(--info))]/75',
+  medium: 'border-[color:hsl(var(--warning))]/80',
+  high: 'border-[color:hsl(var(--brand-warm,var(--warning)))]',
+  urgent: 'border-[color:hsl(var(--destructive))]',
+};
+
+const PRIORITY_CHECK_ICON_CLASS: Record<TodoPriority, string> = {
+  none: 'text-[color:hsl(var(--primary))]',
+  low: 'text-[color:hsl(var(--info))]',
+  medium: 'text-[color:hsl(var(--warning))]',
+  high: 'text-[color:hsl(var(--brand-warm,var(--warning)))]',
+  urgent: 'text-[color:hsl(var(--destructive))]',
 };
 
 // ============================================================================
@@ -497,7 +564,7 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
   subtaskProgress,
   dragHandle,
 }) => {
-  const { t } = useTranslation(['todo']);
+  const { t, i18n } = useTranslation(['todo']);
   const overdue = isOverdue(item);
   const dueToday = isDueToday(item);
   const tags = parseTags(item.tagsJson);
@@ -531,8 +598,19 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
         {isCompleted ? (
           <CheckCircle size={20} className="text-[color:hsl(var(--success))]" />
         ) : (
-          <div className="flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] border-[color:var(--border-default)] transition-colors group-hover:border-[color:hsl(var(--primary))] group-focus-within:border-[color:hsl(var(--primary))]">
-            <Check size={12} className="text-[color:hsl(var(--primary))] opacity-0 transition-opacity group-hover:opacity-40 group-focus-within:opacity-40" />
+          <div
+            className={cn(
+              'flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] transition-colors',
+              PRIORITY_CHECKBOX_CLASS[item.priority as TodoPriority] ?? PRIORITY_CHECKBOX_CLASS.none,
+            )}
+          >
+            <Check
+              size={12}
+              className={cn(
+                'opacity-0 transition-opacity group-hover:opacity-40 group-focus-within:opacity-40',
+                PRIORITY_CHECK_ICON_CLASS[item.priority as TodoPriority] ?? PRIORITY_CHECK_ICON_CLASS.none,
+              )}
+            />
           </div>
         )}
       </button>
@@ -602,9 +680,10 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
                     ? 'font-medium text-[color:hsl(var(--primary))]'
                     : 'text-muted-foreground',
                 )}
+                title={`${item.dueDate}${item.dueTime ? ` ${item.dueTime}` : ''}`}
               >
                 <Calendar size={12} />
-                {item.dueDate}
+                {formatDueDateLabel(item.dueDate, t, i18n.language)}
                 {item.dueTime && ` ${item.dueTime}`}
               </span>
             )}
@@ -755,6 +834,15 @@ const TodoItemDetail: React.FC<{
   const [pomodoroHistory, setPomodoroHistory] = useState<PomodoroRecord[]>([]);
   const [aiBreaking, setAiBreaking] = useState(false);
   const [aiBreakdownError, setAiBreakdownError] = useState<string | null>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+
+  // 标题多行自动增高（overflow-hidden 的固定 rows 会截断长标题）
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [title]);
 
   // 任务的专注历史（completedPomodoros 变化时刷新——新完成番茄后同步）
   useEffect(() => {
@@ -965,6 +1053,7 @@ const TodoItemDetail: React.FC<{
 
       <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-5 py-5 space-y-5">
         <Textarea
+          ref={titleRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={handleBlur}
@@ -1516,6 +1605,13 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
           e.preventDefault();
           quickAdd.focus();
         }
+      } else if (e.key === 'Escape') {
+        // 桌面端：Esc 关闭详情面板（输入态已被上方守卫排除，焦点在输入框时先失焦）
+        const { selectedItemId: selected, selectItem: select } = useTodoStore.getState();
+        if (selected) {
+          e.preventDefault();
+          select(null);
+        }
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -1605,6 +1701,24 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     },
     [topLevelItems, reorderItems],
   );
+
+  // 逾期分组头「全部改到今天」：批量顺延后一次性刷新（对标 Todoist 的 Reschedule all）
+  const [reschedulingOverdue, setReschedulingOverdue] = useState(false);
+  const handleRescheduleOverdueToToday = useCallback(async (overdueItems: TodoItem[]) => {
+    if (overdueItems.length === 0) return;
+    setReschedulingOverdue(true);
+    const today = localToday();
+    try {
+      await Promise.all(
+        overdueItems.map((i) => updateTodoItemApi({ id: i.id, dueDate: today })),
+      );
+    } catch {
+      // 部分失败：刷新后残留项仍显示在逾期组，可重试
+    } finally {
+      await useTodoStore.getState().reloadCurrentView();
+      setReschedulingOverdue(false);
+    }
+  }, []);
 
   // 计算子任务进度（含被 showCompleted 过滤掉的已完成子任务，进度才真实）
   const subtaskProgressOf = useCallback(
@@ -1727,6 +1841,23 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 </>
               )}
             </span>
+            {/* 完成进度微条（与番茄目标条同款视觉；完成即清零的视图不显示） */}
+            {filter.view !== 'completed' && completedCount > 0 && pendingCount + completedCount > 0 && (
+              <span
+                className="inline-flex h-1 w-14 flex-shrink-0 self-center overflow-hidden rounded-full bg-[color:var(--shell-workspace-border)]"
+                title={t('todo:stats.progressTitle', {
+                  done: completedCount,
+                  total: pendingCount + completedCount,
+                })}
+              >
+                <span
+                  className="h-full rounded-full bg-[color:hsl(var(--success))] transition-all duration-500"
+                  style={{
+                    width: `${Math.round((completedCount / (pendingCount + completedCount)) * 100)}%`,
+                  }}
+                />
+              </span>
+            )}
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-2">
@@ -1786,6 +1917,14 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
             {filter.view === 'all' && (
               <>
                 <TodoQuickAdd />
+                <div className="h-px bg-border/20" />
+              </>
+            )}
+
+            {/* 「今日」视图也可就地添加：默认落到今天、归入默认清单 */}
+            {filter.view === 'today' && (
+              <>
+                <TodoQuickAdd defaultDueDate={localToday()} />
                 <div className="h-px bg-border/20" />
               </>
             )}
@@ -1938,6 +2077,19 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                       <span className="text-[11px] tabular-nums text-muted-foreground/50">
                         {group.items.length}
                       </span>
+                      {group.bucket === 'overdue' && (
+                        <NotionButton
+                          variant="utility"
+                          size="sm"
+                          disabled={reschedulingOverdue}
+                          onClick={() => void handleRescheduleOverdueToToday(group.items)}
+                          title={t('todo:reschedule.allToTodayHint')}
+                          className="ml-auto h-6 gap-1 !px-2 text-[11px]"
+                        >
+                          <CalendarPlus size={12} />
+                          {t('todo:reschedule.allToToday')}
+                        </NotionButton>
+                      )}
                     </div>
                     <div className="flex flex-col divide-y divide-border/[0.08]">
                       {group.items.map((item) => (

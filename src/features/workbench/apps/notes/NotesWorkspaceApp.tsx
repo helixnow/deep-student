@@ -522,10 +522,8 @@ interface WorkspaceTabsProps {
   tabs: WorkspaceTab[];
   activeKey: string | null;
   rightTabKey: string | null;
-  canOpenRightSplit: boolean;
   onActivate: (key: string) => void;
   onClose: (key: string) => void | Promise<boolean>;
-  onToggleRightSplit: (key: string) => void;
   onReorder: (draggedKey: string, targetKey: string, position: TabDropPosition) => void;
   onOpenContextMenu: (key: string, x: number, y: number, trigger: HTMLElement) => void;
   contextMenuKey: string | null;
@@ -537,10 +535,8 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   tabs,
   activeKey,
   rightTabKey,
-  canOpenRightSplit,
   onActivate,
   onClose,
-  onToggleRightSplit,
   onReorder,
   onOpenContextMenu,
   contextMenuKey,
@@ -552,17 +548,22 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ key: string; position: TabDropPosition } | null>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [overflowMenuPosition, setOverflowMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const overflowRef = useRef<HTMLDivElement>(null);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!overflowOpen) return;
-    const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && overflowRef.current?.contains(event.target)) return;
-      setOverflowOpen(false);
-    };
-    document.addEventListener('pointerdown', dismiss);
-    return () => document.removeEventListener('pointerdown', dismiss);
-  }, [overflowOpen]);
+  const dismissOverflow = useCallback((event: Event) => {
+    if (event.target instanceof Node && overflowRef.current?.contains(event.target)) return;
+    if (event.target instanceof Node && overflowMenuRef.current?.contains(event.target)) return;
+    setOverflowOpen(false);
+  }, []);
+  const dismissOverflowWithEscape = useCallback((event: Event) => {
+    if (event instanceof KeyboardEvent && event.key === 'Escape') setOverflowOpen(false);
+  }, []);
+  useEventRegistry(overflowOpen ? [
+    { target: 'document', type: 'pointerdown', listener: dismissOverflow },
+    { target: 'document', type: 'keydown', listener: dismissOverflowWithEscape },
+  ] : [], [overflowOpen, dismissOverflow, dismissOverflowWithEscape]);
 
   useEffect(() => {
     const active = stripRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
@@ -716,17 +717,6 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
           <IconButton label={t('notesWorkspace.tabs.close', { defaultValue: 'Close {{title}}', title: tab.title })} onClick={() => void onClose(tab.key)}>
             <X size={12} />
           </IconButton>
-          <IconButton
-            className="notes-tab-split-button"
-            label={isRightSplitTab
-              ? t('notesWorkspace.tabs.closeRightSplit', { defaultValue: 'Close {{title}} from right split', title: tab.title })
-              : t('notesWorkspace.tabs.openInRightSplit', { defaultValue: 'Open {{title}} in right split', title: tab.title })}
-            aria-pressed={isRightSplitTab}
-            disabled={!isRightSplitTab && !canOpenRightSplit}
-            onClick={() => onToggleRightSplit(tab.key)}
-          >
-            <SidebarSimple size={12} />
-          </IconButton>
         </div>
       );})}
     </div>
@@ -736,12 +726,28 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
           label={t('notesWorkspace.tabs.showAll', 'Show all open files')}
           aria-haspopup="menu"
           aria-expanded={overflowOpen}
-          onClick={() => setOverflowOpen((open) => !open)}
+          onClick={(event) => {
+            if (overflowOpen) {
+              setOverflowOpen(false);
+              return;
+            }
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setOverflowMenuPosition({
+              top: bounds.bottom - 2,
+              right: Math.max(8, window.innerWidth - bounds.right),
+            });
+            setOverflowOpen(true);
+          }}
         >
           <List size={15} />
         </IconButton>
-        {overflowOpen && (
-          <div className="notes-tabs-overflow-menu" role="menu">
+        {overflowOpen && overflowMenuPosition && createPortal(
+          <div
+            ref={overflowMenuRef}
+            className="notes-tabs-overflow-menu"
+            role="menu"
+            style={overflowMenuPosition}
+          >
             {tabs.map((tab) => (
               <button
                 type="button"
@@ -754,7 +760,8 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
                 <span>{tab.title}</span>
               </button>
             ))}
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
     )}
@@ -1936,10 +1943,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           tabs={tabs}
           activeKey={activeTab?.key ?? null}
           rightTabKey={splitTab?.key ?? null}
-          canOpenRightSplit={tabs.length > 1}
           onActivate={activateTab}
           onClose={closeTab}
-          onToggleRightSplit={toggleTabRightSplit}
           onReorder={reorderTabs}
           onOpenContextMenu={openTabContextMenu}
           contextMenuKey={tabContextMenu?.key ?? null}
@@ -2238,6 +2243,22 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             {tabContextTarget.pinned
               ? t('notesWorkspace.tabs.unpin', { defaultValue: 'Unpin {{title}}', title: tabContextTarget.title })
               : t('notesWorkspace.tabs.pin', { defaultValue: 'Pin {{title}}', title: tabContextTarget.title })}
+          </button>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={tabContextTarget.key === splitTab?.key}
+            disabled={tabContextTarget.key !== splitTab?.key && tabs.length <= 1}
+            onClick={() => {
+              toggleTabRightSplit(tabContextTarget.key);
+              restoreTabContextFocusRef.current = true;
+              setTabContextMenu(null);
+            }}
+          >
+            <SidebarSimple size={14} aria-hidden />
+            {tabContextTarget.key === splitTab?.key
+              ? t('notesWorkspace.tabs.closeRightSplit', { defaultValue: 'Close {{title}} from right split', title: tabContextTarget.title })
+              : t('notesWorkspace.tabs.openInRightSplit', { defaultValue: 'Open {{title}} in right split', title: tabContextTarget.title })}
           </button>
           <div role="separator" className="notes-context-menu-separator" />
           <button

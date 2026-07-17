@@ -5,15 +5,15 @@ import { formatDistanceToNow } from 'date-fns';
 import { zhCN, enUS } from 'date-fns/locale';
 import { Star, DotsThree, Check } from '@phosphor-icons/react';
 import {
-  NoteIcon,
-  TextbookIcon,
-  ExamIcon,
-  EssayIcon,
-  TranslationIcon,
-  MindmapIcon,
-  FolderIcon,
-  ImageFileIcon,
-  GenericFileIcon,
+  IllustratedNoteIcon,
+  IllustratedTextbookIcon,
+  IllustratedExamIcon,
+  IllustratedEssayIcon,
+  IllustratedTranslationIcon,
+  IllustratedMindmapIcon,
+  IllustratedFolderIcon,
+  IllustratedImageIcon,
+  IllustratedGenericFileIcon,
   type ResourceIconProps,
 } from '../../icons';
 import { cn } from '@/lib/utils';
@@ -85,16 +85,16 @@ function extractMemoryMeta(tags: string[] | undefined) {
 
 /** 自定义 SVG 图标映射 */
 const TYPE_CUSTOM_ICONS: Record<DstuNodeType, React.FC<ResourceIconProps>> = {
-  folder: FolderIcon,
-  note: NoteIcon,
-  textbook: TextbookIcon,
-  exam: ExamIcon,
-  translation: TranslationIcon,
-  essay: EssayIcon,
-  image: ImageFileIcon,
-  file: GenericFileIcon,
-  retrieval: GenericFileIcon,
-  mindmap: MindmapIcon,
+  folder: IllustratedFolderIcon,
+  note: IllustratedNoteIcon,
+  textbook: IllustratedTextbookIcon,
+  exam: IllustratedExamIcon,
+  translation: IllustratedTranslationIcon,
+  essay: IllustratedEssayIcon,
+  image: IllustratedImageIcon,
+  file: IllustratedGenericFileIcon,
+  retrieval: IllustratedGenericFileIcon,
+  mindmap: IllustratedMindmapIcon,
 };
 
 /**
@@ -122,7 +122,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   isHighlighted = false,
 }: FinderFileItemProps) {
   const { t, i18n } = useTranslation(['learningHub', 'common']);
-  const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || GenericFileIcon;
+  const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || IllustratedGenericFileIcon;
   const isFavorite = Boolean(item.metadata?.isFavorite);
   const snippet = item.metadata?.snippet as string | undefined;
   const matchSource = item.metadata?.matchSource as string | undefined;

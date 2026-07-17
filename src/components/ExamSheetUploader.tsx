@@ -23,6 +23,7 @@ import {
   Info,
   Robot,
   Upload,
+  Check,
   CheckSquare,
   Square,
   Funnel,
@@ -43,12 +44,13 @@ import type { ApiConfig } from '@/types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
 // ★ 试卷上传专用文件类型（支持 HEIC，与统一组件的 IMAGE 略有不同）
-const EXAM_IMAGE_TYPE: FileTypeDefinition = {
+// 导出给题目集启动台的拖放区域复用，保证两处接受的文件类型一致
+export const EXAM_IMAGE_TYPE: FileTypeDefinition = {
   extensions: ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'],
   mimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'],
   description: 'Image',
 };
-const EXAM_DOCUMENT_TYPE: FileTypeDefinition = {
+export const EXAM_DOCUMENT_TYPE: FileTypeDefinition = {
   extensions: ['docx', 'xlsx', 'xls', 'txt', 'md', 'pdf'],
   mimeTypes: [
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -70,6 +72,10 @@ export interface ExamSheetUploaderProps {
   onUploadSuccess?: (detail: ExamSheetSessionDetail) => void;
   /** 返回按钮回调 */
   onBack?: () => void;
+  /** 从题目集启动台拖入的初始文件（传入后自动带入选择流程） */
+  initialFiles?: File[] | null;
+  /** initialFiles 消费完成回调（父组件应清空对应状态） */
+  onInitialFilesConsumed?: () => void;
   /** 自定义类名 */
   className?: string;
 }
@@ -124,11 +130,51 @@ const createQuestionImportId = (): string => {
   return `question-import-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 };
 
+const UPLOAD_STEP_KEYS = ['select', 'processing', 'summary'] as const;
+
+/** 导入步骤指示器：选择文件 → 智能解析 → 确认录入 */
+const UploadStepIndicator: React.FC<{ step: ProcessStep }> = ({ step }) => {
+  const { t } = useTranslation(['exam_sheet']);
+  const currentIndex = step === 'summary' ? 2 : step === 'processing' ? 1 : 0;
+  return (
+    <ol className="flex items-center justify-center">
+      {UPLOAD_STEP_KEYS.map((key, index) => {
+        const isDone = index < currentIndex;
+        const isCurrent = index === currentIndex;
+        return (
+          <li key={key} className="flex items-center">
+            {index > 0 && (
+              <div className={cn('mx-2 h-px w-8 sm:w-12', index <= currentIndex ? 'bg-primary/50' : 'bg-border')} />
+            )}
+            <div className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium',
+                  isCurrent && 'bg-primary text-primary-foreground',
+                  isDone && 'bg-primary/15 text-primary',
+                  !isDone && !isCurrent && 'bg-muted text-muted-foreground'
+                )}
+              >
+                {isDone ? <Check size={11} /> : index + 1}
+              </span>
+              <span className={cn('text-xs', isCurrent ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+                {t(`exam_sheet:uploader.steps.${key}`)}
+              </span>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+};
+
 export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   sessionId,
   sessionName,
   onUploadSuccess,
   onBack,
+  initialFiles,
+  onInitialFilesConsumed,
   className,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common', 'settings']);
@@ -712,6 +758,17 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     }
   }, [categorizeFile, currentCategory, t]);
 
+  // 接收从题目集启动台拖入的初始文件：自动带入选择流程，消费后通知父组件清空。
+  // 以引用记录已消费的数组：StrictMode（dev）双调用 effect 时不会把图片重复添加
+  const consumedInitialFilesRef = useRef<File[] | null>(null);
+  useEffect(() => {
+    if (!initialFiles || initialFiles.length === 0) return;
+    if (consumedInitialFilesRef.current === initialFiles) return;
+    consumedInitialFilesRef.current = initialFiles;
+    handleFileSelect(initialFiles);
+    onInitialFilesConsumed?.();
+  }, [initialFiles, handleFileSelect, onInitialFilesConsumed]);
+
   // 移除已选文件
   const handleRemoveFile = useCallback((index: number) => {
     setSelectedFiles(prev => {
@@ -1001,6 +1058,15 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     <div className={cn('flex flex-col h-full bg-background', className)}>
       <div className="flex-1 overflow-y-auto p-4">
         <div className="max-w-2xl mx-auto space-y-6">
+          
+          {/* 头部：标题 + 步骤指示 */}
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5 text-center">
+              <h2 className="text-lg font-semibold">{t('exam_sheet:uploader.header_title')}</h2>
+              <p className="text-sm text-muted-foreground">{t('exam_sheet:uploader.header_desc')}</p>
+            </div>
+            <UploadStepIndicator step={step} />
+          </div>
           
           {/* 文件选择步骤 */}
           {step === 'select' && (
@@ -1525,7 +1591,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             <div className="flex gap-3">
               {onBack && (
                 <NotionButton variant="ghost" onClick={onBack} disabled={isProcessing} className="flex-1">
-                  {t('common:actions.cancel')}
+                  {t('common:actions.back')}
                 </NotionButton>
               )}
               <NotionButton
@@ -1554,6 +1620,20 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           )}
 
           {/* preview 步骤已移除：后端统一处理文档解析和 LLM，无需前端预览 */}
+
+          {/* 没有文件可导入？回到启动台手动新建 */}
+          {step === 'select' && !isProcessing && onBack && (
+            <div className="text-center">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={onBack}
+                className="!h-auto !px-2 !py-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                {t('exam_sheet:uploader.manual_create_link')}
+              </NotionButton>
+            </div>
+          )}
 
           {step === 'processing' && !isLLMProcessing && (
             <div className="flex justify-center">

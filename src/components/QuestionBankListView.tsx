@@ -8,7 +8,7 @@
  * - 柔和的颜色系统
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -35,12 +35,15 @@ import {
   Image as ImageIcon,
   Plus,
   CircleNotch,
-  UploadSimple,
+  Scan,
+  Table as TableIcon,
 } from '@phosphor-icons/react';
 import { ExamIcon } from '@/features/learning-hub/icons/ResourceIcons';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionBankStats, QuestionStatus, Difficulty } from '@/api/questionBankApi';
 import { QuestionInlineEditor } from './QuestionInlineEditor';
+import { UnifiedDragDropZone } from '@/components/shared/UnifiedDragDropZone';
+import { EXAM_DOCUMENT_TYPE, EXAM_IMAGE_TYPE } from './ExamSheetUploader';
 
 export interface QuestionListFilters {
   search?: string;
@@ -69,6 +72,12 @@ export interface QuestionBankListViewProps {
   onCreateQuestion?: (question: Question) => Promise<void>;
   /** 空题目集时打开导入流程 */
   onUploadQuestions?: () => void;
+  /** 空状态启动台拖入文件、携带文件进入识别导入 */
+  onUploadFiles?: (files: File[]) => void;
+  /** 空状态启动台打开 CSV 导入对话框 */
+  onCsvImport?: () => void;
+  /** 外部请求打开内联创建编辑器（值变化时触发一次） */
+  createRequestKey?: number;
   /** Reports unsaved inline edits to an owning resource view. */
   onDraftDirtyChange?: (dirty: boolean) => void;
   /** Lets an owning resource view confirm a question jump that discards an inline edit. */
@@ -320,6 +329,30 @@ const QuestionListRow: React.FC<{
   );
 };
 
+/** 空状态启动台的动作卡 */
+const LauncherCard: React.FC<{
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  onClick: () => void;
+}> = ({ icon, title, desc, onClick }) => (
+  <NotionButton
+    variant="ghost"
+    onClick={onClick}
+    className={cn(
+      'group !h-auto !flex-col !items-start !justify-start gap-2.5 !rounded-xl !p-4 border border-border/60 bg-card/40 text-left',
+      'transition-[background-color,border-color,color,box-shadow] duration-200',
+      'hover:border-primary/40 hover:bg-primary/5 hover:shadow-[var(--shadow-notion)]'
+    )}
+  >
+    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+      {icon}
+    </div>
+    <div className="text-sm font-medium">{title}</div>
+    <div className="text-xs leading-relaxed text-muted-foreground whitespace-normal">{desc}</div>
+  </NotionButton>
+);
+
 export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   questions,
   stats,
@@ -332,6 +365,9 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   examId,
   onCreateQuestion,
   onUploadQuestions,
+  onUploadFiles,
+  onCsvImport,
+  createRequestKey,
   onDraftDirtyChange,
   onDraftNavigationRequested,
   className,
@@ -598,6 +634,20 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     setExpandedEditId(nextId);
   }, [requestInlineEditorDiscard]);
 
+  // 外部（Tab 栏「添加题目」菜单）请求打开内联创建编辑器。
+  // 父级 requestViewMode 已统一处理草稿确认（确认后才递增 key），
+  // 这里直接定位并复位内部编辑状态，不再走内部守卫，避免空态下弹不出二次确认
+  const lastCreateRequestKeyRef = useRef(createRequestKey ?? 0);
+  useEffect(() => {
+    if (createRequestKey == null || createRequestKey === lastCreateRequestKeyRef.current) return;
+    lastCreateRequestKeyRef.current = createRequestKey;
+    if (examId && onCreateQuestion) {
+      setPendingEditorAction(null);
+      setInlineEditorDirty(false);
+      setExpandedEditId('__new__');
+    }
+  }, [createRequestKey, examId, onCreateQuestion]);
+
   // 展开内联编辑
   const handleEditQuestion = useCallback((question: Question) => {
     requestInlineEditorTarget(expandedEditId === question.id ? null : question.id);
@@ -623,51 +673,100 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     );
   }
 
-  // 空状态
+  // 空状态：启动台 —— 手动新建 / 识别导入 / CSV 导入，整页可拖入文件
   if (questions.length === 0) {
-    return (
-      <div className={cn('flex flex-col items-center justify-center h-full py-16', className)}>
-        <div className="mb-5">
-          <ExamIcon size={32} className="opacity-70" />
-        </div>
-        <h3 className="text-base font-medium mb-1.5">{t('practice:questionBank.emptyTitle')}</h3>
-        <p className="text-sm text-muted-foreground">{t('practice:questionBank.emptyDesc')}</p>
-        <div className="mt-4 flex flex-wrap justify-center gap-2">
-          {onUploadQuestions && (
-            <NotionButton variant="ghost" size="sm" onClick={onUploadQuestions}>
-              <UploadSimple size={15} />
-              {t('exam_sheet:questionBank.import')}
-            </NotionButton>
-          )}
-          {examId && onCreateQuestion && (
-            expandedEditId === '__new__' ? (
-            <div className="mt-4 w-full max-w-2xl px-4">
-              <QuestionInlineEditor
-                question={null}
-                mode="create"
-                examId={examId}
-                onCreate={async (question) => {
-                  await onCreateQuestion(question);
-                  closeInlineEditor();
-                }}
-                onCancel={closeInlineEditor}
-                onDirtyChange={setInlineEditorDirty}
-              />
-            </div>
-          ) : (
-            <NotionButton
-              variant="primary"
-              size="sm"
-              onClick={() => requestInlineEditorTarget('__new__')}
-            >
-              <Plus size={15} />
-              {t('exam_sheet:questionBank.create.title')}
-            </NotionButton>
-          )
-          )}
+    const canCreate = Boolean(examId && onCreateQuestion);
+    const canImport = Boolean(onUploadQuestions);
+    const canCsvImport = Boolean(onCsvImport);
+    const hasLauncherActions = canCreate || canImport || canCsvImport;
+    const showCreateEditor = expandedEditId === '__new__' && canCreate;
+
+    const launcher = showCreateEditor ? (
+      // 编辑器打开：隐藏启动台头部，顶部对齐 + 可滚动（否则高表单会被溢出裁剪）
+      <div className={cn('h-full overflow-y-auto px-3 py-4 sm:px-4', className)}>
+        <div className="mx-auto w-full max-w-2xl">
+          <QuestionInlineEditor
+            question={null}
+            mode="create"
+            examId={examId!}
+            onCreate={async (question) => {
+              await onCreateQuestion?.(question);
+              closeInlineEditor();
+            }}
+            onCancel={closeInlineEditor}
+            onDirtyChange={setInlineEditorDirty}
+          />
         </div>
       </div>
+    ) : (
+      <div className={cn('flex h-full flex-col items-center justify-center px-4 py-10', className)}>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
+            <ExamIcon size={28} className="opacity-80" />
+          </div>
+          <h3 className="mb-1.5 text-base font-medium">{t('practice:questionBank.emptyTitle')}</h3>
+          <p className="text-sm text-muted-foreground">
+            {hasLauncherActions
+              ? t('practice:questionBank.emptyChoosePath')
+              : t('practice:questionBank.emptyReadOnlyDesc')}
+          </p>
+        </div>
+
+        {hasLauncherActions && (
+          <>
+            <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-3">
+              {canCreate && (
+                <LauncherCard
+                  icon={<Plus size={18} />}
+                  title={t('exam_sheet:questionBank.create.title')}
+                  desc={t('practice:questionBank.emptyCreateDesc')}
+                  onClick={() => requestInlineEditorTarget('__new__')}
+                />
+              )}
+              {canImport && (
+                <LauncherCard
+                  icon={<Scan size={18} />}
+                  title={t('exam_sheet:questionBank.import')}
+                  desc={t('practice:questionBank.emptyImportDesc')}
+                  onClick={() => onUploadQuestions?.()}
+                />
+              )}
+              {canCsvImport && (
+                <LauncherCard
+                  icon={<TableIcon size={18} />}
+                  title={t('exam_sheet:csv.import_title')}
+                  desc={t('practice:questionBank.emptyCsvDesc')}
+                  onClick={() => onCsvImport?.()}
+                />
+              )}
+            </div>
+            {canImport && onUploadFiles && (
+              <p className="mt-6 text-xs text-muted-foreground/80">
+                {t('practice:questionBank.emptyDropHint')}
+              </p>
+            )}
+          </>
+        )}
+      </div>
     );
+
+    // 整个启动台都是拖放目标：拖入文件直接进入识别导入流程
+    if (canImport && onUploadFiles) {
+      return (
+        <UnifiedDragDropZone
+          zoneId={`qbank-launcher-${examId ?? 'default'}`}
+          onFilesDropped={onUploadFiles}
+          acceptedFileTypes={[EXAM_IMAGE_TYPE, EXAM_DOCUMENT_TYPE]}
+          maxFiles={20}
+          maxFileSize={50 * 1024 * 1024}
+          showOverlay
+          className="h-full"
+        >
+          {launcher}
+        </UnifiedDragDropZone>
+      );
+    }
+    return launcher;
   }
   
   return (

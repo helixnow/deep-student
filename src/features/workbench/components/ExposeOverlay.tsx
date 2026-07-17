@@ -145,6 +145,23 @@ interface PendingRestore {
   willChange: string;
 }
 
+/**
+ * 最后的防御性清理：俯瞰标记只由本组件写入。若状态机曾被 WebView/HMR
+ * 中断而丢失内存登记，至少保证遮罩卸载后真实窗口不会停留在缩略位置。
+ */
+function clearOrphanedExposeTransforms() {
+  document.querySelectorAll<HTMLElement>('[data-wb-window-id][data-expose-transform]')
+    .forEach((el) => {
+      el.removeAttribute('data-expose-transform');
+      el.style.removeProperty('--wb-expose-scale');
+      el.classList.remove('wb-expose-flip');
+      el.style.removeProperty('transform');
+      el.style.removeProperty('transition');
+      el.style.removeProperty('transform-origin');
+      el.style.removeProperty('will-change');
+    });
+}
+
 function parseCssDurationMs(raw: string): number | null {
   const v = raw.trim();
   if (!v) return null;
@@ -248,7 +265,9 @@ type ExposePhase = 'entering' | 'open' | 'closing';
 const EMPTY_WINDOWS: Record<string, WorkbenchWindow> = {};
 
 const ExposeOverlayComponent: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const translateRef = useRef(t);
+  translateRef.current = t;
   const exposeOpen = useWorkbenchOverlay((s) => s.exposeOpen);
   const closeExpose = useWorkbenchOverlay((s) => s.closeExpose);
 
@@ -282,6 +301,13 @@ const ExposeOverlayComponent: React.FC = () => {
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
 
+  const cancelPendingRestore = useCallback((id: string) => {
+    const pending = restoreTimersRef.current.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    restoreTimersRef.current.delete(id);
+  }, []);
+
   const finishPendingRestore = useCallback((id: string) => {
     const pending = restoreTimersRef.current.get(id);
     if (!pending) return;
@@ -290,10 +316,14 @@ const ExposeOverlayComponent: React.FC = () => {
     pending.el.style.transformOrigin = pending.origin;
     pending.el.style.willChange = pending.willChange;
     restoreTimersRef.current.delete(id);
+    appliedRef.current.delete(id);
+    sourceRectsRef.current.delete(id);
   }, []);
 
   const restoreOne = useCallback((id: string, animate: boolean) => {
-    finishPendingRestore(id);
+    // 退出动画中再次切换时只取消计时，不丢掉首次进入前的原始样式。
+    // 否则重新打开会把动画中间帧误当成新的“原位”。
+    cancelPendingRestore(id);
     const entry = appliedRef.current.get(id);
     if (!entry) return;
     const { el } = entry;
@@ -303,12 +333,12 @@ const ExposeOverlayComponent: React.FC = () => {
     el.removeAttribute('data-expose-transform');
     el.style.removeProperty('--wb-expose-scale');
     el.classList.remove('wb-expose-flip');
-    appliedRef.current.delete(id);
-    sourceRectsRef.current.delete(id);
     if (duration <= 0) {
       el.style.transition = entry.prevTransition;
       el.style.transformOrigin = entry.prevOrigin;
       el.style.willChange = entry.prevWillChange;
+      appliedRef.current.delete(id);
+      sourceRectsRef.current.delete(id);
       return;
     }
     const pending: PendingRestore = {
@@ -322,12 +352,11 @@ const ExposeOverlayComponent: React.FC = () => {
       willChange: entry.prevWillChange,
     };
     restoreTimersRef.current.set(id, pending);
-  }, [finishPendingRestore]);
+  }, [cancelPendingRestore, finishPendingRestore]);
 
   const restoreAll = useCallback((animate: boolean) => {
     const ids = [...appliedRef.current.keys()];
     for (const id of ids) restoreOne(id, animate);
-    sourceRectsRef.current.clear();
   }, [restoreOne]);
 
   // 打开/窗口集合变化 → 量测 + 施加 FLIP transform
@@ -382,7 +411,7 @@ const ExposeOverlayComponent: React.FC = () => {
       if (!el) continue;
       // 关闭动画尚未收尾便重新打开：先完成旧会话恢复，防止旧 timer
       // 在新会话中途覆盖 transition/origin/will-change。
-      finishPendingRestore(target.id);
+      cancelPendingRestore(target.id);
       const source = sourceRectsRef.current.get(target.id);
       if (!source) continue;
       if (!appliedRef.current.has(target.id)) {
@@ -407,10 +436,11 @@ const ExposeOverlayComponent: React.FC = () => {
     }
 
     const titleById = new Map(visibleWindows.map((w) => {
+      const translate = translateRef.current;
       const fallback = appRegistry.get(w.typeId)?.nameKey;
       const title = w.title
-        || (fallback ? t(fallback, w.typeId) : '')
-        || t('workbench:expose.untitled');
+        || (fallback ? translate(fallback, w.typeId) : '')
+        || translate('workbench:expose.untitled');
       return [w.id, title] as const;
     }));
     const nextTargets = layout.map((tg) => ({ ...tg, title: titleById.get(tg.id) ?? '' }));
@@ -432,7 +462,14 @@ const ExposeOverlayComponent: React.FC = () => {
       return () => window.clearTimeout(tOpen);
     }
     return undefined;
-  }, [exposeOpen, windows, desktopSize, t, restoreOne, finishPendingRestore]);
+  }, [
+    exposeOpen,
+    windows,
+    desktopSize,
+    i18n.resolvedLanguage,
+    restoreOne,
+    cancelPendingRestore,
+  ]);
 
   // 关闭 → 反向 FLIP 飞回原位后卸载
   useEffect(() => {
@@ -443,6 +480,10 @@ const ExposeOverlayComponent: React.FC = () => {
     const duration = getMotionDurationMs(rootRef.current);
     const wait = duration > 0 ? Math.max(duration, FLIP_FALLBACK_MS) : 0;
     exitTimerRef.current = setTimeout(() => {
+      // 定时器是 animation/transition 之外的最终提交点。强制完成仍在途的
+      // 恢复，并清理由异常重挂载遗留、已不在 appliedRef 中的标记。
+      restoreAll(false);
+      clearOrphanedExposeTransforms();
       setRendered(false);
       setTargets([]);
       setSelectedId(null);
@@ -462,6 +503,7 @@ const ExposeOverlayComponent: React.FC = () => {
   useEffect(() => () => {
     restoreAll(false);
     for (const id of [...restoreTimersRef.current.keys()]) finishPendingRestore(id);
+    clearOrphanedExposeTransforms();
     if (dissolveTimerRef.current) clearTimeout(dissolveTimerRef.current);
     dissolveUnsubscribeRef.current?.();
     dissolveUnsubscribeRef.current = null;

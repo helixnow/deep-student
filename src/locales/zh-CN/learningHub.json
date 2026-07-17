@@ -1069,7 +1069,9 @@
       "favorites": "收藏",
       "importCsv": "导入 CSV",
       "manage": "管理",
-      "stats": "统计"
+      "stats": "统计",
+      "more": "更多",
+      "addQuestion": "添加题目"
     },
     "partialDeleteFailed": "成功删除 {{success}} 题，{{failed}} 题失败",
     "partialResetFailed": "成功重置 {{success}} 题，{{failed}} 题失败",

@@ -248,7 +248,6 @@
     "all": "全部",
     "noMatch": "没有找到匹配的题目",
     "emptyTitle": "暂无题目",
-    "emptyDesc": "点击上方「添加题目」开始",
     "masteredLabel": "掌握",
     "pendingReview": "{{count}} 待复习",
     "correctRate": "正确率",
@@ -291,7 +290,13 @@
     "oldValue": "旧值:",
     "newValue": "新值:",
     "answerLabel": "答案:",
-    "questionCreated": "题目已创建"
+    "questionCreated": "题目已创建",
+    "emptyChoosePath": "选择一种方式开始构建你的题目集",
+    "emptyCreateDesc": "逐题手动编辑，支持九种题型",
+    "emptyImportDesc": "拍照、截图或文档，AI 自动识别题目",
+    "emptyCsvDesc": "从 CSV 表格批量导入题目",
+    "emptyDropHint": "也可以把图片或文档直接拖到这里",
+    "emptyReadOnlyDesc": "该题目集还没有题目"
   },
   "editor": {
     "loading": "加载题目中...",

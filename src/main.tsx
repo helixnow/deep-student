@@ -113,8 +113,13 @@ import { OverlayScrollbars, ClickScrollPlugin } from 'overlayscrollbars';
 initPlatformClasses();
 void installChatV2DomainEventBridge();
 
-// Dev-only：UI 自动化桥（本地 UI 审查用，生产构建不包含）
-if (import.meta.env.DEV && import.meta.env.VITE_DS_UI_BRIDGE === '1') {
+// Dev-only：UI 自动化桥（本地 UI 审查用，生产构建不包含）。
+// 快捷助手等辅助窗口不接桥：bridge 服务端只保留最后一条连接，辅助窗口会顶掉主窗口。
+if (
+  import.meta.env.DEV &&
+  import.meta.env.VITE_DS_UI_BRIDGE === '1' &&
+  new URLSearchParams(window.location.search).get('window') === null
+) {
   void import('./dev/uiAutomationBridge');
 }
 
@@ -300,6 +305,9 @@ const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement)
 // ★ 3.2 番茄钟置顶小窗：独立轻量入口（不挂载完整 App）
 const IS_POMODORO_MINI_WINDOW =
   new URLSearchParams(window.location.search).get('window') === 'pomodoro-mini';
+const IS_QUICK_ASSISTANT_WINDOW =
+  new URLSearchParams(window.location.search).get('window') === 'quick-assistant';
+const IS_LIGHTWEIGHT_WINDOW = IS_POMODORO_MINI_WINDOW || IS_QUICK_ASSISTANT_WINDOW;
 
 /** Safe i18n accessor for contexts where hooks are unavailable (e.g. error boundary fallback).
  *  Falls back to the provided default string if i18n is not yet initialised or throws. */
@@ -482,6 +490,10 @@ if (IS_POMODORO_MINI_WINDOW) {
   import('./features/pomodoro/components/PomodoroMiniWindow').then(({ PomodoroMiniWindow }) => {
     root.render(<PomodoroMiniWindow />);
   });
+} else if (IS_QUICK_ASSISTANT_WINDOW) {
+  import('./quick-assistant/QuickAssistantWindow').then(({ QuickAssistantWindow }) => {
+    root.render(<QuickAssistantWindow />);
+  });
 } else if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
   initSentryIfConfigured().finally(() => {
     root.render(<React.StrictMode>{appTree}</React.StrictMode>);
@@ -494,9 +506,24 @@ if (IS_POMODORO_MINI_WINDOW) {
 
 
 // Initialize Frontend MCP Service from saved settings (best-effort)
-if (!IS_POMODORO_MINI_WINDOW) {
+if (!IS_LIGHTWEIGHT_WINDOW) {
   bootstrapMcpFromSettings({ preheat: true }).catch((err) => {
     debugLog.warn('[MCP] Bootstrap failed:', err);
+  });
+}
+
+if (!IS_LIGHTWEIGHT_WINDOW) {
+  void import('./quick-assistant/window').then(async ({
+    initializeQuickAssistantGlobalShortcut,
+    initializeQuickAssistantMainBridge,
+  }) => {
+    const cleanups = await Promise.all([
+      initializeQuickAssistantGlobalShortcut(),
+      initializeQuickAssistantMainBridge(),
+    ]);
+    cleanups.forEach(registerCleanup);
+  }).catch((error) => {
+    console.warn('[QuickAssistant] initialization failed:', error);
   });
 }
 

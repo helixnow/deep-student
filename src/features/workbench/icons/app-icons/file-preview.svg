@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="fp_body" x1="64" x2="64" y1="14" y2="136" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F8FDFC" offset="0"/>
+    <stop stop-color="#D5EAE8" offset="1"/>
+  </linearGradient>
+  <path d="M32 14h42l30 30v82a10 10 0 0 1-10 10H32a10 10 0 0 1-10-10V24a10 10 0 0 1 10-10z" fill="url(#fp_body)" stroke="#A6C4CB" stroke-width="3"/>
+  <linearGradient id="fp_fold" x1="89" x2="89" y1="14" y2="44" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#5FD0CB" offset="0"/>
+    <stop stop-color="#14A5A0" offset="1"/>
+  </linearGradient>
+  <path d="M74 14l30 30H84a10 10 0 0 1-10-10V14z" fill="url(#fp_fold)"/>
+  <rect x="34" y="56" width="34" height="7" rx="3.5" fill="#14A5A0" opacity=".8"/>
+  <rect x="34" y="70" width="42" height="7" rx="3.5" fill="#9BC3CE"/>
+  <rect x="34" y="84" width="28" height="7" rx="3.5" fill="#B8D6DC"/>
+  <linearGradient id="fp_glass" x1="92" x2="92" y1="74" y2="118" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#5FD0CB" stop-opacity=".5" offset="0"/>
+    <stop stop-color="#14A5A0" stop-opacity=".35" offset="1"/>
+  </linearGradient>
+  <circle cx="92" cy="96" r="22" fill="url(#fp_glass)"/>
+  <linearGradient id="fp_ring" x1="92" x2="92" y1="70" y2="122" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#14607E" offset="0"/>
+    <stop stop-color="#1D3F6E" offset="1"/>
+  </linearGradient>
+  <path d="M92 70a26 26 0 1 0 0 52 26 26 0 0 0 0-52zm0 9a17 17 0 1 1 0 34 17 17 0 0 1 0-34z" fill="url(#fp_ring)"/>
+  <linearGradient id="fp_handle" x1="119" x2="131" y1="118" y2="132" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <rect x="108" y="106" width="34" height="14" rx="7" transform="rotate(45 116 118)" fill="url(#fp_handle)"/>
+  <path d="M82 88a12 12 0 0 1 10-6" stroke="#fff" stroke-width="4" stroke-linecap="round" fill="none" opacity=".8"/>
+</svg>

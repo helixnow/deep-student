@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="fl_body" x1="72" x2="72" y1="14" y2="136" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F8FDFC" offset="0"/>
+    <stop stop-color="#D5EAE8" offset="1"/>
+  </linearGradient>
+  <path d="M36 14h48l34 34v78a10 10 0 0 1-10 10H36a10 10 0 0 1-10-10V24a10 10 0 0 1 10-10z" fill="url(#fl_body)" stroke="#A6C4CB" stroke-width="3"/>
+  <linearGradient id="fl_fold" x1="101" x2="101" y1="14" y2="48" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#5FD0CB" offset="0"/>
+    <stop stop-color="#14A5A0" offset="1"/>
+  </linearGradient>
+  <path d="M84 14l34 34H94a10 10 0 0 1-10-10V14z" fill="url(#fl_fold)"/>
+  <linearGradient id="fl_tag" x1="36" x2="36" y1="60" y2="86" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <path d="M26 60h34a6 6 0 0 1 6 6v14a6 6 0 0 1-6 6H26V60z" fill="url(#fl_tag)"/>
+  <rect x="40" y="98" width="52" height="7" rx="3.5" fill="#14A5A0" opacity=".8"/>
+  <rect x="40" y="112" width="38" height="7" rx="3.5" fill="#9BC3CE"/>
+</svg>

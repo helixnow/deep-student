@@ -228,7 +228,14 @@
   min-height: 0;
   overflow: auto;
   padding: 4px 12px 16px;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
+}
+
+/* 玻璃面板内使用悬浮滚动条，避免 WebKit 为 stable gutter 绘制不透明原生槽。 */
+.wb-apps-body::-webkit-scrollbar,
+.wb-apps-body::-webkit-scrollbar-track,
+.wb-apps-body::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .wb-apps-grid {

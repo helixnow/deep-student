@@ -199,9 +199,9 @@
   to { opacity: 0; transform: scale(0.96); }
 }
 
-/* --- 弹层入场：关键帧单调；回弹交给 --wb-ease-overshoot ----------------- */
+/* --- 弹层入场：绿灯菜单 scale .92→1（macOS 绿灯菜单基准）；回弹交给 --wb-ease-overshoot */
 @keyframes wb-kf-overshoot-in {
-  from { opacity: 0; transform: scale(0.94); }
+  from { opacity: 0; transform: scale(0.92); }
   to { opacity: 1; transform: scale(1); }
 }
 

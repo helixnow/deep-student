@@ -47,6 +47,13 @@
   /* 不设 overflow:hidden——子菜单以嵌套面板飞出，不能被裁剪 */
 }
 
+/* 离场：~90ms 加速淡出（macOS 菜单消失近乎瞬时；data-phase 由组件编排挂） */
+.wb-desk-menu[data-phase='closing'] {
+  pointer-events: none;
+  animation: wb-kf-window-close var(--wb-motion-instant, 90ms)
+    var(--wb-ease-window-close, cubic-bezier(0.42, 0, 1, 1)) both;
+}
+
 /* 玻璃斜向光泽（折射感），叠在半透明底之上 */
 .wb-desk-menu::before {
   content: '';

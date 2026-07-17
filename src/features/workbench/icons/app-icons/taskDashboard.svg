@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="td_panel" x1="75" x2="75" y1="18" y2="132" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F8FDFC" offset="0"/>
+    <stop stop-color="#D3E8E6" offset="1"/>
+  </linearGradient>
+  <rect x="18" y="18" width="114" height="114" rx="14" fill="url(#td_panel)" stroke="#A6C4CB" stroke-width="3"/>
+  <rect x="30" y="30" width="44" height="10" rx="5" fill="#1D3F6E"/>
+  <linearGradient id="td_bar1" x1="42" x2="42" y1="86" y2="118" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#5FD0CB" offset="0"/>
+    <stop stop-color="#2BB3A3" offset="1"/>
+  </linearGradient>
+  <rect x="32" y="86" width="20" height="32" rx="5" fill="url(#td_bar1)"/>
+  <linearGradient id="td_bar2" x1="70" x2="70" y1="68" y2="118" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#14A5A0" offset="0"/>
+    <stop stop-color="#127487" offset="1"/>
+  </linearGradient>
+  <rect x="60" y="68" width="20" height="50" rx="5" fill="url(#td_bar2)"/>
+  <linearGradient id="td_bar3" x1="98" x2="98" y1="50" y2="118" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <rect x="88" y="50" width="20" height="68" rx="5" fill="url(#td_bar3)"/>
+  <path d="m36 74 26-16 24 8 22-22" stroke="#1D3F6E" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M108 40h6v6" stroke="#1D3F6E" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

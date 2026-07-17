@@ -4,7 +4,7 @@
  * 选中项 aria-current、对话框 aria 契约。
  */
 import React from 'react';
-import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterEach, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 
 import type { AppDefinition, AppWindowProps } from '../../core/types';
@@ -70,6 +70,30 @@ beforeAll(() => {
 beforeEach(() => {
   resetStores();
 });
+
+afterEach(() => {
+  vi.useRealTimers();
+  document.querySelectorAll('[data-wb-window-id]').forEach((el) => el.remove());
+});
+
+function mountWindowShell(id: string, transform = ''): HTMLElement {
+  const shell = document.createElement('section');
+  shell.setAttribute('data-wb-window-id', id);
+  shell.style.transform = transform;
+  shell.getBoundingClientRect = vi.fn(() => ({
+    x: 120,
+    y: 90,
+    left: 120,
+    top: 90,
+    right: 920,
+    bottom: 690,
+    width: 800,
+    height: 600,
+    toJSON: () => ({}),
+  }));
+  document.body.appendChild(shell);
+  return shell;
+}
 
 describe('computeExposeLayout', () => {
   const desktop = { w: 1600, h: 900 };
@@ -195,5 +219,62 @@ describe('渲染与 aria', () => {
     const close = cell!.querySelector('.wb-expose-close');
     expect(close).toHaveAttribute('aria-label', '关闭窗口');
     expect(close!.querySelector('svg')).not.toBeNull();
+  });
+});
+
+describe('退出恢复', () => {
+  it('卸载遮罩前强制清理由中断更新遗留的缩略 transform', async () => {
+    const id = openWin('chat', 'restore-orphan', '恢复测试');
+    const shell = mountWindowShell(id);
+    render(<ExposeOverlay />);
+    openExpose();
+
+    expect(shell).toHaveAttribute('data-expose-transform', 'true');
+
+    act(() => {
+      useWorkbenchOverlay.getState().closeExpose();
+    });
+    // 模拟退出过渡期间 WebView/窗口壳更新重新写入了旧的缩略帧。
+    shell.setAttribute('data-expose-transform', 'true');
+    shell.classList.add('wb-expose-flip');
+    shell.style.transform = 'translate(240px, 160px) scale(0.5)';
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+
+    expect(document.querySelector('[data-wb-expose-root]')).toBeNull();
+    expect(shell).not.toHaveAttribute('data-expose-transform');
+    expect(shell.style.transform).toBe('');
+    expect(shell.classList.contains('wb-expose-flip')).toBe(false);
+  });
+
+  it('退出动画中重新打开仍保留首次进入前的原始 transform', async () => {
+    const id = openWin('chat', 'rapid-toggle', '快速切换');
+    const originalTransform = 'translate3d(6px, 8px, 0px)';
+    const shell = mountWindowShell(id, originalTransform);
+    render(<ExposeOverlay />);
+    openExpose();
+
+    act(() => {
+      useWorkbenchOverlay.getState().closeExpose();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    act(() => {
+      useWorkbenchOverlay.getState().openExpose();
+    });
+    expect(shell).toHaveAttribute('data-expose-transform', 'true');
+
+    act(() => {
+      useWorkbenchOverlay.getState().closeExpose();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+
+    expect(shell.style.transform).toBe(originalTransform);
+    expect(shell).not.toHaveAttribute('data-expose-transform');
   });
 });

@@ -182,8 +182,7 @@
     "noSession": "No exam session specified",
     "loadFailed": "Failed to load exam session",
     "sessionNotFound": "Exam session not found",
-    "deprecatedPanel": "This entry is deprecated. Please access question set recognition through the Learning Hub."
-  ,
+    "deprecatedPanel": "This entry is deprecated. Please access question set recognition through the Learning Hub.",
     "delete_question_failed": "Failed to delete the question. Please try again.",
     "loadQuestionsFailed": "Failed to load questions",
     "manual_grade_failed": "Failed to sync grading. Please try again manually.",
@@ -261,21 +260,7 @@
     "reviewCount": "{{count}} to review",
     "selectTag": "Select Tag",
     "inputAnswer": "Enter your answer...",
-    "import": {
-      "button": "Import",
-      "title": "Import Question Bank",
-      "description": "Supports JSON and TXT/Markdown formats",
-      "name": "Question Bank Name",
-      "namePlaceholder": "Enter name (optional)",
-      "file": "Upload File",
-      "selectFile": "Select File",
-      "supportedFormats": "Supports .json, .txt, .md",
-      "content": "Content",
-      "showExample": "Show format example",
-      "import": "Import",
-      "importing": "Importing...",
-      "success": "Import successful!"
-    },
+    "import": "Import",
     "export": {
       "title": "Export Questions",
       "description": "Export {{count}} questions to file",
@@ -392,7 +377,10 @@
         "calculation": "Calculation",
         "proof": "Proof",
         "other": "Other"
-      }
+      },
+      "discardDescription": "Discard Description",
+      "optionsAnswerHint": "Click a letter to set as answer",
+      "moreOptional": "Explanation & note (optional)"
     },
     "create": {
       "title": "Create Question",
@@ -400,8 +388,7 @@
       "submit": "Create Question",
       "missingExamId": "Missing exam ID",
       "contentRequired": "Question content is required"
-    }
-  ,
+    },
     "actionUnavailable": "Action Unavailable",
     "confirmDelete": "Confirm Delete",
     "confirmDeleteBatch": "Confirm Delete Batch {{count}}",
@@ -409,9 +396,6 @@
     "confirmReset": "Confirm Reset",
     "confirmResetBatch": "Confirm Reset Batch {{count}}",
     "confirmResetSingle": "Confirm Reset Single",
-    "edit": {
-      "discardDescription": "Discard Description"
-    },
     "favoriteUpdateFailed": "Favorite Update Failed",
     "favoriteUpdated": "Favorite Updated",
     "favorites": {
@@ -427,8 +411,7 @@
       "description": "Description",
       "empty": "Empty",
       "title": "Title"
-    },
-    "import": "Import"
+    }
   },
   "csv": {
     "import_title": "CSV Import",
@@ -481,8 +464,7 @@
     "error_row": "Row {{row}}: {{message}}",
     "import_failed_generic": "Import failed",
     "csv_file_fallback": "CSV File",
-    "drop_csv_here": "Release to upload CSV file"
-  ,
+    "drop_csv_here": "Release to upload CSV file",
     "cancelling_import": "Cancelling...",
     "import_cancel_failed": "Failed to cancel the import. Please try again.",
     "import_cancel_unavailable": "The import has finished and cannot be cancelled.",
@@ -571,8 +553,7 @@
     "filter_excluded_count": "{{count}} excluded",
     "filter_hint": "Expand to deselect questions you don't need to import (e.g. already mastered)",
     "filter_delete_failed": "Failed to delete excluded questions",
-    "view_questions_filtered": "Confirm Import {{count}} Questions"
-  ,
+    "view_questions_filtered": "Confirm Import {{count}} Questions",
     "extracting_figures": "Extracting figures {{current}} {{total}}",
     "preprocessing": "Preprocessing",
     "rendering_pages": "Rendering pages {{current}} {{total}}",
@@ -581,7 +562,15 @@
     "pdf_quality_description": "Use the extracted text directly, or enable OCR for recognition.",
     "pdf_quality_empty_preview": "(No preview text)",
     "pdf_use_extracted_text": "Use extracted text only",
-    "pdf_enable_ocr": "Enable OCR"
+    "pdf_enable_ocr": "Enable OCR",
+    "header_title": "OCR Import",
+    "header_desc": "Upload images or documents. AI will recognize the questions and add them to this set.",
+    "steps": {
+      "select": "Select files",
+      "processing": "AI parsing",
+      "summary": "Confirm import"
+    },
+    "manual_create_link": "No files? Create a question manually"
   },
   "questionTypes": {
     "single_choice": "Single Choice",
@@ -593,8 +582,7 @@
     "calculation": "Calculation",
     "proof": "Proof",
     "other": "Other"
-  }
-,
+  },
   "editor": {
     "discardDraftDescription": "Discard Draft Description",
     "discardDraftTitle": "Discard Draft Title"

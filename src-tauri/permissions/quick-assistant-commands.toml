@@ -1,0 +1,22 @@
+[[permission]]
+identifier = "allow-quick-assistant-commands"
+description = "Allows the local quick learning window to capture, answer, search, save and review learning content."
+commands.allow = [
+  "get_setting",
+  "save_setting",
+  "quick_assistant_hide",
+  "chat_v2_create_session",
+  "chat_v2_send_message",
+  "chat_v2_cancel_stream",
+  "chat_v2_perform_ocr",
+  "chat_v2_search_content",
+  "dstu_create",
+  "dstu_search",
+  "bulk_import_problem_cards",
+  "save_anki_cards",
+  "todo_ensure_inbox",
+  "todo_create_item",
+  "todo_get_active_summary",
+  "fsrs_get_due",
+  "fsrs_rate"
+]

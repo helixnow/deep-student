@@ -28,6 +28,16 @@ import {
   type SystemNotificationPolicy,
 } from '@/utils/systemNotification';
 import type { VoiceInputAssignedModel } from '@/voice-input/types';
+import {
+  getQuickAssistantConfig,
+  QUICK_ASSISTANT_BACKGROUND_KEY,
+  QUICK_ASSISTANT_CLIPBOARD_KEY,
+  QUICK_ASSISTANT_ENABLED_KEY,
+  QUICK_ASSISTANT_SHORTCUT,
+  saveQuickAssistantSetting,
+  type QuickAssistantConfig,
+} from '@/quick-assistant/config';
+import { openQuickAssistantWindow } from '@/quick-assistant/window';
 
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
 
@@ -66,6 +76,27 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   const [debugLogsClearing, setDebugLogsClearing] = useState(false);
   const { mode, loading: queueModeLoading, setMode } = useQueueSettings();
   const [notificationPolicy, setNotificationPolicy] = useState<SystemNotificationPolicy>(() => getSystemNotificationPolicy());
+  const [quickAssistantConfig, setQuickAssistantConfig] = useState<QuickAssistantConfig | null>(null);
+
+  useEffect(() => {
+    void getQuickAssistantConfig().then(setQuickAssistantConfig);
+  }, []);
+
+  const updateQuickAssistant = async (
+    key: string,
+    field: keyof QuickAssistantConfig,
+    value: boolean,
+  ) => {
+    if (!quickAssistantConfig) return;
+    const previous = quickAssistantConfig;
+    setQuickAssistantConfig({ ...previous, [field]: value });
+    try {
+      await saveQuickAssistantSetting(key, value);
+    } catch (error) {
+      setQuickAssistantConfig(previous);
+      showGlobalNotification('error', getErrorMessage(error));
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -140,6 +171,49 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
         className="overflow-visible"
         hideHeader
       >
+        <SettingsGroup
+          title={t('settings:quick_assistant.title', '快速学习')}
+          description={t('settings:quick_assistant.description', '在其他应用中捕获内容、快速处理并沉淀到学习系统。')}
+          className="mb-3"
+        >
+          <SwitchRow
+            title={t('settings:quick_assistant.enabled', '启用系统快捷小窗')}
+            description={t('settings:quick_assistant.enabled_description', { shortcut: QUICK_ASSISTANT_SHORTCUT, defaultValue: `使用 ${QUICK_ASSISTANT_SHORTCUT} 随时呼出快速学习。` })}
+            checked={quickAssistantConfig?.enabled ?? false}
+            loading={quickAssistantConfig === null}
+            onCheckedChange={(value) => void updateQuickAssistant(QUICK_ASSISTANT_ENABLED_KEY, 'enabled', value)}
+          />
+          <SwitchRow
+            title={t('settings:quick_assistant.clipboard', '呼出时读取剪贴板')}
+            description={t('settings:quick_assistant.clipboard_description', '仅在本机读取，用于识别当前复制的题目、段落或公式。')}
+            checked={quickAssistantConfig?.readClipboard ?? false}
+            loading={quickAssistantConfig === null}
+            disabled={!quickAssistantConfig?.enabled}
+            onCheckedChange={(value) => void updateQuickAssistant(QUICK_ASSISTANT_CLIPBOARD_KEY, 'readClipboard', value)}
+          />
+          <SwitchRow
+            title={t('settings:quick_assistant.background', '关闭主窗口后继续运行')}
+            description={t('settings:quick_assistant.background_description', '主窗口关闭时隐藏到后台，使系统快捷键仍可呼出小窗。')}
+            checked={quickAssistantConfig?.backgroundEnabled ?? false}
+            loading={quickAssistantConfig === null}
+            disabled={!quickAssistantConfig?.enabled}
+            onCheckedChange={(value) => void updateQuickAssistant(QUICK_ASSISTANT_BACKGROUND_KEY, 'backgroundEnabled', value)}
+          />
+          <SettingRow
+            title={t('settings:quick_assistant.preview', '预览快速学习')}
+            description={t('settings:quick_assistant.preview_description', '打开小窗，检查剪贴板捕获、搜索、复习和学习状态。')}
+          >
+            <NotionButton
+              variant="default"
+              size="sm"
+              disabled={!quickAssistantConfig?.enabled}
+              onClick={() => void openQuickAssistantWindow()}
+            >
+              {t('settings:quick_assistant.open', '打开小窗')}
+            </NotionButton>
+          </SettingRow>
+        </SettingsGroup>
+
         <SettingsGroup
           title={t('settings:tabs.general')}
           description={t('settings:study_ui_descriptions.general')}

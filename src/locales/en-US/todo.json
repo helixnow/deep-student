@@ -120,7 +120,14 @@
     "today": "Today",
     "tomorrow": "Tomorrow",
     "nextMonday": "Next Monday",
-    "clear": "Remove date"
+    "clear": "Remove date",
+    "allToToday": "Move all to today",
+    "allToTodayHint": "Reschedule every overdue task to today"
+  },
+  "dates": {
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "yesterday": "Yesterday"
   },
   "notifications": {
     "operationFailed": "Operation failed",
@@ -163,7 +170,8 @@
     "pending": "pending",
     "completed": "completed",
     "pomodoroLoad": "~{{count}} pomodoros",
-    "pomodoroLoadHint": "Estimated pomodoros for today's remaining tasks"
+    "pomodoroLoadHint": "Estimated pomodoros for today's remaining tasks",
+    "progressTitle": "Completed {{done}}/{{total}}"
   },
   "empty": {
     "noItems": "No items yet",

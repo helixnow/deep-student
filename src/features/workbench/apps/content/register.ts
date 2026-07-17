@@ -19,12 +19,10 @@ import React from 'react';
 import i18next from 'i18next';
 import {
   TextbookIcon,
-  ExamIcon,
-  TranslationIcon,
-  EssayIcon,
   ImageFileIcon,
   GenericFileIcon,
 } from '@/features/learning-hub/icons';
+import { ExamAppIcon, TranslationAppIcon, EssayAppIcon } from '../../icons/appIcons';
 import {
   useQuestionBankStore,
   validateQbankPracticeHandoff,
@@ -502,7 +500,7 @@ const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
   {
     typeId: 'exam',
     nameKey: 'workbench:apps.exam',
-    icon: icon(ExamIcon),
+    icon: icon(ExamAppIcon),
     memoryWeight: 2,
     defaultFrame: { w: 880, h: 660 },
     instanceMode: 'single',
@@ -510,7 +508,7 @@ const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
   {
     typeId: 'translation',
     nameKey: 'workbench:apps.translation',
-    icon: icon(TranslationIcon),
+    icon: icon(TranslationAppIcon),
     memoryWeight: 2,
     defaultFrame: { w: 880, h: 620 },
     confirmUnsavedOnClose: true,
@@ -518,7 +516,7 @@ const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
   {
     typeId: 'essay',
     nameKey: 'workbench:apps.essay',
-    icon: icon(EssayIcon),
+    icon: icon(EssayAppIcon),
     memoryWeight: 2,
     defaultFrame: { w: 880, h: 620 },
     confirmUnsavedOnClose: true,

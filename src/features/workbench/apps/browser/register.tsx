@@ -6,7 +6,7 @@
  * 默认提供 920×600 的 chrome + native page surface。
  */
 import React from 'react';
-import { Globe } from '@phosphor-icons/react';
+import { AppIconImage } from '../../icons/appIcons';
 import { BrowserApiError } from '@/features/browser/browserApi';
 import { getBrowserSessionState } from '@/features/browser/sessionStore';
 import { appRegistry } from '../../core/appRegistry';
@@ -137,7 +137,7 @@ export function registerBrowserApp(): void {
   appRegistry.register({
     typeId: BROWSER_APP_TYPE_ID,
     nameKey: 'workbench:apps.browser',
-    icon: <Globe size={26} weight="duotone" />,
+    icon: <AppIconImage typeId="browser" className="h-8 w-8" />,
     instanceMode: 'single',
     memoryWeight: 2,
     keepAliveWhenOccluded: true,

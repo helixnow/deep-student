@@ -13,15 +13,7 @@
  * 由 P11 在 workbench 启动入口（apps/registerAll）统一调用 registerSystemApps()。
  */
 import React from 'react';
-import {
-  Cards,
-  ChartBar,
-  CheckSquare,
-  GearSix,
-  Sparkle,
-  Stack,
-  Timer,
-} from '@phosphor-icons/react';
+import { AppIconImage } from '../../icons/appIcons';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext } from '../../core/types';
@@ -174,7 +166,7 @@ export function registerSystemApps(): void {
   appRegistry.register({
     typeId: 'todo',
     nameKey: 'workbench:apps.todo',
-    icon: <CheckSquare size={26} weight="duotone" />,
+    icon: <AppIconImage typeId="todo" className="h-8 w-8" />,
     instanceMode: 'single',
     memoryWeight: 2,
     defaultFrame: { w: 920, h: 660 },
@@ -188,7 +180,7 @@ export function registerSystemApps(): void {
   appRegistry.register({
     typeId: 'skills',
     nameKey: 'workbench:apps.skills',
-    icon: <Sparkle size={26} weight="duotone" />,
+    icon: <AppIconImage typeId="skills" className="h-8 w-8" />,
     instanceMode: 'single',
     memoryWeight: 2,
     defaultFrame: { w: 980, h: 680 },
@@ -199,7 +191,7 @@ export function registerSystemApps(): void {
   appRegistry.register({
     typeId: 'templates',
     nameKey: 'workbench:apps.templates',
-    icon: <Cards size={26} weight="duotone" />,
+    icon: <AppIconImage typeId="templates" className="h-8 w-8" />,
     instanceMode: 'single',
     memoryWeight: 2,
     defaultFrame: { w: 980, h: 680 },
@@ -211,7 +203,7 @@ export function registerSystemApps(): void {
   appRegistry.register({
     typeId: 'taskDashboard',
     nameKey: 'workbench:apps.taskDashboard',
-    icon: <ChartBar size={26} weight="duotone" />,
+    icon: <AppIconImage typeId="taskDashboard" className="h-8 w-8" />,
     instanceMode: 'single',
     memoryWeight: 1,
     defaultFrame: { w: 920, h: 660 },
@@ -224,7 +216,7 @@ export function registerSystemApps(): void {
   appRegistry.register({
     typeId: 'flashcards',
     nameKey: 'workbench:apps.flashcards',
-    icon: <Stack size={26} weight="duotone" />,
+    icon: <AppIconImage typeId="flashcards" className="h-8 w-8" />,
     instanceMode: 'single',
     memoryWeight: 2,
     defaultFrame: { w: 960, h: 680 },
@@ -239,7 +231,7 @@ export function registerSystemApps(): void {
   appRegistry.register({
     typeId: 'settings',
     nameKey: 'workbench:apps.settings',
-    icon: <GearSix size={26} weight="duotone" />,
+    icon: <AppIconImage typeId="settings" className="h-8 w-8" />,
     instanceMode: 'single',
     memoryWeight: 2,
     defaultFrame: { w: 1020, h: 700 },
@@ -251,7 +243,7 @@ export function registerSystemApps(): void {
   appRegistry.register({
     typeId: 'pomodoro',
     nameKey: 'workbench:apps.pomodoro',
-    icon: <Timer size={26} weight="duotone" />,
+    icon: <AppIconImage typeId="pomodoro" className="h-8 w-8" />,
     instanceMode: 'single',
     memoryWeight: 1,
     defaultFrame: { w: 380, h: 560 },

@@ -248,7 +248,6 @@
     "all": "All",
     "noMatch": "No matching questions found",
     "emptyTitle": "No questions",
-    "emptyDesc": "Click \"Add Questions\" above to start",
     "masteredLabel": "Mastered",
     "pendingReview": "{{count}} to review",
     "correctRate": "Accuracy",
@@ -291,7 +290,13 @@
     "oldValue": "Old:",
     "newValue": "New:",
     "answerLabel": "Answer:",
-    "questionCreated": "Question created"
+    "questionCreated": "Question created",
+    "emptyChoosePath": "Choose a way to start building your question set",
+    "emptyCreateDesc": "Edit questions one by one, with nine question types",
+    "emptyImportDesc": "Photos, screenshots or documents, recognized by AI",
+    "emptyCsvDesc": "Batch import questions from a CSV sheet",
+    "emptyDropHint": "You can also drag images or documents here",
+    "emptyReadOnlyDesc": "This question set has no questions yet"
   },
   "editor": {
     "loading": "Loading questions...",

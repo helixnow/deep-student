@@ -182,8 +182,7 @@
     "noSession": "未指定题目集会话",
     "loadFailed": "加载题目集会话失败",
     "sessionNotFound": "未找到题目集会话",
-    "deprecatedPanel": "此入口已废弃，请通过学习资源管理器访问题目集功能。"
-  ,
+    "deprecatedPanel": "此入口已废弃，请通过学习资源管理器访问题目集功能。",
     "delete_question_failed": "删除题目失败，请重试",
     "loadQuestionsFailed": "题目加载失败",
     "manual_grade_failed": "评分同步失败，请手动重试",
@@ -261,21 +260,7 @@
     "reviewCount": "{{count}} 道待复习",
     "selectTag": "选择标签",
     "inputAnswer": "请输入答案...",
-    "import": {
-      "button": "导入题目",
-      "title": "导入题目集",
-      "description": "支持 JSON 和 TXT/Markdown 格式导入",
-      "name": "题目集名称",
-      "namePlaceholder": "输入题目集名称（可选）",
-      "file": "上传文件",
-      "selectFile": "选择文件",
-      "supportedFormats": "支持 .json, .txt, .md",
-      "content": "题目内容",
-      "showExample": "查看格式示例",
-      "import": "导入",
-      "importing": "导入中...",
-      "success": "导入成功！"
-    },
+    "import": "导入题目",
     "export": {
       "title": "导出题目",
       "description": "将 {{count}} 道题目导出为文件",
@@ -392,7 +377,10 @@
         "calculation": "计算题",
         "proof": "证明题",
         "other": "其他"
-      }
+      },
+      "discardDescription": "放弃后无法恢复本次编辑内容。",
+      "optionsAnswerHint": "点击字母设为答案",
+      "moreOptional": "解析与笔记（选填）"
     },
     "create": {
       "title": "新建题目",
@@ -400,8 +388,7 @@
       "submit": "创建题目",
       "missingExamId": "缺少题目集 ID",
       "contentRequired": "题目内容不能为空"
-    }
-  ,
+    },
     "actionUnavailable": "当前操作不可用",
     "confirmDelete": "确认删除",
     "confirmDeleteBatch": "确定要删除选中的 {{count}} 道题目吗？此操作无法撤销。",
@@ -409,9 +396,6 @@
     "confirmReset": "确认重置进度",
     "confirmResetBatch": "确定要重置选中的 {{count}} 道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。",
     "confirmResetSingle": "确定要重置这道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。",
-    "edit": {
-      "discardDescription": "放弃后无法恢复本次编辑内容。"
-    },
     "favoriteUpdateFailed": "更新收藏失败",
     "favoriteUpdated": "收藏状态已更新",
     "favorites": {
@@ -427,8 +411,7 @@
       "description": "查看题目的修改历史和答题记录",
       "empty": "暂无历史记录",
       "title": "历史记录"
-    },
-    "import": "导入题目"
+    }
   },
   "csv": {
     "import_title": "CSV 导入",
@@ -481,8 +464,7 @@
     "error_row": "行 {{row}}：{{message}}",
     "import_failed_generic": "导入失败",
     "csv_file_fallback": "CSV 文件",
-    "drop_csv_here": "松开鼠标上传 CSV 文件"
-  ,
+    "drop_csv_here": "松开鼠标上传 CSV 文件",
     "cancelling_import": "正在取消...",
     "import_cancel_failed": "取消导入失败，请稍后重试。",
     "import_cancel_unavailable": "导入已结束，无法再取消。",
@@ -571,8 +553,7 @@
     "filter_excluded_count": "已排除 {{count}} 题",
     "filter_hint": "展开可取消勾选不需要录入的题目（如已掌握的题目）",
     "filter_delete_failed": "删除排除题目失败",
-    "view_questions_filtered": "确认导入 {{count}} 题"
-  ,
+    "view_questions_filtered": "确认导入 {{count}} 题",
     "extracting_figures": "正在提取配图 {{current}}/{{total}}...",
     "preprocessing": "正在预处理文档...",
     "rendering_pages": "正在渲染页面 {{current}}/{{total}}...",
@@ -581,7 +562,15 @@
     "pdf_quality_description": "可选择直接使用解析文本，或启用 OCR 进行识别。",
     "pdf_quality_empty_preview": "（无可预览文本）",
     "pdf_use_extracted_text": "仅使用解析文本",
-    "pdf_enable_ocr": "启用 OCR"
+    "pdf_enable_ocr": "启用 OCR",
+    "header_title": "识别导入",
+    "header_desc": "上传图片或文档，AI 自动识别题目并录入当前题目集",
+    "steps": {
+      "select": "选择文件",
+      "processing": "智能解析",
+      "summary": "确认录入"
+    },
+    "manual_create_link": "没有文件？手动新建一道题"
   },
   "questionTypes": {
     "single_choice": "单选",
@@ -593,8 +582,7 @@
     "calculation": "计算",
     "proof": "证明",
     "other": "其他"
-  }
-,
+  },
   "editor": {
     "discardDraftDescription": "离开当前视图会清除尚未提交或保存的内容。",
     "discardDraftTitle": "放弃未提交的内容？"

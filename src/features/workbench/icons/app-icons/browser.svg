@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="br_body" x1="75" x2="75" y1="16" y2="134" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#2BB3A3" offset="0"/>
+    <stop stop-color="#14607E" offset=".55"/>
+    <stop stop-color="#1D3F6E" offset="1"/>
+  </linearGradient>
+  <circle cx="75" cy="75" r="59" fill="url(#br_body)"/>
+  <circle cx="75" cy="75" r="48" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="3"/>
+  <path d="M75 22v10M75 118v10M22 75h10M118 75h10" stroke="#fff" stroke-opacity=".55" stroke-width="4" stroke-linecap="round"/>
+  <linearGradient id="br_needle" x1="88" x2="66" y1="52" y2="74" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <polygon points="101,49 86,86 64,64" fill="url(#br_needle)"/>
+  <polygon points="49,101 64,64 86,86" fill="#EAF7F6"/>
+  <circle cx="75" cy="75" r="7" fill="#1D3F6E"/>
+  <circle cx="75" cy="75" r="3" fill="#5FD0CB"/>
+</svg>

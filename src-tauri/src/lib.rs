@@ -81,6 +81,7 @@ pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod providers;
 pub mod qbank_grading;
+pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
 #[allow(dead_code)]
 pub mod question_bank_service;
 pub mod question_export_service;
@@ -384,6 +385,20 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init());
+
+    #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+    let builder = builder.plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(|app, _shortcut, event| {
+                if event.state != tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                    return;
+                }
+                // 当前应用只注册了快速学习这一个全局快捷键；toggle 内部
+                // 会校验 enabled 设置，关闭后按键不再有任何响应。
+                crate::quick_assistant::toggle(app);
+            })
+            .build(),
+    );
 
     // 桌面端专用：自动更新 + 进程管理（仅 macOS/Windows/Linux）
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
@@ -995,10 +1010,16 @@ pub fn run() {
                 let app_for_close = app_handle.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        let keep_quick_assistant_background = database_for_close
+                            .get_setting("quick_assistant.background_enabled")
+                            .ok()
+                            .flatten()
+                            .as_deref()
+                            == Some("true");
                         if !crate::chat_v2::automations::automation_app_is_exiting()
-                            && crate::chat_v2::automations::should_keep_automation_background(
+                            && (crate::chat_v2::automations::should_keep_automation_background(
                                 &database_for_close,
-                            )
+                            ) || keep_quick_assistant_background)
                         {
                             api.prevent_close();
                             let _ = window_for_close.hide();
@@ -1023,6 +1044,11 @@ pub fn run() {
                     }
                 });
             }
+
+            // 快速学习小窗预加载：设置开启时提前建好隐藏窗口，
+            // 首次快捷键呼出即刻显示，无现场创建的白窗延迟。
+            #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+            crate::quick_assistant::preload_if_enabled(&app_handle);
 
             // macOS 窗口圆角设置
             #[cfg(target_os = "macos")]
@@ -1187,6 +1213,10 @@ pub fn run() {
             crate::commands::delete_setting,
             crate::commands::get_settings_by_prefix,
             crate::commands::delete_settings_by_prefix,
+            // 快速学习小窗窗口管理
+            crate::quick_assistant::quick_assistant_show,
+            crate::quick_assistant::quick_assistant_hide,
+            crate::quick_assistant::quick_assistant_apply_enabled,
             crate::voice_input::voice_input_transcribe,
             // 调试日志管理
             crate::commands::get_debug_logs_info,

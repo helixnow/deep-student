@@ -22,15 +22,16 @@
 .wb-switcher-root {
   z-index: var(--wb-z-switcher, 9600);
 
-  /* 组件级动效参数（O20 可依 O1 motion.css 统一重映射） */
+  /* 组件级动效参数：时长尽量接 motion.css 刻度（RM/minimal 随之降级）；
+   * slide 190ms 无对应刻度，保留组件值 */
   --wb-switcher-ease: var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
   --wb-switcher-ease-out: var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
-  --wb-switcher-in-duration: 170ms;
-  --wb-switcher-out-duration: 150ms;
+  --wb-switcher-in-duration: var(--wb-motion-quick, 150ms);
+  --wb-switcher-out-duration: var(--wb-motion-quick, 150ms);
   --wb-switcher-slide-duration: 190ms;
-  --wb-switcher-tile-duration: 160ms;
-  --wb-switcher-title-duration: 130ms;
-  --wb-switcher-commit-duration: 150ms;
+  --wb-switcher-tile-duration: var(--wb-motion-quick, 150ms);
+  --wb-switcher-title-duration: var(--wb-motion-quick, 150ms);
+  --wb-switcher-commit-duration: var(--wb-motion-quick, 150ms);
 
   /* 候选格尺寸（图标模式；thumbnails 模式在下方覆写） */
   --wb-switcher-cell-w: 64px;

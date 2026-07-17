@@ -5,7 +5,7 @@
  * onActivation：focusNode / setView（DESIGN §5.1）。
  */
 import React from 'react';
-import { MindmapIcon } from '@/features/learning-hub/icons';
+import { AppIconImage } from '../../icons/appIcons';
 import {
   getMindMapStoreForInstance,
   subscribeMindMapStoreReady,
@@ -156,7 +156,7 @@ export async function handleMindmapActivation(
 export const MINDMAP_APP_DEFINITION: AppDefinition = {
   typeId: MINDMAP_APP_TYPE_ID,
   nameKey: 'workbench:apps.mindmap',
-  icon: React.createElement(MindmapIcon, { className: 'h-full w-full' }),
+  icon: React.createElement(AppIconImage, { typeId: 'mindmap', className: 'h-full w-full' }),
   instanceMode: 'multi',
   memoryWeight: 2,
   defaultFrame: { w: 920, h: 660 },

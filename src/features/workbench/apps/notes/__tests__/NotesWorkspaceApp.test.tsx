@@ -201,6 +201,17 @@ describe('NotesWorkspaceApp', () => {
     expect(document.querySelector('[data-notes-pane="main"]')?.getAttribute('data-resource-id')).toBe('note_1');
   });
 
+  it('portals the open-files menu outside the clipped titlebar slot', async () => {
+    render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
+    await screen.findByTestId('note-editor-note_1');
+
+    fireEvent.click(screen.getByRole('button', { name: /显示全部文件|Show all open files/ }));
+    const menu = screen.getByRole('menu');
+
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu.closest('[data-wb-titlebar-slot]')).toBeNull();
+  });
+
   it('keeps note and mindmap types separate in one content area', async () => {
     render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
     await screen.findByText('章节导图');
@@ -390,8 +401,9 @@ describe('NotesWorkspaceApp', () => {
   it('collapses the split after closing all main tabs from the right-tab menu', async () => {
     await openThreeWorkspaceTabs();
     const secondTab = screen.getByRole('tab', { name: '第二笔记' });
-    fireEvent.click(within(secondTab.parentElement as HTMLElement)
-      .getByRole('button', { name: /Open .* right split/ }));
+    fireEvent.contextMenu(secondTab);
+    fireEvent.click(within(screen.getByRole('menu'))
+      .getByRole('menuitemcheckbox', { name: /右侧分屏|right split/ }));
     await waitFor(() => expect(document.querySelectorAll('[data-notes-pane]')).toHaveLength(2));
 
     fireEvent.contextMenu(secondTab);
@@ -516,7 +528,10 @@ describe('NotesWorkspaceApp', () => {
     await screen.findByTestId('note-editor-note_1');
 
     const tab = screen.getByRole('tab', { name: /未命名笔记|课堂笔记/ });
-    expect(within(tab.parentElement as HTMLElement).getByRole('button', { name: /Open .* right split/ })).toBeDisabled();
+    expect(within(tab.parentElement as HTMLElement).queryByRole('button', { name: /右侧分屏|right split/ })).toBeNull();
+    fireEvent.contextMenu(tab);
+    expect(within(screen.getByRole('menu'))
+      .getByRole('menuitemcheckbox', { name: /右侧分屏|right split/ })).toBeDisabled();
     expect(document.querySelectorAll('[data-notes-pane]')).toHaveLength(1);
   });
 
@@ -527,7 +542,9 @@ describe('NotesWorkspaceApp', () => {
     await screen.findByTestId('mindmap-editor-mindmap_1');
 
     const noteTab = screen.getByRole('tab', { name: /未命名笔记|课堂笔记/ });
-    fireEvent.click(within(noteTab.parentElement as HTMLElement).getByRole('button', { name: /Open .* right split/ }));
+    fireEvent.contextMenu(noteTab);
+    fireEvent.click(within(screen.getByRole('menu'))
+      .getByRole('menuitemcheckbox', { name: /右侧分屏|right split/ }));
 
     await waitFor(() => expect(document.querySelectorAll('[data-notes-pane]')).toHaveLength(2));
     const mainPane = document.querySelector('[data-notes-pane="main"]');
