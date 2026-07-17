@@ -3,8 +3,12 @@
  * 支持亮色/暗色主题
  */
 
-/* ==================== 遮罩层 ==================== */
+/* ==================== 点击层（非遮罩） ==================== */
 
+/*
+ * 不加灰色压暗/全页模糊——Spotlight 语义：面板靠自身投影与背景分离，
+ * 本元素保留仅用于点空白关闭与居中布局。
+ */
 .command-palette-backdrop {
   position: fixed;
   inset: 0;
@@ -13,18 +17,7 @@
   align-items: flex-start;
   justify-content: center;
   padding-top: 15vh;
-  background-color: hsl(var(--shadow-base) / 0.5);
-  backdrop-filter: blur(4px);
-  animation: command-palette-fade-in 150ms ease-out;
-}
-
-@keyframes command-palette-fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  background: transparent;
 }
 
 /* ==================== 容器 ==================== */
@@ -361,10 +354,6 @@
 }
 
 /* ==================== 暗色模式增强 ==================== */
-
-.dark .command-palette-backdrop {
-  background-color: hsl(var(--shadow-base) / 0.7);
-}
 
 .dark .command-palette-container {
   box-shadow: 

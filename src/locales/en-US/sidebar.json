@@ -40,7 +40,8 @@
     "skills_management": "Skills Management",
     "todo": "Todo",
     "ui_lab": "UI Lab",
-    "command_palette": "Search & Commands"
+    "command_palette": "Search & Commands",
+    "workbench_mode": "Learning Desktop"
   },
   "aria": {
     "sidebar_navigation": "Main navigation",

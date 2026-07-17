@@ -20,7 +20,7 @@
   --wb-apps-duration: 0ms;
 }
 
-/* ==== 根层 / 遮罩 ======================================================= */
+/* ==== 根层 / 点击层 ===================================================== */
 
 .wb-apps-root {
   position: absolute;
@@ -37,16 +37,14 @@
   pointer-events: auto;
 }
 
+/*
+ * 点击层（非遮罩）：不加灰色压暗/模糊——Spotlight 语义，
+ * 面板靠自身玻璃与投影与桌面分离；元素保留仅用于点空白关闭。
+ */
 .wb-apps-backdrop {
   position: absolute;
   inset: 0;
-  background: hsl(var(--background) / 0.36);
-  opacity: 0;
-  transition: opacity var(--wb-apps-duration) var(--wb-apps-ease);
-}
-
-.wb-apps-root[data-wb-apps-open='true'] .wb-apps-backdrop {
-  opacity: 1;
+  background: transparent;
 }
 
 /* ==== 面板 ============================================================== */
@@ -134,8 +132,9 @@
   padding: 8px 12px;
   flex: none;
   border-radius: 10px;
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
-  background: color-mix(in hsl, hsl(var(--background)) 55%, transparent 45%);
+  /* 玻璃面搜索框：低透明墨色 inset + 发丝边框，不用实色灰底 */
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
 }
 
 /* 聚焦态描边走独立伪元素的 opacity 淡入（动画纪律：仅 transform/opacity） */
@@ -297,18 +296,42 @@
 }
 
 .wb-apps-item-icon {
+  --wb-app-icon-surface: color-mix(in hsl, hsl(var(--background)) 97%, white 3%);
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: color-mix(in hsl, hsl(var(--muted-foreground)) 10%, transparent 90%);
-  box-shadow: inset 0 1px 0 var(--wb-glass-highlight, rgba(255, 255, 255, 0.3));
-  font-size: 22px;
+  width: 56px;
+  height: 56px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 52%, transparent 48%);
+  border-radius: 11px;
+  background: color-mix(in hsl, hsl(var(--background)) 90%, white 10%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 2px 5px rgba(33, 43, 54, 0.09);
+  font-size: 28px;
   line-height: 1;
   transition: transform var(--wb-hover-duration, 150ms) var(--wb-ease-swift, ease-out);
+}
+
+.wb-apps-item-icon > svg {
+  width: 47px;
+  height: 47px;
+  flex: none;
+  overflow: visible;
+}
+
+/* macOS 风格图标自带 squircle 底座：撤掉容器外壳，改用柔和投影 */
+.wb-apps-item-icon:has(> svg[data-workbench-app-icon]) {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.wb-apps-item-icon:has(> svg[data-workbench-app-icon]) > svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 4px rgba(33, 43, 54, 0.22));
 }
 
 /* 网格视图：选中/悬停时图标轻微上浮（仅 transform） */
@@ -326,6 +349,11 @@
   height: 36px;
   border-radius: 10px;
   font-size: 18px;
+}
+
+.wb-apps-list .wb-apps-item-icon > svg {
+  width: 31px;
+  height: 31px;
 }
 
 .wb-apps-item-name {
@@ -427,4 +455,54 @@
 :root[data-wb-material='minimal'] .wb-apps-grid .wb-apps-item:hover .wb-apps-item-icon,
 :root[data-wb-material='minimal'] .wb-apps-close:active {
   transform: none;
+}
+
+/* ==== 搜索结果分区（统一搜索：应用 + 命令） ============================== */
+
+.wb-apps-results {
+  display: flex;
+  flex-direction: column;
+}
+
+.wb-apps-section {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-apps-section:first-child {
+  padding-top: 0;
+}
+
+/* 命令行：图标 + 名称/描述双行 + 右侧快捷键 */
+.wb-apps-command-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+}
+
+.wb-apps-command-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-apps-command-shortcut {
+  flex: none;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
+  border-radius: 5px;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 8%, transparent 92%);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
 }

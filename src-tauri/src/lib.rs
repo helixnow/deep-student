@@ -975,7 +975,7 @@ pub fn run() {
                 let database_for_automation = database.clone();
                 let vfs_db_for_automation = app_state.inner().vfs_db.clone();
                 let app_handle_for_automation = app_handle.clone();
-                tauri::async_runtime::spawn(async move {
+                crate::background_tasks::spawn(async move {
                     crate::chat_v2::automations::start_automation_scheduler(
                         database_for_automation,
                         vfs_db_for_automation,

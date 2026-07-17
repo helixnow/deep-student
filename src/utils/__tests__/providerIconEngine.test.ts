@@ -16,6 +16,7 @@ describe('ProviderIconEngine', () => {
       expect(detectProviderBrand('dall-e-3')).toBe('openai');
       expect(detectProviderBrand('text-embedding-ada-002')).toBe('openai');
       expect(detectProviderBrand('openai_codex')).toBe('openai');
+      expect(detectProviderBrand('Codex')).toBe('openai');
       expect(detectProviderBrand('Codex Subscription')).toBe('openai');
     });
 

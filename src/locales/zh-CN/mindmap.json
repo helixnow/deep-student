@@ -305,8 +305,11 @@
     "emptyTitle": "开始构建你的思维导图",
     "emptyHintBefore": "选中根节点，按",
     "emptyHintAfter": "添加子节点",
+    "dragModeGroup": "画布拖拽模式",
+    "selectMode": "框选",
+    "panMode": "拖动画布",
     "dragModeSelect": "框选模式：拖拽空白框选（Space/中键/右键拖拽平移）",
-    "dragModePan": "平移模式：拖拽空白平移（Shift+拖拽框选）"
+    "dragModePan": "拖动画布模式：拖拽空白移动画布（Shift+拖拽框选）"
   },
   "recite": {
     "title": "背诵模式",

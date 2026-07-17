@@ -21,6 +21,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import type { CurrentView } from '@/types/navigation';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
+import { openAppsPanel, toggleAppsPanel } from '@/features/workbench/components/appsPanelStore';
 import type { CommandView, DependencyResolver, Command } from './registry/types';
 import { commandRegistry } from './registry/commandRegistry';
 import { shortcutManager } from './registry/shortcutManager';
@@ -94,11 +95,25 @@ export function CommandPaletteProvider({
   // 🚀 用 ref 持有 command view，避免执行路径读取过期的 legacy 视图。
   const currentViewRef = useRef<CommandView>(commandView);
   currentViewRef.current = commandView;
-  
-  // 打开/关闭命令面板
-  const open = useCallback(() => setIsOpen(true), []);
+
+  // OS 模式（workbench）：独立命令面板退役，所有「打开命令面板」的入口
+  // （⌘K、顶栏搜索钮、命令内 openCommandPalette）统一改道到全部应用面板
+  // （它已融合应用 + 命令的统一搜索）。legacy 壳行为不变。
+  const open = useCallback(() => {
+    if (workbenchActive) {
+      openAppsPanel();
+      return;
+    }
+    setIsOpen(true);
+  }, [workbenchActive]);
   const close = useCallback(() => setIsOpen(false), []);
-  const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
+  const toggle = useCallback(() => {
+    if (workbenchActive) {
+      toggleAppsPanel();
+      return;
+    }
+    setIsOpen((prev) => !prev);
+  }, [workbenchActive]);
 
   const deps = useMemo<DependencyResolver>(() => ({
     navigate,

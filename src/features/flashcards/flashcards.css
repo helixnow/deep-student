@@ -206,3 +206,11 @@
     padding: 9px 14px;
   }
 }
+
+/* OS 闪卡窗口：玻璃面搜索框（input 本体由 workbench 根复位刷无铬，容器承担视觉）。
+   .wb-fc-host 仅存在于 OS 窗口（FlashcardsAppWindow），legacy 页面不受影响。 */
+.wb-fc-host .wb-fc-search {
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: var(--radius-shell-control, 8px);
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
+}

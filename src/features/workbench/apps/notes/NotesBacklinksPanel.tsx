@@ -707,7 +707,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
               : <CaretDown size={12} aria-hidden="true" />}
             {label}
           </span>
-          <span>{count}</span>
+          <span className="notes-backlinks-panel-section-count">{count}</span>
         </button>
       </h3>
     );
@@ -752,7 +752,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
             </button>
           </div>
         ) : (
-          <div>
+          <div className="notes-backlinks-panel-heading">
             <h2 id={titleId}>{panelTitle}</h2>
             {activeResource?.type === 'note' && <span>{activeResource.name}</span>}
           </div>
@@ -781,6 +781,13 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
           </button>
         </div>
       </header>
+
+      {hasPropertiesTab && activeResource?.type === 'note' && (
+        <div className="notes-backlinks-panel-note" title={activeResource.name}>
+          <FileText size={13} aria-hidden="true" />
+          <span>{activeResource.name}</span>
+        </div>
+      )}
 
       {hasPropertiesTab && resolvedTab === 'properties' ? (
         <div

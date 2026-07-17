@@ -630,14 +630,14 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             aria-controls={hasContent ? contentId : undefined}
             className={cn(
               'thinking-summary-trigger w-full !justify-start !px-0 rounded-[var(--radius-shell-control)] transition-colors group',
-              'text-muted-foreground gap-1.5 hover:text-foreground',
+              'text-base text-muted-foreground gap-1.5 hover:text-foreground',
               'focus-visible:text-foreground',
               hasContent && 'hover:text-foreground cursor-pointer',
               'disabled:cursor-default disabled:hover:!bg-transparent'
             )}
           >
             {node.isThinking ? (
-              <TextShimmer className="text-sm" duration={1.5} spread={3}>
+              <TextShimmer className="text-base" duration={1.5} spread={3}>
                 {t('timeline.thinking.inProgress', { seconds: liveDurationSeconds })}
               </TextShimmer>
             ) : node.isAborted ? (
@@ -962,7 +962,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
           className={cn(
             '!justify-start !px-0 -mt-0.5 max-w-full hover:!bg-transparent',
             isShellCommand ? 'w-full min-w-0' : 'w-fit',
-            'text-muted-foreground hover:text-foreground',
+            'text-base text-muted-foreground hover:text-foreground',
             'disabled:cursor-default disabled:hover:text-muted-foreground'
           )}
         >
@@ -977,7 +977,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
               </code>
             </span>
           ) : (
-            <span className="font-medium text-foreground">
+            <span className="text-base font-medium text-foreground">
               {displayToolName}
             </span>
           )}

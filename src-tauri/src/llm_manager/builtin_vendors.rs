@@ -184,7 +184,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
     // OpenAI Codex subscription (ChatGPT OAuth)
     BuiltinVendor {
         id: "builtin-openai-codex",
-        name: "Codex Subscription",
+        name: "Codex",
         provider_type: "openai_codex",
         auth_mode: Some(super::AUTH_MODE_OPENAI_CODEX_OAUTH),
         base_url: "https://chatgpt.com/backend-api/codex",
@@ -1287,6 +1287,7 @@ mod tests {
             .expect("builtin Codex subscription vendor should exist")
             .to_vendor_config();
 
+        assert_eq!(vendor.name, "Codex");
         assert_eq!(vendor.provider_type, "openai_codex");
         assert_eq!(
             vendor.auth_mode.as_deref(),

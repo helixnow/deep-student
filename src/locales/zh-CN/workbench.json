@@ -122,7 +122,11 @@
     "pomodoroWork": "专注中",
     "pomodoroBreak": "休息中",
     "openApps": "打开全部应用",
+    "brandMenu": "学习桌面菜单",
+    "brandSettings": "系统设置…",
+    "brandExit": "退出学习桌面",
     "openCommandPalette": "打开命令面板",
+    "openAppsPanel": "搜索应用与命令",
     "openSettings": "打开设置",
     "openCenter": "打开学习中心",
     "centerShort": "中心",
@@ -233,8 +237,8 @@
   },
   "appsPanel": {
     "title": "全部应用",
-    "searchPlaceholder": "搜索应用",
-    "empty": "没有匹配的应用",
+    "searchPlaceholder": "搜索应用与命令",
+    "empty": "没有匹配的应用或命令",
     "close": "关闭",
     "view": "视图",
     "gridView": "网格",
@@ -243,7 +247,9 @@
     "emptyHint": "换个关键词，或清空搜索查看全部应用",
     "hintSelect": "选择",
     "hintOpen": "打开",
-    "hintClose": "关闭"
+    "hintClose": "关闭",
+    "sectionApps": "应用",
+    "sectionCommands": "命令"
   },
   "window": {
     "close": "关闭",

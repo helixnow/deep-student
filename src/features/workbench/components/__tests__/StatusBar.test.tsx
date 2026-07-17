@@ -21,6 +21,7 @@ import {
 } from '../../apps/system/ankiTaskSource';
 import { StatusBar } from '../StatusBar';
 import { formatStatusBarTime } from '../StatusBarItems';
+import { closeAppsPanel, isAppsPanelOpen } from '../appsPanelStore';
 
 const { invokeMock, startDraggingMock, toggleMaximizeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(async () => [] as unknown),
@@ -147,7 +148,7 @@ describe('StatusBar 信号项可见性', () => {
     expect(entry).toHaveAttribute('data-status', 'running');
   });
 
-  it('命令入口打开命令面板', () => {
+  it('命令入口打开统一搜索面板（应用 + 命令），不再弹独立命令面板', () => {
     render(
       <CommandPaletteProvider
         currentView="chat-v2"
@@ -162,8 +163,45 @@ describe('StatusBar 信号项可见性', () => {
     );
 
     expect(screen.getByTestId('command-palette-state')).toHaveTextContent('false');
+    expect(isAppsPanelOpen()).toBe(false);
     fireEvent.click(screen.getByTestId('wb-menubar-command'));
-    expect(screen.getByTestId('command-palette-state')).toHaveTextContent('true');
+    // 独立命令面板不打开；全部应用面板（统一搜索）打开
+    expect(screen.getByTestId('command-palette-state')).toHaveTextContent('false');
+    expect(isAppsPanelOpen()).toBe(true);
+    closeAppsPanel();
+  });
+
+  it('品牌菜单：全部应用 / 系统设置 / 退出学习桌面', async () => {
+    workbenchBus.setEnabled(true);
+    render(<StatusBar />);
+
+    // 打开品牌菜单（macOS 苹果菜单语义）
+    fireEvent.click(screen.getByTestId('wb-menubar-brand'));
+    const appsItem = await screen.findByTestId('wb-menubar-brand-apps');
+    expect(screen.getByTestId('wb-menubar-brand-settings')).toBeInTheDocument();
+    expect(screen.getByTestId('wb-menubar-brand-exit')).toBeInTheDocument();
+
+    // 全部应用 → 打开统一搜索面板
+    fireEvent.click(appsItem);
+    expect(isAppsPanelOpen()).toBe(true);
+    closeAppsPanel();
+
+    // 系统设置 → launch settings 应用窗口
+    fireEvent.click(screen.getByTestId('wb-menubar-brand'));
+    fireEvent.click(await screen.findByTestId('wb-menubar-brand-settings'));
+    expect(launchSpy).toHaveBeenCalledWith({ typeId: 'settings', reason: 'api' });
+
+    // 退出学习桌面 → persist false + browser_close 联动 + bus 关闭
+    fireEvent.click(screen.getByTestId('wb-menubar-brand'));
+    fireEvent.click(await screen.findByTestId('wb-menubar-brand-exit'));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('save_setting', {
+        key: 'desktop.workbenchMode',
+        value: 'false',
+      }),
+    );
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('browser_close', {}));
+    expect(workbenchBus.isEnabled()).toBe(false);
   });
 
   it('番茄 mode≠idle 时显示 m:ss，点击 launch pomodoro', () => {

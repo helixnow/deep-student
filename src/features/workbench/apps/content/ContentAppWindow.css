@@ -127,3 +127,10 @@
   animation: none;
   opacity: 1;
 }
+
+/* OS 导图窗口：资源选择器玻璃面搜索框（input 本体由 workbench 根复位刷无铬） */
+[data-wb-mindmap-host] .mindmap-picker-search {
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: var(--radius-shell-control, 8px);
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
+}

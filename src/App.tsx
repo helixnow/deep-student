@@ -31,7 +31,6 @@ import { ModernSidebar } from './components/ModernSidebar';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
-import { useFinderStore } from './features/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
@@ -50,7 +49,6 @@ import {
 } from './features/learning-hub';
 import { setActiveOpenResourceHandler } from './dstu/openResource';
 import type { ResourceLocator } from './features/learning-hub/learningHubContracts';
-import { getQuickAccessTypeFromPath } from './features/learning-hub/learningHubContracts';
 import { pageLifecycleTracker } from './debug-panel/services/pageLifecycleTracker';
 import './styles/tailwind.css'; // Tailwind (should be first to provide base/utility layers)
 import './styles/shadcn-variables.css'; // 设计令牌：支持亮/暗色变量（必须优先）
@@ -110,6 +108,7 @@ import { ViewLayerRenderer } from './app/components';
 import { canonicalizeView } from './app/navigation/canonicalView';
 import { DESKTOP_SHELL, getShellSidebarWidth } from './app/shell/desktopShell';
 import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSidebarPortal';
+import { DesktopShellHeaderPortalProvider } from './app/shell/DesktopShellHeaderPortal';
 import { getMobileShellCssVars } from './app/shell/mobileShell';
 
 // 🚀 性能优化：懒加载页面组件
@@ -494,88 +493,6 @@ const getMaxAliveViews = (): number => {
     return MAX_ALIVE_VIEWS_DESKTOP;
   }
 };
-
-/**
- * 学习资源顶栏面包屑导航
- */
-function LearningHubTopbarBreadcrumb({ currentView }: { currentView: string }) {
-  const { t } = useTranslation('learningHub');
-  const currentPath = useFinderStore(state => state.currentPath);
-  const quickAccessNavigate = useFinderStore(state => state.quickAccessNavigate);
-  const jumpToBreadcrumb = useFinderStore(state => state.jumpToBreadcrumb);
-
-  // 非学习资源页面不显示
-  if (currentView !== 'learning-hub') {
-    return null;
-  }
-
-  // 计算当前视图标题
-  const currentTitle = (() => {
-    const activeType = getQuickAccessTypeFromPath(currentPath);
-    if (!activeType || activeType === 'allFiles') return undefined;
-    if (activeType === 'memory') return t('memory.title');
-    if (activeType === 'desktop') return t('finder.quickAccess.desktop');
-    return t(`finder.quickAccess.${activeType}`);
-  })();
-
-  const breadcrumbs = currentPath.breadcrumbs;
-  const rootTitle = t('title');
-
-  // 根目录：只显示 "学习资源"
-  if (!currentTitle && breadcrumbs.length === 0) {
-    return (
-      <div className="flex items-center gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{rootTitle}</span>
-      </div>
-    );
-  }
-
-  // 智能文件夹模式：学习资源 > 全部笔记
-  if (currentTitle && breadcrumbs.length === 0) {
-    return (
-      <div className="flex items-center gap-1.5 text-sm">
-        <button
-          onClick={() => quickAccessNavigate('allFiles')}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {rootTitle}
-        </button>
-        <CaretRight size={16} className="text-muted-foreground" />
-        <span className="font-medium text-foreground">{currentTitle}</span>
-      </div>
-    );
-  }
-
-  // 文件夹导航模式：学习资源 > 文件夹1 > 文件夹2
-  return (
-    <div className="flex items-center gap-1.5 text-sm overflow-hidden">
-      <button
-        onClick={() => quickAccessNavigate('allFiles')}
-        className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-      >
-        {rootTitle}
-      </button>
-      {breadcrumbs.map((crumb, index) => {
-        const isLast = index === breadcrumbs.length - 1;
-        return (
-          <React.Fragment key={crumb.id || index}>
-            <CaretRight size={16} className="text-muted-foreground shrink-0" />
-            {isLast ? (
-              <span className="font-medium text-foreground truncate max-w-[150px]">{crumb.name}</span>
-            ) : (
-              <button
-                onClick={() => jumpToBreadcrumb(index)}
-                className="text-muted-foreground hover:text-foreground transition-colors truncate max-w-[100px]"
-              >
-                {crumb.name}
-              </button>
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-}
 
 function App() {
   // 全面接入新引擎统一管理（在 App 级别避免再手绑流事件）
@@ -977,6 +894,7 @@ function App() {
   ]);
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
   const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [desktopPageHeaderTarget, setDesktopPageHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const currentViewRef = useRef<CurrentView>('chat-v2');
   const isSmallScreenRef = useRef(isSmallScreen);
@@ -1907,6 +1825,10 @@ function App() {
     target: desktopPageSidebarTarget,
     currentView,
   }), [currentView, desktopPageSidebarTarget]);
+  const desktopShellHeaderPortalValue = useMemo(() => ({
+    target: desktopPageHeaderTarget,
+    currentView,
+  }), [currentView, desktopPageHeaderTarget]);
 
   // 侧栏内容类型：同时作为侧栏包裹层的 key，类型变化时重挂载并重播入场动画
   const desktopShellSidebarKind = currentView === 'settings'
@@ -2419,6 +2341,7 @@ function App() {
       <MobileHeaderActiveViewSync activeView={currentView} />
       <LearningHubNavigationProvider>
       <DesktopShellSidebarPortalProvider value={desktopShellSidebarPortalValue}>
+      <DesktopShellHeaderPortalProvider value={desktopShellHeaderPortalValue}>
       <div
         data-shell-role="app-shell"
         data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
@@ -2546,35 +2469,40 @@ function App() {
                 className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between px-5"
                 style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
               >
-                <div
-                  className="desktop-shell-header-hotzone flex min-w-0 items-center gap-3"
-                  data-no-drag
-                  data-shell-hotzone="desktop-title"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={desktopHeaderTitleHotzoneLabel}
-                  onMouseDown={handleHeaderHotzoneMouseDown}
-                  onMouseMove={handleHeaderHotzoneMouseMove}
-                  onMouseUp={handleHeaderHotzoneMouseUp}
-                  onMouseLeave={handleHeaderHotzoneMouseLeave}
-                  onClick={(event) => handleHeaderHotzoneClick(event, openCommandPalette)}
-                  onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, openCommandPalette)}
-                >
-                  <CommandPaletteButton onOpenReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }} />
+                {currentView === 'learning-hub' ? (
+                  <div
+                    ref={setDesktopPageHeaderTarget}
+                    className="h-full min-w-0 flex-1"
+                    data-no-drag
+                    data-shell-slot="learning-hub-toolbar"
+                  />
+                ) : (
+                  <div
+                    className="desktop-shell-header-hotzone flex min-w-0 items-center gap-3"
+                    data-no-drag
+                    data-shell-hotzone="desktop-title"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={desktopHeaderTitleHotzoneLabel}
+                    onMouseDown={handleHeaderHotzoneMouseDown}
+                    onMouseMove={handleHeaderHotzoneMouseMove}
+                    onMouseUp={handleHeaderHotzoneMouseUp}
+                    onMouseLeave={handleHeaderHotzoneMouseLeave}
+                    onClick={(event) => handleHeaderHotzoneClick(event, openCommandPalette)}
+                    onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, openCommandPalette)}
+                  >
+                    <CommandPaletteButton onOpenReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }} />
 
-                  <div className="min-w-0 pl-1">
-                    <div className="min-w-0 desktop-shell-header-title">
-                      {currentView === 'learning-hub' ? (
-                        <LearningHubTopbarBreadcrumb currentView={currentView} />
-                      ) : (
+                    <div className="min-w-0 pl-1">
+                      <div className="min-w-0 desktop-shell-header-title">
                         <TextSwap
                           text={desktopShellViewLabel}
                           className="block max-w-full truncate"
                         />
-                      )}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="flex items-center gap-2" data-no-drag>
                   {isWindows() && <WindowControls />}
@@ -2773,6 +2701,7 @@ function App() {
       )}
 
       {/* 调试面板入口由全局悬浮按钮统一控制 */}
+      </DesktopShellHeaderPortalProvider>
       </DesktopShellSidebarPortalProvider>
       </LearningHubNavigationProvider>
       </MobileHeaderProvider>

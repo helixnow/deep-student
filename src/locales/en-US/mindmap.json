@@ -308,8 +308,11 @@
     "emptyTitle": "Start creating",
     "emptyHintBefore": "Click",
     "emptyHintAfter": "to add your first node",
+    "dragModeGroup": "Canvas drag mode",
+    "selectMode": "Select",
+    "panMode": "Pan canvas",
     "dragModeSelect": "Select mode: drag blank area to marquee-select (pan with Space / middle / right button drag)",
-    "dragModePan": "Pan mode: drag blank area to pan (marquee-select with Shift + drag)"
+    "dragModePan": "Pan canvas mode: drag blank area to move the canvas (marquee-select with Shift + drag)"
   },
   "recite": {
     "title": "Recite Mode",

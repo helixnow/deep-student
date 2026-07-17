@@ -24,23 +24,26 @@
   gap: 2px;
   margin-left: auto;
   min-width: min(320px, 55%);
+  padding: 0 8px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: 6px;
+  /* 玻璃面搜索框：低透明墨色 inset，不用实色灰底 */
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
 }
 
 .wb-file-preview-search input {
   height: 28px;
   min-width: 100px;
   flex: 1;
-  border: 1px solid hsl(var(--border));
-  border-radius: 4px;
-  background: hsl(var(--background));
+  border: none;
+  background: transparent;
   color: hsl(var(--foreground));
-  padding: 0 8px;
   font-size: 12px;
   outline: none;
 }
 
-.wb-file-preview-search input:focus {
-  border-color: hsl(var(--primary));
+.wb-file-preview-search:focus-within {
+  border-color: color-mix(in hsl, hsl(var(--foreground)) 28%, transparent 72%);
 }
 
 .wb-file-preview-search span {

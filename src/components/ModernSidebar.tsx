@@ -64,6 +64,7 @@ import type { AppUpdaterController } from '@/hooks/useAppUpdater';
 import type { CurrentView } from '@/types/navigation';
 import { pageLifecycleTracker } from '@/debug-panel/services/pageLifecycleTracker';
 import { StudyComposeIcon, StudySettingsIcon } from './icons/StudySidebarIcons';
+import { WorkbenchModeSwitchRow } from './WorkbenchModeSwitchRow';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { formatShortcut } from '@/command-palette/registry/shortcutUtils';
 import {
@@ -1462,6 +1463,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
       {navigationScope === 'full' ? (
       <div className="mt-auto shrink-0 px-2 pb-3 pt-1" data-no-drag>
+        {/* 学习桌面快捷开关（与设置页总开关同一契约，便于快速切换） */}
+        <WorkbenchModeSwitchRow />
         <div className="relative flex justify-start">
           <SidebarRow
             rowType="nav"

@@ -182,38 +182,10 @@ svg.h-4 {
   }
 }
 
-/* Search controls share the quiet Settings sidebar focus treatment. */
-input[type="search"]:not(.app-menu-search-input),
-.ds-search-input:not(.app-menu-search-input) {
+/* Normalize the native search appearance only. Surface and focus treatment
+ * belong to the component so wrapper-based fields do not gain inner chrome. */
+input[type="search"] {
   appearance: none;
-  border-color: transparent !important;
-  background-color: color-mix(in hsl, var(--interactive-hover) 60%, transparent) !important;
-  outline: none;
-  box-shadow: none !important;
-}
-
-/* Keep all editable controls on the same quiet focus treatment as Settings.
- * This is intentionally late and uses !important to neutralize older page
- * styles that otherwise reintroduce blue borders or glow rings. */
-html body input:not([type="checkbox"], [type="radio"]):focus,
-html body input:not([type="checkbox"], [type="radio"]):focus-visible,
-html body textarea:focus,
-html body textarea:focus-visible,
-html body select:focus,
-html body select:focus-visible {
-  border-color: hsl(var(--border)) !important;
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-input[type="search"]:not(.app-menu-search-input):focus,
-input[type="search"]:not(.app-menu-search-input):focus-visible,
-.ds-search-input:not(.app-menu-search-input):focus,
-.ds-search-input:not(.app-menu-search-input):focus-visible {
-  border-color: hsl(var(--border)) !important;
-  background-color: hsl(var(--background)) !important;
-  outline: none !important;
-  box-shadow: none !important;
 }
 
 /* JavaScript 检测到 Android WebView 时的专用类 */

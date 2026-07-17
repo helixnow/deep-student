@@ -175,7 +175,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
 
       {/* 搜索框 */}
       <div className="px-3 py-2 border-b border-border">
-        <div className="relative">
+        <div className="mindmap-picker-search relative">
           <MagnifyingGlass className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
             ref={inputRef}

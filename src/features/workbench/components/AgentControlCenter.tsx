@@ -298,20 +298,17 @@ export function AgentControlDockEntry({
         <div className="wb-dock-bounce">
           <Popover open={open} onOpenChange={handleOpenChange}>
             <PopoverTrigger asChild>
-              <NotionButton
+              <button
                 ref={buttonRef}
                 type="button"
                 data-type-id={AGENT_CONTROL_DOCK_ID}
                 data-testid="wb-dock-agent-control-button"
                 data-mode={mode}
                 data-unseen={!seen || undefined}
-                className="wb-dock-item wb-agent-control-trigger group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none lg:h-11 lg:w-11"
+                className="wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none"
                 aria-label={triggerLabel}
                 tabIndex={tabIndex}
                 onFocus={onFocus}
-                variant="ghost"
-                size="icon"
-                iconOnly
               >
                 <span
                   aria-hidden="true"
@@ -323,8 +320,7 @@ export function AgentControlDockEntry({
                     className="wb-agent-control-app-icon"
                   />
                 </span>
-                <span className="wb-agent-control-status-dot" data-mode={mode} aria-hidden="true" />
-              </NotionButton>
+              </button>
             </PopoverTrigger>
 
             <PopoverContent

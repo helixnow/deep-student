@@ -43,14 +43,14 @@ export const LIFEC_ATTR = 'data-wb-lifec';
 
 /**
  * 静态兜底上限（ms）：仅在 getComputedStyle 读不到 animationDuration 时使用。
- * 与当前 token 对齐：standard 280 / quick 150 / genie 480；倍率约 ×1.7 留余量。
+ * 与当前 token 对齐：window-open 150 / window-close 110 / genie 400；倍率约 ×1.7 留余量。
  * 正常路径优先读壳上实际 animationDuration + FALLBACK_SLACK_MS。
  */
 const FALLBACK_MS: Record<WindowTransientPhase, number> = {
-  opening: 480, // --wb-motion-standard 280 × ~1.7
-  closing: 260, // --wb-motion-quick 150 × ~1.7
-  minimizing: 820, // --wb-motion-genie 480 × ~1.7
-  restoring: 820,
+  opening: 260, // --wb-motion-window-open 150 × ~1.7
+  closing: 190, // --wb-motion-window-close 110 × ~1.7
+  minimizing: 680, // --wb-motion-genie 400 × ~1.7
+  restoring: 680,
 };
 
 /** 读到真实时长后再加的余量，覆盖丢 animationend / 舍入 */

@@ -1,36 +1,8 @@
-.wb-agent-control-trigger[data-unseen='true'] {
-  box-shadow:
-    inset 0 0 0 1px hsl(var(--primary) / 34%),
-    0 0 0 3px hsl(var(--primary) / 8%);
-}
-
 .wb-agent-control-app-icon {
   display: block;
   width: 30px;
   height: 30px;
   object-fit: contain;
-}
-
-.wb-agent-control-status-dot {
-  position: absolute;
-  right: 1px;
-  bottom: 1px;
-  box-sizing: border-box;
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--wb-glass-bg-strong, var(--background));
-  border-radius: 999px;
-  background: hsl(var(--muted-foreground));
-  box-shadow: 0 1px 2px hsl(var(--foreground) / 20%);
-  pointer-events: none;
-}
-
-.wb-agent-control-status-dot[data-mode='background'] {
-  background: hsl(var(--warning, 38 92% 50%));
-}
-
-.wb-agent-control-status-dot[data-mode='follow'] {
-  background: hsl(var(--success, 142 72% 38%));
 }
 
 .wb-agent-control-popover {
@@ -527,7 +499,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wb-agent-control-trigger,
   .wb-agent-control-popover,
   .wb-agent-control-open-chat,
   .wb-agent-capabilities-toggle svg {

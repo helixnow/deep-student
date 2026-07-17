@@ -30,17 +30,17 @@
 }
 
 [data-wb-window-id][data-wb-lifec='opening'] {
-  animation: wb-kf-pop-in var(--wb-motion-standard, 280ms) var(--wb-ease-spring, cubic-bezier(0.32, 1.12, 0.36, 1)) both;
+  animation: wb-kf-window-open var(--wb-motion-window-open, 150ms) var(--wb-ease-window-open, cubic-bezier(0.32, 0.72, 0, 1)) both;
 }
 
 [data-wb-window-id][data-wb-lifec='closing'] {
-  animation: wb-kf-pop-out var(--wb-motion-quick, 150ms) var(--wb-ease-in, cubic-bezier(0.5, 0.05, 0.8, 0.4)) both;
+  animation: wb-kf-window-close var(--wb-motion-window-close, 110ms) var(--wb-ease-window-close, cubic-bezier(0.42, 0, 1, 1)) both;
   pointer-events: none;
 }
 
-/* Exposé FLIP 期间关窗：pop-out 的 scale 会与 FLIP transform 复合 → 改纯 opacity */
+/* Exposé FLIP 期间关窗：window-close 的 scale 会与 FLIP transform 复合 → 改纯 opacity */
 [data-wb-window-id][data-expose-transform][data-wb-lifec='closing'] {
-  animation: wb-kf-fade-out var(--wb-motion-quick, 150ms) var(--wb-ease-in, cubic-bezier(0.5, 0.05, 0.8, 0.4)) both;
+  animation: wb-kf-fade-out var(--wb-motion-window-close, 110ms) var(--wb-ease-window-close, cubic-bezier(0.42, 0, 1, 1)) both;
 }
 
 [data-wb-window-id][data-wb-lifec='minimizing'],
@@ -52,11 +52,11 @@
 /* genie 关键帧已内嵌逐段 linear 缓动（形状编码在密集采样点里），
  * 此处的曲线仅作声明占位，不再参与实际插值 */
 [data-wb-window-id][data-wb-lifec='minimizing'] {
-  animation: wb-kf-genie-min var(--wb-motion-genie, 480ms) linear both;
+  animation: wb-kf-genie-min var(--wb-motion-genie, 400ms) linear both;
 }
 
 [data-wb-window-id][data-wb-lifec='restoring'] {
-  animation: wb-kf-genie-restore var(--wb-motion-genie, 480ms) linear both;
+  animation: wb-kf-genie-restore var(--wb-motion-genie, 400ms) linear both;
 }
 
 /* ==========================================================================

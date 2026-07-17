@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { DotsSixVertical, SquaresFour, Gear, ArrowClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
+import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useUIStore } from '@/stores/uiStore';
 import { useMobileHeader, MobileSlidingLayout, DEFAULT_GESTURE_IGNORE_SELECTOR, type ScreenPosition } from '@/components/layout';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -160,6 +161,7 @@ export const LearningHubPage: React.FC = () => {
   // ========== 响应式布局 ==========
   const { isSmallScreen } = useBreakpoint();
   const desktopShellSidebarTarget = useDesktopShellSidebarPortal('learning-hub');
+  const desktopShellHeaderTarget = useDesktopShellHeaderPortal('learning-hub');
 
   // ========== ★ 标签页状态 ==========
   // ★ I10 修复：标签页持久化——重启后恢复上次打开的标签页
@@ -1225,6 +1227,8 @@ export const LearningHubPage: React.FC = () => {
               hasOpenApp={hasOpenApp}
               onCloseApp={handleCloseApp}
               quickAccessPortalTarget={desktopShellSidebarTarget}
+              toolbarPortalTarget={desktopShellHeaderTarget}
+              toolbarPortalMode="shell"
             />
           </div>
         </Panel>

@@ -12,19 +12,21 @@
 }
 
 .notes-backlinks-panel-header {
-  min-height: 42px;
-  padding: 6px 7px 6px 12px;
+  min-height: 40px;
+  padding: 0 6px 0 8px;
   display: flex;
   flex: 0 0 auto;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   gap: 8px;
   border-bottom: 1px solid hsl(var(--border));
 }
 
-.notes-backlinks-panel-header > div:first-child {
+.notes-backlinks-panel-heading {
   min-width: 0;
+  padding: 6px 4px;
   display: grid;
+  align-content: center;
   gap: 1px;
 }
 
@@ -42,7 +44,7 @@
   white-space: nowrap;
 }
 
-.notes-backlinks-panel-header span {
+.notes-backlinks-panel-heading span {
   overflow: hidden;
   color: hsl(var(--muted-foreground));
   font-size: 11px;
@@ -50,34 +52,70 @@
   white-space: nowrap;
 }
 
-/* ===== 统一右侧栏页签（属性 / 链接） ===== */
+/* 当前笔记名（页签模式下移出头部，独立一行） */
+.notes-backlinks-panel-note {
+  min-height: 30px;
+  padding: 0 12px;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid hsl(var(--border) / 55%);
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 35%);
+}
+
+.notes-backlinks-panel-note > svg {
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+.notes-backlinks-panel-note > span {
+  overflow: hidden;
+  color: hsl(var(--foreground) / 85%);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 统一右侧栏页签（属性 / 链接）——下划线式，占满头部高度 ===== */
 
 .notes-backlinks-panel-tabs {
   min-width: 0;
   display: flex;
-  flex: 0 0 auto;
-  align-items: center;
+  flex: 1 1 auto;
+  align-items: stretch;
   gap: 2px;
-  padding: 2px;
-  border-radius: var(--notes-radius-control);
-  background: hsl(var(--muted) / 55%);
 }
 
 .notes-backlinks-panel-tab {
-  height: 23px;
+  position: relative;
   padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
   border: 0;
-  border-radius: calc(var(--notes-radius-control) - 1px);
   color: hsl(var(--muted-foreground));
   background: transparent;
   font: inherit;
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
-  transition:
-    background-color var(--notes-hover-transition),
-    color var(--notes-hover-transition);
+  transition: color var(--notes-hover-transition);
+}
+
+.notes-backlinks-panel-tab::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color var(--notes-hover-transition);
 }
 
 .notes-backlinks-panel-tab:hover {
@@ -86,14 +124,17 @@
 
 .notes-backlinks-panel-tab[aria-selected='true'] {
   color: hsl(var(--foreground));
-  background: hsl(var(--background));
-  box-shadow: 0 1px 2px hsl(var(--foreground) / 6%);
   font-weight: 600;
+}
+
+.notes-backlinks-panel-tab[aria-selected='true']::after {
+  background: hsl(var(--primary));
 }
 
 .notes-backlinks-panel-tab:focus-visible {
   outline: 2px solid hsl(var(--ring));
-  outline-offset: 1px;
+  outline-offset: -2px;
+  border-radius: var(--notes-radius-control);
 }
 
 .notes-backlinks-panel-properties {
@@ -175,11 +216,13 @@
   font-weight: 600;
 }
 
-.notes-backlinks-panel-section h3 span {
+/* 计数徽标：仅作用于 count 元素，避免污染折叠按钮内的图标+文字 label */
+.notes-backlinks-panel-section-count {
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
   display: inline-grid;
+  flex: 0 0 auto;
   place-items: center;
   border-radius: var(--notes-radius-control);
   color: hsl(var(--muted-foreground));

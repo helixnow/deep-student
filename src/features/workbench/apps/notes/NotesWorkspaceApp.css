@@ -120,9 +120,10 @@
   flex: 0 0 auto;
   gap: 6px;
   align-items: center;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
   border-radius: var(--notes-radius-control);
-  background: hsl(var(--background));
+  /* 玻璃面搜索框：低透明墨色 inset，不用实色灰底 */
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspens
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { MagnifyingGlass, Plus, FolderPlus, X, Trash, CircleNotch, FlowArrow, CheckSquare, ListChecks, CaretLeft, CaretRight, House } from '@phosphor-icons/react';
+import { MagnifyingGlass, Plus, X, Trash, CircleNotch, FlowArrow, CheckSquare, ListChecks, CaretLeft, CaretRight, House } from '@phosphor-icons/react';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
@@ -90,7 +90,7 @@ import type { LearningHubSidebarProps, ResourceListItem } from './types';
 import type { FolderItemType, FolderTreeNode } from '@/dstu/types/folder';
 import { VfsError, VfsErrorCode, err, ok, reportError } from '@/shared/result';
 import { LearningHubContextMenu, type ContextMenuTarget } from './components/LearningHubContextMenu';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter, NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -117,6 +117,15 @@ import { useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 
 /** ★ Bug4: canvas 模式下不应显示的特殊视图 */
 const CANVAS_BLOCKED_VIEW_KINDS = new Set(['indexStatus', 'memory', 'desktop']);
+const PENDING_FOLDER_ID_PREFIX = '__pending_new_folder__';
+
+const isPendingFolderId = (id: string | null | undefined): boolean =>
+  Boolean(id?.startsWith(PENDING_FOLDER_ID_PREFIX));
+
+interface PendingFolderDraft {
+  node: DstuNode;
+  parentFolderId: string | null;
+}
 
 export function LearningHubSidebar({
   mode,
@@ -132,6 +141,7 @@ export function LearningHubSidebar({
   hideToolbarAndNav = false,
   quickAccessPortalTarget,
   toolbarPortalTarget,
+  toolbarPortalMode = 'window',
   highlightedIds,
 }: LearningHubSidebarProps) {
   const { isActive: isLearningHubViewActive } = useViewVisibility('learning-hub');
@@ -253,11 +263,11 @@ export function LearningHubSidebar({
   // 多选模式生效条件：canvas 模式（原有逻辑）或触屏普通模式
   const multiSelectActive = isMultiSelectMode && (mode === 'canvas' || isTouchPrimary);
 
-  // New folder/note dialog state
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [createDialogType, setCreateDialogType] = useState<'folder' | 'note' | 'exam' | 'textbook' | 'translation' | 'essay' | 'mindmap'>('folder');
-  const [createDialogName, setCreateDialogName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  // 新文件夹只作为前端草稿显示；用户提交非空名称后才写入后端。
+  const [pendingFolderDraft, setPendingFolderDraft] = useState<PendingFolderDraft | null>(null);
+  const pendingFolderDraftRef = useRef<PendingFolderDraft | null>(null);
+  const pendingFolderSequenceRef = useRef(0);
+  pendingFolderDraftRef.current = pendingFolderDraft;
   
   // Context menu state
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
@@ -478,7 +488,6 @@ export function LearningHubSidebar({
     };
   }, [currentPath.viewKind, handleSilentRefresh]);
 
-  // Open create dialog
   const ensureCreatableView = useCallback(() => {
     if (canCreateInCurrentView) {
       return true;
@@ -487,30 +496,38 @@ export function LearningHubSidebar({
     return false;
   }, [canCreateInCurrentView, t]);
 
-  const handleNewFolder = () => {
+  const handleNewFolder = useCallback(() => {
     if (!ensureCreatableView()) return;
-    setCreateDialogType('folder');
-    setCreateDialogName('');
-    setCreateDialogOpen(true);
-  };
+    const beginDraft = () => {
+      if (!isMountedRef.current) return;
+      cancelInlineEdit();
+      clearSelection();
+      const now = Date.now();
+      const pendingId = `${PENDING_FOLDER_ID_PREFIX}${++pendingFolderSequenceRef.current}`;
+      const draft: PendingFolderDraft = {
+        node: {
+          id: pendingId,
+          path: '',
+          name: '',
+          type: 'folder',
+          createdAt: now,
+          updatedAt: now,
+          childCount: 0,
+        },
+        parentFolderId: currentCreatableFolderId,
+      };
+      pendingFolderDraftRef.current = draft;
+      setPendingFolderDraft(draft);
+      startInlineEdit(pendingId, 'folder', '');
+    };
 
-  const handleQuickCreateFolder = useCallback(async () => {
-    if (!ensureCreatableView()) return;
-    const result = await folderApi.createFolder(
-      t('finder.create.defaultFolderName'),
-      currentCreatableFolderId ?? undefined
-    );
-
-    if (!isMountedRef.current) return;
-
-    if (result.ok) {
-      showGlobalNotification('success', t('finder.create.folderSuccess'));
-      handleRefresh();
-      return;
+    // 连续新建时，先让旧输入框的 blur 完成提交/取消，再开始下一份草稿。
+    if (pendingFolderDraftRef.current) {
+      requestAnimationFrame(beginDraft);
+    } else {
+      beginDraft();
     }
-
-    showGlobalNotification('error', result.error.toUserMessage());
-  }, [currentCreatableFolderId, ensureCreatableView, handleRefresh, t]);
+  }, [cancelInlineEdit, clearSelection, currentCreatableFolderId, ensureCreatableView, startInlineEdit]);
 
   const handleNewNote = async () => {
     if (!ensureCreatableView()) return;
@@ -717,7 +734,7 @@ export function LearningHubSidebar({
   useCommandEvents(
     {
       'learningHub:create-folder': () => {
-        void handleQuickCreateFolder();
+        handleNewFolder();
       },
       'learningHub:focus-search': () => {
         focusSearchInput();
@@ -1268,35 +1285,9 @@ export function LearningHubSidebar({
   // 是否允许拖拽导入（排除回收站、特殊视图等）
   const isDragDropEnabled = mode !== 'canvas' && !isDragDropBlockedView(currentPath);
 
-  // Create folder (note creation moved to handleNewNote)
-  const handleCreate = async () => {
-    if (!ensureCreatableView()) return;
-    if (!createDialogName.trim()) return;
-
-    setIsCreating(true);
-    // ★ 2025-12-13: 对话框现在只用于创建文件夹，笔记创建使用 createEmpty
-    const result = await folderApi.createFolder(
-      createDialogName.trim(),
-      currentCreatableFolderId ?? undefined
-    );
-
-    // ★ MEDIUM-005: 检查组件是否已卸载
-    if (!isMountedRef.current) return;
-
-    setIsCreating(false);
-
-    if (result.ok) {
-      showGlobalNotification('success', t('finder.create.folderSuccess'));
-      setCreateDialogOpen(false);
-      handleRefresh();
-    } else {
-      reportError(result.error, 'create folder');
-      showGlobalNotification('error', result.error.toUserMessage());
-    }
-  };
-
   // Context menu handlers
   const handleContextMenu = (e: React.MouseEvent, item: DstuNode) => {
+    if (isPendingFolderId(item.id)) return;
     e.preventDefault();
     e.stopPropagation(); // 阻止冒泡到容器，避免触发空白区域菜单
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
@@ -1479,7 +1470,36 @@ export function LearningHubSidebar({
   // 内联编辑确认处理
   const handleInlineEditConfirm = useCallback(async (itemId: string, newName: string) => {
     if (!newName.trim()) {
+      if (isPendingFolderId(itemId)) {
+        if (pendingFolderDraftRef.current?.node.id !== itemId) return;
+        pendingFolderDraftRef.current = null;
+        setPendingFolderDraft(null);
+      }
       cancelInlineEdit();
+      return;
+    }
+
+    if (isPendingFolderId(itemId)) {
+      const draft = pendingFolderDraftRef.current;
+      // 旧输入框的延迟 blur 不得提交或清除后来创建的新草稿。
+      if (!draft || draft.node.id !== itemId) return;
+
+      cancelInlineEdit();
+      pendingFolderDraftRef.current = null;
+      setPendingFolderDraft(null);
+      const result = await folderApi.createFolder(
+        newName.trim(),
+        draft.parentFolderId ?? undefined
+      );
+
+      if (!isMountedRef.current) return;
+      if (result.ok) {
+        showGlobalNotification('success', t('finder.create.folderSuccess'));
+        await handleRefresh();
+      } else {
+        reportError(result.error, 'create folder');
+        showGlobalNotification('error', result.error.toUserMessage());
+      }
       return;
     }
 
@@ -1534,9 +1554,32 @@ export function LearningHubSidebar({
   }, [items, inlineEdit.editingType, t, handleRefresh, cancelInlineEdit]);
 
   // 内联编辑取消处理
-  const handleInlineEditCancel = useCallback(() => {
-    cancelInlineEdit();
+  const handleInlineEditCancel = useCallback((itemId: string) => {
+    if (isPendingFolderId(itemId)) {
+      if (pendingFolderDraftRef.current?.node.id !== itemId) return;
+      pendingFolderDraftRef.current = null;
+      setPendingFolderDraft(null);
+    }
+    if (useFinderStore.getState().inlineEdit.editingId === itemId) {
+      cancelInlineEdit();
+    }
   }, [cancelInlineEdit]);
+
+  useEffect(() => {
+    if (!pendingFolderDraft) return;
+    setPendingFolderDraft(null);
+    pendingFolderDraftRef.current = null;
+    if (isPendingFolderId(useFinderStore.getState().inlineEdit.editingId)) {
+      cancelInlineEdit();
+    }
+    // 路径变化后草稿不应跟随到另一个文件夹。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPathDisplay]);
+
+  const displayedItems = useMemo(
+    () => pendingFolderDraft ? [pendingFolderDraft.node, ...items] : items,
+    [items, pendingFolderDraft]
+  );
 
   // 拖拽移动单个项目
   const handleMoveItem = useCallback(async (itemId: string, targetFolderId: string | null) => {
@@ -2666,7 +2709,7 @@ export function LearningHubSidebar({
             searchDisabled={!canSearchInCurrentView}
             onNewFolder={canCreateInCurrentView ? handleNewFolder : undefined}
             onRefresh={handleRefresh}
-            titlebarMode={Boolean(toolbarPortalTarget)}
+            titlebarMode={toolbarPortalTarget ? toolbarPortalMode : false}
           />
           );
           return toolbarPortalTarget ? createPortal(toolbar, toolbarPortalTarget) : toolbar;
@@ -2780,7 +2823,7 @@ export function LearningHubSidebar({
             />
           ) : (
           <FinderFileList
-            items={items}
+            items={displayedItems}
             viewMode={isCollapsed || mode === 'canvas' ? 'list' : viewMode}
             selectedIds={selectedIds}
             onSelect={
@@ -2792,7 +2835,7 @@ export function LearningHubSidebar({
                 : mode === 'canvas'
                   ? (id, _mode) => {
                       // canvas 非多选模式下，单击直接打开文件/文件夹
-                      const item = items.find(i => i.id === id);
+                      const item = displayedItems.find(i => i.id === id);
                       if (item) handleOpen(item);
                     }
                   : select
@@ -2944,40 +2987,6 @@ export function LearningHubSidebar({
         onPermanentDeleteItem={handlePermanentDeleteItem}
         onEmptyTrash={handleEmptyTrash}
       />
-      
-      {/* Create Folder Dialog - Notion 风格 */}
-      <NotionDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} maxWidth="max-w-[400px]">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
-            <FolderPlus className="w-4 h-4 text-muted-foreground" />
-            {t('finder.create.folderTitle')}
-          </NotionDialogTitle>
-        </NotionDialogHeader>
-        <NotionDialogBody>
-          <Input
-            type="text"
-            placeholder={t('finder.create.folderPlaceholder')}
-            value={createDialogName}
-            onChange={(e) => setCreateDialogName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !isCreating) {
-                handleCreate();
-              }
-            }}
-            autoFocus
-            className="w-full h-9"
-          />
-        </NotionDialogBody>
-        <NotionDialogFooter>
-          <NotionButton variant="ghost" size="sm" onClick={() => setCreateDialogOpen(false)} disabled={isCreating}>
-            {t('common:cancel')}
-          </NotionButton>
-          <NotionButton variant="primary" size="sm" onClick={handleCreate} disabled={!createDialogName.trim() || isCreating}>
-            {isCreating && <CircleNotch className="w-3.5 h-3.5 mr-1.5 animate-spin inline" />}
-            {isCreating ? t('common:actions.creating') : t('common:actions.create')}
-          </NotionButton>
-        </NotionDialogFooter>
-      </NotionDialog>
       
       {/* Folder Picker Dialog for Batch Move */}
       <FolderPickerDialog

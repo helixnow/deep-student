@@ -40,7 +40,8 @@
     "skills_management": "技能管理",
     "todo": "待办",
     "ui_lab": "样式调试",
-    "command_palette": "搜索与命令"
+    "command_palette": "搜索与命令",
+    "workbench_mode": "学习桌面"
   },
   "aria": {
     "sidebar_navigation": "主导航",

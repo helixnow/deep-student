@@ -276,8 +276,8 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     : {};
 
   const handleClassName = cn(
-    '!w-2 !h-2 !border !border-[var(--mm-border)] !bg-[var(--mm-bg-elevated)] transition-opacity',
-    selected ? '!opacity-100' : '!opacity-0 group-hover:!opacity-100'
+    '!w-2 !h-2 !border !border-[var(--mm-border)] !bg-[var(--mm-bg-elevated)]',
+    selected ? '!visible' : '!invisible group-hover:!visible'
   );
 
   return (
@@ -302,8 +302,8 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
       {hasChildren && (
         <div 
           className={cn(
-            "w-5 h-5 z-20 transition-opacity duration-200",
-            !selected && !isCollapsed ? "opacity-0 group-hover:opacity-100" : "opacity-100"
+            "w-5 h-5 z-20",
+            !selected && !isCollapsed ? "invisible group-hover:visible" : "visible"
           )}
           style={getCollapseButtonStyle()}
         >
@@ -384,10 +384,11 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
       {!reciteMode && (
       <div
         className={cn(
-          "mm-node-actions",
-          selected && !isEditing ? "opacity-100" : "opacity-0 pointer-events-none"
+          "mm-node-actions nodrag nopan",
+          selected && !isEditing ? "visible pointer-events-auto" : "invisible pointer-events-none"
         )}
         style={{ left: '100%', marginLeft: '8px' }}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <NotionButton variant="ghost"
           onClick={handleAddChild}

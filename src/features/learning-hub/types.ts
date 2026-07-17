@@ -138,6 +138,8 @@ export interface LearningHubSidebarProps {
   quickAccessPortalTarget?: HTMLElement | null;
   /** ★ Workbench 资源库窗口：将 Finder 工具栏挂到原生窗口标题栏插槽 */
   toolbarPortalTarget?: HTMLElement | null;
+  /** 工具栏所在标题栏类型：普通模式使用全局 shell，OS 模式使用独立窗口 */
+  toolbarPortalMode?: 'shell' | 'window';
   /** ★ 高亮标记的资源 ID（如分组已关联的资源，显示勾选状态） */
   highlightedIds?: Set<string>;
 }

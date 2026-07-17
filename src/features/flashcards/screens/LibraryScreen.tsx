@@ -147,7 +147,7 @@ export const LibraryScreen: React.FC = () => {
       </header>
 
       <div className="wb-fc-toolbar">
-        <div className="relative min-w-0 flex-1">
+        <div className="wb-fc-search relative min-w-0 flex-1">
           <MagnifyingGlass
             size={14}
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"

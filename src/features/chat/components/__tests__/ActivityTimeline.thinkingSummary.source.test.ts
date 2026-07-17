@@ -33,6 +33,7 @@ describe('activity timeline thinking summary source', () => {
   it('uses the full summary row as the thinking trigger without shrinking the tap target', () => {
     expect(activityTimelineSource).toMatch(/w-full !justify-start !px-0 rounded-\[var\(--radius-shell-control\)\] .* group/);
     expect(activityTimelineSource).toContain('thinking-summary-trigger w-full !justify-start !px-0');
+    expect(activityTimelineSource).toContain('text-base text-muted-foreground gap-1.5 hover:text-foreground');
     expect(activityTimelineCssSource).toContain('.thinking-summary-trigger:hover,');
     expect(activityTimelineCssSource).toContain('background: transparent;');
     expect(activityTimelineSource).not.toContain('group-hover:translate-x-0.5');

@@ -554,11 +554,6 @@
   pointer-events: none !important;
 }
 
-.mm-exporting .mm-edge-highlighted {
-  /* 移除边的高亮状态 */
-  stroke-width: 1.5px !important;
-}
-
 /* ============================================
    ReactFlow 相关样式
    ============================================ */
@@ -581,12 +576,6 @@
 
 .mindmap-container .react-flow__node.dragging {
   transition: none;
-}
-
-/* 已移除 .mm-blur-safety-mode 规则，恢复正常的悬停和渐变动画 */
-
-/* 确保 ReactFlow viewport 不使用 3D transform 以避免文字模糊 */
-.mindmap-container .react-flow__viewport {
 }
 
 .mindmap-container .react-flow__edge-path {
@@ -865,7 +854,7 @@
   border-radius: 50%;
   border: none;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .mm-collapse-btn:hover {
@@ -879,7 +868,6 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  transition: all 0.15s ease;
   z-index: 10;
 }
 
@@ -894,7 +882,7 @@
   background: var(--mm-bg-elevated);
   color: var(--mm-text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .mm-action-btn:hover {
@@ -914,8 +902,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
-  /* 移除 opacity transition，防止 hover 时大量 edge 同时触发 GPU 合成导致文字模糊 */
-  transition: stroke 0.3s ease, stroke-width 0.2s ease;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
 }
 
 /* 选中节点的连接线高亮 */
@@ -966,10 +953,63 @@
   fill: currentColor;
 }
 
-/* 空白拖拽模式切换：当前激活的模式按钮 */
-.mindmap-container .react-flow__controls-button.mm-drag-mode-active {
+/* 空白拖拽模式：独立于缩放控件，文字始终说明当前工具。 */
+.mm-canvas-mode-switch {
+  position: absolute;
+  bottom: 8px;
+  left: 42px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--mm-border);
+  border-radius: 4px;
+  background: var(--mm-bg-elevated);
+  box-shadow: none;
+  user-select: none;
+}
+
+.mm-canvas-mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  min-width: 56px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--mm-text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mm-canvas-mode-button:hover {
   background: var(--mm-bg-hover);
+  color: var(--mm-text);
+}
+
+.mm-canvas-mode-button.is-active {
+  background: var(--mm-primary-soft);
   color: var(--mm-primary);
+  font-weight: 600;
+}
+
+.mm-canvas-mode-select .react-flow__pane {
+  cursor: crosshair;
+}
+
+.mm-canvas-mode-pan .react-flow__pane {
+  cursor: grab;
+}
+
+.mm-canvas-mode-pan .react-flow__pane.dragging {
+  cursor: grabbing;
 }
 
 /* --- MiniMap --- */
@@ -1339,19 +1379,6 @@
   color: var(--mm-text-secondary);
 }
 
-/* --- 完成节点样式 (Completed Nodes) --- */
-.mm-root-node.mm-completed,
-.mm-branch-node.mm-completed,
-.mindmap-node-underline.mm-completed {
-  opacity: 0.5;
-}
-
-.mm-root-node.mm-completed:hover,
-.mm-branch-node.mm-completed:hover,
-.mindmap-node-underline.mm-completed:hover {
-  opacity: 0.7;
-}
-
 /* ============================================
    Edge Styles - 边样式
    ============================================ */
@@ -1520,7 +1547,7 @@
    背诵模式 - 文本选择 (Recite Mode Text Selection)
    ============================================ */
 
-/* 覆盖 ReactFlow 祖先元素的 user-select: none，允许背诵模式下选中文本进行挖空 */
+/* 覆盖 ReactFlow 祖先元素的 user-select: none，允许背诵模式下选中文字。 */
 .mindmap-container .nopan.nodrag {
   -webkit-user-select: text !important;
   -moz-user-select: text !important;

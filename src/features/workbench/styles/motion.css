@@ -6,9 +6,10 @@
  *
  * 引用契约（O2–O19，命名见 docs/dev/workbench-progress/O1.md §命名预告）：
  *   - 曲线：--wb-ease-spring / -spring-soft / -overshoot / -swift / -in /
- *           -genie / -magnify（另保留既有 --wb-ease / --wb-ease-out）
+ *           -genie / -magnify / -window-open / -window-close
+ *           （另保留既有 --wb-ease / --wb-ease-out）
  *   - 时长：--wb-motion-instant / -quick / -standard / -gentle / -genie /
- *           -bounce / -breathe / -tier-fade
+ *           -bounce / -breathe / -tier-fade / -window-open / -window-close
  *   - 三态：--wb-hover-duration|ease、--wb-press-duration|ease、
  *           --wb-focus-duration|ease
  *   - keyframes：wb-kf-*（仅 transform/opacity）
@@ -18,6 +19,12 @@
  *   - pop-in / overshoot-in 关键帧单调，过冲只来自 timing（避免双重回弹）
  *   - prefers-reduced-motion：路径类时长归零，opacity 淡变保留 120–160ms
  *   - minimal 材质档仍全时长归零（性能档，与 RM 分层不同）
+ *
+ * L3（2026-07-17）：
+ *   - 新增窗口出入场专用 token/keyframes（window-open/close）：macOS 写实向，
+ *     快速 ease-out、无回弹；共享 pop-in/pop-out 保持 spring 手感不变
+ *   - genie-min/restore 重采样：opacity 保持到末段才消失；节奏改慢起步→
+ *     中段加速→尾段减速吸入（ease-in-out），贴近真 Genie
  *
  * 纪律：
  *   - 所有 keyframes 仅 transform / opacity；
@@ -40,17 +47,24 @@
   --wb-ease-genie: linear;
   /* magnification 跟踪：Dock 邻近放大等指针跟随类（短时长搭配） */
   --wb-ease-magnify: cubic-bezier(0.2, 0.6, 0.25, 1);
+  /* 开窗：macOS 写实 ease-out，快速定住、无回弹（窗口专用，区别于 spring） */
+  --wb-ease-window-open: cubic-bezier(0.32, 0.72, 0, 1);
+  /* 关窗：全程加速消散，无减速拖尾 */
+  --wb-ease-window-close: cubic-bezier(0.42, 0, 1, 1);
 
   /* ==== 时长刻度 ==================================================== */
   --wb-motion-instant: 90ms;
   --wb-motion-quick: 150ms;
   --wb-motion-standard: 280ms;
   --wb-motion-gentle: 320ms;
-  --wb-motion-genie: 480ms;
+  --wb-motion-genie: 400ms;
   --wb-motion-bounce: 640ms;
   --wb-motion-breathe: 2400ms;
   /* 材质切档交叉淡化（materialTier.ts 编排，token 层消费） */
   --wb-motion-tier-fade: 220ms;
+  /* 窗口出入场（macOS 写实向：比 standard 更短，近似原生窗口） */
+  --wb-motion-window-open: 150ms;
+  --wb-motion-window-close: 110ms;
 
   /* ==== 三态过渡（悬停 / 按压 / 焦点） =============================== */
   --wb-hover-duration: var(--wb-motion-quick);
@@ -172,6 +186,19 @@
   to { opacity: 0; transform: scale(0.97); }
 }
 
+/* --- 窗口出入场（macOS 写实向，L3） ----------------------------------------
+ * 与共享 pop-in/pop-out 的差异：配合 --wb-ease-window-open/close 使用，
+ * 曲线本身无回弹/无拖尾，关键帧单调；时长走 --wb-motion-window-open/close。 */
+@keyframes wb-kf-window-open {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes wb-kf-window-close {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.96); }
+}
+
 /* --- 弹层入场：关键帧单调；回弹交给 --wb-ease-overshoot ----------------- */
 @keyframes wb-kf-overshoot-in {
   from { opacity: 0; transform: scale(0.94); }
@@ -192,28 +219,33 @@
 /* --- genie 吸入 / 还原 ----------------------------------------------------
  * 收敛点由消费方注入 --wb-minimize-origin-x/y（缺省 50% / 130%）。
  * 密集采样 + 每段 linear：形状编码在采样点；类层 timing 用 linear。
+ * L3：节奏改 ease-in-out（慢起步→中段加速→尾段减速吸入）；
+ *     opacity 保持到 ~77% 才开始降（真 Genie 几乎全程不透明、末段才消失）。
  * ------------------------------------------------------------------------- */
 @keyframes wb-kf-genie-min {
   0% { opacity: 1; transform: scale(1, 1) translateY(0); animation-timing-function: linear; }
-  12% { opacity: 1; transform: scale(0.94, 0.985) translateY(0.4%); animation-timing-function: linear; }
-  24% { opacity: 0.97; transform: scale(0.84, 0.94) translateY(1.1%); animation-timing-function: linear; }
-  36% { opacity: 0.92; transform: scale(0.71, 0.86) translateY(2%); animation-timing-function: linear; }
-  48% { opacity: 0.84; transform: scale(0.56, 0.74) translateY(3.1%); animation-timing-function: linear; }
-  60% { opacity: 0.72; transform: scale(0.41, 0.6) translateY(4.4%); animation-timing-function: linear; }
-  72% { opacity: 0.56; transform: scale(0.27, 0.44) translateY(5.6%); animation-timing-function: linear; }
-  84% { opacity: 0.36; transform: scale(0.16, 0.28) translateY(6.8%); animation-timing-function: linear; }
+  12% { opacity: 1; transform: scale(0.965, 0.992) translateY(0.25%); animation-timing-function: linear; }
+  26% { opacity: 1; transform: scale(0.885, 0.955) translateY(0.8%); animation-timing-function: linear; }
+  40% { opacity: 1; transform: scale(0.76, 0.88) translateY(1.7%); animation-timing-function: linear; }
+  54% { opacity: 1; transform: scale(0.6, 0.76) translateY(2.9%); animation-timing-function: linear; }
+  66% { opacity: 1; transform: scale(0.44, 0.62) translateY(4.2%); animation-timing-function: linear; }
+  77% { opacity: 1; transform: scale(0.29, 0.47) translateY(5.6%); animation-timing-function: linear; }
+  86% { opacity: 0.72; transform: scale(0.17, 0.3) translateY(6.8%); animation-timing-function: linear; }
+  93% { opacity: 0.38; transform: scale(0.09, 0.17) translateY(7.6%); animation-timing-function: linear; }
   100% { opacity: 0; transform: scale(0.05, 0.1) translateY(8%); }
 }
 
 @keyframes wb-kf-genie-restore {
   0% { opacity: 0; transform: scale(0.05, 0.1) translateY(8%); animation-timing-function: linear; }
-  14% { opacity: 0.3; transform: scale(0.15, 0.26) translateY(6.9%); animation-timing-function: linear; }
-  28% { opacity: 0.55; transform: scale(0.28, 0.44) translateY(5.6%); animation-timing-function: linear; }
-  42% { opacity: 0.74; transform: scale(0.44, 0.62) translateY(4.2%); animation-timing-function: linear; }
-  56% { opacity: 0.88; transform: scale(0.62, 0.78) translateY(2.8%); animation-timing-function: linear; }
-  70% { opacity: 0.96; transform: scale(0.8, 0.91) translateY(1.5%); animation-timing-function: linear; }
-  82% { opacity: 1; transform: scale(0.93, 0.985) translateY(0.6%); animation-timing-function: linear; }
-  92% { opacity: 1; transform: scale(1.008, 1.004) translateY(0); animation-timing-function: linear; }
+  8% { opacity: 0.55; transform: scale(0.09, 0.17) translateY(7.6%); animation-timing-function: linear; }
+  16% { opacity: 0.9; transform: scale(0.16, 0.29) translateY(6.9%); animation-timing-function: linear; }
+  22% { opacity: 1; transform: scale(0.26, 0.43) translateY(6%); animation-timing-function: linear; }
+  34% { opacity: 1; transform: scale(0.42, 0.6) translateY(4.5%); animation-timing-function: linear; }
+  48% { opacity: 1; transform: scale(0.6, 0.76) translateY(3%); animation-timing-function: linear; }
+  62% { opacity: 1; transform: scale(0.76, 0.88) translateY(1.8%); animation-timing-function: linear; }
+  76% { opacity: 1; transform: scale(0.88, 0.955) translateY(0.9%); animation-timing-function: linear; }
+  88% { opacity: 1; transform: scale(0.965, 0.99) translateY(0.25%); animation-timing-function: linear; }
+  94% { opacity: 1; transform: scale(1.006, 1.003) translateY(0); animation-timing-function: linear; }
   100% { opacity: 1; transform: scale(1, 1) translateY(0); }
 }
 
@@ -299,6 +331,8 @@
   --wb-motion-bounce: 0ms;
   --wb-motion-breathe: 0ms;
   --wb-motion-tier-fade: 0ms;
+  --wb-motion-window-open: 0ms;
+  --wb-motion-window-close: 0ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -313,11 +347,15 @@
     --wb-motion-standard: 160ms;
     --wb-motion-gentle: 160ms;
     --wb-motion-tier-fade: 160ms;
+    --wb-motion-window-open: 160ms;
+    --wb-motion-window-close: 120ms;
     --wb-ease-spring: linear;
     --wb-ease-spring-soft: linear;
     --wb-ease-overshoot: linear;
     --wb-ease-swift: linear;
     --wb-ease-magnify: linear;
+    --wb-ease-window-open: linear;
+    --wb-ease-window-close: linear;
   }
 
   /* 开窗/弹层：去掉 scale，只淡入（避免 RM 下仍缩放） */
@@ -326,6 +364,14 @@
     to { opacity: 1; transform: none; }
   }
   @keyframes wb-kf-pop-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: none; }
+  }
+  @keyframes wb-kf-window-open {
+    from { opacity: 0; transform: none; }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes wb-kf-window-close {
     from { opacity: 1; transform: none; }
     to { opacity: 0; transform: none; }
   }

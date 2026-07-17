@@ -195,7 +195,7 @@ interface FinderFileRowProps {
   onOpen: (item: DstuNode) => void;
   onContextMenu: (e: React.MouseEvent, item: DstuNode) => void;
   onEditConfirm?: (id: string, newName: string) => void;
-  onEditCancel?: () => void;
+  onEditCancel?: (id: string) => void;
 }
 
 /**
@@ -233,6 +233,10 @@ const FinderFileRow = React.memo(function FinderFileRow({
     (newName: string) => onEditConfirm?.(item.id, newName),
     [onEditConfirm, item.id]
   );
+  const handleEditCancel = useCallback(
+    () => onEditCancel?.(item.id),
+    [onEditCancel, item.id]
+  );
 
   return (
     <SortableFinderFileItem
@@ -249,7 +253,7 @@ const FinderFileRow = React.memo(function FinderFileRow({
       enableDrag={enableDrag}
       isEditing={isEditing}
       onEditConfirm={handleEditConfirm}
-      onEditCancel={onEditCancel}
+      onEditCancel={handleEditCancel}
       compact={compact}
     />
   );
@@ -278,7 +282,7 @@ interface FinderFileListProps {
   /** 内联编辑确认回调 */
   onEditConfirm?: (id: string, newName: string) => void;
   /** 内联编辑取消回调 */
-  onEditCancel?: () => void;
+  onEditCancel?: (id: string) => void;
   /** ★ 紧凑模式（隐藏时间和大小列） */
   compact?: boolean;
   /** ★ 当前在应用面板中打开的文件 ID（用于高亮） */

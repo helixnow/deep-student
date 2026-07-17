@@ -42,7 +42,7 @@ interface FinderToolbarProps {
   searchDisabled?: boolean;
   onNewFolder?: () => void;
   onRefresh?: () => void;
-  titlebarMode?: boolean;
+  titlebarMode?: false | 'shell' | 'window';
 }
 
 const SORT_OPTIONS: { value: SortBy; labelKey: string }[] = [
@@ -220,11 +220,13 @@ export const FinderToolbar = React.memo(function FinderToolbar({
   if (titlebarMode) {
     return (
       <div className="finder-toolbar pointer-events-none relative h-full shrink-0 bg-transparent py-0 pl-1 pr-2">
-        {/* 标题相对窗口居中：slot 左起点为 traffic inset，故 left = 50% - I/2 */}
+        {/* OS 窗口槽从 traffic inset 后开始；全局 shell 槽则按自身宽度居中。 */}
         <div
           className="pointer-events-none absolute inset-y-0 z-0 flex items-center justify-center"
           style={{
-            left: 'calc(50% - (var(--wb-macos-traffic-lights-inset, 72px) / 2))',
+            left: titlebarMode === 'window'
+              ? 'calc(50% - (var(--wb-macos-traffic-lights-inset, 72px) / 2))'
+              : '50%',
             width: 'min(42%, 280px)',
             transform: 'translateX(-50%)',
           }}

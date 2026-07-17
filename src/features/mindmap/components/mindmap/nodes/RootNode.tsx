@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo, useLayoutEffect, useRef } from 'react';
+import React, { useCallback, useMemo, useLayoutEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { cn } from '@/lib/utils';
@@ -30,7 +30,6 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   selected,
 }) => {
   const { t } = useTranslation('mindmap');
-  const [showActions, setShowActions] = useState(false);
   const storeApi = useMindMapStoreApi();
   
   const updateNode = useMindMapStore(state => state.updateNode);
@@ -166,8 +165,6 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         data.completed && "mm-completed"
       )}
       style={themeStyle}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
       onDoubleClick={(e) => {
         e.stopPropagation();
         // Handled by ReactFlow onNodeDoubleClick
@@ -222,8 +219,11 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
       <div
         className={cn(
           "absolute flex items-center justify-end w-8",
-          "transition-opacity duration-200 ease-out",
-          (showActions || selected) && !isEditing ? "opacity-100" : "opacity-0 pointer-events-none"
+          isEditing
+            ? "invisible pointer-events-none"
+            : selected
+              ? "visible pointer-events-auto"
+              : "invisible pointer-events-none group-hover:visible group-hover:pointer-events-auto"
         )}
         style={{ right: '-32px', top: '50%', marginTop: '-12px' }}
       >

@@ -79,10 +79,11 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
   border-radius: 5px;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--background));
+  /* 玻璃面搜索框：低透明墨色 inset，不用实色灰底 */
+  background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
 }
 
 .wb-resource-workspace-search:focus-within {

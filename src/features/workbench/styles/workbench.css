@@ -642,3 +642,42 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
 :root[data-wb-material='minimal'] .wb-empty-hint-arrow {
   animation: none;
 }
+
+/* ==========================================================================
+ * 搜索输入玻璃复位（OS 子树）
+ * --------------------------------------------------------------------------
+ * Only wrapper-owned fields are reset here. Standalone search controls keep
+ * their component-defined surface and focus ring.
+ * ========================================================================== */
+
+[data-wb-workbench-root]
+  :is(
+    .wb-apps-search-wrap,
+    .wb-file-preview-search,
+    .notes-search-overlay-input-wrap,
+    .notes-search,
+    .wb-resource-workspace-search,
+    .finder-search,
+    .wb-fc-search
+  )
+  input[type='search'] {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+[data-wb-workbench-root]
+  :is(
+    .wb-apps-search-wrap,
+    .wb-file-preview-search,
+    .notes-search-overlay-input-wrap,
+    .notes-search,
+    .wb-resource-workspace-search,
+    .finder-search,
+    .wb-fc-search
+  )
+  input[type='search']:is(:focus, :focus-visible) {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}

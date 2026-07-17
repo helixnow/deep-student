@@ -13,4 +13,13 @@ describe('mind map canvas empty-state contract', () => {
     expect(source).not.toContain('canvas.emptyHintBefore');
     expect(source).not.toContain('document.root.children.length === 0');
   });
+
+  it('fits a newly opened canvas even when the root node is focused', () => {
+    const initialFitStart = source.indexOf('// 初始 fitView');
+    const layoutFitStart = source.indexOf('// 当布局变化时重新适应视图');
+    const initialFitEffect = source.slice(initialFitStart, layoutFitStart);
+
+    expect(initialFitEffect).toContain('fitVisibleNodes(0)');
+    expect(initialFitEffect).not.toContain('if (focusedNodeId)');
+  });
 });

@@ -122,7 +122,11 @@
     "pomodoroWork": "Focusing",
     "pomodoroBreak": "On break",
     "openApps": "Open all apps",
+    "brandMenu": "Learning Desktop menu",
+    "brandSettings": "System Settings…",
+    "brandExit": "Quit Learning Desktop",
     "openCommandPalette": "Open command palette",
+    "openAppsPanel": "Search apps and commands",
     "openSettings": "Open settings",
     "openCenter": "Open Study Center",
     "centerShort": "Center",
@@ -233,8 +237,8 @@
   },
   "appsPanel": {
     "title": "All Apps",
-    "searchPlaceholder": "Search apps",
-    "empty": "No matching apps",
+    "searchPlaceholder": "Search apps and commands",
+    "empty": "No matching apps or commands",
     "close": "Close",
     "view": "View",
     "gridView": "Grid",
@@ -243,7 +247,9 @@
     "emptyHint": "Try another keyword, or clear search to see all apps",
     "hintSelect": "Select",
     "hintOpen": "Open",
-    "hintClose": "Close"
+    "hintClose": "Close",
+    "sectionApps": "Apps",
+    "sectionCommands": "Commands"
   },
   "window": {
     "close": "Close",

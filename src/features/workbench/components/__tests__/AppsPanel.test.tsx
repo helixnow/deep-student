@@ -413,3 +413,106 @@ describe('Dock Apps 入口', () => {
     expect(screen.getByTestId('wb-apps-panel')).toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 统一搜索（应用 + 命令）：命令面板 Provider 以可替换 mock 注入
+// ---------------------------------------------------------------------------
+
+const { commandPaletteMock } = vi.hoisted(() => ({
+  commandPaletteMock: {
+    current: null as null | {
+      searchCommands: (query: string) => unknown[];
+      executeCommand: (id: string) => Promise<void>;
+    },
+  },
+}));
+
+vi.mock('@/command-palette/CommandPaletteProvider', () => ({
+  useCommandPaletteSafe: () => commandPaletteMock.current,
+}));
+
+describe('统一搜索（应用 + 命令）', () => {
+  const navCommand = {
+    id: 'nav.goto.skills-management',
+    name: '跳转到技能管理',
+    description: 'MCP 技能与工具管理',
+    category: 'navigation' as const,
+    shortcut: 'mod+2',
+    execute: () => undefined,
+  };
+
+  beforeEach(() => {
+    commandPaletteMock.current = null;
+  });
+
+  it('无 Provider 时退化为仅应用搜索', async () => {
+    render(<AppsPanel />);
+    openAppsPanel();
+    const input = await screen.findByTestId('wb-apps-search');
+    fireEvent.change(input, { target: { value: 'chat' } });
+    expect(screen.queryByText('命令')).not.toBeInTheDocument();
+    expect(screen.getByTestId('wb-apps-item-chat')).toBeInTheDocument();
+  });
+
+  it('搜索时同时命中应用与命令并分区展示；点击命令执行并关闭', async () => {
+    const executeCommand = vi.fn(async () => undefined);
+    commandPaletteMock.current = {
+      searchCommands: (q: string) => (q.includes('技能') ? [navCommand] : []),
+      executeCommand,
+    };
+    render(<AppsPanel />);
+    openAppsPanel();
+
+    const input = await screen.findByTestId('wb-apps-search');
+    fireEvent.change(input, { target: { value: '技能' } });
+
+    // 应用区（测试应用名均为 key 串，无「技能」命中）不出现；命令区出现
+    expect(screen.queryByText('应用')).not.toBeInTheDocument();
+    expect(screen.getByText('命令')).toBeInTheDocument();
+    const row = screen.getByTestId('wb-apps-command-nav.goto.skills-management');
+    expect(row).toHaveTextContent('跳转到技能管理');
+    expect(row).toHaveTextContent('MCP 技能与工具管理');
+
+    fireEvent.click(row);
+    expect(executeCommand).toHaveBeenCalledWith('nav.goto.skills-management');
+    expect(isAppsPanelOpen()).toBe(false);
+  });
+
+  it('应用命中与命令命中同时存在时应用在前；Enter 执行当前选中命令', async () => {
+    const executeCommand = vi.fn(async () => undefined);
+    commandPaletteMock.current = {
+      searchCommands: () => [navCommand],
+      executeCommand,
+    };
+    render(<AppsPanel />);
+    openAppsPanel();
+
+    const input = await screen.findByTestId('wb-apps-search');
+    // 「chat」命中测试应用 chat，同时命令 mock 恒返回 1 条 → 扁平序列 [chat, command]
+    fireEvent.change(input, { target: { value: 'chat' } });
+    expect(screen.getByText('应用')).toBeInTheDocument();
+    expect(screen.getByText('命令')).toBeInTheDocument();
+
+    // ↓ 移到命令项（扁平序列 [chat, command]），Enter 执行
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(executeCommand).toHaveBeenCalledWith('nav.goto.skills-management');
+    expect(isAppsPanelOpen()).toBe(false);
+  });
+
+  it('过滤自我指涉的「打开命令面板」命令', async () => {
+    commandPaletteMock.current = {
+      searchCommands: () => [
+        { id: 'global.command-palette', name: '打开命令面板', category: 'global' as const, execute: () => undefined },
+        navCommand,
+      ],
+      executeCommand: vi.fn(async () => undefined),
+    };
+    render(<AppsPanel />);
+    openAppsPanel();
+    const input = await screen.findByTestId('wb-apps-search');
+    fireEvent.change(input, { target: { value: '任意关键词' } });
+    expect(screen.queryByTestId('wb-apps-command-global.command-palette')).not.toBeInTheDocument();
+    expect(screen.getByTestId('wb-apps-command-nav.goto.skills-management')).toBeInTheDocument();
+  });
+});

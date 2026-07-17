@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useEffect, useRef, useState } from 'react'
 import {
   ReactFlow,
   Controls,
-  ControlButton,
   MiniMap,
   Background,
   BackgroundVariant,
@@ -12,6 +11,7 @@ import {
   type Edge,
   type NodeChange,
   type Connection,
+  type OnNodeDrag,
   type OnSelectionChangeParams,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -41,7 +41,7 @@ import {
   resolveVisibleFocusId,
 } from '../../utils/hideCompleted';
 import { useTranslation } from 'react-i18next';
-import { House, Cursor, HandGrabbing } from '@phosphor-icons/react';
+import { House, Hand, Selection } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import type { LayoutDirection, MindMapNode } from '../../types';
@@ -51,9 +51,6 @@ import {
   DEFAULT_MINDMAP_VIEWPORT,
   normalizeMindMapViewport,
 } from '../../utils/viewport';
-
-// 临时诊断开关：关闭所有与 hover 模糊相关的可疑动画/透明度联动。
-const DISABLE_HOVER_BLUR_FACTORS = false;
 
 /** 节点是否与画布视口有任何交集（屏幕坐标）。完全在外才返回 false。 */
 function isNodeIntersectingViewport(
@@ -299,7 +296,6 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   // rAF 合帧：mousemove 只写 pending，每帧最多一次 setState，避免 flushSync 卡顿
   const pendingDragOverrideRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const dragRafRef = useRef<number | null>(null);
-  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   // 拖拽子树：记录所有后代节点相对于被拖节点的偏移
   const dragSubtreeOffsetsRef = useRef<Record<string, { dx: number; dy: number }>>({});
 
@@ -617,45 +613,17 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   ]);
 
   const styledEdges = useMemo(() => {
-    const applyHover = !(DISABLE_HOVER_BLUR_FACTORS || isExporting) && !!hoveredNodeId;
-
     return allEdges.map((edge) => {
       const isAssociation = (edge.data as { kind?: string } | undefined)?.kind === 'association';
-      if (!applyHover) {
-        return {
-          ...edge,
-          style: {
-            ...edge.style,
-            opacity: isAssociation ? (edge.selected ? 1 : 0.72) : 1,
-          },
-        };
-      }
-
-      const isConnected = edge.source === hoveredNodeId || edge.target === hoveredNodeId;
-      if (isConnected) {
-        return {
-          ...edge,
-          style: {
-            ...edge.style,
-            strokeWidth: isAssociation
-              ? Math.max(Number(edge.style?.strokeWidth ?? 1.5) + 0.5, 2)
-              : 2.5,
-            opacity: 1,
-          },
-          className: isAssociation
-            ? `${edge.className ?? ''} mm-edge-highlighted`.trim()
-            : 'mm-edge-highlighted',
-        };
-      }
       return {
         ...edge,
         style: {
           ...edge.style,
-          opacity: 0.25,
+          opacity: isAssociation ? (edge.selected ? 1 : 0.72) : 1,
         },
       };
     });
-  }, [allEdges, hoveredNodeId, isExporting]);
+  }, [allEdges]);
 
   // 切回导图：恢复上次视口；并 seed prevFocused，避免挂载 focus effect 冲掉视口
   useEffect(() => {
@@ -672,16 +640,11 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     if (nodes.length === 0 || !isCanvasReady) return;
     if (!hasFitView.current) {
       const timer = setTimeout(() => {
-        // 空间锚定：如果有 focusedNodeId，跳过初始 fitView，让后续的 setCenter effect 接管
-        if (focusedNodeId) {
-          hasFitView.current = true;
-          return;
-        }
         if (fitVisibleNodes(0)) hasFitView.current = true;
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [nodes.length, isCanvasReady, fitVisibleNodes, focusedNodeId]);
+  }, [nodes.length, isCanvasReady, fitVisibleNodes]);
 
   // 当布局变化时重新适应视图（修复: 添加 cleanup 防止内存泄漏）
   useEffect(() => {
@@ -930,16 +893,6 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     openAssociationContextMenu(associationId, { x: event.clientX, y: event.clientY });
   }, [openAssociationContextMenu, reciteMode]);
 
-  const onNodeMouseEnter = useCallback((_: React.MouseEvent, node: Node) => {
-    if (DISABLE_HOVER_BLUR_FACTORS) return;
-    setHoveredNodeId(node.id);
-  }, []);
-
-  const onNodeMouseLeave = useCallback(() => {
-    if (DISABLE_HOVER_BLUR_FACTORS) return;
-    setHoveredNodeId(null);
-  }, []);
-
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault();
     if (reciteMode) return; // 背诵模式下禁用右键菜单
@@ -976,7 +929,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     });
   }, [reciteMode]);
 
-  const onNodeDragStart = useCallback((_: React.MouseEvent, node: Node) => {
+  const onNodeDragStart = useCallback<OnNodeDrag>((_, node) => {
     if (node.id === document.root.id) return;
     // 拖拽选中不强制居中
     prevFocusedNodeId.current = node.id;
@@ -1022,7 +975,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     // 位置同步由 onNodeDrag 处理，此处无需操作
   }, []);
 
-  const onNodeDrag = useCallback((_: React.MouseEvent, draggedNode: Node) => {
+  const onNodeDrag = useCallback<OnNodeDrag>((_, draggedNode) => {
     if (!dragNodeIdRef.current) return;
     const dragId = dragNodeIdRef.current;
     const dragPos = draggedNode.position;
@@ -1095,7 +1048,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     }
   }, [document.root, getNodes, scheduleDragOverride]);
 
-  const onNodeDragStop = useCallback((_: React.MouseEvent, _draggedNode: Node) => {
+  const onNodeDragStop = useCallback<OnNodeDrag>(() => {
     const draggedId = dragNodeIdRef.current;
     dragNodeIdRef.current = null;
     dragSubtreeOffsetsRef.current = {};
@@ -1218,7 +1171,11 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   return (
     <div
       ref={canvasContainerRef}
-      className={`w-full h-full overflow-hidden bg-[var(--mm-bg)] relative ${DISABLE_HOVER_BLUR_FACTORS ? 'mm-blur-safety-mode' : ''} ${isExporting ? 'mm-exporting' : ''}`}
+      className={cn(
+        'w-full h-full overflow-hidden bg-[var(--mm-bg)] relative',
+        isExporting && 'mm-exporting',
+        !isCoarsePointer && `mm-canvas-mode-${dragMode}`,
+      )}
       onMouseDownCapture={handleContainerMouseDownCapture}
     >
       {breadcrumbPath.length > 1 && (
@@ -1265,8 +1222,6 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         onNodeClick={onNodeClick}
         onNodeDoubleClick={onNodeDoubleClick}
         onPaneClick={onPaneClick}
-        onNodeMouseEnter={onNodeMouseEnter}
-        onNodeMouseLeave={onNodeMouseLeave}
         onNodeContextMenu={onNodeContextMenu}
         onPaneContextMenu={onPaneContextMenu}
         onEdgeClick={onEdgeClick}
@@ -1300,33 +1255,42 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         <Controls
           showInteractive={false}
           className="mm-canvas-controls"
-        >
-          {/* 空白拖拽模式切换（触屏强制平移，不显示切换） */}
-          {!isCoarsePointer && (
-            <>
-              <ControlButton
-                onClick={() => setDragMode('select')}
-                className={dragMode === 'select' ? 'mm-drag-mode-active' : undefined}
-                title={t('canvas.dragModeSelect', {
-                  defaultValue: '框选模式：拖拽空白框选（Space/中键/右键拖拽平移）',
-                })}
-                aria-pressed={dragMode === 'select'}
-              >
-                <Cursor weight={dragMode === 'select' ? 'fill' : 'regular'} />
-              </ControlButton>
-              <ControlButton
-                onClick={() => setDragMode('pan')}
-                className={dragMode === 'pan' ? 'mm-drag-mode-active' : undefined}
-                title={t('canvas.dragModePan', {
-                  defaultValue: '平移模式：拖拽空白平移（Shift+拖拽框选）',
-                })}
-                aria-pressed={dragMode === 'pan'}
-              >
-                <HandGrabbing weight={dragMode === 'pan' ? 'fill' : 'regular'} />
-              </ControlButton>
-            </>
-          )}
-        </Controls>
+        />
+        {/* 触屏固定为平移；鼠标设备明确展示两个互斥的空白拖拽模式。 */}
+        {!isCoarsePointer && (
+          <div
+            className="mm-canvas-mode-switch"
+            role="group"
+            aria-label={t('canvas.dragModeGroup', { defaultValue: '画布拖拽模式' })}
+          >
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              className={cn('mm-canvas-mode-button', dragMode === 'select' && 'is-active')}
+              onClick={() => setDragMode('select')}
+              title={t('canvas.dragModeSelect', {
+                defaultValue: '框选模式：拖拽空白框选（Space/中键/右键拖拽平移）',
+              })}
+              aria-pressed={dragMode === 'select'}
+            >
+              <Selection size={15} weight={dragMode === 'select' ? 'bold' : 'regular'} />
+              <span>{t('canvas.selectMode', { defaultValue: '框选' })}</span>
+            </NotionButton>
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              className={cn('mm-canvas-mode-button', dragMode === 'pan' && 'is-active')}
+              onClick={() => setDragMode('pan')}
+              title={t('canvas.dragModePan', {
+                defaultValue: '拖动画布模式：拖拽空白移动画布（Shift+拖拽框选）',
+              })}
+              aria-pressed={dragMode === 'pan'}
+            >
+              <Hand size={15} weight={dragMode === 'pan' ? 'fill' : 'regular'} />
+              <span>{t('canvas.panMode', { defaultValue: '拖动画布' })}</span>
+            </NotionButton>
+          </div>
+        )}
         <MiniMap
           nodeColor={() => 'var(--mm-text-muted)'}
           nodeStrokeWidth={3}

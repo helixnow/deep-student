@@ -14,11 +14,20 @@ import {
   GearSix,
   Lightning,
   MagnifyingGlass,
+  SignOut,
   SquaresFour,
   Timer,
 } from '@phosphor-icons/react';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
-import { useCommandPaletteSafe } from '@/command-palette/CommandPaletteProvider';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuSeparator,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu';
+import { toggleAppsPanel } from './appsPanelStore';
+import { persistWorkbenchModeEnabled } from '@/features/settings/components/workbenchMode';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { isMacOS, isWindows } from '@/utils/platform';
 import {
@@ -93,7 +102,6 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
 
 const StatusBarComponent: React.FC = () => {
   const { t } = useTranslation('workbench');
-  const commandPalette = useCommandPaletteSafe();
   const [centerOpen, setCenterOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const backdropRef = useRef<HTMLDivElement | null>(null);
@@ -120,7 +128,17 @@ const StatusBarComponent: React.FC = () => {
 
   const closeCenter = useCallback(() => setCenterOpen(false), []);
   const toggleCenter = useCallback(() => setCenterOpen((v) => !v), []);
-  const openCommandPalette = useCallback(() => commandPalette?.open(), [commandPalette]);
+  // 统一搜索入口：打开全部应用面板（应用 + 命令），不再弹独立命令面板
+  const openUnifiedSearch = useCallback(() => toggleAppsPanel(), []);
+
+  // 品牌菜单（macOS 苹果菜单语义）：全部应用 / 系统设置 / 退出学习桌面
+  const launchSettingsApp = useCallback(() => {
+    workbenchBus.launch({ typeId: 'settings', reason: 'api' });
+  }, []);
+  const exitWorkbenchMode = useCallback(() => {
+    // 失败由 helper 统一通知；成功后 App 监听 workbench:mode-changed 切回 legacy 壳
+    void persistWorkbenchModeEnabled(false);
+  }, []);
 
   useEffect(() => {
     if (exposeOpen) setCenterOpen(false);
@@ -222,28 +240,56 @@ const StatusBarComponent: React.FC = () => {
         />
       ) : null}
       <div className="wb-menubar-leading" data-no-drag>
-        <button
-          type="button"
-          className="wb-menubar-item wb-menubar-brand"
-          data-testid="wb-menubar-brand"
-          aria-label={t('menubar.openApps')}
-          title={t('menubar.appName')}
-          onClick={openAppsPanel}
-        >
-          <DeepStudentMark className="wb-menubar-brand-mark" title="" />
-          <span className="wb-menubar-brand-label">
-            {t('menubar.appName')}
-          </span>
-        </button>
+        <AppMenu>
+          <AppMenuTrigger asChild>
+            <button
+              type="button"
+              className="wb-menubar-item wb-menubar-brand"
+              data-testid="wb-menubar-brand"
+              aria-label={t('menubar.brandMenu')}
+              aria-haspopup="menu"
+              title={t('menubar.appName')}
+            >
+              <DeepStudentMark className="wb-menubar-brand-mark" title="" />
+              <span className="wb-menubar-brand-label">
+                {t('menubar.appName')}
+              </span>
+            </button>
+          </AppMenuTrigger>
+          <AppMenuContent>
+            <AppMenuItem
+              icon={<SquaresFour size={16} />}
+              onClick={() => openAppsPanel()}
+              data-testid="wb-menubar-brand-apps"
+            >
+              {t('workbench:appsPanel.title')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<GearSix size={16} />}
+              onClick={launchSettingsApp}
+              data-testid="wb-menubar-brand-settings"
+            >
+              {t('menubar.brandSettings')}
+            </AppMenuItem>
+            <AppMenuSeparator />
+            <AppMenuItem
+              icon={<SignOut size={16} />}
+              onClick={exitWorkbenchMode}
+              data-testid="wb-menubar-brand-exit"
+            >
+              {t('menubar.brandExit')}
+            </AppMenuItem>
+          </AppMenuContent>
+        </AppMenu>
       </div>
       <div className="wb-menubar-trailing" data-no-drag>
         <button
           type="button"
           className="wb-menubar-item wb-menubar-item-icon-only wb-menubar-command"
           data-testid="wb-menubar-command"
-          aria-label={t('menubar.openCommandPalette')}
-          title={t('menubar.openCommandPalette')}
-          onClick={openCommandPalette}
+          aria-label={t('menubar.openAppsPanel')}
+          title={t('menubar.openAppsPanel')}
+          onClick={openUnifiedSearch}
         >
           <MagnifyingGlass size={15} weight="bold" className="wb-menubar-item-icon" aria-hidden />
         </button>

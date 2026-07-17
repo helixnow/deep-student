@@ -232,7 +232,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       <div
         ref={menuRef}
         className="mindmap-container fixed min-w-[180px] max-w-[240px] p-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in"
-        style={{ left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
+        style={{ position: 'fixed', left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
       >
         <MenuItem
           icon={<Pencil className="w-4 h-4" />}
@@ -258,7 +258,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       <div
         ref={menuRef}
         className="mindmap-container fixed min-w-[180px] max-w-[240px] p-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in"
-        style={{ left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
+        style={{ position: 'fixed', left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
       >
         <MenuItem
           icon={<Plus className="w-4 h-4" />}
@@ -314,7 +314,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
     <div
       ref={menuRef}
       className="mindmap-container fixed min-w-[180px] max-w-[240px] p-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in"
-      style={{ left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
+      style={{ position: 'fixed', left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
     >
       <MenuItem
         icon={<Plus className="w-4 h-4" />}
