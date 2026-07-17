@@ -926,22 +926,22 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             className="w-full h-9 pl-9 pr-8 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
           />
           {searchQuery && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground" aria-label="clear">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground" aria-label={t('memory.aria.clear_search')}>
               ×
             </NotionButton>
           )}
         </div>
 
         {/* 视图切换 */}
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isLoading} aria-label="refresh">
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isLoading} aria-label={t('memory.aria.refresh')}>
           <ArrowClockwise className={cn('w-4 h-4', isLoading && 'animate-spin')} />
         </NotionButton>
         <NotionButton
           variant="ghost" size="icon" iconOnly
           onClick={() => setViewMode(viewMode === 'list' ? 'tree' : 'list')}
           className={cn(viewMode === 'tree' && 'text-primary bg-primary/10')}
-          aria-label="tree view"
-          title={viewMode === 'tree' ? '列表视图' : '树状视图'}
+          aria-label={viewMode === 'tree' ? t('memory.aria.list_view') : t('memory.aria.tree_view')}
+          title={viewMode === 'tree' ? t('memory.list_view') : t('memory.tree_view')}
         >
           {viewMode === 'tree' ? <List size={16} /> : <GitBranch size={16} />}
         </NotionButton>
@@ -953,11 +953,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           variant="ghost" size="icon" iconOnly
           onClick={() => { setBatchMode(!batchMode); setSelectedIds(new Set()); }}
           className={cn(batchMode && 'text-primary bg-primary/10')}
-          aria-label="batch"
+          aria-label={t('memory.aria.batch')}
         >
           <CheckSquare size={16} />
         </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isLoading} aria-label="export">
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isLoading} aria-label={t('memory.aria.export')}>
           <Download size={16} />
         </NotionButton>
 
@@ -968,7 +968,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleProfile}
           className={cn(showProfile && 'text-primary bg-primary/10')}
-          aria-label="profile"
+          aria-label={t('memory.aria.profile')}
         >
           <MemoryIcon size={16} />
         </NotionButton>
@@ -976,7 +976,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           variant="ghost" size="icon" iconOnly
           onClick={handleToggleAuditLog}
           className={cn(showAuditLog && 'text-primary bg-primary/10')}
-          aria-label="audit log"
+          aria-label={t('memory.aria.audit_log')}
           title={t('memory.audit_log')}
         >
           <ClockCounterClockwise size={16} />
@@ -1062,7 +1062,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       {/* 统计栏 */}
       {memories.length > 0 && !isSearchMode && (
         <div className="px-4 py-1.5 text-[10px] text-muted-foreground/70 border-b border-border/20 flex items-center gap-3">
-          <span className="font-medium text-muted-foreground">{memories.length} 条记忆</span>
+          <span className="font-medium text-muted-foreground">{t('memory.count', { count: memories.length })}</span>
           {(() => {
             const counts: Record<string, number> = {};
             for (const m of memories) {
@@ -1071,7 +1071,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             }
             return Object.entries(counts).map(([key, count]) => (
               <span key={key} className={cn('px-1.5 py-0 rounded', PURPOSE_BADGE_STYLES[key] || 'bg-muted')}>
-                {PURPOSE_LABELS[key] || key} {count}
+                {purposeLabel(t, key)} {count}
               </span>
             ));
           })()}
@@ -1146,7 +1146,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <SelectItem value="false">{t('memory.audit_failed')}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(true)} disabled={isLoadingAuditLog} className="!h-5 !w-5 !p-0" aria-label="refresh logs">
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(true)} disabled={isLoadingAuditLog} className="!h-5 !w-5 !p-0" aria-label={t('memory.aria.refresh_logs')}>
                     <ArrowClockwise className={cn('w-3 h-3', isLoadingAuditLog && 'animate-spin')} />
                   </NotionButton>
                 </div>
@@ -1196,7 +1196,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   <ListPlus size={16} />
                   <span className="text-sm font-medium">{t('memory.batch_import')}</span>
                 </div>
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isLoading} aria-label="cancel batch import">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isLoading} aria-label={t('memory.aria.cancel_batch_import')}>
                   <Plus size={16} className="rotate-45" />
                 </NotionButton>
               </div>
@@ -1216,10 +1216,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type')}:</span>
                 {([
-                  ['fact', '用户事实'],
-                  ['study', '学习记忆'],
-                  ['note', '经验笔记'],
-                ] as const).map(([type, label]) => (
+                  ['fact', 'memory.type_fact'],
+                  ['study', 'memory.type_study'],
+                  ['note', 'memory.type_note'],
+                ] as const).map(([type, labelKey]) => (
                   <NotionButton
                     key={type}
                     variant="ghost"
@@ -1232,7 +1232,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                     )}
                   >
-                    {label}
+                    {t(labelKey)}
                   </NotionButton>
                 ))}
               </div>
@@ -1254,7 +1254,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                     )}
                   >
-                    {PURPOSE_LABELS[p]}
+                    {purposeLabel(t, p)}
                   </NotionButton>
                 ))}
               </div>
@@ -1283,7 +1283,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   <MemoryIcon size={16} />
                   <span className="text-sm font-medium">{t('memory.create_title')}</span>
                 </div>
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isLoading} aria-label="cancel">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isLoading} aria-label={t('memory.aria.cancel')}>
                   <Plus size={16} className="rotate-45" />
                 </NotionButton>
               </div>
@@ -1312,10 +1312,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type')}:</span>
                 {([
-                  ['fact', '用户事实'],
-                  ['study', '学习记忆'],
-                  ['note', '经验笔记'],
-                ] as const).map(([type, label]) => (
+                  ['fact', 'memory.type_fact'],
+                  ['study', 'memory.type_study'],
+                  ['note', 'memory.type_note'],
+                ] as const).map(([type, labelKey]) => (
                   <NotionButton
                     key={type}
                     variant="ghost"
@@ -1328,7 +1328,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                     )}
                   >
-                    {label}
+                    {t(labelKey)}
                   </NotionButton>
                 ))}
               </div>
@@ -1351,7 +1351,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                     )}
                   >
-                    {PURPOSE_LABELS[p]}
+                    {purposeLabel(t, p)}
                   </NotionButton>
                 ))}
               </div>
@@ -1530,13 +1530,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           {memory.memoryType === 'note' && (
                             <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-blue-500/10 text-blue-600 text-[9px] font-medium flex-shrink-0">
                               <BookOpen size={10} />
-                              笔记
+                              {t('memory.type_note')}
                             </span>
                           )}
                           {memory.memoryType === 'study' && (
                             <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-emerald-500/10 text-emerald-600 text-[9px] font-medium flex-shrink-0">
                               <FileText size={10} />
-                              学习
+                              {t('memory.type_study')}
                             </span>
                           )}
                           {memory.memoryPurpose && memory.memoryPurpose !== 'memorized' && (
@@ -1544,7 +1544,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                               'px-1.5 py-0 rounded text-[9px] font-medium flex-shrink-0',
                               PURPOSE_BADGE_STYLES[memory.memoryPurpose] || 'bg-muted text-muted-foreground'
                             )}>
-                              {PURPOSE_LABELS[memory.memoryPurpose] || memory.memoryPurpose}
+                              {purposeLabel(t, memory.memoryPurpose)}
                             </span>
                           )}
                           {memory.isImportant && (
@@ -1565,7 +1565,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         </div>
                       </div>
                       {!batchMode && (
-                        <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label="delete">
+                        <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label={t('memory.aria.delete')}>
                           <Trash size={14} />
                         </NotionButton>
                       )}
@@ -1672,6 +1672,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
   editingMemoryId, editContent, onEditContentChange, onStartEdit, onSaveEdit, onCancelEdit,
   isLoading, depth, isRoot,
 }) => {
+  const { t } = useTranslation('learningHub');
   const isFolderExpanded = isRoot || expandedFolders.has(node.folder.id);
   const hasChildren = node.children.length > 0 || node.items.length > 0;
   const paddingLeft = depth * 16;
@@ -1758,7 +1759,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                         'px-1.5 py-0 rounded text-[9px] font-medium flex-shrink-0',
                         PURPOSE_BADGE_STYLES[meta.memoryPurpose] || 'bg-muted text-muted-foreground'
                       )}>
-                        {PURPOSE_LABELS[meta.memoryPurpose] || meta.memoryPurpose}
+                        {purposeLabel(t, meta.memoryPurpose)}
                       </span>
                     )}
                     {meta?.isImportant && (
@@ -1768,7 +1769,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                       variant="ghost" size="icon" iconOnly
                       className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
                       onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
-                      aria-label="delete"
+                      aria-label={t('memory.aria.delete')}
                     >
                       <Trash size={12} />
                     </NotionButton>
@@ -1828,6 +1829,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
   onStartEdit, onSaveEdit, onCancelEdit,
   onDeleteNote, onOpenInEditor, isLoading, className,
 }) => {
+  const { t } = useTranslation(['learningHub', 'common']);
   const isEditing = editingMemoryId === noteId;
 
   return (
@@ -1865,31 +1867,31 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
               />
               <div className="flex gap-2">
                 <NotionButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs">
-                  <X size={12} />取消
+                  <X size={12} />{t('common:cancel')}
                 </NotionButton>
                 <NotionButton variant="primary" size="sm" onClick={onSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs">
-                  <FloppyDisk size={12} />保存
+                  <FloppyDisk size={12} />{t('common:save')}
                 </NotionButton>
               </div>
             </div>
           ) : (
             <div className="px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6 leading-relaxed">
-              {expandedContent.content || '（无内容）'}
+              {expandedContent.content || t('memory.no_content')}
             </div>
           )}
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/30 bg-muted/20">
             <div className="flex items-center gap-1.5">
               <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }} className="text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs">
-                <Trash size={12} />删除
+                <Trash size={12} />{t('common:delete')}
               </NotionButton>
               {!isEditing && (
                 <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, expandedContent.content || ''); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs">
-                  <PencilSimple size={12} />编辑
+                  <PencilSimple size={12} />{t('memory.edit')}
                 </NotionButton>
               )}
             </div>
             <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium">
-              <ArrowSquareOut size={12} />编辑器
+              <ArrowSquareOut size={12} />{t('memory.open_editor')}
             </NotionButton>
           </div>
         </>
@@ -1902,12 +1904,17 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
 // 审计日志行组件
 // ============================================================================
 
-const PURPOSE_LABELS: Record<string, string> = {
-  internalized: '内化',
-  memorized: '记忆',
-  supplementary: '补充',
-  systemic: '系统',
+const PURPOSE_I18N_KEYS: Record<string, string> = {
+  internalized: 'finder.memoryMeta.purpose.internalized',
+  memorized: 'finder.memoryMeta.purpose.memorized',
+  supplementary: 'finder.memoryMeta.purpose.supplementary',
+  systemic: 'finder.memoryMeta.purpose.systemic',
 };
+
+function purposeLabel(t: (key: string) => string, purpose: string): string {
+  const key = PURPOSE_I18N_KEYS[purpose];
+  return key ? t(key) : purpose;
+}
 
 const PURPOSE_BADGE_STYLES: Record<string, string> = {
   internalized: 'bg-violet-500/10 text-violet-600',
@@ -1915,27 +1922,27 @@ const PURPOSE_BADGE_STYLES: Record<string, string> = {
   systemic: 'bg-slate-500/10 text-slate-500',
 };
 
-const SOURCE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  tool_call: { label: '工具调用', icon: <Robot size={12} />, color: 'text-blue-500' },
-  auto_extract: { label: '自动提取', icon: <Lightning className="w-3 h-3" />, color: 'text-amber-500' },
-  handler: { label: '前端操作', icon: <User size={12} />, color: 'text-emerald-500' },
-  evolution: { label: '自进化', icon: <ArrowClockwise className="w-3 h-3" />, color: 'text-purple-500' },
+const SOURCE_META: Record<string, { labelKey: string; icon: React.ReactNode; color: string }> = {
+  tool_call: { labelKey: 'memory.audit_source_tool', icon: <Robot size={12} />, color: 'text-blue-500' },
+  auto_extract: { labelKey: 'memory.audit_source_auto', icon: <Lightning className="w-3 h-3" />, color: 'text-amber-500' },
+  handler: { labelKey: 'memory.audit_source_handler', icon: <User size={12} />, color: 'text-emerald-500' },
+  evolution: { labelKey: 'memory.audit_source_evolution', icon: <ArrowClockwise className="w-3 h-3" />, color: 'text-purple-500' },
 };
 
-const OPERATION_LABELS: Record<string, string> = {
-  write: '写入',
-  write_smart: '智能写入',
-  update: '更新',
-  delete: '删除',
-  search: '搜索',
-  extract: '提取',
-  profile_refresh: '画像刷新',
-  category_refresh: '分类刷新',
-  evolution_cycle: '自进化',
-  move: '移动',
-  update_tags: '标签更新',
-  add_relation: '添加关联',
-  remove_relation: '移除关联',
+const OPERATION_I18N_KEYS: Record<string, string> = {
+  write: 'memory.operation.write',
+  write_smart: 'memory.operation.write_smart',
+  update: 'memory.operation.update',
+  delete: 'memory.operation.delete',
+  search: 'memory.operation.search',
+  extract: 'memory.operation.extract',
+  profile_refresh: 'memory.operation.profile_refresh',
+  category_refresh: 'memory.operation.category_refresh',
+  evolution_cycle: 'memory.operation.evolution_cycle',
+  move: 'memory.operation.move',
+  update_tags: 'memory.operation.update_tags',
+  add_relation: 'memory.operation.add_relation',
+  remove_relation: 'memory.operation.remove_relation',
 };
 
 const EVENT_COLORS: Record<string, string> = {
@@ -1948,8 +1955,13 @@ const EVENT_COLORS: Record<string, string> = {
 };
 
 const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = ({ log }) => {
+  const { t } = useTranslation('learningHub');
   const [expanded, setExpanded] = React.useState(false);
-  const sourceMeta = SOURCE_LABELS[log.source] ?? { label: log.source, icon: null, color: 'text-muted-foreground' };
+  const sourceMeta = SOURCE_META[log.source] ?? { labelKey: '', icon: null, color: 'text-muted-foreground' };
+  const sourceLabel = sourceMeta.labelKey ? t(sourceMeta.labelKey) : log.source;
+  const operationLabel = OPERATION_I18N_KEYS[log.operation]
+    ? t(OPERATION_I18N_KEYS[log.operation])
+    : log.operation;
   const ts = new Date(log.timestamp);
   const timeStr = `${ts.toLocaleDateString()} ${ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
 
@@ -1974,11 +1986,11 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = ({ log }) => {
         {/* 来源 */}
         <span className={cn('flex items-center gap-1 text-[10px] font-medium flex-shrink-0', sourceMeta.color)}>
           {sourceMeta.icon}
-          {sourceMeta.label}
+          {sourceLabel}
         </span>
 
         {/* 操作 */}
-        <span className="text-[10px] text-muted-foreground flex-shrink-0">{OPERATION_LABELS[log.operation] || log.operation}</span>
+        <span className="text-[10px] text-muted-foreground flex-shrink-0">{operationLabel}</span>
 
         {/* 事件标签 */}
         {log.event && (
@@ -2013,25 +2025,25 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = ({ log }) => {
         <div className="px-4 pb-3 ml-7 space-y-1.5">
           {log.noteId && (
             <div className="text-[10px]">
-              <span className="text-muted-foreground/60">Note ID: </span>
+              <span className="text-muted-foreground/60">{t('memory.audit_field.note_id')}: </span>
               <code className="text-[10px] bg-muted/50 px-1 rounded">{log.noteId}</code>
             </div>
           )}
           {log.contentPreview && (
             <div className="text-[10px]">
-              <span className="text-muted-foreground/60">内容: </span>
+              <span className="text-muted-foreground/60">{t('memory.audit_field.content')}: </span>
               <span className="text-muted-foreground">{log.contentPreview}</span>
             </div>
           )}
           {log.folder && (
             <div className="text-[10px]">
-              <span className="text-muted-foreground/60">文件夹: </span>
+              <span className="text-muted-foreground/60">{t('memory.audit_field.folder')}: </span>
               <span className="text-muted-foreground">{log.folder}</span>
             </div>
           )}
           {log.confidence != null && (
             <div className="text-[10px]">
-              <span className="text-muted-foreground/60">置信度: </span>
+              <span className="text-muted-foreground/60">{t('memory.audit_field.confidence')}: </span>
               <span className={cn(
                 'font-medium',
                 log.confidence >= 0.8 ? 'text-emerald-600' :
@@ -2043,13 +2055,13 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = ({ log }) => {
           )}
           {log.reason && (
             <div className="text-[10px]">
-              <span className="text-muted-foreground/60">原因: </span>
+              <span className="text-muted-foreground/60">{t('memory.audit_field.reason')}: </span>
               <span className="text-muted-foreground">{log.reason}</span>
             </div>
           )}
           {log.sessionId && (
             <div className="text-[10px]">
-              <span className="text-muted-foreground/60">会话: </span>
+              <span className="text-muted-foreground/60">{t('memory.audit_field.session')}: </span>
               <code className="text-[10px] bg-muted/50 px-1 rounded">{log.sessionId}</code>
             </div>
           )}

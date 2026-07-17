@@ -21,6 +21,8 @@ function SidebarHarness() {
       name: '四级备考待办',
       defaultSkillIds: [],
       pinnedResourceIds: [],
+      defaultRuntimeRootId: undefined,
+      preferredProjectRootPath: undefined,
       sortOrder: 0,
       persistStatus: 'active',
       createdAt: '2026-05-23T08:00:00Z',

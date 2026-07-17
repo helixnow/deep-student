@@ -121,24 +121,24 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
       <div className="flex items-center gap-2 mb-2">
         <Warning size={14} className="text-destructive" />
         <span className="text-sm font-medium text-destructive">
-          {t('error.blockRenderFailed', '块渲染失败')}
+          {t('error.blockRenderFailed')}
         </span>
         <span className="text-xs text-muted-foreground font-mono">
           [{block.type}]
         </span>
         <NotionButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10">
           <ArrowCounterClockwise size={12} />
-          {t('error.retry', '重试')}
+          {t('error.retry')}
         </NotionButton>
       </div>
       <div className="text-xs text-muted-foreground bg-background/50 rounded p-2 font-mono break-all">
-        {error || t('error.unknownError', '未知错误')}
+        {error || t('error.unknownError')}
       </div>
       {/* 显示块的原始内容（如果有） */}
       {block.content && (
         <details className="mt-2">
           <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-            {t('error.showContent', '显示原始内容')}
+            {t('error.showContent')}
           </summary>
           <pre className="mt-1 text-xs text-muted-foreground bg-background/50 rounded p-2 max-h-32 overflow-auto whitespace-pre-wrap break-words">
             {block.content}
@@ -198,7 +198,7 @@ const GenericBlock: React.FC<{ block: Block; isStreaming?: boolean }> = ({
   return (
     <div className="p-3 bg-muted/50 rounded-md border border-border">
       <div className="text-xs text-muted-foreground mb-1">
-        {t('blocks.generic.unknownType', { defaultValue: 'Unknown block type' })}: <code className="font-mono">{block.type}</code>
+        {t('blocks.generic.unknownType')}: <code className="font-mono">{block.type}</code>
       </div>
       {block.content && (
         <pre className="text-sm whitespace-pre-wrap break-words">

@@ -58,7 +58,8 @@
   width: min(880px, 100%);
   max-height: min(620px, 100%);
   border-radius: var(--wb-overlay-radius, 18px);
-  box-shadow: var(--wb-dock-shadow);
+  /* 中央玻璃件走 overlay 档阴影（O1 token 注释点名速查表用此档） */
+  box-shadow: var(--wb-shadow-overlay, var(--wb-dock-shadow));
   color: var(--wb-titlebar-fg, inherit);
   opacity: 0;
   transform: translateY(10px) scale(0.97);
@@ -138,11 +139,23 @@
 .wb-cheat-groups {
   flex: 1 1 auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 14px 26px;
   padding: 4px 20px 8px;
   align-items: start;
+  scrollbar-width: thin;
+}
+
+/* 细滚动条（与切换条图标区一致） */
+.wb-cheat-groups::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wb-cheat-groups::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: color-mix(in hsl, hsl(var(--foreground)) 22%, transparent 78%);
 }
 
 .wb-cheat-group-title {
@@ -173,6 +186,11 @@
   border-radius: 8px;
   font-size: 12.5px;
   line-height: 1.35;
+}
+
+/* 扫读辅助：行 hover 轻着色（静态换色，非动画） */
+.wb-cheat-row:hover {
+  background: color-mix(in hsl, hsl(var(--foreground)) 6%, transparent 94%);
 }
 
 .wb-cheat-desc {

@@ -163,14 +163,14 @@ export const ShellCommandTimelineView: React.FC<ShellCommandTimelineViewProps> =
       <div className="flex items-center gap-1.5 border-b border-border/40 px-3 py-2 text-xs text-muted-foreground">
         {descriptor.kind === 'preflight' ? <ShieldWarning size={13} /> : <Terminal size={13} />}
         <span>{descriptor.kind === 'preflight'
-          ? t('timeline.shell.preflight', { defaultValue: 'Shell 检查' })
-          : t('shellOutput.title', { defaultValue: '本地命令' })}</span>
+          ? t('timeline.shell.preflight')
+          : t('shellOutput.title')}</span>
       </div>
 
       <div className="flex items-start gap-2 px-3 py-2.5">
         <span className="shrink-0 select-none font-mono text-xs text-primary">$</span>
         <code className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-xs text-foreground">
-          {descriptor.command || t('timeline.shell.commandUnavailable', { defaultValue: '命令内容不可用' })}
+          {descriptor.command || t('timeline.shell.commandUnavailable')}
         </code>
       </div>
 

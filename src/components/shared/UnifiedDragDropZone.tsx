@@ -678,7 +678,9 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
   const getSupportedFormatsDescription = useCallback(() => {
     if (acceptedFileTypes.some((t) => t.extensions.includes('*'))) return t('drag_drop:supported_formats.all');
     const keyOf = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '_');
-    return acceptedFileTypes.map((ft) => t(`drag_drop:file_types.${keyOf(ft.description)}`, ft.description)).join(', ');
+    return acceptedFileTypes
+      .map((ft) => t(`drag_drop:file_types.${keyOf(ft.description)}`))
+      .join(', ');
   }, [acceptedFileTypes, t]);
 
   return (
@@ -699,7 +701,10 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none" style={{ backgroundColor: 'hsl(var(--primary) / 0.1)', backdropFilter: 'blur(4px)' }}>
           <div className="flex flex-col items-center gap-4 px-8 py-6 rounded-lg shadow-lg pointer-events-none" style={{ backgroundColor: 'hsl(var(--background))', border: '2px dashed hsl(var(--primary))' }}>
             <div className="text-lg font-medium text-center" style={{ color: 'hsl(var(--foreground))' }}>
-              {customOverlayText || (t('drag_drop:overlay.drop_files_here', { formats: getSupportedFormatsDescription() }) as any)}
+              {customOverlayText ||
+                t('drag_drop:overlay.drop_files_here_with_format', {
+                  formats: getSupportedFormatsDescription(),
+                })}
             </div>
             {maxFiles > 1 && (
               <div className="text-sm text-center" style={{ color: 'hsl(var(--muted-foreground))' }}>

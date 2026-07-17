@@ -7194,6 +7194,7 @@ impl SyncManager {
                     | "mm_indexing_mode"
                     | "mm_indexed_at"
             ),
+            "chat_v2_session_groups" => column == "preferred_project_root_path",
             _ => false,
         }
     }
@@ -10989,6 +10990,18 @@ mod tests {
         assert!(SyncManager::is_local_derived_sync_column(
             "exam_sheets",
             "mm_indexing_mode"
+        ));
+    }
+
+    #[test]
+    fn preferred_project_root_path_is_local_derived_for_session_groups() {
+        assert!(SyncManager::is_local_derived_sync_column(
+            "chat_v2_session_groups",
+            "preferred_project_root_path"
+        ));
+        assert!(!SyncManager::is_local_derived_sync_column(
+            "chat_v2_session_groups",
+            "default_runtime_root_id"
         ));
     }
 

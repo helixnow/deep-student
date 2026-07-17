@@ -36,6 +36,7 @@ describe('toolDisplayName', () => {
     mockGetToolDisplayNameKey.mockReturnValue('tools.template_fork');
 
     const t = vi.fn(() => '');
+    (t as typeof t & { i18n?: { language: string } }).i18n = { language: 'en-US' };
 
     expect(getReadableToolName('tools.template_fork', t)).toBe('Tools / Template Fork');
   });
@@ -48,6 +49,22 @@ describe('toolDisplayName', () => {
 
     expect(getReadableToolName('tools.template_fork', t)).toBe('模板复制');
     expect(getReadableToolName('qbank_get_question', t)).toBe('题库获取题目');
+    expect(getReadableToolName('builtin-self_inspect', t)).toBe('环境自检');
+  });
+
+  it('resolves bare tool names via tools.* i18n keys', () => {
+    mockGetToolDisplayNameKey.mockReturnValue(undefined);
+
+    const t = vi.fn((key: string) => {
+      if (key === 'tools.self_inspect') {
+        return '环境自检';
+      }
+      return '';
+    });
+    (t as typeof t & { i18n?: { language: string } }).i18n = { language: 'zh-CN' };
+
+    expect(getReadableToolName('self_inspect', t)).toBe('环境自检');
+    expect(t).toHaveBeenCalledWith('tools.self_inspect', { ns: 'mcp', defaultValue: '' });
   });
 
   it('supports direct tools.* i18n keys without builtin prefix', () => {

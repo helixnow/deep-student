@@ -23,6 +23,7 @@ import { AppSelect } from '@/components/ui/app-menu';
 import { Badge } from '@/components/ui/shad/Badge';
 import { WarningCircle, CheckCircle, Link, LinkBreak } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { suggestCsvFieldFromHeader } from '@/utils/csvHeaderAliases';
 
 // 可映射的目标字段 (labels resolved via i18n at render time)
 export const QUESTION_FIELDS = [
@@ -119,66 +120,11 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
     [fieldMapping, onMappingChange]
   );
 
-  // 自动检测可能的映射（基于列名相似度）
-  const suggestMapping = useCallback((header: string): QuestionFieldKey | '' => {
-    const headerLower = header.toLowerCase().trim();
-    
-    // 常见中文和英文列名映射
-    const mappings: Record<string, QuestionFieldKey> = {
-      // content
-      '题目': 'content',
-      '题干': 'content',
-      '问题': 'content',
-      '内容': 'content',
-      'content': 'content',
-      'question': 'content',
-      'text': 'content',
-      // answer
-      '答案': 'answer',
-      '正确答案': 'answer',
-      'answer': 'answer',
-      'correct': 'answer',
-      // explanation
-      '解析': 'explanation',
-      '解答': 'explanation',
-      '说明': 'explanation',
-      'explanation': 'explanation',
-      'analysis': 'explanation',
-      // options
-      '选项': 'options',
-      'options': 'options',
-      'choices': 'options',
-      // difficulty
-      '难度': 'difficulty',
-      'difficulty': 'difficulty',
-      'level': 'difficulty',
-      // tags
-      '标签': 'tags',
-      '分类': 'tags',
-      '类别': 'tags',
-      'tags': 'tags',
-      'category': 'tags',
-      // images
-      '图片': 'images',
-      '配图': 'images',
-      '图像': 'images',
-      'images': 'images',
-      'image': 'images',
-      // question_type
-      '题型': 'question_type',
-      '类型': 'question_type',
-      'type': 'question_type',
-      'question_type': 'question_type',
-      // question_label
-      '题号': 'question_label',
-      '序号': 'question_label',
-      'label': 'question_label',
-      'number': 'question_label',
-      'no': 'question_label',
-    };
-    
-    return mappings[headerLower] || '';
-  }, []);
+  // 自动检测可能的映射（基于列名相似度；别名表见 csvHeaderAliases）
+  const suggestMapping = useCallback(
+    (header: string): QuestionFieldKey | '' => suggestCsvFieldFromHeader(header),
+    [],
+  );
 
   // 获取预览数据中某列的值
   const getPreviewValue = useCallback(

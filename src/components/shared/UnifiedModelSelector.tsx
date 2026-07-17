@@ -192,7 +192,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
         groupMap.set(groupKey, []);
         groups.push({
           key: groupKey,
-          name: model.vendorName || model.providerName || model.providerType || t('chat_host:model_panel.unknown_vendor', 'Unknown vendor'),
+          name: model.vendorName || model.providerName || model.providerType || t('chat_host:model_panel.unknown_vendor'),
           models: groupMap.get(groupKey)!,
         });
       }
@@ -215,7 +215,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
   );
 
   const hasModels = filteredModels.length > 0 || allowEmpty;
-  const defaultEmptyLabel = emptyLabel || t('settings:select_options.none', '无');
+  const defaultEmptyLabel = emptyLabel || t('settings:select_options.none');
 
   // 渲染空选项
   const renderEmptyOption = () => {
@@ -270,7 +270,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                {option.isFavorite && <Star size={12} className="text-amber-500 fill-amber-500 flex-shrink-0" />}
                {option.isDisabled && (
                  <span className={cn('text-[10px] px-1 rounded flex-shrink-0', disabledToneClass)}>
-                   {option.disabledLabel || t('common:disabled', 'Disabled')}
+                   {option.disabledLabel || t('common:disabled')}
                  </span>
                )}
              </div>
@@ -297,7 +297,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                {option.is_default && (
                   <>
                     <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/40" />
-                   <span className="text-green-600/80 dark:text-green-400/80">{t('common:default', 'Default')}</span>
+                   <span className="text-green-600/80 dark:text-green-400/80">{t('common:default')}</span>
                   </>
                )}
              </div>
@@ -318,9 +318,9 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
   const triggerDisplayText = useMemo(() => {
     if (isEmptySelected) {
       if (allowEmpty) return defaultEmptyLabel;
-      return placeholder || t('chat_host:model_panel.select', '选择模型');
+      return placeholder || t('chat_host:model_panel.select');
     }
-    if (!selectedModel) return placeholder || t('chat_host:model_panel.select', '选择模型');
+    if (!selectedModel) return placeholder || t('chat_host:model_panel.select');
 
     // full 模式显示更详细的信息
     if (variant === 'full') {
@@ -398,7 +398,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
               type="search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={t('chat_host:model_panel.search_placeholder', '搜索...')}
+              placeholder={t('chat_host:model_panel.search_placeholder')}
               className="h-7 text-xs pl-8 border-transparent bg-muted/30 focus-visible:bg-transparent focus-visible:border-primary/20"
               disabled={disabled}
 />
@@ -442,8 +442,8 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                <div className="px-2 py-8 text-xs text-muted-foreground text-center flex flex-col items-center gap-2">
                  <Cube size={32} className="text-muted-foreground/20" />
                  {searchTerm
-                   ? t('chat_host:model_panel.no_matches', '无匹配结果')
-                   : t('chat_host:model_panel.empty', '暂无可用模型')}
+                   ? t('chat_host:model_panel.no_matches')
+                   : t('chat_host:model_panel.empty')}
                </div>
              )}
           </CustomScrollArea>

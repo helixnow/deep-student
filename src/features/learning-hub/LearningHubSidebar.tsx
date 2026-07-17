@@ -689,7 +689,7 @@ export function LearningHubSidebar({
         const config = await getMemoryConfig();
         if (config.memoryRootFolderId) {
           // 记忆根文件夹已配置，直接导航到该文件夹
-          enterFolder(config.memoryRootFolderId, config.memoryRootFolderTitle || '记忆');
+          enterFolder(config.memoryRootFolderId, config.memoryRootFolderTitle || t('memory.defaultRootTitle'));
           return;
         }
       } catch (e) {
@@ -698,7 +698,7 @@ export function LearningHubSidebar({
       // 未配置根文件夹或获取失败，回退到 MemoryView（用于引导设置）
     }
     quickAccessNavigate(type);
-  }, [enterFolder, quickAccessNavigate]);
+  }, [enterFolder, quickAccessNavigate, t]);
 
   const focusSearchInput = useCallback(() => {
     setQuickAccessCollapsed(false);
@@ -1379,11 +1379,7 @@ export function LearningHubSidebar({
 
     let confirmMessage = t('contextMenu.confirmDelete');
     if (refCountResult.ok && refCountResult.value > 0) {
-      confirmMessage = t(
-        'contextMenu.confirmDeleteWithRefs',
-        `此资源被 ${refCountResult.value} 个对话引用，删除后这些对话将无法访问此资源。确定要删除吗？`,
-        { count: refCountResult.value }
-      );
+      confirmMessage = t('contextMenu.confirmDeleteWithRefs', { count: refCountResult.value });
     }
 
     // ★ 使用 AlertDialog 替代 window.confirm
@@ -2541,7 +2537,7 @@ export function LearningHubSidebar({
             </NotionButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-9 !w-9' : '!h-4 !w-4')} title={t('learningHub:title')} aria-label="home">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-9 !w-9' : '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
                 <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
               </NotionButton>
               {currentPath.breadcrumbs.map((crumb, index) => (
@@ -2652,7 +2648,7 @@ export function LearningHubSidebar({
             currentTitle={
               currentPath.breadcrumbs[currentPath.breadcrumbs.length - 1]?.name ||
               (currentQuickAccessType
-                ? t(`finder.quickAccess.${currentQuickAccessType}`, '资源库')
+                ? t(`finder.quickAccess.${currentQuickAccessType}`)
                 : t('title'))
             }
             onNavigateHome={() => jumpToBreadcrumb(-1)}

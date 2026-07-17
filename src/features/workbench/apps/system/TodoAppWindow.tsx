@@ -28,7 +28,7 @@ const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange 
   const { ref, sizeClass } = useWbSysSize();
 
   useEffect(() => {
-    onTitleChange(t('workbench:apps.todo', '待办'));
+    onTitleChange(t('workbench:apps.todo'));
   }, [onTitleChange, t]);
 
   const todoListId =
@@ -53,7 +53,7 @@ const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange 
         <WbSysFade>
           <WbSysSidebarLayout
             sizeClass={sizeClass}
-            navLabel={t('workbench:apps.system.todoNav', '待办导航')}
+            navLabel={t('workbench:apps.system.todoNav')}
             sidebar={<TodoShellSidebar isSmallScreen={false} globalLeftPanelCollapsed={false} />}
           >
             <TodoContentView todoListId={todoListId} initialView={initialView} className="h-full" />

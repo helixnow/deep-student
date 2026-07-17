@@ -39,7 +39,7 @@ interface PendingConfirmation {
 
 /** Mounted once by WorkbenchDesktop so content apps never need native dialogs. */
 export const ContentCloseConfirmationHost: React.FC = () => {
-  const { t } = useTranslation(['workbench', 'common']);
+  const { t } = useTranslation('workbench');
   const queueRef = useRef<PendingConfirmation[]>([]);
   const activeRef = useRef<PendingConfirmation | null>(null);
   const [pending, setPending] = useState<PendingConfirmation | null>(null);
@@ -83,11 +83,11 @@ export const ContentCloseConfirmationHost: React.FC = () => {
       onOpenChange={(open) => {
         if (!open) settle(false);
       }}
-      icon={<WarningCircle size={20} className="text-amber-500" />}
-      title={t('common:confirmMessages.unsaved_changes', '有未保存的更改，确定要离开吗？')}
+      icon={<WarningCircle size={20} className="text-warning" />}
+      title={t('content.unsavedTitle')}
       description={pending?.request.description}
-      confirmText={t('common:discard', '丢弃')}
-      cancelText={t('common:cancel', '取消')}
+      confirmText={t('resourceWorkspace.discard')}
+      cancelText={t('resourceWorkspace.cancel')}
       confirmVariant="danger"
       onConfirm={() => settle(true)}
     />

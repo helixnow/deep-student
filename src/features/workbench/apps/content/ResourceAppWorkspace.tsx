@@ -53,7 +53,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   isActive,
   onTitleChange,
 }) => {
-  const { t } = useTranslation(['workbench', 'common', 'review']);
+  const { t } = useTranslation('workbench');
   const [items, setItems] = useState<DstuNode[]>([]);
   const [query, setQuery] = useState('');
   const [libraryView, setLibraryView] = useState<LibraryView>('all');
@@ -74,12 +74,12 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
 
   const isExam = type === 'exam';
   const title = isExam
-    ? t('workbench:apps.exam', '题目集')
-    : t('workbench:apps.essay', '作文批改');
+    ? t('workbench:apps.exam')
+    : t('workbench:apps.essay');
   const ResourceIcon = isExam ? ClipboardText : PenNib;
   const newLabel = isExam
-    ? t('workbench:resourceHome.newExam', '新建题目集')
-    : t('workbench:resourceHome.newEssay', '新建作文批改');
+    ? t('workbench:resourceHome.newExam')
+    : t('workbench:resourceHome.newEssay');
 
   useEffect(() => onTitleChange(title), [onTitleChange, title]);
 
@@ -375,8 +375,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             size="icon"
             iconOnly
             onClick={() => setSidebarOpen(false)}
-            title={t('workbench:resourceWorkspace.hideSidebar', '隐藏侧边栏')}
-            aria-label={t('workbench:resourceWorkspace.hideSidebar', '隐藏侧边栏')}
+            title={t('workbench:resourceWorkspace.hideSidebar')}
+            aria-label={t('workbench:resourceWorkspace.hideSidebar')}
           >
             <SidebarSimple size={14} />
           </NotionButton>
@@ -395,8 +395,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
                 setQuery('');
               }
             }}
-            placeholder={t('workbench:resourceHome.search', '搜索')}
-            aria-label={t('workbench:resourceHome.search', '搜索')}
+            placeholder={t('workbench:resourceHome.search')}
+            aria-label={t('workbench:resourceHome.search')}
           />
           {query && (
             <NotionButton
@@ -407,8 +407,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
                 setQuery('');
                 searchInputRef.current?.focus();
               }}
-              title={t('workbench:resourceWorkspace.clearSearch', '清除搜索')}
-              aria-label={t('workbench:resourceWorkspace.clearSearch', '清除搜索')}
+              title={t('workbench:resourceWorkspace.clearSearch')}
+              aria-label={t('workbench:resourceWorkspace.clearSearch')}
             >
               <X size={12} />
             </NotionButton>
@@ -423,7 +423,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             onClick={() => setLibraryView('all')}
           >
             <Rows size={14} />
-            <span>{t('workbench:resourceHome.all', '全部')}</span>
+            <span>{t('workbench:resourceHome.all')}</span>
             <small>{items.length}</small>
           </NotionButton>
           <NotionButton
@@ -433,7 +433,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             onClick={() => setLibraryView('recent')}
           >
             <ClockCounterClockwise size={14} />
-            <span>{t('workbench:resourceHome.recent', '最近使用')}</span>
+            <span>{t('workbench:resourceHome.recent')}</span>
           </NotionButton>
         </nav>
 
@@ -454,15 +454,15 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
               <WarningCircle size={22} />
               <span>{error}</span>
               <NotionButton variant="outline" size="sm" onClick={() => void loadItems()}>
-                {t('common:retry', '重试')}
+                {t('resourceHome.retry')}
               </NotionButton>
             </div>
           ) : visibleItems.length === 0 ? (
             <div className="wb-resource-workspace-message">
               <span>
                 {query
-                  ? t('workbench:resourceHome.noMatches', '没有匹配的内容')
-                  : t('workbench:resourceHome.empty', '这里还没有内容')}
+                  ? t('workbench:resourceHome.noMatches')
+                  : t('workbench:resourceHome.empty')}
               </span>
             </div>
           ) : visibleItems.map((item) => (
@@ -476,21 +476,21 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
               onClick={() => selectResource(item.id)}
             >
               <ResourceIcon size={15} weight="duotone" />
-              <span>{item.name || t('common:untitled', '未命名')}</span>
+              <span>{item.name || t('resourceHome.untitled')}</span>
             </NotionButton>
           ))}
         </div>
 
         <footer className="wb-resource-workspace-sidebar-footer">
-          <span>{t('workbench:resourceHome.itemCount', '{{count}} 个项目', { count: visibleItems.length })}</span>
+          <span>{t('workbench:resourceHome.itemCount', { count: visibleItems.length })}</span>
           <NotionButton
             variant="ghost"
             size="icon"
             iconOnly
             onClick={() => void loadItems()}
             disabled={loading}
-            title={t('common:refresh', '刷新')}
-            aria-label={t('common:refresh', '刷新')}
+            title={t('resourceWorkspace.refresh')}
+            aria-label={t('resourceWorkspace.refresh')}
           >
             <ArrowClockwise size={13} className={cn(loading && 'animate-spin')} />
           </NotionButton>
@@ -517,8 +517,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             iconOnly
             className="wb-resource-workspace-sidebar-handle"
             onClick={() => setSidebarOpen(true)}
-            title={t('workbench:resourceWorkspace.showSidebar', '显示侧边栏')}
-            aria-label={t('workbench:resourceWorkspace.showSidebar', '显示侧边栏')}
+            title={t('workbench:resourceWorkspace.showSidebar')}
+            aria-label={t('workbench:resourceWorkspace.showSidebar')}
           >
             <SidebarSimple size={15} />
           </NotionButton>
@@ -537,8 +537,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
         ) : (
           <div className="wb-resource-workspace-empty">
             <ResourceIcon size={38} weight="thin" />
-            <strong>{t('workbench:resourceWorkspace.selectTitle', '选择一个项目')}</strong>
-            <span>{t('workbench:resourceWorkspace.selectHint', '从左侧选择，或新建后直接开始。')}</span>
+            <strong>{t('workbench:resourceWorkspace.selectTitle')}</strong>
+            <span>{t('workbench:resourceWorkspace.selectHint')}</span>
             <NotionButton size="sm" onClick={createResource} disabled={creating}>
               <Plus size={15} />
               {newLabel}
@@ -551,7 +551,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           variant="ghost"
           className="wb-resource-workspace-scrim"
           onClick={() => setSidebarOpen(false)}
-          aria-label={t('workbench:resourceWorkspace.hideSidebar', '隐藏侧边栏')}
+          aria-label={t('workbench:resourceWorkspace.hideSidebar')}
         />
       )}
       <NotionAlertDialog
@@ -561,15 +561,15 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
         }}
         icon={<WarningCircle size={20} className="text-warning" />}
         title={pendingNavigation?.confirmation === 'review'
-          ? t('review:session.exitTitle', '结束复习会话？')
-          : t('common:confirmMessages.unsaved_changes', '有未保存的更改，确定要离开吗？')}
+          ? t('resourceWorkspace.reviewExitTitle')
+          : t('content.unsavedTitle')}
         description={pendingNavigation?.confirmation === 'review'
-          ? t('review:session.exitDescription', '已提交的评分会保留，剩余题目可稍后重新开始复习。')
+          ? t('resourceWorkspace.reviewExitDescription')
           : t('content.confirmCloseUnsaved')}
         confirmText={pendingNavigation?.confirmation === 'review'
-          ? t('review:session.exitConfirm', '结束复习')
-          : t('common:discard', '丢弃')}
-        cancelText={t('common:cancel', '取消')}
+          ? t('resourceWorkspace.reviewExitConfirm')
+          : t('resourceWorkspace.discard')}
+        cancelText={t('resourceWorkspace.cancel')}
         confirmVariant="danger"
         onConfirm={confirmPendingNavigation}
       />

@@ -5,8 +5,8 @@ export const darkTheme: IStyleTheme = {
   name: 'themes.dark',
   node: {
     root: {
-      background: '#2EAADC',
-      foreground: '#FFFFFF',
+      background: 'hsl(var(--primary))',
+      foreground: 'hsl(var(--primary-foreground))',
       border: 'transparent',
       borderRadius: 6,
       fontSize: 16,
@@ -14,16 +14,16 @@ export const darkTheme: IStyleTheme = {
       padding: '10px 20px',
     },
     branch: {
-      background: '#252525',
-      foreground: 'rgba(255, 255, 255, 0.9)',
-      border: 'rgba(255, 255, 255, 0.09)',
+      background: 'hsl(var(--secondary))',
+      foreground: 'hsl(var(--foreground) / 0.9)',
+      border: 'hsl(var(--foreground) / 0.09)',
       borderRadius: 4,
       fontSize: 14,
       padding: '6px 12px',
     },
     leaf: {
       background: 'transparent',
-      foreground: 'rgba(255, 255, 255, 0.9)',
+      foreground: 'hsl(var(--foreground) / 0.9)',
       border: 'transparent',
       borderRadius: 4,
       fontSize: 14,
@@ -32,7 +32,7 @@ export const darkTheme: IStyleTheme = {
   },
   edge: {
     type: 'bezier',
-    stroke: 'rgba(255, 255, 255, 0.15)',
+    stroke: 'hsl(var(--foreground) / 0.15)',
     strokeWidth: 1.5,
   },
   palette: [
@@ -45,6 +45,6 @@ export const darkTheme: IStyleTheme = {
     '#FF9FF3', // Pink
   ],
   canvas: {
-    background: '#191919',
+    background: 'var(--mm-bg)',
   },
 };

@@ -337,7 +337,6 @@ export function createSkillActions(
       id: string;
       name: string;
       description: string;
-      allowedTools?: string[];
     }>> => {
       const state = get();
       const skillIds = state.activeSkillIds;
@@ -353,7 +352,6 @@ export function createSkillActions(
         id: string;
         name: string;
         description: string;
-        allowedTools?: string[];
       }> = [];
 
       for (const skillId of skillIds) {
@@ -363,7 +361,6 @@ export function createSkillActions(
             id: skill.id,
             name: getLocalizedSkillName(skill.id, skill.name, i18n.t.bind(i18n)),
             description: getLocalizedSkillDescription(skill.id, skill.description, i18n.t.bind(i18n)),
-            allowedTools: skill.allowedTools ?? skill.tools ?? skill.embeddedTools?.map(tool => tool.name),
           });
         }
       }

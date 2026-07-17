@@ -35,7 +35,11 @@ import { useWindowStore } from '../core/windowStore';
 import type { DisplayMode } from '../core/types';
 import { getSortedWindows } from '../core/windowListCache';
 import { workbenchBus } from '../core/workbenchBus';
-import { useWorkbenchOverlay } from '../core/shortcuts';
+import {
+  WORKBENCH_SHORTCUT_DEFINITIONS,
+  formatShortcutBinding,
+  useWorkbenchOverlay,
+} from '../core/shortcuts';
 import { setMaterialTier, type MaterialTierSetting } from '../core/materialTier';
 import { useLiquidGlassLens } from '../core/liquidGlassLens';
 import { toggleShowDesktop as toggleShowDesktopShared } from '../hooks/showDesktop';
@@ -258,6 +262,12 @@ interface SubmenuPosition {
   top: number;
 }
 
+/** 按 id 查全局快捷键的展示文案（无绑定时返回 undefined，菜单不渲染提示槽） */
+function shortcutHintFor(id: string): string | undefined {
+  const def = WORKBENCH_SHORTCUT_DEFINITIONS.find((d) => d.id === id);
+  return def ? formatShortcutBinding(def.binding) : undefined;
+}
+
 interface ActionItemProps {
   icon: React.ReactNode;
   label: string;
@@ -267,6 +277,8 @@ interface ActionItemProps {
   subOpen?: boolean;
   /** checkbox 菜单项语义 */
   checked?: boolean;
+  /** 右缘快捷键提示（仅展示，不参与交互） */
+  shortcut?: string;
   onClick?: () => void;
   onPointerEnter?: () => void;
 }
@@ -278,6 +290,7 @@ const ActionItem: React.FC<ActionItemProps> = ({
   subId,
   subOpen,
   checked,
+  shortcut,
   onClick,
   onPointerEnter,
 }) => (
@@ -299,6 +312,11 @@ const ActionItem: React.FC<ActionItemProps> = ({
       {icon}
     </span>
     <span className="wb-desk-menu-item-label">{label}</span>
+    {shortcut && !subId && (
+      <span className="wb-desk-menu-item-shortcut" aria-hidden="true">
+        {shortcut}
+      </span>
+    )}
     {checked !== undefined && (
       <span className="wb-desk-menu-item-check" aria-hidden="true">
         {checked ? <Check size={13} weight="bold" /> : null}
@@ -575,14 +593,15 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
   if (!anchor) return null;
 
   const showDesktopLabel = hasVisibleWindows
-    ? t('workbench:desktopMenu.showDesktop', '显示桌面')
-    : t('workbench:desktopMenu.restoreWindows', '恢复窗口');
+    ? t('workbench:desktopMenu.showDesktop')
+    : t('workbench:desktopMenu.restoreWindows');
 
   return (
     <>
       <div
         className="wb-desk-menu-backdrop"
         data-wb-desk-menu-backdrop
+        aria-hidden="true"
         onPointerDown={onClose}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -594,7 +613,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
         className="wb-desk-menu wb-glass-lens"
         data-wb-desk-menu
         role="menu"
-        aria-label={t('workbench:desktopMenu.label', '桌面菜单')}
+        aria-label={t('workbench:desktopMenu.label')}
         tabIndex={-1}
         style={{ left: pos.left, top: pos.top }}
         onKeyDown={onPanelKeyDown}
@@ -602,19 +621,19 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
       >
         <ActionItem
           icon={<ChatCircleDots size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.newChat', '新建对话')}
+          label={t('workbench:desktopMenu.newChat')}
           onClick={runAndClose(() => workbenchBus.launch({ typeId: 'chat', reason: 'command' }))}
           onPointerEnter={() => setOpenSub(null)}
         />
         <ActionItem
           icon={<FolderOpen size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.openFiles', '打开资源库')}
+          label={t('workbench:desktopMenu.openFiles')}
           onClick={runAndClose(() => workbenchBus.launch({ typeId: 'files', reason: 'command' }))}
           onPointerEnter={() => setOpenSub(null)}
         />
         <ActionItem
           icon={<CirclesFour size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.allApps', '全部应用…')}
+          label={t('workbench:desktopMenu.allApps')}
           onClick={runAndClose(() => openAppsPanel())}
           onPointerEnter={() => setOpenSub(null)}
         />
@@ -623,14 +642,14 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
 
         <ActionItem
           icon={<Stack size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.arrange', '整理窗口')}
+          label={t('workbench:desktopMenu.arrange')}
           disabled={!hasVisibleWindows}
           onClick={runAndClose(arrangeDesktopWindows)}
           onPointerEnter={() => setOpenSub(null)}
         />
         <ActionItem
           icon={<GridFour size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.tileAll', '平铺全部窗口')}
+          label={t('workbench:desktopMenu.tileAll')}
           disabled={!hasVisibleWindows}
           onClick={runAndClose(tileAllDesktopWindows)}
           onPointerEnter={() => setOpenSub(null)}
@@ -638,13 +657,15 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
         <ActionItem
           icon={<Desktop size={15} weight="duotone" />}
           label={showDesktopLabel}
+          shortcut={shortcutHintFor('show-desktop')}
           disabled={!hasWindows}
           onClick={runAndClose(onShowDesktop)}
           onPointerEnter={() => setOpenSub(null)}
         />
         <ActionItem
           icon={<SquaresFour size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.expose', '窗口俯瞰')}
+          label={t('workbench:desktopMenu.expose')}
+          shortcut={shortcutHintFor('expose')}
           disabled={!hasWindows}
           onClick={runAndClose(() => useWorkbenchOverlay.getState().toggleExpose())}
           onPointerEnter={() => setOpenSub(null)}
@@ -655,7 +676,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
         <div className="wb-desk-menu-subwrap">
           <ActionItem
             icon={<Image size={15} weight="duotone" />}
-            label={t('workbench:desktopMenu.wallpaper', '桌面壁纸')}
+            label={t('workbench:desktopMenu.wallpaper')}
             subId="wallpaper"
             subOpen={openSub === 'wallpaper'}
             onClick={() => setOpenSub(openSub === 'wallpaper' ? null : 'wallpaper')}
@@ -666,7 +687,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
         <div className="wb-desk-menu-subwrap">
           <ActionItem
             icon={<Drop size={15} weight="duotone" />}
-            label={t('workbench:desktopMenu.materialTier', '视觉材质')}
+            label={t('workbench:desktopMenu.materialTier')}
             subId="tier"
             subOpen={openSub === 'tier'}
             onClick={() => setOpenSub(openSub === 'tier' ? null : 'tier')}
@@ -678,7 +699,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
 
         <ActionItem
           icon={<GearSix size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.settings', '桌面设置…')}
+          label={t('workbench:desktopMenu.settings')}
           onClick={runAndClose(() => workbenchBus.launch({ typeId: 'settings', reason: 'command' }))}
           onPointerEnter={() => setOpenSub(null)}
         />
@@ -691,8 +712,8 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
               role="menu"
               aria-label={
                 openSub === 'wallpaper'
-                  ? t('workbench:desktopMenu.wallpaper', '桌面壁纸')
-                  : t('workbench:desktopMenu.materialTier', '视觉材质')
+                  ? t('workbench:desktopMenu.wallpaper')
+                  : t('workbench:desktopMenu.materialTier')
               }
               style={{
                 left: submenuPosition?.left ?? 0,
@@ -713,10 +734,10 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
                   ))
                 : (
                     [
-                      ['auto', t('workbench:settings.materialTier.auto', '跟随平台')],
-                      ['full', t('workbench:settings.materialTier.full', '全效果')],
-                      ['reduced', t('workbench:settings.materialTier.reduced', '降透明')],
-                      ['minimal', t('workbench:settings.materialTier.minimal', '极简')],
+                      ['auto', t('workbench:settings.materialTier.auto')],
+                      ['full', t('workbench:settings.materialTier.full')],
+                      ['reduced', t('workbench:settings.materialTier.reduced')],
+                      ['minimal', t('workbench:settings.materialTier.minimal')],
                     ] as Array<[MaterialTierSetting, string]>
                   ).map(([value, label]) => (
                     <RadioItem

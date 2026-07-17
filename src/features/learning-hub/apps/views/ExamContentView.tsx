@@ -406,7 +406,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         detail?.acknowledge?.({
           handled: false,
           code: 'QUESTION_NOT_FOUND',
-          hint: '当前题目集没有题目，请先上传题目后再打开练习设置',
+          hint: t('learningHub:exam.controlHints.noQuestionsForSettings'),
         });
         return;
       }
@@ -415,7 +415,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         detail?.acknowledge?.({
           handled: false,
           code: 'CONFIRMATION_REQUIRED',
-          hint: '请先确认结束当前复习会话，再打开练习设置',
+          hint: t('learningHub:exam.controlHints.confirmEndReviewForSettings'),
         });
         return;
       }
@@ -427,7 +427,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     };
     window.addEventListener('exam:openSettings', handleSettingsChange);
     return () => window.removeEventListener('exam:openSettings', handleSettingsChange);
-  }, [hasQuestions, requestViewMode, sessionId]);
+  }, [hasQuestions, requestViewMode, sessionId, t]);
 
   // 管理视图筛选（搜索逐键触发大列表过滤）降级为 transition，保持输入流畅
   const handleFilterChange = useCallback((filters: ManageFilters) => {
@@ -959,7 +959,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: 'QUESTION_NOT_FOUND',
-            hint: '当前题目集没有可导航的题目',
+            hint: t('learningHub:exam.controlHints.noNavigableQuestions'),
           });
           return;
         }
@@ -975,7 +975,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: 'QUESTION_NOT_FOUND',
-            hint: '找不到目标题目',
+            hint: t('learningHub:exam.controlHints.questionNotFound'),
           });
           return;
         }
@@ -983,7 +983,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: 'CONFIRMATION_REQUIRED',
-            hint: '请先确认放弃当前未提交的内容，再切换题目',
+            hint: t('learningHub:exam.controlHints.confirmDiscardToSwitchQuestion'),
           });
           return;
         }
@@ -1000,7 +1000,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: 'INVALID_ARGS',
-            hint: 'setFilters 需要 filters 对象',
+            hint: t('learningHub:exam.controlHints.setFiltersNeedsFilters'),
           });
           return;
         }
@@ -1008,7 +1008,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: 'CONFIRMATION_REQUIRED',
-            hint: '请先确认结束当前复习会话，再筛选题目',
+            hint: t('learningHub:exam.controlHints.confirmEndReviewForFilters'),
           });
           return;
         }
@@ -1053,7 +1053,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: failure?.code ?? 'CONFIRMATION_REQUIRED',
-            hint: failure?.hint ?? '请先确认放弃当前未提交内容，再载入练习会话',
+            hint: failure?.hint ?? t('learningHub:exam.controlHints.confirmDiscardToHydratePractice'),
           });
           return;
         }
@@ -1077,7 +1077,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: 'INVALID_ARGS',
-            hint: 'setPracticeMode 需要 mode',
+            hint: t('learningHub:exam.controlHints.setPracticeModeNeedsMode'),
           });
           return;
         }
@@ -1085,7 +1085,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: 'CONFIGURATION_REQUIRED',
-            hint: '该练习模式需要在练习启动页完成配置',
+            hint: t('learningHub:exam.controlHints.modeNeedsLauncherConfig'),
           });
           return;
         }
@@ -1093,7 +1093,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: 'INVALID_ARGS',
-            hint: 'by_tag 需要当前题目集中的有效 tag',
+            hint: t('learningHub:exam.controlHints.byTagNeedsValidTag'),
           });
           return;
         }
@@ -1108,7 +1108,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           acknowledge(detail, {
             handled: false,
             code: 'CONFIRMATION_REQUIRED',
-            hint: '请先确认放弃当前未提交的内容，再切换练习模式',
+            hint: t('learningHub:exam.controlHints.confirmDiscardToSwitchMode'),
           });
           return;
         }
@@ -1130,6 +1130,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     requestViewMode,
     sessionId,
     setStorePracticeMode,
+    t,
     viewMode,
   ]);
 
@@ -2006,10 +2007,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         }}
         icon={<WarningCircle size={20} className="text-warning" />}
         title={t('review:session.exitTitle')}
-        description={t(
-          'review:session.exitDescription',
-          '已提交的评分会保留，剩余题目可稍后重新开始复习。',
-        )}
+        description={t('review:session.exitDescription')}
         confirmText={t('review:session.exitConfirm')}
         cancelText={t('common:cancel')}
         confirmVariant="warning"

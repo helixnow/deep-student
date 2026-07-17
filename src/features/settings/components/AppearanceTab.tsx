@@ -219,19 +219,19 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   const themeModeOptions = React.useMemo(() => [
     {
       mode: 'light' as const,
-      label: t('settings:theme.modes.light', '浅色'),
+      label: t('settings:theme.modes.light'),
       icon: Sun,
     },
     {
       mode: 'dark' as const,
-      label: t('settings:theme.modes.dark', '深色'),
+      label: t('settings:theme.modes.dark'),
       icon: Moon,
     },
     {
       mode: 'auto' as const,
-      label: t('settings:theme.system_default', '系统默认'),
+      label: t('settings:theme.system_default'),
       icon: Monitor,
-      title: t('settings:theme.system_default_hint', '匹配系统外观设置'),
+      title: t('settings:theme.system_default_hint'),
     },
   ], [t]);
 
@@ -362,23 +362,23 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   return (
     <div className="space-y-1 pb-10 text-left ui-fade-in-slow" data-tour-id="appearance-settings">
       <SettingSection
-        title={t('settings:tabs.appearance', '外观')}
-        description={t('settings:study_ui_descriptions.appearance', '自定义主题、字体、缩放和界面视觉风格。')}
+        title={t('settings:tabs.appearance')}
+        description={t('settings:study_ui_descriptions.appearance')}
         className="overflow-visible"
         dataTourId="theme-section"
         hideHeader
       >
         <SettingsGroup
-          title={t('settings:groups.appearance', '界面外观')}
-          description={t('settings:study_ui_descriptions.appearance', '自定义主题、字体、缩放和界面视觉风格。')}
+          title={t('settings:groups.appearance')}
+          description={t('settings:study_ui_descriptions.appearance')}
         >
             <SettingRow
-              title={t('settings:theme.row_title', '外观 / 主题')}
-              description={t('settings:theme.row_description', '使用浅色、深色，或匹配系统设置')}
+              title={t('settings:theme.row_title')}
+              description={t('settings:theme.row_description')}
               className="items-center"
             >
               <SegmentedControl
-                ariaLabel={t('settings:theme.mode_label', '选择主题模式')}
+                ariaLabel={t('settings:theme.mode_label')}
                 value={themeMode}
                 onValueChange={(nextMode) => { void handleThemeModeChange(nextMode); }}
                 stretch
@@ -397,11 +397,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
 
             {isMacOS() && (
               <SwitchRow
-                title={t('settings:theme.font_smoothing_title', 'macOS 原生字体平滑')}
-                description={t(
-                  'settings:theme.font_smoothing_description',
-                  '在 macOS 下优先跟随系统默认字体平滑策略，不再全局强制 antialiased。关闭后回退为兼容旧版观感的灰度平滑。',
-                )}
+                title={t('settings:theme.font_smoothing_title')}
+                description={t('settings:theme.font_smoothing_description')}
                 checked={macosNativeFontSmoothingEnabled ?? true}
                 loading={macosNativeFontSmoothingEnabled === null}
                 onCheckedChange={(checked) => {
@@ -411,11 +408,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
             )}
 
             <SwitchRow
-              title={t('settings:theme.sidebar_translucent_title', '侧边栏半透明')}
-              description={t(
-                'settings:theme.sidebar_translucent_description',
-                '开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。',
-              )}
+              title={t('settings:theme.sidebar_translucent_title')}
+              description={t('settings:theme.sidebar_translucent_description')}
               checked={sidebarTranslucent ?? false}
               loading={sidebarTranslucent === null}
               onCheckedChange={(checked) => {
@@ -424,11 +418,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
             />
 
             <SwitchRow
-              title={t('settings:theme.pointer_cursor_title', '使用指针光标')}
-              description={t(
-                'settings:theme.pointer_cursor_description',
-                '悬停交互元素时切换为指针光标。',
-              )}
+              title={t('settings:theme.pointer_cursor_title')}
+              description={t('settings:theme.pointer_cursor_description')}
               checked={pointerCursorEnabled ?? true}
               loading={pointerCursorEnabled === null}
               onCheckedChange={(checked) => {
@@ -437,11 +428,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
             />
 
             <SwitchRow
-              title={t('settings:theme.thinking_auto_collapse_title', '思维链自动折叠')}
-              description={t(
-                'settings:theme.thinking_auto_collapse_description',
-                '思维链输出完成后自动折叠，保持对话界面更简洁。',
-              )}
+              title={t('settings:theme.thinking_auto_collapse_title')}
+              description={t('settings:theme.thinking_auto_collapse_description')}
               checked={thinkingAutoCollapse ?? true}
               loading={thinkingAutoCollapse === null}
               onCheckedChange={(checked) => {
@@ -544,10 +532,10 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
             <div className="group rounded-[var(--button-radius)] px-1 py-2.5">
               <div className="mb-3">
                 <h3 className="text-sm text-foreground/90 leading-tight">
-                  {t('settings:theme.accent_label', '强调色')}
+                  {t('settings:theme.accent_label')}
                 </h3>
                 <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
-                  {t('settings:theme.accent_hint', '只调整按钮、链接和选中态的颜色。不影响背景、卡片和文本。')}
+                  {t('settings:theme.accent_hint')}
                 </p>
               </div>
               <AccentPicker

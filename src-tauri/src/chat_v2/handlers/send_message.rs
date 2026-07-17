@@ -365,26 +365,12 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
         options.active_skill_ids = Some(replay_pinned_skill_ids);
     }
 
-    let replay_allowed_tools = runtime_snapshot
-        .and_then(|snapshot| snapshot.skill_allowed_tools.clone())
-        .or_else(|| {
-            snapshot.and_then(|snapshot| {
-                let mut tools = Vec::new();
-                tools.extend(snapshot.effective_allowed_internal_tools.clone());
-                tools.extend(snapshot.effective_allowed_external_tools.clone());
-                tools.sort();
-                tools.dedup();
-                if tools.is_empty() {
-                    None
-                } else {
-                    Some(tools)
-                }
-            })
-        });
+    let replay_allowed_tools =
+        runtime_snapshot.and_then(|snapshot| snapshot.execution_allowed_tools.clone());
     if let Some(mut replay_allowed_tools) = replay_allowed_tools {
         replay_allowed_tools.sort();
         replay_allowed_tools.dedup();
-        options.skill_allowed_tools = Some(replay_allowed_tools);
+        options.execution_allowed_tools = Some(replay_allowed_tools);
     }
 
     if let Some(runtime_snapshot) = runtime_snapshot {
@@ -1994,8 +1980,6 @@ mod tests {
                 mode_required_bundle_ids: vec!["mode-a".to_string()],
                 agentic_session_skill_ids: vec!["agentic-a".to_string()],
                 branch_local_skill_ids: vec!["branch-a".to_string()],
-                effective_allowed_internal_tools: vec!["builtin-web_search".to_string()],
-                effective_allowed_external_tools: vec!["mcp_fetch".to_string()],
                 effective_allowed_external_servers: vec!["server-a".to_string()],
                 ..Default::default()
             }),
@@ -2007,10 +1991,7 @@ mod tests {
             updated.active_skill_ids.unwrap(),
             vec!["manual-a".to_string()]
         );
-        assert_eq!(
-            updated.skill_allowed_tools.unwrap(),
-            vec!["builtin-web_search".to_string(), "mcp_fetch".to_string()]
-        );
+        assert!(updated.execution_allowed_tools.is_none());
         assert_eq!(updated.mcp_tools.unwrap(), vec!["server-a".to_string()]);
     }
 
@@ -2023,7 +2004,7 @@ mod tests {
         let meta = MessageMeta {
             skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
                 active_skill_ids: vec!["runtime-skill".to_string()],
-                skill_allowed_tools: Some(vec!["builtin-runtime_tool".to_string()]),
+                execution_allowed_tools: Some(vec!["builtin-runtime_tool".to_string()]),
                 skill_contents: std::collections::HashMap::from([(
                     "runtime-skill".to_string(),
                     "runtime body".to_string(),
@@ -2050,7 +2031,7 @@ mod tests {
             vec!["runtime-skill".to_string()]
         );
         assert_eq!(
-            updated.skill_allowed_tools.unwrap(),
+            updated.execution_allowed_tools.unwrap(),
             vec!["builtin-runtime_tool".to_string()]
         );
         assert_eq!(
@@ -2137,30 +2118,31 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_original_skill_snapshot_overrides_preserves_explicit_empty_skill_allowed_tools() {
+    fn test_apply_original_skill_snapshot_overrides_preserves_explicit_empty_execution_allowed_tools(
+    ) {
         let options = SendOptions {
             replay_mode: Some(ReplayMode::Original),
-            skill_allowed_tools: Some(vec!["current-tool".to_string()]),
+            execution_allowed_tools: Some(vec!["current-tool".to_string()]),
             ..Default::default()
         };
         let meta = MessageMeta {
             skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
                 active_skill_ids: vec!["instruction-only".to_string()],
-                skill_allowed_tools: Some(Vec::new()),
+                execution_allowed_tools: Some(Vec::new()),
                 ..Default::default()
             }),
             ..Default::default()
         };
 
         let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
-        assert_eq!(updated.skill_allowed_tools, Some(Vec::new()));
+        assert_eq!(updated.execution_allowed_tools, Some(Vec::new()));
     }
 
     #[test]
     fn test_apply_original_skill_snapshot_overrides_does_not_invent_empty_policy_for_legacy_meta() {
         let options = SendOptions {
             replay_mode: Some(ReplayMode::Original),
-            skill_allowed_tools: Some(vec!["current-tool".to_string()]),
+            execution_allowed_tools: Some(vec!["current-tool".to_string()]),
             ..Default::default()
         };
         let meta = MessageMeta {
@@ -2173,7 +2155,7 @@ mod tests {
 
         let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
         assert_eq!(
-            updated.skill_allowed_tools,
+            updated.execution_allowed_tools,
             Some(vec!["current-tool".to_string()])
         );
     }

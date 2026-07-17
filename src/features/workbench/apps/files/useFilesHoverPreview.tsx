@@ -28,31 +28,39 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
+/** 长路径中段省略：保住首段与文件名尾段（CSS 尾部省略会吞掉最有辨识度的结尾） */
+function middleEllipsis(text: string, max = 56): string {
+  if (text.length <= max) return text;
+  const head = Math.ceil((max - 1) * 0.4);
+  const tail = max - 1 - head;
+  return `${text.slice(0, head)}…${text.slice(text.length - tail)}`;
+}
+
 function typeLabel(
-  t: (key: string, fallback: string) => string,
+  t: (key: string) => string,
   type: string,
 ): string {
   switch (type) {
     case 'note':
-      return t('workbench:files.preview.type.note', '笔记');
+      return t('workbench:files.preview.type.note');
     case 'textbook':
-      return t('workbench:files.preview.type.textbook', '教材');
+      return t('workbench:files.preview.type.textbook');
     case 'exam':
-      return t('workbench:files.preview.type.exam', '试卷');
+      return t('workbench:files.preview.type.exam');
     case 'translation':
-      return t('workbench:files.preview.type.translation', '翻译');
+      return t('workbench:files.preview.type.translation');
     case 'essay':
-      return t('workbench:files.preview.type.essay', '作文');
+      return t('workbench:files.preview.type.essay');
     case 'image':
-      return t('workbench:files.preview.type.image', '图片');
+      return t('workbench:files.preview.type.image');
     case 'file':
-      return t('workbench:files.preview.type.file', '文件');
+      return t('workbench:files.preview.type.file');
     case 'mindmap':
-      return t('workbench:files.preview.type.mindmap', '思维导图');
+      return t('workbench:files.preview.type.mindmap');
     case 'folder':
-      return t('workbench:files.preview.type.folder', '文件夹');
+      return t('workbench:files.preview.type.folder');
     default:
-      return t('workbench:files.preview.type.generic', '资源');
+      return t('workbench:files.preview.type.generic');
   }
 }
 
@@ -127,7 +135,7 @@ export function useFilesHoverPreview(options: UseFilesHoverPreviewOptions): void
       activeIdRef.current = itemId;
       typeEl.textContent = typeLabel(t, item.type);
       titleEl.textContent = item.name || itemId;
-      metaEl.textContent = item.path || itemId;
+      metaEl.textContent = middleEllipsis(item.path || itemId);
       card.setAttribute('data-visible', 'true');
       card.setAttribute('aria-hidden', 'false');
       positionCard(pointerRef.current.x, pointerRef.current.y);
@@ -165,8 +173,15 @@ export function useFilesHoverPreview(options: UseFilesHoverPreviewOptions): void
       hide();
     };
 
+    // 按下（点击/起拖/右键菜单）立即收起：预览卡不应盖住后续交互
+    const onPointerDown = () => {
+      clearHide();
+      hide();
+    };
+
     host.addEventListener('pointermove', onPointerMove);
     host.addEventListener('pointerleave', onPointerLeave);
+    host.addEventListener('pointerdown', onPointerDown, true);
     host.addEventListener('scroll', hide, true);
 
     return () => {
@@ -174,6 +189,7 @@ export function useFilesHoverPreview(options: UseFilesHoverPreviewOptions): void
       clearHide();
       host.removeEventListener('pointermove', onPointerMove);
       host.removeEventListener('pointerleave', onPointerLeave);
+      host.removeEventListener('pointerdown', onPointerDown, true);
       host.removeEventListener('scroll', hide, true);
       card.remove();
       cardRef.current = null;

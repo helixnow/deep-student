@@ -874,7 +874,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   // 测试连接：用当前表单数据实测（保存前即可验证，借鉴 Cherry 供应商连接检查）
   const handleTestConnection = async () => {
     if (!invoke) {
-      showGlobalNotification('info', t('settings:api.modal.test_connection_unavailable', '当前环境不支持连接测试'));
+      showGlobalNotification('info', t('settings:api.modal.test_connection_unavailable'));
       return;
     }
     if (!formData.model.trim()) {
@@ -910,16 +910,16 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         setConnectionTest({ state: 'success', latencyMs });
         showGlobalNotification(
           'success',
-          t('settings:api.modal.test_connection_success', { latency: latencyMs, defaultValue: '连接成功（{{latency}} ms）' })
+          t('settings:api.modal.test_connection_success', { latency: latencyMs})
         );
       } else {
         setConnectionTest({ state: 'failed' });
-        showGlobalNotification('error', t('settings:api.modal.test_connection_failed', '连接失败，请检查地址、密钥与模型名'));
+        showGlobalNotification('error', t('settings:api.modal.test_connection_failed'));
       }
     } catch (error: unknown) {
       setConnectionTest({ state: 'failed' });
       const message = error instanceof Error ? error.message : String(error);
-      showGlobalNotification('error', t('settings:api.modal.test_connection_failed', '连接失败，请检查地址、密钥与模型名'), message);
+      showGlobalNotification('error', t('settings:api.modal.test_connection_failed'), message);
     }
   };
 
@@ -2177,14 +2177,14 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               )}
               <span>
                 {connectionTest.state === 'testing'
-                  ? t('settings:api.modal.test_connection_testing', '测试中…')
-                  : t('settings:api.modal.test_connection', '测试连接')}
+                  ? t('settings:api.modal.test_connection_testing')
+                  : t('settings:api.modal.test_connection')}
               </span>
               {connectionTest.state === 'success' && (
                 <span className="text-xs text-emerald-600 dark:text-emerald-400">{connectionTest.latencyMs} ms</span>
               )}
               {connectionTest.state === 'failed' && (
-                <span className="text-xs text-destructive">{t('settings:api.modal.test_connection_failed_short', '失败')}</span>
+                <span className="text-xs text-destructive">{t('settings:api.modal.test_connection_failed_short')}</span>
               )}
             </NotionButton>
             <div className="flex-1" />

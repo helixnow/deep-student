@@ -481,7 +481,9 @@
         "security": "无法验证登录响应，请重新发起登录。",
         "reauthentication": "ChatGPT 会话已变更或过期，请重新登录。"
       }
-    }
+    },
+    "no_api_key_needed_short": "无 Key",
+    "no_api_key_required_hint": "无需 API Key，保存后将自动获取模型列表"
   },
   "vendor_model_fetcher": {
     "fetch_button": "获取模型列表",
@@ -564,7 +566,9 @@
     "headers_parse_error": "请求头格式错误，请输入有效的 JSON",
     "clear_api_key": "清除 API Key",
     "clear_api_key_title": "清除 API 密钥",
-    "clear_api_key_warning": "清除后需要重新输入 API 密钥才能使用此供应商"
+    "clear_api_key_warning": "清除后需要重新输入 API 密钥才能使用此供应商",
+    "no_api_key_label": "无需 API Key",
+    "no_api_key_desc": "适用于自搭建后端（Ollama / vLLM / llama.cpp 等）"
   },
   "features": {
     "title": "功能设置",
@@ -625,12 +629,25 @@
       "current": "当前：{{mode}}主题",
       "auto_follow": "（跟随系统{{system}}设置）",
       "accent": "强调色：{{accent}}"
-    }
+    },
+    "sidebar_translucent_title": "侧边栏半透明",
+    "sidebar_translucent_description": "开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。"
   },
   "appearance": {
-    "theme": { "title": "主题", "description": "切换应用主题。" },
-    "font": { "title": "字体", "size_label": "字体大小", "heading_label": "标题字体", "body_label": "正文字体" },
-    "sidebar": { "title": "侧边栏", "position": "侧边栏位置" }
+    "theme": {
+      "title": "主题",
+      "description": "切换应用主题。"
+    },
+    "font": {
+      "title": "字体",
+      "size_label": "字体大小",
+      "heading_label": "标题字体",
+      "body_label": "正文字体"
+    },
+    "sidebar": {
+      "title": "侧边栏",
+      "position": "侧边栏位置"
+    }
   },
   "zoom": {
     "title": "全局界面缩放（实验）",
@@ -941,7 +958,12 @@
       "threshold_suffix": " 字符"
     },
     "reset_success": "设置已重置为默认值",
-    "tip": "OCR 会使用配置的 OCR 模型进行文字识别。对于多页 PDF，会逐页进行识别并支持断点续传。"
+    "tip": "OCR 会使用配置的 OCR 模型进行文字识别。对于多页 PDF，会逐页进行识别并支持断点续传。",
+    "offline": "离线",
+    "thinking_label": "VLM 深度推理",
+    "thinking_desc": "关闭可显著降低 OCR / 题目集导入延迟",
+    "thinking_on": "推理已开启",
+    "thinking_off": "推理已关闭"
   },
   "buttons": {
     "save": "保存",
@@ -2558,5 +2580,65 @@
     "available": "可用",
     "unavailable": "不可用",
     "untested": "未检测"
+  },
+  "study_ui_descriptions": {
+    "general": "管理语言、交互习惯、输入方式和个人偏好。",
+    "appearance": "自定义主题、字体、缩放和界面视觉风格。"
+  },
+  "about": {
+    "update": {
+      "checking": "检查中...",
+      "check": "检查更新",
+      "channel": "更新渠道",
+      "channelExpDesc": "接收实验版更新，可能包含未充分测试的功能",
+      "channelStableDesc": "仅接收经过验证的稳定版更新",
+      "channelStable": "稳定版",
+      "channelExp": "实验版",
+      "frequency": "自动检查更新",
+      "frequencyNoRemindDesc": "已关闭自动更新提醒，点击重新开启",
+      "frequencyNeverDesc": "不会自动检查更新，可手动检查",
+      "frequencyDaysDesc": "每 {{days}} 天自动检查一次",
+      "frequencyLaunchDesc": "每次启动时自动检查",
+      "frequencyReEnable": "重新开启",
+      "freqEveryLaunch": "每次启动",
+      "freqEveryNDays": "每 N 天",
+      "freqNever": "永不",
+      "upToDate": "已是最新版本",
+      "available": "发现新版本",
+      "mirrorDownload": "镜像下载",
+      "githubDownload": "GitHub 下载",
+      "downloading": "下载中...",
+      "install": "下载更新",
+      "error": {
+        "check": "检查更新失败",
+        "download": "下载失败",
+        "install": "安装失败",
+        "unavailable": "更新已不可用，请稍后重试",
+        "relaunch": "更新已安装，请手动重启应用以完成更新"
+      },
+      "dialog": {
+        "title": "有可用新版本",
+        "skipVersion": "跳过版本",
+        "ignore": "忽略",
+        "update": "更新",
+        "neverRemind": "不再提醒",
+        "neverRemindConfirm": "确定不再提醒？可在设置中重新开启",
+        "confirm": "确定",
+        "cancel": "取消"
+      }
+    }
+  },
+  "siliconflow_ocr": {
+    "paddle_ocr_vl_15": "免费开源 OCR 1.5 版，支持 109 种语言，精度达 94.5%",
+    "paddle_ocr_vl": "免费开源 OCR 旧版，支持坐标输出，作为 1.5 版的备用",
+    "deepseek_ocr": "专业 OCR 模型，支持坐标定位",
+    "glm4v_ocr": "智谱 106B MoE 多模态模型，支持坐标定位，题目集导入自动优先使用",
+    "generic_vlm": "通用多模态模型，适合简单文档识别（备用）"
+  },
+  "a11y": {
+    "close": "关闭",
+    "edit": "编辑",
+    "delete": "删除",
+    "save": "保存"
   }
 }

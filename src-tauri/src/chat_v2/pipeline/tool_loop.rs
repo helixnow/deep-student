@@ -1200,11 +1200,7 @@ impl ChatV2Pipeline {
                 let skill_embedded_tools = ctx.options.skill_embedded_tools.clone();
                 let skill_package_roots = ctx.options.skill_package_roots.clone();
                 let active_skill_ids = ctx.options.active_skill_ids.clone();
-                let skill_allowed_tools = if ctx.options.disable_tool_whitelist.unwrap_or(false) {
-                    None
-                } else {
-                    ctx.options.skill_allowed_tools.clone()
-                };
+                let execution_allowed_tools = ctx.options.execution_allowed_tools.clone();
                 let rag_top_k = ctx.options.rag_top_k;
                 let rag_enable_reranking = ctx.options.rag_enable_reranking;
                 let memory_enabled = ctx.options.memory_enabled.unwrap_or(true);
@@ -1247,7 +1243,7 @@ impl ChatV2Pipeline {
                         &skill_embedded_tools,
                         &skill_package_roots,
                         &active_skill_ids,
-                        &skill_allowed_tools,
+                        &execution_allowed_tools,
                         cancel_token,
                         rag_top_k,
                         rag_enable_reranking,
@@ -1830,7 +1826,7 @@ impl ChatV2Pipeline {
         >,
         skill_package_roots: &Option<std::collections::HashMap<String, String>>,
         _active_skill_ids: &Option<Vec<String>>,
-        skill_allowed_tools: &Option<Vec<String>>,
+        execution_allowed_tools: &Option<Vec<String>>,
         cancellation_token: Option<&CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
@@ -1940,7 +1936,7 @@ impl ChatV2Pipeline {
                             skill_embedded_tools,
                             skill_package_roots,
                             _active_skill_ids,
-                            skill_allowed_tools,
+                            execution_allowed_tools,
                             cancellation_token,
                             rag_top_k,
                             rag_enable_reranking,
@@ -2070,7 +2066,7 @@ impl ChatV2Pipeline {
                         skill_embedded_tools,
                         skill_package_roots,
                         _active_skill_ids,
-                        skill_allowed_tools,
+                        execution_allowed_tools,
                         cancellation_token,
                         rag_top_k,
                         rag_enable_reranking,
@@ -2166,7 +2162,7 @@ impl ChatV2Pipeline {
         >,
         skill_package_roots: &Option<std::collections::HashMap<String, String>>,
         active_skill_ids: &Option<Vec<String>>,
-        skill_allowed_tools: &Option<Vec<String>>,
+        execution_allowed_tools: &Option<Vec<String>>,
         cancellation_token: Option<&CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
@@ -2193,7 +2189,7 @@ impl ChatV2Pipeline {
                     skill_embedded_tools,
                     skill_package_roots,
                     active_skill_ids,
-                    skill_allowed_tools,
+                    execution_allowed_tools,
                     cancellation_token.cloned(),
                     rag_top_k,
                     rag_enable_reranking,
@@ -2437,7 +2433,7 @@ impl ChatV2Pipeline {
         >,
         skill_package_roots: &Option<std::collections::HashMap<String, String>>,
         _active_skill_ids: &Option<Vec<String>>,
-        skill_allowed_tools: &Option<Vec<String>>,
+        execution_allowed_tools: &Option<Vec<String>>,
         cancellation_token: Option<CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
@@ -2496,22 +2492,22 @@ impl ChatV2Pipeline {
         // Feature flag checks (memory, RAG, web search)
         let short_name = Self::canonical_tool_short_name(&tool_call.name);
 
-        if !crate::chat_v2::tool_policy::is_tool_allowed_by_skill_policy(
+        if !crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy(
             &tool_call.name,
             &tool_call.arguments,
-            skill_allowed_tools,
+            execution_allowed_tools,
         ) {
-            let allowed_count = skill_allowed_tools
+            let allowed_count = execution_allowed_tools
                 .as_ref()
                 .map(|tools| tools.len())
                 .unwrap_or(0);
             log::warn!(
-                "[ChatV2::pipeline] Tool blocked by active Skill allowlist: tool={}, allowed_count={}",
+                "[ChatV2::pipeline] Tool blocked by runtime execution allowlist: tool={}, allowed_count={}",
                 tool_call.name,
                 allowed_count
             );
             return Ok(build_preflight_blocked_result(format!(
-                "当前 Skill 未允许调用工具 '{}'，工具调用已被后端拦截",
+                "当前运行时未允许调用工具 '{}'，工具调用已被后端拦截",
                 tool_call.name
             )));
         }
@@ -2811,7 +2807,7 @@ impl ChatV2Pipeline {
         .with_rag_config(rag_top_k, rag_enable_reranking)
         .with_variant_id(variant_id.map(|s| s.to_string()))
         .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()))
-        .with_skill_allowed_tools(skill_allowed_tools.clone())
+        .with_execution_allowed_tools(execution_allowed_tools.clone())
         .with_skill_package_roots(skill_package_roots.clone())
         .with_feature_flags(memory_enabled, rag_enabled, web_search_enabled);
 
@@ -2883,12 +2879,34 @@ impl ChatV2Pipeline {
         }
 
         use tauri::Manager;
-        let (root_id, cwd) =
-            crate::chat_v2::approval_scope::normalized_shell_runtime_location(&tool_call.arguments);
+        use serde_json::json;
+
         let window = emitter.window();
         let state = window.state::<crate::commands::AppState>();
+        // Inject group preferred root into approval args (not ToolCall) before
+        // binding/scope so approval sees the same root execute will resolve.
+        let explicit = crate::chat_v2::runtime_roots::explicit_runtime_root_id_from_args(
+            &tool_call.arguments,
+        );
+        let effective_root_id =
+            crate::chat_v2::runtime_roots::resolve_effective_runtime_root_id_for_session(
+                &window.app_handle(),
+                &state.database,
+                Some(self.db.as_ref()),
+                session_id,
+                skill_package_roots,
+                explicit.as_deref(),
+            );
+        let mut approval_args = tool_call.arguments.clone();
+        if explicit.is_none() {
+            if let Some(object) = approval_args.as_object_mut() {
+                object.insert("root_id".to_string(), json!(effective_root_id));
+            }
+        }
+        let (root_id, cwd) =
+            crate::chat_v2::approval_scope::normalized_shell_runtime_location(&approval_args);
         let support_readable_roots =
-            LocalShellExecuteExecutor::runtime_support_read_roots(&tool_call.arguments)?;
+            LocalShellExecuteExecutor::runtime_support_read_roots(&approval_args)?;
         let binding = crate::chat_v2::runtime_roots::shell_runtime_approval_binding(
             &window.app_handle(),
             &state.database,
@@ -2899,10 +2917,10 @@ impl ChatV2Pipeline {
             &support_readable_roots,
         )?;
         let scoped = crate::chat_v2::approval_scope::attach_runtime_root_approval_binding(
-            &tool_call.arguments,
+            &approval_args,
             &binding,
         )?;
-        let env_facts = LocalShellExecuteExecutor::env_policy_facts(&tool_call.arguments)?;
+        let env_facts = LocalShellExecuteExecutor::env_policy_facts(&approval_args)?;
         crate::chat_v2::approval_scope::attach_shell_env_policy_facts(&scoped, &env_facts).map(Some)
     }
 

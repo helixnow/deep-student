@@ -253,13 +253,13 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
   // D-1: 移动端顶栏标题（data-management 视图直挂本组件）
   // 移动端设计哲学：页内不再渲染桌面 HeaderTemplate，导出操作收进统一顶栏
   useMobileHeader('data-management', {
-    title: t('common:navigation.data_management', '数据管理'),
+    title: t('common:navigation.data_management'),
     rightActions: (
       <NotionButton
         variant="ghost"
         size="sm"
         iconOnly
-        aria-label={t('common:header.export', '导出')}
+        aria-label={t('common:header.export')}
         onClick={() => handleExportRef.current()}
       >
         <DownloadSimple size={18} />
@@ -698,7 +698,7 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
           progress: 0,
           phase: 'queued',
           status: 'cancelled',
-          message: t('common:cancelled', '已取消'),
+          message: t('common:cancelled'),
         });
         return;
       }
@@ -1082,7 +1082,7 @@ ${resolvedPath}`);
 
     const monthlyTrend = Array.isArray((statsData.enhanced as any).monthly_trend)
       ? (statsData.enhanced as any).monthly_trend.map((item: any) => ({
-          month: typeof item?.month === 'string' ? item.month : '未知',
+          month: typeof item?.month === 'string' ? item.month : t('data:unknown'),
           count: Number(item?.count ?? 0) || 0,
         }))
       : [];
@@ -1175,7 +1175,7 @@ ${resolvedPath}`);
         } catch (error) {
           const purgeError = getErrorMessage(error);
           debugLog.warn('移动端即时清理失败:', purgeError);
-          showGlobalNotification('warning', `移动端清理目录失败: ${purgeError}`);
+          showGlobalNotification('warning', t('data:clear_data.mobile_purge_failed', { error: purgeError }));
         }
 
         setTimeout(() => {
@@ -1261,7 +1261,7 @@ ${resolvedPath}`);
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           unlisten();
-          reject(new Error(`${kind} 任务超时 (60秒)`));
+          reject(new Error(t('data:errors.task_timeout', { kind, seconds: 60 })));
         }, 60000);
 
         type BackupJobEvent = {
@@ -1287,7 +1287,7 @@ ${resolvedPath}`);
             clearTimeout(timeout);
             unlisten();
             if (p.result?.success === false) {
-              resolve({ success: false, error: p.result?.error || `${kind} 校验失败` });
+              resolve({ success: false, error: p.result?.error || t('data:errors.task_failed', { kind }) });
               return;
             }
             const outputPath = p.result?.resolvedPath || p.result?.resolved_path || p.result?.outputPath || p.result?.output_path;
@@ -1295,14 +1295,14 @@ ${resolvedPath}`);
           } else if (p.status === 'failed' || p.status === 'cancelled') {
             clearTimeout(timeout);
             unlisten();
-            resolve({ success: false, error: p.result?.error || p.message || `${kind} 失败` });
+            resolve({ success: false, error: p.result?.error || p.message || t('data:errors.task_failed', { kind }) });
           }
         }).then(fn => { unlisten = fn; });
       });
     };
 
     try {
-      setBackupTestResult({ status: 'running', currentStep: '准备中', progress: 0, logs: [] });
+      setBackupTestResult({ status: 'running', currentStep: t('data:backup_test.steps.preparing'), progress: 0, logs: [] });
       addLog('🚀 开始全自动备份系统测试（完整版）');
       addLog('═══════════════════════════════════════════════════════');
       addLog('核心原则: 测试流程与生产流程 100% 一致');
@@ -1314,7 +1314,7 @@ ${resolvedPath}`);
       // ============================================================
       // Phase 1: 准备测试环境
       // ============================================================
-      updateProgress('准备测试环境', 5);
+      updateProgress(t('data:backup_test.steps.prepare_env'), 5);
       addLog('');
       addLog('📦 Phase 1: 准备测试环境');
       addLog('清空测试插槽 C 和 D...');
@@ -1322,12 +1322,12 @@ ${resolvedPath}`);
       const slotInfo = await TauriAPI.getTestSlotInfo();
       addLog(`✅ 测试插槽已准备: C=${slotInfo.slot_c_dir.split('/').pop()}, D=${slotInfo.slot_d_dir.split('/').pop()}`);
 
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
+      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
 
       // ============================================================
       // Phase 2: 创建核心测试数据
       // ============================================================
-      updateProgress('创建核心测试数据', 10);
+      updateProgress(t('data:backup_test.steps.create_core_data'), 10);
       addLog('');
       addLog('📦 Phase 2: 创建核心测试数据');
 
@@ -1350,12 +1350,12 @@ ${resolvedPath}`);
       });
       addLog(`  ✅ 基本文件: ${filesResult.file_count} 个, ${(filesResult.total_size / 1024).toFixed(1)} KB`);
 
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
+      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
 
       // ============================================================
       // Phase 3: 创建边缘场景测试数据
       // ============================================================
-      updateProgress('创建边缘场景数据', 20);
+      updateProgress(t('data:backup_test.steps.create_edge_data'), 20);
       addLog('');
       addLog('📦 Phase 3: 创建边缘场景测试数据');
 
@@ -1371,12 +1371,12 @@ ${resolvedPath}`);
         addLog(`    → ${scenario}`);
       }
 
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
+      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
 
       // ============================================================
       // Phase 4: 符号链接测试（仅 Unix）
       // ============================================================
-      updateProgress('创建符号链接测试', 25);
+      updateProgress(t('data:backup_test.steps.create_symlink'), 25);
       addLog('');
       addLog('📦 Phase 4: 符号链接安全测试');
 
@@ -1388,12 +1388,12 @@ ${resolvedPath}`);
         addLog(`  ⚠️ 符号链接测试跳过: ${e}`);
       }
 
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
+      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
 
       // ============================================================
       // Phase 5: 执行备份（数据治理命令链路）
       // ============================================================
-      updateProgress('执行备份 (data_governance)', 35);
+      updateProgress(t('data:backup_test.steps.run_backup'), 35);
       addLog('');
       addLog('📦 Phase 5: 执行备份 (data_governance_backup_tiered)');
       addLog('  → 创建治理备份并等待任务完成');
@@ -1403,7 +1403,7 @@ ${resolvedPath}`);
 
       const backupResult = await waitForBackupJob(backupJob.job_id, 'export');
       if (!backupResult.success) {
-        throw new Error(`备份失败: ${backupResult.error}`);
+        throw new Error(t('data:backup_test.backup_failed', { error: backupResult.error }));
       }
 
       const backupStats = (backupResult as { result?: { stats?: Record<string, unknown> } }).result?.stats;
@@ -1412,7 +1412,7 @@ ${resolvedPath}`);
           ? backupStats.backup_id
           : null;
       if (!backupId) {
-        throw new Error('备份完成但未返回 backup_id');
+        throw new Error(t('data:backup_test.backup_id_missing'));
       }
       addLog(`  ✅ 备份完成: ${backupId}`);
 
@@ -1421,21 +1421,21 @@ ${resolvedPath}`);
 
       const exportZipResult = await waitForBackupJob(exportZipJob.job_id, 'export');
       if (!exportZipResult.success) {
-        throw new Error(`ZIP 导出失败: ${exportZipResult.error}`);
+        throw new Error(t('data:backup_test.zip_export_failed', { error: exportZipResult.error }));
       }
 
       const backupPath = exportZipResult.outputPath;
       if (!backupPath) {
-        throw new Error('ZIP 导出完成但未返回路径');
+        throw new Error(t('data:backup_test.zip_path_missing'));
       }
       addLog(`  ✅ ZIP 导出完成: ${backupPath.split('/').slice(-2).join('/')}`);
 
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
+      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
 
       // ============================================================
       // Phase 6: 执行导入与恢复（数据治理命令链路）
       // ============================================================
-      updateProgress('执行导入与恢复 (data_governance)', 55);
+      updateProgress(t('data:backup_test.steps.run_import_restore'), 55);
       addLog('');
       addLog('📦 Phase 6: 执行导入与恢复 (data_governance_import_zip + restore_backup)');
 
@@ -1444,7 +1444,7 @@ ${resolvedPath}`);
 
       const importResultJob = await waitForBackupJob(importJob.job_id, 'import');
       if (!importResultJob.success) {
-        throw new Error(`导入失败: ${importResultJob.error}`);
+        throw new Error(t('data:backup_test.import_failed', { error: importResultJob.error }));
       }
 
       const importedStats = (importResultJob as { result?: { stats?: Record<string, unknown> } }).result?.stats;
@@ -1453,7 +1453,7 @@ ${resolvedPath}`);
           ? importedStats.backup_id
           : null;
       if (!importedBackupId) {
-        throw new Error('导入完成但未返回 backup_id');
+        throw new Error(t('data:backup_test.import_id_missing'));
       }
 
       const restoreJob = await DataGovernanceApi.restoreBackup(importedBackupId);
@@ -1461,16 +1461,16 @@ ${resolvedPath}`);
 
       const restoreResult = await waitForBackupJob(restoreJob.job_id, 'import');
       if (!restoreResult.success) {
-        throw new Error(`恢复失败: ${restoreResult.error}`);
+        throw new Error(t('data:backup_test.restore_failed', { error: restoreResult.error }));
       }
       addLog('  ✅ 恢复完成');
 
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
+      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
 
       // ============================================================
       // Phase 7: 验证导入备份可校验
       // ============================================================
-      updateProgress('验证导入备份', 75);
+      updateProgress(t('data:backup_test.steps.verify_import'), 75);
       addLog('');
       addLog('📦 Phase 7: 验证导入备份完整性');
 
@@ -1480,16 +1480,16 @@ ${resolvedPath}`);
       addLog(`  数据库校验项: ${verifyResult.databases_verified.length}`);
 
       if (!verifyResult.is_valid) {
-        const reason = verifyResult.errors.join('; ') || '未知错误';
-        throw new Error(`导入备份校验失败: ${reason}`);
+        const reason = verifyResult.errors.join('; ') || t('data:backup_test.unknown_error');
+        throw new Error(t('data:backup_test.verify_failed', { reason }));
       }
 
-      if (backupTestAbortRef.current) throw new Error('测试已取消');
+      if (backupTestAbortRef.current) throw new Error(t('data:backup_test.cancelled'));
 
       // ============================================================
       // Phase 8: 清理测试环境
       // ============================================================
-      updateProgress('清理环境', 95);
+      updateProgress(t('data:backup_test.steps.cleanup'), 95);
       addLog('');
       addLog('📦 Phase 8: 清理测试环境');
       await invoke('clear_test_slot', { slotName: 'slotC' });
@@ -1500,7 +1500,7 @@ ${resolvedPath}`);
       // 测试完成
       // ============================================================
       const duration = Date.now() - startTime;
-      updateProgress('完成', 100);
+      updateProgress(t('data:backup_test.steps.done'), 100);
       addLog('');
       addLog('═══════════════════════════════════════════════════════');
       addLog('🎉 全部测试通过！');

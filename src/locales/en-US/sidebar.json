@@ -66,6 +66,11 @@
     "title": "Rename conversation",
     "label": "Conversation name"
   },
+  "update": {
+    "short": "Update",
+    "available": "Update available",
+    "downloading": "Downloading..."
+  },
   "expand": "Expand sidebar",
   "collapse": "Collapse sidebar",
   "theme_toggle": {

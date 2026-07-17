@@ -13,9 +13,19 @@ const invokeMock = vi.fn((command: string, payload?: Record<string, unknown>) =>
   return Promise.resolve(null);
 });
 
+const appearanceCopy: Record<string, string> = {
+  'settings:theme.pointer_cursor_title': '使用指针光标',
+  'settings:theme.pointer_cursor_description': '悬停交互元素时切换为指针光标。',
+  'settings:theme.sidebar_translucent_title': '侧边栏半透明',
+  'settings:theme.modes.light': '亮色',
+  'settings:theme.modes.dark': '暗色',
+  'settings:theme.system_default': '系统默认',
+};
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown> | string) => {
+      if (appearanceCopy[key]) return appearanceCopy[key];
       if (typeof options === 'string') return options;
       if (typeof options === 'object' && typeof options.defaultValue === 'string') return options.defaultValue;
       return key;

@@ -180,6 +180,25 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     return unsubscribe;
   }, []);
 
+  // 打开技能管理时重扫磁盘，避免 Agent 刚安装的技能仍停留在启动时的旧缓存
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    void reloadSkills()
+      .then(() => {
+        if (!cancelled) setRegistryVersion((v) => v + 1);
+      })
+      .catch((error: unknown) => {
+        console.error('[SkillsManagement] 打开时刷新失败:', error);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     const onTrustChanged = () => {
       void reloadSkills().then(() => setRegistryVersion((v) => v + 1));
@@ -900,7 +919,19 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         skill.id.toLowerCase().includes(query)
       );
     }
-    return result;
+    // 用户安装的全局/项目技能置顶，避免被大量内置技能挤出首屏
+    const locationRank = (location: SkillLocation) => {
+      if (location === 'global') return 0;
+      if (location === 'project') return 1;
+      return 2;
+    };
+    return [...result].sort((a, b) => {
+      const byLocation = locationRank(a.location) - locationRank(b.location);
+      if (byLocation !== 0) return byLocation;
+      const byPriority = (a.priority ?? 3) - (b.priority ?? 3);
+      if (byPriority !== 0) return byPriority;
+      return a.name.localeCompare(b.name, 'zh');
+    });
   }, [allSkills, locationFilter, searchQuery, t]);
 
   // ========== 渲染主内容 ==========
@@ -939,6 +970,18 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 <div className="w-px h-4 bg-border/40 mx-1.5" />
               </>
             )}
+
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleRefresh()}
+              disabled={isLoading}
+              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+              aria-label={t('skills:selector.refresh')}
+            >
+              <ArrowCounterClockwise size={14} className={cn('mr-1', isLoading && 'animate-spin')} />
+              {t('skills:management.refresh')}
+            </NotionButton>
 
             <NotionButton
               variant="ghost"
@@ -1100,7 +1143,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         className="max-h-[85dvh] overflow-y-auto"
       >
         <div className="space-y-3">
-          {/* 能力摘要 chips：文件 / 脚本 / allowed-tools / sha256 */}
+          {/* 包扫描摘要：文件 / 脚本 / 兼容工具声明 / sha256 */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
               {t('skills:package.permission_files', { count: scan.files_extracted })}

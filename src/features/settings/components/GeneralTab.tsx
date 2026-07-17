@@ -128,29 +128,29 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   }, [refreshDebugLogsInfo]);
 
   const languageOptions = React.useMemo(() => [
-    { value: 'zh-CN', label: t('settings:language.chinese', '中文') },
+    { value: 'zh-CN', label: t('settings:language.chinese') },
     { value: 'en-US', label: t('settings:language.english', 'English') },
   ], [t]);
 
   return (
     <div className="space-y-1 pb-10 text-left ui-fade-in-slow" data-tour-id="general-settings">
       <SettingSection
-        title={t('settings:tabs.general', '常规')}
-        description={t('settings:study_ui_descriptions.general', '管理语言、交互习惯、输入方式和个人偏好。')}
+        title={t('settings:tabs.general')}
+        description={t('settings:study_ui_descriptions.general')}
         className="overflow-visible"
         hideHeader
       >
         <SettingsGroup
-          title={t('settings:tabs.general', '常规')}
-          description={t('settings:study_ui_descriptions.general', '管理语言、交互习惯、输入方式和个人偏好。')}
+          title={t('settings:tabs.general')}
+          description={t('settings:study_ui_descriptions.general')}
         >
             <SettingRow
               title={t('settings:language.title')}
-              description={t('common:status.current', '当前') + ': ' + (i18n.language === 'zh-CN' ? t('settings:language.chinese', '中文') : t('settings:language.english', 'English'))}
+              description={t('common:status.current') + ': ' + (i18n.language === 'zh-CN' ? t('settings:language.chinese') : t('settings:language.english', 'English'))}
               className="items-center"
             >
               <SegmentedControl
-                ariaLabel={t('settings:language.select_label', '选择语言')}
+                ariaLabel={t('settings:language.select_label')}
                 value={i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'}
                 onValueChange={(nextValue) => {
                   void i18n.changeLanguage(nextValue);
@@ -186,12 +186,12 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             <MarkdownEditorWindowSettings />
 
             <SettingRow
-              title={t('settings:system_notification.title', '系统通知')}
-              description={t('settings:system_notification.desc', '番茄钟、待办提醒、制卡等任务的系统通知策略。「仅后台」表示应用在前台时不打扰。')}
+              title={t('settings:system_notification.title')}
+              description={t('settings:system_notification.desc')}
               className="items-center"
             >
               <SegmentedControl
-                ariaLabel={t('settings:system_notification.title', '系统通知')}
+                ariaLabel={t('settings:system_notification.title')}
                 value={notificationPolicy}
                 onValueChange={(next) => {
                   const policy = next as SystemNotificationPolicy;
@@ -200,23 +200,23 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 }}
                 size="compact"
                 options={[
-                  { value: 'background', label: t('settings:system_notification.background', '仅后台') },
-                  { value: 'always', label: t('settings:system_notification.always', '总是') },
-                  { value: 'never', label: t('settings:system_notification.never', '从不') },
+                  { value: 'background', label: t('settings:system_notification.background') },
+                  { value: 'always', label: t('settings:system_notification.always') },
+                  { value: 'never', label: t('settings:system_notification.never') },
                 ]}
               />
             </SettingRow>
 
             <SettingRow
-              title={t('settings:developer.preview_agreement.title', '预览隐私协议')}
-              description={t('settings:developer.preview_agreement.desc', '打开首次安装时显示的用户协议与隐私政策弹窗，用于预览效果。')}
+              title={t('settings:developer.preview_agreement.title')}
+              description={t('settings:developer.preview_agreement.desc')}
             >
               <NotionButton
                 variant="default"
                 size="sm"
                 onClick={() => setShowAgreementPreview(true)}
               >
-                {t('settings:developer.preview_agreement.button', '打开预览')}
+                {t('settings:developer.preview_agreement.button')}
               </NotionButton>
             </SettingRow>
         </SettingsGroup>
@@ -231,7 +231,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
         <div className="mt-8 rounded-2xl border border-border/40 bg-background px-3 py-3 sm:px-4">
           <div className="px-1 mb-3 mt-0">
-            <h3 className="text-base font-semibold text-foreground">{t('settings:memory.title', '记忆设置')}</h3>
+            <h3 className="text-base font-semibold text-foreground">{t('settings:memory.title')}</h3>
           </div>
           <MemorySettingsSection embedded />
         </div>
@@ -243,8 +243,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
           className="mt-8"
         >
           <SettingRow
-            title={t('settings:developer.topbar_top_margin.title', '顶部栏顶部边距高度')}
-            description={t('settings:developer.topbar_top_margin.desc', '调整顶部边距高度')}
+            title={t('settings:developer.topbar_top_margin.title')}
+            description={t('settings:developer.topbar_top_margin.desc')}
           >
             <div className="flex items-center gap-2">
               <Input
@@ -283,8 +283,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
           </SettingRow>
 
           <SwitchRow
-            title={t('settings:developer.debug_log_switch.title', '调试日志总开关')}
-            description={t('settings:developer.debug_log_switch.desc', '关闭后，前端控制台不会输出调试日志，可避免生产环境性能问题。开启后，调试面板插件才会正常工作。')}
+            title={t('settings:developer.debug_log_switch.title')}
+            description={t('settings:developer.debug_log_switch.desc')}
             checked={debugLogEnabled}
             onCheckedChange={(newValue) => {
               if (newValue) {
@@ -297,7 +297,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
           <SettingRow
             title={t('common:debug_panel.open_unified', t('common:debug_panel.open'))}
-            description={t('settings:developer.description', '调试模式、日志与实验性开关')}
+            description={t('settings:developer.description')}
           >
             <NotionButton
               variant="default"
@@ -320,19 +320,19 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
           </SettingRow>
 
           <SettingRow
-            title={t('settings:developer.log_type', '日志类型')}
-            description={t('settings:developer.log_type_hint', '选择并打开对应类型的日志文件夹')}
+            title={t('settings:developer.log_type')}
+            description={t('settings:developer.log_type_hint')}
           >
             <div className="flex items-center gap-2">
               <AppSelect
                 value={logTypeForOpen}
                 onValueChange={setLogTypeForOpen}
-                placeholder={t('settings:developer.log_type_placeholder', '选择')}
+                placeholder={t('settings:developer.log_type_placeholder')}
                 options={[
-                  { value: 'backend', label: t('settings:developer.log_types.backend', '后端') },
-                  { value: 'frontend', label: t('settings:developer.log_types.frontend', '前端') },
-                  { value: 'debug', label: t('settings:developer.log_types.debug', '调试') },
-                  { value: 'crash', label: t('settings:developer.log_types.crash', '崩溃') },
+                  { value: 'backend', label: t('settings:developer.log_types.backend') },
+                  { value: 'frontend', label: t('settings:developer.log_types.frontend') },
+                  { value: 'debug', label: t('settings:developer.log_types.debug') },
+                  { value: 'crash', label: t('settings:developer.log_types.crash') },
                 ]}
                 size="sm"
                 variant="ghost"
@@ -346,18 +346,18 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   try {
                     await tauriInvoke('open_logs_folder', { logType: logTypeForOpen });
                   } catch {
-                    showGlobalNotification('error', t('settings:developer.open_logs_failed', '打开日志文件夹失败'));
+                    showGlobalNotification('error', t('settings:developer.open_logs_failed'));
                   }
                 }}
               >
-                {t('settings:developer.open_logs', '打开')}
+                {t('settings:developer.open_logs')}
               </NotionButton>
             </div>
           </SettingRow>
 
           <SwitchRow
-            title={t('settings:developer.show_raw_request.title', '显示消息请求体')}
-            description={t('settings:developer.show_raw_request.desc', '开启后，Chat V2 中每条助手消息下方将显示完整的 API 请求体，便于调试。')}
+            title={t('settings:developer.show_raw_request.title')}
+            description={t('settings:developer.show_raw_request.desc')}
             checked={showRawRequest}
             loading={!showRawRequestLoaded}
             onCheckedChange={async (newValue) => {
@@ -366,7 +366,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               if (!invoke) return;
               try {
                 await invoke('save_setting', { key: 'dev.show_raw_request', value: String(newValue) });
-                showGlobalNotification('success', t('settings:save_notifications.saved', '已保存'));
+                showGlobalNotification('success', t('settings:save_notifications.saved'));
                 try {
                   window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { showRawRequest: newValue } }));
                 } catch {
@@ -496,7 +496,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               setDebugPersistLogs(newValue);
               try {
                 await tauriInvoke('save_setting', { key: 'debug.persist_logs', value: String(newValue) });
-                showGlobalNotification('success', t('settings:save_notifications.saved', '已保存'));
+                showGlobalNotification('success', t('settings:save_notifications.saved'));
               } catch (error: unknown) {
                 showGlobalNotification('error', getErrorMessage(error));
               }
@@ -551,12 +551,12 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
         </SettingsGroup>
 
         <SettingsGroup
-          title={t('common:legal.settingsSection.title', '隐私与数据')}
+          title={t('common:legal.settingsSection.title')}
           className="mt-8"
         >
             <SwitchRow
-              title={t('common:legal.settingsSection.sentryToggle.title', '匿名错误报告')}
-              description={t('common:legal.settingsSection.sentryToggle.description', '允许发送匿名崩溃报告以帮助改善软件质量')}
+              title={t('common:legal.settingsSection.sentryToggle.title')}
+              description={t('common:legal.settingsSection.sentryToggle.description')}
               checked={sentryEnabled ?? false}
               loading={sentryEnabled === null}
               onCheckedChange={async (newValue) => {
@@ -570,11 +570,11 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   showGlobalNotification(
                     'success',
                     newValue
-                      ? t('common:legal.settingsSection.sentryToggle.enabled', '已开启')
-                      : t('common:legal.settingsSection.sentryToggle.disabled', '已关闭')
+                      ? t('common:legal.settingsSection.sentryToggle.enabled')
+                      : t('common:legal.settingsSection.sentryToggle.disabled')
                   );
                   if (newValue) {
-                    showGlobalNotification('info', t('settings:save_notifications.restart_hint', '部分设置需重启应用后生效'));
+                    showGlobalNotification('info', t('settings:save_notifications.restart_hint'));
                   }
                 } catch (error: unknown) {
                   showGlobalNotification('error', getErrorMessage(error));
@@ -585,7 +585,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
             <div className="px-1 py-3">
               <h4 className="text-sm font-medium text-foreground mb-2">
-                {t('common:legal.settingsSection.dataFlow.title', '数据流向说明')}
+                {t('common:legal.settingsSection.dataFlow.title')}
               </h4>
               <div className="space-y-2">
                 {[
@@ -611,8 +611,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
             <div className="mt-3 pt-3 border-t border-border/40">
               <SettingRow
-                title={t('common:legal.dataRights.manageData', '管理我的数据')}
-                description={t('common:legal.dataRights.manageDataDesc', '导出、备份或删除您的所有数据')}
+                title={t('common:legal.dataRights.manageData')}
+                description={t('common:legal.dataRights.manageDataDesc')}
               >
                 <NotionButton
                   variant="default"
@@ -624,7 +624,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                     window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'data-governance' } }));
                   }}
                 >
-                  {t('common:legal.dataRights.goToDataGovernance', '前往数据治理')}
+                  {t('common:legal.dataRights.goToDataGovernance')}
                 </NotionButton>
               </SettingRow>
             </div>

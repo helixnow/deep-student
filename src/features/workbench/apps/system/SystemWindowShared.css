@@ -121,6 +121,11 @@
   gap: 12px;
 }
 
+/* 中窗骨架：侧栏骨架同步收窄，加载完成零跳变 */
+[data-wb-sys-size='medium'] .wb-sys-skel-aside {
+  width: 200px;
+}
+
 /* 窄窗骨架：侧栏骨架随之收起，与真实布局对齐 */
 [data-wb-sys-size='compact'] .wb-sys-skel-aside {
   display: none;
@@ -189,7 +194,8 @@
   position: absolute;
   left: 0;
   top: 50%;
-  z-index: 5;
+  /* 窗内局部层级锚定 --wb-z-window-content（+5/+6/+7 递进，恒低于标题栏 10） */
+  z-index: calc(var(--wb-z-window-content, 0) + 5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -220,7 +226,8 @@
 }
 
 .wb-sys-drawer-handle:focus-visible {
-  outline: 2px solid hsl(var(--primary) / 0.65);
+  /* 焦点环统一走 O1 token（minimal 档不降级，属 a11y） */
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
   outline-offset: 1px;
 }
 
@@ -229,7 +236,7 @@
 .wb-sys-scrim {
   position: absolute;
   inset: 0;
-  z-index: 6;
+  z-index: calc(var(--wb-z-window-content, 0) + 6);
   background: hsl(var(--background) / 0.42);
   opacity: 0;
   visibility: hidden;
@@ -253,7 +260,7 @@
   left: 0;
   top: 0;
   bottom: 0;
-  z-index: 7;
+  z-index: calc(var(--wb-z-window-content, 0) + 7);
   display: flex;
   flex-direction: column;
   width: min(248px, 82%);
@@ -311,17 +318,25 @@
 
 .wb-sys-drawer-close:hover {
   color: hsl(var(--foreground));
+  background: var(--interactive-hover, rgba(0, 0, 0, 0.08));
 }
 
 .wb-sys-drawer-close:focus-visible {
-  outline: 2px solid hsl(var(--primary) / 0.65);
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
   outline-offset: 1px;
+}
+
+/* 抽屉面板自身可编程聚焦（tabIndex=-1），不画默认外框 */
+.wb-sys-drawer:focus {
+  outline: none;
 }
 
 .wb-sys-drawer-body {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  /* 抽屉滚到边缘不把滚动链传给底下的内容区 */
+  overscroll-behavior: contain;
 }
 
 /* ==== 任务进行中活动条 ================================================ */
@@ -331,7 +346,7 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 5;
+  z-index: calc(var(--wb-z-window-content, 0) + 5);
   height: 2px;
   overflow: hidden;
   pointer-events: none;

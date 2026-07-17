@@ -467,6 +467,12 @@ pub struct SessionGroup {
     pub pinned_resource_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
+    /// 课题默认 runtime root（`workspace` / `authorized_*`）；未绑定为 None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_runtime_root_id: Option<String>,
+    /// 本机展示用绝对路径缓存（local-derived，不同步）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_project_root_path: Option<String>,
     pub sort_order: i32,
     pub persist_status: PersistStatus,
     pub created_at: DateTime<Utc>,
@@ -491,6 +497,9 @@ pub struct CreateGroupRequest {
     pub default_skill_ids: Option<Vec<String>>,
     pub pinned_resource_ids: Option<Vec<String>>,
     pub workspace_id: Option<String>,
+    pub default_runtime_root_id: Option<String>,
+    /// 仅本机展示；绑定时由后端从 root path 写入，客户端可不传
+    pub preferred_project_root_path: Option<String>,
 }
 
 /// 更新分组请求
@@ -505,6 +514,9 @@ pub struct UpdateGroupRequest {
     pub default_skill_ids: Option<Vec<String>>,
     pub pinned_resource_ids: Option<Vec<String>>,
     pub workspace_id: Option<String>,
+    pub default_runtime_root_id: Option<String>,
+    /// 仅本机展示；绑定时由后端从 root path 写入，空字符串清除
+    pub preferred_project_root_path: Option<String>,
     pub sort_order: Option<i32>,
     pub persist_status: Option<PersistStatus>,
 }
@@ -713,10 +725,6 @@ pub struct SkillStateSnapshot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub branch_local_skill_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub effective_allowed_internal_tools: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub effective_allowed_external_tools: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effective_allowed_external_servers: Vec<String>,
     #[serde(default)]
     pub version: u64,
@@ -728,7 +736,7 @@ pub struct ReplaySkillPayloadSnapshot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub active_skill_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub skill_allowed_tools: Option<Vec<String>>,
+    pub execution_allowed_tools: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub skill_contents: std::collections::HashMap<String, String>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
@@ -752,7 +760,7 @@ impl ReplaySkillPayloadSnapshot {
 
     pub fn has_replay_metadata(&self) -> bool {
         !self.active_skill_ids.is_empty()
-            || self.skill_allowed_tools.is_some()
+            || self.execution_allowed_tools.is_some()
             || !self.skill_dependencies.is_empty()
             || !self.skill_embedded_tools.is_empty()
             || !self.mcp_tool_schemas.is_empty()
@@ -771,10 +779,6 @@ pub struct SessionSkillState {
     pub agentic_session_skill_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub branch_local_skill_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub effective_allowed_internal_tools: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub effective_allowed_external_tools: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effective_allowed_external_servers: Vec<String>,
     #[serde(default)]
@@ -825,8 +829,6 @@ impl SessionSkillState {
             mode_required_bundle_ids: self.mode_required_bundle_ids.clone(),
             agentic_session_skill_ids: self.agentic_session_skill_ids.clone(),
             branch_local_skill_ids: self.branch_local_skill_ids.clone(),
-            effective_allowed_internal_tools: self.effective_allowed_internal_tools.clone(),
-            effective_allowed_external_tools: self.effective_allowed_external_tools.clone(),
             effective_allowed_external_servers: self.effective_allowed_external_servers.clone(),
             version: self.version,
         }
@@ -2184,18 +2186,16 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_type_hints: Option<Vec<String>>,
 
-    // ========== 🆕 P1-C: Skill 工具权限约束 ==========
+    // ========== Skill 运行时上下文 ==========
     /// 当前会话激活的 Skill IDs
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_skill_ids: Option<Vec<String>>,
 
-    /// 当前启用 Skills 声明允许调用的工具 ID 列表。
-    ///
-    /// 当前端提供该字段时，后端必须在工具执行前 fail-closed：
-    /// 不在列表内的工具直接返回 blocked tool result，不进入审批或执行。
-    /// `disable_tool_whitelist` 仅作为显式兼容/调试逃生口。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skill_allowed_tools: Option<Vec<String>>,
+    /// 无人值守或受限 worker 运行时的后端执行边界。
+    /// 普通技能永远不设置此字段；它不是 Skill `allowed-tools` 策略。
+    /// 该字段不接受前端输入，只由后端 headless/worker 入口构造。
+    #[serde(skip)]
+    pub execution_allowed_tools: Option<Vec<String>>,
 
     // ========== 🆕 渐进披露 Skills 内容 ==========
     /// 技能内容映射（skillId -> content）
@@ -2239,10 +2239,6 @@ pub struct SendOptions {
     pub continue_variant_id: Option<String>,
 
     // ========== 🆕 图片压缩策略 ==========
-    /// 🆕 关闭工具白名单检查（允许所有工具绕过技能白名单限制）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub disable_tool_whitelist: Option<bool>,
-
     /// 视觉质量策略（用于多模态图片压缩）
     ///
     /// - `low`: 最大 768px，JPEG 60%，适用于大量图片/PDF 概览
@@ -2509,10 +2505,6 @@ pub struct ChatParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multimodal_library_ids: Option<Vec<String>>,
 
-    /// 关闭工具白名单检查
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub disable_tool_whitelist: Option<bool>,
-
     /// 图片压缩策略（low/medium/high/auto）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_quality: Option<String>,
@@ -2549,7 +2541,6 @@ impl Default for ChatParams {
             multimodal_top_k: None,
             multimodal_enable_reranking: None,
             multimodal_library_ids: None,
-            disable_tool_whitelist: None,
             vision_quality: None,
         }
     }
@@ -2865,20 +2856,21 @@ mod tests {
     }
 
     #[test]
-    fn test_send_options_skill_allowed_tools_serde_contract() {
+    fn test_send_options_execution_allowed_tools_is_backend_only() {
         let options: SendOptions = serde_json::from_value(json!({
             "activeSkillIds": ["skill-a"],
-            "skillAllowedTools": []
+            "executionAllowedTools": ["builtin-web_search"],
+            "skillAllowedTools": ["builtin-memory_delete"]
         }))
         .unwrap();
 
         assert_eq!(options.active_skill_ids, Some(vec!["skill-a".to_string()]));
-        assert_eq!(options.skill_allowed_tools, Some(Vec::new()));
+        assert!(options.execution_allowed_tools.is_none());
 
         let json = serde_json::to_string(&options).unwrap();
         assert!(
-            json.contains("\"skillAllowedTools\":[]"),
-            "Expected explicit empty skillAllowedTools to round-trip, got: {}",
+            !json.contains("executionAllowedTools") && !json.contains("skillAllowedTools"),
+            "Backend-only execution policy must not cross the frontend request boundary: {}",
             json
         );
     }
@@ -3779,7 +3771,7 @@ mod tests {
     fn test_replay_skill_payload_snapshot_without_skill_contents_keeps_light_metadata() {
         let snapshot = ReplaySkillPayloadSnapshot {
             active_skill_ids: vec!["manual-a".to_string()],
-            skill_allowed_tools: Some(vec!["builtin-web_search".to_string()]),
+            execution_allowed_tools: Some(vec!["builtin-web_search".to_string()]),
             skill_contents: std::collections::HashMap::from([(
                 "manual-a".to_string(),
                 "private instructions".to_string(),
@@ -3795,7 +3787,7 @@ mod tests {
         assert!(redacted.skill_contents.is_empty());
         assert_eq!(redacted.active_skill_ids, vec!["manual-a".to_string()]);
         assert_eq!(
-            redacted.skill_allowed_tools,
+            redacted.execution_allowed_tools,
             Some(vec!["builtin-web_search".to_string()])
         );
         assert_eq!(
@@ -3813,20 +3805,32 @@ mod tests {
     fn test_replay_skill_payload_snapshot_preserves_explicit_empty_policy() {
         let runtime = ReplaySkillPayloadSnapshot {
             active_skill_ids: vec!["instruction-only".to_string()],
-            skill_allowed_tools: Some(Vec::new()),
+            execution_allowed_tools: Some(Vec::new()),
             ..Default::default()
         };
 
         assert!(runtime.has_replay_metadata());
         let json = serde_json::to_string(&runtime).unwrap();
         assert!(
-            json.contains("\"skillAllowedTools\":[]"),
-            "Expected explicit empty skillAllowedTools to be serialized, got: {}",
+            json.contains("\"executionAllowedTools\":[]"),
+            "Expected explicit empty executionAllowedTools to be serialized, got: {}",
             json
         );
 
         let decoded: ReplaySkillPayloadSnapshot = serde_json::from_str(&json).unwrap();
-        assert_eq!(decoded.skill_allowed_tools, Some(Vec::new()));
+        assert_eq!(decoded.execution_allowed_tools, Some(Vec::new()));
+    }
+
+    #[test]
+    fn test_replay_skill_payload_snapshot_drops_legacy_skill_allowlist() {
+        let decoded: ReplaySkillPayloadSnapshot = serde_json::from_value(json!({
+            "activeSkillIds": ["legacy-skill"],
+            "skillAllowedTools": ["builtin-web_search"]
+        }))
+        .unwrap();
+
+        assert_eq!(decoded.active_skill_ids, vec!["legacy-skill".to_string()]);
+        assert!(decoded.execution_allowed_tools.is_none());
     }
 
     #[test]

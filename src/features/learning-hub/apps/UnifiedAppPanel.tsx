@@ -71,6 +71,8 @@ export interface UnifiedAppPanelProps {
   preferNodeType?: boolean;
   /** Receives the resolved node without forcing an additional DSTU request in an app shell. */
   onNodeLoaded?: (node: DstuNode) => void;
+  /** 宿主已提供统一属性面板（如笔记工作台右侧栏）时，隐藏视图内嵌属性浮层入口 */
+  propertiesPanelDisabled?: boolean;
 }
 
 export interface ContentViewProps {
@@ -90,6 +92,8 @@ export interface ContentViewProps {
   onSaveStateChange?: (state: 'saved' | 'saving' | 'dirty') => void;
   /** Owning Workbench window, absent in standalone Learning Hub views. */
   hostWindowId?: string;
+  /** 宿主已提供统一属性面板时为 true，视图应隐藏自带的属性浮层入口 */
+  propertiesPanelDisabled?: boolean;
 }
 
 // ============================================================================
@@ -152,6 +156,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   strictType = false,
   preferNodeType = false,
   onNodeLoaded,
+  propertiesPanelDisabled = false,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
 
@@ -278,8 +283,9 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       focusOnActive,
       onSaveStateChange: handleSaveStateChange,
       hostWindowId,
+      propertiesPanelDisabled,
     };
-  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, handleSaveStateChange, hostWindowId]);
+  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, handleSaveStateChange, hostWindowId, propertiesPanelDisabled]);
 
   // ★ 性能：memo 化视图元素。元素引用不变时 React 会直接跳过该子树的重渲染
   //（即使子组件未包 React.memo），使父级因 className/闭包变化引起的重渲染不再波及内容视图
@@ -301,7 +307,20 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       case 'file':
         return <FileContentView {...commonProps} />;
       case 'mindmap':
-        return <MindMapContentView resourceId={node.id} onTitleChange={handleTitleChange} isActive={isActive} className="h-full" />;
+        // 与 Workbench Notes 路径（NotesWorkspaceApp）对齐：
+        // storeInstanceId 隔离多标签 store 路由；focusOnActive 使激活标签自动获得键盘焦点；
+        // onSaveStateChange 让标签页能显示 dirty/saving 状态。
+        return (
+          <MindMapContentView
+            resourceId={node.id}
+            storeInstanceId={hostWindowId ? `${hostWindowId}:${node.id}` : `learning-hub:${node.id}`}
+            onTitleChange={handleTitleChange}
+            isActive={isActive}
+            focusOnActive={focusOnActive}
+            onSaveStateChange={handleSaveStateChange}
+            className="h-full"
+          />
+        );
       default:
         return (
           <div className="flex items-center justify-center h-full text-muted-foreground" role="alert">
@@ -309,7 +328,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
           </div>
         );
     }
-  }, [node, commonProps, resolvedType, isActive, handleTitleChange, t]);
+  }, [node, commonProps, resolvedType, isActive, focusOnActive, hostWindowId, handleTitleChange, handleSaveStateChange, t]);
 
   // 加载状态（spinner 延迟显示，快速加载不闪烁）
   if (isLoading) {

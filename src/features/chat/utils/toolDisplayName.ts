@@ -1,3 +1,4 @@
+import i18nInstance from '@/i18n';
 import { getToolDisplayNameKey } from '@/mcp/builtinMcpServer';
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
@@ -111,6 +112,98 @@ const ZH_TOKEN_MAP: Record<string, string> = {
   spec: '规格',
   text: '文本',
   to: '转',
+  self: '环境',
+  inspect: '自检',
+  session: '会话',
+  browser: '浏览器',
+  automation: '自动化',
+  backup: '备份',
+  sync: '同步',
+  shell: '命令',
+  execute: '执行',
+  preflight: '预检',
+  runtime: '运行时',
+  root: '目录',
+  request: '请求',
+  propose: '提议',
+  workshop: '工坊',
+  apply: '应用',
+  install: '安装',
+  scan: '扫描',
+  skill: '技能',
+  server: '服务器',
+  mcp: 'MCP',
+  essay: '作文',
+  translation: '翻译',
+  pomodoro: '番茄钟',
+  overview: '总览',
+  learning: '学习',
+  learner: '学习者',
+  profile: '画像',
+  local: '本地',
+  stage: '暂存',
+  attachment: '附件',
+  webpage: '网页',
+  index: '索引',
+  rebuild: '重建',
+  status: '状态',
+  bookmarks: '书签',
+  bookmark: '书签',
+  highlights: '高亮',
+  highlight: '高亮',
+  textbook: '教材',
+  pdf: 'PDF',
+  page: '页面',
+  settings: '设置',
+  model: '模型',
+  assignments: '分配',
+  usage: '用量',
+  llm: '模型',
+  pack: '包',
+  subagent: '子代理',
+  call: '调用',
+  archive: '归档',
+  restore: '恢复',
+  suspend: '暂停',
+  resume: '恢复',
+  schedule: '安排',
+  due: '到期',
+  plan: '计划',
+  favorite: '收藏',
+  purge: '彻底删除',
+  trash: '回收站',
+  dstu: '资源',
+  group: '分组',
+  messages: '消息',
+  message: '消息',
+  artifact: '产物',
+  revert: '撤销',
+  change: '变更',
+  versions: '版本',
+  version: '版本',
+  diff: '对比',
+  relation: '关联',
+  complete: '完成',
+  item: '事项',
+  items: '事项',
+  lists: '清单',
+  reorder: '重排',
+  summary: '摘要',
+  today: '今日',
+  daily: '每日',
+  navigate: '导航',
+  click: '点击',
+  type: '输入',
+  scroll: '滚动',
+  snapshot: '快照',
+  back: '后退',
+  enabled: '启用',
+  runs: '运行记录',
+  run: '运行',
+  retry: '重试',
+  cancel: '取消',
+  now: '立即',
+  job: '任务',
 };
 
 /**
@@ -185,12 +278,26 @@ function resolveToolDisplayNameKey(toolName: string): string | undefined {
   if (toolName.startsWith('tools.')) {
     return toolName;
   }
-  return getToolDisplayNameKey(toolName);
+  const fromBuiltin = getToolDisplayNameKey(toolName);
+  if (fromBuiltin) {
+    return fromBuiltin;
+  }
+  // 无前缀短名（如 self_inspect）也尝试 mcp.tools.* 词条
+  const bare = toolName.replace(/^builtin[-:]/, '').replace(/^mcp_/, '');
+  if (/^[a-z][a-z0-9_]*$/.test(bare)) {
+    return `tools.${bare}`;
+  }
+  return undefined;
 }
 
 function isChineseLocale(t: TranslateFn): boolean {
-  const i18n = (t as TranslateFn & { i18n?: { resolvedLanguage?: string; language?: string } }).i18n;
-  const lang = i18n?.resolvedLanguage || i18n?.language || '';
+  const fromT = (t as TranslateFn & { i18n?: { resolvedLanguage?: string; language?: string } }).i18n;
+  const lang =
+    fromT?.resolvedLanguage ||
+    fromT?.language ||
+    i18nInstance.resolvedLanguage ||
+    i18nInstance.language ||
+    '';
   return lang.toLowerCase().startsWith('zh');
 }
 

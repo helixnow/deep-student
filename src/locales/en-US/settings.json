@@ -481,7 +481,9 @@
         "security": "The sign-in response could not be verified. Start sign-in again.",
         "reauthentication": "Your ChatGPT session changed or expired. Sign in again."
       }
-    }
+    },
+    "no_api_key_needed_short": "No key",
+    "no_api_key_required_hint": "No API key required; models will be fetched after saving"
   },
   "vendor_model_fetcher": {
     "fetch_button": "Fetch Model List",
@@ -564,7 +566,9 @@
     "headers_parse_error": "Invalid headers format, please enter valid JSON",
     "clear_api_key": "Clear API Key",
     "clear_api_key_title": "Clear API Key",
-    "clear_api_key_warning": "After clearing, you will need to re-enter the API key to use this provider"
+    "clear_api_key_warning": "After clearing, you will need to re-enter the API key to use this provider",
+    "no_api_key_label": "No API key required",
+    "no_api_key_desc": "For self-hosted backends (Ollama / vLLM / llama.cpp, etc.)"
   },
   "features": {
     "title": "Feature Settings",
@@ -625,12 +629,25 @@
       "current": "Current: {{mode}} theme",
       "auto_follow": " (following system {{system}} preference)",
       "accent": "Accent: {{accent}}"
-    }
+    },
+    "sidebar_translucent_title": "Translucent Sidebar",
+    "sidebar_translucent_description": "Makes the sidebar background a translucent frosted-glass effect so desktop content can show through."
   },
   "appearance": {
-    "theme": { "title": "Theme", "description": "Switch the application theme." },
-    "font": { "title": "Font", "size_label": "Font Size", "heading_label": "Heading Font", "body_label": "Body Font" },
-    "sidebar": { "title": "Sidebar", "position": "Sidebar Position" }
+    "theme": {
+      "title": "Theme",
+      "description": "Switch the application theme."
+    },
+    "font": {
+      "title": "Font",
+      "size_label": "Font Size",
+      "heading_label": "Heading Font",
+      "body_label": "Body Font"
+    },
+    "sidebar": {
+      "title": "Sidebar",
+      "position": "Sidebar Position"
+    }
   },
   "zoom": {
     "title": "Global UI Zoom (Experimental)",
@@ -941,7 +958,12 @@
       "threshold_suffix": " chars"
     },
     "reset_success": "Settings reset to defaults",
-    "tip": "OCR uses the configured OCR model for text recognition. For multi-page PDFs, pages are processed sequentially with resume support."
+    "tip": "OCR uses the configured OCR model for text recognition. For multi-page PDFs, pages are processed sequentially with resume support.",
+    "offline": "Offline",
+    "thinking_label": "VLM deep reasoning",
+    "thinking_desc": "Turning off can significantly reduce OCR / exam-sheet import latency",
+    "thinking_on": "Reasoning on",
+    "thinking_off": "Reasoning off"
   },
   "buttons": {
     "save": "Save",
@@ -2371,8 +2393,8 @@
     "memoryEnabled": "Enable",
     "memoryEnabledDesc": "When enabled, AI automatically extracts and uses information about you to personalize conversations. When disabled, memory extraction, retrieval, and injection are all stopped.",
     "memoryEnabledToast": "Memory enabled",
-    "memoryDisabledToast": "Memory disabled"
-    ,"autoSubfoldersUpdated": "Memory subfolders updated",
+    "memoryDisabledToast": "Memory disabled",
+    "autoSubfoldersUpdated": "Memory subfolders updated",
     "defaultCategoryUpdated": "Default memory category updated",
     "autoSubfolders": "Create subfolders automatically",
     "autoSubfoldersDesc": "Create category subfolders automatically when saving memories.",
@@ -2558,5 +2580,65 @@
     "available": "Available",
     "unavailable": "Unavailable",
     "untested": "Untested"
+  },
+  "study_ui_descriptions": {
+    "general": "Manage language, interaction habits, input methods, and personal preferences.",
+    "appearance": "Customize themes, fonts, zoom, and the app's visual style."
+  },
+  "about": {
+    "update": {
+      "checking": "Checking...",
+      "check": "Check for Updates",
+      "channel": "Update Channel",
+      "channelExpDesc": "Receive experimental updates that may include under-tested features",
+      "channelStableDesc": "Only receive verified stable updates",
+      "channelStable": "Stable",
+      "channelExp": "Experimental",
+      "frequency": "Automatic Update Checks",
+      "frequencyNoRemindDesc": "Automatic update reminders are off. Click to turn them back on",
+      "frequencyNeverDesc": "Will not check for updates automatically; you can check manually",
+      "frequencyDaysDesc": "Automatically check every {{days}} days",
+      "frequencyLaunchDesc": "Automatically check on every launch",
+      "frequencyReEnable": "Turn Back On",
+      "freqEveryLaunch": "Every Launch",
+      "freqEveryNDays": "Every N Days",
+      "freqNever": "Never",
+      "upToDate": "You are up to date",
+      "available": "Update available",
+      "mirrorDownload": "Mirror Download",
+      "githubDownload": "GitHub Download",
+      "downloading": "Downloading...",
+      "install": "Download Update",
+      "error": {
+        "check": "Failed to check for updates",
+        "download": "Download failed",
+        "install": "Install failed",
+        "unavailable": "Update is no longer available. Please try again later",
+        "relaunch": "Update installed. Please restart the app manually to finish"
+      },
+      "dialog": {
+        "title": "Update available",
+        "skipVersion": "Skip version",
+        "ignore": "Dismiss",
+        "update": "Update",
+        "neverRemind": "Never remind",
+        "neverRemindConfirm": "Stop reminding? You can re-enable this in Settings.",
+        "confirm": "Confirm",
+        "cancel": "Cancel"
+      }
+    }
+  },
+  "siliconflow_ocr": {
+    "paddle_ocr_vl_15": "Free open-source OCR 1.5 with 109 languages and 94.5% accuracy",
+    "paddle_ocr_vl": "Free open-source OCR legacy build with coordinate output, as a fallback for 1.5",
+    "deepseek_ocr": "Professional OCR model with coordinate grounding",
+    "glm4v_ocr": "Zhipu 106B MoE multimodal model with coordinate grounding; preferred for exam-sheet import",
+    "generic_vlm": "General multimodal model for simple document recognition (fallback)"
+  },
+  "a11y": {
+    "close": "Close",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save"
   }
 }

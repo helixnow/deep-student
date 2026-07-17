@@ -387,7 +387,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
         {/* 头部 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
           <h3 className="text-base font-medium text-foreground">
-            {t('context.selectFolder', '选择文件夹')}
+            {t('context.selectFolder')}
           </h3>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.close')}>
             <X size={20} className="text-muted-foreground" />
@@ -403,7 +403,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('context.searchFolder', '搜索文件夹...')}
+              placeholder={t('context.searchFolder')}
               className="w-full pl-9 pr-4"
             />
           </div>
@@ -413,7 +413,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
         <div
           className="flex-1 overflow-y-auto py-2"
           role="listbox"
-          aria-label={t('context.selectFolder', '选择文件夹')}
+          aria-label={t('context.selectFolder')}
         >
           {isLoading ? (
             // 加载状态 - 使用 Skeleton
@@ -431,7 +431,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
             <div className="flex flex-col items-center justify-center py-8 gap-2 text-destructive">
               <span className="text-sm">{error}</span>
               <NotionButton variant="ghost" size="sm" onClick={loadFolderTree} className="text-primary hover:underline">
-                {t('common:actions.retry', '重试')}
+                {t('common:actions.retry')}
               </NotionButton>
             </div>
           ) : filteredTree.length === 0 ? (
@@ -440,8 +440,8 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
               <FolderPlus size={40} className="text-muted-foreground/50" />
               <span className="text-sm text-muted-foreground">
                 {searchQuery
-                  ? t('context.noFoldersMatch', '未找到匹配的文件夹')
-                  : t('context.noFolders', '暂无文件夹，请先在学习中心创建')}
+                  ? t('context.noFoldersMatch')
+                  : t('context.noFolders')}
               </span>
             </div>
           ) : (
@@ -463,9 +463,9 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
         {/* 底部提示 */}
         <div className="px-4 py-2 border-t border-border/40 bg-muted/30">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>↑↓ {t('chatV2:context.navigate', '导航')}</span>
-            <span>Enter {t('chatV2:context.confirm', '确认')}</span>
-            <span>Esc {t('common:actions.close', '关闭')}</span>
+            <span>↑↓ {t('chatV2:context.navigate')}</span>
+            <span>Enter {t('chatV2:context.confirm')}</span>
+            <span>Esc {t('common:actions.close')}</span>
           </div>
         </div>
       </div>

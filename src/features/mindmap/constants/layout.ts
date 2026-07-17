@@ -95,7 +95,8 @@ export const REACTFLOW_CONFIG = {
   maxZoom: 2,
   fitViewPadding: 0.2,
   snapToGrid: false,
-  // 滚轮直接缩放画布；画布平移仍可通过拖拽空白区域完成。
+  // 滚轮直接缩放画布。平移：鼠标下 Space/中键/右键拖拽（拖空白为框选，见
+  // useMarqueeSelection aggressive 预设）；触屏下单指拖空白仍为平移。
   panOnScroll: false,
   zoomOnScroll: true,
   nodesDraggable: false,

@@ -45,7 +45,7 @@
    ============================================ */
 
 .mindmap-container {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
   color: var(--mm-text);
   background: var(--mm-bg);
 }
@@ -166,20 +166,19 @@
   box-shadow: var(--mm-shadow-sm);
 }
 
-/* 缩进参考线 - 更加细腻 */
+/* 缩进参考线：常驻极淡 + hover 加深；用 border 透明度，暗色不过淡/不扎眼 */
 .indent-guide {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 1px;
-  background-color: var(--mm-border);
-  opacity: 0.15;
-  transition: opacity 0.2s ease, background-color 0.2s;
+  background-color: hsl(var(--border) / 0.28);
+  transition: background-color var(--notes-hover-transition, 120ms ease);
   pointer-events: none;
 }
 
 .mindmap-container:hover .indent-guide {
-  opacity: 0.4;
+  background-color: hsl(var(--border) / 0.55);
 }
 
 /* 左侧控制区容器 */
@@ -226,21 +225,32 @@
   color: var(--mm-text);
 }
 
-/* 大纲折叠态：后代数量徽章（可点展开） */
+/* 大纲折叠态：+N 胶囊小字（Workflowy/幕布锚点，可点展开） */
 .outline-collapse-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
+  margin-left: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
   color: var(--mm-text-muted);
+  background-color: hsl(var(--muted) / 0.65);
   font-variant-numeric: tabular-nums;
   user-select: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+  transition:
+    color var(--notes-hover-transition, 120ms ease),
+    background-color var(--notes-hover-transition, 120ms ease);
 }
 
-.collapse-toggle.is-collapsed:hover .outline-collapse-count {
-  color: var(--mm-text);
+.outline-collapse-count:hover {
+  color: hsl(var(--primary-foreground));
+  background-color: var(--mm-primary);
 }
 
 .collapse-toggle svg {
@@ -557,10 +567,10 @@
   box-shadow: none;
   padding: 0;
   text-rendering: optimizeLegibility;
-  /* 防止文字在拖拽/缩放时模糊 */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: transform;
+  /* ★ 不要在节点上做 GPU 层提升（will-change/translateZ/backface-visibility）：
+     每个节点独立合成层后，文字先按 1x 栅格化成纹理，再随 viewport 的
+     scale/亚像素 translate 被 GPU 重采样，是缩放后节点文字发糊的主因。
+     去掉提升让浏览器在缩放稳定后按当前比例重新栅格化，文字保持清晰。 */
 }
 
 /* ★ 修复：让节点组件填满 ReactFlow 计算的 wrapper 尺寸，使文字居中 */
@@ -956,6 +966,12 @@
   fill: currentColor;
 }
 
+/* 空白拖拽模式切换：当前激活的模式按钮 */
+.mindmap-container .react-flow__controls-button.mm-drag-mode-active {
+  background: var(--mm-bg-hover);
+  color: var(--mm-primary);
+}
+
 /* --- MiniMap --- */
 .mindmap-container .react-flow__minimap {
   background: var(--mm-bg-elevated);
@@ -986,15 +1002,22 @@
 
 .outline-empty-action {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   width: fit-content;
-  margin: 24px auto 0;
-  padding: 4px 7px;
-  border-radius: 4px;
+  max-width: 280px;
+  margin: 48px auto 0;
+  padding: 16px 20px;
+  border-radius: var(--notes-radius-popup, 8px);
   color: var(--mm-text-muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  transition:
+    color var(--notes-hover-transition, 120ms ease),
+    background-color var(--notes-hover-transition, 120ms ease);
 }
 
 .outline-empty-action:hover {
@@ -1002,9 +1025,16 @@
   background: var(--mm-bg-hover);
 }
 
-.outline-empty-plus {
-  font-size: 16px;
-  line-height: 1;
+.outline-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mm-text-muted);
+  opacity: 0.72;
+}
+
+.outline-empty-action p {
+  margin: 0;
 }
 
 /* Structure and style use one flat popover language. */
@@ -1341,6 +1371,7 @@
    拖拽放置目标高亮 (Drag Drop Target)
    ============================================ */
 
+/* 与文件树 .nwt-drop-indicator 同语：2px 主色线 + 端点圆 */
 .drop-indicator {
   height: 2px;
   background-color: var(--mm-primary);
@@ -1350,19 +1381,22 @@
   pointer-events: none;
   z-index: 10;
   border-radius: 1px;
-  box-shadow: 0 0 4px var(--mm-primary-soft);
+  box-shadow: 0 0 4px hsl(var(--primary) / 50%);
   transition: left 0.15s ease, bottom 0.15s ease, top 0.15s ease;
 }
 
 .drop-indicator::before {
   content: '';
   position: absolute;
-  left: -3px;
-  top: -2px;
-  width: 6px;
-  height: 6px;
+  left: -2px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background-color: var(--mm-primary);
+  border: 2px solid var(--mm-bg);
+  box-shadow: 0 0 2px hsl(var(--primary) / 50%);
+  box-sizing: border-box;
 }
 
 .drop-indicator-vertical {
@@ -1372,7 +1406,7 @@
   pointer-events: none;
   z-index: 10;
   border-radius: 1px;
-  box-shadow: 0 0 4px var(--mm-primary-soft);
+  box-shadow: 0 0 4px hsl(var(--primary) / 50%);
   transition: left 0.15s ease, height 0.15s ease;
 }
 
@@ -1419,7 +1453,7 @@
   background:
     linear-gradient(var(--mm-primary), var(--mm-primary)) center / 8px 2px no-repeat,
     linear-gradient(var(--mm-primary), var(--mm-primary)) center / 2px 8px no-repeat,
-    color-mix(in srgb, var(--mm-primary) 12%, var(--mm-bg-elevated, #fff));
+    color-mix(in srgb, var(--mm-primary) 12%, var(--mm-bg-elevated));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--mm-primary) 20%, transparent);
   pointer-events: none;
   z-index: 20;

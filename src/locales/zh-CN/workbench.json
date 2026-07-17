@@ -214,14 +214,22 @@
     "roundCount": "{{count}} 次批改",
     "notGraded": "尚未批改",
     "itemCount": "{{count}} 个项目",
-    "openHint": "双击或按 Enter 打开"
+    "openHint": "双击或按 Enter 打开",
+    "retry": "重试",
+    "untitled": "未命名"
   },
   "resourceWorkspace": {
     "selectTitle": "选择一个项目",
     "selectHint": "从左侧选择，或新建后直接开始。",
     "hideSidebar": "隐藏侧边栏",
     "showSidebar": "显示侧边栏",
-    "clearSearch": "清除搜索"
+    "clearSearch": "清除搜索",
+    "refresh": "刷新",
+    "discard": "丢弃",
+    "cancel": "取消",
+    "reviewExitTitle": "结束复习会话？",
+    "reviewExitDescription": "已提交的评分会保留，剩余题目可稍后重新开始复习。",
+    "reviewExitConfirm": "结束复习"
   },
   "appsPanel": {
     "title": "全部应用",
@@ -231,7 +239,11 @@
     "view": "视图",
     "gridView": "网格",
     "listView": "列表",
-    "hint": "↑↓ 选择 · Enter 打开 · Esc 关闭"
+    "hint": "↑↓ 选择 · Enter 打开 · Esc 关闭",
+    "emptyHint": "换个关键词，或清空搜索查看全部应用",
+    "hintSelect": "选择",
+    "hintOpen": "打开",
+    "hintClose": "关闭"
   },
   "window": {
     "close": "关闭",
@@ -259,14 +271,23 @@
     "bottomRight": "平铺到右下角",
     "fill": "填满",
     "center": "居中",
-    "restore": "恢复原尺寸"
+    "restore": "恢复原尺寸",
+    "zone": {
+      "left": "左半屏",
+      "right": "右半屏",
+      "topLeft": "左上",
+      "topRight": "右上",
+      "bottomLeft": "左下",
+      "bottomRight": "右下"
+    }
   },
   "expose": {
     "title": "窗口俯瞰",
     "hint": "点击窗口聚焦，按 Esc 退出",
     "empty": "没有打开的窗口",
     "untitled": "未命名窗口",
-    "closeWindow": "关闭窗口"
+    "closeWindow": "关闭窗口",
+    "emptyHint": "按 Esc 或点击任意处返回桌面"
   },
   "switcher": {
     "title": "窗口切换器",
@@ -357,7 +378,8 @@
     "loading": "正在加载内容…",
     "missingResource": "缺少资源标识，无法打开该窗口",
     "missingResourceHint": "请从资源库重新打开，或检查该资源是否仍存在。",
-    "confirmCloseUnsaved": "当前内容有未保存的修改，确定要关闭窗口吗？"
+    "confirmCloseUnsaved": "当前内容有未保存的修改，确定要关闭窗口吗？",
+    "unsavedTitle": "有未保存的更改，确定要离开吗？"
   },
   "mindmap": {
     "loading": "正在加载思维导图…",
@@ -402,7 +424,8 @@
     "appCrashed": "{{name}} 出现错误，可重新加载",
     "showDesktop": "已显示桌面",
     "previewFailed": "无法打开预览",
-    "pdfRefOpenFailed": "无法打开 PDF 引用：缺少来源"
+    "pdfRefOpenFailed": "无法打开 PDF 引用：缺少来源",
+    "zoomRestore": "还原窗口"
   },
   "shortcuts": {
     "title": "快捷键",
@@ -457,7 +480,6 @@
       "title": "Dock 邻近放大",
       "desc": "指针划过 Dock 时图标放大。关闭可减少悬停时的布局测量与合成成本。"
     },
-
     "wallpaper": {
       "title": "桌面壁纸",
       "desc": "选择内置自然风景或主题渐变，也可以使用自定义图片。",
@@ -542,7 +564,8 @@
     "contentCrashed": "页面进程已退出，可重试",
     "approveNavigate": "允许助手打开：{{url}}",
     "approveClick": "允许助手点击页面元素",
-    "approveType": "允许助手在页面中输入"
+    "approveType": "允许助手在页面中输入",
+    "nav": "导航"
   },
   "devPanel": {
     "title": "Workbench 诊断",
@@ -580,6 +603,16 @@
   "notesWorkspace": {
     "title": "笔记",
     "emptyPane": "选择一个笔记或思维导图",
+    "empty": {
+      "paneTitle": "选择或新建一篇笔记",
+      "paneNewNote": "新建笔记",
+      "paneOpenSearch": "打开搜索",
+      "hintQuickOpen": "快速打开",
+      "hintNewNote": "新建",
+      "treeTitle": "还没有笔记",
+      "treeNewNote": "新建笔记",
+      "treeNewFolder": "新建文件夹"
+    },
     "untitledNote": "未命名笔记",
     "untitledMindmap": "未命名导图",
     "confirmCloseUnsaved": "此标签页有未保存的更改，确定要关闭吗？",
@@ -588,7 +621,7 @@
       "aria": "笔记应用导航",
       "explorer": "文件浏览器",
       "search": "搜索笔记",
-      "backlinks": "关联笔记",
+      "backlinks": "属性与链接",
       "trash": "回收站"
     },
     "explorer": {
@@ -599,6 +632,23 @@
       "refresh": "刷新",
       "open": "打开文件浏览器",
       "close": "关闭文件浏览器"
+    },
+    "navHistory": {
+      "aria": "导航历史",
+      "back": "后退 ({{shortcut}})",
+      "forward": "前进 ({{shortcut}})"
+    },
+    "tagFilter": {
+      "label": "标签筛选",
+      "clear": "清空",
+      "loading": "加载标签…",
+      "retry": "重试",
+      "empty": "暂无标签"
+    },
+    "favorites": {
+      "title": "收藏",
+      "empty": "暂无收藏。在笔记或导图上点亮星标即可加入。",
+      "unfavorite": "取消收藏 {{name}}"
     },
     "search": {
       "placeholder": "搜索文件...",
@@ -622,30 +672,42 @@
       "mindmap": "思维导图",
       "note": "笔记",
       "empty": "没有匹配的笔记或思维导图。",
-      "keyboardHint": "上下方向键选择，Enter 打开，Esc 关闭"
+      "keyboardHint": "上下方向键选择，Enter 打开，Esc 关闭",
+      "activeTags": "已选标签",
+      "removeTag": "移除标签 {{tag}}"
     },
     "backlinks": {
       "title": "链接",
+      "panelAria": "笔记信息面板",
+      "tabProperties": "属性",
+      "tabLinks": "链接",
       "refresh": "刷新链接",
       "close": "关闭链接",
       "noActiveNote": "选择一篇笔记以查看链接。",
+      "noActiveNoteProperties": "选择一篇笔记以查看属性。",
       "loading": "正在读取链接...",
       "loadFailed": "无法读取笔记链接。",
       "retry": "重试",
       "outgoing": "出链",
-      "noOutgoing": "没有出站双链。",
+      "noOutgoing": "本篇还没有链接其他笔记，输入 [[ 即可创建双链",
       "incoming": "反向链接",
-      "noIncoming": "暂时没有笔记链接到这里。",
-      "incomingLimited": "仅显示最近更新的 {{count}} 篇匹配笔记中的反向链接，较早的反向链接可能未显示。",
+      "noIncoming": "还没有其他笔记链接到这里",
+      "incomingLimited": "已扫描 {{scanned}} 篇笔记，结果可能不完整。",
+      "moreContext": "显示更多上下文",
+      "lessContext": "显示更少上下文",
       "unresolved": "未解析链接",
-      "noUnresolved": "没有未解析链接。",
+      "createFromUnresolved": "创建笔记「{{title}}」",
+      "createFailed": "无法创建笔记。",
       "openLinkedNote": "打开 {{title}}",
       "openFailed": "无法打开关联笔记。"
     },
     "tree": {
       "aria": "文件树",
-      "root": "根目录",
+      "root": "资料库根目录",
       "folder": "文件夹：{{name}}",
+      "note": "笔记：{{name}}",
+      "mindmap": "导图：{{name}}",
+      "renameInput": "重命名",
       "loading": "正在读取文件",
       "loadFailed": "文件列表加载失败",
       "retry": "重试",
@@ -690,7 +752,14 @@
       "undo": "撤销"
     },
     "context": {
+      "open": "打开",
+      "openSplit": "在右侧分屏打开",
       "rename": "重命名",
+      "favorite": "收藏",
+      "unfavorite": "取消收藏",
+      "newNote": "新建笔记",
+      "newFolder": "新建文件夹",
+      "newMindmap": "新建导图",
       "delete": "删除"
     },
     "dialog": {
@@ -708,9 +777,18 @@
     "trash": {
       "title": "回收站",
       "close": "关闭回收站",
-      "loading": "正在读取回收站",
+      "loading": "正在加载回收站",
       "empty": "回收站为空",
-      "restore": "恢复 {{name}}"
+      "emptyAll": "清空回收站（{{count}}）",
+      "deletedAt": "删除于 {{time}}",
+      "restore": "恢复 {{name}}",
+      "purge": "彻底删除 {{name}}",
+      "confirmEmptyTitle": "清空回收站？",
+      "confirmEmptyDesc": "将永久删除 {{count}} 项，此操作不可撤销。",
+      "confirmEmptyAction": "清空",
+      "confirmPurgeTitle": "彻底删除？",
+      "confirmPurgeDesc": "「{{name}}」将被永久删除，此操作不可撤销。",
+      "confirmPurgeAction": "彻底删除"
     }
   },
   "sandbox": {
@@ -742,5 +820,53 @@
     "open": "打开沙箱工作台",
     "clearSession": "清空会话"
   },
-  "tagTreeMarkdownPlaceholder": "# 根标签一\n### 子主题A\n#### 概念1\n##### 方法a\n###### 题型i"
+  "tagTreeMarkdownPlaceholder": "# 根标签一\n### 子主题A\n#### 概念1\n##### 方法a\n###### 题型i",
+  "filePreview": {
+    "downloadUnavailable": "原文件不可用",
+    "saveAs": "另存为",
+    "downloadSuccess": "保存成功",
+    "referenceNotSupported": "该资源暂不支持引用",
+    "search": "搜索",
+    "openExternal": "使用系统应用打开",
+    "showInFolder": "在文件夹中显示",
+    "print": "打印",
+    "referenceToChat": "引用到对话",
+    "previous": "上一个",
+    "next": "下一个",
+    "close": "关闭"
+  },
+  "pomodoro": {
+    "modes": {
+      "focusing": "专注中",
+      "shortBreak": "短休息",
+      "longBreak": "长休息",
+      "idle": "番茄钟"
+    },
+    "strictHint": "严格模式下专注不可暂停",
+    "strictBadge": "严格模式",
+    "countUpLabel": "正计时",
+    "controls": {
+      "startFocus": "开始专注",
+      "pause": "暂停",
+      "resume": "继续",
+      "stop": "停止",
+      "finish": "完成",
+      "skipBreak": "跳过休息",
+      "noiseOn": "开启环境音",
+      "noiseOff": "关闭环境音",
+      "enterImmersive": "进入沉浸式专注模式"
+    },
+    "settingsTitle": "番茄钟设置",
+    "statsTitle": "专注趋势",
+    "progressTitle": "已完成 {{done}}/{{total}} 个番茄",
+    "today": {
+      "label": "今日",
+      "unit": "个番茄",
+      "focus": "专注",
+      "minutes": "{{value}} 分钟",
+      "hours": "{{value}} 小时",
+      "interrupted": "中断 {{value}} 次",
+      "goalReached": "目标达成"
+    }
+  }
 }

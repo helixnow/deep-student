@@ -1,3 +1,5 @@
+import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import { t } from '@/utils/i18n';
 import type {
   SkillDefinition,
   SkillLocation,
@@ -97,16 +99,13 @@ export function enrichSkillPackageMetadata(
   };
 }
 
-/** 返回 embeddedTools 的人类可读名称列表（去掉 builtin- 前缀）。 */
+/** 返回 embeddedTools 的人类可读名称列表（走 mcp.tools.* 国际化）。 */
 export function getSkillEmbeddedToolLabels(skill: SkillDefinition, limit = 12): string[] {
   const tools = skill.embeddedTools ?? [];
-  return tools.slice(0, limit).map((tool) =>
-    tool.name.replace(/^builtin[-:]/, '').replace(/^mcp[_.]/, ''),
-  );
+  return tools.slice(0, limit).map((tool) => getReadableToolName(tool.name, t));
 }
 
 export interface SkillPermissionSummary {
-  allowedTools: number;
   embeddedTools: number;
   dependencies: number;
   packageFiles: number;
@@ -118,17 +117,15 @@ export interface SkillPermissionSummary {
 
 export function getSkillPermissionSummary(skill: SkillDefinition): SkillPermissionSummary {
   const files = skill.packageFiles ?? [];
-  const allowedTools = skill.allowedTools?.length ?? skill.tools?.length ?? 0;
   const embeddedTools = skill.embeddedTools?.length ?? 0;
 
   return {
-    allowedTools,
     embeddedTools,
     dependencies: skill.dependencies?.length ?? 0,
     packageFiles: files.length,
     scripts: files.filter((file) => file.kind === 'script').length,
     references: files.filter((file) => file.kind === 'reference').length,
     assets: files.filter((file) => file.kind === 'asset').length,
-    isInstructionOnly: allowedTools === 0 && embeddedTools === 0,
+    isInstructionOnly: embeddedTools === 0,
   };
 }

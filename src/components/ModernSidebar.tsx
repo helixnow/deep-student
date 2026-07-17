@@ -418,7 +418,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const streamingSessionIdSet = useMemo(() => new Set(streamingSessionIds), [streamingSessionIds]);
   const blockingSessionIdSet = useMemo(() => new Set(blockingSessionIds), [blockingSessionIds]);
   const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
-  const blockingContinueLabel = t('chatV2:tool_limit.continue', '继续');
+  const blockingContinueLabel = t('chatV2:tool_limit.continue');
 
   const uiLabEnabled = useIsUILabEnabled();
   const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
@@ -431,7 +431,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     }),
     [navItems, navigationScope]
   );
-  const chatNavLabel = t('sidebar:navigation.chat_v2', '新会话');
+  const chatNavLabel = t('sidebar:navigation.chat_v2');
   const shouldShowMacDesktopNewSessionShortcut = useMemo(
     () => isMacOS() && !isMobilePlatform() && isFinePointerDesktopSurface(),
     []
@@ -594,7 +594,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const saveRecentSessionRename = useCallback(async (sessionId: string) => {
     const trimmedTitle = editingRecentSessionTitle.trim();
     if (!trimmedTitle) {
-      setRecentRenameError(t('chatV2:page.renameEmptyError', '会话名称不能为空'));
+      setRecentRenameError(t('chatV2:page.renameEmptyError'));
       return;
     }
 
@@ -629,7 +629,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
     } catch (error) {
       console.warn('[ModernSidebar] Failed to rename recent session:', error);
-      setRecentRenameError(t('chatV2:page.renameFailed', '重命名失败，请稍后重试'));
+      setRecentRenameError(t('chatV2:page.renameFailed'));
     } finally {
       setRenamingRecentSessionId(null);
     }
@@ -844,7 +844,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
   const renderRecentSessionRow = useCallback((session: ChatSession, collapsed = false) => {
     const isActive = currentView === 'chat-v2' && activeSessionId === session.id;
-    const sessionTitle = getSessionTitleText(session.title, t('chatV2:page.untitled', '未命名会话'));
+    const sessionTitle = getSessionTitleText(session.title, t('chatV2:page.untitled'));
     const pinned = isSessionPinned(session);
             const isSessionStreaming = streamingSessionIdSet.has(session.id);
             const hasBlockingInteraction = blockingSessionIdSet.has(session.id);
@@ -858,11 +858,11 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       const diffHours = Math.floor(diffMs / 3600000);
       const diffDays = Math.floor(diffMs / 86400000);
       const diffWeeks = Math.floor(diffDays / 7);
-      if (diffMins < 1) return t('common:justNow', '刚刚');
-      if (diffMins < 60) return t('common:minutesAgo', '{{count}}分钟', { count: diffMins });
-      if (diffHours < 24) return t('common:hoursAgo', '{{count}}小时', { count: diffHours });
-      if (diffDays < 7) return t('common:daysAgo', '{{count}}天前', { count: diffDays });
-      if (diffWeeks < 5) return t('common:weeksAgo', '{{count}}周前', { count: diffWeeks });
+      if (diffMins < 1) return t('common:time.now');
+      if (diffMins < 60) return t('common:time.minutes_ago', { count: diffMins });
+      if (diffHours < 24) return t('common:time.hours_ago', { count: diffHours });
+      if (diffDays < 7) return t('common:time.days_ago', { count: diffDays });
+      if (diffWeeks < 5) return t('common:time.relative.weeks_ago', { count: diffWeeks });
       return new Date(ts).toLocaleDateString();
     })();
 
@@ -938,7 +938,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   startRecentSessionRename(session);
                 }}
               >
-                {t('sidebar:actions.rename_session', '重命名会话')}
+                {t('sidebar:actions.rename_session')}
               </AppMenuItem>
               <AppMenuItem
                 icon={<PushPin size={16} />}
@@ -947,7 +947,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   void handleRecentSessionPinToggle(session);
                 }}
               >
-                {pinned ? t('chatV2:page.unpinSession', '取消置顶') : t('chatV2:page.pinSession', '置顶线程')}
+                {pinned ? t('chatV2:page.unpinSession') : t('chatV2:page.pinSession')}
               </AppMenuItem>
               <AppMenuItem
                 icon={<Archive size={16} />}
@@ -956,7 +956,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   void handleRecentSessionArchive(session.id);
                 }}
               >
-                {t('chatV2:page.archiveSession', '归档线程')}
+                {t('chatV2:page.archiveSession')}
               </AppMenuItem>
             </AppMenuGroup>
           </AppMenuContent>
@@ -967,7 +967,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           // eslint-disable-next-line ds-components/no-native-button
           <button
             type="button"
-            aria-label={pinned ? t('sidebar:aria.unpin_session', '取消置顶会话') : t('sidebar:aria.pin_session', '置顶会话')}
+            aria-label={pinned ? t('sidebar:aria.unpin_session') : t('sidebar:aria.pin_session')}
             className={cn(
               'absolute left-2.5 top-1/2 flex h-4 w-4 -translate-y-1/2 appearance-none items-center justify-center rounded-sm border-0 bg-transparent p-0 text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-ring',
               'opacity-0 group-hover/thread-row:opacity-100 group-focus-within/thread-row:opacity-100',
@@ -984,11 +984,11 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           </button>
         )}
         {!collapsed && !isSessionStreaming && !hasBlockingInteraction && !hasUnreadAssistantReply && (
-          <CommonTooltip content={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session', '确认归档会话') : t('sidebar:aria.archive_session', '归档会话')} position="right">
+          <CommonTooltip content={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')} position="right">
             {/* eslint-disable-next-line ds-components/no-native-button */}
             <button
               type="button"
-              aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session', '确认归档会话') : t('sidebar:aria.archive_session', '归档会话')}
+              aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}
               className={cn(
                 'absolute right-2.5 top-1/2 flex h-5 min-w-[20px] -translate-y-1/2 appearance-none items-center justify-center rounded-md border-0 px-1 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 'opacity-0 group-hover/thread-row:opacity-100 group-focus-within/thread-row:opacity-100',
@@ -1125,8 +1125,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       ? group.sessions.slice(0, SIDEBAR_SESSION_PREVIEW_LIMIT)
       : group.sessions;
     const sessionOverflowLabel = isSessionListExpanded
-      ? t('sidebar:actions.collapse_group_sessions', '折叠显示')
-      : t('sidebar:actions.expand_group_sessions', '展开显示');
+      ? t('sidebar:actions.collapse_group_sessions')
+      : t('sidebar:actions.expand_group_sessions');
 
     const sessionList = (
       <div
@@ -1161,7 +1161,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             </>
           ) : (
             <div className="px-2 py-1.5 text-xs text-[color:var(--shell-navigation-muted)] opacity-70">
-              {t('sidebar:sections.emptyGroup', '暂无对话')}
+              {t('sidebar:sections.emptyGroup')}
             </div>
           )}
         </div>
@@ -1177,10 +1177,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             newSession: t('chatV2:page.newSession', 'New Session'),
             newSessionInGroup: t('chatV2:page.newSessionInGroup', {
               groupName: sessionGroup.name,
-              defaultValue: '在 {{groupName}} 中新建会话',
             }),
-            pinGroup: t('chatV2:page.pinGroup', '置顶分组'),
-            unpinGroup: t('chatV2:page.unpinGroup', '取消置顶分组'),
+            pinGroup: t('chatV2:page.pinGroup'),
+            unpinGroup: t('chatV2:page.unpinGroup'),
             renameGroup: t('chatV2:page.renameGroup', 'Rename Group'),
             editGroup: t('chatV2:page.editGroup', 'Edit Group'),
             archiveGroup: t('chatV2:page.archiveGroup', 'Archive Group'),
@@ -1255,21 +1254,21 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const isPinnedSectionCollapsed = collapsedSidebarSectionIds.has('pinned');
   const isTopicsSectionCollapsed = collapsedSidebarSectionIds.has('topics');
   const isConversationsSectionCollapsed = collapsedSidebarSectionIds.has('conversations');
-  const pinnedSectionLabel = t('sidebar:sections.pinned', '置顶');
-  const topicsSectionLabel = t('sidebar:sections.topics', '课题');
-  const conversationsSectionLabel = t('sidebar:sections.conversations', '对话');
-  const newConversationLabel = t('sidebar:actions.create_conversation', t('chatV2:page.newSession', 'New Session'));
+  const pinnedSectionLabel = t('sidebar:sections.pinned');
+  const topicsSectionLabel = t('sidebar:sections.topics');
+  const conversationsSectionLabel = t('sidebar:sections.conversations');
+  const newConversationLabel = t('sidebar:actions.create_conversation');
   const toggleAllTopicsLabel = areAllTopicGroupsExpanded
-    ? t('sidebar:actions.collapse_all_topics', '收起所有课题')
-    : t('sidebar:actions.expand_all_topics', '展开所有课题');
-  const createTopicLabel = t('sidebar:actions.create_topic', '新建课题');
+    ? t('sidebar:actions.collapse_all_topics')
+    : t('sidebar:actions.expand_all_topics');
+  const createTopicLabel = t('sidebar:actions.create_topic');
   const hasConversationSessionOverflow = conversationSessions.length > SIDEBAR_SESSION_PREVIEW_LIMIT;
   const visibleConversationSessions = hasConversationSessionOverflow && !conversationSessionsExpanded
     ? conversationSessions.slice(0, SIDEBAR_SESSION_PREVIEW_LIMIT)
     : conversationSessions;
   const conversationSessionOverflowLabel = conversationSessionsExpanded
-    ? t('sidebar:actions.collapse_group_sessions', '折叠显示')
-    : t('sidebar:actions.expand_group_sessions', '展开显示');
+    ? t('sidebar:actions.collapse_group_sessions')
+    : t('sidebar:actions.expand_group_sessions');
 
   const renderSidebarSectionHeader = ({
     id,
@@ -1333,7 +1332,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     <>
     <aside
       role="navigation"
-      aria-label={t('sidebar:aria.sidebar_navigation', '主导航')}
+      aria-label={t('sidebar:aria.sidebar_navigation')}
       data-shell-layer="navigation"
       data-shell-surface="navigation"
       className="font-sidebar-study-ui relative z-20 flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]"
@@ -1344,7 +1343,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         data-no-drag
         data-sidebar-fixed-region="primary-navigation"
       >
-        <nav aria-label={t('sidebar:aria.workspace_primary_entry', '工作区主入口')}>
+        <nav aria-label={t('sidebar:aria.workspace_primary_entry')}>
           <div className="space-y-0.5" role="list">
             {primaryItems.map((item) =>
               renderNavRow(
@@ -1373,7 +1372,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               <section className="space-y-0.5 pt-1">
                 {renderSidebarSectionHeader({ id: 'pinned', label: pinnedSectionLabel })}
                 {!isPinnedSectionCollapsed ? (
-                  <nav aria-label={t('sidebar:aria.pinned_sessions', '置顶会话')}>
+                  <nav aria-label={t('sidebar:aria.pinned_sessions')}>
                     <div className="space-y-0.5" role="list">
                       {pinnedRecentGroups.map((group) => renderRecentGroup(group))}
                       <AnimatePresence initial={false} mode="popLayout">
@@ -1423,7 +1422,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 ),
               })}
               {!isTopicsSectionCollapsed ? (
-                <nav aria-label={t('sidebar:aria.topic_sessions', '课题')}>
+                <nav aria-label={t('sidebar:aria.topic_sessions')}>
                   <div className="space-y-0.5" role="list">
                     {topicSessionGroups.map((group) => renderRecentGroup(group))}
                   </div>
@@ -1438,7 +1437,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 action: conversationHeaderAction,
               })}
             {!isConversationsSectionCollapsed ? (
-              <nav aria-label={t('sidebar:aria.conversation_sessions', '对话')}>
+              <nav aria-label={t('sidebar:aria.conversation_sessions')}>
                 <div className="space-y-0.5" role="list">
                   <AnimatePresence initial={false} mode="popLayout">
                     {visibleConversationSessions.map((session) => renderRecentSessionRow(session))}
@@ -1467,13 +1466,13 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           <SidebarRow
             rowType="nav"
             onClick={() => handleViewChange('settings')}
-            aria-label={t('sidebar:navigation.settings', '设置')}
+            aria-label={t('sidebar:navigation.settings')}
             aria-current={currentView === 'settings' ? 'page' : undefined}
             isActive={currentView === 'settings'}
             data-tour-id="nav-settings"
             leftSlot={<StudySettingsIcon className="size-[18px]" strokeWidth={2} />}
           >
-            <SidebarRowLabel>{t('sidebar:navigation.settings', '设置')}</SidebarRowLabel>
+            <SidebarRowLabel>{t('sidebar:navigation.settings')}</SidebarRowLabel>
           </SidebarRow>
 
           {shouldShowUpdateBadge ? (
@@ -1485,12 +1484,12 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 event.stopPropagation();
                 void updater.performUpdateAction();
               }}
-              aria-label={updater?.downloading ? t('sidebar:update.downloading', '下载中...') : t('sidebar:update.available', '有可用更新')}
+              aria-label={updater?.downloading ? t('sidebar:update.downloading') : t('sidebar:update.available')}
               disabled={updater?.downloading}
             >
               {updater?.downloading ? (
                 <CircleNotch size={10} className="animate-spin" aria-hidden="true" />
-              ) : t('sidebar:update.short', '更新')}
+              ) : t('sidebar:update.short')}
             </button>
           ) : null}
         </div>
@@ -1514,16 +1513,16 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         }}
       >
         <NotionDialogHeader>
-          <NotionDialogTitle>{t('sidebar:rename.title', '重命名对话')}</NotionDialogTitle>
+          <NotionDialogTitle>{t('sidebar:rename.title')}</NotionDialogTitle>
         </NotionDialogHeader>
         <NotionDialogBody className="py-4">
           <label className="block text-sm font-medium text-foreground" htmlFor="modern-sidebar-rename-session-input">
-            {t('sidebar:rename.label', '对话名称')}
+            {t('sidebar:rename.label')}
           </label>
           <Input
             id="modern-sidebar-rename-session-input"
             type="text"
-            placeholder={t('chatV2:page.untitled', '未命名会话')}
+            placeholder={t('chatV2:page.untitled')}
             value={editingRecentSessionTitle}
             onChange={(event) => {
               setEditingRecentSessionTitle(event.target.value);
@@ -1547,7 +1546,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             onClick={cancelRecentSessionRename}
             disabled={renamingRecentSessionId !== null}
           >
-            {t('common:cancel', '取消')}
+            {t('common:cancel')}
           </NotionButton>
           <NotionButton
             type="submit"
@@ -1556,7 +1555,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             disabled={renamingRecentSessionId !== null || !editingRecentSessionTitle.trim()}
           >
             {renamingRecentSessionId !== null ? <CircleNotch size={16} className="animate-spin" /> : null}
-            {t('common:confirm', '确认')}
+            {t('common:confirm')}
           </NotionButton>
         </NotionDialogFooter>
       </form>

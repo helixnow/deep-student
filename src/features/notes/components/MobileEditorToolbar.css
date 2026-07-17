@@ -1,0 +1,127 @@
+/**
+ * 移动端编辑器底部工具条
+ * 毛玻璃底 + hairline 上边框；safe-area-inset-bottom
+ *
+ * 注意：本项目的 --background/--foreground/--border 是 HSL 三元组，
+ * 必须经 hsl(var(--x) / alpha) 使用，不能直接放进 color-mix()。
+ * 明暗模式由 token 自动翻转，无需 .dark 覆盖。
+ */
+
+.mobile-editor-toolbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  border-top: 1px solid hsl(var(--border) / 0.8);
+  background: hsl(var(--background) / 0.86);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
+  /* 键盘贴合：用 transform 抬升，避免 bottom 跳变 */
+  --mobile-toolbar-keyboard-offset: 0px;
+  transform: translateY(calc(-1 * var(--mobile-toolbar-keyboard-offset)));
+  transition: transform var(--notes-hover-transition, 120ms ease);
+  will-change: transform;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .mobile-editor-toolbar {
+    background: hsl(var(--background));
+  }
+}
+
+.mobile-editor-toolbar__scroller {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 4px 6px;
+  overscroll-behavior-x: contain;
+  /* 横向滚动边缘渐隐，提示可滑 */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 16px,
+    #000 calc(100% - 16px),
+    transparent 100%
+  );
+}
+
+.mobile-editor-toolbar__scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-editor-toolbar__sep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  align-self: center;
+  background: hsl(var(--border) / 0.6);
+  pointer-events: none;
+}
+
+.mobile-editor-toolbar__btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--notes-radius-popup, 8px);
+  background: transparent;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.mobile-editor-toolbar__btn:hover {
+  background: hsl(var(--foreground) / 0.06);
+}
+
+.mobile-editor-toolbar__btn:active,
+.mobile-editor-toolbar__btn[data-active='true'],
+.mobile-editor-toolbar__btn.is-active {
+  background: hsl(var(--foreground) / 0.12);
+}
+
+.mobile-editor-toolbar__btn:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-editor-toolbar {
+    transition: none;
+  }
+
+  .mobile-editor-toolbar__btn {
+    transition: none;
+  }
+}

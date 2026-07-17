@@ -15,7 +15,7 @@ import {
   UniqueIdentifier,
   useDroppable,
 } from '@dnd-kit/core';
-import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
+import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import type { DstuNode } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { FinderFileItem, SortableFinderFileItem } from './FinderFileItem';
@@ -1044,7 +1044,7 @@ export function FinderFileList({
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
-        autoScroll={{ threshold: { x: 0.2, y: 0.2 }, acceleration: 12 }}
+        autoScroll={{ threshold: { x: 0.2, y: 0.2 }, acceleration: 12, ...SHELL_SAFE_AUTO_SCROLL }}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
@@ -1177,7 +1177,7 @@ export function FinderFileList({
     <DndContext
       sensors={sensors}
       collisionDetection={pointerWithin}
-      autoScroll={{ threshold: { x: 0.2, y: 0.2 }, acceleration: 12 }}
+      autoScroll={{ threshold: { x: 0.2, y: 0.2 }, acceleration: 12, ...SHELL_SAFE_AUTO_SCROLL }}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}

@@ -101,6 +101,38 @@
   opacity: 0.22;
 }
 
+/* 暗色主题：specular 高光减档，避免深色玻璃上出现塑料亮点 */
+:root.dark .wb-title-key:hover::before {
+  opacity: 0.38;
+}
+
+:root.dark .wb-title-key:active::before {
+  opacity: 0.16;
+}
+
+/* 键盘焦点进入三键区时符号同样浮现（契约只处理 :hover；补齐 a11y 路径） */
+.wb-traffic:focus-within .wb-traffic-close > *,
+.wb-traffic:focus-within .wb-traffic-min > *,
+.wb-traffic:focus-within .wb-traffic-zoom > * {
+  opacity: 1;
+}
+
+/* focus-visible 时该键恢复本色（idle 窗褪灰规则只认 :hover，键盘路径补齐） */
+.wb-window-idle .wb-traffic:not(:hover) .wb-title-key.wb-traffic-close:focus-visible {
+  background: var(--wb-traffic-close, #ff5f57);
+  border-color: var(--wb-traffic-close-border, #e0443e);
+}
+
+.wb-window-idle .wb-traffic:not(:hover) .wb-title-key.wb-traffic-min:focus-visible {
+  background: var(--wb-traffic-min, #febc2e);
+  border-color: var(--wb-traffic-min-border, #d89e24);
+}
+
+.wb-window-idle .wb-traffic:not(:hover) .wb-title-key.wb-traffic-zoom:focus-visible {
+  background: var(--wb-traffic-zoom, #28c840);
+  border-color: var(--wb-traffic-zoom-border, #1dad2c);
+}
+
 /* close / min / zoom 各自 hover 本色提亮一档
  * （覆盖契约 .wb-traffic-* 的 background —— O20 reconcile 事项 #2） */
 .wb-title-key.wb-traffic-close:hover {

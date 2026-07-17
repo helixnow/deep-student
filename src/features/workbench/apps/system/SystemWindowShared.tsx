@@ -99,7 +99,8 @@ export const WbSysSkeleton: React.FC<{ variant: WbSysSkeletonVariant }> = ({ var
       className={`wb-sys-skeleton wb-sys-skeleton-${variant}`}
       role="status"
       aria-live="polite"
-      aria-label={t('workbench:window.loading', '加载中…')}
+      aria-busy="true"
+      aria-label={t('workbench:window.loading')}
       data-wb-sys-skeleton={variant}
     >
       <SkeletonBones variant={variant} />
@@ -150,12 +151,30 @@ export const WbSysSidebarLayout: React.FC<WbSysSidebarLayoutProps> = ({
   const { t } = useTranslation('workbench');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLButtonElement>(null);
   const compact = sizeClass === 'compact';
 
   // 离开 compact 档时收起抽屉，避免回宽窗后残留状态
   useEffect(() => {
     if (!compact) setDrawerOpen(false);
   }, [compact]);
+
+  // 焦点管理：开抽屉焦点入面板（aria-modal 对话框契约），关抽屉还给把手
+  useEffect(() => {
+    if (drawerOpen) {
+      const drawer = drawerRef.current;
+      const handle = handleRef.current;
+      drawer?.focus();
+      return () => {
+        // 仅当焦点仍滞留在抽屉内时才归还，避免抢走用户点出去的焦点
+        const active = document.activeElement;
+        if (active && drawer?.contains(active)) {
+          handle?.focus();
+        }
+      };
+    }
+    return undefined;
+  }, [drawerOpen]);
 
   // Esc 关闭（仅在抽屉开启时监听）
   useEffect(() => {
@@ -180,8 +199,8 @@ export const WbSysSidebarLayout: React.FC<WbSysSidebarLayoutProps> = ({
     }
   }, []);
 
-  const openLabel = t('workbench:apps.system.showNav', '显示导航');
-  const closeLabel = t('workbench:apps.system.hideNav', '收起导航');
+  const openLabel = t('workbench:apps.system.showNav');
+  const closeLabel = t('workbench:apps.system.hideNav');
 
   return (
     <div className="wb-sys-split" data-wb-sys-drawer-mode={compact ? 'true' : 'false'}>
@@ -196,6 +215,7 @@ export const WbSysSidebarLayout: React.FC<WbSysSidebarLayoutProps> = ({
         <>
           {/* 左缘玻璃把手：窄窗唯一的导航入口 */}
           <button
+            ref={handleRef}
             type="button"
             className="wb-sys-drawer-handle"
             onClick={() => setDrawerOpen(true)}
@@ -220,6 +240,7 @@ export const WbSysSidebarLayout: React.FC<WbSysSidebarLayoutProps> = ({
             ref={drawerRef}
             className="wb-sys-drawer"
             data-open={drawerOpen ? 'true' : 'false'}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-label={navLabel}

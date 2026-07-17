@@ -277,8 +277,7 @@
     "prev": "Previous (Shift+Enter)",
     "next": "Next (Enter)",
     "showReplace": "Show replace",
-    "hideReplace": "Hide replace"
-  ,
+    "hideReplace": "Hide replace",
     "findLabel": "Find",
     "panelLabel": "Find and replace",
     "replaceLabel": "Replace with"
@@ -342,8 +341,7 @@
     "editing_mode": "Editing Mode",
     "reading_mode_on": "Entered reading mode",
     "reading_mode_off": "Entered editing mode",
-    "find_replace": "Find & Replace"
-  ,
+    "find_replace": "Find & Replace",
     "label": "Formatting"
   },
   "search": {
@@ -471,6 +469,7 @@
       "paste_failed": "Pasted image processing failed: {{error}}",
       "success": "Image inserted",
       "command_failed": "Slash image upload failed: {{error}}",
+      "too_large": "Image exceeds 10MB limit",
       "placeholder": "Click or drag to upload image",
       "caption_placeholder": "Add image caption...",
       "inline_placeholder": "Paste image link or upload",
@@ -547,7 +546,13 @@
       "caption": "Caption",
       "caption_placeholder": "Add a caption...",
       "click_to_edit": "Click to edit...",
-      "reset": "Reset"
+      "reset": "Reset",
+      "load_failed": "Failed to load image",
+      "lightbox_label": "Image preview",
+      "lightbox_alt": "Preview image",
+      "lightbox_close": "Close",
+      "lightbox_original": "Original size",
+      "lightbox_fit": "Fit to screen"
     },
     "slash": {
       "link_title_prompt": "Link title",
@@ -635,9 +640,19 @@
     },
     "ai_stop": "Stop generating",
     "portaled_to_canvas": "Editor is open in canvas",
-    "portaled_hint": "Edit this note in the canvas"
-  ,
-    "deleted_with_unsaved_changes": "The resource was deleted. Unsaved content remains in this window; copy it before closing."
+    "portaled_hint": "Edit this note in the canvas",
+    "deleted_with_unsaved_changes": "The resource was deleted. Unsaved content remains in this window; copy it before closing.",
+    "link": {
+      "href_required": "Enter a link URL first"
+    }
+  },
+  "crepe": {
+    "link": {
+      "href_required": "Enter a link URL first"
+    },
+    "image": {
+      "load_failed": "Failed to load image"
+    }
   },
   "tree": {
     "root": "My notes",
@@ -864,8 +879,7 @@
     "actions": {
       "export": "Export",
       "exporting": "Exporting…"
-    }
-  ,
+    },
     "all_notes_hint": "All notes and their attachments will be exported"
   },
   "dialogs": {
@@ -1013,8 +1027,7 @@
     "load_failed": "Failed to load links: {{message}}",
     "retry": "Retry",
     "truncated_outgoing": "Showing first 200 outgoing links",
-    "truncated_external": "Showing first 200 external links"
-  ,
+    "truncated_external": "Showing first 200 external links",
     "tag_remove": "Remove tag"
   },
   "outlineMindmap": {
@@ -1161,7 +1174,9 @@
     "export_single_failed": "Export failed: {{error}}",
     "export_single_mobile_hint": "On mobile we will use the default export directory. Please check it in your file manager later.",
     "exporting_single": "Exporting current note...",
-    "export_filter_name": "Markdown Note Export"
+    "export_filter_name": "Markdown Note Export",
+    "confirm_rename": "Confirm rename",
+    "cancel_rename": "Cancel rename"
   },
   "slashMenu": {
     "textGroup": {
@@ -1187,8 +1202,49 @@
       "image": "Image",
       "codeBlock": "Code Block",
       "table": "Table",
-      "math": "Math"
+      "math": "Math",
+      "callout": "Callout"
     }
+  },
+  "callout": {
+    "type": {
+      "note": "Note",
+      "tip": "Tip",
+      "warning": "Warning",
+      "danger": "Danger",
+      "info": "Info"
+    },
+    "cycleType": "Change callout type"
+  },
+  "wikilink": {
+    "create": "Create \"{{title}}\"",
+    "empty": "No matching notes"
+  },
+  "mention": {
+    "loading": "Searching…",
+    "empty": "No matching notes"
+  },
+  "toggle": {
+    "arrowLabel": "Expand or collapse",
+    "titlePlaceholder": "Untitled",
+    "slashLabel": "Toggle",
+    "slashDescription": "Collapsible title and body"
+  },
+  "mobileToolbar": {
+    "label": "Mobile editor toolbar",
+    "slash": "Block menu",
+    "outdent": "Decrease indent",
+    "indent": "Increase indent",
+    "bold": "Bold",
+    "italic": "Italic",
+    "heading1": "Heading 1",
+    "heading2": "Heading 2",
+    "heading3": "Heading 3",
+    "bulletList": "Bullet list",
+    "taskList": "Task list",
+    "image": "Image",
+    "undo": "Undo",
+    "redo": "Redo"
   },
   "menu": {
     "page_actions": "Page Actions",
@@ -1387,9 +1443,12 @@
   },
   "tips": {
     "versionHistory": "Version history is available in the Notes panel"
-  }
-,
+  },
   "ai": {
     "continue_not_available": "AI continuation is unavailable. Use the chat panel to start an edit."
+  },
+  "a11y": {
+    "close": "Close",
+    "clear": "Clear"
   }
 }

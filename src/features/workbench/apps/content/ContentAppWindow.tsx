@@ -121,11 +121,8 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
     if (!resourceId) {
       return (
         <ContentEmptyState
-          title={t('workbench:content.missingResource', '缺少资源标识，无法打开该窗口')}
-          description={t(
-            'workbench:content.missingResourceHint',
-            '请从资源库重新打开，或检查该资源是否仍存在。',
-          )}
+          title={t('workbench:content.missingResource')}
+          description={t('workbench:content.missingResourceHint')}
         />
       );
     }

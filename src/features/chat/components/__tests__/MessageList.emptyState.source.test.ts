@@ -31,10 +31,10 @@ describe('MessageList empty state source guards', () => {
     expect(source).toContain('emptyStateGroupName?: string | null');
     expect(source).toContain('emptyStateGroupName = null');
     expect(source).toContain("t('messageList.empty.primaryAction'");
-    expect(source).toContain("defaultValue: '今天想学点什么？'");
+    expect(source).not.toContain("defaultValue: '今天想学点什么？'");
     expect(source).toContain("t('messageList.empty.primaryActionInGroup'");
     expect(source).toContain('groupName: emptyStateGroupName');
-    expect(source).toContain("defaultValue: '在「{{groupName}}」里学点什么？'");
+    expect(source).not.toContain("defaultValue: '在「{{groupName}}」里学点什么？'");
     expect(source).toContain('title={emptyStatePrimaryAction}');
     expect(emptyBlock).not.toContain('<p className="text-base text-muted-foreground">{emptyStateGroupName}</p>');
 

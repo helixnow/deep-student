@@ -35,8 +35,11 @@
 }
 
 .notes-backlinks-panel-header h2 {
+  overflow: hidden;
   font-size: 12px;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .notes-backlinks-panel-header span {
@@ -45,6 +48,65 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ===== 统一右侧栏页签（属性 / 链接） ===== */
+
+.notes-backlinks-panel-tabs {
+  min-width: 0;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--muted) / 55%);
+}
+
+.notes-backlinks-panel-tab {
+  height: 23px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: calc(var(--notes-radius-control) - 1px);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.notes-backlinks-panel-tab:hover {
+  color: hsl(var(--foreground));
+}
+
+.notes-backlinks-panel-tab[aria-selected='true'] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 6%);
+  font-weight: 600;
+}
+
+.notes-backlinks-panel-tab:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-backlinks-panel-properties {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 属性页内容沿用面板底色，避免 NotesContextPanel 自带 bg-background 割裂 */
+.notes-backlinks-panel-properties > div {
+  background: transparent;
 }
 
 .notes-backlinks-panel-actions {
@@ -60,23 +122,29 @@
   display: inline-grid;
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--notes-radius-control);
   color: hsl(var(--muted-foreground));
   background: transparent;
   cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition),
+    border-color var(--notes-hover-transition),
+    opacity var(--notes-hover-transition);
 }
 
-.notes-backlinks-panel-icon-button:hover,
-.notes-backlinks-panel-icon-button:focus-visible {
+.notes-backlinks-panel-icon-button:hover {
   color: hsl(var(--foreground));
   background: hsl(var(--accent));
-  outline: none;
 }
 
 .notes-backlinks-panel-icon-button:focus-visible,
 .notes-backlinks-panel-link:focus-visible,
 .notes-backlinks-panel-message button:focus-visible {
-  box-shadow: inset 0 0 0 2px hsl(var(--ring));
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
 }
 
 .notes-backlinks-panel-icon-button:disabled,
@@ -113,7 +181,7 @@
   padding: 0 5px;
   display: inline-grid;
   place-items: center;
-  border-radius: 5px;
+  border-radius: var(--notes-radius-control);
   color: hsl(var(--muted-foreground));
   background: hsl(var(--background) / 64%);
   font-size: 10px;
@@ -140,18 +208,21 @@
   align-items: center;
   gap: 7px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--notes-radius-row);
   color: hsl(var(--foreground));
   background: transparent;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition),
+    border-color var(--notes-hover-transition),
+    opacity var(--notes-hover-transition);
 }
 
-.notes-backlinks-panel-link:hover,
-.notes-backlinks-panel-link:focus-visible {
+.notes-backlinks-panel-link:hover {
   background: hsl(var(--accent));
-  outline: none;
 }
 
 .notes-backlinks-panel-link > svg,
@@ -220,18 +291,21 @@
   height: 27px;
   padding: 0 9px;
   border: 1px solid hsl(var(--border));
-  border-radius: 5px;
+  border-radius: var(--notes-radius-control);
   color: hsl(var(--foreground));
   background: hsl(var(--background));
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition),
+    border-color var(--notes-hover-transition),
+    opacity var(--notes-hover-transition);
 }
 
-.notes-backlinks-panel-message button:hover,
-.notes-backlinks-panel-message button:focus-visible {
+.notes-backlinks-panel-message button:hover {
   background: hsl(var(--accent));
-  outline: none;
 }
 
 .notes-backlinks-panel-open-error {
@@ -251,6 +325,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .notes-backlinks-panel-icon-button,
+  .notes-backlinks-panel-link,
+  .notes-backlinks-panel-message button {
+    transition-duration: 0.01ms;
+  }
+
   .notes-backlinks-panel-spinner {
     animation: none;
   }

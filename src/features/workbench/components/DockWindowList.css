@@ -111,6 +111,16 @@
   background: var(--wb-dock-item-hover-bg, hsl(var(--primary) / 0.12));
 }
 
+/* 键盘导航：焦点环走 O1 焦点 token（与 hover 高亮区分，a11y 不降级） */
+.wb-docklist-item-btn:focus-visible {
+  box-shadow: var(--wb-focus-ring);
+}
+
+/* 已最小化窗口：缩略图轻微降透明，与文字标记形成双重提示 */
+.wb-docklist-item[data-minimized] .wb-docklist-thumb {
+  opacity: 0.62;
+}
+
 .wb-docklist-thumb {
   position: relative;
   width: 100%;
@@ -231,6 +241,15 @@
   background: hsl(var(--destructive));
   color: hsl(var(--destructive-foreground));
   outline: none;
+}
+
+/* 触屏（无 hover）：关闭按钮常显，否则触控用户无法浮现 */
+@media (hover: none) and (pointer: coarse) {
+  .wb-docklist-close {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

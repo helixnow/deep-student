@@ -38,7 +38,7 @@ const SettingsAppWindow: React.FC<AppWindowProps> = ({
   const { ref, sizeClass } = useWbSysSize();
 
   useEffect(() => {
-    onTitleChange(t('workbench:apps.settings', '设置'));
+    onTitleChange(t('workbench:apps.settings'));
   }, [onTitleChange, t]);
 
   return (
@@ -54,7 +54,7 @@ const SettingsAppWindow: React.FC<AppWindowProps> = ({
           <WbSysFade>
             <WbSysSidebarLayout
               sizeClass={sizeClass}
-              navLabel={t('workbench:apps.system.settingsNav', '设置导航')}
+              navLabel={t('workbench:apps.system.settingsNav')}
               sidebar={
                 <SettingsShellSidebar isSmallScreen={false} globalLeftPanelCollapsed={false} />
               }

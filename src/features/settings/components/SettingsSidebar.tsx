@@ -114,8 +114,8 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               onChange={(e) => setSidebarSearchQuery(e.target.value)}
               onFocus={() => setSidebarSearchFocused(true)}
               onBlur={() => setSidebarSearchFocused(false)}
-              placeholder={t('sidebar.search_placeholder', '搜索设置...')}
-              aria-label={t('sidebar.search_placeholder', '搜索设置...')}
+              placeholder={t('sidebar.search_placeholder')}
+              aria-label={t('sidebar.search_placeholder')}
               className={cn(
                 'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
                 'pl-8 pr-2.5 text-[13px] text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
@@ -128,7 +128,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
       )}
 
       <nav
-        aria-label={t('sidebar.navigation_label', { defaultValue: '设置导航' })}
+        aria-label={t('sidebar.navigation_label')}
         className={cn('flex-1 overflow-y-auto py-1', isCollapsed ? 'pointer-events-none opacity-0 px-0' : 'px-2')}
       >
         {searchQuery ? (
@@ -154,7 +154,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
             </ul>
           ) : (
             <p className="px-3 py-2 text-[12px] text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-80">
-              {t('sidebar.no_results', '未找到匹配的设置')}
+              {t('sidebar.no_results')}
             </p>
           )
         ) : (

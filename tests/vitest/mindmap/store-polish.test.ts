@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { useMindMapStore } from '@/features/mindmap/store/mindmapStore';
 import { markdownListToNodes } from '@/features/mindmap/utils/pasteMarkdown';
+import { createNode } from '@/features/mindmap/utils/node/create';
 import { findNodeById } from '@/features/mindmap/utils/node/find';
+import { updateNode as updateNodeInTree } from '@/features/mindmap/utils/node/update';
 import type { MindMapDocument, MindMapNode } from '@/features/mindmap/types';
 
 function createDocument(): MindMapDocument {
@@ -232,6 +234,34 @@ describe('mindmap store polish APIs', () => {
     );
   });
 
+  it('createNode / addNode omit completed so new nodes are not tasks by default', () => {
+    const created = createNode({ text: 'fresh' });
+    expect(Object.prototype.hasOwnProperty.call(created, 'completed')).toBe(false);
+
+    seedStore(createDocument());
+    const id = useMindMapStore.getState().addNode('root_test');
+    const node = findNodeById(useMindMapStore.getState().document.root, id)!;
+    expect(node).toBeTruthy();
+    expect(Object.prototype.hasOwnProperty.call(node, 'completed')).toBe(false);
+  });
+
+  it('updateNode deletes optional fields when patch value is undefined', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().updateNode('node_a', { completed: true });
+    expect(findNodeById(useMindMapStore.getState().document.root, 'node_a')!.completed).toBe(true);
+
+    useMindMapStore.getState().updateNode('node_a', { completed: undefined });
+    const node = findNodeById(useMindMapStore.getState().document.root, 'node_a')!;
+    expect(Object.prototype.hasOwnProperty.call(node, 'completed')).toBe(false);
+
+    // 不可变工具路径同样支持 unset
+    const tree = updateNodeInTree(createDocument().root, 'node_a', { completed: true });
+    const cleared = updateNodeInTree(tree, 'node_a', { completed: undefined });
+    expect(Object.prototype.hasOwnProperty.call(findNodeById(cleared, 'node_a')!, 'completed')).toBe(
+      false,
+    );
+  });
+
   it('batch indent/outdent preserve sibling order and undo in one step', () => {
     seedStore(createFlatDocument());
     useMindMapStore.getState().indentNodes(['b', 'c']);
@@ -315,6 +345,24 @@ describe('mindmap store polish APIs', () => {
     expect(useMindMapStore.getState().document.root.children.map((node) => node.id)).toEqual([
       'a', 'b', 'c', 'd',
     ]);
+  });
+
+  it('rejects non-finite viewport values and clamps zoom before persistence', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().setViewViewport('mindmap', { x: 12, y: -8, zoom: 1.5 });
+    useMindMapStore.getState().setViewViewport('mindmap', {
+      x: Number.NaN,
+      y: Number.POSITIVE_INFINITY,
+      zoom: Number.NaN,
+    });
+    expect(useMindMapStore.getState().viewports.mindmap).toEqual({
+      x: 12,
+      y: -8,
+      zoom: 1.5,
+    });
+
+    useMindMapStore.getState().setViewViewport('mindmap', { zoom: 99 });
+    expect(useMindMapStore.getState().viewports.mindmap?.zoom).toBe(2);
   });
 
   it('pasteNodes allows exactly 10k nodes and rejects 10,001 atomically', () => {

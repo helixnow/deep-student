@@ -38,6 +38,8 @@ describe('AgentControlDockEntry', () => {
     const trigger = screen.getByTestId('wb-dock-agent-control-button');
     await waitFor(() => expect(trigger).toHaveAttribute('data-mode', 'background'));
     expect(trigger).toHaveAttribute('data-unseen', 'true');
+    expect(trigger).toHaveClass('h-11', 'w-11', 'lg:h-11', 'lg:w-11');
+    expect(trigger.querySelector('img')).toHaveAttribute('src', '/app-icon.png');
     expect(trigger.querySelectorAll('.wb-agent-control-status-dot')).toHaveLength(1);
     expect(trigger.querySelector('.wb-agent-control-new-dot')).not.toBeInTheDocument();
 
@@ -45,6 +47,7 @@ describe('AgentControlDockEntry', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'AI 桌面操控' });
     expect(dialog).toHaveClass('wb-glass', 'wb-glass-highlight', 'wb-glass-lens');
+    expect(dialog.querySelector('.wb-agent-control-mark img')).toHaveAttribute('src', '/app-icon.png');
     expect(screen.getByText('能做什么')).toBeInTheDocument();
     expect(document.querySelectorAll('.wb-agent-capability-group')).toHaveLength(3);
     expect(document.querySelectorAll('.wb-agent-capability-row')).toHaveLength(0);

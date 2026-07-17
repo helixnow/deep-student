@@ -1,0 +1,161 @@
+/* Obsidian/Notion-style callout blocks — colors use global design tokens.
+ *
+ * 与 toggle（.milkdown-toggle）同族：圆角 --notes-radius-popup、
+ * 内边距节奏 gap 0.35em、图标触控区 1.25em×1.5em。
+ */
+
+.crepe-callout {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  margin: 0.5em 0;
+  padding: 0.75em 0.85em;
+  border-radius: var(--notes-radius-popup, 0.5rem);
+  border-left: 3px solid transparent;
+  background: hsl(var(--muted) / 0.45);
+}
+
+.crepe-callout__header {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  user-select: none;
+}
+
+.crepe-callout__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.25em;
+  height: 1.5em;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: var(--notes-radius-control, 0.35rem);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 0;
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+.crepe-callout__icon:hover {
+  background: hsl(var(--foreground) / 0.06);
+}
+
+.crepe-callout__icon:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.crepe-callout__icon-svg {
+  display: block;
+  width: 1em;
+  height: 1em;
+}
+
+.crepe-callout__title {
+  font-weight: 600;
+  font-size: 0.95em;
+  line-height: 1.35;
+  color: inherit;
+}
+
+.crepe-callout__title--placeholder {
+  opacity: 0.92;
+}
+
+.crepe-callout__content {
+  min-width: 0;
+}
+
+.crepe-callout__content > :first-child {
+  margin-top: 0;
+}
+
+.crepe-callout__content > :last-child {
+  margin-bottom: 0;
+}
+
+/* note — neutral / info-muted */
+.crepe-callout--note {
+  background: hsl(var(--info) / 0.08);
+  border-left-color: hsl(var(--info));
+  color: hsl(var(--foreground));
+}
+
+.crepe-callout--note .crepe-callout__icon,
+.crepe-callout--note .crepe-callout__title {
+  color: hsl(var(--info));
+}
+
+/* tip — success */
+.crepe-callout--tip {
+  background: hsl(var(--success) / 0.08);
+  border-left-color: hsl(var(--success));
+  color: hsl(var(--foreground));
+}
+
+.crepe-callout--tip .crepe-callout__icon,
+.crepe-callout--tip .crepe-callout__title {
+  color: hsl(var(--success));
+}
+
+/* warning */
+.crepe-callout--warning {
+  background: hsl(var(--warning) / 0.1);
+  border-left-color: hsl(var(--warning));
+  color: hsl(var(--foreground));
+}
+
+.crepe-callout--warning .crepe-callout__icon,
+.crepe-callout--warning .crepe-callout__title {
+  color: hsl(var(--warning));
+}
+
+/* danger */
+.crepe-callout--danger {
+  background: hsl(var(--danger) / 0.1);
+  border-left-color: hsl(var(--danger));
+  color: hsl(var(--foreground));
+}
+
+.crepe-callout--danger .crepe-callout__icon,
+.crepe-callout--danger .crepe-callout__title {
+  color: hsl(var(--danger));
+}
+
+/* info — primary accent (task example) */
+.crepe-callout--info {
+  background: hsl(var(--primary) / 0.08);
+  border-left-color: hsl(var(--primary));
+  color: hsl(var(--foreground));
+}
+
+.crepe-callout--info .crepe-callout__icon,
+.crepe-callout--info .crepe-callout__title {
+  color: hsl(var(--primary));
+}
+
+/* 暗色：底 tint 加深至 /0.15，避免 /0.08–0.1 在深色底上不可辨 */
+:is(.dark, [data-theme='dark']) .crepe-callout--note {
+  background: hsl(var(--info) / 0.15);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout--tip {
+  background: hsl(var(--success) / 0.15);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout--warning {
+  background: hsl(var(--warning) / 0.15);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout--danger {
+  background: hsl(var(--danger) / 0.15);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout--info {
+  background: hsl(var(--primary) / 0.15);
+}

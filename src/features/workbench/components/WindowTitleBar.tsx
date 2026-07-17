@@ -291,6 +291,8 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
 
   const zoomRestore = displayMode !== 'floating';
   const hostsAppTabs = appTypeId === 'notes' || appTypeId === 'files';
+  /** 长标题被渐隐截断时，悬停标题栏空白区可见完整标题（三键自带 title 优先） */
+  const barTooltip = titleOverflow ? title : undefined;
 
   return (
     <div
@@ -301,6 +303,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       style={{ height: TITLEBAR_HEIGHT, touchAction: 'none' }}
       data-wb-titlebar
       data-wb-title-draggable=""
+      title={barTooltip}
       data-wb-app-tabs={appTypeId === 'notes' ? 'notes' : appTypeId === 'files' ? 'files' : undefined}
       data-window-id={windowId}
       onPointerEnter={handlePointerEnter}
@@ -327,8 +330,8 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         <button
           type="button"
           className="wb-traffic-close wb-title-key"
-          aria-label={t('a11y.close', '关闭窗口')}
-          title={t('a11y.close', '关闭窗口')}
+          aria-label={t('a11y.close')}
+          title={t('a11y.close')}
           onPointerDown={stop}
           onDoubleClick={stop}
           onClick={(e) => {
@@ -341,8 +344,8 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         <button
           type="button"
           className="wb-traffic-min wb-title-key"
-          aria-label={t('a11y.minimize', '最小化窗口')}
-          title={t('a11y.minimize', '最小化窗口')}
+          aria-label={t('a11y.minimize')}
+          title={t('a11y.minimize')}
           onPointerDown={stop}
           onDoubleClick={stop}
           onClick={(e) => {
@@ -358,8 +361,9 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
             ref={zoomButtonRef}
             type="button"
             className="wb-traffic-zoom wb-title-key"
-            aria-label={t('a11y.zoom', '缩放窗口')}
-            title={t('a11y.zoom', '缩放窗口')}
+            /* 绿灯语义随状态切换：floating=缩放（最大化），managed=还原 */
+            aria-label={zoomRestore ? t('a11y.zoomRestore') : t('a11y.zoom')}
+            title={zoomRestore ? t('a11y.zoomRestore') : t('a11y.zoom')}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onPointerDown={stop}

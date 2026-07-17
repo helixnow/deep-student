@@ -291,7 +291,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
 
                     {engine.engineType === 'system_ocr' && (
                       <span className="text-[10px] text-purple-600/80 dark:text-purple-400/80 shrink-0">
-                        {t('settings:ocr.offline', '离线')}
+                        {t('settings:ocr.offline')}
                       </span>
                     )}
                     
@@ -326,7 +326,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9L3 5H9L6 9Z" fill="currentColor"/></svg>
                   </NotionButton>
                   {engine.engineType !== 'system_ocr' && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label="delete">
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label={t('settings:a11y.delete')}>
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     </NotionButton>
                   )}
@@ -348,10 +348,10 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
           <div className="flex items-center justify-between px-1.5 py-1.5 rounded bg-muted/20">
             <div className="space-y-0">
               <span className="text-[11px] text-muted-foreground/80">
-                {t('settings:ocr.thinking_label', 'VLM 深度推理')}
+                {t('settings:ocr.thinking_label')}
               </span>
               <p className="text-[10px] text-muted-foreground/50 leading-tight">
-                {t('settings:ocr.thinking_desc', '关闭可显著降低 OCR / 题目集导入延迟')}
+                {t('settings:ocr.thinking_desc')}
               </p>
             </div>
             <Switch
@@ -366,7 +366,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                 }
               }}
               disabled={saving}
-              title={thinkingEnabled ? t('settings:ocr.thinking_on', '推理已开启') : t('settings:ocr.thinking_off', '推理已关闭')}
+              title={thinkingEnabled ? t('settings:ocr.thinking_on') : t('settings:ocr.thinking_off')}
               className="shrink-0"
             />
           </div>
@@ -399,7 +399,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
           <div className="mx-1 mt-1 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium">{t('settings:ocr.select_multimodal_model')}</span>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowAddDialog(false)} className="!h-5 !w-5 !p-0 text-muted-foreground/40 hover:text-foreground" aria-label="close">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowAddDialog(false)} className="!h-5 !w-5 !p-0 text-muted-foreground/40 hover:text-foreground" aria-label={t('settings:a11y.close')}>
                 ✕
               </NotionButton>
             </div>

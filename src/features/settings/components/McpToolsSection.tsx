@@ -266,7 +266,7 @@ function ServerListItem({
       {confirmingDelete && (
         <div className="flex items-center justify-between px-4 py-2.5 bg-destructive/10 border-b border-destructive/20">
           <span className="text-xs text-destructive font-medium">
-            {t('settings:mcp_descriptions.confirm_delete', '确认删除此服务器？此操作不可撤销。')}
+            {t('settings:mcp_descriptions.confirm_delete')}
           </span>
           <div className="flex items-center gap-2">
             <NotionButton
@@ -387,10 +387,10 @@ function ServerListItem({
               )}
               {!isBuiltin && (
                 <>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label="edit">
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
                     <PencilSimple className="w-3.5 h-3.5" />
                   </NotionButton>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label="delete">
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
                     <Trash className="w-3.5 h-3.5" />
                   </NotionButton>
                 </>
@@ -727,7 +727,7 @@ function ServerEditPanel({
         {editMode === 'form' ? (
           <>
             {/* 表单模式内容 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 名称 */}
               <div>
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
@@ -775,7 +775,7 @@ function ServerEditPanel({
 
             {/* URL / Command */}
             {formData.transportType === 'stdio' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.command')} *
@@ -1183,7 +1183,7 @@ function NewServerEditItem({
           {editMode === 'form' ? (
             <>
               {/* 表单模式内容 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 名称 */}
                 <div>
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
@@ -1231,7 +1231,7 @@ function NewServerEditItem({
 
               {/* URL / Command */}
               {formData.transportType === 'stdio' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
                     <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                       {t('settings:mcp_server_edit.command')} *
@@ -2736,7 +2736,7 @@ function ToolPermissionsSection({ toolsByServer }: {
               {t('settings:tool_permissions.runtime_roots_desc')}
             </p>
 
-            <div className="mb-3 flex min-w-0 flex-col sm:flex-row gap-2">
+            <div className="mb-3 flex min-w-0 flex-col lg:flex-row gap-2">
               <Input
                 ref={runtimeRootInputRef}
                 value={newRuntimeRootPath}
@@ -2751,7 +2751,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                   }
                 }}
                 placeholder={t('settings:tool_permissions.runtime_root_path_placeholder')}
-                className="h-8 min-w-0 text-xs font-mono sm:basis-0 sm:flex-1"
+                className="h-8 min-w-0 text-xs font-mono lg:basis-0 lg:flex-1"
               />
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <Select
@@ -3366,9 +3366,9 @@ export function McpToolsSection({
   // 加载状态
   if (isLoading) {
     return (
-      <SettingSection title={t('settings:tabs.mcp_tools', 'MCP 工具协议')} hideHeader>
+      <SettingSection title={t('settings:tabs.mcp_tools')} hideHeader className="min-w-0 max-w-full" contentClassName="min-w-0 max-w-full">
         <div className="space-y-4">
-          <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <div className="grid min-w-0 gap-3 grid-cols-2 lg:grid-cols-4 [&>*]:min-w-0">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-20 bg-muted/30 rounded-lg animate-pulse" />
             ))}
@@ -3380,10 +3380,10 @@ export function McpToolsSection({
   }
 
   return (
-    <SettingSection title={t('settings:tabs.mcp_tools', 'MCP 工具协议')} description={t('settings:mcp_descriptions.section_description', '管理 Model Context Protocol (MCP) 服务器与工具集成')} hideHeader>
-      <div className="space-y-6">
+    <SettingSection title={t('settings:tabs.mcp_tools')} description={t('settings:mcp_descriptions.section_description')} hideHeader className="min-w-0 max-w-full" contentClassName="min-w-0 max-w-full">
+      <div className="min-w-0 max-w-full space-y-6">
         {/* 概览统计 - 紧凑的网格布局 */}
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <div className="grid min-w-0 gap-4 grid-cols-2 lg:grid-cols-4 [&>*]:min-w-0">
           <StatItem
             label={t('settings:mcp_server_list.connection_status')}
             value={`${connectedServers} / ${totalServers}`}
@@ -3428,9 +3428,9 @@ export function McpToolsSection({
         )}
 
         {/* 操作栏 */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-col items-stretch gap-2 lg:flex-row lg:items-center lg:justify-between">
           <h3 className="text-base font-medium text-foreground flex-shrink-0">{t('settings:mcp_server_list.server_list')}</h3>
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:gap-2 lg:w-auto lg:justify-end">
             <ActionMenu
               onReconnect={onReconnect}
               onRefresh={onRefreshRegistry}
@@ -3521,7 +3521,7 @@ export function McpToolsSection({
         {(promptsCount > 0 || resourcesCount > 0) && (
           <div className="mt-8 pt-6 border-t border-border/40">
             <h3 className="text-sm font-medium text-foreground mb-4">{t('settings:mcp_server_list.prompts_resources_section')}</h3>
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-2">
               {/* Prompts */}
               <div className="space-y-3">
                 <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:mcp_server_list.latest_prompts')}</div>

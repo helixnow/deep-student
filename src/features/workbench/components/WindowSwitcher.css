@@ -36,6 +36,8 @@
   --wb-switcher-cell-w: 64px;
   --wb-switcher-cell-h: 64px;
   --wb-switcher-gap: 6px;
+  /* 圆角节奏：玻璃条 22px → 候选格/焦点框共用一档 14px */
+  --wb-switcher-cell-radius: 14px;
 }
 
 .wb-switcher-root[data-thumbs='true'] {
@@ -56,7 +58,8 @@
   max-width: min(80%, 760px);
   padding: 16px 20px 12px;
   border-radius: 22px;
-  box-shadow: var(--wb-shadow-focused);
+  /* 中央玻璃件走 overlay 档阴影（O1 token 注释点名切换条用此档） */
+  box-shadow: var(--wb-shadow-overlay, var(--wb-shadow-focused));
   animation: wb-switcher-in var(--wb-switcher-in-duration) var(--wb-switcher-ease-out) both;
 }
 
@@ -142,7 +145,7 @@
   left: 0;
   width: var(--wb-switcher-cell-w);
   height: var(--wb-switcher-cell-h);
-  border-radius: 14px;
+  border-radius: var(--wb-switcher-cell-radius);
   background: color-mix(in hsl, hsl(var(--foreground)) 12%, transparent 88%);
   border: 1px solid color-mix(in hsl, hsl(var(--foreground)) 22%, transparent 78%);
   box-shadow: inset 0 1px 0 var(--wb-glass-highlight, rgba(255, 255, 255, 0.4));
@@ -168,7 +171,7 @@
   height: var(--wb-switcher-cell-h);
   padding: 0;
   border: none;
-  border-radius: 14px;
+  border-radius: var(--wb-switcher-cell-radius);
   background: transparent;
   color: inherit;
   cursor: default;

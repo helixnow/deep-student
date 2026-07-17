@@ -484,7 +484,7 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.queryByText('最近')).not.toBeInTheDocument();
 
     await user.hover(conversationButton);
-    await user.click(screen.getByRole('button', { name: 'New Session' }));
+    await user.click(screen.getByRole('button', { name: '新建对话' }));
 
     expect(dispatchEventSpy).toHaveBeenCalledWith(expect.objectContaining({
       type: 'modern-sidebar:group-action',
@@ -1430,13 +1430,13 @@ describe('ModernSidebar shell navigation', () => {
     const renameDialog = await screen.findByRole('dialog');
     expect(within(renameDialog).getByText('重命名对话')).toBeInTheDocument();
     expect(within(renameDialog).getByRole('button', { name: '取消' })).toBeInTheDocument();
-    expect(within(renameDialog).getByRole('button', { name: '确认' })).toBeInTheDocument();
+    expect(within(renameDialog).getByRole('button', { name: '确定' })).toBeInTheDocument();
 
     const input = within(renameDialog).getByRole('textbox', { name: '对话名称' });
     expect(input).toHaveValue('旧标题');
 
     fireEvent.change(input, { target: { value: '新标题' } });
-    fireEvent.click(within(renameDialog).getByRole('button', { name: '确认' }));
+    fireEvent.click(within(renameDialog).getByRole('button', { name: '确定' }));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('chat_v2_update_session_settings', {
@@ -1475,6 +1475,6 @@ describe('ModernSidebar shell navigation', () => {
     const input = within(renameDialog).getByRole('textbox', { name: '对话名称' });
     expect(input).toHaveValue('');
     expect(input).toHaveAttribute('placeholder', '未命名会话');
-    expect(within(renameDialog).getByRole('button', { name: '确认' })).toBeDisabled();
+    expect(within(renameDialog).getByRole('button', { name: '确定' })).toBeDisabled();
   });
 });

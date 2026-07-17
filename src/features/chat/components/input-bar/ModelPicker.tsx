@@ -345,16 +345,16 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
 
   // ----- header -----
   const titleText = isRetryMode
-    ? t('chatV2:modelPicker.retryTitle', '选择模型重试')
-    : t('chatV2:modelPicker.title', '选择模型');
+    ? t('chatV2:modelPicker.retryTitle')
+    : t('chatV2:modelPicker.title');
 
   const subtitleText = isRetryMode
     ? compareSelected.length === 0
-      ? t('chatV2:modelPicker.retryHintEmpty', '选择模型后点击重试')
+      ? t('chatV2:modelPicker.retryHintEmpty')
       : t('chatV2:modelPicker.retryHint', { count: compareSelected.length })
     : effectiveMode === 'compare'
       ? t('chatV2:modelPicker.compareHint', { count: compareSelected.length })
-      : t('chatV2:modelPicker.singleHint', '当前会话模型');
+      : t('chatV2:modelPicker.singleHint');
 
   // ----- render -----
   const hasModels = sortedAndFiltered.length > 0;
@@ -459,7 +459,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         </span>
 
         {!isDefault && (
-          <CommonTooltip content={t('chatV2:modelPicker.setAsDefault', '设为系统默认')} position="left">
+          <CommonTooltip content={t('chatV2:modelPicker.setAsDefault')} position="left">
             <span
               role="button"
               tabIndex={-1}
@@ -475,7 +475,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 'hover:bg-[color:var(--menu-shell-row-hover)]',
                 (disabled || savingDefault) && 'pointer-events-none opacity-25'
               )}
-              aria-label={t('chatV2:modelPicker.setAsDefault', '设为系统默认')}
+              aria-label={t('chatV2:modelPicker.setAsDefault')}
             >
               <PushPin size={12} />
             </span>
@@ -508,7 +508,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 variant="default"
                 className="h-[18px] shrink-0 self-center border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] px-1.5 py-0 text-[9px] font-medium text-[color:var(--menu-shell-muted-foreground)]"
               >
-                {t('chatV2:modelPicker.parallelMode', '并行模式')}
+                {t('chatV2:modelPicker.parallelMode')}
               </Badge>
             )}
           </div>
@@ -518,8 +518,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               <CompareToggle
                 checked={effectiveMode === 'compare'}
                 onChange={(next) => onModeChange?.(next ? 'compare' : 'single')}
-                label={t('chatV2:modelPicker.compareToggle', '对比模式')}
-                hint={t('chatV2:modelPicker.compareToggleHint', '同时使用多个模型回答')}
+                label={t('chatV2:modelPicker.compareToggle')}
+                hint={t('chatV2:modelPicker.compareToggleHint')}
                 disabled={disabled}
               />
             )}
@@ -532,10 +532,10 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                   onClose();
                 }}
                 disabled={disabled || compareSelected.length === 0}
-                title={t('chatV2:modelMention.retry', '重试')}
+                title={t('chatV2:modelMention.retry')}
               >
                 <ArrowCounterClockwise size={14} />
-                {t('chatV2:modelMention.retry', '重试')}
+                {t('chatV2:modelMention.retry')}
               </NotionButton>
             )}
             <NotionButton
@@ -571,7 +571,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           type="search"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder={t('chatV2:modelPicker.searchPlaceholder', '搜索名称或模型 ID...')}
+          placeholder={t('chatV2:modelPicker.searchPlaceholder')}
           className="h-auto w-full border-0 bg-transparent px-0 py-0 text-[var(--menu-shell-font-size)] text-[color:var(--menu-shell-foreground)] shadow-none hover:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
           disabled={disabled}
         />
@@ -648,8 +648,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             ) : (
               <div className="px-2 py-4 text-center text-sm text-[color:var(--menu-shell-muted-foreground)]">
                 {searchTerm
-                  ? t('chatV2:modelPicker.noMatches', '未找到匹配的模型')
-                  : t('chatV2:modelPicker.empty', '暂无可用模型')}
+                  ? t('chatV2:modelPicker.noMatches')
+                  : t('chatV2:modelPicker.empty')}
               </div>
             )}
           </div>
@@ -670,11 +670,11 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               onClose();
             }}
             disabled={disabled || compareSelected.length === 0}
-            title={t('chatV2:modelMention.retry', '重试')}
+            title={t('chatV2:modelMention.retry')}
             className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
           >
             <ArrowCounterClockwise size={14} />
-            {t('chatV2:modelMention.retry', '重试')}
+            {t('chatV2:modelMention.retry')}
           </NotionButton>
         </div>
       )}

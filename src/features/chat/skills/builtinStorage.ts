@@ -47,7 +47,7 @@ export interface BuiltinSkillCustomization {
   priority?: number;
   /** 自定义的自动激活设置 */
   disableAutoInvoke?: boolean;
-  /** 自定义 allowedTools（权限过滤） */
+  /** 自定义 legacy allowedTools 元数据（不参与运行时权限判定） */
   allowedTools?: string[];
   /** 自定义 skillType */
   skillType?: import('./types').SkillType;

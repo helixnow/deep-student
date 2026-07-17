@@ -23,6 +23,9 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NotesEditorToolbar } from './components/NotesEditorToolbar';
+import {
+  MobileEditorToolbar,
+} from './components/MobileEditorToolbar';
 import { FindReplacePanel } from './components/FindReplacePanel';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
 import { isMacOS } from '../../utils/platform';
@@ -31,6 +34,19 @@ import { useCanvasAIEditHandler } from './hooks/useCanvasAIEditHandler';
 import { AIDiffPanel } from './AIDiffPanel';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { buildMobileEditorCommands } from './mobileEditorCommands';
+import {
+  CREATE_FROM_WIKILINK_EVENT,
+  createNoteFromWikilinkTitle,
+  parseCreateFromWikilinkEvent,
+  refreshWikilinksAfterCreate,
+} from './createFromWikilink';
+import {
+  buildWikilinkPluginHostConfig,
+  refreshWikilinkNotesCache,
+} from './wikilinkNotesCache';
+import '@/styles/notes-typography.css';
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 const SAVING_INDICATOR_DELAY_MS = 400;
@@ -184,8 +200,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [readingMode, setReadingMode] = useState(false);
   const effectiveReadOnly = readOnly || readingMode;
 
+  // 移动端底部工具条：`(pointer: coarse)` 且编辑态（SSR 安全 matchMedia）
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  const showMobileToolbar = isCoarsePointer && !effectiveReadOnly && !!editorApi;
+
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+
+  const mobileCommands = buildMobileEditorCommands(editorApi);
 
   const cancelDebounce = () => {
     if (saveTimerRef.current) {
@@ -750,6 +772,28 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     };
   }, [runPendingSave]);
 
+  // 宿主 wikilink 索引：挂载时拉取；创建后由 createFromWikilink upsert
+  useEffect(() => {
+    void refreshWikilinkNotesCache();
+  }, []);
+
+  // 未解析 wikilink 点击 → 创建笔记 → 刷新链接样式 → DSTU_OPEN_NOTE
+  useEffect(() => {
+    const handleCreateFromWikilink = (event: Event) => {
+      const title = parseCreateFromWikilinkEvent(event);
+      if (!title) return;
+      void createNoteFromWikilinkTitle(title).then((noteId) => {
+        if (!noteId || isUnmountedRef.current) return;
+        refreshWikilinksAfterCreate(editorApi, title);
+      });
+    };
+
+    window.addEventListener(CREATE_FROM_WIKILINK_EVENT, handleCreateFromWikilink);
+    return () => {
+      window.removeEventListener(CREATE_FROM_WIKILINK_EVENT, handleCreateFromWikilink);
+    };
+  }, [editorApi]);
+
   // beforeunload
   // ★ Y5 修复：检查所有笔记的草稿/保存队列（含后台 tab 的笔记），
   // 而不只是当前激活笔记，防止切换标签页后未保存内容被静默丢弃。
@@ -1248,7 +1292,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
       {/* 桌面编辑器风格的轻量 pane 操作栏；文档标题随正文滚动。 */}
       <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background">
-        <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[816px] items-center gap-1 px-5 sm:px-12">
+        <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-1 px-5 sm:px-12">
             <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} />
           <div className="ml-auto flex items-center gap-1">
             {/* 查找替换按钮 */}
@@ -1324,9 +1368,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       >
         {/* 编辑器内容区域 */}
         <div
-          className="notes-editor-content w-full max-w-[816px] mx-auto min-h-full px-5 sm:px-12 relative flex flex-col"
+          className="notes-editor-content w-full max-w-[var(--notes-content-max-w)] mx-auto min-h-full px-5 sm:px-12 relative flex flex-col"
           style={{
-            paddingBottom: '30vh',
+            paddingBottom: showMobileToolbar
+              ? 'calc(30vh + 52px + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)))'
+              : '30vh',
           }}
           ref={dropZoneRef}
         >
@@ -1348,6 +1394,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             onChange={handleChange}
             onReady={handleEditorReady}
             readonly={effectiveReadOnly}
+            plugins={{
+              wikilink: buildWikilinkPluginHostConfig(),
+            }}
           />
           {windowingState?.enabled && (windowingState.hasMore || windowingState.isLoadingMore || windowingState.loadMoreError) && (
             <div className="mt-6 flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground/70">
@@ -1373,6 +1422,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           )}
         </div>
       </CustomScrollArea>
+
+      <MobileEditorToolbar
+        visible={showMobileToolbar}
+        commands={mobileCommands}
+      />
     </div>
     </ErrorBoundary>
   );

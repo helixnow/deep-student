@@ -1137,7 +1137,7 @@ pub async fn run_workspace_agent_backend(
             // Workspace tools are collaborative capabilities, not completion protocol.
             mcp_tool_schemas: Some(workspace_tool_schemas),
             // 🆕 执行层 fail-closed：白名单外的调用在审批/执行前被直接拦截
-            skill_allowed_tools: Some(worker_allowed_tools),
+            execution_allowed_tools: Some(worker_allowed_tools),
             stream_generation: Some(stream_generation),
             ..Default::default()
         }),

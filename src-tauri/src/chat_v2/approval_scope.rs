@@ -622,8 +622,23 @@ fn extract_generic_scope_identity(args: &Value) -> Option<String> {
 }
 
 pub(crate) fn normalized_shell_runtime_location(args: &Value) -> (String, String) {
-    let root_id =
-        extract_str_field(args, &["root_id", "rootId"]).unwrap_or_else(|| "workspace".to_string());
+    normalized_shell_runtime_location_with_default(args, None)
+}
+
+/// Normalize shell root/cwd for approval + execution.
+///
+/// When args omit `root_id`/`rootId`, `default_root_id` (e.g. group preferred,
+/// already validated by the caller) is used; otherwise falls back to `"workspace"`.
+/// An explicit root is never overridden.
+pub(crate) fn normalized_shell_runtime_location_with_default(
+    args: &Value,
+    default_root_id: Option<&str>,
+) -> (String, String) {
+    let explicit = extract_str_field(args, &["root_id", "rootId"]);
+    let root_id = crate::chat_v2::runtime_roots::effective_runtime_root_id(
+        explicit.as_deref(),
+        default_root_id,
+    );
     let cwd = extract_str_field(args, &["cwd", "working_dir", "workingDir"])
         .unwrap_or_else(|| ".".to_string());
     (root_id, cwd)
@@ -2501,6 +2516,40 @@ mod tests {
             .expect("runtime scope");
         assert_eq!(scope.root_id, "workspace");
         assert_eq!(scope.cwd, "src-tauri");
+    }
+
+    #[test]
+    fn normalized_shell_runtime_location_uses_optional_default_root() {
+        let missing = json!({"command": "ls", "cwd": "."});
+        assert_eq!(
+            normalized_shell_runtime_location(&missing),
+            ("workspace".to_string(), ".".to_string())
+        );
+        assert_eq!(
+            normalized_shell_runtime_location_with_default(&missing, Some("authorized_demo")),
+            ("authorized_demo".to_string(), ".".to_string())
+        );
+
+        let explicit = json!({
+            "command": "ls",
+            "root_id": "temp",
+            "cwd": "src",
+        });
+        assert_eq!(
+            normalized_shell_runtime_location_with_default(&explicit, Some("authorized_demo")),
+            ("temp".to_string(), "src".to_string()),
+            "explicit root_id must never be overridden by group default"
+        );
+
+        let camel_explicit = json!({
+            "command": "ls",
+            "rootId": "artifacts",
+            "workingDir": "out",
+        });
+        assert_eq!(
+            normalized_shell_runtime_location_with_default(&camel_explicit, Some("authorized_demo")),
+            ("artifacts".to_string(), "out".to_string())
+        );
     }
 
     #[test]

@@ -46,15 +46,15 @@ const PomodoroFlyoutDetail: React.FC = () => {
   const status = usePomodoroStore((s) => s.status);
   const timeLeft = usePomodoroStore((s) => s.timeLeft);
   if (mode === 'idle') {
-    return <>{t('menubar.pomodoroIdle', { defaultValue: '未开始' })}</>;
+    return <>{t('menubar.pomodoroIdle')}</>;
   }
   const phase =
     mode === 'work'
-      ? t('menubar.pomodoroWork', { defaultValue: '专注中' })
-      : t('menubar.pomodoroBreak', { defaultValue: '休息中' });
+      ? t('menubar.pomodoroWork')
+      : t('menubar.pomodoroBreak');
   const paused =
     status === 'paused'
-      ? ` · ${t('apps.system.paused', { defaultValue: '已暂停' })}`
+      ? ` · ${t('apps.system.paused')}`
       : '';
   const label = formatStatusBarTime(timeLeft);
   return (
@@ -211,7 +211,7 @@ const StatusBarComponent: React.FC = () => {
       data-chrome-inset={winChromeInset ? 'windows' : undefined}
       data-macos-chrome={macChrome ? 'integrated' : undefined}
       role="banner"
-      aria-label={t('menubar.label', { defaultValue: '学习状态栏' })}
+      aria-label={t('menubar.label')}
     >
       {macChrome ? (
         <div
@@ -226,13 +226,13 @@ const StatusBarComponent: React.FC = () => {
           type="button"
           className="wb-menubar-item wb-menubar-brand"
           data-testid="wb-menubar-brand"
-          aria-label={t('menubar.openApps', { defaultValue: '打开全部应用' })}
-          title={t('menubar.appName', { defaultValue: '学习桌面' })}
+          aria-label={t('menubar.openApps')}
+          title={t('menubar.appName')}
           onClick={openAppsPanel}
         >
           <DeepStudentMark className="wb-menubar-brand-mark" title="" />
           <span className="wb-menubar-brand-label">
-            {t('menubar.appName', { defaultValue: '学习桌面' })}
+            {t('menubar.appName')}
           </span>
         </button>
       </div>
@@ -241,8 +241,8 @@ const StatusBarComponent: React.FC = () => {
           type="button"
           className="wb-menubar-item wb-menubar-item-icon-only wb-menubar-command"
           data-testid="wb-menubar-command"
-          aria-label={t('menubar.openCommandPalette', { defaultValue: '打开命令面板' })}
-          title={t('menubar.openCommandPalette', { defaultValue: '打开命令面板' })}
+          aria-label={t('menubar.openCommandPalette')}
+          title={t('menubar.openCommandPalette')}
           onClick={openCommandPalette}
         >
           <MagnifyingGlass size={15} weight="bold" className="wb-menubar-item-icon" aria-hidden />
@@ -255,8 +255,8 @@ const StatusBarComponent: React.FC = () => {
           type="button"
           className="wb-menubar-item wb-menubar-item-icon-only wb-menubar-settings"
           data-testid="wb-menubar-settings"
-          aria-label={t('menubar.openSettings', { defaultValue: '打开设置' })}
-          title={t('menubar.openSettings', { defaultValue: '打开设置' })}
+          aria-label={t('menubar.openSettings')}
+          title={t('menubar.openSettings')}
           onClick={() => launchApp('settings')}
         >
           <GearSix size={15} weight="bold" className="wb-menubar-item-icon" aria-hidden />
@@ -267,10 +267,10 @@ const StatusBarComponent: React.FC = () => {
           className="wb-menubar-item wb-menubar-item-icon-only"
           data-testid="wb-menubar-center"
           data-wb-status-item="center"
-          aria-label={t('menubar.openCenter', { defaultValue: '打开学习中心' })}
+          aria-label={t('menubar.openCenter')}
           aria-haspopup="dialog"
           aria-expanded={centerOpen}
-          title={t('menubar.centerTitle', { defaultValue: '学习中心' })}
+          title={t('menubar.centerTitle')}
           onClick={toggleCenter}
         >
           <SquaresFour size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
@@ -296,10 +296,10 @@ const StatusBarComponent: React.FC = () => {
               tabIndex={-1}
             >
               <h2 id={titleId} className="wb-menubar-flyout-title">
-                {t('menubar.centerTitle', { defaultValue: '学习中心' })}
+                {t('menubar.centerTitle')}
               </h2>
 
-              <div className="wb-menubar-grid" role="group" aria-label={t('menubar.centerTitle', { defaultValue: '学习中心' })}>
+              <div className="wb-menubar-grid" role="group" aria-label={t('menubar.centerTitle')}>
                 <button
                   type="button"
                   className="wb-menubar-tile"
@@ -311,13 +311,10 @@ const StatusBarComponent: React.FC = () => {
                     <Cards size={18} weight="duotone" />
                   </span>
                   <span className="wb-menubar-tile-label">
-                    {t('menubar.moduleFlashcards', { defaultValue: '今日复习' })}
+                    {t('menubar.moduleFlashcards')}
                   </span>
                   <span className="wb-menubar-tile-detail">
-                    {t('menubar.flashcardsDueShort', {
-                      count: dueCount,
-                      defaultValue: `${dueCount} 张到期`,
-                    })}
+                    {t('menubar.flashcardsDueShort', { count: dueCount })}
                   </span>
                 </button>
 
@@ -331,13 +328,10 @@ const StatusBarComponent: React.FC = () => {
                     <Lightning size={18} weight="duotone" />
                   </span>
                   <span className="wb-menubar-tile-label">
-                    {t('menubar.moduleTasks', { defaultValue: '制卡任务' })}
+                    {t('menubar.moduleTasks')}
                   </span>
                   <span className="wb-menubar-tile-detail">
-                    {t('menubar.tasksRunningShort', {
-                      count: taskCount,
-                      defaultValue: `${taskCount} 进行中`,
-                    })}
+                    {t('menubar.tasksRunningShort', { count: taskCount })}
                   </span>
                 </button>
 
@@ -351,7 +345,7 @@ const StatusBarComponent: React.FC = () => {
                     <Timer size={18} weight="duotone" />
                   </span>
                   <span className="wb-menubar-tile-label">
-                    {t('menubar.moduleFocus', { defaultValue: '专注' })}
+                    {t('menubar.moduleFocus')}
                   </span>
                   <span className="wb-menubar-tile-detail">
                     <PomodoroFlyoutDetail />
@@ -366,7 +360,7 @@ const StatusBarComponent: React.FC = () => {
                     <SquaresFour size={18} weight="duotone" />
                   </span>
                   <span className="wb-menubar-tile-label">
-                    {t('menubar.moduleDesktop', { defaultValue: '桌面' })}
+                    {t('menubar.moduleDesktop')}
                   </span>
                   <div className="wb-menubar-tile-actions">
                     <button
@@ -375,14 +369,14 @@ const StatusBarComponent: React.FC = () => {
                       onClick={runAndClose(() => openAppsPanel())}
                     >
                       <CirclesFour size={12} weight="bold" aria-hidden="true" />
-                      {t('menubar.allApps', { defaultValue: '全部应用' })}
+                      {t('menubar.allApps')}
                     </button>
                     <button
                       type="button"
                       className="wb-menubar-tile-action"
                       onClick={runAndClose(() => useWorkbenchOverlay.getState().openExpose())}
                     >
-                      {t('menubar.expose', { defaultValue: '窗口俯瞰' })}
+                      {t('menubar.expose')}
                     </button>
                   </div>
                 </div>

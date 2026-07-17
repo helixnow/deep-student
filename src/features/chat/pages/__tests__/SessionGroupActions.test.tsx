@@ -15,6 +15,8 @@ const group: SessionGroup = {
   defaultSkillIds: [],
   pinnedResourceIds: [],
   workspaceId: undefined,
+  defaultRuntimeRootId: undefined,
+  preferredProjectRootPath: undefined,
   sortOrder: 0,
   persistStatus: 'active',
   createdAt: '2026-04-06T00:00:00.000Z',
@@ -90,7 +92,7 @@ describe('SessionGroupActions', () => {
     expect(newSessionButton).not.toContain('title={labels.newSession}');
     expect(sortableGroupItemSource).toContain("newSessionInGroup: t('page.newSessionInGroup', {");
     expect(sortableGroupItemSource).toContain('groupName: group.name');
-    expect(sortableGroupItemSource).toContain("defaultValue: '在 {{groupName}} 中新建会话'");
+    expect(sortableGroupItemSource).not.toContain("defaultValue: '在 {{groupName}} 中新建会话'");
   });
 
   it('uses the group-aware new session label for accessibility without native title', () => {

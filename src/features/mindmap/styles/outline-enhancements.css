@@ -1,0 +1,68 @@
+/* A9 / V7：大纲交互增强（checkbox / 折叠徽章 / 空态 / reduced-motion） */
+
+.outline-task-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border-radius: 3px;
+  border: 1.5px solid var(--mm-text-muted);
+  background: transparent;
+  box-sizing: border-box;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    border-color var(--notes-hover-transition, 120ms ease);
+}
+
+.outline-task-checkbox:hover {
+  border-color: var(--mm-text);
+}
+
+.outline-task-checkbox[aria-checked='true'],
+.outline-task-checkbox:checked {
+  background-color: var(--mm-primary);
+  border-color: var(--mm-primary);
+}
+
+.outline-task-checkbox[aria-checked='true']::after,
+.outline-task-checkbox:checked::after {
+  content: '';
+  width: 3px;
+  height: 7px;
+  /* 勾选符号用 primary-foreground：暗色模式下 primary 是浅色，白色对勾会看不清 */
+  border: solid hsl(var(--primary-foreground));
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.outline-node-row.focused .outline-task-checkbox:not(:checked):not([aria-checked='true']) {
+  border-color: var(--mm-primary);
+}
+
+/* 折叠 +N：布局微调；胶囊形态与 hover 过渡在 mindmap.css */
+.outline-node-row .outline-collapse-count {
+  margin-left: 2px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* mindmap.css 入场动画未覆盖大纲 reduced-motion，此处补齐 */
+@media (prefers-reduced-motion: reduce) {
+  .outline-node-row.entering,
+  .outline-content-enter {
+    animation: none !important;
+  }
+
+  .outline-task-checkbox,
+  .outline-collapse-count,
+  .outline-empty-action,
+  .indent-guide {
+    transition: none;
+  }
+}

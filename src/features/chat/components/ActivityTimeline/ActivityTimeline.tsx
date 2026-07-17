@@ -748,7 +748,7 @@ const ToolOutputSummary: React.FC<{ output: unknown }> = ({ output }) => {
         <div className="space-y-1">
           {loadedSkillIds.length > 0 && (
             <div className="space-y-0.5">
-              <div className="text-foreground/80">{t('timeline.tool.loadedSkills', { defaultValue: 'Loaded skills' })}</div>
+              <div className="text-foreground/80">{t('timeline.tool.loadedSkills')}</div>
               <div className="flex flex-wrap gap-1.5">
                 {loadedSkillIds.map((skillId) => (
                   <span
@@ -764,7 +764,7 @@ const ToolOutputSummary: React.FC<{ output: unknown }> = ({ output }) => {
 
           {loadedToolNames.length > 0 && (
             <div className="space-y-0.5">
-              <div className="text-foreground/80">{t('timeline.tool.loadedTools', { defaultValue: 'Loaded tools' })}</div>
+              <div className="text-foreground/80">{t('timeline.tool.loadedTools')}</div>
               <div className="flex flex-wrap gap-1.5">
                 {loadedToolNames.map((toolName) => (
                   <code
@@ -973,7 +973,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
                 {shellCommandVerb(shellDescriptor, t)}
               </span>
               <code className="min-w-0 truncate font-mono text-xs text-foreground" title={shellDescriptor.command}>
-                {shellDescriptor.command || t('timeline.shell.commandUnavailable', { ns: 'chatV2', defaultValue: '命令内容不可用' })}
+                {shellDescriptor.command || t('timeline.shell.commandUnavailable', {ns: 'chatV2'})}
               </code>
             </span>
           ) : (
@@ -1226,7 +1226,7 @@ const ToolLimitNodeContentInner: React.FC<ToolLimitNodeContentProps> = ({ isFirs
               <CaretRight size={14} className="flex-shrink-0" />
             )}
             {/* 复用已存在的 tool_limit.continuing key（timeline.limit 下无此 key，避免英文环境回退中文） */}
-            <span>{isContinuing ? t('tool_limit.continuing', '继续中...') : t('timeline.limit.continue')}</span>
+            <span>{isContinuing ? t('tool_limit.continuing') : t('timeline.limit.continue')}</span>
           </NotionButton>
         )}
       </div>

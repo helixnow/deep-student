@@ -98,9 +98,12 @@
 }
 
 .wb-empty-onboarding-title {
+  overflow: hidden;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wb-empty-onboarding-dismiss {
@@ -120,6 +123,7 @@
 .wb-empty-onboarding-dismiss:hover {
   opacity: 1;
   transform: translateY(-1px);
+  background: hsl(var(--primary) / 10%);
 }
 
 .wb-empty-onboarding-dismiss:focus-visible {

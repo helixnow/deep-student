@@ -66,7 +66,7 @@ export const createImageUploader = (
   return async (file: File): Promise<string> => {
     const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
     if (file.size > MAX_IMAGE_SIZE) {
-      showGlobalNotification('warning', i18next.t('common:imageUpload.tooLarge', 'Image exceeds 10MB limit'));
+      showGlobalNotification('warning', i18next.t('notes:editor.image_upload.too_large'));
       return '';
     }
 
@@ -164,10 +164,7 @@ export const createImageUploader = (
     // ★ Y8 修复：blob URL 仅当前会话有效，重启后图片将丢失。明确告知用户。
     showGlobalNotification(
       'warning',
-      i18next.t(
-        'notes:editor.image_upload.not_persisted',
-        '图片未能持久化保存，仅本次会话可见。请检查后重新插入图片。'
-      )
+      i18next.t('notes:editor.image_upload.not_persisted')
     );
     const blobUrl = URL.createObjectURL(file);
     emitImageUploadDebug('upload_complete', 'info', '使用 blob URL（降级方案）', {
@@ -176,19 +173,6 @@ export const createImageUploader = (
     });
     return blobUrl;
   };
-};
-
-/**
- * 获取翻译文本（带默认值回退）
- */
-const getTranslation = (key: string, defaultValue: string): string => {
-  try {
-    const result = i18next.t(key, { defaultValue });
-    // 如果返回的是 key 本身，说明 i18n 未初始化或翻译缺失
-    return result === key ? defaultValue : result;
-  } catch {
-    return defaultValue;
-  }
 };
 
 /**
@@ -202,12 +186,12 @@ export const createImageBlockConfig = (
   return {
     // 块级图片上传
     blockOnUpload: uploader,
-    blockUploadPlaceholderText: getTranslation('notes:editor.image_upload.placeholder', '点击或拖拽上传图片'),
-    blockCaptionPlaceholderText: getTranslation('notes:editor.image_upload.caption_placeholder', '添加图片说明...'),
+    blockUploadPlaceholderText: i18next.t('notes:editor.image_upload.placeholder'),
+    blockCaptionPlaceholderText: i18next.t('notes:editor.image_upload.caption_placeholder'),
     
     // 内联图片上传
     inlineOnUpload: uploader,
-    inlineUploadPlaceholderText: getTranslation('notes:editor.image_upload.inline_placeholder', '粘贴图片链接或上传'),
+    inlineUploadPlaceholderText: i18next.t('notes:editor.image_upload.inline_placeholder'),
     
     // 代理图片 URL：将路径转换为可显示的 URL
     // macOS WebView 不支持直接在 img 标签中加载 asset:// URL，需要转换为 blob URL

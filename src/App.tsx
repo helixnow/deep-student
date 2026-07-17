@@ -67,6 +67,7 @@ import { showGlobalNotification } from './components/UnifiedNotification';
 import { CustomScrollArea } from './components/custom-scroll-area';
 import { getErrorMessage } from './utils/errorUtils';
 import { useAppInitialization } from './hooks/useAppInitialization';
+import { useShellScrollGuard } from './hooks/useShellScrollGuard';
 import { useAppUpdater } from './hooks/useAppUpdater';
 import { UserAgreementDialog, useUserAgreement } from './components/legal/UserAgreementDialog';
 import { WelcomeOnboardingDialog, useWelcomeOnboarding } from './components/onboarding/WelcomeOnboardingDialog';
@@ -126,7 +127,6 @@ import {
   LazySandboxWorkbenchPage,
   LazyPdfReader,
   LazyTodoPage,
-  LazyTreeDragTest,
   LazyCrepeDemoPage,
   LazyChatV2IntegrationTest,
   LazyLLMOutputPlayground,
@@ -281,7 +281,7 @@ function CommandPaletteButton({
   }, [onOpenReady, open]);
   
   return (
-    <CommonTooltip content={`${t('common:command_palette_label', '命令面板')} (${isMac ? '⌘' : 'Ctrl'}+K)`} position="bottom">
+    <CommonTooltip content={`${t('common:command_palette_label')} (${isMac ? '⌘' : 'Ctrl'}+K)`} position="bottom">
       <NotionButton
         variant="ghost"
         size="icon"
@@ -583,6 +583,10 @@ function App() {
   // 🚀 应用初始化
   useAppInitialization();
 
+  // 🛡️ 外壳滚动保护：focus/scrollIntoView/拖拽自动滚动等把 overflow:hidden
+  // 的壳层容器滚出偏移时（表现为整页滚走、渲染断成两半）立即复位
+  useShellScrollGuard();
+
   // 🍎 macOS 原生菜单栏 → 命令系统桥接（其他平台为 no-op）
   useMenuEventBridge();
   
@@ -613,7 +617,7 @@ function App() {
         const status = await invoke<{ is_in_maintenance_mode: boolean }>('data_governance_get_maintenance_status');
         if (status.is_in_maintenance_mode) {
           useSystemStatusStore.getState().enterMaintenanceMode(
-            t('common:maintenance.banner_description', '系统正在进行维护操作，部分功能暂时受限。')
+            t('common:maintenance.banner_description')
           );
         }
       } catch (err) {
@@ -918,9 +922,9 @@ function App() {
   const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed && !workbenchActive;
   const shouldUseDesktopFloatingAccessory = !isSmallScreen;
   const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;
-  const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar', '切换边栏');
-  const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession', '新建会话');
-  const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label', '命令面板');
+  const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar');
+  const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession');
+  const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label');
   const updateBadgeVisible = !updater.checking && updater.available && !!updater.info;
   const desktopCollapsedLeadingWidth = 148;
   const desktopTitlebarLeadingInset = !isSmallScreen && leftPanelCollapsed
@@ -1333,22 +1337,6 @@ function App() {
     };
     try { window.addEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE' as any, handleNavigateToKnowledgeBase as any); } catch { /* non-critical: event listener setup may fail in test env */ }
     return () => { try { window.removeEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE' as any, handleNavigateToKnowledgeBase as any); } catch { /* non-critical: cleanup */ } };
-  }, []);
-
-  // Tree test: global open event for testing（仅开发模式）
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    const openTreeTest = () => setCurrentView('tree-test');
-    try { 
-      window.addEventListener('OPEN_TREE_TEST' as any, openTreeTest as any); 
-      (window as any).openTreeTest = openTreeTest;
-    } catch { /* non-critical: event listener setup may fail in test env */ }
-    return () => { 
-      try { 
-        window.removeEventListener('OPEN_TREE_TEST' as any, openTreeTest as any); 
-        delete (window as any).openTreeTest;
-      } catch { /* non-critical: cleanup */ } 
-    };
   }, []);
 
   // Chat V2 Integration Test: 集成测试页面入口（仅开发模式）
@@ -1907,7 +1895,7 @@ function App() {
           >
             <CaretLeft size={14} aria-hidden="true" />
             <span className="desktop-shell-sidebar-row-title truncate">
-              {t('common:actions.backToHome', { defaultValue: '返回主页' })}
+              {t('common:actions.backToHome')}
             </span>
           </NotionButton>
         </div>
@@ -2096,7 +2084,6 @@ function App() {
   const desktopHeaderNewSessionTooltipLabel = currentChatHeaderGroupName
     ? t('chatV2:page.newSessionInGroup', {
       groupName: currentChatHeaderGroupName,
-      defaultValue: '在 {{groupName}} 中新建会话',
     })
     : desktopHeaderNavHotzoneLabel;
   const shouldShowDesktopHeaderNavControls = leftPanelCollapsed && currentView !== 'settings' && currentView !== 'todo';
@@ -2132,7 +2119,7 @@ function App() {
       return '';
     }
 
-    return getSessionTitleText(state.title, t('chatV2:page.untitled', '未命名会话'));
+    return getSessionTitleText(state.title, t('chatV2:page.untitled'));
   }, [t]);
 
   const getChatHeaderGroupNameFromStoreState = useCallback((state?: ChatStore | null) => {
@@ -2254,26 +2241,25 @@ function App() {
     }
 
     const labels: Partial<Record<CurrentView, string>> = {
-      'chat-v2': t('sidebar:navigation.chat_v2', '新会话'),
-      'learning-hub': t('sidebar:navigation.learning_hub', '学习资源'),
-      'settings': t('sidebar:navigation.settings', '系统'),
-      'dashboard': t('common:navigation.dashboard', '总览'),
-      'task-dashboard': t('sidebar:navigation.anki_generation', '制卡任务'),
-      'skills-management': t('sidebar:navigation.skills_management', '技能管理'),
-      'data-management': t('common:navigation.data_management', '数据管理'),
-      'template-management': t('sidebar:navigation.template_management', '模板库'),
+      'chat-v2': t('sidebar:navigation.chat_v2'),
+      'learning-hub': t('sidebar:navigation.learning_hub'),
+      'settings': t('sidebar:navigation.settings'),
+      'dashboard': t('common:navigation.dashboard'),
+      'task-dashboard': t('sidebar:navigation.anki_generation'),
+      'skills-management': t('sidebar:navigation.skills_management'),
+      'data-management': t('common:navigation.data_management'),
+      'template-management': t('sidebar:navigation.template_management'),
       'ui-lab': t('sidebar:navigation.ui_lab'),
-      'template-json-preview': t('common:navigation.template_json_preview', '模板预览'),
-      'pdf-reader': t('common:navigation.pdf_reader', 'PDF 阅读器'),
-      'sandbox-workbench': t('common:navigation.sandbox_workbench', '沙箱工作台'),
+      'template-json-preview': t('common:navigation.template_json_preview'),
+      'pdf-reader': t('common:navigation.pdf_reader'),
+      'sandbox-workbench': t('common:navigation.sandbox_workbench'),
       'todo': t('sidebar:navigation.todo'),
-      'tree-test': t('common:navigation.tree_test', 'Tree Test'),
-      'crepe-demo': t('common:navigation.crepe_demo', 'Crepe Demo'),
-      'chat-v2-test': t('common:navigation.chat_v2_test', 'Chat V2 Test'),
-      'llm-playground': 'LLM Playground',
+      'crepe-demo': t('common:navigation.crepe_demo'),
+      'chat-v2-test': t('common:navigation.chat_v2_test'),
+      'llm-playground': t('common:navigation.llm_playground'),
     };
 
-    return labels[currentView] ?? t('common:app.default_header', '新对话');
+    return labels[currentView] ?? t('common:app.default_header');
   }, [currentChatHeaderTitle, currentView, t]);
 
   // 🚀 性能优化：memoize 各视图内容，防止切换视图时所有已缓存视图子树被重新协调
@@ -2454,7 +2440,7 @@ function App() {
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:z-[9999] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:text-sm focus:font-medium focus:shadow-lg"
         >
-          {t('common:aria.skip_to_main_content', '跳转到主内容')}
+          {t('common:aria.skip_to_main_content')}
         </a>
         {/* 移动端：统一顶部导航栏 */}
         {isSmallScreen && (
@@ -2634,9 +2620,9 @@ function App() {
           {maintenanceMode && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 text-amber-700 dark:text-amber-400 text-sm">
               <Warning size={16} className="shrink-0" />
-              <span className="font-medium shrink-0">{t('common:maintenance.banner_title', '维护模式')}</span>
+              <span className="font-medium shrink-0">{t('common:maintenance.banner_title')}</span>
               <span className="flex-1 truncate">
-                {maintenanceReason || t('common:maintenance.banner_description', '系统正在进行维护操作，部分功能暂时受限。')}
+                {maintenanceReason || t('common:maintenance.banner_description')}
               </span>
               <NotionButton
                 variant="ghost"
@@ -2654,7 +2640,7 @@ function App() {
                   }
                 }}
               >
-                {t('common:maintenance.go_to_data_governance', '查看详情')}
+                {t('common:maintenance.go_to_data_governance')}
               </NotionButton>
             </div>
           )}
@@ -2724,8 +2710,6 @@ function App() {
 
               {/* 待办事项独立页面 */}
               {renderViewLayer('todo', <Suspense fallback={<PageLoadingFallback />}><LazyTodoPage /></Suspense>)}
-
-              {import.meta.env.DEV && renderViewLayer('tree-test', <Suspense fallback={<PageLoadingFallback />}><LazyTreeDragTest /></Suspense>)}
 
               {import.meta.env.DEV && renderViewLayer('crepe-demo', <Suspense fallback={<PageLoadingFallback />}><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></Suspense>)}
 

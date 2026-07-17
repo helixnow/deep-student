@@ -2548,6 +2548,35 @@ END;",
             }
         }
 
+        // --- V20260717: 课题首选 runtime root ---
+        {
+            const TARGET_VERSION: i32 = 20260717;
+            const TARGET_TABLE: &str = "chat_v2_session_groups";
+
+            if self.table_exists(conn, TARGET_TABLE)?
+                && !self.is_migration_recorded(conn, TARGET_VERSION)?
+            {
+                let _ = self.add_column_if_missing(
+                    conn,
+                    TARGET_TABLE,
+                    "default_runtime_root_id",
+                    "TEXT",
+                )?;
+                let _ = self.add_column_if_missing(
+                    conn,
+                    TARGET_TABLE,
+                    "preferred_project_root_path",
+                    "TEXT",
+                )?;
+                tracing::info!(
+                    "🔧 [PreRepair] chat_v2: 课题首选 runtime root 列已补齐，标记 V{} 迁移为已完成",
+                    TARGET_VERSION
+                );
+                self.ensure_refinery_history_table(conn)?;
+                self.mark_migration_complete(conn, runner, TARGET_VERSION)?;
+            }
+        }
+
         Ok(())
     }
 
@@ -2683,7 +2712,9 @@ END;",
                 sort_order INTEGER DEFAULT 0,
                 persist_status TEXT DEFAULT 'active',
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                default_runtime_root_id TEXT,
+                preferred_project_root_path TEXT
             );",
         )
         .map_err(|e| {

@@ -354,7 +354,8 @@
     "complete_mobile": "Database deletion complete! Please exit and reopen the app to complete initialization.",
     "complete_desktop": "Database deletion complete! App will restart in 3 seconds...",
     "error": "Failed to clear data, please check console logs",
-    "confirm_text_error": "Incorrect confirmation text, please enter \"Clear all databases\""
+    "confirm_text_error": "Incorrect confirmation text, please enter \"Clear all databases\"",
+    "mobile_purge_failed": "Failed to purge mobile data directory: {{error}}"
   },
   "backup_test": {
     "success": "Backup system test passed! Data integrity: {{score}}%",
@@ -366,7 +367,29 @@
     "result_failed_detail": "Test failed: {{error}}",
     "stop_button": "Stop Test",
     "run_button": "Run Test",
-    "reset_button": "Reset"
+    "reset_button": "Reset",
+    "cancelled": "Test cancelled",
+    "unknown_error": "Unknown error",
+    "verify_failed": "Imported backup verification failed: {{reason}}",
+    "backup_failed": "Backup failed: {{error}}",
+    "backup_id_missing": "Backup completed but no backup_id was returned",
+    "zip_export_failed": "ZIP export failed: {{error}}",
+    "zip_path_missing": "ZIP export completed but no path was returned",
+    "import_failed": "Import failed: {{error}}",
+    "import_id_missing": "Import completed but no backup_id was returned",
+    "restore_failed": "Restore failed: {{error}}",
+    "steps": {
+      "preparing": "Preparing",
+      "prepare_env": "Preparing test environment",
+      "create_core_data": "Creating core test data",
+      "create_edge_data": "Creating edge-case data",
+      "create_symlink": "Creating symlink tests",
+      "run_backup": "Running backup (data_governance)",
+      "run_import_restore": "Importing and restoring (data_governance)",
+      "verify_import": "Verifying imported backup",
+      "cleanup": "Cleaning up",
+      "done": "Done"
+    }
   },
   "header": {
     "title": "Data Management",

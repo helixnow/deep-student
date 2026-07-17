@@ -14,6 +14,10 @@
 
   /* reduced-motion 下静态高亮保留时长（JS 兜底清理对齐） */
   --acr-flash-static-ms: 400ms;
+
+  /* Strip 状态语义色（amber 与光环暂停态同源；success 走主题 token） */
+  --acr-paused-hue: hsl(38deg 92% 50%);
+  --acr-done-hue: hsl(var(--success, 152 60% 36%));
 }
 
 /* ==========================================================================
@@ -71,16 +75,32 @@
   min-height: 28px;
   padding: 4px 10px;
   border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
-  background: hsl(var(--primary) / 10%);
+  /* 顶缘细高光 + tint 纵向微渐变：与标题栏薄玻璃质感对齐（静态，非动画） */
+  background:
+    linear-gradient(180deg, hsl(var(--primary) / 12%) 0%, hsl(var(--primary) / 8%) 100%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--wb-glass-highlight, rgba(255, 255, 255, 0.55)) 40%, transparent);
   font-size: 12px;
   line-height: 1.2;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--foreground));
   user-select: none;
 }
 
 .acr-agent-strip[data-status='pausedByUser'] {
-  background: hsl(38deg 92% 50% / 12%);
+  background:
+    linear-gradient(180deg, hsl(38deg 92% 50% / 14%) 0%, hsl(38deg 92% 50% / 9%) 100%);
   border-bottom: 1px dashed hsl(38deg 92% 50% / 55%);
+}
+
+/* 终态短暂保留（S-REV-02 撤销窗口）：完成绿 tint / 停止中性 tint */
+.acr-agent-strip[data-status='done'] {
+  background:
+    linear-gradient(180deg, hsl(var(--success, 152 60% 36%) / 12%) 0%, hsl(var(--success, 152 60% 36%) / 7%) 100%);
+}
+
+.acr-agent-strip[data-status='aborted'] {
+  background:
+    linear-gradient(180deg, hsl(var(--muted) / 55%) 0%, hsl(var(--muted) / 35%) 100%);
 }
 
 .acr-agent-strip-label {
@@ -99,16 +119,39 @@
   height: 7px;
   border-radius: 999px;
   background: hsl(var(--primary));
+  box-sizing: border-box;
 }
 
 .acr-agent-strip-dot[data-state='acting'] {
+  /* 静态光晕 + opacity 呼吸（呼吸只动 opacity，光晕随之淡入淡出） */
+  box-shadow: 0 0 6px hsl(var(--primary) / 45%);
   animation: acr-halo-breathe var(--acr-halo-breathe-ms) ease-in-out infinite;
+}
+
+.acr-agent-strip-dot[data-state='reviewing'] {
+  /* 空心圆环：待确认（静态，形态区分于实心操作点） */
+  background: transparent;
+  border: 1.5px solid hsl(var(--primary));
+  animation: none;
+  opacity: 1;
 }
 
 .acr-agent-strip-dot[data-state='paused'] {
   /* 方点 + 琥珀：形态与颜色双通道 */
   border-radius: 1px;
-  background: hsl(38deg 92% 50%);
+  background: var(--acr-paused-hue);
+  animation: none;
+  opacity: 1;
+}
+
+.acr-agent-strip-dot[data-state='done'] {
+  background: var(--acr-done-hue);
+  animation: none;
+  opacity: 1;
+}
+
+.acr-agent-strip-dot[data-state='aborted'] {
+  background: hsl(var(--muted-foreground));
   animation: none;
   opacity: 1;
 }
@@ -126,6 +169,12 @@
   padding: 0 8px;
   font-size: 11px;
   border-radius: 8px;
+}
+
+/* 键盘可达性：焦点环走 workbench token（a11y，不随材质档降级） */
+.acr-agent-strip-actions .acr-agent-strip-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65));
 }
 
 /* ==========================================================================
@@ -192,10 +241,14 @@
     box-shadow: none;
   }
 
-  .acr-agent-strip {
+  .acr-agent-strip,
+  .acr-agent-strip[data-status='pausedByUser'],
+  .acr-agent-strip[data-status='done'],
+  .acr-agent-strip[data-status='aborted'] {
     forced-color-adjust: none;
     background: Canvas;
     border-bottom: 1px solid CanvasText;
+    box-shadow: none;
     color: CanvasText;
   }
 
@@ -205,10 +258,21 @@
 
   .acr-agent-strip-dot[data-state='acting'] {
     background: Highlight;
+    box-shadow: none;
     animation: none;
   }
 
-  .acr-agent-strip-dot[data-state='paused'] {
+  .acr-agent-strip-dot[data-state='reviewing'] {
+    background: Canvas;
+    border-color: Highlight;
+  }
+
+  .acr-agent-strip-dot[data-state='done'] {
+    background: CanvasText;
+  }
+
+  .acr-agent-strip-dot[data-state='paused'],
+  .acr-agent-strip-dot[data-state='aborted'] {
     background: GrayText;
   }
 

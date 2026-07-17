@@ -212,7 +212,7 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
         ref={barRef}
         className="wb-switcher-bar wb-glass wb-glass-highlight wb-glass-lens pointer-events-auto"
         role="listbox"
-        aria-label={t('workbench:switcher.title', '窗口切换器')}
+        aria-label={t('workbench:switcher.title')}
         aria-activedescendant={selectedId ? `wb-switcher-item-${selectedId}` : undefined}
         onAnimationEnd={handleBarAnimationEnd}
       >
@@ -267,7 +267,7 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
                 {win.minimized && (
                   <span
                     className="wb-switcher-min-dot"
-                    aria-label={t('workbench:switcher.minimized', '已最小化')}
+                    aria-label={t('workbench:switcher.minimized')}
                   />
                 )}
               </button>
@@ -279,7 +279,7 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
             {selectedTitle || '\u00A0'}
           </div>
           <div className="wb-switcher-hint">
-            {t('workbench:switcher.hint', '按住 Ctrl 循环选择，松开切换')}
+            {t('workbench:switcher.hint')}
           </div>
         </div>
       </div>

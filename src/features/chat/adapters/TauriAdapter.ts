@@ -4220,13 +4220,10 @@ export class ChatV2TauriAdapter {
       modeRequiredBundleIds?: string[];
       agenticSessionSkillIds?: string[];
       branchLocalSkillIds?: string[];
-      effectiveAllowedInternalTools?: string[];
-      effectiveAllowedExternalTools?: string[];
       effectiveAllowedExternalServers?: string[];
     };
     runtimeSnapshot?: {
       activeSkillIds?: string[];
-      skillAllowedTools?: string[];
       skillContents?: Record<string, string>;
       skillDependencies?: Record<string, string[]>;
       skillEmbeddedTools?: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>>;
@@ -4305,18 +4302,6 @@ export class ChatV2TauriAdapter {
 
     if (replayPinnedSkillIds.length > 0) {
       options.activeSkillIds = replayPinnedSkillIds;
-    }
-
-    if (runtimeSnapshot?.skillAllowedTools !== undefined) {
-      options.skillAllowedTools = runtimeSnapshot.skillAllowedTools.filter(Boolean);
-    } else {
-      const replayAllowedTools = Array.from(new Set([
-        ...(snapshot.effectiveAllowedInternalTools || []),
-        ...(snapshot.effectiveAllowedExternalTools || []),
-      ])).filter(Boolean);
-      if (replayAllowedTools.length > 0) {
-        options.skillAllowedTools = replayAllowedTools;
-      }
     }
 
     const skillContents: Record<string, string> = { ...(runtimeSnapshot?.skillContents || {}) };
@@ -4470,60 +4455,6 @@ export class ChatV2TauriAdapter {
     showGlobalNotification('warning', i18n.t('chatV2:chat.context_truncated', { count: removedCount }));
   }
 
-  private canonicalSkillPolicyToolName(toolName: string): string {
-    return toolName
-      .replace(/^builtin[-:]/, '')
-      .replace(/^mcp\.tools\./, '')
-      .replace(/^mcp_/, '');
-  }
-
-  private isSkillPolicyControlTool(toolName: string): boolean {
-    return [
-      'load_skills',
-      'builtin-load_skills',
-      'builtin:load_skills',
-      'mcp_load_skills',
-      'attempt_completion',
-      'builtin-attempt_completion',
-      'mcp_attempt_completion',
-      'coordinator_sleep',
-      'builtin-coordinator_sleep',
-      'workspace_coordinator_sleep',
-    ].includes(toolName);
-  }
-
-  private isToolAllowedBySkillPolicy(
-    toolName: string,
-    serverId: string | undefined,
-    skillAllowedTools: string[] | undefined,
-  ): boolean {
-    if (this.isSkillPolicyControlTool(toolName)) return true;
-    if (skillAllowedTools === undefined) return true;
-
-    const toolShort = this.canonicalSkillPolicyToolName(toolName);
-    return skillAllowedTools
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .some((entry) => {
-        const scoped = entry.split('::');
-        if (scoped.length === 2) {
-          const [allowedServerId, allowedToolName] = scoped;
-          if (allowedServerId !== serverId) return false;
-          const allowedToolShort = this.canonicalSkillPolicyToolName(allowedToolName);
-          return allowedToolName === toolName ||
-            allowedToolName === toolShort ||
-            allowedToolShort === toolName ||
-            allowedToolShort === toolShort;
-        }
-
-        const allowedShort = this.canonicalSkillPolicyToolName(entry);
-        return entry === toolName ||
-          entry === toolShort ||
-          allowedShort === toolName ||
-          allowedShort === toolShort;
-      });
-  }
-
   private buildSendOptions(snapshot?: BuildSendOptionsSnapshot): SendOptions {
     // 🔧 使用 getCurrentState() 获取最新状态，而非构造时的快照
     // 这确保了 enableThinking 等用户实时修改的参数能正确传递
@@ -4641,13 +4572,6 @@ export class ChatV2TauriAdapter {
       }
     }
     const authoritativeToolSkillIds = Array.from(enabledSkillIdSet);
-    const hasSkillToolPolicy = authoritativeToolSkillIds.length > 0;
-    const skillAllowedTools = Array.from(new Set(
-      authoritativeToolSkillIds.flatMap((skillId) => {
-        const skill = skillRegistry.get(skillId);
-        return skill?.allowedTools ?? skill?.tools ?? skill?.embeddedTools?.map(tool => tool.name) ?? [];
-      })
-    )).filter(Boolean);
 
     const options = {
       // ChatParams
@@ -4681,6 +4605,17 @@ export class ChatV2TauriAdapter {
       groupPinnedResourceIds: groupId
         ? (groupCache.get(groupId)?.pinnedResourceIds ?? [])
         : undefined,
+      // 课题首选 runtime root：优先读当前 group 缓存，否则回退 session metadata snapshot。
+      // 后端以 DB 课题字段为准；前端透传仅作可观测/兜底辅助，不可信任覆盖未校验 id。
+      groupDefaultRuntimeRootId: (() => {
+        if (!groupId) return undefined;
+        const group = groupCache.get(groupId);
+        if (group?.defaultRuntimeRootId) {
+          return group.defaultRuntimeRootId;
+        }
+        const snapshot = sessionMetadata?.groupDefaultRuntimeRootIdSnapshot;
+        return typeof snapshot === 'string' && snapshot.length > 0 ? snapshot : undefined;
+      })(),
       maxToolRecursion: chatParams.maxToolRecursion,
 
       // 功能开关（结合用户设置和模式配置）
@@ -4701,9 +4636,6 @@ export class ChatV2TauriAdapter {
       multimodalEnableReranking: chatParams.multimodalEnableReranking,
       multimodalLibraryIds: chatParams.multimodalLibraryIds,
 
-      // 🆕 关闭工具白名单检查
-      disableToolWhitelist: chatParams.disableToolWhitelist || undefined,
-
       // 🆕 图片压缩策略（不设置时后端使用智能默认策略）
       visionQuality: chatParams.visionQuality,
 
@@ -4720,7 +4652,6 @@ export class ChatV2TauriAdapter {
       mcpToolSchemas: this.collectMcpToolSchemas(
         chatParams.selectedMcpServers,
         authoritativeToolSkillIds,
-        hasSkillToolPolicy ? skillAllowedTools : undefined,
       ),
 
       // 搜索引擎（从 chatParams 获取选中的引擎）
@@ -4736,9 +4667,8 @@ export class ChatV2TauriAdapter {
       // ========== Schema 工具注入选项（文档 26）==========
       schemaToolIds: undefined as string[] | undefined,
 
-      // 🆕 激活技能列表（用于后端 allowedTools fail-closed 判定）
+      // 激活技能列表（用于技能内容与工具渐进加载）
       activeSkillIds: authoritativeActiveSkillIds.length > 0 ? authoritativeActiveSkillIds : undefined,
-      skillAllowedTools: hasSkillToolPolicy ? skillAllowedTools : undefined,
 
       // ========== Canvas 智能笔记选项 ==========
       // 从 modeState 获取当前打开的笔记 ID，作为 Canvas 工具的默认目标
@@ -4750,7 +4680,6 @@ export class ChatV2TauriAdapter {
     // skill_instruction ContextRef 仅作为 UI / 历史兼容缓存，不再参与运行时权限决策
     const schemaToolResult = collectSchemaToolIds({
       pendingContextRefs,
-      skillAllowedTools: hasSkillToolPolicy ? skillAllowedTools : undefined,
     });
     if (schemaToolResult.schemaToolIds.length > 0) {
       options.schemaToolIds = schemaToolResult.schemaToolIds;
@@ -4860,7 +4789,6 @@ export class ChatV2TauriAdapter {
   private collectMcpToolSchemas(
     selectedServerIds?: string[],
     loadedSkillIds?: string[],
-    skillAllowedTools?: string[]
   ): Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> {
     const schemas: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> = [];
 
@@ -4903,9 +4831,6 @@ export class ChatV2TauriAdapter {
     const loadedTools = Array.from(loadedToolsByKey.values());
     const availableEngines = getAvailableSearchEngines();
     for (const tool of loadedTools) {
-      if (!this.isToolAllowedBySkillPolicy(tool.name, undefined, skillAllowedTools)) {
-        continue;
-      }
       let inputSchema = tool.inputSchema;
       // 🔧 动态注入可用搜索引擎到 web_search 工具，避免 LLM 尝试未配置的引擎
       if (tool.name === 'builtin-web_search' && availableEngines.length > 0) {
@@ -4940,9 +4865,6 @@ export class ChatV2TauriAdapter {
         // 从 McpService 缓存获取该服务器的工具列表
         const tools = McpService.getCachedToolsFor(serverId);
         for (const tool of tools) {
-          if (!this.isToolAllowedBySkillPolicy(tool.name, serverId, skillAllowedTools)) {
-            continue;
-          }
           schemas.push({
             name: tool.name,
             serverId,

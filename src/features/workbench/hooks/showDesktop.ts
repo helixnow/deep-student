@@ -60,9 +60,7 @@ export function toggleShowDesktop(): void {
     }
     for (const win of visible) requestMinimizeAnimated(win.id);
     announceWorkbench(
-      i18n.t('workbench:a11y.showDesktop', {
-        defaultValue: '已显示桌面',
-      }),
+      i18n.t('workbench:a11y.showDesktop'),
     );
     return;
   }

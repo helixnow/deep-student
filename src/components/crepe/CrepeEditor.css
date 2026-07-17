@@ -86,38 +86,54 @@
   background: transparent !important;
   color: var(--foreground) !important;
   caret-color: var(--foreground) !important;
+  font-size: var(--notes-body-size, 16px);
+  line-height: var(--notes-body-lh, 1.5);
 }
 
 .crepe-editor-wrapper .ProseMirror > * + * {
-  margin-top: 0.75em;
+  margin-top: var(--notes-block-gap, 0.75em);
 }
 
-/* ===== 文本选中样式 - 关键修复 ===== */
+/* 引用 / 代码块：略大于普通段落间距，成组呼吸感 */
+.crepe-editor-wrapper .ProseMirror > * + blockquote,
+.crepe-editor-wrapper .ProseMirror > * + pre,
+.crepe-editor-wrapper .ProseMirror > * + .milkdown-code-block {
+  margin-top: var(--notes-callout-gap, 1em);
+}
+
+.crepe-editor-wrapper .ProseMirror > blockquote + *,
+.crepe-editor-wrapper .ProseMirror > pre + *,
+.crepe-editor-wrapper .ProseMirror > .milkdown-code-block + * {
+  margin-top: var(--notes-callout-gap, 1em);
+}
+
+/* ===== 文本选中样式（Notion 蓝选区 · 仅编辑器作用域） ===== */
 .crepe-editor-wrapper .ProseMirror ::selection {
-  background: hsl(var(--primary) / 0.2) !important;
+  background: var(--notes-selection-bg, hsl(var(--primary) / 0.14)) !important;
   color: inherit !important;
 }
 
 .crepe-editor-wrapper .ProseMirror::-moz-selection {
-  background: hsl(var(--primary) / 0.2) !important;
+  background: var(--notes-selection-bg, hsl(var(--primary) / 0.14)) !important;
   color: inherit !important;
 }
 
-/* Crepe/Milkdown 特定选中样式覆盖 */
+/* Crepe/Milkdown 块选中态 — 与 ::selection 同系半透明 */
 .crepe-editor-wrapper .ProseMirror-selectednode {
-  outline: 2px solid hsl(var(--primary)) !important;
+  outline: 2px solid hsl(var(--primary) / 0.45) !important;
   outline-offset: 2px;
+  background: var(--notes-block-selected-bg, hsl(var(--primary) / 0.14));
 }
 
 .crepe-editor-wrapper .selectedCell {
-  background: hsl(var(--primary) / 0.1) !important;
+  background: var(--notes-block-selected-bg, hsl(var(--primary) / 0.14)) !important;
 }
 
 /* 选中高亮背景 */
 .crepe-editor-wrapper [data-selected],
 .crepe-editor-wrapper .selected,
 .crepe-editor-wrapper [class*="selected"] {
-  background: hsl(var(--primary) / 0.15) !important;
+  background: var(--notes-block-selected-bg, hsl(var(--primary) / 0.14)) !important;
 }
 
 /* ===== CodeMirror 代码编辑器样式 ===== */
@@ -151,7 +167,7 @@
 
 .crepe-editor-wrapper .cm-selectionBackground,
 .crepe-editor-wrapper .cm-editor .cm-selectionBackground {
-  background: hsl(var(--primary) / 0.2) !important;
+  background: var(--notes-selection-bg, hsl(var(--primary) / 0.14)) !important;
 }
 
 .crepe-editor-wrapper .cm-cursor {
@@ -182,6 +198,7 @@
 .crepe-editor-wrapper .milkdown .milkdown-code-block .list-wrapper {
   background: hsl(var(--popover)) !important;
   border: 1px solid hsl(var(--border)) !important;
+  border-radius: var(--notes-radius-popup, 8px) !important;
   overflow: hidden !important;
 }
 
@@ -213,6 +230,12 @@
 
 .crepe-editor-wrapper .milkdown .milkdown-code-block .language-list-item:hover {
   background: hsl(var(--accent)) !important;
+  border-radius: var(--notes-popup-item-radius, 4px) !important;
+}
+
+/* 语言列表项默认圆角（内部项 4px） */
+.crepe-editor-wrapper .milkdown .milkdown-code-block .language-list-item {
+  border-radius: var(--notes-popup-item-radius, 4px) !important;
 }
 
 /* 语言列表滚动条 - 使用项目自研细滚动条 */
@@ -289,32 +312,58 @@
 .crepe-editor-wrapper .milkdown .milkdown-latex-inline-edit {
   background: hsl(var(--popover)) !important;
   border: 1px solid hsl(var(--border)) !important;
-  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15) !important;
+  border-radius: var(--notes-radius-popup, 8px) !important;
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15)) !important;
 }
 
-/* 标题样式 */
+/* 标题样式 — Notion/Obsidian 阶梯（相对正文 em，token 见 notes-typography.css） */
 .crepe-editor-wrapper h1 {
-  font-size: 2em;
-  font-weight: 700;
-  line-height: 1.2;
+  font-size: var(--notes-heading-h1-size, 1.875em);
+  font-weight: var(--notes-heading-h1-weight, 600);
+  line-height: var(--notes-heading-h1-lh, 1.3);
   margin-top: 1.5em;
   margin-bottom: 0.5em;
 }
 
 .crepe-editor-wrapper h2 {
-  font-size: 1.5em;
-  font-weight: 600;
-  line-height: 1.3;
+  font-size: var(--notes-heading-h2-size, 1.5em);
+  font-weight: var(--notes-heading-h2-weight, 600);
+  line-height: var(--notes-heading-h2-lh, 1.3);
   margin-top: 1.25em;
   margin-bottom: 0.5em;
 }
 
 .crepe-editor-wrapper h3 {
-  font-size: 1.25em;
-  font-weight: 600;
-  line-height: 1.4;
+  font-size: var(--notes-heading-h3-size, 1.25em);
+  font-weight: var(--notes-heading-h3-weight, 600);
+  line-height: var(--notes-heading-h3-lh, 1.3);
   margin-top: 1em;
   margin-bottom: 0.5em;
+}
+
+.crepe-editor-wrapper h4 {
+  font-size: var(--notes-heading-h4-size, 1.125em);
+  font-weight: var(--notes-heading-h4-weight, 600);
+  line-height: var(--notes-heading-h4-lh, 1.35);
+  margin-top: 0.9em;
+  margin-bottom: 0.4em;
+}
+
+.crepe-editor-wrapper h5 {
+  font-size: var(--notes-heading-h5-size, 1em);
+  font-weight: var(--notes-heading-h5-weight, 600);
+  line-height: var(--notes-heading-h5-lh, 1.4);
+  margin-top: 0.85em;
+  margin-bottom: 0.35em;
+}
+
+.crepe-editor-wrapper h6 {
+  font-size: var(--notes-heading-h6-size, 1em);
+  font-weight: var(--notes-heading-h6-weight, 500);
+  line-height: var(--notes-heading-h6-lh, 1.4);
+  margin-top: 0.85em;
+  margin-bottom: 0.35em;
+  color: hsl(var(--muted-foreground));
 }
 
 /* 代码块样式 */
@@ -326,24 +375,25 @@
 }
 
 .crepe-editor-wrapper code {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.875em;
+  font-family: var(--font-mono);
+  font-size: var(--notes-inline-code-size, 0.875em);
 }
 
+/* 行内代码 — Notion pill：muted 底 + 4px 圆角 + 左右 0.2em；色走主题 destructive */
 .crepe-editor-wrapper :not(pre) > code {
-  background: var(--muted, hsl(210 40% 96.1%));
-  padding: 0.2em 0.4em;
-  border-radius: 0.25rem;
+  background: hsl(var(--muted));
+  color: var(--crepe-color-inline-code, hsl(var(--destructive)));
+  padding: 0.1em var(--notes-inline-code-pad-x, 0.2em);
+  border-radius: var(--notes-inline-code-radius, 4px);
 }
 
-/* 引用块 */
+/* 引用块 — Notion：3px 前景竖线、不斜体、正常前景 */
 .crepe-editor-wrapper blockquote {
-  border-left: 4px solid hsl(var(--primary));
+  border-left: var(--notes-blockquote-border-w, 3px) solid hsl(var(--foreground));
   padding-left: 1rem;
   margin-left: 0;
-  font-style: italic;
-  /* 引用文字使用稍浅的前景色，但不能太浅 */
-  color: hsl(var(--foreground) / 0.75);
+  font-style: normal;
+  color: hsl(var(--foreground));
 }
 
 /* 链接 */
@@ -352,7 +402,7 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
-  transition: color 0.2s, opacity 0.2s;
+  transition: color var(--notes-hover-transition, 120ms ease), opacity var(--notes-hover-transition, 120ms ease);
 }
 
 .crepe-editor-wrapper a:hover {
@@ -369,8 +419,17 @@
   color: hsl(var(--foreground));
 }
 
+/* Notion 列表 marker 层级：一级实心圆、二级空心、三级方形（原生 ul 兜底） */
 .crepe-editor-wrapper ul {
   list-style-type: disc;
+}
+
+.crepe-editor-wrapper ul ul {
+  list-style-type: circle;
+}
+
+.crepe-editor-wrapper ul ul ul {
+  list-style-type: square;
 }
 
 .crepe-editor-wrapper ol {
@@ -378,9 +437,19 @@
 }
 
 .crepe-editor-wrapper li {
-  margin-top: 0.25em;
+  /* Notion：列表相邻项比普通段落更紧凑 */
+  margin-top: var(--notes-list-item-gap, 0.125em);
+  margin-bottom: var(--notes-list-item-gap, 0.125em);
   /* 列表项继承正确的文字颜色 */
   color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper li:first-child {
+  margin-top: 0;
+}
+
+.crepe-editor-wrapper li:last-child {
+  margin-bottom: 0;
 }
 
 /* 强制无序列表项目符号颜色 */
@@ -405,11 +474,26 @@
   cursor: pointer;
 }
 
-/* 分隔线 */
+/* 已勾选任务 — Notion：删除线 + muted（Milkdown 用 .label.checked） */
+.crepe-editor-wrapper .task-list-item:has(input[type="checkbox"]:checked),
+.crepe-editor-wrapper .milkdown-list-item-block li:has(.label.checked) .children {
+  color: hsl(var(--muted-foreground));
+  text-decoration: line-through;
+}
+
+.crepe-editor-wrapper .task-list-item:has(input[type="checkbox"]:checked) > *,
+.crepe-editor-wrapper .milkdown-list-item-block li:has(.label.checked) .children > *,
+.crepe-editor-wrapper .milkdown-list-item-block li:has(.label.checked) .children p,
+.crepe-editor-wrapper .milkdown-list-item-block li:has(.label.checked) .children span {
+  color: hsl(var(--muted-foreground)) !important;
+  text-decoration: line-through;
+}
+
+/* 分隔线 — Notion：1px border 色、上下约 0.75em */
 .crepe-editor-wrapper hr {
   border: none;
-  border-top: 1px solid var(--border, hsl(214.3 31.8% 91.4%));
-  margin: 2rem 0;
+  border-top: 1px solid hsl(var(--border));
+  margin: var(--notes-hr-margin-block, 0.75em) 0;
 }
 
 /* 表格 */
@@ -421,14 +505,46 @@
 
 .crepe-editor-wrapper th,
 .crepe-editor-wrapper td {
-  border: 1px solid var(--border, hsl(214.3 31.8% 91.4%));
+  border: 1px solid hsl(var(--border));
   padding: 0.5rem 0.75rem;
   text-align: left;
 }
 
 .crepe-editor-wrapper th {
-  background: var(--muted, hsl(210 40% 96.1%));
+  background: var(--notes-table-header-bg, hsl(var(--muted) / 0.5));
   font-weight: 600;
+}
+
+/* ===== 暗色模式正文复核（V4）===== */
+/* 颜色均走 token；暗色下 foreground/border/muted 自动翻转，无需改数值。 */
+.dark .crepe-editor-wrapper blockquote {
+  border-left-color: hsl(var(--foreground));
+  color: hsl(var(--foreground));
+  font-style: normal;
+}
+
+.dark .crepe-editor-wrapper :not(pre) > code {
+  background: hsl(var(--muted));
+  color: var(--crepe-color-inline-code, hsl(var(--destructive)));
+}
+
+.dark .crepe-editor-wrapper hr {
+  border-top-color: hsl(var(--border));
+}
+
+.dark .crepe-editor-wrapper th {
+  background: var(--notes-table-header-bg, hsl(var(--muted) / 0.5));
+}
+
+.dark .crepe-editor-wrapper .ProseMirror ::selection,
+.dark .crepe-editor-wrapper .ProseMirror::-moz-selection {
+  background: var(--notes-selection-bg, hsl(var(--primary) / 0.14)) !important;
+}
+
+.dark .crepe-editor-wrapper .milkdown-list-item-block li:has(.label.checked) .children,
+.dark .crepe-editor-wrapper .milkdown-list-item-block li:has(.label.checked) .children > *,
+.dark .crepe-editor-wrapper .milkdown-list-item-block li:has(.label.checked) .children p {
+  color: hsl(var(--muted-foreground)) !important;
 }
 
 /* 图片 */
@@ -458,8 +574,8 @@
   background: hsl(var(--popover)) !important;
   color: hsl(var(--popover-foreground)) !important;
   border: 1px solid hsl(var(--border)) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.12) !important;
+  border-radius: var(--notes-radius-popup, 8px) !important;
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15)) !important;
   overflow-x: hidden !important;
 }
 
@@ -479,6 +595,7 @@
   font-size: 12px !important;
   font-weight: 500 !important;
   line-height: 1.4 !important;
+  border-radius: var(--notes-popup-item-radius, 4px) !important;
 }
 
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu .tab-group ul li:hover {
@@ -578,7 +695,7 @@
   min-width: 140px !important;
   padding: 6px 8px !important;
   gap: 10px !important;
-  border-radius: 4px !important;
+  border-radius: var(--notes-popup-item-radius, 4px) !important;
 }
 
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li > span {
@@ -619,8 +736,8 @@
   z-index: 50 !important;
   background: hsl(var(--background)) !important;
   border: 1px solid hsl(var(--border)) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15) !important;
+  border-radius: var(--notes-radius-popup, 8px) !important;
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15)) !important;
   contain: layout style;
   will-change: transform;
   pointer-events: auto;
@@ -634,11 +751,11 @@
   all: unset !important;
   cursor: pointer !important;
   padding: 6px !important;
-  border-radius: 4px !important;
+  border-radius: var(--notes-popup-item-radius, 4px) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  transition: background 0.15s !important;
+  transition: background var(--notes-hover-transition, 120ms ease) !important;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -704,8 +821,8 @@
   background: hsl(var(--background)) !important;
   color: hsl(var(--foreground)) !important;
   border: 1px solid hsl(var(--border)) !important;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15);
+  border-radius: var(--notes-radius-popup, 8px);
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15));
   padding: 0.25rem;
   display: flex;
   gap: 0.125rem;
@@ -717,9 +834,9 @@
   background: transparent !important;
   color: hsl(var(--foreground) / 0.7) !important;
   border: none !important;
-  border-radius: 0.25rem;
+  border-radius: var(--notes-popup-item-radius, 4px);
   padding: 0.375rem;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--notes-hover-transition, 120ms ease), color var(--notes-hover-transition, 120ms ease);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -949,21 +1066,24 @@
 
 /* ===== 链接提示框 ===== */
 .crepe-editor-wrapper [class*="link-tooltip"],
-.crepe-editor-wrapper [data-milkdown-tooltip] {
-  background: var(--popover) !important;
-  color: var(--popover-foreground) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px -1px hsl(var(--shadow-base) / 0.1);
+.crepe-editor-wrapper [data-milkdown-tooltip],
+.crepe-editor-wrapper .milkdown .milkdown-link-preview,
+.crepe-editor-wrapper .milkdown .milkdown-link-edit {
+  background: hsl(var(--popover)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: var(--notes-radius-popup, 8px);
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15));
   padding: 0.5rem;
 }
 
 .crepe-editor-wrapper [class*="link-tooltip"] input,
-.crepe-editor-wrapper [data-milkdown-tooltip] input {
-  background: var(--background) !important;
-  color: var(--foreground) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 0.25rem;
+.crepe-editor-wrapper [data-milkdown-tooltip] input,
+.crepe-editor-wrapper .milkdown .milkdown-link-edit input {
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: var(--notes-popup-item-radius, 4px);
   padding: 0.25rem 0.5rem;
 }
 
@@ -986,7 +1106,7 @@
 .crepe-editor-wrapper [data-milkdown-toolbar],
 .crepe-editor-wrapper [class*="toolbar"],
 .crepe-editor-wrapper [class*="slash"] {
-  animation: crepe-fade-in 0.15s ease-out;
+  animation: crepe-fade-in var(--notes-popup-enter-duration, 150ms) var(--notes-popup-enter-easing, ease-out);
 }
 
 @keyframes crepe-fade-in {
@@ -1059,7 +1179,7 @@
 .crepe-editor-wrapper .tableWrapper .selectedCell,
 .crepe-editor-wrapper td.selectedCell,
 .crepe-editor-wrapper th.selectedCell {
-  background: hsl(var(--primary) / 0.15) !important;
+  background: var(--notes-block-selected-bg, hsl(var(--primary) / 0.14)) !important;
   border-color: hsl(var(--primary)) !important;
 }
 
@@ -1156,12 +1276,40 @@
 
 .notes-editor-chrome-row {
   min-height: 35px;
+  container-type: inline-size;
+  container-name: notes-chrome;
+}
+
+/* 分屏等窄 pane（非仅窄视口）下也收起外露格式按钮，避免与右侧操作区挤压 */
+@container notes-chrome (max-width: 560px) {
+  .notes-editor-toolbar-inline {
+    display: none;
+  }
 }
 
 .notes-editor-toolbar {
   display: flex;
   align-items: center;
+  gap: 1px;
   flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* 桌面端外露的高频格式按钮组；窄屏/触屏隐藏，回退到溢出菜单 */
+.notes-editor-toolbar-inline {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.notes-editor-toolbar-divider {
+  width: 1px;
+  height: 1rem;
+  margin: 0 0.25rem;
+  flex: 0 0 auto;
+  background: hsl(var(--border));
 }
 
 .notes-editor-toolbar button {
@@ -1173,14 +1321,14 @@
   border: none;
   border-radius: 0.25rem;
   background: transparent;
-  color: var(--muted-foreground);
+  color: hsl(var(--muted-foreground));
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 }
 
 .notes-editor-toolbar button:hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
 }
 
 .notes-editor-toolbar button:focus-visible,
@@ -1279,21 +1427,32 @@
   }
 }
 
-/* compact editor transient surfaces: compact geometry and restrained elevation. */
+/* 浮层容器：统一 8px 圆角 + 黑基阴影（覆盖下方曾误设的 0.25rem） */
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu,
 .crepe-editor-wrapper .milkdown .milkdown-toolbar,
 .crepe-editor-wrapper .milkdown .milkdown-link-preview,
 .crepe-editor-wrapper .milkdown .milkdown-link-edit,
 .crepe-editor-wrapper .milkdown .milkdown-code-block .language-list {
-  border-radius: 0.25rem !important;
+  border-radius: var(--notes-radius-popup, 8px) !important;
   border-color: hsl(var(--border)) !important;
-  box-shadow: var(--crepe-shadow-2) !important;
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15)) !important;
+}
+
+/* 面包屑/长路径尾部渐隐（配合 overflow-hidden 使用） */
+.mask-linear-fade {
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
 }
 
 /* NT-2: 断点与 App shell 的 <768 对齐。 */
 @media (max-width: 767.98px) {
   .notes-editor-chrome-row {
     min-height: 44px;
+  }
+
+  /* 窄屏收起外露格式按钮，仅保留溢出菜单入口 */
+  .notes-editor-toolbar-inline {
+    display: none;
   }
 }
 
@@ -1307,6 +1466,11 @@
   .notes-editor-toolbar button svg {
     width: 1.125rem;
     height: 1.125rem;
+  }
+
+  /* 触屏主输入设备：编辑走 MobileEditorToolbar，顶栏不重复铺格式按钮 */
+  .notes-editor-toolbar-inline {
+    display: none;
   }
 }
 
@@ -1534,6 +1698,28 @@
   .crepe-drop-indicator {
     transition: none;
   }
+
+  .crepe-editor-wrapper a,
+  .crepe-editor-wrapper .milkdown .milkdown-block-handle,
+  .crepe-editor-wrapper .milkdown .milkdown-block-handle .operation-item,
+  .crepe-editor-wrapper .milkdown .milkdown-toolbar button.toolbar-item,
+  .crepe-editor-wrapper .milkdown .milkdown-toolbar .toolbar-item,
+  .crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-track,
+  .crepe-editor-wrapper .milkdown .milkdown-slash-menu .ds-slash-scroll-thumb,
+  .crepe-editor-wrapper [data-milkdown-toolbar] button,
+  .crepe-editor-wrapper [class*="toolbar"]:not(.notes-editor-toolbar) button,
+  .notes-editor-toolbar button,
+  .notes-document-meta {
+    transition: none !important;
+  }
+
+  .crepe-editor-wrapper [data-milkdown-menu],
+  .crepe-editor-wrapper [data-milkdown-toolbar],
+  .crepe-editor-wrapper [class*="toolbar"],
+  .crepe-editor-wrapper [class*="slash"],
+  .crepe-editor-wrapper .ProseMirror-gapcursor:after {
+    animation: none !important;
+  }
 }
 
 /* ===== ProseMirror Drop Cursor (备用，如果 Crepe 将来支持) ===== */
@@ -1667,6 +1853,33 @@
   50% {
     opacity: 1;
   }
+}
+
+/* 查找/ACR 高亮暗色适配：亮色值直接叠在深底上会发闷、标签会刺眼（V10 审计移交） */
+.dark .crepe-editor-wrapper .notes-search-match {
+  background-color: hsl(48 85% 45% / 0.3);
+  box-shadow: 0 0 0 1px hsl(48 85% 55% / 0.3);
+}
+
+.dark .crepe-editor-wrapper .notes-search-match--active {
+  background-color: hsl(32 88% 48% / 0.45);
+  box-shadow: 0 0 0 1.5px hsl(32 88% 55% / 0.6);
+}
+
+.dark .crepe-editor-wrapper .agent-inserted,
+.dark .crepe-editor-wrapper .agent-inserted-fading {
+  background-color: hsl(199 75% 60% / 0.2);
+  box-shadow: 0 0 0 1px hsl(199 75% 60% / 0.22);
+}
+
+.dark .crepe-editor-wrapper .acr-ai-caret__bar {
+  background-color: hsl(199 80% 62%);
+}
+
+.dark .crepe-editor-wrapper .acr-ai-caret__label {
+  color: hsl(199 85% 78%);
+  background: hsl(199 55% 18% / 0.92);
+  border-color: hsl(199 55% 40% / 0.55);
 }
 
 @media (prefers-reduced-motion: reduce) {

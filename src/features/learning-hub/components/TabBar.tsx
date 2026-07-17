@@ -22,7 +22,7 @@ import {
   horizontalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable';
-import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
+import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -517,6 +517,7 @@ export const TabBar: React.FC<TabBarProps> = ({
       {/* 标签页列表 */}
       <DndContext
         sensors={sensors}
+        autoScroll={SHELL_SAFE_AUTO_SCROLL}
         collisionDetection={closestCenter}
         modifiers={[restrictToHorizontalAxis]}
         onDragEnd={handleDragEnd}

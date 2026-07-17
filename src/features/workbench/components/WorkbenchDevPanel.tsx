@@ -854,7 +854,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
           onDoubleClick={onHeaderDoubleClick}
         >
           <span className="wb-hud-grip" aria-hidden="true" />
-          <span className="wb-hud-title">{t('workbench:devPanel.title', 'Workbench 诊断')}</span>
+          <span className="wb-hud-title">{t('workbench:devPanel.title')}</span>
           <span className="wb-hud-fps-badge" data-hot={fpsHot ? 'true' : undefined}>
             {perf ? `${perf.fps} fps` : '—'}
           </span>
@@ -864,8 +864,8 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
             aria-expanded={!collapsed}
             aria-label={
               collapsed
-                ? t('workbench:devPanel.expand', '展开面板')
-                : t('workbench:devPanel.collapse', '折叠面板')
+                ? t('workbench:devPanel.expand')
+                : t('workbench:devPanel.collapse')
             }
             onClick={toggleCollapsed}
           >
@@ -875,7 +875,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
             <button
               type="button"
               className="wb-hud-btn"
-              aria-label={t('workbench:devPanel.close', '关闭面板')}
+              aria-label={t('workbench:devPanel.close')}
               onClick={onClose}
             >
               ×
@@ -886,31 +886,31 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
         {!collapsed && (
           <div className="wb-hud-body">
             {/* 帧耗时曲线 + 掉帧标记 */}
-            <div>
+            <div className="wb-hud-section">
               <div className="wb-hud-label">
-                <span>{t('workbench:devPanel.frameTime', '帧耗时')}</span>
+                <span>{t('workbench:devPanel.frameTime')}</span>
                 {perf && (
                   <span className="wb-hud-muted">
-                    {t('workbench:devPanel.avg', '平均')} {perf.avg.toFixed(1)}ms ·{' '}
-                    {t('workbench:devPanel.max', '峰值')} {perf.max.toFixed(1)}ms
+                    {t('workbench:devPanel.avg')} {perf.avg.toFixed(1)}ms ·{' '}
+                    {t('workbench:devPanel.max')} {perf.max.toFixed(1)}ms
                   </span>
                 )}
               </div>
               <FrameChart
                 frames={perf?.frames ?? []}
-                placeholder={t('workbench:devPanel.sampling', '采样中…')}
+                placeholder={t('workbench:devPanel.sampling')}
               />
               <div className="wb-hud-chips">
                 <span className="wb-hud-chip" data-alert={perf != null && perf.dropped > 0 ? 'true' : undefined}>
-                  {t('workbench:devPanel.gestureDropped', '手势掉帧')} {perf?.dropped ?? 0}
+                  {t('workbench:devPanel.gestureDropped')} {perf?.dropped ?? 0}
                 </span>
                 <span className="wb-hud-chip" data-alert={perf != null && perf.longTasks > 0 ? 'true' : undefined}>
-                  {t('workbench:devPanel.longTasks', '长任务')} {perf?.longTasks ?? 0}
+                  {t('workbench:devPanel.longTasks')} {perf?.longTasks ?? 0}
                 </span>
                 <span
                   className="wb-hud-chip"
                   data-src={perf?.source ?? 'local'}
-                  title={t('workbench:devPanel.source', '数据源')}
+                  title={t('workbench:devPanel.source')}
                 >
                   {perf?.source ?? 'local'}
                 </span>
@@ -918,14 +918,14 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
             </div>
 
             {/* 最近交互时间线（拖/缩/settle） */}
-            <div data-testid="wb-hud-interactions">
+            <div className="wb-hud-section" data-testid="wb-hud-interactions">
               <div className="wb-hud-label">
-                <span>{t('workbench:devPanel.interactions', '最近交互')}</span>
+                <span>{t('workbench:devPanel.interactions')}</span>
                 <span className="wb-hud-muted">{interactions.length}</span>
               </div>
               {interactions.length === 0 ? (
                 <div className="wb-hud-empty">
-                  {t('workbench:devPanel.interactionsEmpty', '拖动或缩放窗口后显示延迟')}
+                  {t('workbench:devPanel.interactionsEmpty')}
                 </div>
               ) : (
                 <ul className="wb-hud-ixlist">
@@ -954,14 +954,14 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                     void copyInteractions();
                   }}
                 >
-                  {t('workbench:devPanel.copyTrace', '复制 JSON')}
+                  {t('workbench:devPanel.copyTrace')}
                 </button>
                 <button
                   type="button"
                   className="wb-hud-linkbtn"
                   onClick={() => clearInteractionTrace()}
                 >
-                  {t('workbench:devPanel.clearTrace', '清空')}
+                  {t('workbench:devPanel.clearTrace')}
                 </button>
                 <span className="wb-hud-muted" title={INTERACTION_TRACE_DUMP_PATH}>
                   {INTERACTION_TRACE_DUMP_PATH}
@@ -970,9 +970,9 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
             </div>
 
             {/* 生命周期分布 */}
-            <div>
+            <div className="wb-hud-section">
               <div className="wb-hud-label">
-                <span>{t('workbench:devPanel.distribution', '生命周期分布')}</span>
+                <span>{t('workbench:devPanel.distribution')}</span>
                 <span className="wb-hud-muted">{rows.length}</span>
               </div>
               <div className="wb-hud-stack" data-testid="wb-hud-lifecycle-stack">
@@ -996,14 +996,14 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
             </div>
 
             {/* 活动窗口列表（lifecycle 着色） */}
-            <div>
+            <div className="wb-hud-section">
               <div className="wb-hud-label">
                 <span>
-                  {t('workbench:devPanel.windows', '窗口')} ({rows.length})
+                  {t('workbench:devPanel.windows')} ({rows.length})
                 </span>
               </div>
               {rows.length === 0 ? (
-                <div className="wb-hud-empty">{t('workbench:devPanel.noWindows', '暂无窗口')}</div>
+                <div className="wb-hud-empty">{t('workbench:devPanel.noWindows')}</div>
               ) : (
                 <ul className="wb-hud-winlist">
                   {rows.map(({ win, lifecycle, weight }) => (
@@ -1012,7 +1012,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                       <span className="wb-hud-winrow-title">{win.title || win.typeId}</span>
                       {win.minimized && (
                         <span className="wb-hud-winrow-tag">
-                          {t('workbench:devPanel.minimizedTag', '最小化')}
+                          {t('workbench:devPanel.minimizedTag')}
                         </span>
                       )}
                       <span className="wb-hud-winrow-meta">
@@ -1025,9 +1025,9 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
             </div>
 
             {/* 内存预算占用条 */}
-            <div>
+            <div className="wb-hud-section">
               <div className="wb-hud-label">
-                <span>{t('workbench:devPanel.budget', '内存预算')}</span>
+                <span>{t('workbench:devPanel.budget')}</span>
                 <span className="wb-hud-budget-value" data-over={overBudget ? 'true' : undefined}>
                   {usedWeight} / {budget}
                 </span>
@@ -1042,13 +1042,13 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
             </div>
 
             {/* 焦点栈 */}
-            <div>
+            <div className="wb-hud-section">
               <div className="wb-hud-label">
-                <span>{t('workbench:devPanel.focusStack', '焦点栈')}</span>
+                <span>{t('workbench:devPanel.focusStack')}</span>
               </div>
               <div className="wb-hud-focus-stack">
                 {focusStack.length === 0
-                  ? t('workbench:devPanel.emptyFocusStack', '（空）')
+                  ? t('workbench:devPanel.emptyFocusStack')
                   : [...focusStack]
                       .reverse()
                       .map((id) => windows[id]?.title || windows[id]?.typeId || id)
@@ -1057,17 +1057,17 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
             </div>
 
             {/* 快照 */}
-            <div className="wb-hud-meta-row">
+            <div className="wb-hud-section wb-hud-meta-row">
               <span>
-                {t('workbench:devPanel.lastSnapshot', '快照最后保存')}:{' '}
+                {t('workbench:devPanel.lastSnapshot')}:{' '}
                 {lastSnapshotAt
                   ? new Date(lastSnapshotAt).toLocaleTimeString()
-                  : t('workbench:devPanel.never', '尚未保存')}
+                  : t('workbench:devPanel.never')}
               </span>
             </div>
 
             {/* ACR（R1-18） */}
-            <div data-testid="wb-hud-acr">
+            <div className="wb-hud-section" data-testid="wb-hud-acr">
               <div className="wb-hud-label">
                 <button
                   type="button"

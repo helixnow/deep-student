@@ -1230,7 +1230,7 @@ export const IndexStatusView: React.FC = () => {
           {/* 操作按钮 - Notion 风格 */}
           <div className="flex-shrink-0 w-8 flex justify-end" onClick={(e) => e.stopPropagation()}>
             {needsReindex && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label="reindex">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')}>
                 {isReindexing ? (
                   <CircleNotch className="h-4 w-4 animate-spin" />
                 ) : (
@@ -1464,7 +1464,7 @@ export const IndexStatusView: React.FC = () => {
                     className="text-xs gap-1.5"
                   >
                     <Eye className="h-3.5 w-3.5" />
-                    查看 OCR 文本
+                    {t('indexStatus.detail.viewOcrText')}
                   </NotionButton>
                 )}
                 {resource.textChunkCount > 0 && (
@@ -1475,7 +1475,7 @@ export const IndexStatusView: React.FC = () => {
                     className="text-xs gap-1.5"
                   >
                     <Stack className="h-3.5 w-3.5" />
-                    查看文本块 ({resource.textChunkCount})
+                    {t('indexStatus.detail.viewTextChunks', { count: resource.textChunkCount })}
                   </NotionButton>
                 )}
                 {showOcrStatus && resource.hasOcr && (
@@ -1502,7 +1502,7 @@ export const IndexStatusView: React.FC = () => {
                   ) : textChunks.length > 0 ? (
                     <div className="space-y-2">
                       <div className="text-xs text-muted-foreground">
-                        共 {textChunks.length} 个索引单元
+                        {t('indexStatus.detail.indexUnitCount', { count: textChunks.length })}
                       </div>
                       {textChunks.map((chunk) => (
                         <div key={chunk.unitId} className="border rounded-lg border-border/50">
@@ -1957,7 +1957,7 @@ export const IndexStatusView: React.FC = () => {
                 <p className="text-xs text-muted-foreground">{t('indexStatus.test.description')}</p>
               </div>
             </div>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label="close">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowTestPanel(false)} aria-label={t('common:close')}>
               <X className="h-4 w-4" />
             </NotionButton>
           </div>
@@ -2183,12 +2183,12 @@ export const IndexStatusView: React.FC = () => {
                 )}
                 <Eye className="h-4 w-4 text-primary shrink-0" />
                 <h3 className="font-semibold text-sm truncate">
-                  OCR 文本 / 提取文本
+                  {t('indexStatus.detail.ocrAndExtractedTitle')}
                 </h3>
                 <span className="text-xs text-muted-foreground font-mono shrink-0">{inspectingResourceId?.slice(0, 12)}...</span>
               </div>
               {!isMobile && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={closeInspectPanel} className="h-7 w-7">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={closeInspectPanel} className="h-7 w-7" aria-label={t('common:close')}>
                   <X className="h-4 w-4" />
                 </NotionButton>
               )}
@@ -2206,7 +2206,7 @@ export const IndexStatusView: React.FC = () => {
                     {/* 来源对比概览（移动端单列堆叠，避免 375px 下三列挤压） */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                       <div className={cn('p-3 rounded-lg border', ocrInfo.activeSource === 'ocr' ? 'border-primary bg-primary/5' : 'border-border/50')}>
-                        <div className="text-muted-foreground mb-1">OCR 文本</div>
+                        <div className="text-muted-foreground mb-1">{t('indexStatus.detail.ocrText')}</div>
                         <div className="font-semibold tabular-nums">{t('indexStatus.detail.chars', { count: ocrInfo.ocrTextLength })}</div>
                         {ocrInfo.activeSource === 'ocr' && <div className="text-primary text-[10px] mt-1">✓ {t('indexStatus.detail.currentInUse')}</div>}
                       </div>

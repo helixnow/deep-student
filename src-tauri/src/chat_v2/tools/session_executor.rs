@@ -444,6 +444,8 @@ impl SessionToolExecutor {
                     "color": g.color,
                     "sortOrder": g.sort_order,
                     "defaultSkillIds": g.default_skill_ids,
+                    "defaultRuntimeRootId": g.default_runtime_root_id,
+                    "preferredProjectRootPath": g.preferred_project_root_path,
                     "systemPromptPreview": g.system_prompt.as_ref().map(|s| {
                         let preview: String = s.chars().take(50).collect();
                         if preview.len() < s.len() { format!("{}...", preview) } else { s.clone() }
@@ -687,6 +689,8 @@ impl SessionToolExecutor {
             default_skill_ids: vec![],
             pinned_resource_ids: vec![],
             workspace_id: None,
+            default_runtime_root_id: None,
+            preferred_project_root_path: None,
             sort_order: next_sort,
             persist_status: PersistStatus::Active,
             created_at: now,

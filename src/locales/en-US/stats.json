@@ -1,31 +1,31 @@
 {
   "heatmap": {
     "title": "Learning Heatmap",
-    "loading": "Loading...",
+    "loading": "Loading learning data...",
     "error": "Failed to load: {{error}}",
     "retry": "Retry",
     "refresh": "Refresh",
     "totalActivities": "{{count}} learning activities",
     "noActivity": "No activity",
     "stats": {
-      "totalActivities": "Total Activities",
-      "activeDays": "Active Days",
-      "maxDaily": "Max Daily"
+      "totalActivities": "Total activities",
+      "activeDays": "Active days",
+      "maxDaily": "Daily peak"
     },
     "legend": {
       "less": "Less",
       "more": "More"
     },
     "details": {
-      "chatSessions": "Chat sessions: {{count}}",
-      "chatMessages": "Messages sent: {{count}}",
-      "notesEdited": "Notes edited: {{count}}",
-      "textbooksOpened": "Textbooks opened: {{count}}",
-      "examsCreated": "Exams created: {{count}}",
-      "translationsCreated": "Translations: {{count}}",
-      "essaysCreated": "Essays graded: {{count}}",
-      "ankiCardsCreated": "Cards created: {{count}}",
-      "questionsAnswered": "Questions answered: {{count}}"
+      "chatSessions": "Sessions",
+      "chatMessages": "Messages",
+      "notesEdited": "Notes",
+      "textbooksOpened": "Reading",
+      "examsCreated": "Quizzes",
+      "translationsCreated": "Translations",
+      "essaysCreated": "Essays",
+      "ankiCardsCreated": "Cards",
+      "questionsAnswered": "Questions"
     }
   },
   "calendar": {

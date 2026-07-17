@@ -75,9 +75,15 @@
   background-color: var(--tree-selected-bg-hover);
 }
 
-/* 聚焦状态 */
+/* 聚焦状态：键盘导航可见焦点环（WCAG 2.4.7） */
 .rct-tree-item-li-focused .rct-tree-item-button {
-  /* Optional: add focus ring if needed for accessibility */
+  box-shadow: inset 0 0 0 2px var(--tree-focus-ring);
+}
+
+/* 搜索匹配节点高亮 */
+.rct-tree-item-li-searchMatch .rct-tree-item-button {
+  background-color: hsl(var(--primary) / 0.08);
+  box-shadow: inset 2px 0 0 var(--tree-drop-indicator);
 }
 
 /* 拖拽悬停状态 */

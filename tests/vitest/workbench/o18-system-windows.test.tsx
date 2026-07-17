@@ -380,6 +380,72 @@ describe('O18 PomodoroAppWindow 计时视觉', () => {
     });
     expect(container.querySelector('.wb-sys-pomo')).toHaveAttribute('data-mode', 'short_break');
   });
+
+  it('控制坞：idle 显示开始专注；点击进入专注后切换为暂停 + 停止', () => {
+    render(<PomodoroAppWindow {...makeProps()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '开始专注' }));
+    expect(usePomodoroStore.getState().mode).toBe('work');
+    expect(usePomodoroStore.getState().status).toBe('running');
+
+    expect(screen.getByRole('button', { name: '暂停' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '停止' })).toBeInTheDocument();
+  });
+
+  it('今日条：渲染今日计数/目标；点击打开统计 Sheet，Esc 关闭且焦点归还', async () => {
+    usePomodoroStore.setState({ completedPomodorosToday: 3 });
+    const { container } = render(<PomodoroAppWindow {...makeProps()} />);
+
+    // 默认每日目标 8 → 3/8
+    expect(container.querySelector('.wb-sys-pomo-today-text strong')!.textContent).toBe('3/8');
+
+    const strip = screen.getByRole('button', { name: '专注趋势' });
+    fireEvent.click(strip);
+    await act(async () => {});
+    expect(screen.getByRole('dialog', { name: '专注趋势' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(strip);
+  });
+
+  it('设置 Sheet：设计系统控件齐备（7 滑杆 / 4 开关 / 音色分段），返回关闭且焦点归还', async () => {
+    render(<PomodoroAppWindow {...makeProps()} />);
+
+    const trigger = screen.getByRole('button', { name: '番茄钟设置' });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: '番茄钟设置' });
+    // 打开即聚焦面板（aria-modal 对话框契约）
+    expect(document.activeElement).toBe(dialog);
+
+    // 滑杆：专注/短休/长休/间隔/结束前提醒/每日目标/音量
+    expect(screen.getAllByRole('slider')).toHaveLength(7);
+    // 开关：自动开始休息/自动开始专注/严格模式/正计时
+    expect(screen.getAllByRole('switch')).toHaveLength(4);
+    // 音色分段选择
+    expect(screen.getByRole('radiogroup')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('周期圆点：按长休息间隔渲染，已完成填充、当前工作颗标记', () => {
+    usePomodoroStore.setState({
+      completedPomodorosToday: 2,
+      mode: 'work',
+      status: 'running',
+      timeLeft: 600,
+    });
+    const { container } = render(<PomodoroAppWindow {...makeProps()} />);
+
+    // 默认长休息间隔 4 → 4 颗；已完成 2 颗；第 3 颗为当前进行中
+    expect(container.querySelectorAll('.wb-sys-pomo-cycle')).toHaveLength(4);
+    expect(container.querySelectorAll('.wb-sys-pomo-cycle[data-filled="true"]')).toHaveLength(2);
+    expect(
+      container.querySelector('.wb-sys-pomo-cycle[data-current="true"]'),
+    ).not.toBeNull();
+  });
 });
 
 // ============================================================================

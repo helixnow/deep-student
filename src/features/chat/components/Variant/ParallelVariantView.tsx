@@ -100,7 +100,7 @@ export interface ParallelVariantViewProps {
  * 例如："Qwen/Qwen3-8B" -> "Qwen3-8B"
  */
 function defaultGetModelDisplayName(modelId: string): string {
-  if (!modelId) return i18n.t('chatV2:variant.unknownModel', 'Unknown Model');
+  if (!modelId) return i18n.t('chatV2:variant.unknownModel');
   
   // 从 modelId 提取具体模型名称
   // 例如："Qwen/Qwen3-8B" -> "Qwen3-8B"
@@ -219,10 +219,10 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
       await copyTextToClipboard(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      showGlobalNotification('success', t('messageItem.actions.copySuccess', '已复制'));
+      showGlobalNotification('success', t('messageItem.actions.copySuccess'));
     } catch (error: unknown) {
       console.error('[VariantCard] Copy failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed', '复制失败'));
+      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
     }
   }, [getBlocks, copied, t]);
 
@@ -244,7 +244,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
       await onCancel(variant.id);
     } catch (error: unknown) {
       console.error('[VariantCard] Cancel failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('variant.cancelFailed', '取消失败'));
+      showGlobalNotification('error', getErrorMessage(error), t('variant.cancelFailed'));
     } finally {
       setIsOperating(false);
     }
@@ -258,7 +258,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
       await onRetry(variant.id);
     } catch (error: unknown) {
       console.error('[VariantCard] Retry failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('variant.retryFailed', '重试失败'));
+      showGlobalNotification('error', getErrorMessage(error), t('variant.retryFailed'));
     } finally {
       setIsOperating(false);
     }
@@ -272,7 +272,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
       await onDelete(variant.id);
     } catch (error: unknown) {
       console.error('[VariantCard] Delete failed:', error);
-      showGlobalNotification('error', getErrorMessage(error), t('variant.deleteFailed', '删除失败'));
+      showGlobalNotification('error', getErrorMessage(error), t('variant.deleteFailed'));
     } finally {
       setIsOperating(false);
     }
@@ -425,15 +425,15 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
         ) : isStreaming ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span className="inline-block w-2 h-4 bg-primary animate-pulse" />
-            <span>{t('variant.streaming', '生成中...')}</span>
+            <span>{t('variant.streaming')}</span>
           </div>
         ) : variant.status === 'error' ? (
           <p className="text-sm text-destructive">
-            {variant.error || t('variant.error', '生成失败')}
+            {variant.error || t('variant.error')}
           </p>
         ) : variant.status === 'pending' ? (
           <p className="text-sm text-muted-foreground">
-            {t('variant.pending', '等待中...')}
+            {t('variant.pending')}
           </p>
         ) : null}
       </div>
@@ -454,27 +454,27 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
         {/* 操作按钮 */}
         <div className="flex items-center gap-0.5">
           {/* 复制 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy', '复制')} title={t('messageItem.actions.copy', '复制')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
             {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
           </NotionButton>
 
           {/* 重试（可重试状态） */}
           {canRetry && onRetry && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry', '重试')} title={t('variant.retry', '重试')}>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry')} title={t('variant.retry')}>
               <ArrowCounterClockwise size={16} className={cn(isOperating && 'animate-spin')} />
             </NotionButton>
           )}
 
           {/* 取消（流式中） */}
           {canCancel && onCancel && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel', '取消')} title={t('variant.cancel', '取消')}>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel')} title={t('variant.cancel')}>
               <Square size={16} />
             </NotionButton>
           )}
 
           {/* 删除（非最后一个） */}
           {canDelete && onDelete && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn(isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete', '删除')} title={t('variant.delete', '删除')}>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn(isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete')} title={t('variant.delete')}>
               <Trash size={16} />
             </NotionButton>
           )}
@@ -482,13 +482,13 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
           {/* 更多操作菜单 */}
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label={t('variant.actions', '变体操作')} title={t('variant.actions', '变体操作')}>
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label={t('variant.actions')} title={t('variant.actions')}>
                 <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={160}>
               <AppMenuItem onClick={handleCopy} icon={<Copy size={16} />}>
-                {t('messageItem.actions.copy', '复制')}
+                {t('messageItem.actions.copy')}
               </AppMenuItem>
               {canRetry && onRetry && (
                 <AppMenuItem
@@ -496,7 +496,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
                   disabled={isOperating}
                   icon={<ArrowCounterClockwise size={16} />}
                 >
-                  {t('variant.retry', '重试')}
+                  {t('variant.retry')}
                 </AppMenuItem>
               )}
               {canDelete && onDelete && (
@@ -506,7 +506,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
                   destructive
                   icon={<Trash size={16} />}
                 >
-                  {t('variant.delete', '删除')}
+                  {t('variant.delete')}
                 </AppMenuItem>
               )}
             </AppMenuContent>
@@ -624,21 +624,21 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
       <div className="flex items-center gap-1">
         {/* 复制按钮 */}
         {onCopy && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy', '复制')} title={t('messageItem.actions.copy', '复制')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
             {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
           </NotionButton>
         )}
 
         {/* 会话分支按钮 */}
         {onBranchSession && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch', '从此处分支')} title={t('messageItem.actions.branch', '从此处分支')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch')} title={t('messageItem.actions.branch')}>
             <GitBranch size={16} className={cn(isBranching && 'animate-pulse')} />
           </NotionButton>
         )}
 
         {/* 全部重试按钮 */}
         {onRetryAll && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll', '全部重试')} title={t('variant.retryAll', '全部重试')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll')} title={t('variant.retryAll')}>
             <ArrowCounterClockwise size={16} className={cn(isRetryingAll && 'animate-spin')} />
           </NotionButton>
         )}
@@ -647,7 +647,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
         {onDeleteMessage && (
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete', '删除')} title={t('messageItem.actions.delete', '删除')}>
+              <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')}>
                 <Trash size={16} className={cn(isDeleting && 'animate-pulse')} />
               </NotionButton>
             </AppMenuTrigger>
@@ -658,7 +658,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
                 destructive
                 icon={<Trash size={16} />}
               >
-                {t('variant.deleteMessage', '删除整个消息')}
+                {t('variant.deleteMessage')}
               </AppMenuItem>
             </AppMenuContent>
           </AppMenu>
@@ -793,8 +793,8 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                   ? 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] cursor-pointer'
                   : 'text-muted-foreground/20 cursor-default'
               )}
-              aria-label={t('variant.switchToVariant', { index: Math.max(1, activeIndex), defaultValue: `Switch to variant ${Math.max(1, activeIndex)}` })}
-              title={t('variant.switchToVariant', { index: Math.max(1, activeIndex), defaultValue: `Switch to variant ${Math.max(1, activeIndex)}` })}
+              aria-label={t('variant.switchToVariant', { index: Math.max(1, activeIndex)})}
+              title={t('variant.switchToVariant', { index: Math.max(1, activeIndex)})}
             >
               <CaretLeft size={16} />
             </button>
@@ -822,7 +822,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                         : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'
                     )}
                     aria-current={isActive ? 'true' : undefined}
-                    aria-label={t('variant.switchToVariant', { index: index + 1, defaultValue: `Switch to variant ${index + 1}` })}
+                    aria-label={t('variant.switchToVariant', { index: index + 1})}
                   />
                 );
               })}
@@ -846,8 +846,8 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                   ? 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] cursor-pointer'
                   : 'text-muted-foreground/20 cursor-default'
               )}
-              aria-label={t('variant.switchToVariant', { index: Math.min(variants.length, activeIndex + 2), defaultValue: `Switch to variant ${Math.min(variants.length, activeIndex + 2)}` })}
-              title={t('variant.switchToVariant', { index: Math.min(variants.length, activeIndex + 2), defaultValue: `Switch to variant ${Math.min(variants.length, activeIndex + 2)}` })}
+              aria-label={t('variant.switchToVariant', { index: Math.min(variants.length, activeIndex + 2)})}
+              title={t('variant.switchToVariant', { index: Math.min(variants.length, activeIndex + 2)})}
             >
               <CaretRight size={16} />
             </button>

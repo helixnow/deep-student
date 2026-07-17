@@ -297,7 +297,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
           </CardTitle>
           <div className="flex items-center gap-2">
             <Badge className={sensitivityColors[request.sensitivity]}>
-              {t(`approval.sensitivity.${request.sensitivity}`, request.sensitivity)}
+              {t(`approval.sensitivity.${request.sensitivity}`)}
             </Badge>
             {isAwaitingDecision && request.timeoutSeconds > 0 && (
               <div
@@ -334,10 +334,10 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
 
         {shellScope && (
           <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={t('approval.runtimeRoot', { defaultValue: '运行目录' })}>
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={t('approval.runtimeRoot')}>
               {shellScope.rootId}
             </span>
-            <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={t('approval.runtimeCwd', { defaultValue: '工作目录' })}>
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={t('approval.runtimeCwd')}>
               {shellScope.cwd}
             </span>
             <span
@@ -434,7 +434,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               disabled={isResponding}
               className="text-success hover:text-success/80"
             >
-              {t('approval.allowSession', 'Allow for session')}
+              {t('approval.allowSession')}
             </NotionButton>
 
             {/* 批准按钮（仅此次） */}

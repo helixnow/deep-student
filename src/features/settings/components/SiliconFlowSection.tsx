@@ -720,35 +720,35 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       model: 'PaddlePaddle/PaddleOCR-VL-1.5', 
       name: 'SiliconFlow - PaddleOCR-VL-1.5',
       engineType: 'paddle_ocr_vl',
-      description: '免费开源 OCR 1.5 版，支持 109 种语言，精度达 94.5%',
+      description: t('settings:siliconflow_ocr.paddle_ocr_vl_15'),
       isFree: true,
     },
     { 
       model: 'PaddlePaddle/PaddleOCR-VL', 
       name: 'SiliconFlow - PaddleOCR-VL',
       engineType: 'paddle_ocr_vl_v1',
-      description: '免费开源 OCR 旧版，支持坐标输出，作为 1.5 版的备用',
+      description: t('settings:siliconflow_ocr.paddle_ocr_vl'),
       isFree: true,
     },
     { 
       model: 'deepseek-ai/DeepSeek-OCR', 
       name: 'SiliconFlow - DeepSeek-OCR',
       engineType: 'deepseek_ocr',
-      description: '专业 OCR 模型，支持坐标定位',
+      description: t('settings:siliconflow_ocr.deepseek_ocr'),
       isFree: false,
     },
     {
       model: 'zai-org/GLM-4.6V',
       name: 'SiliconFlow - GLM-4.6V',
       engineType: 'glm4v_ocr',
-      description: '智谱 106B MoE 多模态模型，支持坐标定位，题目集导入自动优先使用',
+      description: t('settings:siliconflow_ocr.glm4v_ocr'),
       isFree: false,
     },
     {
       model: 'Qwen/Qwen3-VL-8B-Instruct',
       name: 'SiliconFlow - Qwen3-VL-8B',
       engineType: 'generic_vlm',
-      description: '通用多模态模型，适合简单文档识别（备用）',
+      description: t('settings:siliconflow_ocr.generic_vlm'),
       isFree: false,
     },
   ];
@@ -999,16 +999,16 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const canSaveApiKey = apiKey.trim().length > 0 && apiKey.trim() !== lastSavedApiKeyRef.current && !savingApiKey;
   const apiKeyStatusText =
     apiKeyStatus === 'saving'
-      ? t('settings:vendor_panel.api_key_saving', { defaultValue: '正在保存…' })
+      ? t('settings:vendor_panel.api_key_saving')
       : apiKeyStatus === 'saved'
         ? t('settings:vendor_panel.api_key_saved')
         : apiKeyStatus === 'error'
           ? t('settings:vendor_panel.api_key_save_failed')
           : apiKeyStatus === 'dirty'
-            ? t('settings:vendor_panel.api_key_unsaved', { defaultValue: '有未保存的更改' })
+            ? t('settings:vendor_panel.api_key_unsaved')
             : lastSavedApiKeyRef.current
-              ? t('settings:vendor_panel.api_key_securely_stored', { defaultValue: '已安全保存，下次无需重新输入' })
-              : t('settings:vendor_panel.api_key_manual_save_hint', { defaultValue: '粘贴或输入后，点击保存' });
+              ? t('settings:vendor_panel.api_key_securely_stored')
+              : t('settings:vendor_panel.api_key_manual_save_hint');
   const apiKeyStatusToneClassName =
     apiKeyStatus === 'error'
       ? 'text-destructive'

@@ -77,7 +77,11 @@ export interface CreateNodeParams {
   style?: NodeStyle;
 }
 
-/** 更新节点参数 */
+/**
+ * 更新节点参数。
+ * 出现在 patch 中且值为 `undefined` 的键会从节点上删除（如 `{ completed: undefined }` 移除任务标记）；
+ * 未出现的键保持不变。
+ */
 export interface UpdateNodeParams {
   text?: string;
   note?: string;
@@ -116,10 +120,28 @@ export interface MindMapMeta {
 // 兼容别名
 export type DocumentMeta = MindMapMeta;
 
+/** 关联线样式（跨分支自由连线，非父子边） */
+export interface AssociationStyle {
+  stroke?: string;
+  strokeWidth?: number;
+  strokeDasharray?: string;
+}
+
+/** 跨分支关联线（Xmind 式「关联」） */
+export interface MindMapAssociation {
+  id: string;
+  source: NodeId;
+  target: NodeId;
+  label?: string;
+  style?: AssociationStyle;
+}
+
 export interface MindMapDocument {
   version: '1.0';
   root: MindMapNode;
   meta: MindMapMeta;
+  /** 跨分支关联线；布局引擎不消费此字段 */
+  associations?: MindMapAssociation[];
 }
 
 export interface DocumentSettings {

@@ -37,11 +37,11 @@ export const AiContentLabel: React.FC<AiContentLabelProps> = ({
 }) => {
   const { t } = useTranslation('common');
 
-  const label = t('aiContentLabel.label', 'AI 生成');
+  const label = t('aiContentLabel.label');
 
   if (variant === 'badge') {
     return (
-      <CommonTooltip content={t('aiContentLabel.tooltip', '此内容由人工智能生成，可能存在错误，请注意甄别')}>
+      <CommonTooltip content={t('aiContentLabel.tooltip')}>
         <span
           className={cn(
             'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full',
@@ -51,7 +51,7 @@ export const AiContentLabel: React.FC<AiContentLabelProps> = ({
             className
           )}
           role="note"
-          aria-label={t('aiContentLabel.ariaLabel', 'AI 生成内容')}
+          aria-label={t('aiContentLabel.ariaLabel')}
         >
           {showIcon && <AiSparkleIcon className="w-2.5 h-2.5" />}
           {label}
@@ -69,17 +69,17 @@ export const AiContentLabel: React.FC<AiContentLabelProps> = ({
           className
         )}
         role="note"
-        aria-label={t('aiContentLabel.ariaLabel', 'AI 生成内容')}
+        aria-label={t('aiContentLabel.ariaLabel')}
       >
         {showIcon && <AiSparkleIcon className="w-3 h-3" />}
-        <span>{t('aiContentLabel.footnote', '以上内容由 AI 生成，仅供参考')}</span>
+        <span>{t('aiContentLabel.footnote')}</span>
       </div>
     );
   }
 
   // Default: inline
   return (
-    <CommonTooltip content={t('aiContentLabel.tooltip', '此内容由人工智能生成，可能存在错误，请注意甄别')}>
+    <CommonTooltip content={t('aiContentLabel.tooltip')}>
       <span
         className={cn(
           'inline-flex items-center gap-1',
@@ -87,7 +87,7 @@ export const AiContentLabel: React.FC<AiContentLabelProps> = ({
           className
         )}
         role="note"
-        aria-label={t('aiContentLabel.ariaLabel', 'AI 生成内容')}
+        aria-label={t('aiContentLabel.ariaLabel')}
       >
         {showIcon && <AiSparkleIcon className="w-3 h-3" />}
         <span>{label}</span>

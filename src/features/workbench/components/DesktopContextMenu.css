@@ -107,6 +107,29 @@
   opacity: 0.45;
 }
 
+/* 禁用项的图标再压一档，与文字形成同步弱化 */
+.wb-desk-menu-item:disabled .wb-desk-menu-item-icon {
+  opacity: 0.7;
+}
+
+/* 右缘快捷键提示：等宽数字 + 弱化色；hover 反色时跟随前景色 */
+.wb-desk-menu-item-shortcut {
+  flex: none;
+  margin-left: auto;
+  padding-left: 14px;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.wb-desk-menu-item:not(:disabled):hover .wb-desk-menu-item-shortcut,
+.wb-desk-menu-item:not(:disabled):focus .wb-desk-menu-item-shortcut,
+.wb-desk-menu-item[data-wb-desk-active='true']:not(:disabled) .wb-desk-menu-item-shortcut {
+  color: inherit;
+  opacity: 0.8;
+}
+
 .wb-desk-menu-item-icon {
   display: inline-flex;
   align-items: center;

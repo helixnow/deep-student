@@ -56,7 +56,7 @@ const SuspenseFallback: React.FC = () => {
         aria-hidden
         className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
       />
-      {t('workbench:window.loading', '加载中…')}
+      {t('workbench:window.loading')}
     </div>
   );
 };
@@ -73,17 +73,17 @@ const FrozenPlaceholder: React.FC<{
       onClick={onWake}
       data-wb-frozen-placeholder
       className="wb-body-frozen"
-      aria-label={t('workbench:window.frozenWakeAria', '点击唤醒休眠窗口')}
+      aria-label={t('workbench:window.frozenWakeAria')}
     >
       <span className="wb-body-frozen-card wb-glass wb-glass-highlight">
         <span className="wb-body-frozen-icon" aria-hidden>
           {icon ?? <MoonStars size={36} weight="duotone" />}
         </span>
         <span className="wb-body-frozen-title">
-          {title || t('workbench:window.frozenTitle', '窗口已休眠')}
+          {title || t('workbench:window.frozenTitle')}
         </span>
         <span className="wb-body-frozen-hint">
-          {t('workbench:window.frozenHint', '为节省内存已暂停此窗口，点击唤醒')}
+          {t('workbench:window.frozenHint')}
         </span>
       </span>
     </button>
@@ -165,7 +165,7 @@ export const WindowBody: React.FC<WindowBodyProps> = ({ windowId }) => {
         className="flex h-full w-full items-center justify-center text-xs opacity-60"
         data-wb-unknown-app
       >
-        {t('workbench:window.unknownApp', '未知应用类型：{{typeId}}', { typeId: win.typeId })}
+        {t('workbench:window.unknownApp', { typeId: win.typeId })}
       </div>
     );
   }

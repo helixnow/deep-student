@@ -374,7 +374,16 @@
       "endReminder": "结束前提醒（0 关闭）",
       "noiseType": "环境音",
       "noiseVolume": "音量",
-      "dailyGoal": "每日目标（0 不设）"
+      "dailyGoal": "每日目标（0 不设）",
+      "endReminderShort": "结束前提醒",
+      "dailyGoalShort": "每日目标",
+      "valueOff": "关闭",
+      "valueUnset": "不设",
+      "sections": {
+        "duration": "时长",
+        "automation": "自动化",
+        "focus": "专注"
+      }
     },
     "progressTitle": "已完成 {{done}}/{{total}} 个番茄",
     "completedCount": "已完成 {{count}} 个",

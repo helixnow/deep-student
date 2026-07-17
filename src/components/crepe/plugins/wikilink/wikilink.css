@@ -1,0 +1,132 @@
+/**
+ * Crepe wikilink 样式（暗色适配使用 hsl(var(--...)) token）
+ *
+ * 浮层视觉契约：与 mention 浮层参数对齐
+ * （--notes-radius-popup / --notes-popover-shadow / 150ms scale+opacity 入场）
+ */
+
+.crepe-wikilink {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.crepe-wikilink:hover {
+  opacity: 0.85;
+}
+
+.crepe-wikilink--unresolved {
+  opacity: 0.7;
+  text-decoration-style: dotted;
+  color: hsl(var(--foreground));
+}
+
+.crepe-wikilink--unresolved:hover {
+  opacity: 0.9;
+}
+
+.crepe-wikilink--selected {
+  background: hsl(var(--accent) / 0.35);
+}
+
+.crepe-wikilink-suggest-anchor {
+  z-index: 0;
+}
+
+@keyframes crepe-suggest-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.crepe-wikilink-suggest {
+  position: fixed;
+  z-index: 10000;
+  min-width: 12rem;
+  max-width: 20rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem;
+  border-radius: var(--notes-radius-popup);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover, var(--card)));
+  color: hsl(var(--popover-foreground, var(--foreground)));
+  box-shadow: var(--notes-popover-shadow);
+  transform-origin: top left;
+}
+
+.crepe-wikilink-suggest.crepe-wikilink-suggest--enter {
+  animation: crepe-suggest-enter var(--notes-popup-enter-duration, 150ms)
+    var(--notes-popup-enter-easing, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.crepe-wikilink-suggest__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--notes-radius-row);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crepe-wikilink-suggest__item:hover,
+.crepe-wikilink-suggest__item--active {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.crepe-wikilink-suggest__item--create {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  opacity: 0.9;
+  font-style: italic;
+}
+
+/* Plus 风格前缀（纯 CSS，无额外 DOM） */
+.crepe-wikilink-suggest__item--create::before {
+  content: '+';
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1;
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--muted) / 0.85);
+  color: inherit;
+}
+
+.crepe-wikilink-suggest__empty {
+  padding: 0.5rem 0.55rem;
+  font-size: 0.8125rem;
+  color: hsl(var(--muted-foreground));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crepe-wikilink-suggest.crepe-wikilink-suggest--enter {
+    animation: none;
+  }
+}

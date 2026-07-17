@@ -22,9 +22,14 @@ describe('ChatWindowSkeleton', () => {
   it('renders message-bubble bones and a composer placeholder (hidden from AT)', () => {
     const { container } = render(<ChatWindowSkeleton />);
 
+    // 容器查询锚（root）与排版层（inner）分离：窄窗留白节奏由 CSS 容器查询接管
+    const inner = container.querySelector('.wb-chat-skeleton > .wb-chat-skeleton__inner');
+    expect(inner).not.toBeNull();
+
     const thread = container.querySelector('.wb-chat-skeleton__thread');
     expect(thread).not.toBeNull();
     expect(thread?.getAttribute('aria-hidden')).toBe('true');
+    expect(inner?.contains(thread)).toBe(true);
 
     // 用户气泡 + 助手头像行 + 输入栏面板都在
     expect(container.querySelectorAll('.wb-chat-skeleton__bubble').length).toBeGreaterThanOrEqual(2);

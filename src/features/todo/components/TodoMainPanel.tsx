@@ -48,7 +48,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
+import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -1813,6 +1813,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
             ) : isManualSortView ? (
               <DndContext
                 sensors={sensors}
+                autoScroll={SHELL_SAFE_AUTO_SCROLL}
                 collisionDetection={closestCenter}
                 modifiers={[restrictToVerticalAxis]}
                 onDragEnd={handleDragEnd}

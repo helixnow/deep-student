@@ -105,19 +105,19 @@ function TooltipContent({ activity }: TooltipContentProps) {
       {count > 0 ? (
         <div className="flex flex-col gap-1.5 text-xs opacity-90">
           {details.chatSessions > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.chatSessions', '会话')}</span> <span className="opacity-70">{details.chatSessions}</span></div>
+            <div className="flex justify-between"><span>{t('heatmap.details.chatSessions')}</span> <span className="opacity-70">{details.chatSessions}</span></div>
           )}
           {details.chatMessages > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.chatMessages', '消息')}</span> <span className="opacity-70">{details.chatMessages}</span></div>
+            <div className="flex justify-between"><span>{t('heatmap.details.chatMessages')}</span> <span className="opacity-70">{details.chatMessages}</span></div>
           )}
           {details.notesEdited > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.notesEdited', '笔记')}</span> <span className="opacity-70">{details.notesEdited}</span></div>
+            <div className="flex justify-between"><span>{t('heatmap.details.notesEdited')}</span> <span className="opacity-70">{details.notesEdited}</span></div>
           )}
           {details.textbooksOpened > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.textbooksOpened', '阅读')}</span> <span className="opacity-70">{details.textbooksOpened}</span></div>
+            <div className="flex justify-between"><span>{t('heatmap.details.textbooksOpened')}</span> <span className="opacity-70">{details.textbooksOpened}</span></div>
           )}
           {details.examsCreated > 0 && (
-            <div className="flex justify-between"><span>{t('heatmap.details.examsCreated', '测验')}</span> <span className="opacity-70">{details.examsCreated}</span></div>
+            <div className="flex justify-between"><span>{t('heatmap.details.examsCreated')}</span> <span className="opacity-70">{details.examsCreated}</span></div>
           )}
            {/* 其他详情省略，避免过长 */}
         </div>
@@ -233,7 +233,7 @@ export function LearningHeatmap({
     return (
       <div className={cn("py-12 flex flex-col items-center justify-center text-muted-foreground/50", className)}>
         <CircleNotch className="animate-spin mb-2" size={20} />
-        <span className="text-xs font-medium">{t('heatmap.loading', '加载学习数据...')}</span>
+        <span className="text-xs font-medium">{t('heatmap.loading')}</span>
       </div>
     );
   }
@@ -244,7 +244,7 @@ export function LearningHeatmap({
         <span className="text-xs mb-3">{t('heatmap.error', { error })}</span>
         <NotionButton variant="ghost" size="sm" onClick={refresh} className="!px-3 !py-1.5 !h-auto text-xs font-medium hover:bg-[var(--interactive-hover)]">
           <ArrowsClockwise size={12} />
-          {t('heatmap.retry', '重试')}
+          {t('heatmap.retry')}
         </NotionButton>
       </div>
     );
@@ -263,19 +263,19 @@ export function LearningHeatmap({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
           <StatsCard
             icon={<TrendUp size={16} />}
-            label={t('heatmap.stats.totalActivities', '总活动')}
+            label={t('heatmap.stats.totalActivities')}
             value={totalActivities}
             index={0}
 />
           <StatsCard
             icon={<Calendar size={16} />}
-            label={t('heatmap.stats.activeDays', '活跃天数')}
+            label={t('heatmap.stats.activeDays')}
             value={activeDays}
             index={1}
 />
           <StatsCard
             icon={<Lightning size={16} />}
-            label={t('heatmap.stats.maxDaily', '单日峰值')}
+            label={t('heatmap.stats.maxDaily')}
             value={maxCount}
             index={2}
 />

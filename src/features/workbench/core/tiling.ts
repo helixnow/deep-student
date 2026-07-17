@@ -89,6 +89,22 @@ export function getActiveTilingPair(
     : null;
 }
 
+/**
+ * 是否存在「可见的最大化窗口」（未最小化的 maximized）。
+ * Dock 自动隐藏的唯一强制源：任一最大化窗口在桌面上铺开时，
+ * Dock 默认收起（对标 macOS 全屏时 Dock 强制自动隐藏），
+ * 底缘热区悬停弹出 / 离开收起由 Dock 自身 autohide 机制承担。
+ */
+export function hasVisibleMaximizedWindow(
+  windows: Record<string, WorkbenchWindow> | readonly WorkbenchWindow[],
+): boolean {
+  const list = Array.isArray(windows) ? windows : Object.values(windows);
+  for (const win of list) {
+    if (!win.minimized && win.displayMode === 'maximized') return true;
+  }
+  return false;
+}
+
 /** 仅当前左右配对共享其 ratio；被遮在同侧后方的窗口使用默认 50/50。 */
 export function getTilingRatioForWindow(
   windows: Record<string, WorkbenchWindow> | readonly WorkbenchWindow[],

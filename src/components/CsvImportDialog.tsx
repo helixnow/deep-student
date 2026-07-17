@@ -37,8 +37,9 @@ import {
 import { cn } from '@/lib/utils';
 import { fileManager, extractFileName } from '@/utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
-import CsvFieldMapper, { FieldMapping, QUESTION_FIELDS, QuestionFieldKey } from './CsvFieldMapper';
+import CsvFieldMapper, { FieldMapping } from './CsvFieldMapper';
 import { UnifiedDragDropZone, type FileTypeDefinition } from './shared/UnifiedDragDropZone';
+import { inferCsvFieldFromHeader } from '@/utils/csvHeaderAliases';
 
 // CSV 专用文件类型定义
 const CSV_FILE_TYPE: FileTypeDefinition = {
@@ -271,37 +272,18 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       
       setPreview(result);
 
-      // 自动推断字段映射
+      // 自动推断字段映射（别名表见 csvHeaderAliases，含中英常见列名）
       const autoMapping: FieldMapping = {};
       result.headers.forEach((header) => {
-        const headerLower = header.toLowerCase().trim();
-        // 常见映射规则
-        if (/题目|题干|内容|content|question|text/.test(headerLower)) {
-          autoMapping[header] = 'content';
-        } else if (/答案|正确|answer|correct/.test(headerLower)) {
-          autoMapping[header] = 'answer';
-        } else if (/解析|解答|说明|explanation|analysis/.test(headerLower)) {
-          autoMapping[header] = 'explanation';
-        } else if (/选项|options|choices/.test(headerLower)) {
-          autoMapping[header] = 'options';
-        } else if (/难度|difficulty|level/.test(headerLower)) {
-          autoMapping[header] = 'difficulty';
-        } else if (/标签|分类|tags|category/.test(headerLower)) {
-          autoMapping[header] = 'tags';
-        } else if (/图片|配图|图像|images?|image/.test(headerLower)) {
-          autoMapping[header] = 'images';
-        } else if (/题型|类型|type|question_type/.test(headerLower)) {
-          autoMapping[header] = 'question_type';
-        } else if (/题号|序号|label|number|no/.test(headerLower)) {
-          autoMapping[header] = 'question_label';
-        }
+        const inferred = inferCsvFieldFromHeader(header);
+        if (inferred) autoMapping[header] = inferred;
       });
       setFieldMapping(autoMapping);
 
       // 自动跳转到映射步骤
       setCurrentStep('mapping');
     } catch (error: unknown) {
-      console.error('[CsvImport] 预览失败:', error);
+      console.error('[CsvImport] preview failed:', error);
       setImportError(t('exam_sheet:csv.preview_failed', {
         error: String(error),
       }));
@@ -326,7 +308,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         await handleFileSelect(filePath);
       }
     } catch (error: unknown) {
-      console.error('[CsvImport] 选择文件失败:', error);
+      console.error('[CsvImport] file select failed:', error);
       showGlobalNotification('error', t('exam_sheet:csv.select_file_failed'));
     }
   }, [t, handleFileSelect]);
@@ -468,7 +450,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       }
     } catch (error: unknown) {
       if (isStale()) return;
-      console.error('[CsvImport] 导入失败:', error);
+      console.error('[CsvImport] import failed:', error);
       setImportError(String(error));
       showGlobalNotification('error', t('exam_sheet:csv.import_failed', {
         error: String(error),
@@ -532,7 +514,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         );
       }
     } catch (error: unknown) {
-      console.error('[CsvImport] 请求取消失败:', error);
+      console.error('[CsvImport] cancel request failed:', error);
       setIsCancelling(false);
       showGlobalNotification(
         'error',

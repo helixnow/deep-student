@@ -11,7 +11,7 @@ import {
   useSortable,
   horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useTouchFriendlyDndSensors } from "@/hooks/useTouchFriendlyDndSensors";
+import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from "@/hooks/useTouchFriendlyDndSensors";
 import { CSS } from "@dnd-kit/utilities";
 import { X, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
@@ -280,7 +280,7 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
             <CaretRight size={16} />
           </NotionButton>
         )}
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} autoScroll={SHELL_SAFE_AUTO_SCROLL} onDragEnd={handleDragEnd}>
           <SortableContext items={items} strategy={horizontalListSortingStrategy}>
             <TabsList
               ref={scrollRef as any}

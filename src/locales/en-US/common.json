@@ -3,7 +3,8 @@
     "name": "Deep Student",
     "title": "Deep Student",
     "description": "AI-powered intelligent learning assistant",
-    "version": "Version"
+    "version": "Version",
+    "default_header": "New chat"
   },
   "contextMenu": {
     "cut": "Cut",
@@ -125,7 +126,8 @@
     "expandAll": "Expand All",
     "scrollLeft": "Scroll Left",
     "scrollRight": "Scroll Right",
-    "clear_all": "Clear All"
+    "clear_all": "Clear All",
+    "backToHome": "Back to home"
   },
   "labels": {
     "optional": "Optional",
@@ -296,6 +298,7 @@
   "page": "Page",
   "prev": "Previous",
   "next": "Next",
+  "cancelled": "Cancelled",
   "cancel": "Cancel",
   "confirm": "Confirm",
   "messages": {
@@ -736,9 +739,10 @@
     "pdf_reader": "PDF Reader",
     "sandbox_workbench": "Sandbox Workbench",
     "todo": "Todo",
-    "tree_test": "Tree Test",
     "crepe_demo": "Crepe Demo",
-    "chat_v2_test": "Chat V2 Test"
+    "chat_v2_test": "Chat V2 Test",
+    "toggle_sidebar": "Toggle sidebar",
+    "llm_playground": "LLM Playground"
   },
   "time": {
     "now": "Just now",
@@ -3497,6 +3501,8 @@
     "title": "Welcome to DeepStudent",
     "subtitle": "A local-first AI learning workbench. Your data stays on your own device.",
     "language_label": "Language / 界面语言",
+    "lang_zh": "简体中文",
+    "lang_en": "English",
     "feature_hub_title": "Learning Hub",
     "feature_hub_desc": "Import PDFs, textbooks and notes, and manage all your study materials in one place.",
     "feature_chat_title": "AI Chat & Problem Solving",
@@ -3919,5 +3925,42 @@
   "model_selector": {
     "total_model_count": "{{count}} models total",
     "cached": "Cached"
+  },
+  "question_bank": {
+    "source_images": "Original imported images",
+    "crop_hint": "Drag on the image to select an area, then click \"Crop and add\" to attach it to the question",
+    "no_source_images": "This exam has no original imported images",
+    "crop_selected": "Crop area selected",
+    "drag_to_crop": "Drag to select a crop area",
+    "clear_selection": "Clear",
+    "crop_and_add": "Crop and add",
+    "crop_success": "Image cropped successfully",
+    "crop_failed": "Crop failed: {{error}}"
+  },
+  "a11y": {
+    "close": "Close",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "search": "Search",
+    "home": "Home",
+    "back": "Back",
+    "next": "Next",
+    "prev": "Previous",
+    "previous": "Previous",
+    "open": "Open",
+    "refresh": "Refresh",
+    "menu": "Menu",
+    "settings": "Settings"
+  },
+  "workflow": {
+    "progress": {
+      "processing": "Workflow in progress",
+      "stage_done": "Stage completed",
+      "stage_active": "Stage in progress",
+      "stage_pending": "Stage pending",
+      "percentage": "{{value}}%"
+    }
   }
 }

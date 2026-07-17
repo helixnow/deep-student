@@ -17,6 +17,7 @@ import {
   TextT,
   Smiley,
   Link,
+  LineSegment,
   Palette,
   Highlighter,
   CaretRight,
@@ -26,6 +27,7 @@ import {
   Scissors,
   ClipboardText,
   MagnifyingGlassPlus,
+  CornersOut,
   Note,
   X,
 } from '@phosphor-icons/react';
@@ -39,9 +41,21 @@ interface CanvasContextMenuProps {
   isOpen: boolean;
   position: { x: number; y: number };
   nodeId: string | null;
+  /** 右键关联线时传入；与 nodeId 互斥 */
+  associationId?: string | null;
+  /** 画布空白处右键：与 nodeId / associationId 互斥 */
+  paneMenu?: boolean;
   onClose: () => void;
   onOpenResourcePicker?: (nodeId: string) => void;
   onFocusBranch?: (nodeId: string) => void;
+  /** 进入「添加关联线」连线模式 */
+  onStartAssociation?: (nodeId: string) => void;
+  onEditAssociationLabel?: (associationId: string) => void;
+  onDeleteAssociation?: (associationId: string) => void;
+  /** 画布空白菜单：适应视图 */
+  onFitView?: () => void;
+  /** 画布空白菜单：当前处于分支专注模式时提供退出入口 */
+  onExitFocusMode?: (() => void) | null;
 }
 
 interface MenuItemProps {
@@ -85,38 +99,58 @@ const MenuSeparator: React.FC = () => (
 );
 
 /** 内联颜色选择面板 */
-const ColorPalette: React.FC<{
+export const ColorPalette: React.FC<{
   colors: string[];
   activeColor?: string;
   onSelect: (color: string | undefined) => void;
-}> = ({ colors, activeColor, onSelect }) => (
-  <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
-    {colors.map(color => (
-      <NotionButton
-        key={color}
-        variant="ghost" size="icon" iconOnly
-        className={cn(
-          "!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border-2 hover:scale-125 flex-shrink-0",
-          "[@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6",
-          activeColor === color ? "border-primary scale-110" : "border-transparent"
-        )}
-        style={{ backgroundColor: color }}
-        onClick={(e) => { e.stopPropagation(); onSelect(color); }}
-      />
-    ))}
-    <NotionButton variant="ghost" size="icon" iconOnly className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 border border-border text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label="clear color">
-      <X className="w-2.5 h-2.5" />
-    </NotionButton>
-  </div>
-);
+}> = ({ colors, activeColor, onSelect }) => {
+  const { t } = useTranslation('mindmap');
+  return (
+    <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
+      {colors.map(color => {
+        const selected = activeColor === color;
+        const label = t('contextMenu.selectColor', {
+          defaultValue: '选择颜色 {{color}}',
+          color,
+        });
+        return (
+          <NotionButton
+            key={color}
+            variant="ghost" size="icon" iconOnly
+            className={cn(
+              '!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border-2 hover:scale-125 flex-shrink-0',
+              '[@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6',
+              selected ? 'border-primary scale-110' : 'border-transparent',
+            )}
+            style={{ backgroundColor: color }}
+            onClick={(e) => { e.stopPropagation(); onSelect(color); }}
+            aria-label={label}
+            aria-pressed={selected}
+            title={label}
+          />
+        );
+      })}
+      <NotionButton variant="ghost" size="icon" iconOnly className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 border border-border text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}>
+        <X className="w-2.5 h-2.5" />
+      </NotionButton>
+    </div>
+  );
+};
 
 export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   isOpen,
   position,
   nodeId,
+  associationId = null,
+  paneMenu = false,
   onClose,
   onOpenResourcePicker,
   onFocusBranch,
+  onStartAssociation,
+  onEditAssociationLabel,
+  onDeleteAssociation,
+  onFitView,
+  onExitFocusMode,
 }) => {
   const { t } = useTranslation('mindmap');
   const menuRef = useRef<HTMLDivElement>(null);
@@ -132,6 +166,13 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   const cutNodes = useMindMapStore(s => s.cutNodes);
   const pasteNodes = useMindMapStore(s => s.pasteNodes);
   const clipboard = useMindMapStore(s => s.clipboard);
+  const expandAll = useMindMapStore(s => s.expandAll);
+  const collapseAll = useMindMapStore(s => s.collapseAll);
+
+  const isAssociationMenu = !!associationId && !nodeId;
+  const association = associationId
+    ? document.associations?.find((a) => a.id === associationId) ?? null
+    : null;
 
   const node = nodeId ? findNodeById(document.root, nodeId) : null;
   const isRoot = nodeId === document.root.id;
@@ -184,7 +225,90 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
     menu.style.top = `${y}px`;
   }, [isOpen, position]);
 
-  if (!isOpen || !nodeId || !node) return null;
+  if (!isOpen) return null;
+
+  if (isAssociationMenu && association) {
+    return createPortal(
+      <div
+        ref={menuRef}
+        className="mindmap-container fixed min-w-[180px] max-w-[240px] p-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in"
+        style={{ left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
+      >
+        <MenuItem
+          icon={<Pencil className="w-4 h-4" />}
+          label={t('association.editLabel', { defaultValue: '编辑标签' })}
+          onClick={() => exec(() => onEditAssociationLabel?.(association.id))}
+        />
+        <MenuSeparator />
+        <MenuItem
+          icon={<Trash className="w-4 h-4" />}
+          label={t('association.delete', { defaultValue: '删除关联线' })}
+          shortcut="Del"
+          destructive
+          onClick={() => exec(() => onDeleteAssociation?.(association.id))}
+        />
+      </div>,
+      window.document.body,
+    );
+  }
+
+  // 画布空白处右键菜单：新建主题 / 粘贴 / 适应视图 / 全部展开折叠
+  if (paneMenu && !nodeId && !associationId) {
+    return createPortal(
+      <div
+        ref={menuRef}
+        className="mindmap-container fixed min-w-[180px] max-w-[240px] p-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in"
+        style={{ left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
+      >
+        <MenuItem
+          icon={<Plus className="w-4 h-4" />}
+          label={t('contextMenu.addTopic', { defaultValue: '新建主题' })}
+          onClick={() => exec(() => {
+            const newId = addNode(document.root.id);
+            if (newId) {
+              setFocusedNodeId(newId);
+              requestAnimationFrame(() => setEditingNodeId(newId));
+            }
+          })}
+        />
+        <MenuItem
+          icon={<ClipboardText className="w-4 h-4" />}
+          label={t('contextMenu.paste', { defaultValue: '粘贴' })}
+          shortcut="⌘V"
+          disabled={!clipboard}
+          onClick={() => exec(() => pasteNodes(document.root.id))}
+        />
+        <MenuSeparator />
+        <MenuItem
+          icon={<CornersOut className="w-4 h-4" />}
+          label={t('contextMenu.fitView', { defaultValue: '适应视图' })}
+          shortcut="⌘0"
+          onClick={() => exec(() => onFitView?.())}
+        />
+        {onExitFocusMode && (
+          <MenuItem
+            icon={<MagnifyingGlassPlus className="w-4 h-4" />}
+            label={t('contextMenu.exitFocusMode', { defaultValue: '退出专注模式' })}
+            onClick={() => exec(() => onExitFocusMode())}
+          />
+        )}
+        <MenuSeparator />
+        <MenuItem
+          icon={<CaretDown className="w-4 h-4" />}
+          label={t('toolbar.expandAll', { defaultValue: '展开全部' })}
+          onClick={() => exec(() => expandAll())}
+        />
+        <MenuItem
+          icon={<CaretRight className="w-4 h-4" />}
+          label={t('toolbar.collapseAll', { defaultValue: '折叠全部' })}
+          onClick={() => exec(() => collapseAll())}
+        />
+      </div>,
+      window.document.body,
+    );
+  }
+
+  if (!nodeId || !node) return null;
 
   return createPortal(
     <div
@@ -236,6 +360,14 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         label={t('contextMenu.linkResource')}
         onClick={() => exec(() => {
           if (nodeId) onOpenResourcePicker?.(nodeId);
+        })}
+      />
+
+      <MenuItem
+        icon={<LineSegment className="w-4 h-4" />}
+        label={t('association.add', { defaultValue: '添加关联线' })}
+        onClick={() => exec(() => {
+          if (nodeId) onStartAssociation?.(nodeId);
         })}
       />
 

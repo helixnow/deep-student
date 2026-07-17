@@ -767,7 +767,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         request: {
           content: JSON.stringify(base64Images),
           format: 'image',
-          name: resolvedSessionName || selectedFiles[0]?.file.name.replace(/\.[^/.]+$/, '') || '图片导入',
+          name: resolvedSessionName || selectedFiles[0]?.file.name.replace(/\.[^/.]+$/, '') || t('exam_sheet:uploader.image_import_name'),
           folder_id: undefined,
           session_id: sessionId || undefined,
           model_config_id: selectedModelId || undefined,

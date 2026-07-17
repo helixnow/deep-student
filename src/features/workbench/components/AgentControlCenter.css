@@ -4,6 +4,13 @@
     0 0 0 3px hsl(var(--primary) / 8%);
 }
 
+.wb-agent-control-app-icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
 .wb-agent-control-status-dot {
   position: absolute;
   right: 1px;
@@ -37,6 +44,10 @@
   border-radius: 12px;
   color: hsl(var(--foreground));
   box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover);
+  /* 入场手感对齐 workbench motion token：从 Dock 侧（右下角）弹出 */
+  --ui-zoom-origin: bottom right;
+  --dropdown-open-dur: var(--wb-motion-standard, 280ms);
+  --dropdown-ease: var(--wb-ease-spring, cubic-bezier(0.32, 1.12, 0.36, 1));
 }
 
 /* PopoverContent ships an opaque bg-popover utility; adapt it back to the
@@ -105,6 +116,13 @@
   color: hsl(var(--foreground) / 82%);
 }
 
+.wb-agent-control-mark-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
 .wb-agent-control-mark i {
   position: absolute;
   right: 0;
@@ -135,7 +153,8 @@
 .wb-agent-control-header p {
   max-width: 230px;
   margin: 2px 0 0;
-  color: hsl(var(--foreground) / 68%);
+  /* 玻璃底上的小字号说明抬高一档对比度 */
+  color: hsl(var(--foreground) / 72%);
   font-size: 10px;
   line-height: 1.45;
 }
@@ -216,7 +235,7 @@
 }
 
 .wb-agent-control-mode-description {
-  color: hsl(var(--foreground) / 66%);
+  color: hsl(var(--foreground) / 70%);
 }
 
 .wb-agent-control-error {
@@ -274,7 +293,13 @@
 .wb-agent-capabilities-toggle:focus-visible {
   background: color-mix(in hsl, hsl(var(--muted-foreground)) 10%, transparent 90%);
   color: hsl(var(--foreground));
-  outline: none;
+}
+
+/* 键盘焦点保留 workbench 统一焦点环（a11y，不随材质降级） */
+.wb-agent-capabilities-toggle:focus-visible {
+  outline: var(--wb-focus-ring-width, 2px) solid
+    var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline-offset: 1px;
 }
 
 .wb-agent-capabilities-toggle svg {
@@ -431,10 +456,17 @@
   border-radius: 7px;
   background: hsl(var(--foreground) / 8%);
   color: hsl(var(--foreground) / 88%);
+  transition:
+    background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
 }
 
 .wb-agent-control-open-chat:hover {
   background: hsl(var(--foreground) / 12%);
+}
+
+.wb-agent-control-open-chat:active {
+  transform: scale(0.97);
 }
 
 .wb-agent-control-actions button:last-child {
@@ -497,8 +529,14 @@
 @media (prefers-reduced-motion: reduce) {
   .wb-agent-control-trigger,
   .wb-agent-control-popover,
+  .wb-agent-control-open-chat,
   .wb-agent-capabilities-toggle svg {
     animation: none;
     transition: none;
   }
+}
+
+:root[data-wb-material='minimal'] .wb-agent-control-open-chat,
+:root[data-wb-material='reduced'] .wb-agent-control-open-chat {
+  transition: none;
 }

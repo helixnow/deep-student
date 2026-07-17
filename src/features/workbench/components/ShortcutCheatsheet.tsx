@@ -176,16 +176,16 @@ const ShortcutCheatsheetComponent: React.FC = () => {
         className="wb-glass wb-glass-highlight wb-cheat-panel"
         role="dialog"
         aria-modal="true"
-        aria-label={t('workbench:cheatsheet.title', '键盘快捷键')}
+        aria-label={t('workbench:cheatsheet.title')}
         tabIndex={-1}
       >
         <div className="wb-cheat-header">
-          <h2 className="wb-cheat-title">{t('workbench:cheatsheet.title', '键盘快捷键')}</h2>
+          <h2 className="wb-cheat-title">{t('workbench:cheatsheet.title')}</h2>
           <button
             type="button"
             className="wb-cheat-close wb-focus-ring"
             onClick={closeCheatsheet}
-            aria-label={t('workbench:cheatsheet.close', '关闭')}
+            aria-label={t('workbench:cheatsheet.close')}
           >
             <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
               <path
@@ -219,7 +219,7 @@ const ShortcutCheatsheetComponent: React.FC = () => {
         </div>
 
         <div className="wb-cheat-footer">
-          {t('workbench:cheatsheet.hint', '按 ? 或 Esc 关闭 · 长按 Ctrl+Alt 随时查看')}
+          {t('workbench:cheatsheet.hint')}
         </div>
       </div>
     </div>

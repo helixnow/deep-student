@@ -133,8 +133,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
 
   const selectedSkillToolCount = useMemo(() => {
     if (!selectedSkill) return 0;
-    if ((selectedSkill.embeddedTools?.length ?? 0) > 0) return selectedSkill.embeddedTools!.length;
-    return (selectedSkill.allowedTools ?? selectedSkill.tools)?.length ?? 0;
+    return selectedSkill.embeddedTools?.length ?? 0;
   }, [selectedSkill]);
 
   const handleSelect = useCallback((skillId: string) => {
@@ -214,7 +213,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
       <ComposerPanel.Header
         icon={Lightning}
         title={t('skills:selector.title')}
-        subtitle={t('skills:selector.count', { count: allSkills.length, defaultValue: '{{count}} 项' })}
+        subtitle={t('skills:selector.count', {count: allSkills.length})}
         actions={headerActions}
         onClose={onClose}
         closeAriaLabel={t('common:actions.close')}
@@ -282,14 +281,14 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           aria-pressed={isActiveSkill}
                           aria-label={
                             isDisabledSkill && !isActiveSkill
-                              ? t('skills:selector.disabled_hint', '此技能已停用，启用后才能激活')
+                              ? t('skills:selector.disabled_hint')
                               : isActiveSkill
                                 ? t('skills:card.clickToDeactivate')
                                 : t('skills:card.clickToActivate')
                           }
                           title={
                             isDisabledSkill && !isActiveSkill
-                              ? t('skills:selector.disabled_hint', '此技能已停用，启用后才能激活')
+                              ? t('skills:selector.disabled_hint')
                               : isActiveSkill
                                 ? t('skills:card.clickToDeactivate')
                                 : t('skills:card.clickToActivate')
@@ -361,9 +360,9 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       {isDisabledSkill ? (
                         <span
                           className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-                          title={t('skills:selector.disabled_hint', '此技能已停用，启用后才能激活')}
+                          title={t('skills:selector.disabled_hint')}
                         >
-                          {t('skills:selector.disabled_badge', '已停用')}
+                          {t('skills:selector.disabled_badge')}
                         </span>
                       ) : null}
                       {isDefaultSkill ? (
@@ -417,7 +416,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       </h3>
                       {isSkillDisabled(selectedSkill.id) ? (
                         <span className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                          {t('skills:selector.disabled_badge', '已停用')}
+                          {t('skills:selector.disabled_badge')}
                         </span>
                       ) : null}
                       <NotionButton
@@ -480,14 +479,14 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
 
                 {isSkillDisabled(selectedSkill.id) ? (
                   <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-muted px-2 py-1.5 text-[11px] text-muted-foreground">
-                    <span>{t('skills:selector.disabled_hint', '此技能已停用，启用后才能激活')}</span>
+                    <span>{t('skills:selector.disabled_hint')}</span>
                     <NotionButton
                       variant="ghost"
                       size="sm"
                       onClick={() => handleEnableSkill(selectedSkill.id)}
                       className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline"
                     >
-                      {t('skills:selector.enable', '启用')}
+                      {t('skills:selector.enable')}
                     </NotionButton>
                   </div>
                 ) : null}
@@ -501,7 +500,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       <div className="mb-3 space-y-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
                         <div className="flex items-start gap-1.5">
                           <ShieldWarning size={12} className="mt-0.5 shrink-0" />
-                          <span>{t('skills:selector.untrusted_hint', '此外部技能尚未信任，包内脚本不会自动进入本地运行时。')}</span>
+                          <span>{t('skills:selector.untrusted_hint')}</span>
                         </div>
                         {canToggleTrust && (
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-[18px]">
@@ -511,10 +510,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                               onClick={() => handleTrustOverride(selectedSkill.id, 'trusted')}
                               className="!h-auto !px-1.5 !py-0.5 text-xs font-medium text-primary hover:underline"
                             >
-                              {t('skills:package.trust_enable', '信任此技能')}
+                              {t('skills:package.trust_enable')}
                             </NotionButton>
                             <span className="text-[10px] opacity-80">
-                              {t('skills:package.trust_effect_trusted', '信任后：AI 可以只读查看这个技能包的文件，其中的脚本可在本地命令中使用。')}
+                              {t('skills:package.trust_effect_trusted')}
                             </span>
                           </div>
                         )}
@@ -525,17 +524,17 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                     return (
                       <div className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-[color:var(--composer-panel-muted-foreground)]">
                         <ShieldCheck size={12} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span title={t('skills:package.trust_effect_trusted', '信任后：AI 可以只读查看这个技能包的文件，其中的脚本可在本地命令中使用。')}>
-                          {t('skills:package.trust_trusted', '已信任')}
+                        <span title={t('skills:package.trust_effect_trusted')}>
+                          {t('skills:package.trust_trusted')}
                         </span>
                         <NotionButton
                           variant="ghost"
                           size="sm"
                           onClick={() => handleTrustOverride(selectedSkill.id, 'untrusted')}
-                          title={t('skills:package.trust_effect_untrusted', '未信任时：这个技能包的文件完全不会展示给 AI。')}
+                          title={t('skills:package.trust_effect_untrusted')}
                           className="!h-auto !px-1.5 !py-0.5 text-xs hover:underline"
                         >
-                          {t('skills:package.trust_revoke', '撤销信任')}
+                          {t('skills:package.trust_revoke')}
                         </NotionButton>
                       </div>
                     );
@@ -546,17 +545,17 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 {(() => {
                   const perm = getSkillPermissionSummary(selectedSkill);
                   const toolLabels = getSkillEmbeddedToolLabels(selectedSkill, 10);
-                  if (toolLabels.length === 0 && perm.scripts === 0 && perm.allowedTools === 0) return null;
+                  if (toolLabels.length === 0 && perm.scripts === 0) return null;
                   return (
                     <div className="mb-3 space-y-1.5">
                       <div className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--composer-panel-muted-foreground)]">
-                        {t('skills:selector.capabilities', '能力摘要')}
+                        {t('skills:selector.capabilities')}
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {perm.scripts > 0 && (
                           <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                             <Terminal size={10} />
-                            {t('skills:package.permission_scripts', '{{count}} 脚本', { count: perm.scripts })}
+                            {t('skills:package.permission_scripts', { count: perm.scripts })}
                           </span>
                         )}
                         {toolLabels.map((label) => (
@@ -624,7 +623,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                     disabled={disabled || (isSkillDisabled(selectedSkill.id) && !isSkillActive(selectedSkill.id))}
                     title={
                       isSkillDisabled(selectedSkill.id) && !isSkillActive(selectedSkill.id)
-                        ? t('skills:selector.disabled_hint', '此技能已停用，启用后才能激活')
+                        ? t('skills:selector.disabled_hint')
                         : undefined
                     }
                     className="w-full"

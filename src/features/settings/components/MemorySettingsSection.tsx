@@ -132,7 +132,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
       setSaving(true);
       await setMemoryAutoCreateSubfolders(enabled);
       setConfig((prev) => (prev ? { ...prev, autoCreateSubfolders: enabled } : prev));
-      showGlobalNotification('success', t('settings:memory.autoSubfoldersUpdated', '已更新'));
+      showGlobalNotification('success', t('settings:memory.autoSubfoldersUpdated'));
     } catch (error: unknown) {
       console.error('更新自动子文件夹失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
@@ -146,7 +146,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
       setSaving(true);
       await setMemoryDefaultCategory(category);
       setConfig((prev) => (prev ? { ...prev, defaultCategory: category } : prev));
-      showGlobalNotification('success', t('settings:memory.defaultCategoryUpdated', '已更新'));
+      showGlobalNotification('success', t('settings:memory.defaultCategoryUpdated'));
     } catch (error: unknown) {
       console.error('更新默认分类失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
@@ -285,16 +285,16 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
         )}
 
         <SwitchRow
-          title={t('settings:memory.autoSubfolders', '自动创建子文件夹')}
-          description={t('settings:memory.autoSubfoldersDesc', '写入记忆时，自动按分类路径创建子文件夹')}
+          title={t('settings:memory.autoSubfolders')}
+          description={t('settings:memory.autoSubfoldersDesc')}
           checked={!!config?.autoCreateSubfolders}
           onCheckedChange={handleToggleAutoSubfolders}
           disabled={saving}
         />
 
         <SettingRow
-          title={t('settings:memory.defaultCategory', '默认分类')}
-          description={t('settings:memory.defaultCategoryDesc', '未指定分类时记忆存入的默认子文件夹')}
+          title={t('settings:memory.defaultCategory')}
+          description={t('settings:memory.defaultCategoryDesc')}
         >
           <AppSelect
             value={config?.defaultCategory || '通用'}

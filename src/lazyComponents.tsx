@@ -113,10 +113,6 @@ export const LazyTodoPage = React.lazy(() =>
 const DevNull: React.FC<any> = () => null;
 const devLazy = () => Promise.resolve({ default: DevNull as React.ComponentType<any> });
 
-export const LazyTreeDragTest = import.meta.env.DEV
-  ? React.lazy(() => import('./features/notes/TreeDragTest').then(m => ({ default: m.default })))
-  : React.lazy(devLazy);
-
 export const LazyCrepeDemoPage = import.meta.env.DEV
   ? React.lazy(() => import('./components/dev/CrepeDemoPage').then(m => ({ default: m.CrepeDemoPage })))
   : React.lazy(devLazy);

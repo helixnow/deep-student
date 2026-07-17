@@ -170,7 +170,7 @@ export const MigrationStatusBanner: React.FC = () => {
             className="h-7 px-2.5 text-xs"
             onClick={openDataGovernance}
           >
-            {t('data:governance.toast_view_details', '查看详情')}
+            {t('data:governance.toast_view_details')}
           </NotionButton>
           {migrationLevel === 'error' && (
             <CopyDiagnosticButton />
@@ -181,7 +181,7 @@ export const MigrationStatusBanner: React.FC = () => {
             className="h-7 px-2.5 text-xs text-muted-foreground"
             onClick={dismiss}
           >
-            {t('common:actions.later', '稍后处理')}
+            {t('common:actions.later')}
           </NotionButton>
         </div>
       </div>
@@ -218,10 +218,10 @@ const CopyDiagnosticButton: React.FC = () => {
     >
       <Copy size={12} className="mr-1" />
       {copied
-        ? t('data:governance.copied', '已复制')
+        ? t('data:governance.copied')
         : copyFailed
-          ? t('data:governance.copy_failed', '复制失败')
-          : t('data:governance.copy_log', '复制日志')}
+          ? t('data:governance.copy_failed')
+          : t('data:governance.copy_log')}
     </NotionButton>
   );
 };

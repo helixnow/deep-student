@@ -11,7 +11,6 @@ import {
   GearSix,
   Globe,
   ListChecks,
-  Robot,
   ShieldCheck,
   Timer,
   TreeStructure,
@@ -58,24 +57,9 @@ const CAPABILITY_APP_ICONS = {
 };
 
 const CAPABILITY_GROUPS = [
-  {
-    id: 'organize',
-    icon: FileText,
-    titleFallback: '整理内容',
-    actionsFallback: '定位并编辑笔记、导图与待办',
-  },
-  {
-    id: 'study',
-    icon: Books,
-    titleFallback: '推进学习',
-    actionsFallback: '切换题目、复习闪卡、管理专注计时',
-  },
-  {
-    id: 'browse',
-    icon: Globe,
-    titleFallback: '查找资料',
-    actionsFallback: '检索资源、切换目录与导航网页',
-  },
+  { id: 'organize', icon: FileText },
+  { id: 'study', icon: Books },
+  { id: 'browse', icon: Globe },
 ] as const;
 
 function parseAgentControlMode(raw: unknown): AgentControlMode {
@@ -120,10 +104,10 @@ export function AgentCapabilitySummary({
       <div className="wb-agent-capabilities-header">
         <div className="wb-agent-capabilities-heading">
           <h3 className="wb-agent-capabilities-title">
-            {t('agentControlCenter.capabilitiesTitle', '能做什么')}
+            {t('agentControlCenter.capabilitiesTitle')}
           </h3>
           {variant === 'popover' && (
-            <span>{t('agentControlCenter.appCount', '8 个应用')}</span>
+            <span>{t('agentControlCenter.appCount')}</span>
           )}
         </div>
         {variant === 'popover' && (
@@ -137,8 +121,8 @@ export function AgentCapabilitySummary({
           >
             <span>
               {expanded
-                ? t('agentControlCenter.collapseCapabilities', '收起')
-                : t('agentControlCenter.expandCapabilities', '全部能力')}
+                ? t('agentControlCenter.collapseCapabilities')
+                : t('agentControlCenter.expandCapabilities')}
             </span>
             <CaretDown size={13} weight="bold" aria-hidden="true" />
           </NotionButton>
@@ -177,10 +161,10 @@ export function AgentCapabilitySummary({
                 </span>
                 <span className="wb-agent-capability-group-copy">
                   <span>
-                    {t(`agentControlCenter.groups.${group.id}.title`, group.titleFallback)}
+                    {t(`agentControlCenter.groups.${group.id}.title`)}
                   </span>
                   <small>
-                    {t(`agentControlCenter.groups.${group.id}.actions`, group.actionsFallback)}
+                    {t(`agentControlCenter.groups.${group.id}.actions`)}
                   </small>
                 </span>
               </li>
@@ -193,14 +177,8 @@ export function AgentCapabilitySummary({
         <ShieldCheck size={15} weight="duotone" aria-hidden="true" />
         <span>
           {variant === 'popover'
-            ? t(
-                'agentControlCenter.safetyCompact',
-                '只执行已注册操作；不会代答、提交或评分，破坏性操作会先确认。',
-              )
-            : t(
-                'agentControlCenter.safety',
-                '只使用应用注册的语义操作；不会替你答题、提交考试或给闪卡评分。破坏性操作会在执行前确认。',
-              )}
+            ? t('agentControlCenter.safetyCompact')
+            : t('agentControlCenter.safety')}
         </span>
       </p>
     </div>
@@ -308,7 +286,6 @@ export function AgentControlDockEntry({
   const statusLabel = t(`settings.agentControl.${mode}`);
   const triggerLabel = t('agentControlCenter.triggerLabel', {
     status: statusLabel,
-    defaultValue: `AI 桌面操控，当前：${statusLabel}`,
   });
 
   return (
@@ -328,7 +305,7 @@ export function AgentControlDockEntry({
                 data-testid="wb-dock-agent-control-button"
                 data-mode={mode}
                 data-unseen={!seen || undefined}
-                className="wb-dock-item wb-agent-control-trigger group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none"
+                className="wb-dock-item wb-agent-control-trigger group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none lg:h-11 lg:w-11"
                 aria-label={triggerLabel}
                 tabIndex={tabIndex}
                 onFocus={onFocus}
@@ -340,7 +317,11 @@ export function AgentControlDockEntry({
                   aria-hidden="true"
                   className="wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center"
                 >
-                  <Robot size={27} weight="duotone" />
+                  <img
+                    src="/app-icon.png"
+                    alt=""
+                    className="wb-agent-control-app-icon"
+                  />
                 </span>
                 <span className="wb-agent-control-status-dot" data-mode={mode} aria-hidden="true" />
               </NotionButton>
@@ -352,23 +333,24 @@ export function AgentControlDockEntry({
               align="end"
               sideOffset={32}
               collisionPadding={12}
-              aria-label={t('agentControlCenter.title', 'AI 桌面操控')}
+              aria-label={t('agentControlCenter.title')}
               className="wb-agent-control-popover wb-glass wb-glass-highlight wb-glass-lens"
             >
               <div className="wb-agent-control-scroll">
                 <div className="wb-agent-control-header">
                   <div className="wb-agent-control-identity">
                     <span className="wb-agent-control-mark" data-mode={mode} aria-hidden="true">
-                      <Robot size={20} weight="duotone" />
+                      <img
+                        src="/app-icon.png"
+                        alt=""
+                        className="wb-agent-control-mark-icon"
+                      />
                       <i />
                     </span>
                     <div>
-                      <h2>{t('agentControlCenter.title', 'AI 桌面操控')}</h2>
+                      <h2>{t('agentControlCenter.title')}</h2>
                       <p>
-                        {t(
-                          'agentControlCenter.description',
-                          '让 Chat 在学习应用中定位内容并执行已授权操作。',
-                        )}
+                        {t('agentControlCenter.description')}
                       </p>
                     </div>
                   </div>
@@ -380,28 +362,26 @@ export function AgentControlDockEntry({
 
                 <div className="wb-agent-control-mode-control">
                   <div className="wb-agent-control-mode-heading">
-                    <span>{t('agentControlCenter.modeLabel', '运行方式')}</span>
+                    <span>{t('agentControlCenter.modeLabel')}</span>
                     <SegmentedControl
-                      ariaLabel={t('settings.agentControl.title', 'AI 助手操控')}
+                      ariaLabel={t('settings.agentControl.title')}
                       value={mode}
                       onValueChange={(next) => void changeMode(next as AgentControlMode)}
                       size="compact"
                       className={cn('wb-agent-control-segmented', loading && 'opacity-50')}
                       options={([
-                        { value: 'off', label: t('settings.agentControl.off', '关闭') },
-                        { value: 'background', label: t('settings.agentControl.background', '后台') },
-                        { value: 'follow', label: t('settings.agentControl.follow', '跟随') },
+                        { value: 'off', label: t('settings.agentControl.off') },
+                        { value: 'background', label: t('settings.agentControl.background') },
+                        { value: 'follow', label: t('settings.agentControl.follow') },
                       ] as const).map((option) => ({ ...option, disabled: loading }))}
                     />
                   </div>
                   <p className="wb-agent-control-mode-description">
-                    {t(`agentControlCenter.modeDescriptions.${mode}`, {
-                      defaultValue: t(`settings.agentControl.${mode}Desc`),
-                    })}
+                    {t(`agentControlCenter.modeDescriptions.${mode}`)}
                   </p>
                   {saveError && (
                     <p className="wb-agent-control-error" role="alert">
-                      {t('agentControlCenter.saveFailed', '未能保存操控方式，请重试。')}
+                      {t('agentControlCenter.saveFailed')}
                     </p>
                   )}
                 </div>
@@ -417,14 +397,14 @@ export function AgentControlDockEntry({
                   onClick={openChat}
                 >
                   <ChatCircleDots size={16} weight="duotone" aria-hidden="true" />
-                  {t('agentControlCenter.openChat', '打开 Chat')}
+                  {t('agentControlCenter.openChat')}
                 </NotionButton>
                 <NotionButton
                   size="icon"
                   variant="ghost"
                   iconOnly
-                  aria-label={t('agentControlCenter.openSettings', '操控设置')}
-                  title={t('agentControlCenter.openSettings', '操控设置')}
+                  aria-label={t('agentControlCenter.openSettings')}
+                  title={t('agentControlCenter.openSettings')}
                   onClick={openControlSettings}
                 >
                   <GearSix size={16} weight="duotone" aria-hidden="true" />
@@ -436,7 +416,7 @@ export function AgentControlDockEntry({
       </div>
       {!open && (
         <span aria-hidden data-testid="wb-dock-tip-agent-control" className="wb-dock-tip">
-          {t('agentControlCenter.tooltip', 'AI 桌面操控')}
+          {t('agentControlCenter.tooltip')}
         </span>
       )}
     </div>

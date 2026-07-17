@@ -1,0 +1,237 @@
+/**
+ * Notes workspace empty / loading states (V6)
+ * Class prefix: nes-
+ * Tokens: Notes UI consistency (--notes-radius-*, --notes-hover-transition, --notes-popup-enter-*)
+ */
+
+/* ── Empty pane (no open tab) ───────────────────────────────────────── */
+
+.nes-empty-pane {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.nes-empty-pane__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 320px;
+  text-align: center;
+}
+
+.nes-empty-pane__icon {
+  color: hsl(var(--muted-foreground) / 50%);
+  line-height: 0;
+}
+
+.nes-empty-pane__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: hsl(var(--foreground) / 88%);
+  /* 中文两行折行时左右均衡，避免孤字行 */
+  text-wrap: balance;
+}
+
+.nes-empty-pane__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.nes-empty-pane__hints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.nes-empty-pane__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nes-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4em;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--muted) / 40%);
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* ── Shared secondary action button ─────────────────────────────────── */
+
+.nes-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground) / 88%);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition),
+    border-color var(--notes-hover-transition);
+}
+
+.nes-action:hover {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+}
+
+.nes-action:focus-visible {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.nes-action--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+}
+
+.nes-action--ghost:hover {
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground) / 88%);
+  background: hsl(var(--accent));
+}
+
+/* ── Tree empty (compact, same family) ──────────────────────────────── */
+
+.nes-tree-empty {
+  min-height: 120px;
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.nes-tree-empty__icon {
+  color: hsl(var(--muted-foreground) / 50%);
+  line-height: 0;
+}
+
+.nes-tree-empty__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: hsl(var(--foreground) / 82%);
+  text-wrap: balance;
+}
+
+.nes-tree-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.nes-tree-empty .nes-action {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+/* Filter / no-match empty keeps legacy message layout but shares actions */
+
+.nes-tree-empty--filtered {
+  gap: 9px;
+}
+
+.nes-tree-empty__message {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ── Tree loading skeleton (indented tree rows) ─────────────────────── */
+
+.nes-tree-skeleton {
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nes-tree-skeleton__row {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-inline-start: calc(var(--nes-indent, 0) * 14px);
+}
+
+.nes-tree-skeleton__bar {
+  display: block;
+  height: 14px;
+  width: var(--nes-bar-w, 72%);
+  border-radius: var(--notes-radius-row);
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted) / 42%) 0%,
+    hsl(var(--muted) / 68%) 45%,
+    hsl(var(--muted) / 42%) 100%
+  );
+  background-size: 200% 100%;
+  animation: nes-shimmer 1.15s ease-in-out infinite;
+}
+
+@keyframes nes-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nes-empty-pane__inner.ui-zoom-fade-in {
+    animation: none;
+  }
+
+  .nes-action {
+    transition: none;
+  }
+
+  .nes-tree-skeleton__bar {
+    animation: none;
+    background: hsl(var(--muted) / 56%);
+  }
+}

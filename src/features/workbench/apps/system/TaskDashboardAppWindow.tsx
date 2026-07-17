@@ -39,7 +39,7 @@ const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleCha
   );
 
   useEffect(() => {
-    const base = t('workbench:apps.taskDashboard', '制卡任务');
+    const base = t('workbench:apps.taskDashboard');
     onTitleChange(activeCount > 0 ? `${base} · ${activeCount}` : base);
   }, [onTitleChange, t, activeCount]);
 
@@ -51,7 +51,7 @@ const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleCha
     >
       <WbSysActivityStrip
         active={activeCount > 0}
-        label={t('workbench:apps.system.tasksRunning', '{{count}} 个制卡任务进行中', {
+        label={t('workbench:apps.system.tasksRunning', {
           count: activeCount,
         })}
       />

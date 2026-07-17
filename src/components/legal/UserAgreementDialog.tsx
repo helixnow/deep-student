@@ -57,13 +57,13 @@ export function useUserAgreement() {
     }
 
     // 首次检查出错（数据库可能正在迁移），后台重试
-    console.warn('[Legal] 用户协议检查失败，数据库可能正在迁移，将重试...');
+    console.warn('[Legal] User agreement check failed; database may be migrating, retrying...');
     const retryDelays = [500, 1000, 2000, 3000, 5000];
     for (const delay of retryDelays) {
       await new Promise(resolve => setTimeout(resolve, delay));
       const result = await tryCheck();
       if (result === 'agreed') {
-        console.log('[Legal] 重试成功：用户已同意协议');
+        console.log('[Legal] Retry succeeded: user has already accepted the agreement');
         setNeedsAgreement(false);
         return;
       }
@@ -74,7 +74,7 @@ export function useUserAgreement() {
     }
 
     // 所有重试均失败：真正的数据库问题，视为需要同意（兜底保守策略）
-    console.error('[Legal] 所有重试均失败，按需要同意处理');
+    console.error('[Legal] All retries failed; treating as agreement required');
     setNeedsAgreement(true);
   }, []);
 
@@ -96,7 +96,7 @@ export function useUserAgreement() {
         setNeedsAgreement(false);
       } catch {
         // 重试仍失败：允许继续使用，但提示用户下次启动可能再次显示
-        console.warn('[Legal] 用户协议同意状态保存失败，下次启动可能再次显示', err);
+        console.warn('[Legal] Failed to persist agreement acceptance; dialog may show again on next launch', err);
         setNeedsAgreement(false);
       }
     }
@@ -392,7 +392,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
               className="w-full justify-center text-[13px] font-medium"
               onClick={onClose}
             >
-              {t('common:close', '关闭')}
+              {t('common:close')}
             </NotionButton>
           ) : (
             <NotionButton

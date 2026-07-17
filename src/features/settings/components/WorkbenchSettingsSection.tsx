@@ -370,14 +370,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
 
   const browserControlsDisabled = !mode;
   const browserEnabledDescription = browserControlsDisabled
-    ? t(
-        'workbench:settings.browserEnabled.needWorkbench',
-        '请先启用学习桌面，才能打开内置浏览器相关选项。',
-      )
-    : t(
-        'workbench:settings.browserEnabled.desc',
-        '在学习桌面中打开独立浏览器窗口（页面在隔离 WebView 中运行）。需先启用学习桌面。',
-      );
+    ? t('workbench:settings.browserEnabled.needWorkbench')
+    : t('workbench:settings.browserEnabled.desc');
 
   const saveBrowserNetworkMode = useCallback(
     async (next: BrowserNetworkMode) => {
@@ -424,19 +418,13 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
 
   return (
     <SettingsGroup
-      title={t('workbench:settings.sectionTitle', '学习桌面（实验）')}
-      description={t(
-        'workbench:settings.sectionDesc',
-        '把主内容区变为可自由开窗、平铺的学习桌面（Workbench）。实验功能，可随时关闭回到现有布局。',
-      )}
+      title={t('workbench:settings.sectionTitle')}
+      description={t('workbench:settings.sectionDesc')}
       className={className}
     >
       <SwitchRow
-        title={t('workbench:settings.mode.title', '启用学习桌面')}
-        description={t(
-          'workbench:settings.mode.desc',
-          '开启后主内容区切换为窗口化桌面模式；关闭后恢复现有视图，桌面布局快照会保留。',
-        )}
+        title={t('workbench:settings.mode.title')}
+        description={t('workbench:settings.mode.desc')}
         checked={mode}
         loading={!loaded}
         onCheckedChange={(next) => {
@@ -446,15 +434,12 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       />
 
       <SettingRow
-        title={t('workbench:settings.performanceProfile.title', '性能档位')}
-        description={t(
-          'workbench:settings.performanceProfile.desc',
-          '一键平衡画质与流畅度。选择预设会同步材质与 Dock 放大；单独改下面选项会变为「自定义」。',
-        )}
+        title={t('workbench:settings.performanceProfile.title')}
+        description={t('workbench:settings.performanceProfile.desc')}
         className="items-center"
       >
         <SegmentedControl
-          ariaLabel={t('workbench:settings.performanceProfile.title', '性能档位')}
+          ariaLabel={t('workbench:settings.performanceProfile.title')}
           value={performanceProfile}
           onValueChange={(next) => {
             if (!loaded) return;
@@ -464,34 +449,31 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           options={[
             {
               value: 'quality',
-              label: t('workbench:settings.performanceProfile.quality', '画质'),
+              label: t('workbench:settings.performanceProfile.quality'),
             },
             {
               value: 'balanced',
-              label: t('workbench:settings.performanceProfile.balanced', '均衡'),
+              label: t('workbench:settings.performanceProfile.balanced'),
             },
             {
               value: 'performance',
-              label: t('workbench:settings.performanceProfile.performance', '性能'),
+              label: t('workbench:settings.performanceProfile.performance'),
             },
             {
               value: 'custom',
-              label: t('workbench:settings.performanceProfile.custom', '自定义'),
+              label: t('workbench:settings.performanceProfile.custom'),
             },
           ]}
         />
       </SettingRow>
 
       <SettingRow
-        title={t('workbench:settings.materialTier.title', '视觉材质')}
-        description={t(
-          'workbench:settings.materialTier.desc',
-          '玻璃材质档位。也可由上方「性能档位」预设驱动；单独修改会切到自定义。',
-        )}
+        title={t('workbench:settings.materialTier.title')}
+        description={t('workbench:settings.materialTier.desc')}
         className="items-center"
       >
         <SegmentedControl
-          ariaLabel={t('workbench:settings.materialTier.title', '视觉材质')}
+          ariaLabel={t('workbench:settings.materialTier.title')}
           value={materialTier}
           onValueChange={(next) => {
             if (!loaded) return;
@@ -499,20 +481,17 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           }}
           size="compact"
           options={[
-            { value: 'auto', label: t('workbench:settings.materialTier.auto', '跟随平台') },
-            { value: 'full', label: t('workbench:settings.materialTier.full', '全效果') },
-            { value: 'reduced', label: t('workbench:settings.materialTier.reduced', '降透明') },
-            { value: 'minimal', label: t('workbench:settings.materialTier.minimal', '极简') },
+            { value: 'auto', label: t('workbench:settings.materialTier.auto') },
+            { value: 'full', label: t('workbench:settings.materialTier.full') },
+            { value: 'reduced', label: t('workbench:settings.materialTier.reduced') },
+            { value: 'minimal', label: t('workbench:settings.materialTier.minimal') },
           ]}
         />
       </SettingRow>
 
       <SwitchRow
-        title={t('workbench:settings.dockMagnification.title', 'Dock 邻近放大')}
-        description={t(
-          'workbench:settings.dockMagnification.desc',
-          '指针划过 Dock 时图标放大。关闭可减少悬停时的布局测量与合成成本。',
-        )}
+        title={t('workbench:settings.dockMagnification.title')}
+        description={t('workbench:settings.dockMagnification.desc')}
         checked={dockMagnification}
         loading={!loaded}
         onCheckedChange={(next) => {
@@ -522,13 +501,13 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       />
 
       <SettingRow
-        title={t('workbench:settings.wallpaper.title', '桌面壁纸')}
-        description={t('workbench:settings.wallpaper.desc', '选择主题渐变预设，或使用自定义图片。')}
+        title={t('workbench:settings.wallpaper.title')}
+        description={t('workbench:settings.wallpaper.desc')}
         className="items-center"
       >
         <div className="flex flex-wrap items-center justify-end gap-2">
           <SegmentedControl
-            ariaLabel={t('workbench:settings.wallpaper.title', '桌面壁纸')}
+            ariaLabel={t('workbench:settings.wallpaper.title')}
             value={wallpaper.kind}
             onValueChange={(kind) => {
               if (!loaded || wallpaperImportPending) return;
@@ -543,8 +522,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             }}
             size="compact"
             options={[
-              { value: 'theme', label: t('workbench:settings.wallpaper.kindTheme', '主题渐变') },
-              { value: 'image', label: t('workbench:settings.wallpaper.kindImage', '自定义图片') },
+              { value: 'theme', label: t('workbench:settings.wallpaper.kindTheme') },
+              { value: 'image', label: t('workbench:settings.wallpaper.kindImage') },
             ]}
           />
           {wallpaper.kind === 'theme' && !wallpaperImportPending ? (
@@ -584,11 +563,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       </SettingRow>
 
       <SwitchRow
-        title={t('workbench:settings.tileMargins.title', '平铺间距')}
-        description={t(
-          'workbench:settings.tileMargins.desc',
-          '平铺窗口之间保留间距，关闭后平铺窗口紧贴排列。',
-        )}
+        title={t('workbench:settings.tileMargins.title')}
+        description={t('workbench:settings.tileMargins.desc')}
         checked={tileMargins.enabled}
         loading={!loaded}
         onCheckedChange={(enabled) => {
@@ -599,7 +575,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
 
       {loaded && tileMargins.enabled && (
         <SettingRow
-          title={t('workbench:settings.tileMargins.px', '间距（px）')}
+          title={t('workbench:settings.tileMargins.px')}
           className="items-center"
         >
           <div className="flex items-center gap-2">
@@ -622,11 +598,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       )}
 
       <SwitchRow
-        title={t('workbench:settings.dockAutohide.title', '自动隐藏 Dock')}
-        description={t(
-          'workbench:settings.dockAutohide.desc',
-          '不使用时 Dock 自动收起，指针移到屏幕底部时滑出。',
-        )}
+        title={t('workbench:settings.dockAutohide.title')}
+        description={t('workbench:settings.dockAutohide.desc')}
         checked={dockAutohide}
         loading={!loaded}
         onCheckedChange={(next) => {
@@ -637,11 +610,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       />
 
       <SwitchRow
-        title={t('workbench:settings.devPanel.title', '诊断面板')}
-        description={t(
-          'workbench:settings.devPanel.desc',
-          '在桌面上显示窗口生命周期、内存预算与帧耗时等调度诊断信息（开发用）。',
-        )}
+        title={t('workbench:settings.devPanel.title')}
+        description={t('workbench:settings.devPanel.desc')}
         checked={devPanel}
         loading={!loaded}
         onCheckedChange={(next) => {
@@ -652,7 +622,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       />
 
       <SwitchRow
-        title={t('workbench:settings.browserEnabled.title', '内置浏览器')}
+        title={t('workbench:settings.browserEnabled.title')}
         description={browserEnabledDescription}
         checked={browserEnabled}
         loading={!loaded}
@@ -668,22 +638,16 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       />
 
       <SettingRow
-        title={t('workbench:settings.browserNetworkMode.title', '助手 HTTP 范围')}
+        title={t('workbench:settings.browserNetworkMode.title')}
         description={
           browserControlsDisabled
-            ? t(
-                'workbench:settings.browserEnabled.needWorkbench',
-                '请先启用学习桌面，才能打开内置浏览器相关选项。',
-              )
-            : t(
-                'workbench:settings.browserNetworkMode.desc',
-                '限制助手控制浏览器时能否访问公网 HTTP；你手动浏览不受此项限制。',
-              )
+            ? t('workbench:settings.browserEnabled.needWorkbench')
+            : t('workbench:settings.browserNetworkMode.desc')
         }
         className="items-center"
       >
         <SegmentedControl
-          ariaLabel={t('workbench:settings.browserNetworkMode.title', '助手 HTTP 范围')}
+          ariaLabel={t('workbench:settings.browserNetworkMode.title')}
           value={browserNetworkMode}
           onValueChange={(next) => {
             handleBrowserNetworkModeChange(next as BrowserNetworkMode);
@@ -692,18 +656,12 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           options={[
             {
               value: 'local_whitelist',
-              label: t(
-                'workbench:settings.browserNetworkMode.local_whitelist',
-                '仅 HTTPS 公网',
-              ),
+              label: t('workbench:settings.browserNetworkMode.local_whitelist'),
               disabled: browserControlsDisabled || browserNetworkModeSaving,
             },
             {
               value: 'full',
-              label: t(
-                'workbench:settings.browserNetworkMode.full',
-                '允许公网 HTTP（需确认）',
-              ),
+              label: t('workbench:settings.browserNetworkMode.full'),
               disabled: browserControlsDisabled || browserNetworkModeSaving,
             },
           ]}
@@ -711,17 +669,11 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       </SettingRow>
 
       <SwitchRow
-        title={t('workbench:settings.browserAgentControl.title', '允许助手操控浏览器')}
+        title={t('workbench:settings.browserAgentControl.title')}
         description={
           browserControlsDisabled
-            ? t(
-                'workbench:settings.browserEnabled.needWorkbench',
-                '请先启用学习桌面，才能打开内置浏览器相关选项。',
-              )
-            : t(
-                'workbench:settings.browserAgentControl.desc',
-                '助手可在共享会话中导航与操作页面；敏感动作仍会请求确认。',
-              )
+            ? t('workbench:settings.browserEnabled.needWorkbench')
+            : t('workbench:settings.browserAgentControl.desc')
         }
         checked={browserAgentControl}
         loading={!loaded}
@@ -734,23 +686,17 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       />
 
       <SettingRow
-        title={t('workbench:settings.agentControl.title', 'AI 助手操控')}
+        title={t('workbench:settings.agentControl.title')}
         description={
           browserControlsDisabled
-            ? t(
-                'workbench:settings.browserEnabled.needWorkbench',
-                '请先启用学习桌面，才能打开内置浏览器相关选项。',
-              )
-            : t(
-                'workbench:settings.agentControl.desc',
-                '控制 Chat 助手能否在学习桌面中打开窗口、跟随焦点并演出操作。破坏性动作仍会请求确认。',
-              )
+            ? t('workbench:settings.browserEnabled.needWorkbench')
+            : t('workbench:settings.agentControl.desc')
         }
         className="items-center"
       >
         <div className="flex flex-col items-end gap-1.5">
           <SegmentedControl
-            ariaLabel={t('workbench:settings.agentControl.title', 'AI 助手操控')}
+            ariaLabel={t('workbench:settings.agentControl.title')}
             value={agentControl}
             onValueChange={(next) => {
               if (!loaded || browserControlsDisabled) return;
@@ -762,17 +708,17 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             options={[
               {
                 value: 'off',
-                label: t('workbench:settings.agentControl.off', '关闭'),
+                label: t('workbench:settings.agentControl.off'),
                 disabled: browserControlsDisabled,
               },
               {
                 value: 'background',
-                label: t('workbench:settings.agentControl.background', '后台'),
+                label: t('workbench:settings.agentControl.background'),
                 disabled: browserControlsDisabled,
               },
               {
                 value: 'follow',
-                label: t('workbench:settings.agentControl.follow', '跟随'),
+                label: t('workbench:settings.agentControl.follow'),
                 disabled: browserControlsDisabled,
               },
             ]}
@@ -780,52 +726,34 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           {!browserControlsDisabled && (
             <p className="max-w-[22rem] text-right text-[11px] leading-snug text-muted-foreground/80">
               {agentControl === 'off'
-                ? t(
-                    'workbench:settings.agentControl.offDesc',
-                    '只读允许列出/查询窗口；打开、关闭、指令与演出一律拒绝。数据修改可走后端直写，不会开窗或演出。',
-                  )
+                ? t('workbench:settings.agentControl.offDesc')
                 : agentControl === 'follow'
-                  ? t(
-                      'workbench:settings.agentControl.followDesc',
-                      '自动开窗并聚焦跟随：助手操作时会把目标窗口带到前台演出。',
-                    )
-                  : t(
-                      'workbench:settings.agentControl.backgroundDesc',
-                      '允许操控但不抢焦点：可在已开窗口演出，或直落终态并在 Dock 提示。',
-                    )}
+                  ? t('workbench:settings.agentControl.followDesc')
+                  : t('workbench:settings.agentControl.backgroundDesc')}
             </p>
           )}
         </div>
       </SettingRow>
 
       <SettingRow
-        title={t('workbench:agentControlCenter.settingsTitle', '助手可以做什么')}
-        description={t(
-          'workbench:agentControlCenter.settingsDescription',
-          '这些能力来自学习子应用主动注册的语义操作，不使用坐标盲点。实际可用动作会随当前页面和状态变化。',
-        )}
+        title={t('workbench:agentControlCenter.settingsTitle')}
+        description={t('workbench:agentControlCenter.settingsDescription')}
         className="sm:flex-col lg:flex-row"
       >
         <AgentCapabilitySummary variant="settings" className="max-w-full lg:max-w-[560px]" />
       </SettingRow>
 
       <SettingRow
-        title={t('workbench:settings.agentPacing.title', '操控演出节奏')}
+        title={t('workbench:settings.agentPacing.title')}
         description={
           browserControlsDisabled
-            ? t(
-                'workbench:settings.browserEnabled.needWorkbench',
-                '请先启用学习桌面，才能打开内置浏览器相关选项。',
-              )
-            : t(
-                'workbench:settings.agentPacing.desc',
-                '助手在桌面窗口中逐步应用操作时的视觉节奏。',
-              )
+            ? t('workbench:settings.browserEnabled.needWorkbench')
+            : t('workbench:settings.agentPacing.desc')
         }
         className="items-center"
       >
         <SegmentedControl
-          ariaLabel={t('workbench:settings.agentPacing.title', '操控演出节奏')}
+          ariaLabel={t('workbench:settings.agentPacing.title')}
           value={agentPacing}
           onValueChange={(next) => {
             if (!loaded || browserControlsDisabled) return;
@@ -837,17 +765,17 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           options={[
             {
               value: 'fast',
-              label: t('workbench:settings.agentPacing.fast', '快速'),
+              label: t('workbench:settings.agentPacing.fast'),
               disabled: browserControlsDisabled,
             },
             {
               value: 'normal',
-              label: t('workbench:settings.agentPacing.normal', '正常'),
+              label: t('workbench:settings.agentPacing.normal'),
               disabled: browserControlsDisabled,
             },
             {
               value: 'demo',
-              label: t('workbench:settings.agentPacing.demo', '演示'),
+              label: t('workbench:settings.agentPacing.demo'),
               disabled: browserControlsDisabled,
             },
           ]}
@@ -871,15 +799,12 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           >
             ▸
           </span>
-          {t('workbench:settings.browserAdvanced', '高级（浏览器）')}
+          {t('workbench:settings.browserAdvanced')}
         </button>
         {browserAdvancedOpen && !browserControlsDisabled && (
           <SwitchRow
-            title={t('workbench:settings.browserCdpWindows.title', 'Windows CDP 加速（高级）')}
-            description={t(
-              'workbench:settings.browserCdpWindows.desc',
-              '仅 Windows。启用远程调试端口以增强自动化；有额外安全面，默认关闭。',
-            )}
+            title={t('workbench:settings.browserCdpWindows.title')}
+            description={t('workbench:settings.browserCdpWindows.desc')}
             checked={browserCdpWindows}
             loading={!loaded}
             disabled={browserControlsDisabled}
@@ -895,16 +820,10 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       <NotionAlertDialog
         open={browserFullNetworkConfirmOpen}
         onOpenChange={setBrowserFullNetworkConfirmOpen}
-        title={t(
-          'workbench:settings.browserNetworkMode.fullConfirmTitle',
-          '允许助手访问公网 HTTP？',
-        )}
-        description={t(
-          'workbench:settings.browserNetworkMode.fullConfirm',
-          '允许助手访问公网 HTTP 会使用未加密连接，页面和传输内容可能被篡改。是否继续？',
-        )}
-        confirmText={t('common:actions.confirm', '确认')}
-        cancelText={t('common:actions.cancel', '取消')}
+        title={t('workbench:settings.browserNetworkMode.fullConfirmTitle')}
+        description={t('workbench:settings.browserNetworkMode.fullConfirm')}
+        confirmText={t('common:actions.confirm')}
+        cancelText={t('common:actions.cancel')}
         confirmVariant="warning"
         onConfirm={confirmBrowserFullNetworkMode}
       />

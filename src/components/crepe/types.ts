@@ -5,6 +5,7 @@
 
 import type { Crepe } from '@milkdown/crepe';
 import type { AgentHighlightMeta } from './plugins/agentHighlight';
+import type { CrepePluginsOptions } from './plugins';
 
 export type CrepeSelectionSnapshot = {
   from: number;
@@ -208,6 +209,12 @@ export interface CrepeEditorProps {
   
   /** 笔记 ID（用于图片资产管理） */
   noteId?: string;
+
+  /**
+   * 扩展插件配置（传给 applyCrepePlugins）。
+   * 宿主可覆盖 wikilink.resolve / getNotes、mention.searchNotes 等。
+   */
+  plugins?: CrepePluginsOptions;
 }
 
 /**

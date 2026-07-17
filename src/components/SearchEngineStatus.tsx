@@ -46,7 +46,7 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
       name: engine.name,
       status: engine.enabled ? 'unknown' : 'unavailable' as const,
       last_check: undefined,
-      error_message: engine.enabled ? undefined : t('searchEngine.notConfigured', '未配置API密钥'),
+      error_message: engine.enabled ? undefined : t('searchEngine.notConfigured'),
       response_time: undefined,
     }));
     setStatuses(initialStatuses as EngineStatus[]);
@@ -73,7 +73,7 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
         name: engines.find(e => e.id === engineId)?.name || engineId,
         status: 'unavailable',
         last_check: new Date().toISOString(),
-        error_message: t('searchEngine.testFailed', '测试失败: {{error}}', { error: String(error) }),
+        error_message: t('searchEngine.testFailed', { error: String(error) }),
         response_time: undefined,
       };
     }
@@ -144,9 +144,9 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     
-    if (diffMins < 1) return t('searchEngine.justNow', '刚刚');
-    if (diffMins < 60) return t('searchEngine.minutesAgo', '{{count}}分钟前', { count: diffMins });
-    if (diffMins < 1440) return t('searchEngine.hoursAgo', '{{count}}小时前', { count: Math.floor(diffMins / 60) });
+    if (diffMins < 1) return t('searchEngine.justNow');
+    if (diffMins < 60) return t('searchEngine.minutesAgo', { count: diffMins });
+    if (diffMins < 1440) return t('searchEngine.hoursAgo', { count: Math.floor(diffMins / 60) });
     return date.toLocaleDateString();
   };
 
@@ -156,10 +156,10 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
         <div className="flex items-center space-x-2">
           <Globe size={16} className="text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">{t('searchEngine.title', '搜索引擎状态')}</span>
+          <span className="text-sm font-medium text-foreground">{t('searchEngine.title')}</span>
           {lastCheckTime && (
             <span className="text-xs text-muted-foreground">
-              {t('searchEngine.lastCheck', '上次检测: {{time}}', { time: formatTime(lastCheckTime) })}
+              {t('searchEngine.lastCheck', { time: formatTime(lastCheckTime) })}
             </span>
           )}
         </div>
@@ -170,7 +170,7 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
           ) : (
             <Lightning size={16} />
           )}
-          <span>{testing ? t('searchEngine.testing', '检测中...') : t('searchEngine.testAvailability', '检测可用性')}</span>
+          <span>{testing ? t('searchEngine.testing') : t('searchEngine.testAvailability')}</span>
         </NotionButton>
       </div>
 
@@ -213,15 +213,15 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
       <div className="flex items-center justify-center space-x-6 p-3 bg-gray-50 rounded-lg text-sm">
         <div className="flex items-center space-x-1">
           <CheckCircle size={16} className="text-green-500" />
-          <span>{t('searchEngine.available', '可用')}: {statuses.filter(s => s.status === 'available').length}</span>
+          <span>{t('searchEngine.available')}: {statuses.filter(s => s.status === 'available').length}</span>
         </div>
         <div className="flex items-center space-x-1">
           <XCircle size={16} className="text-red-500" />
-          <span>{t('searchEngine.unavailable', '不可用')}: {statuses.filter(s => s.status === 'unavailable').length}</span>
+          <span>{t('searchEngine.unavailable')}: {statuses.filter(s => s.status === 'unavailable').length}</span>
         </div>
         <div className="flex items-center space-x-1">
           <Warning size={16} className="text-muted-foreground" />
-          <span>{t('searchEngine.untested', '未检测')}: {statuses.filter(s => s.status === 'unknown').length}</span>
+          <span>{t('searchEngine.untested')}: {statuses.filter(s => s.status === 'unknown').length}</span>
         </div>
       </div>
     </div>

@@ -117,12 +117,15 @@
     var(--wb-ease-out, ease-out) both;
 }
 
+/* 交叉淡入附带极轻微的缩放回落（仅 transform/opacity），减弱硬切换感 */
 @keyframes wb-wallpaper-pane-fade {
   from {
     opacity: 0;
+    transform: scale(1.015);
   }
   to {
     opacity: 1;
+    transform: none;
   }
 }
 

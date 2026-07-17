@@ -404,7 +404,7 @@ export function DockWindowList({
                   className="wb-docklist-item-btn"
                   aria-label={
                     win.minimized
-                      ? `${title} (${t('workbench:dock.minimized', '已最小化')})`
+                      ? `${title} (${t('workbench:dock.minimized')})`
                       : title
                   }
                   disabled={phase === 'closing'}
@@ -421,7 +421,7 @@ export function DockWindowList({
                     <span className="wb-docklist-item-title">{title}</span>
                     {win.minimized && (
                       <span className="wb-docklist-item-min">
-                        {t('workbench:dock.minimized', '已最小化')}
+                        {t('workbench:dock.minimized')}
                       </span>
                     )}
                   </span>
@@ -430,7 +430,7 @@ export function DockWindowList({
                   type="button"
                   className="wb-docklist-close"
                   tabIndex={-1}
-                  aria-label={t('workbench:dock.closeWindow', '关闭窗口')}
+                  aria-label={t('workbench:dock.closeWindow')}
                   data-testid={`wb-docklist-close-${win.id}`}
                   disabled={phase === 'closing'}
                   onClick={(e) => {

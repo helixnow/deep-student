@@ -158,11 +158,11 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
     [setNodeRef, forwardedRef],
   );
 
-  // 拖拽时使用正常的transform，非拖拽时禁用transform避免位置错乱
+  // 拖拽时使用正常的transform，非拖拽时禁用transform避免位置错乱。
+  // 透明度只由 .rct-tree-item-li-isDragging 控制，避免与内联透明度叠乘导致源节点几乎不可见。
   const dragStyle = {
     transform: dndIsDragging ? CSS.Transform.toString(transform) : undefined,
     transition: dndIsDragging ? transition : undefined,
-    opacity: dndIsDragging ? 0.5 : 1,
     pointerEvents: dndIsDragging ? 'none' : 'auto',
   } as React.CSSProperties;
 
@@ -529,7 +529,7 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
           ) : (
             // 笔记节点显示文件图标
             <span className="rct-tree-item-icon mr-2 flex-shrink-0">
-              <FileText className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" aria-hidden="true" />
+              <FileText className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
             </span>
           )}
 

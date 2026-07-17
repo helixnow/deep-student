@@ -12,11 +12,8 @@ export { NotesSidebar } from './NotesSidebar';
 export { NotesSidebarV2 } from './NotesSidebarV2';
 export { default as NotesTabsBar } from './NotesTabsBar';
 export { PreviewPanel } from './PreviewPanel';
-export { default as TreeDragTest } from './TreeDragTest';
 export { AIDiffPanel } from './AIDiffPanel';
 export { InvalidReferenceOverlay } from './InvalidReferenceOverlay';
-export { DndKitTreeAdapter } from './DndKitTreeAdapter';
-export { TreeWithDndKit } from './TreeWithDndKit';
 
 // Context
 export { useNotes, useNotesOptional, NotesProvider } from './NotesContext';

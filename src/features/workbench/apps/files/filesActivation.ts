@@ -118,11 +118,12 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       if (store.selectedIds.size === 0) return unavailable('当前没有资源选择');
       store.clearSelection();
       return { handled: true };
-    case 'refresh':
+    case 'refresh': {
       await store.refresh({ silent: true });
       const failed = finderError();
       if (failed) return failed;
       return { handled: true };
+    }
     default:
       return {
         handled: false,

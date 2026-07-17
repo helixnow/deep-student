@@ -49,6 +49,7 @@ const TreeNode: React.FC<{
   isRoot?: boolean;
   onNavigate?: (folderId: string) => void;
 }> = React.memo(({ node, depth, isRoot, onNavigate }) => {
+  const { t } = useTranslation('learningHub');
   const [expanded, setExpanded] = useState(depth < 2);
   const directCount = node.items.filter(i => i.itemType === 'note').length;
   const totalCount = countRecursive(node);
@@ -152,7 +153,8 @@ const TreeNode: React.FC<{
             variant="ghost" size="icon" iconOnly
             className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 transition-opacity"
             onClick={(e) => { e.stopPropagation(); onNavigate?.(node.folder.id); }}
-            title="打开文件夹"
+            title={t('memory.open_folder')}
+            aria-label={t('memory.open_folder')}
           >
             <CaretRight size={12} />
           </NotionButton>
@@ -252,7 +254,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
           {totalMemories} {t('memory.items')}
         </span>
         <div className="flex-1" />
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5" aria-label="refresh">
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5" aria-label={t('memory.aria.refresh')}>
           <ArrowClockwise size={12} className={cn(isLoading && 'animate-spin')} />
         </NotionButton>
       </div>

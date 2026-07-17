@@ -269,7 +269,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       case 'custom_input':
         return t('askUser.sourceCustomInput');
       case 'mixed':
-        return t('askUser.sourceMixed', { defaultValue: '混合选择' });
+        return t('askUser.sourceMixed');
       case 'timeout':
         return t('askUser.sourceNoResponse');
       case 'channel_closed':
@@ -322,7 +322,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     if (resolvedCustomText) {
       displayParts.push(resolvedCustomText);
     }
-    const displayText = displayParts.join(' + ') || t('askUser.noResponse', { defaultValue: '（未收到回答）' });
+    const displayText = displayParts.join(' + ') || t('askUser.noResponse');
 
     return (
       <div className="overflow-hidden rounded-[var(--radius-shell-row)] border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] shadow-[var(--shadow-content-subtle)]">
@@ -455,7 +455,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
             className="w-full"
           >
             <Check size={14} className="mr-1.5" />
-            {t('askUser.confirmSelection', { defaultValue: '确认选择' })}
+            {t('askUser.confirmSelection')}
           </NotionButton>
         </div>
       )}

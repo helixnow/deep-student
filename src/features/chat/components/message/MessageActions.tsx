@@ -175,8 +175,8 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           variant="ghost"
           size="icon"
           iconOnly
-          aria-label={t('common:more', '更多')}
-          title={t('common:more', '更多')}
+          aria-label={t('common:more')}
+          title={t('common:more')}
           className={compactButtonClassName}
         >
           <DotsThree className="w-4 h-4" weight="bold" />
@@ -204,7 +204,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         )}
         {onBranchSession && (
           <AppMenuItem onClick={handleBranch} disabled={isBranching || isLocked} icon={<GitBranch size={16} />}>
-            {t('messageItem.actions.branch', '从此处分支')}
+            {t('messageItem.actions.branch')}
           </AppMenuItem>
         )}
         <AppMenuSeparator />
@@ -222,7 +222,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             <AppMenuSeparator />
             <div
               className="px-2.5 py-1.5 text-[11px] font-mono text-muted-foreground select-none"
-              aria-label={t('tokenUsage.title', 'Token 用量')}
+              aria-label={t('tokenUsage.title')}
             >
               <span className="font-medium text-foreground/70">{formatTokenCount(tokenUsage.totalTokens)}</span>
               <span className="text-primary/80"> ↑{formatTokenCount(tokenUsage.promptTokens)}</span>
@@ -258,11 +258,11 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         <NotionAlertDialog
           open={deleteConfirmOpen}
           onOpenChange={setDeleteConfirmOpen}
-          title={t('messageItem.actions.deleteConfirmTitle', '确认删除')}
-          description={t('messageItem.actions.deleteConfirmDesc', '确定要删除这条消息吗？此操作无法撤销。')}
+          title={t('messageItem.actions.deleteConfirmTitle')}
+          description={t('messageItem.actions.deleteConfirmDesc')}
           icon={<Trash className="h-5 w-5 text-destructive" />}
-          confirmText={t('messageItem.actions.delete', '删除')}
-          cancelText={t('common.cancel', '取消')}
+          confirmText={t('messageItem.actions.delete')}
+          cancelText={t('common.cancel')}
           confirmVariant="danger"
           onConfirm={() => { setDeleteConfirmOpen(false); handleDelete(); }}
         />
@@ -293,11 +293,11 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       <NotionAlertDialog
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
-        title={t('messageItem.actions.deleteConfirmTitle', '确认删除')}
-        description={t('messageItem.actions.deleteConfirmDesc', '确定要删除这条消息吗？此操作无法撤销。')}
+        title={t('messageItem.actions.deleteConfirmTitle')}
+        description={t('messageItem.actions.deleteConfirmDesc')}
         icon={<Trash className="h-5 w-5 text-destructive" />}
-        confirmText={t('messageItem.actions.delete', '删除')}
-        cancelText={t('common.cancel', '取消')}
+        confirmText={t('messageItem.actions.delete')}
+        cancelText={t('common.cancel')}
         confirmVariant="danger"
         onConfirm={() => { setDeleteConfirmOpen(false); handleDelete(); }}
       />

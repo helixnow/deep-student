@@ -91,12 +91,12 @@ export const UserMessageBubble: React.FC<UserMessageBubbleProps> = ({
           {isExpanded ? (
             <>
               <CaretUp size={14} />
-              <span>{t('messageItem.bubble.collapse', t('activityTimeline.collapse', '收起'))}</span>
+              <span>{t('messageItem.bubble.collapse', t('activityTimeline.collapse'))}</span>
             </>
           ) : (
             <>
               <CaretDown size={14} />
-              <span>{t('messageItem.bubble.expand', t('activityTimeline.expand', '展开全文'))}</span>
+              <span>{t('messageItem.bubble.expand', t('activityTimeline.expand'))}</span>
             </>
           )}
         </button>

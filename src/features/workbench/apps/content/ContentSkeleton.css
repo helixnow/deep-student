@@ -65,6 +65,11 @@
   }
 }
 
+/* 暗色：muted 底在深色卡面上过于含蓄，略抬一档保证骨架可辨 */
+:root.dark .wb-content-skeleton__bone {
+  background: hsl(var(--muted, 220 14% 18%));
+}
+
 /* ==== 通用块 ======================================================== */
 
 /* 顶部工具条骨架（PDF / 图片查看器共用） */
@@ -130,6 +135,11 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+/* 暗色：纸面阴影加深一档，与暗色窗口阴影层级一致 */
+:root.dark .wb-content-skeleton__page {
+  box-shadow: 0 2px 10px hsl(var(--shadow-base, 0 0% 0%) / 0.28);
 }
 
 /* 第二页只露出顶部一截，暗示可滚动的页流 */

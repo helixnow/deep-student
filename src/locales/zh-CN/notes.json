@@ -250,8 +250,7 @@
     "prev": "上一个 (Shift+Enter)",
     "next": "下一个 (Enter)",
     "showReplace": "展开替换",
-    "hideReplace": "收起替换"
-  ,
+    "hideReplace": "收起替换",
     "findLabel": "查找",
     "panelLabel": "查找和替换",
     "replaceLabel": "替换为"
@@ -315,8 +314,7 @@
     "editing_mode": "编辑模式",
     "reading_mode_on": "已进入阅读模式",
     "reading_mode_off": "已进入编辑模式",
-    "find_replace": "查找替换"
-  ,
+    "find_replace": "查找替换",
     "label": "格式化"
   },
   "search": {
@@ -398,6 +396,7 @@
       "paste_failed": "粘贴图片处理失败：{{error}}",
       "command_failed": "Slash 指令插入图片失败：{{error}}",
       "success": "图片已插入",
+      "too_large": "图片超过 10MB 限制",
       "placeholder": "点击或拖拽上传图片",
       "caption_placeholder": "添加图片说明...",
       "inline_placeholder": "粘贴图片链接或上传",
@@ -473,7 +472,13 @@
       "caption": "图片说明",
       "caption_placeholder": "添加图片说明...",
       "click_to_edit": "点击编辑...",
-      "reset": "重置"
+      "reset": "重置",
+      "load_failed": "图片加载失败",
+      "lightbox_label": "图片预览",
+      "lightbox_alt": "预览图片",
+      "lightbox_close": "关闭",
+      "lightbox_original": "原尺寸",
+      "lightbox_fit": "适应屏幕"
     },
     "slash": {
       "link_title_prompt": "链接标题",
@@ -561,9 +566,19 @@
     },
     "ai_stop": "停止续写",
     "portaled_to_canvas": "编辑器已在白板中打开",
-    "portaled_hint": "在白板中编辑此笔记"
-  ,
-    "deleted_with_unsaved_changes": "资源已被删除；窗口保留未保存内容，请复制内容后再关闭。"
+    "portaled_hint": "在白板中编辑此笔记",
+    "deleted_with_unsaved_changes": "资源已被删除；窗口保留未保存内容，请复制内容后再关闭。",
+    "link": {
+      "href_required": "请先输入链接地址"
+    }
+  },
+  "crepe": {
+    "link": {
+      "href_required": "请先输入链接地址"
+    },
+    "image": {
+      "load_failed": "图片加载失败"
+    }
   },
   "find": {
     "placeholder": "查找…"
@@ -793,8 +808,7 @@
     "actions": {
       "export": "导出",
       "exporting": "正在导出…"
-    }
-  ,
+    },
     "all_notes_hint": "将导出所有笔记及其附件"
   },
   "dialogs": {
@@ -1002,8 +1016,7 @@
     "load_failed": "加载链接失败：{{message}}",
     "retry": "重试",
     "truncated_outgoing": "已截断显示前 200 条出链",
-    "truncated_external": "已截断显示前 200 条外链"
-  ,
+    "truncated_external": "已截断显示前 200 条外链",
     "tag_remove": "Remove tag"
   },
   "outlineMindmap": {
@@ -1150,7 +1163,9 @@
     "export_single_failed": "导出失败：{{error}}",
     "export_single_mobile_hint": "移动端将使用默认导出目录，请稍后在文件管理器中查看。",
     "exporting_single": "正在导出当前笔记…",
-    "export_filter_name": "Markdown 笔记导出"
+    "export_filter_name": "Markdown 笔记导出",
+    "confirm_rename": "确认重命名",
+    "cancel_rename": "取消重命名"
   },
   "slashMenu": {
     "textGroup": {
@@ -1176,8 +1191,49 @@
       "image": "图片",
       "codeBlock": "代码块",
       "table": "表格",
-      "math": "数学公式"
+      "math": "数学公式",
+      "callout": "高亮块"
     }
+  },
+  "callout": {
+    "type": {
+      "note": "笔记",
+      "tip": "提示",
+      "warning": "警告",
+      "danger": "危险",
+      "info": "信息"
+    },
+    "cycleType": "切换 Callout 类型"
+  },
+  "wikilink": {
+    "create": "创建 \"{{title}}\"",
+    "empty": "无匹配笔记"
+  },
+  "mention": {
+    "loading": "搜索中…",
+    "empty": "无匹配笔记"
+  },
+  "toggle": {
+    "arrowLabel": "展开或折叠",
+    "titlePlaceholder": "无标题",
+    "slashLabel": "折叠块",
+    "slashDescription": "可折叠的标题与内容"
+  },
+  "mobileToolbar": {
+    "label": "移动端编辑工具条",
+    "slash": "块菜单",
+    "outdent": "减少缩进",
+    "indent": "增加缩进",
+    "bold": "粗体",
+    "italic": "斜体",
+    "heading1": "一级标题",
+    "heading2": "二级标题",
+    "heading3": "三级标题",
+    "bulletList": "无序列表",
+    "taskList": "任务列表",
+    "image": "图片",
+    "undo": "撤销",
+    "redo": "重做"
   },
   "versions": {
     "title": "版本历史",
@@ -1386,9 +1442,12 @@
   },
   "tips": {
     "versionHistory": "版本历史可在笔记面板中查看和回滚"
-  }
-,
+  },
   "ai": {
     "continue_not_available": "AI 续写命令暂不可用，请使用聊天面板发起编辑。"
+  },
+  "a11y": {
+    "close": "关闭",
+    "clear": "清除"
   }
 }

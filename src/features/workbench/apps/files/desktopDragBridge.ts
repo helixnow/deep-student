@@ -28,10 +28,7 @@ import { requestWorkspaceResource } from '../notes/workspaceRegistry';
 function announceDropOpened(resource: WorkbenchResourceDragData): void {
   const title = resource.title;
   announceWorkbench(
-    i18n.t('workbench:a11y.dropOpened', {
-      title,
-      defaultValue: `已打开 ${title}`,
-    }),
+    i18n.t('workbench:a11y.dropOpened', { title }),
   );
 }
 

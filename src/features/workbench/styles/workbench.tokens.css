@@ -205,8 +205,11 @@
   /* Windows 窗控宿主的完整宽度：图标拖拽区 + 三键胶囊 + 右侧外边距。 */
   --wb-windows-chrome-width: 165px;
   --wb-menubar-chrome-inset: var(--wb-windows-chrome-width);
-  --wb-menubar-bg: transparent;
-  --wb-menubar-border: transparent;
+  /* 顶条与桌面日历小组件共用同一套液态玻璃材质，切档/降级自动跟随 */
+  --wb-menubar-bg: var(--wb-glass-bg);
+  --wb-menubar-border: var(--wb-glass-border);
+  --wb-menubar-sheen: var(--wb-glass-sheen);
+  --wb-menubar-blur: var(--wb-glass-blur);
   --wb-menubar-fg: color-mix(in hsl, hsl(var(--foreground)) 78%, transparent 22%);
   --wb-menubar-fg-strong: hsl(var(--foreground));
   --wb-menubar-item-hover-bg: var(--interactive-hover, rgba(0, 0, 0, 0.08));
@@ -414,7 +417,9 @@ html[data-wb-material-switching] :where(
   .wb-dock,
   .wb-expose-backdrop,
   .wb-snap-preview
-) {
+),
+/* 顶栏玻璃画在 ::before（避免本体成为弹层的 backdrop root），单独列出 */
+html[data-wb-material-switching] .wb-menubar::before {
   transition:
     background-color var(--wb-motion-tier-fade) var(--wb-ease),
     box-shadow var(--wb-motion-tier-fade) var(--wb-ease),

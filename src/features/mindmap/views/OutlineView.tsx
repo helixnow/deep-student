@@ -19,7 +19,7 @@ import {
   verticalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable';
-import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
+import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import { CSS } from '@dnd-kit/utilities';
 import { useMindMapStore, useMindMapStoreApi } from '../store';
 import { cn } from '@/lib/utils';
@@ -44,6 +44,7 @@ import {
   Pencil,
   CheckCircle,
   Circle,
+  ListBullets,
   Palette,
   Highlighter,
   House,
@@ -66,7 +67,16 @@ import type { MindMapNode, BlankRange } from '../types';
 import { NodeRefList } from '../components/shared/NodeRefCard';
 import { MindMapResourcePicker } from '../components/mindmap/MindMapResourcePicker';
 import { findNodeById, isDescendantOf } from '../utils/node/find';
-import { requestOutlineCaret, takeOutlineCaret } from '../utils/outlineCaret';
+import {
+  requestOutlineCaret,
+  takeOutlineCaret,
+  setOutlineGoalColumn,
+  getOutlineGoalColumn,
+  clearOutlineGoalColumn,
+  resolveGoalColumnOffset,
+  countDescendants,
+  collectSubtreeCollapseTargets,
+} from '../utils/outlineCaret';
 import { BlankedText } from '../components/shared/BlankedText';
 import { InlineLatex } from '../components/shared/InlineLatex';
 import { containsLatex } from '../utils/renderLatex';
@@ -81,8 +91,10 @@ import {
   type OutlineFlatNode,
 } from '../utils/searchFilter';
 import { resolveVisibleFocusId } from '../utils/hideCompleted';
+import { useMindMapIsActive } from '../MindMapActiveContext';
 import TextareaAutosize from 'react-textarea-autosize';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import '../styles/outline-enhancements.css';
 
 const LEVEL_INDENT = 28; // Increased indent for better hierarchy
 const BASE_PADDING = 12;
@@ -162,7 +174,10 @@ const SortableOutlineNode: React.FC<{
   isSelected?: boolean;
   isMultiSelectActive?: boolean;
   onRowSelect?: (nodeId: string, e: React.MouseEvent) => void;
-  onNavigate?: (direction: 'up' | 'down') => void;
+  onNavigate?: (
+    direction: 'up' | 'down' | 'prevEnd' | 'nextStart',
+    caretHint?: number,
+  ) => void;
   onZoomIn?: (nodeId: string) => void;
   onOpenResourcePicker?: (nodeId: string) => void;
   onBatchIndent?: () => void;
@@ -200,6 +215,10 @@ const SortableOutlineNode: React.FC<{
   const deleteNode = useMindMapStore(state => state.deleteNode);
   const moveNode = useMindMapStore(state => state.moveNode);
   const toggleCollapse = useMindMapStore(state => state.toggleCollapse);
+  const collapseAll = useMindMapStore(state => state.collapseAll);
+  const expandAll = useMindMapStore(state => state.expandAll);
+  const documentRoot = useMindMapStore(state => state.document.root);
+  const viewRootId = useMindMapStore(state => state.viewRootId);
   const focusedNodeId = useMindMapStore(state => state.focusedNodeId);
   const setFocusedNodeId = useMindMapStore(state => state.setFocusedNodeId);
   const indentNode = useMindMapStore(state => state.indentNode);
@@ -226,7 +245,7 @@ const SortableOutlineNode: React.FC<{
     });
   }, [node.id, node.style, updateNode]);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const [localText, setLocalText] = useState(node.text || '');
   const [localNote, setLocalNote] = useState(node.note || '');
@@ -291,9 +310,18 @@ const SortableOutlineNode: React.FC<{
           const el = inputRef.current;
           const pos = Math.max(0, Math.min(caret, el.value.length));
           el.setSelectionRange(pos, pos);
+        } else {
+          // 非 ↑↓/←→ 导航进入（点击等）：重置 goal column
+          clearOutlineGoalColumn();
         }
         // ★ 空间锚定：确保焦点节点在可视区域内
-        inputRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        const prefersReduced =
+          typeof window !== 'undefined' &&
+          !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        inputRef.current.scrollIntoView({
+          block: 'nearest',
+          behavior: prefersReduced ? 'auto' : 'smooth',
+        });
       } else if (!isEditing) {
         // ★ 非编辑态渲染为静态 div（纯文本/LaTeX 均无 input 可聚焦）。
         // 进入编辑态让 input 挂载，下一轮 effect 完成聚焦。
@@ -384,7 +412,7 @@ const SortableOutlineNode: React.FC<{
     onRowSelect?.(node.id, e);
   }, [node.id, onRowSelect]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // 多选时：批量删 / 缩进 / 反缩进
     if (multiSelectBlocksEdit) {
       if (e.key === 'Tab' && !e.shiftKey) {
@@ -407,6 +435,7 @@ const SortableOutlineNode: React.FC<{
     // Add/Edit Note: Shift + Mod + Enter（须先于 Mod+Enter）
     if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
+      clearOutlineGoalColumn();
       setIsEditingNote(true);
       return;
     }
@@ -414,12 +443,14 @@ const SortableOutlineNode: React.FC<{
     // Internal Newline: Shift + Enter
     if (e.shiftKey && e.key === 'Enter') {
       // 允许 react-textarea-autosize 默认行为（换行）
+      clearOutlineGoalColumn();
       return;
     }
 
     // Add Child: Mod + Enter
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
+      clearOutlineGoalColumn();
       commitText();
       const newId = addNode(node.id, 0);
       if (node.collapsed) toggleCollapse(node.id);
@@ -430,6 +461,7 @@ const SortableOutlineNode: React.FC<{
     // Enter（无 mod/shift）：行中拆分 / 行末新建同级 / 行首拆出上方空节点
     if (e.key === 'Enter') {
       e.preventDefault();
+      clearOutlineGoalColumn();
       const target = e.currentTarget;
       const start = target.selectionStart ?? localText.length;
       const end = target.selectionEnd ?? start;
@@ -480,6 +512,7 @@ const SortableOutlineNode: React.FC<{
     // Indent: Tab
     if (e.key === 'Tab' && !e.shiftKey) {
       e.preventDefault();
+      clearOutlineGoalColumn();
       commitText();
       if (!isRoot) indentNode(node.id);
       return;
@@ -488,6 +521,7 @@ const SortableOutlineNode: React.FC<{
     // Outdent: Shift + Tab
     if (e.key === 'Tab' && e.shiftKey) {
       e.preventDefault();
+      clearOutlineGoalColumn();
       commitText();
       if (!isRoot) outdentNode(node.id);
       return;
@@ -500,11 +534,13 @@ const SortableOutlineNode: React.FC<{
       const end = target.selectionEnd ?? start;
       if (localText === '') {
         e.preventDefault();
+        clearOutlineGoalColumn();
         deleteNode(node.id);
         return;
       }
       if (start === 0 && end === 0) {
         e.preventDefault();
+        clearOutlineGoalColumn();
         skipNextBlurCommitRef.current = true;
         setIsEditing(false);
         const result = mergeWithPrevious(node.id, localText);
@@ -518,6 +554,7 @@ const SortableOutlineNode: React.FC<{
     // Move Up: Mod + ArrowUp
     if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowUp') {
       e.preventDefault();
+      clearOutlineGoalColumn();
       if (parentId) {
         moveNode(node.id, parentId, Math.max(0, indexInParent - 1));
       }
@@ -527,52 +564,148 @@ const SortableOutlineNode: React.FC<{
     // Move Down: Mod + ArrowDown
     if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowDown') {
       e.preventDefault();
+      clearOutlineGoalColumn();
       if (parentId) {
         moveNode(node.id, parentId, indexInParent + 1);
       }
       return;
     }
 
-    // Collapse: Mod + [
+    // Collapse all / single: Mod+[  （Shift = 全折叠当前 viewRoot 子树）
     if ((e.metaKey || e.ctrlKey) && e.key === '[') {
       e.preventDefault();
+      if (e.shiftKey) {
+        const displayRoot =
+          viewRootId ? findNodeById(documentRoot, viewRootId) || documentRoot : documentRoot;
+        if (!viewRootId || displayRoot.id === documentRoot.id) {
+          collapseAll();
+        } else {
+          const ids = collectSubtreeCollapseTargets(displayRoot, 'collapse');
+          ids.forEach((id, i) => {
+            toggleCollapse(id, {
+              skipHistory: i > 0,
+              skipSave: i < ids.length - 1,
+            });
+          });
+        }
+        return;
+      }
       if (!node.collapsed && hasChildren) toggleCollapse(node.id);
       return;
     }
 
-    // Expand: Mod + ]
+    // Expand all / single: Mod+]
     if ((e.metaKey || e.ctrlKey) && e.key === ']') {
       e.preventDefault();
+      if (e.shiftKey) {
+        const displayRoot =
+          viewRootId ? findNodeById(documentRoot, viewRootId) || documentRoot : documentRoot;
+        if (!viewRootId || displayRoot.id === documentRoot.id) {
+          expandAll();
+        } else {
+          const ids = collectSubtreeCollapseTargets(displayRoot, 'expand');
+          ids.forEach((id, i) => {
+            toggleCollapse(id, {
+              skipHistory: i > 0,
+              skipSave: i < ids.length - 1,
+            });
+          });
+        }
+        return;
+      }
       if (node.collapsed && hasChildren) toggleCollapse(node.id);
       return;
     }
 
-    // Navigate Up
-    if (e.key === 'ArrowUp') {
+    // ← 行首 → 上一节点末尾
+    if (e.key === 'ArrowLeft' && !(e.metaKey || e.ctrlKey || e.altKey)) {
+      const target = e.currentTarget;
+      const start = target.selectionStart ?? 0;
+      const end = target.selectionEnd ?? start;
+      if (start === 0 && end === 0) {
+        e.preventDefault();
+        clearOutlineGoalColumn();
+        commitText();
+        onNavigate?.('prevEnd');
+        return;
+      }
+      clearOutlineGoalColumn();
+      return;
+    }
+
+    // → 行尾 → 下一节点行首
+    if (e.key === 'ArrowRight' && !(e.metaKey || e.ctrlKey || e.altKey)) {
+      const target = e.currentTarget;
+      const start = target.selectionStart ?? 0;
+      const end = target.selectionEnd ?? start;
+      const len = target.value.length;
+      if (start === len && end === len) {
+        e.preventDefault();
+        clearOutlineGoalColumn();
+        commitText();
+        onNavigate?.('nextStart');
+        return;
+      }
+      clearOutlineGoalColumn();
+      return;
+    }
+
+    // Navigate Up（保持 goal column）
+    if (e.key === 'ArrowUp' && !(e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       commitText();
-      onNavigate?.('up');
+      const start = e.currentTarget.selectionStart ?? 0;
+      let goal = getOutlineGoalColumn();
+      if (goal === null) {
+        goal = start;
+        setOutlineGoalColumn(goal);
+      }
+      onNavigate?.('up', goal);
       return;
     }
 
     // Navigate Down
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' && !(e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       commitText();
-      onNavigate?.('down');
+      const start = e.currentTarget.selectionStart ?? 0;
+      let goal = getOutlineGoalColumn();
+      if (goal === null) {
+        goal = start;
+        setOutlineGoalColumn(goal);
+      }
+      onNavigate?.('down', goal);
       return;
     }
 
     if (e.key === 'Escape') {
       e.preventDefault();
+      clearOutlineGoalColumn();
       setLocalText(node.text);
       setIsEditing(false);
       // ★ 同时清除聚焦：否则 isFocused 仍为 true，focus-effect 会立即
       // 重新进入编辑态，Esc 永远退不出（LaTeX 节点旧有问题，现统一修复）
       setFocusedNodeId(null);
       inputRef.current?.blur();
+      return;
     }
-  }, [isRoot, parentId, indexInParent, node.id, node.text, node.collapsed, hasChildren, localText, addNode, setFocusedNodeId, indentNode, outdentNode, deleteNode, commitText, moveNode, toggleCollapse, onNavigate, multiSelectBlocksEdit, onBatchIndent, onBatchOutdent, onBatchDelete, splitNode, mergeWithPrevious]);
+
+    // 修饰键 ←→ / Home / End 等水平移动（无 mod 的 ←→ 已在上方 return）
+    if (
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight' ||
+      e.key === 'Home' ||
+      e.key === 'End'
+    ) {
+      clearOutlineGoalColumn();
+      return;
+    }
+
+    // 普通输入 / 其它按键：重置 goal column
+    if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
+      clearOutlineGoalColumn();
+    }
+  }, [isRoot, parentId, indexInParent, node.id, node.text, node.collapsed, hasChildren, localText, addNode, setFocusedNodeId, indentNode, outdentNode, deleteNode, commitText, moveNode, toggleCollapse, collapseAll, expandAll, documentRoot, viewRootId, onNavigate, multiSelectBlocksEdit, onBatchIndent, onBatchOutdent, onBatchDelete, splitNode, mergeWithPrevious]);
 
   const handleNoteKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
@@ -600,6 +733,9 @@ const SortableOutlineNode: React.FC<{
 
   const indentLevel = isRoot ? 0 : level;
   const paddingLeft = BASE_PADDING + indentLevel * LEVEL_INDENT;
+  const isTaskNode = node.completed !== undefined;
+  const collapsedDescendantCount =
+    !isRoot && hasChildren && isCollapsed ? countDescendants(node) : 0;
 
   return (
     <div 
@@ -678,7 +814,7 @@ const SortableOutlineNode: React.FC<{
           )}
         </div>
 
-        {/* 节点 Bullet (兼作拖拽手柄) */}
+        {/* 节点 Bullet / 任务 checkbox（兼作拖拽手柄） */}
         {!isRoot && (
           <div 
             className={cn("node-bullet-container", !reciteMode && "cursor-grab active:cursor-grabbing")}
@@ -690,12 +826,56 @@ const SortableOutlineNode: React.FC<{
             }}
             title={`${t('outline.dragToMove')} · ${t('outline.zoomIn')}`}
           >
-            <div className={cn(
-              "node-bullet",
-              hasChildren && "has-children",
-              hasChildren && isCollapsed && "collapsed"
-            )} />
+            {isTaskNode ? (
+              <input
+                type="checkbox"
+                className="outline-task-checkbox"
+                checked={!!node.completed}
+                aria-checked={!!node.completed}
+                aria-label={
+                  node.completed
+                    ? t('contextMenu.unmarkComplete', { defaultValue: '取消完成' })
+                    : t('contextMenu.markComplete', { defaultValue: '标记完成' })
+                }
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  if (reciteMode) return;
+                  updateNode(node.id, { completed: e.target.checked });
+                }}
+              />
+            ) : (
+              <div className={cn(
+                "node-bullet",
+                hasChildren && "has-children",
+                hasChildren && isCollapsed && "collapsed"
+              )} />
+            )}
           </div>
+        )}
+        {!isRoot && hasChildren && isCollapsed && collapsedDescendantCount > 0 && (
+          <span
+            className="outline-collapse-count"
+            role="button"
+            tabIndex={0}
+            title={t('actions.expand', { defaultValue: '展开' })}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleCollapse(node.id);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleCollapse(node.id);
+              }
+            }}
+          >
+            +{collapsedDescendantCount}
+          </span>
         )}
       </div>
 
@@ -737,7 +917,7 @@ const SortableOutlineNode: React.FC<{
         ) : isEditing ? (
         <>
         <TextareaAutosize
-          ref={inputRef as any}
+          ref={inputRef}
           data-mm-outline-input="true"
           className={cn(
             "node-input resize-none overflow-hidden block w-full",
@@ -753,11 +933,18 @@ const SortableOutlineNode: React.FC<{
           }}
           minRows={1}
           value={localText}
-          onChange={(e) => setLocalText(e.target.value)}
+          onChange={(e) => {
+            clearOutlineGoalColumn();
+            setLocalText(e.target.value);
+          }}
           placeholder={isRoot ? t('placeholder.root') : t('placeholder.node')}
-          onKeyDown={handleKeyDown as any}
+          onKeyDown={handleKeyDown}
           onFocus={() => setIsEditing(true)}
-          onMouseUp={handleEditSelectionMouseUp as any}
+          onMouseDown={() => {
+            // 鼠标改光标后不应继续沿用旧 goal column
+            clearOutlineGoalColumn();
+          }}
+          onMouseUp={handleEditSelectionMouseUp}
           onBlur={() => {
             setIsEditing(false);
             if (skipNextBlurCommitRef.current) {
@@ -860,11 +1047,11 @@ const SortableOutlineNode: React.FC<{
         )}
         {isEditingNote && !reciteMode && (
           <TextareaAutosize
-            ref={noteRef as any}
+            ref={noteRef}
             className="node-note-input"
             value={localNote}
             onChange={(e) => setLocalNote(e.target.value)}
-            onKeyDown={handleNoteKeyDown as any}
+            onKeyDown={handleNoteKeyDown}
             onBlur={() => {
               commitNote();
               setIsEditingNote(false);
@@ -924,7 +1111,7 @@ const SortableOutlineNode: React.FC<{
               <AppMenuContent align="end" className="min-w-[180px]">
                 <AppMenuItem
                   icon={<Plus className="w-4 h-4" />}
-                  shortcut="Tab"
+                  shortcut="⌘Enter"
                   onClick={() => {
                     const newId = addNode(node.id, 0);
                     if (node.collapsed) toggleCollapse(node.id);
@@ -947,7 +1134,7 @@ const SortableOutlineNode: React.FC<{
                 )}
                 <AppMenuItem
                   icon={<Note size={16} />}
-                  shortcut="⇧Enter"
+                  shortcut="⇧⌘Enter"
                   onClick={() => setIsEditingNote(true)}
                 >
                   {node.note ? t('contextMenu.editNote') : t('contextMenu.addNote')}
@@ -959,14 +1146,31 @@ const SortableOutlineNode: React.FC<{
                   {t('contextMenu.linkResource')}
                 </AppMenuItem>
                 <AppMenuSeparator />
-                <AppMenuItem
-                  icon={node.completed
-                    ? <Circle size={16} />
-                    : <CheckCircle size={16} />}
-                  onClick={() => updateNode(node.id, { completed: !node.completed })}
-                >
-                  {node.completed ? t('contextMenu.unmarkComplete') : t('contextMenu.markComplete')}
-                </AppMenuItem>
+                {isTaskNode ? (
+                  <>
+                    <AppMenuItem
+                      icon={node.completed
+                        ? <Circle size={16} />
+                        : <CheckCircle size={16} />}
+                      onClick={() => updateNode(node.id, { completed: !node.completed })}
+                    >
+                      {node.completed ? t('contextMenu.unmarkComplete') : t('contextMenu.markComplete')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<Circle size={16} />}
+                      onClick={() => updateNode(node.id, { completed: undefined })}
+                    >
+                      {t('mindmap:outline.removeTask', { defaultValue: '移除任务' })}
+                    </AppMenuItem>
+                  </>
+                ) : (
+                  <AppMenuItem
+                    icon={<CheckCircle size={16} />}
+                    onClick={() => updateNode(node.id, { completed: false })}
+                  >
+                    {t('mindmap:outline.convertToTask', { defaultValue: '转为任务' })}
+                  </AppMenuItem>
+                )}
                 {/* 文本格式 B / I / U / S */}
                 <div className="flex items-center gap-1 px-2 py-1">
                   <NotionButton variant="ghost"
@@ -1273,6 +1477,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   const focusedNodeId = useMindMapStore(state => state.focusedNodeId);
   const viewRootId = useMindMapStore(state => state.viewRootId);
   const setViewRootId = useMindMapStore(state => state.setViewRootId);
+  const reciteMode = useMindMapStore(state => state.reciteMode);
   /** ACR R2-02：与画布共用 agentEnteringIds，保证大纲同步入场动画 */
   const agentEnteringIds = useMindMapStore(state => state.agentEnteringIds);
 
@@ -1475,6 +1680,33 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     () => new Map(flatNodes.map((node, index) => [node.id, index])),
     [flatNodes],
   );
+
+  // ★ 无焦点节点时的键盘入口：↓/Enter 聚焦首行、↑ 聚焦末行。
+  // 行级键盘处理都挂在行内 textarea 上，初次进入大纲（未点击任何行）时
+  // 方向键会完全无响应；这里补上 document 级兜底（活跃实例门控）。
+  const outlineKeyboardActive = useMindMapIsActive();
+  useEffect(() => {
+    if (!outlineKeyboardActive || reciteMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return;
+      if (storeApi.getState().focusedNodeId) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+      const list = flatNodes;
+      if (list.length === 0) return;
+      e.preventDefault();
+      const entry = e.key === 'ArrowUp' ? list[list.length - 1] : list[0];
+      setFocusedNodeId(entry.id);
+    };
+    globalThis.document.addEventListener('keydown', handleKeyDown);
+    return () => globalThis.document.removeEventListener('keydown', handleKeyDown);
+  }, [outlineKeyboardActive, reciteMode, flatNodes, setFocusedNodeId, storeApi]);
 
   const selectionSet = useMemo(() => new Set(selection), [selection]);
   const searchResultSet = useMemo(() => new Set(searchResults), [searchResults]);
@@ -1816,6 +2048,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
       >
         <DndContext
           sensors={sensors}
+          autoScroll={SHELL_SAFE_AUTO_SCROLL}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
@@ -1851,14 +2084,40 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                   searchResultIds={searchResultSet}
                   currentSearchResultId={currentSearchResultId}
                   searchQuery={searchQuery}
-                  onNavigate={(direction) => {
+                  onNavigate={(direction, caretHint) => {
                     if (direction === 'up') {
                       const prev = flatNodes[index - 1];
-                      if (prev) setFocusedNodeId(prev.id);
-                    } else {
-                      const next = flatNodes[index + 1];
-                      if (next) setFocusedNodeId(next.id);
+                      if (!prev) return;
+                      const offset = resolveGoalColumnOffset(
+                        caretHint,
+                        (prev.node.text || '').length,
+                      );
+                      requestOutlineCaret(prev.id, offset);
+                      setFocusedNodeId(prev.id);
+                      return;
                     }
+                    if (direction === 'down') {
+                      const next = flatNodes[index + 1];
+                      if (!next) return;
+                      const offset = resolveGoalColumnOffset(
+                        caretHint,
+                        (next.node.text || '').length,
+                      );
+                      requestOutlineCaret(next.id, offset);
+                      setFocusedNodeId(next.id);
+                      return;
+                    }
+                    if (direction === 'prevEnd') {
+                      const prev = flatNodes[index - 1];
+                      if (!prev) return;
+                      requestOutlineCaret(prev.id, (prev.node.text || '').length);
+                      setFocusedNodeId(prev.id);
+                      return;
+                    }
+                    const next = flatNodes[index + 1];
+                    if (!next) return;
+                    requestOutlineCaret(next.id, 0);
+                    setFocusedNodeId(next.id);
                   }}
                   onZoomIn={(nodeId) => setViewRootId(nodeId)}
                   onOpenResourcePicker={(nodeId) => setResourcePickerNodeId(nodeId)}
@@ -1876,8 +2135,14 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                     }
                   }}
                 >
-                  <span className="outline-empty-plus" aria-hidden="true">+</span>
-                  <p>{t('outline.emptyHint')}</p>
+                  <span className="outline-empty-icon" aria-hidden="true">
+                    <ListBullets size={28} weight="light" />
+                  </span>
+                  <p>
+                    {t('outline.emptyHint', {
+                      defaultValue: '按 Enter 开始输入第一个节点',
+                    })}
+                  </p>
                 </div>
               )}
             </div>

@@ -1,5 +1,8 @@
 .wb-chat-app-host .wb-sys-aside {
   width: 272px;
+  /* 侧栏与消息区之间补 1px 软分隔线（与窄窗抽屉边线同色系），
+     避免会话导航面与内容面在同色背景下糊成一片 */
+  border-right: 1px solid color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
 }
 
 .wb-chat-app-host[data-wb-sys-size='medium'] .wb-sys-aside {

@@ -35,10 +35,10 @@ const CrashCard: React.FC<{ error: Error; onReload: () => void }> = ({ error, on
           <WarningCircle size={40} weight="duotone" />
         </span>
         <div className="wb-body-crash-title">
-          {t('workbench:window.crashTitle', '此窗口的应用出错了')}
+          {t('workbench:window.crashTitle')}
         </div>
         <div className="wb-body-crash-summary">
-          {error.message || t('workbench:window.crashUnknown', '未知错误')}
+          {error.message || t('workbench:window.crashUnknown')}
         </div>
         <button
           type="button"
@@ -46,7 +46,7 @@ const CrashCard: React.FC<{ error: Error; onReload: () => void }> = ({ error, on
           className="wb-body-crash-reload"
         >
           <ArrowClockwise size={14} aria-hidden />
-          {t('workbench:window.reload', '重新加载')}
+          {t('workbench:window.reload')}
         </button>
       </div>
     </div>
@@ -80,10 +80,7 @@ export class WindowErrorBoundary extends React.Component<
         windowId;
     }
     announceWorkbench(
-      i18n.t('workbench:a11y.appCrashed', {
-        name: name || 'App',
-        defaultValue: `${name || 'App'} 出现错误，可重新加载`,
-      }),
+      i18n.t('workbench:a11y.appCrashed', { name: name || 'App' }),
       'assertive',
     );
   }

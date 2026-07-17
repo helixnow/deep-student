@@ -120,7 +120,16 @@
     "splitMerge": "行中拆分 / 行首合并",
     "multiSelect": "范围选 / 散选",
     "continuousCreate": "编辑中连续新建同级",
-    "batchOps": "多选后批量缩进 / 删除"
+    "batchOps": "多选后批量缩进 / 删除",
+    "collapseExpandAll": "全部折叠 / 全部展开",
+    "marqueeSelect": "框选多选节点",
+    "marqueeSelectKeys": "拖拽空白处",
+    "marqueeSelectKeysPanMode": "⇧ + 拖拽空白处",
+    "panCanvas": "平移画布",
+    "panCanvasKeys": "Space / 中键 / 右键 + 拖拽",
+    "panCanvasKeysPanMode": "拖拽空白处",
+    "associationEntryKeys": "右键节点",
+    "associationAdd": "添加关联线（再点目标）"
   },
   "embed": {
     "zoomIn": "放大",
@@ -225,13 +234,17 @@
     "highlight": "高亮",
     "unnamedNode": "未命名节点",
     "untitled": "无标题",
-    "emptyHint": "点击这里或按 Tab 添加第一个子节点",
+    "emptyHint": "按 Enter 开始输入第一个节点",
     "expandWithCount": "展开（{{count}}）",
     "selectedCount": "已选 {{count}} 项",
     "batchComplete": "完成",
-    "clearSelection": "清除选择"
+    "clearSelection": "清除选择",
+    "convertToTask": "转为任务",
+    "removeTask": "移除任务"
   },
   "contextMenu": {
+    "clearColor": "清除颜色",
+    "selectColor": "选择颜色 {{color}}",
     "addSibling": "添加同级节点",
     "edit": "编辑",
     "editNote": "编辑备注",
@@ -256,7 +269,19 @@
     "copy": "复制",
     "cut": "剪切",
     "pasteAsChild": "粘贴为子节点",
-    "linkResource": "关联资源"
+    "linkResource": "关联资源",
+    "addTopic": "新建主题",
+    "paste": "粘贴",
+    "fitView": "适应视图",
+    "exitFocusMode": "退出专注模式"
+  },
+  "association": {
+    "add": "添加关联线",
+    "pickTarget": "点击目标节点",
+    "editLabel": "编辑标签",
+    "delete": "删除关联线",
+    "labelPlaceholder": "标签",
+    "doubleClickHint": "双击编辑"
   },
   "refs": {
     "pickerTitle": "关联资源",
@@ -279,7 +304,9 @@
   "canvas": {
     "emptyTitle": "开始构建你的思维导图",
     "emptyHintBefore": "选中根节点，按",
-    "emptyHintAfter": "添加子节点"
+    "emptyHintAfter": "添加子节点",
+    "dragModeSelect": "框选模式：拖拽空白框选（Space/中键/右键拖拽平移）",
+    "dragModePan": "平移模式：拖拽空白平移（Shift+拖拽框选）"
   },
   "recite": {
     "title": "背诵模式",

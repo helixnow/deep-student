@@ -66,11 +66,8 @@ const MindmapAppWindow: React.FC<AppWindowProps> = ({
   if (!instanceKey) {
     return (
       <ContentEmptyState
-        title={t('workbench:content.missingResource', '缺少资源标识，无法打开该窗口')}
-        description={t(
-          'workbench:mindmap.missingResourceHint',
-          '请从资源库重新打开思维导图，或检查该导图是否仍存在。',
-        )}
+        title={t('workbench:content.missingResource')}
+        description={t('workbench:mindmap.missingResourceHint')}
       />
     );
   }
@@ -78,7 +75,14 @@ const MindmapAppWindow: React.FC<AppWindowProps> = ({
   const showSkeleton = phase === 'loading' || phase === 'fading';
 
   return (
-    <div ref={hostRef} className="wb-content-host" data-wb-content-host data-wb-mindmap-host>
+    <div
+      ref={hostRef}
+      className="wb-content-host"
+      data-wb-content-host
+      data-wb-mindmap-host
+      // 骨架屏期间向辅助技术标记加载中
+      aria-busy={showSkeleton || undefined}
+    >
       <div ref={contentRef} className="wb-content-viewport">
         <MindMapContentView
           resourceId={instanceKey}
@@ -94,7 +98,7 @@ const MindmapAppWindow: React.FC<AppWindowProps> = ({
         <ContentSkeleton
           variant="mindmap"
           phase={phase === 'fading' ? 'fading' : 'loading'}
-          label={t('workbench:mindmap.loading', '正在加载思维导图…')}
+          label={t('workbench:mindmap.loading')}
         />
       )}
     </div>

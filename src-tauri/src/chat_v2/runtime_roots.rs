@@ -1301,6 +1301,210 @@ pub fn runtime_root_by_id(
     }
 }
 
+/// Extract an explicit `root_id` / `rootId` from tool args (non-empty after trim).
+pub fn explicit_runtime_root_id_from_args(args: &serde_json::Value) -> Option<String> {
+    for key in ["root_id", "rootId"] {
+        if let Some(raw) = args.get(key).and_then(|v| v.as_str()) {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Session → group → `default_runtime_root_id` (no local resolvability check).
+pub fn resolve_group_preferred_runtime_root_id(
+    db: &crate::chat_v2::database::ChatV2Database,
+    session_id: &str,
+) -> Option<String> {
+    resolve_group_preferred_runtime_root(db, session_id).and_then(|pref| pref.root_id)
+}
+
+/// Preferred runtime root binding for a session's group (id + local path cache).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupPreferredRuntimeRoot {
+    pub root_id: Option<String>,
+    pub project_root_path: Option<String>,
+}
+
+/// Session → group → preferred runtime root fields (no local resolvability check).
+pub fn resolve_group_preferred_runtime_root(
+    db: &crate::chat_v2::database::ChatV2Database,
+    session_id: &str,
+) -> Option<GroupPreferredRuntimeRoot> {
+    use crate::chat_v2::repo::ChatV2Repo;
+
+    let conn = match db.get_conn_safe() {
+        Ok(conn) => conn,
+        Err(error) => {
+            log::warn!(
+                "[runtime_roots] failed to open chat_v2 db while resolving preferred root for session '{}': {}",
+                session_id,
+                error
+            );
+            return None;
+        }
+    };
+
+    let session = match ChatV2Repo::get_session_with_conn(&conn, session_id) {
+        Ok(Some(session)) => session,
+        Ok(None) => return None,
+        Err(error) => {
+            log::warn!(
+                "[runtime_roots] failed to load session '{}' for preferred root: {}",
+                session_id,
+                error
+            );
+            return None;
+        }
+    };
+
+    let group_id = session
+        .group_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())?;
+
+    let group = match ChatV2Repo::get_group_with_conn(&conn, group_id) {
+        Ok(Some(group)) => group,
+        Ok(None) => return None,
+        Err(error) => {
+            log::warn!(
+                "[runtime_roots] failed to load group '{}' for preferred root: {}",
+                group_id,
+                error
+            );
+            return None;
+        }
+    };
+
+    let root_id = group
+        .default_runtime_root_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string);
+    let project_root_path = group
+        .preferred_project_root_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(str::to_string);
+
+    if root_id.is_none() && project_root_path.is_none() {
+        return None;
+    }
+
+    Some(GroupPreferredRuntimeRoot {
+        root_id,
+        project_root_path,
+    })
+}
+
+/// Pure merge: explicit > preferred > `"workspace"`.
+///
+/// Callers that need "preferred must be locally resolvable" should filter
+/// preferred first (see [`resolve_effective_runtime_root_id_for_session`]).
+pub fn effective_runtime_root_id(explicit: Option<&str>, preferred: Option<&str>) -> String {
+    if let Some(id) = explicit.map(str::trim).filter(|s| !s.is_empty()) {
+        return id.to_string();
+    }
+    if let Some(id) = preferred.map(str::trim).filter(|s| !s.is_empty()) {
+        return id.to_string();
+    }
+    "workspace".to_string()
+}
+
+/// Whether `root_id` can be resolved on this device for the given session.
+pub fn is_runtime_root_id_resolvable(
+    app: &AppHandle,
+    database: &crate::database::Database,
+    session_id: &str,
+    skill_package_roots: Option<&HashMap<String, String>>,
+    root_id: &str,
+) -> bool {
+    runtime_root_by_id(
+        app,
+        database,
+        session_id,
+        skill_package_roots,
+        Some(root_id),
+        false,
+    )
+    .is_ok()
+}
+
+/// Resolve the runtime root id tools should use when args omit an explicit root.
+///
+/// - Explicit `root_id` / `rootId` is never overridden.
+/// - Otherwise uses the session group's `default_runtime_root_id` when locally resolvable.
+/// - Unresolvable preferred roots degrade to `"workspace"` (does not abort the round).
+pub fn resolve_effective_runtime_root_id_for_session(
+    app: &AppHandle,
+    main_db: &crate::database::Database,
+    chat_v2_db: Option<&crate::chat_v2::database::ChatV2Database>,
+    session_id: &str,
+    skill_package_roots: Option<&HashMap<String, String>>,
+    explicit: Option<&str>,
+) -> String {
+    if let Some(id) = explicit.map(str::trim).filter(|s| !s.is_empty()) {
+        return id.to_string();
+    }
+
+    let preferred = chat_v2_db.and_then(|db| resolve_group_preferred_runtime_root_id(db, session_id));
+    if let Some(ref preferred_id) = preferred {
+        if is_runtime_root_id_resolvable(
+            app,
+            main_db,
+            session_id,
+            skill_package_roots,
+            preferred_id,
+        ) {
+            return preferred_id.clone();
+        }
+        log::warn!(
+            "[runtime_roots] group preferred runtime root '{}' for session '{}' is not resolvable on this device; falling back to workspace",
+            preferred_id,
+            session_id
+        );
+    }
+
+    effective_runtime_root_id(None, None)
+}
+
+/// Redact an absolute path for display (home → `~`).
+pub fn redact_path_for_display(path: &str) -> String {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if let Some(home) = dirs::home_dir() {
+        let home_s = home.to_string_lossy();
+        if !home_s.is_empty() {
+            if trimmed == home_s.as_ref() {
+                return "~".to_string();
+            }
+            let prefix = format!(
+                "{}{}",
+                home_s,
+                std::path::MAIN_SEPARATOR
+            );
+            if let Some(rest) = trimmed.strip_prefix(&prefix) {
+                return format!("~/{}", rest.replace('\\', "/"));
+            }
+            // Also accept forward-slash home prefixes on Windows-style mixed paths.
+            if let Some(rest) = trimmed.strip_prefix(home_s.as_ref()) {
+                if rest.starts_with('/') || rest.starts_with('\\') {
+                    return format!("~{}", rest.replace('\\', "/"));
+                }
+            }
+        }
+    }
+    trimmed.replace('\\', "/")
+}
+
 #[tauri::command]
 pub async fn chat_v2_set_skill_trust(
     state: State<'_, AppState>,
@@ -3039,5 +3243,59 @@ mod tests {
             serde_json::to_string(&RuntimeRootKind::Temp).unwrap(),
             "\"temp\""
         );
+    }
+
+    #[test]
+    fn effective_runtime_root_id_prefers_explicit_then_preferred_then_workspace() {
+        assert_eq!(
+            effective_runtime_root_id(Some("temp"), Some("authorized_x")),
+            "temp"
+        );
+        assert_eq!(
+            effective_runtime_root_id(Some("  "), Some("authorized_x")),
+            "authorized_x"
+        );
+        assert_eq!(
+            effective_runtime_root_id(None, Some("authorized_x")),
+            "authorized_x"
+        );
+        assert_eq!(effective_runtime_root_id(None, None), "workspace");
+        assert_eq!(effective_runtime_root_id(Some(""), Some("")), "workspace");
+    }
+
+    #[test]
+    fn explicit_runtime_root_id_from_args_reads_snake_and_camel() {
+        assert_eq!(
+            explicit_runtime_root_id_from_args(&serde_json::json!({"root_id": "temp"})).as_deref(),
+            Some("temp")
+        );
+        assert_eq!(
+            explicit_runtime_root_id_from_args(&serde_json::json!({"rootId": "artifacts"}))
+                .as_deref(),
+            Some("artifacts")
+        );
+        assert_eq!(
+            explicit_runtime_root_id_from_args(&serde_json::json!({"root_id": "  "})),
+            None
+        );
+        assert_eq!(
+            explicit_runtime_root_id_from_args(&serde_json::json!({"cwd": "."})),
+            None
+        );
+    }
+
+    #[test]
+    fn redact_path_for_display_masks_home_prefix() {
+        let Some(home) = dirs::home_dir() else {
+            return;
+        };
+        let nested = home.join("Projects").join("demo");
+        let redacted = redact_path_for_display(&nested.to_string_lossy());
+        assert!(
+            redacted.starts_with("~/Projects/demo") || redacted == "~/Projects/demo",
+            "unexpected redaction: {redacted}"
+        );
+        assert_eq!(redact_path_for_display(&home.to_string_lossy()), "~");
+        assert_eq!(redact_path_for_display("  "), "");
     }
 }

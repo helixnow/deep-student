@@ -192,13 +192,16 @@ export function ImageCropDialog({
         },
       });
 
-      showGlobalNotification('success', t('question_bank.crop_success', '图片裁剪成功'));
+      showGlobalNotification('success', t('question_bank.crop_success'));
 
       setCropRect(null);
       onImageAdded?.();
     } catch (e: any) {
       console.error('[ImageCropDialog] Crop failed:', e);
-      showGlobalNotification('error', t('question_bank.crop_failed', '裁剪失败: ') + (e?.message || String(e)));
+      showGlobalNotification(
+        'error',
+        t('question_bank.crop_failed', { error: e?.message || String(e) }),
+      );
     } finally {
       setCropping(false);
     }
@@ -217,10 +220,10 @@ export function ImageCropDialog({
       <NotionDialogHeader>
         <NotionDialogTitle className="flex items-center gap-2">
           <ImageIcon size={16} />
-          {t('question_bank.source_images', '原始导入图片')}
+          {t('question_bank.source_images')}
         </NotionDialogTitle>
         <NotionDialogDescription>
-          {t('question_bank.crop_hint', '在图片上拖拽选取区域，点击"裁剪并添加"将选区添加为题目配图')}
+          {t('question_bank.crop_hint')}
         </NotionDialogDescription>
       </NotionDialogHeader>
 
@@ -233,7 +236,7 @@ export function ImageCropDialog({
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
             <ImageIcon size={40} className="mb-2 opacity-40" />
             <p className="text-sm">
-              {t('question_bank.no_source_images', '该题目集没有原始导入图片')}
+              {t('question_bank.no_source_images')}
             </p>
           </div>
         ) : (
@@ -341,10 +344,10 @@ export function ImageCropDialog({
           <div className="text-xs text-muted-foreground">
             {cropRect ? (
               <span className="text-blue-500 font-medium">
-                {t('question_bank.crop_selected', '已选择裁剪区域')}
+                {t('question_bank.crop_selected')}
               </span>
             ) : sourceImages.length > 0 ? (
-              t('question_bank.drag_to_crop', '拖拽选取裁剪区域')
+              t('question_bank.drag_to_crop')
             ) : null}
           </div>
           <div className="flex items-center gap-2">
@@ -355,7 +358,7 @@ export function ImageCropDialog({
                 onClick={() => setCropRect(null)}
               >
                 <Trash size={14} className="mr-1" />
-                {t('question_bank.clear_selection', '清除')}
+                {t('question_bank.clear_selection')}
               </NotionButton>
             )}
             <NotionButton
@@ -369,7 +372,7 @@ export function ImageCropDialog({
               ) : (
                 <Crop size={14} className="mr-1" />
               )}
-              {t('question_bank.crop_and_add', '裁剪并添加')}
+              {t('question_bank.crop_and_add')}
             </NotionButton>
           </div>
         </div>

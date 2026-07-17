@@ -62,10 +62,7 @@ export const SkillCard: React.FC<SkillCardProps> = ({
     }
   };
 
-  const toolCount =
-    (skill.embeddedTools?.length ?? 0) > 0
-      ? skill.embeddedTools!.length
-      : (skill.allowedTools ?? skill.tools)?.length ?? 0;
+  const toolCount = skill.embeddedTools?.length ?? 0;
 
   return (
     <div

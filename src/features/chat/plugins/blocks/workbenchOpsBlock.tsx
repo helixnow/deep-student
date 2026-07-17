@@ -563,7 +563,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             <p className="text-[11px] text-muted-foreground/70" data-testid="workbench-ops-applied">
               {t('blocks.workbenchOps.applied', {
                 applied: receipt.applied,
-                total: receipt.totalOps,
+                total: receipt.totalOps
               })}
             </p>
           ) : null}
@@ -580,22 +580,17 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             )}
             <span>
               {actResult.verified
-                ? t('blocks.workbenchOps.verified', { defaultValue: '操作后状态已验证' })
+                ? t('blocks.workbenchOps.verified')
                 : t('blocks.workbenchOps.verificationFailed', {
                     count: actResult.failedConditionCount,
-                    defaultValue: `${actResult.failedConditionCount} 个后置条件未满足`,
                   })}
             </span>
           </p>
           {undoToken && (
             <p className="text-[11px] text-muted-foreground/75" data-testid="workbench-undo-durability">
               {persistentUndo
-                ? t('blocks.workbenchOps.undoPersistent', {
-                    defaultValue: '此操作可使用持久撤销，应用重启后仍可恢复。',
-                  })
-                : t('blocks.workbenchOps.undoSession', {
-                    defaultValue: '此操作可在当前应用会话中撤销。',
-                  })}
+                ? t('blocks.workbenchOps.undoPersistent')
+                : t('blocks.workbenchOps.undoSession')}
             </p>
           )}
         </div>
@@ -650,47 +645,31 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
               undoExpired
                 ? t('blocks.workbenchOps.undoExpired')
                 : undoUnavailable
-                  ? t('blocks.workbenchOps.undoUnavailable', {
-                      defaultValue: '撤销不可用（没有可恢复的更改）',
-                    })
+                  ? t('blocks.workbenchOps.undoUnavailable')
                   : undoState === 'incomplete'
                     ? undoRetryAvailable
-                      ? t('blocks.workbenchOps.undoRetry', {
-                          defaultValue: '部分更改未恢复，可再次尝试撤销',
-                        })
-                      : t('blocks.workbenchOps.undoIncompleteExhausted', {
-                          defaultValue: '撤销未完全完成，且没有可重试的更改',
-                        })
+                      ? t('blocks.workbenchOps.undoRetry')
+                      : t('blocks.workbenchOps.undoIncompleteExhausted')
                     : undefined
             }
           >
             {undoState === 'reverted' ? (
               <>
                 <Check size={12} className="text-emerald-500" />
-                {t('blocks.workbenchOps.undoApplied', {
-                  defaultValue: '已撤销可恢复更改',
-                })}
+                {t('blocks.workbenchOps.undoApplied')}
               </>
             ) : undoState === 'incomplete' ? (
               undoRetryAvailable ? (
-                t('blocks.workbenchOps.undoRetry', {
-                  defaultValue: '部分撤销，重试',
-                })
+                t('blocks.workbenchOps.undoRetry')
               ) : (
-                t('blocks.workbenchOps.undoIncompleteExhausted', {
-                  defaultValue: '撤销未完全完成（无法重试）',
-                })
+                t('blocks.workbenchOps.undoIncompleteExhausted')
               )
             ) : undoExpired ? (
               t('blocks.workbenchOps.undoExpired')
             ) : undoUnavailable ? (
-              t('blocks.workbenchOps.undoUnavailable', {
-                defaultValue: '不可撤销',
-              })
+              t('blocks.workbenchOps.undoUnavailable')
             ) : undoState === 'loading' ? (
-              t('blocks.workbenchOps.undoing', {
-                defaultValue: '正在撤销…',
-              })
+              t('blocks.workbenchOps.undoing')
             ) : (
               t('blocks.workbenchOps.undo')
             )}
@@ -698,12 +677,8 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
           {undoToken && undoState !== 'reverted' && (
             <span className="self-center text-[11px] text-muted-foreground/70">
               {persistentUndo
-                ? t('blocks.workbenchOps.undoPersistentShort', {
-                    defaultValue: '跨重启可撤销 · 成功后一次性失效',
-                  })
-                : t('blocks.workbenchOps.undoSessionShort', {
-                    defaultValue: '仅当前会话 · 成功后一次性失效',
-                  })}
+                ? t('blocks.workbenchOps.undoPersistentShort')
+                : t('blocks.workbenchOps.undoSessionShort')}
             </span>
           )}
         </div>

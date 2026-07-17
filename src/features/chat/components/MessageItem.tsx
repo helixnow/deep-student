@@ -1227,10 +1227,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           {isSteered && (
                             <div
                               className="flex items-center justify-end gap-1 mb-1.5 text-xs text-muted-foreground/70 select-none"
-                              aria-label={t('queue.steeredBadge', '已引导对话')}
+                              aria-label={t('queue.steeredBadge')}
                             >
                               <ArrowBendDownRight size={12} weight="regular" aria-hidden="true" />
-                              <span>{t('queue.steeredBadge', '已引导对话')}</span>
+                              <span>{t('queue.steeredBadge')}</span>
                             </div>
                           )}
                           <UserMessageBubble>

@@ -10,7 +10,14 @@ import { CircleNotch, FileText, MagnifyingGlass, TreeStructure, X } from '@phosp
 import { useTranslation } from 'react-i18next';
 import { dstu, type DstuListOptions, type DstuNode, type DstuNodeType } from '@/dstu';
 import { cn } from '@/lib/utils';
+import { highlightRanges } from './highlightRanges';
+import {
+  nodeMatchesTags,
+  parseTagQuery,
+  removeTagFromQuery,
+} from './parseTagQuery';
 import './NotesSearchOverlay.css';
+import './NotesSearchHighlight.css';
 
 export type NotesSearchMode = 'quick-open' | 'full-text';
 
@@ -112,12 +119,14 @@ function getAllowedFullTextResults(
   resources: readonly DstuNode[],
   allowedTypes: ReadonlySet<DstuNodeType>,
   maxResults: number,
+  requiredTags: readonly string[] = [],
 ): DstuNode[] {
   const seen = new Set<string>();
   const result: DstuNode[] = [];
   for (const resource of resources) {
     if (!allowedTypes.has(resource.type)) continue;
     if (seen.has(resourceKey(resource))) continue;
+    if (!nodeMatchesTags(resource.metadata, requiredTags)) continue;
     seen.add(resourceKey(resource));
     result.push(resource);
     if (result.length >= maxResults) break;
@@ -133,6 +142,25 @@ export function stripNotesSearchSnippet(value: unknown): string | null {
     .replace(/\s+/g, ' ')
     .trim();
   return text || null;
+}
+
+/** Render text with `<mark class="nso-hl">` around query hits. */
+export function renderHighlightedText(text: string, query: string): React.ReactNode {
+  const ranges = highlightRanges(text, query);
+  if (ranges.length === 0) return text;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  ranges.forEach((range, index) => {
+    if (range.start > cursor) parts.push(text.slice(cursor, range.start));
+    parts.push(
+      <mark key={`hl-${index}-${range.start}`} className="nso-hl">
+        {text.slice(range.start, range.end)}
+      </mark>,
+    );
+    cursor = range.end;
+  });
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -187,9 +215,15 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const activeMode = mode ?? uncontrolledMode;
   const visibleResultLimit = Math.max(1, Math.floor(maxResults));
   const allowedTypes = useMemo(() => new Set(resourceTypes), [resourceTypes]);
+
+  const parsedQuery = useMemo(() => parseTagQuery(query), [query]);
+  const highlightQuery = parsedQuery.textQuery;
+  const activeFilterTags = parsedQuery.tags;
+  const quickOpenFilterText = highlightQuery;
+
   const quickOpenResults = useMemo(
-    () => getQuickOpenResults(resources, allowedTypes, query, visibleResultLimit),
-    [allowedTypes, query, resources, visibleResultLimit],
+    () => getQuickOpenResults(resources, allowedTypes, quickOpenFilterText, visibleResultLimit),
+    [allowedTypes, quickOpenFilterText, resources, visibleResultLimit],
   );
   const displayedResults = activeMode === 'quick-open' ? quickOpenResults : fullTextResults;
   const hasResultList = displayedResults.length > 0 && !searchError && !openError;
@@ -204,6 +238,11 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     if (mode === undefined) setUncontrolledMode(nextMode);
     onModeChange?.(nextMode);
   }, [mode, onModeChange]);
+
+  const removeActiveTag = useCallback((tag: string) => {
+    setQuery((current) => removeTagFromQuery(current, tag));
+    setOpenError(null);
+  }, []);
 
   useEffect(() => {
     const opened = open && !wasOpenRef.current;
@@ -259,9 +298,10 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       return undefined;
     }
 
-    const normalizedQuery = query.trim();
+    const { textQuery, tags: queryTags } = parseTagQuery(query);
+    const hasSearchIntent = Boolean(textQuery.trim() || queryTags.length > 0);
     const sequence = ++searchSequenceRef.current;
-    if (!normalizedQuery) {
+    if (!hasSearchIntent) {
       setFullTextResults([]);
       setSearchError(null);
       setIsSearching(false);
@@ -273,11 +313,27 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     // Do not leave an old query actionable while the next request is pending.
     setFullTextResults([]);
     const fetchLimit = Math.max(visibleResultLimit * 3, 30);
+    const searchText = textQuery.trim();
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const result = await dstu.search(normalizedQuery, {
+          const optionTags = Array.isArray(searchOptions?.tags) ? searchOptions.tags : [];
+          const filterTags = (() => {
+            const seen = new Set<string>();
+            const merged: string[] = [];
+            for (const tag of [...optionTags, ...queryTags]) {
+              const trimmed = tag.trim();
+              if (!trimmed) continue;
+              const key = trimmed.toLocaleLowerCase();
+              if (seen.has(key)) continue;
+              seen.add(key);
+              merged.push(trimmed);
+            }
+            return merged;
+          })();
+          const result = await dstu.search(searchText, {
             ...searchOptions,
+            ...(filterTags.length > 0 ? { tags: filterTags } : {}),
             types: [...resourceTypes],
             limit: fetchLimit,
           });
@@ -290,7 +346,12 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
             ));
             return;
           }
-          setFullTextResults(getAllowedFullTextResults(result.value, allowedTypes, visibleResultLimit));
+          setFullTextResults(getAllowedFullTextResults(
+            result.value,
+            allowedTypes,
+            visibleResultLimit,
+            filterTags,
+          ));
         } catch (error) {
           if (sequence !== searchSequenceRef.current) return;
           setFullTextResults([]);
@@ -402,6 +463,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const placeholder = activeMode === 'quick-open'
     ? t('notesWorkspace.searchOverlay.quickOpenPlaceholder', 'Filter openable files...')
     : t('notesWorkspace.searchOverlay.fullTextPlaceholder', 'Search note contents...');
+  const hasSearchIntent = Boolean(highlightQuery.trim() || activeFilterTags.length > 0);
 
   return (
     <div className={cn('notes-search-overlay', className)} data-notes-search-overlay>
@@ -459,6 +521,32 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
           )}
         </div>
 
+        {activeFilterTags.length > 0 && (
+          <div
+            className="notes-search-overlay-active-tags"
+            data-notes-search-active-tags
+            aria-label={t('workbench:notesWorkspace.searchOverlay.activeTags')}
+          >
+            <span className="notes-search-overlay-active-tags-label">
+              {t('workbench:notesWorkspace.searchOverlay.activeTags')}
+            </span>
+            {activeFilterTags.map((tag) => (
+              <span key={tag} className="notes-search-overlay-active-tag">
+                <span className="notes-search-overlay-active-tag-name">{tag}</span>
+                <button
+                  type="button"
+                  className="notes-search-overlay-active-tag-remove"
+                  onClick={() => removeActiveTag(tag)}
+                  aria-label={t('workbench:notesWorkspace.searchOverlay.removeTag', { tag })}
+                  title={t('workbench:notesWorkspace.searchOverlay.removeTag', { tag })}
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <div
           className="notes-search-overlay-modes"
           role="group"
@@ -490,7 +578,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
                 {t('notesWorkspace.searchOverlay.searching', 'Searching...')}
               </span>
             )}
-            {!isSearching && activeMode === 'full-text' && !query.trim() && (
+            {!isSearching && activeMode === 'full-text' && !hasSearchIntent && (
               <span>{t('notesWorkspace.searchOverlay.enterQuery', 'Enter text to search note contents.')}</span>
             )}
           </div>
@@ -530,9 +618,15 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
                     >
                       <span className="notes-search-overlay-result-icon"><ResourceIcon type={resource.type} /></span>
                       <span className="notes-search-overlay-result-main">
-                        <span className="notes-search-overlay-result-title">{resource.name}</span>
+                        <span className="notes-search-overlay-result-title">
+                          {renderHighlightedText(resource.name, highlightQuery)}
+                        </span>
                         <span className="notes-search-overlay-result-path">{pathLabel(resource)}</span>
-                        {snippet && <span className="notes-search-overlay-result-snippet">{snippet}</span>}
+                        {snippet && (
+                          <span className="notes-search-overlay-result-snippet">
+                            {renderHighlightedText(snippet, highlightQuery)}
+                          </span>
+                        )}
                       </span>
                       <span className="notes-search-overlay-result-type">
                         {resource.type === 'mindmap'
@@ -544,7 +638,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
                 );
               })}
             </ul>
-          ) : !isSearching && (activeMode === 'quick-open' || query.trim()) ? (
+          ) : !isSearching && (activeMode === 'quick-open' || hasSearchIntent) ? (
             <div className="notes-search-overlay-empty">
               {t('notesWorkspace.searchOverlay.empty', 'No matching notes or mind maps.')}
             </div>

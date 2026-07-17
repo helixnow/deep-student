@@ -513,10 +513,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
           {conflicts.needs_migration && (
             <p className="text-xs text-amber-700">
-              {t("data:governance.schema_mismatch_needs_migration", {
-                defaultValue:
-                  "检测到 Schema 不匹配，请先完成迁移后再执行冲突解决。",
-              })}
+              {t("data:governance.schema_mismatch_needs_migration")}
             </p>
           )}
 

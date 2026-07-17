@@ -46,7 +46,7 @@ export const AttachmentValidationNotice: React.FC<AttachmentValidationNoticeProp
           {/* 成功信息 */}
           {hasSuccess && (
             <div className="text-sm text-green-700">
-              {t('attachmentValidation.success_added', '✅ 成功添加 {{count}} 个附件', { count: accepted })}
+              {t('attachmentValidation.success_added', { count: accepted })}
             </div>
           )}
           
@@ -54,7 +54,7 @@ export const AttachmentValidationNotice: React.FC<AttachmentValidationNoticeProp
           {hasErrors && (
             <div className="space-y-1">
               <div className="text-sm font-medium text-red-700">
-                {t('attachmentValidation.rejected_count', '❌ {{count}} 个附件被拒绝：', { count: rejected.length })}
+                {t('attachmentValidation.rejected_count', { count: rejected.length })}
               </div>
               {rejected.slice(0, 5).map((item, index) => (
                 <div key={index} className="text-xs text-red-600 ml-4">
@@ -63,7 +63,7 @@ export const AttachmentValidationNotice: React.FC<AttachmentValidationNoticeProp
               ))}
               {rejected.length > 5 && (
                 <div className="text-xs text-red-500 ml-4">
-                  {t('attachmentValidation.more_rejected', '... 还有 {{count}} 个文件被拒绝', { count: rejected.length - 5 })}
+                  {t('attachmentValidation.more_rejected', { count: rejected.length - 5 })}
                 </div>
               )}
             </div>
@@ -71,15 +71,15 @@ export const AttachmentValidationNotice: React.FC<AttachmentValidationNoticeProp
           
           {/* 限制信息 */}
           <div className="text-xs text-gray-600 mt-2 pt-2 border-t border-gray-200">
-            <div className="font-medium mb-1">{t('attachmentValidation.limits_title', '📋 附件限制：')}</div>
-            <div>{t('attachmentValidation.images_limit', '🖼️ 图片：{{limit}}', { limit: limits.images })}</div>
-            <div>{t('attachmentValidation.documents_limit', '📄 文档：{{limit}}', { limit: limits.documents })}</div>
-            <div>{t('attachmentValidation.total_limit', '📦 总计：{{limit}}', { limit: limits.total })}</div>
+            <div className="font-medium mb-1">{t('attachmentValidation.limits_title')}</div>
+            <div>{t('attachmentValidation.images_limit', { limit: limits.images })}</div>
+            <div>{t('attachmentValidation.documents_limit', { limit: limits.documents })}</div>
+            <div>{t('attachmentValidation.total_limit', { limit: limits.total })}</div>
           </div>
         </div>
         
         {onClose && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="text-gray-400 hover:text-gray-600 flex-shrink-0" aria-label={t('attachmentValidation.close_notice', '关闭通知')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="text-gray-400 hover:text-gray-600 flex-shrink-0" aria-label={t('attachmentValidation.close_notice')}>
             <X size={16} />
           </NotionButton>
         )}

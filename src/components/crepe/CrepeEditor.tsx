@@ -13,6 +13,7 @@
 
 import React, { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
+import { EditorView } from '@codemirror/view';
 import { editorViewCtx, commandsCtx, parserCtx } from '@milkdown/kit/core';
 import { TextSelection } from '@milkdown/prose/state';
 import { replaceAll } from '@milkdown/kit/utils';
@@ -20,6 +21,7 @@ import { NodeSelection } from '@milkdown/kit/prose/state';
 import { toggleMark, setBlockType, wrapIn } from '@milkdown/prose/commands';
 import { MarkType, NodeType, Slice } from '@milkdown/prose/model';
 import { listItemSchema, wrapInBlockTypeCommand } from '@milkdown/kit/preset/commonmark';
+import { linkTooltipAPI } from '@milkdown/kit/component/link-tooltip';
 import i18next from 'i18next';
 
 // Crepe 样式（亮色 + 暗色主题）
@@ -34,6 +36,7 @@ import type { CrepeEditorProps, CrepeEditorApi } from './types';
 import { agentHighlightKey, type AgentHighlightMeta } from './plugins/agentHighlight';
 import { createImageBlockConfig, createImageUploader, pickImageWithTauriDialog } from './features/imageUpload';
 import { applyCrepePlugins } from './plugins';
+import { appendCalloutToggleSlashItems } from './plugins/slashMenuExtras';
 import { createMermaidObserver } from './features/mermaidPreview';
 import { emitCrepeDebug, captureDOMSnapshot } from '../../debug-panel/plugins/CrepeEditorDebugPlugin';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
@@ -46,10 +49,14 @@ import {
   captureImageBlockSnapshot 
 } from '../../debug-panel/plugins/CrepeImageUploadDebugPlugin';
 import './CrepeEditor.css';
+// A6：破图占位 + lightbox 样式（lightbox 插件注册后交互生效；破图样式始终可用）
+import './plugins/imageLightbox/imageLightbox.css';
 import { useCrepeBlockDrag } from './hooks/useCrepeBlockDrag';
 import { useSlashMenuCustomScrollbar } from './hooks/useSlashMenuCustomScrollbar';
 import { createAgentInsertTransaction } from './useCrepeEditor';
 import { scrollSelectionIntoEditorViewport } from './scrollSelectionIntoEditorViewport';
+import { showGlobalNotification } from '../UnifiedNotification';
+import { isNonEmptyHref } from './plugins/imageLightbox/nonEmptyHref';
 
 /**
  * Crepe 编辑器组件
@@ -66,6 +73,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     placeholder,
     className = '',
     noteId,
+    plugins: pluginsOptions,
   } = props;
 
   const wrapperRef = useRef<HTMLDivElement>(null); // 外层包装
@@ -1032,22 +1040,44 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       
       insertLink: (href?: string, text?: string) => {
         const view = viewRef.current;
+        const crepe = crepeRef.current;
         if (!view) return;
         try {
           const markType = view.state.schema.marks.link;
-          if (markType) {
-            const { from, to, empty } = view.state.selection;
-            if (empty) {
-              const linkText = text || href || 'link';
-              const linkMark = markType.create({ href: href || '' });
-              const tr = view.state.tr.insertText(linkText, from);
-              tr.addMark(from, from + linkText.length, linkMark);
-              view.dispatch(tr);
-            } else {
-              toggleMark(markType, { href: href || '' })(view.state, view.dispatch);
+          if (!markType) return;
+
+          const trimmedHref = isNonEmptyHref(href) ? href!.trim() : '';
+
+          // 无有效 href：绝不插入空链接；打开 LinkTooltip 编辑流程（工具栏调用方不传 href）
+          if (!trimmedHref) {
+            if (crepe) {
+              crepe.editor.action((ctx) => {
+                const { from, to } = view.state.selection;
+                const api = ctx.get(linkTooltipAPI.key);
+                api.addLink(from, to);
+              });
+              view.focus();
+              return;
             }
+            showGlobalNotification(
+              'info',
+              i18next.t('notes:crepe.link.href_required'),
+            );
             view.focus();
+            return;
           }
+
+          const { from, empty } = view.state.selection;
+          if (empty) {
+            const linkText = text || trimmedHref;
+            const linkMark = markType.create({ href: trimmedHref });
+            const tr = view.state.tr.insertText(linkText, from);
+            tr.addMark(from, from + linkText.length, linkMark);
+            view.dispatch(tr);
+          } else {
+            toggleMark(markType, { href: trimmedHref })(view.state, view.dispatch);
+          }
+          view.focus();
         } catch (e) {
           debugLog.error('[CrepeEditor] insertLink failed:', e);
         }
@@ -1242,8 +1272,23 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             [CrepeFeature.Latex]: true,
           },
           featureConfigs: {
-            // 图片上传配置
-            [CrepeFeature.ImageBlock]: createImageBlockConfig(noteId),
+            // 代码块：自动换行（保留语言选择 / 复制按钮等默认配置）
+            [CrepeFeature.CodeMirror]: {
+              extensions: [EditorView.lineWrapping],
+            },
+
+            // 图片上传配置 + 破图占位
+            [CrepeFeature.ImageBlock]: {
+              ...createImageBlockConfig(noteId),
+              onImageLoadError: (event: Event) => {
+                const img = event.target;
+                if (!(img instanceof HTMLImageElement)) return;
+                img.classList.add('crepe-image--broken');
+                if (!img.alt) {
+                  img.alt = i18next.t('notes:crepe.image.load_failed');
+                }
+              },
+            },
             
             // 占位符配置
             [CrepeFeature.Placeholder]: {
@@ -1278,6 +1323,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 table: { label: i18next.t('notes:slashMenu.advancedGroup.table') },
                 math: { label: i18next.t('notes:slashMenu.advancedGroup.math') },
               },
+              // A3/A4：slash 菜单追加 callout / toggle（见 docs/revamp/03|04）
+              buildMenu: (builder) => {
+                appendCalloutToggleSlashItems(builder);
+              },
             },
             
             // 工具栏配置（使用默认）
@@ -1296,8 +1345,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
 
         emitCrepeDebug('init', 'debug', 'Crepe 实例已创建');
 
-        // 应用扩展插件（automd、查找高亮等，必须在 create() 之前）
-        applyCrepePlugins(crepe);
+        // 应用扩展插件（automd、查找高亮、wikilink/callout/toggle 等，必须在 create() 之前）
+        applyCrepePlugins(crepe, pluginsOptions);
 
         // 设置只读状态
         if (readonly) {

@@ -637,7 +637,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('加载可恢复任务失败:', error);
       showGlobalNotification(
         'warning',
-        t('data:governance.resumable_jobs_load_failed', '加载可恢复任务失败，请稍后重试')
+        t('data:governance.resumable_jobs_load_failed')
       );
     }
   }, [t]);
@@ -1179,9 +1179,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           throw new Error(t('data:governance.sync_prune_gap_warning', {
             since,
             minAvail,
-            defaultValue:
-              `检测到云端同步历史已被清理（本地需要 >=${since} 的变更，但云端最早仅 ${minAvail}）。` +
-              '为避免遗漏数据，本次同步已停止，请先执行完整恢复。',
           }));
         }
       }
@@ -1206,8 +1203,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         if (result.error_message || (result.skipped_changes ?? 0) > 0) {
           const skipped = result.skipped_changes ?? 0;
           const msg = result.error_message ?? t('data:governance.sync_partial_with_skipped', {
-            count: skipped,
-            defaultValue: `同步完成，但有 ${skipped} 条变更被跳过。`,
+            skipped,
           });
           showGlobalNotification('warning', msg);
         } else {
@@ -1282,7 +1278,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     if (detectInFlightRef.current) {
       showGlobalNotification(
         'warning',
-        t('data:governance.detect_conflicts_running', '冲突检测正在进行，请稍候')
+        t('data:governance.detect_conflicts_running')
       );
       return;
     }
@@ -1325,24 +1321,20 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     if (resolveInFlightRef.current) {
       showGlobalNotification(
         'warning',
-        t('data:governance.resolve_conflicts_running', '冲突解决正在进行，请稍候')
+        t('data:governance.resolve_conflicts_running')
       );
       return;
     }
     if (conflicts?.needs_migration) {
       showGlobalNotification(
         'warning',
-        t('data:governance.schema_mismatch_needs_migration', {
-          defaultValue: '检测到 Schema 不匹配，请先完成迁移后再解决冲突。',
-        })
+        t('data:governance.schema_mismatch_needs_migration')
       );
       return;
     }
     const cloudManifestJson = conflicts?.cloud_manifest_json;
     if (!cloudManifestJson) {
-      showGlobalNotification('warning', t('data:governance.sync_conflict_manifest_missing', {
-        defaultValue: '缺少云端冲突清单，请先重新检测冲突。',
-      }));
+      showGlobalNotification('warning', t('data:governance.sync_conflict_manifest_missing'));
       return;
     }
     resolveInFlightRef.current = true;
@@ -1360,7 +1352,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             'warning',
             t('data:governance.conflicts_pending_manual', {
               count: result.pending_manual_conflicts,
-              defaultValue: `仍有 ${result.pending_manual_conflicts} 条冲突待手动处理。`,
             })
           );
         } else {
@@ -1513,7 +1504,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         console.error('检查运行中的备份任务失败:', error);
         showGlobalNotification(
           'warning',
-          t('data:governance.reconnect_running_job_failed', '恢复后台任务监听失败，请稍后重试')
+          t('data:governance.reconnect_running_job_failed')
         );
       }
     };

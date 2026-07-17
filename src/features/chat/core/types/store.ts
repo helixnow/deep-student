@@ -736,8 +736,6 @@ export interface ChatStore {
     id: string;
     name: string;
     description: string;
-    /** allowedTools 用于 Skill 运行时工具约束摘要 */
-    allowedTools?: string[];
   }>>;
 
   // ========== 🆕 工具审批 Actions（文档 29 P1-3） ==========

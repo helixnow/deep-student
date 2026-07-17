@@ -217,7 +217,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               )}
               {dialogTitle}
             </NotionDialogTitle>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className="!rounded-full !p-1 hover:bg-[var(--interactive-hover)]" aria-label="close">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className="!rounded-full !p-1 hover:bg-[var(--interactive-hover)]" aria-label={t('notes:a11y.close')}>
               <X className="h-4 w-4 text-muted-foreground" />
             </NotionButton>
           </div>
@@ -235,7 +235,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               className="w-full h-10 pl-9 pr-4"
             />
             {searchQuery && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 !p-0.5 !rounded-full hover:bg-[var(--interactive-hover)]" aria-label="clear">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 !p-0.5 !rounded-full hover:bg-[var(--interactive-hover)]" aria-label={t('notes:a11y.clear')}>
                 <X className="h-3.5 w-3.5 text-muted-foreground" />
               </NotionButton>
             )}

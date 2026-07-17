@@ -38,6 +38,7 @@ import { setMaterialTier, useMaterialTier, type MaterialTierSetting } from '../c
 import {
   computeTiledFrame,
   getActiveTilingPair,
+  hasVisibleMaximizedWindow,
   MAX_TILING_RATIO,
   MIN_TILING_RATIO,
 } from '../core/tiling';
@@ -223,7 +224,7 @@ const TilingDivider: React.FC<{ leftId: string; rightId: string; margin: number 
       data-wb-tiling-divider
       role="separator"
       aria-orientation="vertical"
-      aria-label={t('a11y.tilingDivider', '平铺分割条')}
+      aria-label={t('a11y.tilingDivider')}
       aria-valuemin={Math.round(MIN_TILING_RATIO * 100)}
       aria-valuemax={Math.round(MAX_TILING_RATIO * 100)}
       aria-valuenow={valueNow}
@@ -478,6 +479,10 @@ export const WorkbenchDesktop: React.FC = () => {
     return pair ? { leftId: pair.left.id, rightId: pair.right.id } : null;
   }, [orderedWindows]);
 
+  // 任一子应用最大化（全屏）时 Dock 强制默认收起（macOS 全屏语义）；
+  // 弹出/收起走 Dock 自身的 autohide 热区机制，与用户设置项取或
+  const dockForceAutohide = useMemo(() => hasVisibleMaximizedWindow(orderedWindows), [orderedWindows]);
+
   return (
     <div
       ref={rootRef}
@@ -485,6 +490,11 @@ export const WorkbenchDesktop: React.FC = () => {
       // absolute inset-0：不依赖百分比高度链，避免父级 flex/contain 抖动时桌面只占半屏
       className="absolute inset-0 overflow-hidden"
     >
+      {/* 壁纸挂在根节点（延伸到菜单栏背后），玻璃顶条才有真实背景可采样 */}
+      <div className="wb-wallpaper-frame" aria-hidden="true">
+        <WallpaperLayer wallpaper={wallpaper} />
+      </div>
+
       <StatusBar />
 
       <div
@@ -494,15 +504,11 @@ export const WorkbenchDesktop: React.FC = () => {
         className="absolute inset-x-0 bottom-0 overflow-hidden"
         style={{ top: 'var(--wb-workarea-top)' }}
         tabIndex={0}
-        aria-label={t('a11y.desktop', '工作台桌面')}
+        aria-label={t('a11y.desktop')}
         onContextMenu={gestures.onDesktopContextMenu}
         onKeyDown={gestures.onDesktopKeyDown}
         onDoubleClick={gestures.onDesktopDoubleClick}
       >
-        <div className="wb-wallpaper-frame" aria-hidden="true">
-          <WallpaperLayer wallpaper={wallpaper} />
-        </div>
-
         {hydrated && <DesktopAgendaWidget />}
         {hydrated && orderedWindows.length === 0 && <EmptyDesktop />}
 
@@ -534,7 +540,7 @@ export const WorkbenchDesktop: React.FC = () => {
         <WindowSwitcher />
         <ShortcutCheatsheet />
 
-        <Dock autohide={dockAutohide} />
+        <Dock autohide={dockAutohide || dockForceAutohide} />
 
         {/* 全部应用是工作台内的启动器，不覆盖常驻顶栏。 */}
         <AppsPanel />

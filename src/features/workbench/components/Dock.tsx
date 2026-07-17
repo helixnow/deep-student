@@ -3,7 +3,9 @@
  *
  * - 固定区（DockPinnedStore，快照接线 P11）+ 运行区（store 中有窗的 typeId 去重）+ 分隔符
  * - 键盘可达：roving tabindex（←/→/Home/End 移动，Enter/Space 走原生 button 激活）
- * - autohide：prop 驱动 — 隐藏至底缘 4px 热区；reveal ~180ms / conceal ~150ms 防误触延迟
+ * - autohide：prop 驱动（用户设置项，或任一窗口最大化时由桌面强制）—
+ *   隐藏至底缘 4px 热区；reveal ~180ms / conceal ~150ms 防误触延迟；
+ *   弹出后指针未进入 Dock 就离开底缘也会自动收起（macOS 同语义）
  *
  * O5 动效层（样式见 Dock.css）：
  * - Dock 悬停保持静止，只显示名称气泡；邻近放大已关闭。
@@ -619,10 +621,10 @@ function DockImpl({ autohide = false, className }: DockProps) {
         <div
           data-testid="wb-dock-hotzone"
           aria-hidden
-          className={cn(
-            'wb-dock-hotzone absolute inset-x-0 bottom-0 h-1',
-            hidden ? 'pointer-events-auto' : 'pointer-events-none',
-          )}
+          // 两种状态都接管底缘 4px：隐藏时负责弹出；弹出后指针没上移到 Dock
+          // 就离开底缘时负责收起（macOS 同语义；热区与弹出的 Dock 纵向不重叠，
+          // 上移到 Dock 时由 Dock 的 pointerenter 清掉收起计时器，不会误收）
+          className="wb-dock-hotzone pointer-events-auto absolute inset-x-0 bottom-0 h-1"
           onPointerEnter={scheduleReveal}
           onPointerLeave={() => {
             // 未满 reveal 延迟即离开热区 → 取消弹出，防 4px 热区误触闪现
@@ -630,6 +632,7 @@ function DockImpl({ autohide = false, className }: DockProps) {
               window.clearTimeout(revealTimerRef.current);
               revealTimerRef.current = 0;
             }
+            scheduleConceal();
           }}
         />
       )}
@@ -637,7 +640,7 @@ function DockImpl({ autohide = false, className }: DockProps) {
         ref={dockRef}
         role="toolbar"
         aria-orientation="horizontal"
-        aria-label={t('workbench:dock.label', '程序坞')}
+        aria-label={t('workbench:dock.label')}
         data-testid="wb-dock"
         data-autohide={autohide || undefined}
         data-hidden={hidden || undefined}
@@ -668,7 +671,7 @@ function DockImpl({ autohide = false, className }: DockProps) {
             role="separator"
             aria-orientation="vertical"
             data-testid="wb-dock-separator"
-            className="wb-dock-separator mx-1 h-8 w-px self-center bg-current opacity-20"
+            className="wb-dock-separator mx-1 h-8 w-px self-center"
           />
         )}
         {runningExtra.map(renderItem)}
@@ -678,7 +681,7 @@ function DockImpl({ autohide = false, className }: DockProps) {
             role="separator"
             aria-orientation="vertical"
             data-testid="wb-dock-apps-separator"
-            className="wb-dock-separator mx-1 h-8 w-px self-center bg-current opacity-20"
+            className="wb-dock-separator mx-1 h-8 w-px self-center"
           />
         )}
         <div
@@ -693,7 +696,7 @@ function DockImpl({ autohide = false, className }: DockProps) {
                 data-type-id={APPS_DOCK_TYPE_ID}
                 data-testid="wb-dock-apps-button"
                 className="wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none"
-                aria-label={t('workbench:dock.apps', '全部应用')}
+                aria-label={t('workbench:dock.apps')}
                 aria-expanded={appsPanelOpen}
                 tabIndex={effectiveActiveId === APPS_DOCK_TYPE_ID ? 0 : -1}
                 onClick={() => toggleAppsPanel()}
@@ -715,7 +718,7 @@ function DockImpl({ autohide = false, className }: DockProps) {
             </div>
           </div>
           <span aria-hidden data-testid={`wb-dock-tip-${APPS_DOCK_TYPE_ID}`} className="wb-dock-tip">
-            {t('workbench:dock.apps', '全部应用')}
+            {t('workbench:dock.apps')}
           </span>
         </div>
         <AgentControlDockEntry

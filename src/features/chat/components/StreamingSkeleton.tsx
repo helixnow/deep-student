@@ -11,7 +11,7 @@ import './StreamingSkeleton.css';
 
 export const StreamingSkeleton: React.FC<{ className?: string }> = ({ className }) => {
   const { t } = useTranslation('chatV2');
-  const label = t('messageList.waiting', { defaultValue: '正在思考...' });
+  const label = t('messageList.waiting');
   return (
     <div className={`stream-skeleton ${className ?? ''}`} role="status" aria-label={label}>
       <div className="stream-skeleton-line" style={{ width: '82%' }} />

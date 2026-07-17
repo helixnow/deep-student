@@ -281,30 +281,45 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                       <DotsThree size={14} />
                     </NotionButton>
                   </AppMenuTrigger>
-                  <AppMenuContent align="end" className="min-w-[160px]">
-                    <AppMenuItem onClick={() => onToggleDefault(skill)}>
-                      <Check size={14} className="mr-2" />
+                  <AppMenuContent align="end" width={180}>
+                    <AppMenuItem
+                      icon={<Check size={16} />}
+                      onClick={() => onToggleDefault(skill)}
+                    >
                       {isDefaultEnabled ? t('skills:management.unset_default') : t('skills:management.set_default')}
                     </AppMenuItem>
-                    <AppMenuItem onClick={() => toggleFavorite(skill.id)}>
-                      <Star size={14} className={cn('mr-2', isFavorite(skill.id) && 'fill-current text-amber-500')} />
+                    <AppMenuItem
+                      icon={
+                        <Star
+                          size={16}
+                          className={cn(isFavorite(skill.id) && 'fill-current text-[color:hsl(var(--warning))]')}
+                        />
+                      }
+                      onClick={() => toggleFavorite(skill.id)}
+                    >
                       {isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
                     </AppMenuItem>
                     {onExport && (
-                      <AppMenuItem onClick={() => onExport(skill)}>
-                        <Download size={14} className="mr-2" />
+                      <AppMenuItem
+                        icon={<Download size={16} />}
+                        onClick={() => onExport(skill)}
+                      >
                         {t('skills:management.export')}
                       </AppMenuItem>
                     )}
-                    <AppMenuItem onClick={() => { navigator.clipboard.writeText(skill.id); }}>
-                      <Copy size={14} className="mr-2" />
+                    <AppMenuItem
+                      icon={<Copy size={16} />}
+                      onClick={() => { void navigator.clipboard.writeText(skill.id); }}
+                    >
                       {t('skills:management.copy_id')}
                     </AppMenuItem>
                     {isBuiltin && isCustomized && onResetToOriginal && (
                       <>
                         <AppMenuSeparator />
-                        <AppMenuItem onClick={() => onResetToOriginal(skill)}>
-                          <ArrowCounterClockwise size={14} className="mr-2" />
+                        <AppMenuItem
+                          icon={<ArrowCounterClockwise size={16} />}
+                          onClick={() => onResetToOriginal(skill)}
+                        >
                           {t('skills:management.reset_to_default')}
                         </AppMenuItem>
                       </>
@@ -312,8 +327,11 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     {!isBuiltin && (
                       <>
                         <AppMenuSeparator />
-                        <AppMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(skill)}>
-                          <Trash size={14} className="mr-2" />
+                        <AppMenuItem
+                          icon={<Trash size={16} />}
+                          destructive
+                          onClick={() => onDelete(skill)}
+                        >
                           {t('common:actions.delete')}
                         </AppMenuItem>
                       </>

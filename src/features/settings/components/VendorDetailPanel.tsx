@@ -602,15 +602,15 @@ export const VendorDetailPanel: React.FC = () => {
                     <span className="text-muted-foreground/60 shrink-0">·</span>
                     {selectedVendor.noApiKey ? (
                       <span className="text-xs shrink-0 text-muted-foreground">
-                        {t('settings:vendor_panel.no_api_key_short', { defaultValue: '无 Key' })}
+                        {t('settings:vendor_panel.no_api_key_needed_short')}
                       </span>
                     ) : (
-                      <span className="text-xs shrink-0">{t('settings:vendor_panel.api_key_configured_short', { defaultValue: 'Key ✓' })}</span>
+                      <span className="text-xs shrink-0">{t('settings:vendor_panel.api_key_configured_short')}</span>
                     )}
                   </span>
                 ) : (
                   <span className="text-muted-foreground text-xs">
-                    {t('settings:vendor_panel.connection_not_configured', { defaultValue: '\u8fde\u63a5\u672a\u914d\u7f6e' })}
+                    {t('settings:vendor_panel.connection_not_configured')}
                   </span>
                 )}
               </div>
@@ -676,7 +676,7 @@ export const VendorDetailPanel: React.FC = () => {
                       ) : selectedVendor.noApiKey ? (
                         <div className="flex items-center gap-2 rounded-lg border border-border/40 px-4 py-3 text-sm text-muted-foreground">
                           <Prohibit className="h-4 w-4 shrink-0" />
-                          <span>{t('settings:vendor_panel.no_api_key_hint', { defaultValue: '无需 API Key，保存后将自动获取模型列表' })}</span>
+                          <span>{t('settings:vendor_panel.no_api_key_required_hint')}</span>
                         </div>
                       ) : (
                         <VendorApiKeySection

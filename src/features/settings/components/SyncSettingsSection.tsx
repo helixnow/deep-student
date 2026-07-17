@@ -215,7 +215,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       if (!useGlobalSyncStore.getState().beginSync('sync-settings')) {
         showGlobalNotification(
           'warning',
-          t('data:governance.sync_already_running', '另一个同步任务正在进行中，请稍后再试')
+          t('data:governance.sync_already_running')
         );
         return;
       }
@@ -239,7 +239,6 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             throw new Error(t('data:governance.sync_prune_gap_warning', {
               since: gap.since_version,
               minAvail: gap.min_available_version ?? 0,
-              defaultValue: '云端同步历史存在断层。为避免遗漏数据，本次同步已停止，请先执行完整恢复。',
             }));
           }
         }
@@ -262,8 +261,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
         const message = result.error_message ??
           t('data:governance.sync_partial_with_skipped', {
-            count: result.skipped_changes ?? 0,
-            defaultValue: `同步完成，但有 ${result.skipped_changes ?? 0} 条变更被跳过。`,
+            skipped: result.skipped_changes ?? 0,
           });
 
         if (result.success) {

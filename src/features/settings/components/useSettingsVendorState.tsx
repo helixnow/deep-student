@@ -164,7 +164,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           showGlobalNotification(
             'success',
             t('settings:notifications.api_test_success', { name: api.name, model: api.model }),
-            t('settings:notifications.api_test_latency', { latency: latencyMs, defaultValue: '耗时 {{latency}} ms' })
+            t('settings:notifications.api_test_latency', { latency: latencyMs})
           );
         } else {
           showGlobalNotification('error', t('settings:notifications.api_test_failed', { name: api.name, model: api.model }));

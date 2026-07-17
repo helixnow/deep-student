@@ -60,7 +60,7 @@ export const AccentPicker: React.FC<AccentPickerProps> = ({
   return (
     <div
       role="radiogroup"
-      aria-label={t('settings:theme.accent_label', '强调色')}
+      aria-label={t('settings:theme.accent_label')}
       className={cn('flex flex-wrap items-center gap-2', className)}
     >
       {PRESET_PALETTES.map((paletteKey) => {
@@ -95,8 +95,8 @@ export const AccentPicker: React.FC<AccentPickerProps> = ({
         variant="ghost"
         role="radio"
         aria-checked={palette === 'custom'}
-        aria-label={t('settings:theme.accent.custom', '自选色')}
-        title={t('settings:theme.accent.custom', '自选色')}
+        aria-label={t('settings:theme.accent.custom')}
+        title={t('settings:theme.accent.custom')}
         onClick={openCustomColorPicker}
         className={cn(
           DOT_BASE_CLASS,

@@ -1129,18 +1129,18 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const resolvedThinkingTriggerLabel = selectedThinkingDepthOption
     ? selectedThinkingDepthOption.defaultLabel
     : compactThinkingStateLabel;
-  const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle', '模型');
-  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel', '选择模型');
-  const runtimeModelSearchPlaceholder = t('app_menu.search.placeholder', '搜索名称或模型 ID...');
-  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode', '进入多选模式...');
-  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider', '其他');
+  const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle');
+  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel');
+  const runtimeModelSearchPlaceholder = t('chatV2:modelPicker.searchPlaceholder');
+  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode');
+  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider');
   const runtimeModelAccessibleCurrent = runtimeModelLabel
     ? runtimeModelProviderLabel
       ? `${runtimeModelProviderLabel} / ${runtimeModelLabel}`
       : runtimeModelLabel
     : undefined;
   const runtimeModelSwitchLabel = runtimeModelAccessibleCurrent
-    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', '{{label}}，当前：{{current}}', {
+    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
         label: chooseRuntimeModelLabel,
         current: runtimeModelAccessibleCurrent,
       })
@@ -2628,13 +2628,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     </AppMenuTrigger>
                     <AppMenuContent align="start" width={hasRuntimeModelMenu ? 232 : 176}>
                       {hasThinkingUnsupportedMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
                           <AppMenuItem disabled>
-                            {t('chatV2:inputBar.thinkingUnsupportedDescription', '该模型不支持推理')}
+                            {t('chatV2:inputBar.thinkingUnsupportedDescription')}
                           </AppMenuItem>
                         </AppMenuGroup>
                       ) : hasThinkingDepthMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle')}>
                           {thinkingDepthOptions.map((option) => (
                             <AppMenuItem
                               key={option.value}
@@ -2648,19 +2648,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                             <>
                               <AppMenuSeparator />
                               <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
-                                {t('chatV2:inputBar.thinkingOff', '关闭')}
+                                {t('chatV2:inputBar.thinkingOff')}
                               </AppMenuItem>
                             </>
                           )}
                         </AppMenuGroup>
                       ) : hasThinkingToggleMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
                           <AppMenuItem checked={!!enableThinking} onClick={handleTurnThinkingOn}>
-                            {t('chatV2:inputBar.thinkingOn', '开启')}
+                            {t('chatV2:inputBar.thinkingOn')}
                           </AppMenuItem>
                           {thinkingCanDisable && (
                             <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
-                              {t('chatV2:inputBar.thinkingOff', '关闭')}
+                              {t('chatV2:inputBar.thinkingOff')}
                             </AppMenuItem>
                           )}
                         </AppMenuGroup>
@@ -2744,7 +2744,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                     ))
                                   ) : (
                                     <AppMenuItem disabled>
-                                      {t('chatV2:inputBar.runtimeModelNoResults', '未找到匹配模型')}
+                                      {t('chatV2:inputBar.runtimeModelNoResults')}
                                     </AppMenuItem>
                                   )}
                                 </div>

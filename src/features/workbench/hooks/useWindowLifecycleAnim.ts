@@ -280,19 +280,13 @@ export function useWindowLifecycleAnim(windowId: string): void {
 
 function announceWindowMinimized(title: string): void {
   announceWorkbench(
-    i18n.t('workbench:a11y.windowMinimized', {
-      title,
-      defaultValue: `${title} 已最小化`,
-    }),
+    i18n.t('workbench:a11y.windowMinimized', { title }),
   );
 }
 
 function announceWindowClosed(title: string): void {
   announceWorkbench(
-    i18n.t('workbench:a11y.windowClosed', {
-      title,
-      defaultValue: `已关闭 ${title}`,
-    }),
+    i18n.t('workbench:a11y.windowClosed', { title }),
   );
 }
 

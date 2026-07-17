@@ -108,7 +108,11 @@ describe('NotesSearchOverlay', () => {
       types: ['note', 'mindmap'],
     })));
     expect(await screen.findByRole('option', { name: /Quadratic equations/ })).toBeInTheDocument();
-    expect(screen.getByText('Solve quadratic equations with the formula.')).toBeInTheDocument();
+    expect(screen.getByText((_, node) => (
+      node?.classList.contains('notes-search-overlay-result-snippet')
+      && node.textContent === 'Solve quadratic equations with the formula.'
+    ))).toBeInTheDocument();
+    expect(document.querySelectorAll('mark.nso-hl').length).toBeGreaterThan(0);
     expect(screen.queryByRole('option', { name: /Quadratic worksheet/ })).toBeNull();
 
     fireEvent.click(screen.getByRole('option', { name: /Quadratic equations/ }));
@@ -247,6 +251,43 @@ describe('NotesSearchOverlay', () => {
     expect(stripNotesSearchSnippet('  <b>term</b>\n  x < y > z <em>context</em>  '))
       .toBe('term x < y > z <em>context</em>');
     expect(stripNotesSearchSnippet(null)).toBeNull();
+  });
+
+  it('parses tag: filters in full-text mode and strips them from the DSTU query', async () => {
+    const kept = node({
+      name: 'Tagged note',
+      metadata: { tags: ['math'], snippet: 'body with formula' },
+    });
+    const dropped = node({
+      id: 'note_2',
+      sourceId: 'note_2',
+      name: 'Other note',
+      metadata: { tags: ['physics'], snippet: 'body with formula' },
+    });
+    search.mockResolvedValue({ ok: true, value: [kept, dropped] });
+
+    render(
+      <NotesSearchOverlay
+        open
+        initialMode="full-text"
+        initialQuery="formula tag:math"
+        searchDebounceMs={0}
+        resources={[]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(search).toHaveBeenCalledWith(
+      'formula',
+      expect.objectContaining({ tags: ['math'] }),
+    ));
+    expect(await screen.findByRole('option', { name: /Tagged note/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Other note/ })).toBeNull();
+    expect(screen.getByText('math')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /移除标签 math/ }));
+    expect(screen.getByRole('combobox')).toHaveValue('formula');
   });
 
   it('only exposes a combobox popup relationship when its result list is rendered', async () => {

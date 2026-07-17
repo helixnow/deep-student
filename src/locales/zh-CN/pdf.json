@@ -73,8 +73,7 @@
     "show_highlights": "查看批注",
     "highlights": "批注列表",
     "page": "第 {{page}} 页",
-    "delete_highlight": "删除批注"
-  ,
+    "delete_highlight": "删除批注",
     "more": "更多"
   },
   "bookmark": {
@@ -156,11 +155,11 @@
     "initializing_session": "正在初始化 OCR 会话...",
     "waiting_ocr": "页面上传完成，正在等待 OCR 识别结束...",
     "process_new": "处理新文件"
+  },
+  "a11y": {
+    "close": "关闭",
+    "edit": "编辑",
+    "delete": "删除",
+    "search": "搜索"
   }
 }
-
-
-
-
-
-

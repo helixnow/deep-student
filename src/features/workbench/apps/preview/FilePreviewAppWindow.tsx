@@ -167,7 +167,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   onTitleChange,
   requestClose,
 }) => {
-  const { t } = useTranslation(['workbench', 'common', 'learningHub']);
+  const { t } = useTranslation('workbench');
   const resourceId = normalizeResourceInstanceKey(instanceKey);
   const highlightNames = useMemo(() => getPreviewHighlightNames(resourceId), [resourceId]);
   const previewRootRef = useRef<HTMLDivElement>(null);
@@ -295,24 +295,24 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   }, []);
 
   const handleSave = useCallback(() => runAction('save', async () => {
-    if (!node || !sourcePath) throw new Error(t('learningHub:file.downloadUnavailable', '原文件不可用'));
+    if (!node || !sourcePath) throw new Error(t('filePreview.downloadUnavailable'));
     const result = await fileManager.saveFromSource({
       sourcePath,
       defaultFileName: node.name,
       filters: fileFilters,
-      title: t('common:saveAs', '另存为'),
+      title: t('filePreview.saveAs'),
     });
-    if (!result.canceled) showGlobalNotification('success', t('common:downloadSuccess', '保存成功'));
+    if (!result.canceled) showGlobalNotification('success', t('filePreview.downloadSuccess'));
   }), [fileFilters, node, runAction, sourcePath, t]);
 
   const handleOpen = useCallback(() => runAction('open', async () => {
-    if (!sourcePath) throw new Error(t('learningHub:file.downloadUnavailable', '原文件不可用'));
+    if (!sourcePath) throw new Error(t('filePreview.downloadUnavailable'));
     const { openPath } = await import('@tauri-apps/plugin-opener');
     await openPath(sourcePath);
   }), [runAction, sourcePath, t]);
 
   const handleReveal = useCallback(() => runAction('reveal', async () => {
-    if (!sourcePath) throw new Error(t('learningHub:file.downloadUnavailable', '原文件不可用'));
+    if (!sourcePath) throw new Error(t('filePreview.downloadUnavailable'));
     const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
     await revealItemInDir(sourcePath);
   }), [runAction, sourcePath, t]);
@@ -320,7 +320,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   const handleReference = useCallback(() => runAction('reference', async () => {
     if (!node) return;
     const sourceType = sourceTypeForNode(node);
-    if (!sourceType) throw new Error(t('learningHub:contextMenu.referenceNotSupported', '该资源暂不支持引用'));
+    if (!sourceType) throw new Error(t('filePreview.referenceNotSupported'));
     const domSelectionMetadata = previewRootRef.current
       ? getPreviewSelectionMetadata(previewRootRef.current)
       : {};
@@ -337,8 +337,8 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   if (!resourceId) {
     return (
       <ContentEmptyState
-        title={t('workbench:content.missingResource', '缺少资源标识，无法打开该窗口')}
-        description={t('workbench:content.missingResourceHint', '请从资源库重新打开，或检查该资源是否仍存在。')}
+        title={t('workbench:content.missingResource')}
+        description={t('workbench:content.missingResourceHint')}
       />
     );
   }
@@ -349,32 +349,32 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
         ::highlight(${highlightNames.all}) { background: rgb(250 204 21 / 50%); }
         ::highlight(${highlightNames.current}) { background: rgb(249 115 22 / 80%); color: #111; }
       `}</style>
-      <div className="wb-file-preview-toolbar" data-file-preview-toolbar role="toolbar" aria-label={t('workbench:apps.filePreview', '文件预览')}>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={openSearch} title={t('common:search', '搜索')} aria-label={t('common:search', '搜索')}>
+      <div className="wb-file-preview-toolbar" data-file-preview-toolbar role="toolbar" aria-label={t('workbench:apps.filePreview')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={openSearch} title={t('filePreview.search')} aria-label={t('filePreview.search')}>
           <MagnifyingGlass size={16} />
         </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleSave} disabled={!sourcePath || busyAction !== null} title={t('common:saveAs', '另存为')} aria-label={t('common:saveAs', '另存为')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleSave} disabled={!sourcePath || busyAction !== null} title={t('filePreview.saveAs')} aria-label={t('filePreview.saveAs')}>
           <FloppyDisk size={16} />
         </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpen} disabled={!sourcePath || busyAction !== null} title={t('learningHub:file.openExternal', '使用系统应用打开')} aria-label={t('learningHub:file.openExternal', '使用系统应用打开')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpen} disabled={!sourcePath || busyAction !== null} title={t('filePreview.openExternal')} aria-label={t('filePreview.openExternal')}>
           <ArrowSquareOut size={16} />
         </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleReveal} disabled={!sourcePath || busyAction !== null} title={t('common:showInFolder', '在文件夹中显示')} aria-label={t('common:showInFolder', '在文件夹中显示')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleReveal} disabled={!sourcePath || busyAction !== null} title={t('filePreview.showInFolder')} aria-label={t('filePreview.showInFolder')}>
           <FolderOpen size={16} />
         </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => window.print()} title={t('common:print', '打印')} aria-label={t('common:print', '打印')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => window.print()} title={t('filePreview.print')} aria-label={t('filePreview.print')}>
           <Printer size={16} />
         </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleReference} disabled={!node || !canReferenceToChat() || busyAction !== null} title={t('learningHub:contextMenu.referenceToChat', '引用到对话')} aria-label={t('learningHub:contextMenu.referenceToChat', '引用到对话')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleReference} disabled={!node || !canReferenceToChat() || busyAction !== null} title={t('filePreview.referenceToChat')} aria-label={t('filePreview.referenceToChat')}>
           <ChatCircleDots size={16} />
         </NotionButton>
         {searchOpen && (
           <div className="wb-file-preview-search">
-            <input ref={searchInputRef} type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('common:search', '搜索')} aria-label={t('common:search', '搜索')} />
+            <input ref={searchInputRef} type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('filePreview.search')} aria-label={t('filePreview.search')} />
             <span>{searchState.ranges.length ? `${searchState.current + 1}/${searchState.ranges.length}` : '0/0'}</span>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => navigateSearch(-1)} disabled={!searchState.ranges.length} aria-label={t('common:previous', '上一个')}><ArrowUp size={14} /></NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => navigateSearch(1)} disabled={!searchState.ranges.length} aria-label={t('common:next', '下一个')}><ArrowDown size={14} /></NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { setSearchOpen(false); setSearchQuery(''); }} aria-label={t('common:close', '关闭')}><X size={14} /></NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => navigateSearch(-1)} disabled={!searchState.ranges.length} aria-label={t('filePreview.previous')}><ArrowUp size={14} /></NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => navigateSearch(1)} disabled={!searchState.ranges.length} aria-label={t('filePreview.next')}><ArrowDown size={14} /></NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { setSearchOpen(false); setSearchQuery(''); }} aria-label={t('filePreview.close')}><X size={14} /></NotionButton>
           </div>
         )}
       </div>

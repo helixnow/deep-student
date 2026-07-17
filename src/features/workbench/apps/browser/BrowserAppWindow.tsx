@@ -23,6 +23,7 @@ import {
   LockSimple,
   LockOpen,
   Robot,
+  WarningCircle,
 } from '@phosphor-icons/react';
 import { useBrowserSession } from '@/features/browser/hooks/useBrowserSession';
 import { browserApi } from '@/features/browser/browserApi';
@@ -47,6 +48,7 @@ import {
   type NativeSurfaceLayoutEventDetail,
 } from '../../core/nativeSurfaceEvents';
 import { useAppsPanelOpen } from '../../components/appsPanelStore';
+import { useWbSysSize } from '../system/useWbSysSize';
 import {
   BROWSER_FOCUS_ADDRESS_EVENT,
   type BrowserFocusAddressEventDetail,
@@ -67,14 +69,14 @@ const NavControls: React.FC<{
 }> = ({ canGoBack, canGoForward, loading, onBack, onForward, onReload }) => {
   const { t } = useTranslation('workbench');
   return (
-    <div className="wb-browser-nav" role="group" aria-label={t('browser.nav', '导航')}>
+    <div className="wb-browser-nav" role="group" aria-label={t('browser.nav')}>
       <button
         type="button"
         className="wb-browser-icon-btn"
         disabled={!canGoBack || loading}
         onClick={onBack}
-        aria-label={t('browser.back', '后退')}
-        title={t('browser.back', '后退')}
+        aria-label={t('browser.back')}
+        title={t('browser.back')}
       >
         <ArrowLeft size={16} weight="bold" />
       </button>
@@ -83,8 +85,8 @@ const NavControls: React.FC<{
         className="wb-browser-icon-btn"
         disabled={!canGoForward || loading}
         onClick={onForward}
-        aria-label={t('browser.forward', '前进')}
-        title={t('browser.forward', '前进')}
+        aria-label={t('browser.forward')}
+        title={t('browser.forward')}
       >
         <ArrowRight size={16} weight="bold" />
       </button>
@@ -93,8 +95,8 @@ const NavControls: React.FC<{
         className="wb-browser-icon-btn"
         disabled={loading}
         onClick={onReload}
-        aria-label={t('browser.reload', '刷新')}
-        title={t('browser.reload', '刷新')}
+        aria-label={t('browser.reload')}
+        title={t('browser.reload')}
       >
         <ArrowClockwise size={16} weight="bold" />
       </button>
@@ -113,14 +115,15 @@ const AddressBar: React.FC<{
   const { t } = useTranslation('workbench');
   const securityLabel =
     security === 'secure'
-      ? t('browser.secureConnection', '安全连接')
+      ? t('browser.secureConnection')
       : security === 'insecure'
-        ? t('browser.insecureConnection', '不安全的 HTTP 连接')
-        : t('browser.connectionUnknown', '尚未建立连接');
+        ? t('browser.insecureConnection')
+        : t('browser.connectionUnknown');
 
   return (
     <form
       className="wb-browser-address"
+      data-loading={loading ? 'true' : 'false'}
       onSubmit={(e) => {
         e.preventDefault();
         const next = draft.trim();
@@ -147,13 +150,25 @@ const AddressBar: React.FC<{
         type="text"
         value={draft}
         onChange={(e) => onDraftChange(e.target.value)}
-        placeholder={t('browser.addressPlaceholder', '输入网址或搜索')}
-        aria-label={t('browser.addressPlaceholder', '输入网址或搜索')}
+        placeholder={t('browser.addressPlaceholder')}
+        aria-label={t('browser.addressPlaceholder')}
+        /* 长 URL 被省略号截断时，悬停仍可读到完整地址 */
+        title={draft || undefined}
         spellCheck={false}
         autoComplete="off"
         data-wb-browser-address
       />
-      {loading ? <span className="wb-browser-spinner" aria-hidden /> : null}
+      {loading ? (
+        <span
+          className="wb-browser-spinner"
+          role="status"
+          aria-label={t('window.loading')}
+        />
+      ) : null}
+      {/* 底缘加载跑马：native 页面无自带 chrome，可见加载反馈全靠壳层（transform/opacity） */}
+      <span className="wb-browser-address-progress" aria-hidden>
+        <span className="wb-browser-address-progress-runner" />
+      </span>
     </form>
   );
 };
@@ -175,18 +190,18 @@ const AgentBar: React.FC<{
         {agentActive ? (
           <>
             <Robot size={14} weight="fill" aria-hidden />
-            {t('browser.agentActive', '助手正在操控此页')}
+            {t('browser.agentActive')}
           </>
         ) : (
           <>
             <HandPalm size={14} weight="fill" aria-hidden />
-            {t('browser.userControl', '由你控制')}
+            {t('browser.userControl')}
           </>
         )}
       </span>
       {agentActive ? (
         <button type="button" className="wb-browser-takeover" onClick={onTakeOver}>
-          {t('browser.takeOver', '接管')}
+          {t('browser.takeOver')}
         </button>
       ) : null}
     </div>
@@ -198,11 +213,11 @@ const DetachedPageHint: React.FC<{ onShowContent: () => void }> = ({ onShowConte
   return (
     <div className="wb-browser-detached" data-wb-browser-detached>
       <p className="wb-browser-hint-text">
-        {t('browser.detachedHint', '网页已在独立窗口中打开')}
+        {t('browser.detachedHint')}
       </p>
       <button type="button" className="wb-browser-hint-action" onClick={onShowContent}>
         <ArrowSquareOut size={14} weight="bold" aria-hidden />
-        {t('browser.showContent', '显示页面')}
+        {t('browser.showContent')}
       </button>
     </div>
   );
@@ -797,6 +812,8 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
   isVisible,
 }) => {
   const { t } = useTranslation('workbench');
+  // 窗口内容区尺寸分级（data-wb-sys-size），供 CSS 收紧窄窗 chrome 留白
+  const { ref: sizeRef } = useWbSysSize();
   const session = useBrowserSession({ launchPayload, hydrateOnMount: true });
   const closeSession = session.closeSession;
   const addressRef = useRef<HTMLInputElement | null>(null);
@@ -827,7 +844,7 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
 
   useEffect(() => {
     const pageTitle = session.title?.trim();
-    onTitleChange(pageTitle || t('workbench:apps.browser', '浏览器'));
+    onTitleChange(pageTitle || t('workbench:apps.browser'));
   }, [onTitleChange, t, session.title]);
 
   useEffect(() => {
@@ -875,10 +892,12 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
 
   return (
     <div
+      ref={sizeRef}
       className="wb-browser-root"
       data-wb-browser-app
       data-wb-browser-chrome
       data-active={isActive ? 'true' : 'false'}
+      data-loading={session.loading ? 'true' : 'false'}
     >
       <div className="wb-browser-toolbar">
         <NavControls
@@ -901,18 +920,23 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
       <AgentBar controlMode={session.controlMode} onTakeOver={handleTakeOver} />
       {session.lastError ? (
         <p className="wb-browser-error" role="alert">
-          {session.lastError}
+          <WarningCircle size={14} weight="fill" aria-hidden />
+          <span className="wb-browser-error-text">{session.lastError}</span>
         </p>
       ) : null}
       <div
         className="wb-browser-page-frame"
         data-wb-browser-page-frame
         data-host-mode={hostMode ?? 'pending'}
+        aria-busy={session.loading || undefined}
       >
         <div ref={pageSlotRef} className="wb-browser-page-slot" data-wb-browser-page-slot />
         {!session.sessionId ? (
           <div className="wb-browser-empty" data-wb-browser-empty>
-            {t('browser.emptyHint', '输入网址开始浏览')}
+            <Globe size={30} weight="duotone" aria-hidden className="wb-browser-empty-icon" />
+            <span className="wb-browser-empty-title">
+              {t('browser.emptyHint')}
+            </span>
           </div>
         ) : null}
         {session.sessionId && hostMode === 'detached' ? (

@@ -204,7 +204,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           ref={toolbarRef}
           data-selection-toolbar
           role="toolbar"
-          aria-label={t('selectionToolbar.ariaLabel', '选中文本操作')}
+          aria-label={t('selectionToolbar.ariaLabel')}
           variants={motionVariants}
           initial="initial"
           animate="animate"
@@ -229,7 +229,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           <ToolbarButton
             onClick={handleCopy}
             icon={copied ? <Check size={touchTarget ? 16 : 14} className="text-green-500" /> : <Copy size={touchTarget ? 16 : 14} />}
-            label={copied ? t('selectionToolbar.copied', '已复制') : t('selectionToolbar.copy', '复制')}
+            label={copied ? t('selectionToolbar.copied') : t('selectionToolbar.copy')}
             isFirst
             touchTarget={touchTarget}
           />
@@ -240,7 +240,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           <ToolbarButton
             onClick={handleExplain}
             icon={<Sparkle size={touchTarget ? 16 : 14} />}
-            label={t('selectionToolbar.explain', '解释')}
+            label={t('selectionToolbar.explain')}
             disabled={!onExplain}
             touchTarget={touchTarget}
           />
@@ -251,7 +251,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           <ToolbarButton
             onClick={handleTranslate}
             icon={<Translate size={touchTarget ? 16 : 14} />}
-            label={t('selectionToolbar.translate', '翻译')}
+            label={t('selectionToolbar.translate')}
             disabled={!onTranslate}
             touchTarget={touchTarget}
           />
@@ -262,7 +262,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           <ToolbarButton
             onClick={handleAddToChat}
             icon={<ChatDots size={touchTarget ? 16 : 14} />}
-            label={t('selectionToolbar.addToChat', '添加到聊天')}
+            label={t('selectionToolbar.addToChat')}
             disabled={!onAddToChat}
             isLast
             touchTarget={touchTarget}

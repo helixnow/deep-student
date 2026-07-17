@@ -178,29 +178,29 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
   return (
     <NotionDialog open={mcpToolModal.open} onOpenChange={(open) => !open && handleClose()} maxWidth="max-w-2xl">
         <NotionDialogHeader>
-          <NotionDialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title', '编辑 MCP 工具') : t('settings:mcp_descriptions.add_tool_title', '新增 MCP 工具')}</NotionDialogTitle>
-          <NotionDialogDescription>{t('settings:mcp_descriptions.tool_modal_hint', '配置 MCP 服务器连接信息，可在输入栏灵活启用。')}</NotionDialogDescription>
+          <NotionDialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title') : t('settings:mcp_descriptions.add_tool_title')}</NotionDialogTitle>
+          <NotionDialogDescription>{t('settings:mcp_descriptions.tool_modal_hint')}</NotionDialogDescription>
         </NotionDialogHeader>
         <NotionDialogBody>
         <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="mt-1.5 flex flex-1 flex-col justify-start px-3 pb-0 min-h-0">
           <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 flex-shrink-0">
-            <TabsTrigger value="form" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode', '图形表单')}</TabsTrigger>
-            <TabsTrigger value="json" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.json_mode', 'JSON 配置')}</TabsTrigger>
+            <TabsTrigger value="form" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode')}</TabsTrigger>
+            <TabsTrigger value="json" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.json_mode')}</TabsTrigger>
           </TabsList>
           
           <CustomScrollArea className="flex-1 min-h-0 mt-4">
             <TabsContent value="form" className="space-y-4 pr-4">
               <div className="space-y-2">
-                <Label>{t('settings:mcp_descriptions.tool_name', '工具名称')}</Label>
+                <Label>{t('settings:mcp_descriptions.tool_name')}</Label>
                 <Input
                   value={draft.name || ''}
                   onChange={(e) => updateDraft({ name: e.target.value })}
-                  placeholder={t('settings:mcp_descriptions.tool_name_placeholder', '输入工具名称')}
+                  placeholder={t('settings:mcp_descriptions.tool_name_placeholder')}
                 />
               </div>
               
               <div className="space-y-2">
-                <Label>{t('settings:mcp_descriptions.transport_type', '传输类型')}</Label>
+                <Label>{t('settings:mcp_descriptions.transport_type')}</Label>
                 <AppSelect
                   value={transport}
                   onValueChange={(v) => updateDraft({ transportType: v as any })}
@@ -218,7 +218,7 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
               {transport === 'stdio' && (
                 <>
                   <div className="space-y-2">
-                    <Label>{t('settings:mcp_descriptions.command', '命令')}</Label>
+                    <Label>{t('settings:mcp_descriptions.command')}</Label>
                     <Input
                       value={draft.command || ''}
                       onChange={(e) => updateDraft({ command: e.target.value })}
@@ -226,7 +226,7 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{t('settings:mcp_descriptions.args', '参数')}</Label>
+                    <Label>{t('settings:mcp_descriptions.args')}</Label>
                     <Input
                       value={argsInput}
                       onChange={(e) => updateDraft({ args: e.target.value })}
@@ -234,7 +234,7 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{t('settings:mcp_descriptions.framing_label', '分帧')}</Label>
+                    <Label>{t('settings:mcp_descriptions.framing_label')}</Label>
                     <AppSelect
                       value={resolveSettingsStdioFraming(draft.framing)}
                       onValueChange={(v) => updateDraft({ framing: v as 'jsonl' | 'content_length' })}
@@ -273,7 +273,7 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>{t('settings:mcp_descriptions.env_vars', '环境变量')}</Label>
+                  <Label>{t('settings:mcp_descriptions.env_vars')}</Label>
                   <NotionButton type="button" variant="ghost" size="sm" onClick={handleEnvAdd}>
                     <Plus size={16} className="mr-1" />
                     {t('common:add')}

@@ -16,7 +16,7 @@ const FlashcardsAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleC
   const { ref } = useWbSysSize();
 
   useEffect(() => {
-    onTitleChange(t('workbench:apps.flashcards', '闪卡'));
+    onTitleChange(t('workbench:apps.flashcards'));
   }, [onTitleChange, t]);
 
   return (

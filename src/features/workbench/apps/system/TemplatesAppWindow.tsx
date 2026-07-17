@@ -18,7 +18,7 @@ const TemplatesAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleChange 
   const { ref } = useWbSysSize();
 
   useEffect(() => {
-    onTitleChange(t('workbench:apps.templates', '模板管理'));
+    onTitleChange(t('workbench:apps.templates'));
   }, [onTitleChange, t]);
 
   return (

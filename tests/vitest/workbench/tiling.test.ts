@@ -7,6 +7,7 @@ import {
   computeTiledFrame,
   getActiveTilingPair,
   getTilingRatioForWindow,
+  hasVisibleMaximizedWindow,
   zoneToDisplayMode,
   clampTilingRatio,
   tilingPairKey,
@@ -200,5 +201,41 @@ describe('active tiling pair', () => {
     }, activeLeft.id)).toBe(0.6);
     expect(getTilingRatioForWindow(windows, { 'old-left:right': 0.7 }, right.id)).toBe(0.5);
     expect(getTilingRatioForWindow(windows, { 'old-left:right': 0.7 }, oldLeft.id)).toBeUndefined();
+  });
+});
+
+describe('hasVisibleMaximizedWindow — Dock 全屏强制收起判定', () => {
+  const win = (
+    id: string,
+    mode: DisplayMode,
+    minimized = false,
+  ): WorkbenchWindow => ({
+    id,
+    typeId: 'test',
+    instanceKey: null,
+    title: id,
+    frame: { x: 0, y: 0, w: 100, h: 100 },
+    restoreFrame: null,
+    displayMode: mode,
+    minimized,
+    zIndex: 1,
+    createdAt: 1,
+    lastFocusedAt: 1,
+  });
+
+  it('有未最小化的 maximized 窗口 → true（Record 与数组两种入参）', () => {
+    const floating = win('a', 'floating');
+    const maximized = win('b', 'maximized');
+    expect(hasVisibleMaximizedWindow({ a: floating, b: maximized })).toBe(true);
+    expect(hasVisibleMaximizedWindow([floating, maximized])).toBe(true);
+  });
+
+  it('maximized 窗口已最小化 → false（桌面上没有铺开的全屏窗口）', () => {
+    expect(hasVisibleMaximizedWindow([win('a', 'maximized', true)])).toBe(false);
+  });
+
+  it('只有 floating / tiled 窗口 → false；空桌面 → false', () => {
+    expect(hasVisibleMaximizedWindow([win('a', 'floating'), win('b', 'tiled-left')])).toBe(false);
+    expect(hasVisibleMaximizedWindow([])).toBe(false);
   });
 });

@@ -214,14 +214,22 @@
     "roundCount": "{{count}} reviews",
     "notGraded": "Not reviewed yet",
     "itemCount": "{{count}} items",
-    "openHint": "Double-click or press Enter to open"
+    "openHint": "Double-click or press Enter to open",
+    "retry": "Retry",
+    "untitled": "Untitled"
   },
   "resourceWorkspace": {
     "selectTitle": "Select an item",
     "selectHint": "Choose one from the sidebar, or create a new item to begin.",
     "hideSidebar": "Hide sidebar",
     "showSidebar": "Show sidebar",
-    "clearSearch": "Clear search"
+    "clearSearch": "Clear search",
+    "refresh": "Refresh",
+    "discard": "Discard",
+    "cancel": "Cancel",
+    "reviewExitTitle": "End review session?",
+    "reviewExitDescription": "Submitted ratings are kept. You can restart the remaining cards later.",
+    "reviewExitConfirm": "End review"
   },
   "appsPanel": {
     "title": "All Apps",
@@ -231,7 +239,11 @@
     "view": "View",
     "gridView": "Grid",
     "listView": "List",
-    "hint": "↑↓ to select · Enter to open · Esc to close"
+    "hint": "↑↓ to select · Enter to open · Esc to close",
+    "emptyHint": "Try another keyword, or clear search to see all apps",
+    "hintSelect": "Select",
+    "hintOpen": "Open",
+    "hintClose": "Close"
   },
   "window": {
     "close": "Close",
@@ -259,14 +271,23 @@
     "bottomRight": "Tile to Bottom Right",
     "fill": "Fill",
     "center": "Center",
-    "restore": "Restore"
+    "restore": "Restore",
+    "zone": {
+      "left": "left half",
+      "right": "right half",
+      "topLeft": "top-left",
+      "topRight": "top-right",
+      "bottomLeft": "bottom-left",
+      "bottomRight": "bottom-right"
+    }
   },
   "expose": {
     "title": "Window Overview",
     "hint": "Click a window to focus, press Esc to exit",
     "empty": "No open windows",
     "untitled": "Untitled Window",
-    "closeWindow": "Close window"
+    "closeWindow": "Close window",
+    "emptyHint": "Press Esc or click anywhere to return to the desktop"
   },
   "switcher": {
     "title": "Window Switcher",
@@ -357,7 +378,8 @@
     "loading": "Loading content…",
     "missingResource": "Missing resource identifier; this window cannot be opened",
     "missingResourceHint": "Reopen from Files, or check that the resource still exists.",
-    "confirmCloseUnsaved": "This content has unsaved changes. Close the window anyway?"
+    "confirmCloseUnsaved": "This content has unsaved changes. Close the window anyway?",
+    "unsavedTitle": "You have unsaved changes. Leave anyway?"
   },
   "mindmap": {
     "loading": "Loading mind map…",
@@ -402,7 +424,8 @@
     "appCrashed": "{{name}} crashed and can be reloaded",
     "showDesktop": "Desktop shown",
     "previewFailed": "Unable to open preview",
-    "pdfRefOpenFailed": "Unable to open PDF reference: missing source"
+    "pdfRefOpenFailed": "Unable to open PDF reference: missing source",
+    "zoomRestore": "Restore window"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
@@ -457,7 +480,6 @@
       "title": "Dock Magnification",
       "desc": "Enlarges Dock icons under the pointer. Turn off to reduce hover layout measurement and compositing cost."
     },
-
     "wallpaper": {
       "title": "Desktop Wallpaper",
       "desc": "Pick a built-in nature scene or theme gradient, or use a custom image.",
@@ -542,7 +564,8 @@
     "contentCrashed": "The page process exited. You can retry.",
     "approveNavigate": "Allow the assistant to open: {{url}}",
     "approveClick": "Allow the assistant to click a page element",
-    "approveType": "Allow the assistant to type on the page"
+    "approveType": "Allow the assistant to type on the page",
+    "nav": "Navigation"
   },
   "devPanel": {
     "title": "Workbench Diagnostics",
@@ -580,6 +603,16 @@
   "notesWorkspace": {
     "title": "Notes",
     "emptyPane": "Select a note or mind map",
+    "empty": {
+      "paneTitle": "Select or create a note",
+      "paneNewNote": "New note",
+      "paneOpenSearch": "Open search",
+      "hintQuickOpen": "Quick open",
+      "hintNewNote": "New note",
+      "treeTitle": "No notes yet",
+      "treeNewNote": "New note",
+      "treeNewFolder": "New folder"
+    },
     "untitledNote": "Untitled note",
     "untitledMindmap": "Untitled mind map",
     "confirmCloseUnsaved": "This tab has unsaved changes. Close it anyway?",
@@ -588,7 +621,7 @@
       "aria": "Notes navigation",
       "explorer": "File explorer",
       "search": "Search notes",
-      "backlinks": "Linked notes",
+      "backlinks": "Properties & links",
       "trash": "Trash"
     },
     "explorer": {
@@ -599,6 +632,23 @@
       "refresh": "Refresh",
       "open": "Open file explorer",
       "close": "Close file explorer"
+    },
+    "navHistory": {
+      "aria": "Navigation history",
+      "back": "Back ({{shortcut}})",
+      "forward": "Forward ({{shortcut}})"
+    },
+    "tagFilter": {
+      "label": "Filter by tags",
+      "clear": "Clear",
+      "loading": "Loading tags…",
+      "retry": "Retry",
+      "empty": "No tags yet"
+    },
+    "favorites": {
+      "title": "Favorites",
+      "empty": "No favorites yet. Star a note or mind map to add one.",
+      "unfavorite": "Remove {{name}} from favorites"
     },
     "search": {
       "placeholder": "Search files...",
@@ -622,23 +672,32 @@
       "mindmap": "Mind map",
       "note": "Note",
       "empty": "No matching notes or mind maps.",
-      "keyboardHint": "Up/Down to select, Enter to open, Esc to close"
+      "keyboardHint": "Up/Down to select, Enter to open, Esc to close",
+      "activeTags": "Active tags",
+      "removeTag": "Remove tag {{tag}}"
     },
     "backlinks": {
       "title": "Links",
+      "panelAria": "Note info panel",
+      "tabProperties": "Properties",
+      "tabLinks": "Links",
       "refresh": "Refresh links",
       "close": "Close links",
       "noActiveNote": "Select a note to inspect its links.",
+      "noActiveNoteProperties": "Select a note to inspect its properties.",
       "loading": "Loading links...",
       "loadFailed": "Could not load note links.",
       "retry": "Retry",
       "outgoing": "Outgoing links",
-      "noOutgoing": "No outgoing wiki links.",
+      "noOutgoing": "This note doesn't link to others yet. Type [[ to create a wiki link.",
       "incoming": "Backlinks",
-      "noIncoming": "No notes link here yet.",
-      "incomingLimited": "Showing backlinks from the {{count}} most recently updated matching notes. Older backlinks may be omitted.",
+      "noIncoming": "No other notes link here yet",
+      "incomingLimited": "Scanned {{scanned}} notes; results may be incomplete.",
+      "moreContext": "Show more context",
+      "lessContext": "Show less context",
       "unresolved": "Unresolved links",
-      "noUnresolved": "No unresolved links.",
+      "createFromUnresolved": "Create note \"{{title}}\"",
+      "createFailed": "Could not create note.",
       "openLinkedNote": "Open {{title}}",
       "openFailed": "Could not open linked note."
     },
@@ -646,6 +705,9 @@
       "aria": "File tree",
       "root": "Library root",
       "folder": "Folder: {{name}}",
+      "note": "Note: {{name}}",
+      "mindmap": "Mind map: {{name}}",
+      "renameInput": "Rename",
       "loading": "Loading files",
       "loadFailed": "Could not load files",
       "retry": "Retry",
@@ -690,7 +752,14 @@
       "undo": "Undo"
     },
     "context": {
+      "open": "Open",
+      "openSplit": "Open in right split",
       "rename": "Rename",
+      "favorite": "Favorite",
+      "unfavorite": "Unfavorite",
+      "newNote": "New note",
+      "newFolder": "New folder",
+      "newMindmap": "New mind map",
       "delete": "Delete"
     },
     "dialog": {
@@ -710,7 +779,16 @@
       "close": "Close trash",
       "loading": "Loading trash",
       "empty": "Trash is empty",
-      "restore": "Restore {{name}}"
+      "emptyAll": "Empty trash ({{count}})",
+      "deletedAt": "Deleted {{time}}",
+      "restore": "Restore {{name}}",
+      "purge": "Permanently delete {{name}}",
+      "confirmEmptyTitle": "Empty trash?",
+      "confirmEmptyDesc": "Permanently delete {{count}} items. This cannot be undone.",
+      "confirmEmptyAction": "Empty",
+      "confirmPurgeTitle": "Delete permanently?",
+      "confirmPurgeDesc": "\"{{name}}\" will be permanently deleted. This cannot be undone.",
+      "confirmPurgeAction": "Delete permanently"
     }
   },
   "sandbox": {
@@ -742,5 +820,53 @@
     "open": "Open sandbox workbench",
     "clearSession": "Clear session"
   },
-  "tagTreeMarkdownPlaceholder": "# Root tag\n### Subtopic A\n#### Concept 1\n##### Method A\n###### Question type I"
+  "tagTreeMarkdownPlaceholder": "# Root tag\n### Subtopic A\n#### Concept 1\n##### Method A\n###### Question type I",
+  "filePreview": {
+    "downloadUnavailable": "Original file unavailable",
+    "saveAs": "Save As",
+    "downloadSuccess": "Saved successfully",
+    "referenceNotSupported": "This resource cannot be referenced",
+    "search": "Search",
+    "openExternal": "Open with system app",
+    "showInFolder": "Show in Folder",
+    "print": "Print",
+    "referenceToChat": "Reference to chat",
+    "previous": "Previous",
+    "next": "Next",
+    "close": "Close"
+  },
+  "pomodoro": {
+    "modes": {
+      "focusing": "Focusing",
+      "shortBreak": "Short break",
+      "longBreak": "Long break",
+      "idle": "Pomodoro"
+    },
+    "strictHint": "Focus cannot be paused in strict mode",
+    "strictBadge": "Strict mode",
+    "countUpLabel": "Count up",
+    "controls": {
+      "startFocus": "Start focus",
+      "pause": "Pause",
+      "resume": "Resume",
+      "stop": "Stop",
+      "finish": "Finish",
+      "skipBreak": "Skip break",
+      "noiseOn": "Turn ambient sound on",
+      "noiseOff": "Turn ambient sound off",
+      "enterImmersive": "Enter immersive focus mode"
+    },
+    "settingsTitle": "Pomodoro Settings",
+    "statsTitle": "Focus trends",
+    "progressTitle": "{{done}}/{{total}} pomodoros completed",
+    "today": {
+      "label": "Today",
+      "unit": "pomodoros",
+      "focus": "Focus",
+      "minutes": "{{value}} min",
+      "hours": "{{value}} h",
+      "interrupted": "{{value}} interrupted",
+      "goalReached": "Goal reached"
+    }
+  }
 }

@@ -80,7 +80,7 @@ fn create_sub_context(
         skill_contents: parent.skill_contents.clone(),
         skill_embedded_tools: parent.skill_embedded_tools.clone(),
         skill_package_roots: parent.skill_package_roots.clone(),
-        skill_allowed_tools: parent.skill_allowed_tools.clone(),
+        execution_allowed_tools: parent.execution_allowed_tools.clone(),
         cancellation_token: Some(token),
         rag_top_k: parent.rag_top_k,
         rag_enable_reranking: parent.rag_enable_reranking,
@@ -319,10 +319,10 @@ impl ToolExecutor for ToolPackExecutor {
                 };
 
                 // === Security preflight checks (mirrors pipeline execute_single_tool) ===
-                if !crate::chat_v2::tool_policy::is_tool_allowed_by_skill_policy(
+                if !crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy(
                     &sub.name,
                     &sub.args,
-                    &sub_ctx.skill_allowed_tools,
+                    &sub_ctx.execution_allowed_tools,
                 ) {
                     let result = ToolResultInfo::failure(
                         Some(sub_call_id),
@@ -330,7 +330,7 @@ impl ToolExecutor for ToolPackExecutor {
                         sub.name.clone(),
                         sub.args.clone(),
                         format!(
-                            "Current Skill policy does not allow sub-tool '{}'; blocked before execution",
+                            "Current runtime policy does not allow sub-tool '{}'; blocked before execution",
                             sub.name
                         ),
                         0,

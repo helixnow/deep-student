@@ -214,16 +214,16 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   const canClearStoredKey = saving || maskedConfigured || lastSavedKeyRef.current.length > 0;
   const statusText =
     saveStatus === 'saving'
-      ? t('settings:vendor_panel.api_key_saving', { defaultValue: '正在保存…' })
+      ? t('settings:vendor_panel.api_key_saving')
       : saveStatus === 'saved'
         ? t('settings:vendor_panel.api_key_saved')
         : saveStatus === 'error'
           ? t('settings:vendor_panel.api_key_save_failed')
           : saveStatus === 'dirty'
-            ? t('settings:vendor_panel.api_key_unsaved', { defaultValue: '有未保存的更改' })
+            ? t('settings:vendor_panel.api_key_unsaved')
             : maskedConfigured && !apiKey.trim()
-              ? t('settings:vendor_panel.api_key_securely_stored', { defaultValue: '已安全保存，下次无需重新输入' })
-              : t('settings:vendor_panel.api_key_manual_save_hint', { defaultValue: '粘贴或输入后，点击保存' });
+              ? t('settings:vendor_panel.api_key_securely_stored')
+              : t('settings:vendor_panel.api_key_manual_save_hint');
   const statusToneClassName =
     saveStatus === 'error'
       ? 'text-destructive'

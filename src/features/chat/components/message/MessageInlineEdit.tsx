@@ -58,7 +58,7 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full border-2 border-primary focus-visible:ring-primary/50 resize-y"
-        placeholder={t('chatV2:messageItem.actions.editPlaceholder', '输入新内容...')}
+        placeholder={t('chatV2:messageItem.actions.editPlaceholder')}
         onKeyDown={handleKeyDown}
         disabled={isSubmitting}
       />
@@ -69,7 +69,7 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
           onClick={onCancel}
           disabled={isSubmitting}
         >
-          {t('common:actions.cancel', '取消')}
+          {t('common:actions.cancel')}
         </NotionButton>
         <NotionButton
           variant="primary"
@@ -77,7 +77,7 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
           onClick={onConfirm}
           disabled={isSubmitting}
         >
-          {t('chatV2:messageItem.actions.send', '发送')}
+          {t('chatV2:messageItem.actions.send')}
         </NotionButton>
       </div>
     </div>

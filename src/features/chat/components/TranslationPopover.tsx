@@ -376,7 +376,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                     .then((key) => writeCache(key, { mode: 'aligned', segments: segmentsToCache }))
                     .catch(() => {});
                 } else {
-                  setError(t('translation:popover.empty_result', '翻译结果为空，请重试'));
+                  setError(t('translation:popover.empty_result'));
                 }
               } else if (streamingAccumulated.trim()) {
                 buildCacheKey({
@@ -391,7 +391,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   .then((key) => writeCache(key, { mode: 'streaming', text: streamingAccumulated }))
                   .catch(() => {});
               } else {
-                setError(t('translation:popover.empty_result', '翻译结果为空，请重试'));
+                setError(t('translation:popover.empty_result'));
               }
               setIsLoading(false);
               if (activeUnlistenRef.current) {
@@ -407,7 +407,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
             }
             case 'error': {
               if (myId !== reqIdRef.current) return;
-              setError(payload.message || t('translation:popover.unknown_error', '翻译失败'));
+              setError(payload.message || t('translation:popover.unknown_error'));
               setIsLoading(false);
               if (activeUnlistenRef.current) {
                 try {
@@ -738,11 +738,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
               {settings.modelDisplayName && (
                 <span
                   className="text-[10.5px] text-muted-foreground/70 truncate max-w-[140px]"
-                  title={t(
-                    'translation:popover.model_hint',
-                    '当前翻译模型（在系统设置 → 模型 中修改）：{{name}}',
-                    { name: settings.modelDisplayName }
-                  )}
+                  title={t('translation:popover.model_hint', { name: settings.modelDisplayName })}
                 >
                   {settings.modelDisplayName}
                 </span>
@@ -750,7 +746,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                aria-label={t('common:actions.close', '关闭')}
+                aria-label={t('common:actions.close')}
                 className="p-1 rounded-md hover:bg-accent/60 text-muted-foreground/50 hover:text-foreground transition-colors"
               >
                 <X size={13} />
@@ -766,8 +762,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 <button
                   type="button"
                   onClick={handleRetry}
-                  aria-label={t('common:actions.retry', '重试')}
-                  title={t('common:actions.retry', '重试')}
+                  aria-label={t('common:actions.retry')}
+                  title={t('common:actions.retry')}
                   className="shrink-0 p-1 rounded-md hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ArrowsClockwise size={14} />
@@ -812,7 +808,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   </div>
                 </div>
               ) : isLoading ? (
-                <TranslatingIndicator label={t('translation:popover.translating', '翻译中...')} />
+                <TranslatingIndicator label={t('translation:popover.translating')} />
               ) : null
             ) : (
               // streaming 单栏
@@ -828,7 +824,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   )}
                 </div>
               ) : isLoading ? (
-                <TranslatingIndicator label={t('translation:popover.translating', '翻译中...')} />
+                <TranslatingIndicator label={t('translation:popover.translating')} />
               ) : null
             )}
           </div>
@@ -847,8 +843,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 }
                 label={
                   copiedSource
-                    ? t('translation:popover.copied', '已复制')
-                    : t('translation:popover.copy_source', '复制原文')
+                    ? t('translation:popover.copied')
+                    : t('translation:popover.copy_source')
                 }
               />
               <ActionButton
@@ -862,15 +858,15 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 }
                 label={
                   copiedTranslation
-                    ? t('translation:popover.copied', '已复制')
-                    : t('translation:popover.copy_translation', '复制译文')
+                    ? t('translation:popover.copied')
+                    : t('translation:popover.copy_translation')
                 }
               />
               {onAddToInput && (
                 <ActionButton
                   onClick={handleAddToInput}
                   icon={<ChatDots size={13} />}
-                  label={t('chatV2:selectionToolbar.addToChat', '添加到聊天')}
+                  label={t('chatV2:selectionToolbar.addToChat')}
                 />
               )}
             </div>

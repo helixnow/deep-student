@@ -80,10 +80,22 @@
 }
 
 .wb-expose-empty-card {
-  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--wb-menu-radius, 14px);
   padding: 1rem 1.5rem;
   font-size: 0.875rem;
-  opacity: 0.9;
+  text-align: center;
+  box-shadow: var(--wb-shadow-popover, 0 14px 44px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+/* 空态副行提示（Esc 返回桌面） */
+.wb-expose-empty-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
 }
 
 /* ==========================================================================
@@ -162,18 +174,21 @@
 .wb-expose-label {
   position: absolute;
   left: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* block + 行高垂直居中：flex 容器会把文本包成匿名 item，ellipsis 失效 */
+  display: block;
+  box-sizing: border-box;
   height: 1.75rem;
   max-width: 100%;
   padding: 0 0.75rem;
   border-radius: 9999px;
   font-size: 0.75rem;
-  line-height: 1;
+  line-height: calc(1.75rem - 2px);
+  text-align: center;
+  color: var(--text-primary, hsl(var(--foreground)));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  box-shadow: var(--wb-shadow-popover, 0 14px 44px hsl(var(--shadow-base, 0 0% 0%) / 0.22));
   transform: translateX(-50%) translateY(4px);
   opacity: 0;
   pointer-events: none;
@@ -204,8 +219,9 @@
   border: 0;
   border-radius: 9999px;
   background: color-mix(in hsl, hsl(var(--background)) 72%, transparent 28%);
+  /* 亮暗内容之上均可辨的细描边 */
+  box-shadow: 0 0 0 1px color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
   color: hsl(var(--foreground));
-  font-size: 14px;
   line-height: 1;
   cursor: pointer;
   opacity: 0;
@@ -229,7 +245,16 @@
   background: color-mix(in hsl, hsl(var(--destructive, 0 72% 51%)) 78%, transparent 22%);
   color: hsl(var(--destructive-foreground, 0 0% 100%));
   outline: none;
+}
+
+/* 焦点环仅在键盘焦点时出现；hover 只换色不加环 */
+.wb-expose-close:focus-visible {
   box-shadow: var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65));
+}
+
+/* 按压反馈（specificity 需盖过 hover 浮现规则的 scale(1)） */
+.wb-expose-cell .wb-expose-close:active {
+  transform: scale(0.92);
 }
 
 /* 单元格消散（关闭窗口） */

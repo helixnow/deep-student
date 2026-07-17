@@ -502,9 +502,10 @@ impl ChatV2Repo {
             INSERT INTO chat_v2_session_groups (
                 id, name, description, icon, color, system_prompt,
                 default_skill_ids_json, workspace_id, sort_order, persist_status,
-                created_at, updated_at, pinned_resource_ids_json
+                created_at, updated_at, pinned_resource_ids_json,
+                default_runtime_root_id, preferred_project_root_path
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             "#,
             params![
                 group.id,
@@ -520,6 +521,8 @@ impl ChatV2Repo {
                 group.created_at.to_rfc3339(),
                 group.updated_at.to_rfc3339(),
                 pinned_resource_ids_json,
+                group.default_runtime_root_id,
+                group.preferred_project_root_path,
             ],
         )?;
         Ok(())
@@ -534,7 +537,7 @@ impl ChatV2Repo {
             r#"
             SELECT id, name, description, icon, color, system_prompt, default_skill_ids_json,
                    workspace_id, sort_order, persist_status, created_at, updated_at,
-                   pinned_resource_ids_json
+                   pinned_resource_ids_json, default_runtime_root_id, preferred_project_root_path
             FROM chat_v2_session_groups
             WHERE id = ?1
             "#,
@@ -556,7 +559,7 @@ impl ChatV2Repo {
             r#"
                 SELECT id, name, description, icon, color, system_prompt, default_skill_ids_json,
                        workspace_id, sort_order, persist_status, created_at, updated_at,
-                       pinned_resource_ids_json
+                       pinned_resource_ids_json, default_runtime_root_id, preferred_project_root_path
                 FROM chat_v2_session_groups
                 WHERE 1=1
             "#,
@@ -605,7 +608,8 @@ impl ChatV2Repo {
             UPDATE chat_v2_session_groups
             SET name = ?2, description = ?3, icon = ?4, color = ?5, system_prompt = ?6,
                 default_skill_ids_json = ?7, workspace_id = ?8, sort_order = ?9,
-                persist_status = ?10, updated_at = ?11, pinned_resource_ids_json = ?12
+                persist_status = ?10, updated_at = ?11, pinned_resource_ids_json = ?12,
+                default_runtime_root_id = ?13, preferred_project_root_path = ?14
             WHERE id = ?1
             "#,
             params![
@@ -621,6 +625,8 @@ impl ChatV2Repo {
                 persist_status,
                 group.updated_at.to_rfc3339(),
                 pinned_resource_ids_json,
+                group.default_runtime_root_id,
+                group.preferred_project_root_path,
             ],
         )?;
         Ok(())
@@ -944,6 +950,8 @@ impl ChatV2Repo {
         let created_at_str: String = row.get(10)?;
         let updated_at_str: String = row.get(11)?;
         let pinned_resource_ids_json: Option<String> = row.get(12).unwrap_or(None);
+        let default_runtime_root_id: Option<String> = row.get(13).unwrap_or(None);
+        let preferred_project_root_path: Option<String> = row.get(14).unwrap_or(None);
 
         let persist_status = match persist_status_str.as_str() {
             "active" => PersistStatus::Active,
@@ -987,6 +995,8 @@ impl ChatV2Repo {
             default_skill_ids,
             pinned_resource_ids,
             workspace_id,
+            default_runtime_root_id,
+            preferred_project_root_path,
             sort_order,
             persist_status,
             created_at,
@@ -3407,6 +3417,7 @@ mod tests {
             include_str!("../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
             include_str!("../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"),
             include_str!("../../migrations/chat_v2/V20260516__add_title_locked.sql"),
+            include_str!("../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"),
         ];
         for sql in migrations {
             conn.execute_batch(sql).unwrap();
@@ -3538,11 +3549,67 @@ mod tests {
             default_skill_ids: Vec::new(),
             pinned_resource_ids: Vec::new(),
             workspace_id: None,
+            default_runtime_root_id: None,
+            preferred_project_root_path: None,
             sort_order: 1,
             persist_status: PersistStatus::Active,
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[test]
+    fn test_group_preferred_runtime_root_crud() {
+        let conn = setup_test_db();
+        let mut group = test_group("group_pref_root", "Preferred Root");
+        group.default_runtime_root_id = Some("authorized_abc".to_string());
+        group.preferred_project_root_path = Some("/Users/demo/project".to_string());
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let loaded = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            loaded.default_runtime_root_id.as_deref(),
+            Some("authorized_abc")
+        );
+        assert_eq!(
+            loaded.preferred_project_root_path.as_deref(),
+            Some("/Users/demo/project")
+        );
+
+        let mut updated = loaded;
+        updated.default_runtime_root_id = Some("workspace".to_string());
+        updated.preferred_project_root_path = Some("/tmp/workspace".to_string());
+        updated.updated_at = Utc::now();
+        ChatV2Repo::update_group_with_conn(&conn, &updated).unwrap();
+
+        let after_update = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            after_update.default_runtime_root_id.as_deref(),
+            Some("workspace")
+        );
+        assert_eq!(
+            after_update.preferred_project_root_path.as_deref(),
+            Some("/tmp/workspace")
+        );
+
+        let mut cleared = after_update;
+        cleared.default_runtime_root_id = None;
+        cleared.preferred_project_root_path = None;
+        cleared.updated_at = Utc::now();
+        ChatV2Repo::update_group_with_conn(&conn, &cleared).unwrap();
+
+        let after_clear = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_clear.default_runtime_root_id, None);
+        assert_eq!(after_clear.preferred_project_root_path, None);
+
+        let listed = ChatV2Repo::list_groups_with_conn(&conn, Some("active"), None).unwrap();
+        assert!(listed.iter().any(|g| g.id == group.id));
     }
 
     #[test]

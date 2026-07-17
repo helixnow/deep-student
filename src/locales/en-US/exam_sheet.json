@@ -505,6 +505,7 @@
   },
   "uploader": {
     "session_name_default": "Full Sheet Recognition",
+    "image_import_name": "Image Import",
     "drop_or_click": "Click or drop files here",
     "take_photo": "Take photo",
     "supported_formats_all": "Images (PNG/JPG/WebP/HEIC) or Documents (DOCX/XLSX/XLS/PDF/TXT/MD)",

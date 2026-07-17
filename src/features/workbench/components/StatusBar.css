@@ -21,9 +21,43 @@
   box-sizing: border-box;
   pointer-events: none;
   color: var(--wb-menubar-fg, hsl(var(--foreground)));
-  background-color: var(--wb-menubar-bg, transparent);
   border-bottom: 1px solid var(--wb-menubar-border, transparent);
   user-select: none;
+}
+
+/*
+ * 液态玻璃顶条：与桌面日历小组件（wb-glass + wb-glass-highlight）同材质。
+ * 玻璃放在 ::before 而非本体——本体一旦挂 backdrop-filter 会成为后代的
+ * backdrop root，学习中心弹层的毛玻璃将采样不到顶栏后面的内容（变纯透明）。
+ */
+.wb-menubar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--wb-menubar-bg, transparent);
+  background-image: var(--wb-menubar-sheen, none);
+  -webkit-backdrop-filter: var(--wb-menubar-blur, none);
+  backdrop-filter: var(--wb-menubar-blur, none);
+}
+
+/* 底缘 1px specular 高光：对应 wb-glass-highlight 顶缘高光的顶条版本 */
+.wb-menubar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--wb-glass-highlight) 16%,
+    var(--wb-glass-highlight) 84%,
+    transparent 100%
+  );
 }
 
 /* Windows 下直接收窄菜单栏边界，让快捷入口稳定停在窗控宿主左侧。 */
@@ -98,10 +132,22 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
   pointer-events: auto;
-  transition: background-color 120ms var(--wb-ease-out, ease-out);
+  /* 悬停走 hover 三态 token，按压回弹走 press token（仅 transform/opacity 类动效） */
+  transition:
+    background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
 }
 
 .wb-menubar-item:hover {
+  background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08)));
+}
+
+.wb-menubar-item:active {
+  transform: scale(0.95);
+}
+
+/* 学习中心弹层打开期间，入口保持高亮锚定视觉焦点（对齐 macOS 菜单栏） */
+.wb-menubar-item[aria-expanded='true'] {
   background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08)));
 }
 
@@ -127,6 +173,12 @@
   display: inline-flex;
   flex-shrink: 0;
   color: var(--wb-menubar-fg-strong, hsl(var(--foreground)));
+}
+
+/* svg 基线对齐：消除 inline 基线带来的 1px 垂直偏移 */
+.wb-menubar-item-icon svg,
+.wb-menubar-tile-icon svg {
+  display: block;
 }
 
 .wb-menubar-item-value {
@@ -177,12 +229,19 @@
   padding: 12px;
   border-radius: var(--wb-overlay-radius, 18px);
   color: var(--wb-titlebar-fg, hsl(var(--foreground)));
+  /* 玻璃弹层统一投影档：edge 内缘高光 + popover 阴影（与 Dock 弹层一致） */
+  box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover);
   outline: none;
   pointer-events: auto;
+  /* 入场：现有 overshoot 弹层手感，锚定入口按钮附近（仅 transform/opacity） */
+  transform-origin: calc(100% - 20px) top;
+  animation: wb-kf-overshoot-in var(--wb-motion-standard, 280ms)
+    var(--wb-ease-overshoot, cubic-bezier(0.34, 1.28, 0.64, 1)) both;
 }
 
 .wb-menubar-flyout-title {
   margin: 0 0 8px;
+  color: var(--wb-menubar-fg-strong, hsl(var(--foreground)));
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -211,11 +270,18 @@
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: background-color 120ms var(--wb-ease-out, ease-out);
+  transition:
+    background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
 }
 
 .wb-menubar-tile:hover {
   background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08)));
+}
+
+/* split 桌面格本体不可点，按压反馈只给真按钮 */
+.wb-menubar-tile:not(.wb-menubar-tile-split):active {
+  transform: scale(0.98);
 }
 
 .wb-menubar-tile:focus-visible {
@@ -249,7 +315,8 @@
   font-size: 11px;
   line-height: 1.3;
   color: var(--wb-menubar-fg, hsl(var(--muted-foreground)));
-  opacity: 0.92;
+  /* 数字详情走等宽数字，避免番茄倒计时跳动 */
+  font-variant-numeric: tabular-nums;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -289,10 +356,17 @@
   font: inherit;
   font-size: 10px;
   font-weight: 500;
+  transition:
+    background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
 }
 
 .wb-menubar-tile-action:hover {
   background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08)));
+}
+
+.wb-menubar-tile-action:active {
+  transform: scale(0.97);
 }
 
 .wb-menubar-tile-action:focus-visible {
@@ -304,15 +378,24 @@
 :root[data-wb-material='minimal'] .wb-menubar-item,
 :root[data-wb-material='reduced'] .wb-menubar-item,
 :root[data-wb-material='minimal'] .wb-menubar-tile,
-:root[data-wb-material='reduced'] .wb-menubar-tile {
+:root[data-wb-material='reduced'] .wb-menubar-tile,
+:root[data-wb-material='minimal'] .wb-menubar-tile-action,
+:root[data-wb-material='reduced'] .wb-menubar-tile-action {
   transition: none;
+}
+
+/* minimal 档 --wb-motion-standard 已归零；这里显式关停避免 0ms 空转 */
+:root[data-wb-material='minimal'] .wb-menubar-flyout {
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .wb-menubar-item,
-  .wb-menubar-tile {
+  .wb-menubar-tile,
+  .wb-menubar-tile-action {
     transition: none;
   }
+  /* RM 下 wb-kf-overshoot-in 已被 motion.css 重定义为纯淡入，无需额外处理 */
 }
 
 @media (max-width: 760px) {

@@ -374,7 +374,16 @@
       "endReminder": "End reminder (0 = off)",
       "noiseType": "Ambient sound",
       "noiseVolume": "Volume",
-      "dailyGoal": "Daily goal (0 = off)"
+      "dailyGoal": "Daily goal (0 = off)",
+      "endReminderShort": "End reminder",
+      "dailyGoalShort": "Daily goal",
+      "valueOff": "Off",
+      "valueUnset": "Not set",
+      "sections": {
+        "duration": "Duration",
+        "automation": "Automation",
+        "focus": "Focus"
+      }
     },
     "progressTitle": "{{done}}/{{total}} pomodoros completed",
     "completedCount": "{{count}} completed",

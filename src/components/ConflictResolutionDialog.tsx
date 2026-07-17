@@ -739,10 +739,7 @@ function StrategySelection({
         <Alert variant="warning">
           <Warning size={16} />
           <AlertDescription>
-            {t(
-              'migration_required',
-              '存在 Schema 版本不匹配，建议先执行数据库迁移后再同步。'
-            )}
+            {t('migration_required')}
           </AlertDescription>
         </Alert>
       )}
@@ -856,10 +853,7 @@ export function ConflictResolutionDialog({
           </NotionDialogTitle>
           <NotionDialogDescription>
             {hasConflicts
-              ? t(
-                  'conflict_description',
-                  '检测到本地和云端数据存在冲突，请选择解决策略。'
-                )
+              ? t('conflict_description')
               : t('no_conflicts')}
           </NotionDialogDescription>
         </NotionDialogHeader>
@@ -943,11 +937,9 @@ export function ConflictResolutionDialog({
                     <Alert>
                       <Warning size={16} />
                       <AlertDescription>
-                        {t(
-                          'record_conflicts_count_only',
-                          '发现 {{count}} 条记录级冲突，详情暂不可用。请选择合并策略来解决冲突。',
-                          { count: recordConflictDisplayCount }
-                        )}
+                        {t('record_conflicts_count_only', {
+                          count: recordConflictDisplayCount,
+                        })}
                       </AlertDescription>
                     </Alert>
                   ) : (

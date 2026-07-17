@@ -405,8 +405,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   const overlayClassName = `modern-image-viewer-overlay ${isBlurEnabled ? 'blur-enabled' : 'blur-disabled'}`;
   const containerClassName = `modern-image-viewer-container ${isBlurEnabled ? 'blur-enabled' : 'blur-disabled'}`;
   const blurToggleTitle = isBlurEnabled
-    ? t('common:imageViewer.toggleBlurOff', 'Disable background blur')
-    : t('common:imageViewer.toggleBlurOn', 'Enable background blur');
+    ? t('common:imageViewer.toggleBlurOff')
+    : t('common:imageViewer.toggleBlurOn');
 
   // Calculate main area height
   const toolbarH = 36;
@@ -451,7 +451,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 )}
                 {/* 裁剪模式提示 & 操作 */}
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 text-white text-xs backdrop-blur-sm z-30">
-                  <span>{t('common:imageViewer.crop_hint', '拖拽选择裁剪区域')}</span>
+                  <span>{t('common:imageViewer.crop_hint')}</span>
                   {cropRect && !isCropping && Math.abs(cropRect.endX - cropRect.startX) > 5 && (
                     <NotionButton
                       variant="ghost"
@@ -460,7 +460,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                       onClick={(e) => { e.stopPropagation(); executeCrop(); }}
                     >
                       <Check size={14} className="mr-1" />
-                      {t('common:imageViewer.crop_confirm', '确认裁剪')}
+                      {t('common:imageViewer.crop_confirm')}
                     </NotionButton>
                   )}
                   <NotionButton
@@ -470,7 +470,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     onClick={(e) => { e.stopPropagation(); setIsCropMode(false); setCropRect(null); }}
                   >
                     <X size={14} className="mr-1" />
-                    {t('common:actions.cancel', '取消')}
+                    {t('common:actions.cancel')}
                   </NotionButton>
                 </div>
               </div>
@@ -513,7 +513,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               <div className="flex items-center justify-between px-3 py-2 border-b border-[hsl(var(--border)/0.4)]">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                   <TextT size={14} />
-                  <span>{t('common:imageViewer.ocr_text', 'OCR 文字')}</span>
+                  <span>{t('common:imageViewer.ocr_text')}</span>
                 </div>
                 <NotionButton
                   variant="ghost"
@@ -534,7 +534,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
                     <TextT size={24} className="opacity-30" />
-                    <span>{t('common:imageViewer.no_ocr_text', '暂无 OCR 文字')}</span>
+                    <span>{t('common:imageViewer.no_ocr_text')}</span>
                   </div>
                 )}
               </CustomScrollArea>
@@ -545,10 +545,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         {/* 导航按钮 */}
         {images.length > 1 && !isCropMode && (
           <>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex - 1)} className="modern-viewer-icon-button absolute left-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === 0} title={t('common:imageViewer.previous')} aria-label="prev">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex - 1)} className="modern-viewer-icon-button absolute left-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === 0} title={t('common:imageViewer.previous')} aria-label={t('a11y.prev')}>
               <CaretLeft size={24} />
             </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex + 1)} className="modern-viewer-icon-button absolute right-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === images.length - 1} title={t('common:imageViewer.next_title')} aria-label="next">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex + 1)} className="modern-viewer-icon-button absolute right-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === images.length - 1} title={t('common:imageViewer.next_title')} aria-label={t('a11y.next')}>
               <CaretRight size={24} />
             </NotionButton>
           </>
@@ -596,7 +596,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             <MagnifyingGlassPlus size={16} />
           </NotionButton>
           <div className="modern-viewer-divider" />
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev - 90 + 360) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_ccw', '逆时针旋转')} aria-label="rotate ccw">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev - 90 + 360) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_ccw')} aria-label="rotate ccw">
             <ArrowCounterClockwise size={16} />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev + 90) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_title')} aria-label="rotate">
@@ -623,7 +623,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               }
             }}
             className={`modern-viewer-icon-button ${isCropMode ? 'modern-viewer-icon-button--primary !bg-[hsl(var(--primary)/0.15)]' : ''}`}
-            title={t('common:imageViewer.crop', '裁剪')}
+            title={t('common:imageViewer.crop')}
             aria-label="crop"
           >
             <Crop size={16} />
@@ -636,19 +636,19 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               iconOnly
               onClick={() => setShowOcrPanel(prev => !prev)}
               className={`modern-viewer-icon-button ${showOcrPanel ? 'modern-viewer-icon-button--primary !bg-[hsl(var(--primary)/0.15)]' : ''}`}
-              title={t('common:imageViewer.ocr_text', 'OCR 文字')}
+              title={t('common:imageViewer.ocr_text')}
               aria-label="ocr text"
             >
               <TextT size={16} />
             </NotionButton>
           )}
           {/* 下载 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="modern-viewer-icon-button" title={t('common:imageViewer.download', '下载')} aria-label="download">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="modern-viewer-icon-button" title={t('common:imageViewer.download')} aria-label="download">
             <Download size={16} />
           </NotionButton>
           <div className="modern-viewer-divider" />
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span>{t('common:imageViewer.blurLabel', 'Blur')}</span>
+            <span>{t('common:imageViewer.blurLabel')}</span>
             <Switch
               checked={isBlurEnabled}
               onCheckedChange={(checked) => setIsBlurEnabled(Boolean(checked))}
@@ -656,7 +656,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 />
           </div>
           <div className="modern-viewer-divider" />
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="modern-viewer-icon-button modern-viewer-icon-button--danger" title={t('common:imageViewer.close')} aria-label="close">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="modern-viewer-icon-button modern-viewer-icon-button--danger" title={t('common:imageViewer.close')} aria-label={t('a11y.close')}>
             <X size={16} />
           </NotionButton>
         </div>

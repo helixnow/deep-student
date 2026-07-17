@@ -41,7 +41,7 @@ export const ChatWindowSkeleton: React.FC<ChatWindowSkeletonProps> = ({
   className,
 }) => {
   const { t } = useTranslation('workbench');
-  const label = statusText ?? t('apps.chat.loading', '正在加载会话…');
+  const label = statusText ?? t('apps.chat.loading');
 
   return (
     <div
@@ -53,44 +53,49 @@ export const ChatWindowSkeleton: React.FC<ChatWindowSkeletonProps> = ({
     >
       <span className="sr-only">{label}</span>
 
-      <div className="wb-chat-skeleton__thread" aria-hidden="true">
-        {/* 用户消息 */}
-        <div className="wb-chat-skeleton__row wb-chat-skeleton__row--user">
-          <Bone index={0} className="wb-chat-skeleton__bubble wb-chat-skeleton__bubble--lg" />
-        </div>
-        {/* 助手消息 */}
-        <div className="wb-chat-skeleton__row wb-chat-skeleton__row--assistant">
-          <Bone index={1} className="wb-chat-skeleton__avatar" />
-          <div className="wb-chat-skeleton__lines">
-            <Bone index={2} className="wb-chat-skeleton__line" />
-            <Bone index={3} className="wb-chat-skeleton__line wb-chat-skeleton__line--w75" />
-            <Bone index={4} className="wb-chat-skeleton__line wb-chat-skeleton__line--w50" />
+      {/* inner 承载排版（padding/flex），root 作为容器查询锚：
+          窄窗时留白跟随真实内容的紧凑档（1rem / 0.75rem）同节奏收缩，
+          骨架 → 真实内容切换不发生边缘跳变 */}
+      <div className="wb-chat-skeleton__inner">
+        <div className="wb-chat-skeleton__thread" aria-hidden="true">
+          {/* 用户消息 */}
+          <div className="wb-chat-skeleton__row wb-chat-skeleton__row--user">
+            <Bone index={0} className="wb-chat-skeleton__bubble wb-chat-skeleton__bubble--lg" />
+          </div>
+          {/* 助手消息 */}
+          <div className="wb-chat-skeleton__row wb-chat-skeleton__row--assistant">
+            <Bone index={1} className="wb-chat-skeleton__avatar" />
+            <div className="wb-chat-skeleton__lines">
+              <Bone index={2} className="wb-chat-skeleton__line" />
+              <Bone index={3} className="wb-chat-skeleton__line wb-chat-skeleton__line--w75" />
+              <Bone index={4} className="wb-chat-skeleton__line wb-chat-skeleton__line--w50" />
+            </div>
+          </div>
+          {/* 用户消息 */}
+          <div className="wb-chat-skeleton__row wb-chat-skeleton__row--user">
+            <Bone index={5} className="wb-chat-skeleton__bubble wb-chat-skeleton__bubble--sm" />
+          </div>
+          {/* 助手消息 */}
+          <div className="wb-chat-skeleton__row wb-chat-skeleton__row--assistant">
+            <Bone index={6} className="wb-chat-skeleton__avatar" />
+            <div className="wb-chat-skeleton__lines">
+              <Bone index={7} className="wb-chat-skeleton__line" />
+              <Bone index={8} className="wb-chat-skeleton__line wb-chat-skeleton__line--w66" />
+            </div>
           </div>
         </div>
-        {/* 用户消息 */}
-        <div className="wb-chat-skeleton__row wb-chat-skeleton__row--user">
-          <Bone index={5} className="wb-chat-skeleton__bubble wb-chat-skeleton__bubble--sm" />
-        </div>
-        {/* 助手消息 */}
-        <div className="wb-chat-skeleton__row wb-chat-skeleton__row--assistant">
-          <Bone index={6} className="wb-chat-skeleton__avatar" />
-          <div className="wb-chat-skeleton__lines">
-            <Bone index={7} className="wb-chat-skeleton__line" />
-            <Bone index={8} className="wb-chat-skeleton__line wb-chat-skeleton__line--w66" />
-          </div>
-        </div>
-      </div>
 
-      {/* 输入栏骨架（与 legacy chat-loading-composer 面板等位） */}
-      <div className="wb-chat-skeleton__composer" aria-hidden="true">
-        <div className="wb-chat-skeleton__composer-toolbar">
-          <Bone index={9} className="wb-chat-skeleton__chip" />
-          <Bone index={10} className="wb-chat-skeleton__chip wb-chat-skeleton__chip--wide" />
-          <Bone index={11} className="wb-chat-skeleton__chip" />
-        </div>
-        <div className="wb-chat-skeleton__lines">
-          <Bone index={12} className="wb-chat-skeleton__line wb-chat-skeleton__line--w83" />
-          <Bone index={13} className="wb-chat-skeleton__line wb-chat-skeleton__line--w40" />
+        {/* 输入栏骨架（与 legacy chat-loading-composer 面板等位） */}
+        <div className="wb-chat-skeleton__composer" aria-hidden="true">
+          <div className="wb-chat-skeleton__composer-toolbar">
+            <Bone index={9} className="wb-chat-skeleton__chip" />
+            <Bone index={10} className="wb-chat-skeleton__chip wb-chat-skeleton__chip--wide" />
+            <Bone index={11} className="wb-chat-skeleton__chip" />
+          </div>
+          <div className="wb-chat-skeleton__lines">
+            <Bone index={12} className="wb-chat-skeleton__line wb-chat-skeleton__line--w83" />
+            <Bone index={13} className="wb-chat-skeleton__line wb-chat-skeleton__line--w40" />
+          </div>
         </div>
       </div>
     </div>

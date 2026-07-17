@@ -13,7 +13,7 @@
 //!    - Schema 层：只注入 `headless_tool_schemas()` 白名单工具的 schema，
 //!      依赖前端 WebView 往返的工具（MCP 桥 / ask_user / 前端 CardAgent 桥 /
 //!      subagent 拉起等）模型根本看不见；
-//!    - 执行层：`SendOptions.skill_allowed_tools` 设为同一份白名单，
+//!    - 执行层：后端专用的 `SendOptions.execution_allowed_tools` 设为同一份白名单，
 //!      tool_loop 在审批/执行**之前**就拦截白名单外的调用并返回明确失败回喂模型，
 //!      不会挂起等待任何人工输入。
 //! 3. **审批策略**：headless 无人审批。白名单仅收录 Low 敏感度工具
@@ -1137,7 +1137,7 @@ async fn execute_headless_pipeline(
         // 白名单工具 schema（后端维护的精简副本），模型只能看见这些
         mcp_tool_schemas: Some(headless_tool_schemas()),
         // 执行层 fail-closed：白名单外的调用在审批/执行前被直接拦截回喂
-        skill_allowed_tools: Some(headless_allowed_tools()),
+        execution_allowed_tools: Some(headless_allowed_tools()),
         max_tool_recursion: Some(max_tool_rounds),
         memory_enabled: Some(true),
         rag_enabled: Some(true),
@@ -1400,7 +1400,7 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 mod tests {
     use super::*;
     use crate::chat_v2::automations::heartbeat_is_silent;
-    use crate::chat_v2::tool_policy::is_tool_allowed_by_skill_policy;
+    use crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy;
     use crate::chat_v2::tools::{
         AttemptCompletionExecutor, BuiltinResourceExecutor, BuiltinRetrievalExecutor,
         DataGovernanceToolExecutor, DstuToolExecutor, FetchExecutor, IndexWebpageToolExecutor,
@@ -1542,86 +1542,86 @@ mod tests {
     // —— 执行层 fail-closed（tool_policy 白名单拦截）—————————————
 
     #[test]
-    fn skill_policy_blocks_non_whitelisted_calls_fail_closed() {
+    fn execution_policy_blocks_non_whitelisted_calls_fail_closed() {
         let allowed = Some(headless_allowed_tools());
 
         // 依赖前端桥 / 人在场的工具全部被拦截
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-ask_user",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-subagent_call",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-local_shell_execute",
             &json!({}),
             &allowed
         ));
         // 外部 MCP 工具（mcp 前缀 / 带 _serverId 路由标记）被拦截
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "mcp_web_search",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "some_random_tool",
             &json!({ "_serverId": "srv-1" }),
             &allowed
         ));
         // Medium/High 敏感度工具（白名单外）被拦截 → 不会进入审批等待
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-memory_delete",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-automation_propose",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-qbank_reset_progress",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-review_schedule",
             &json!({}),
             &allowed
         ));
 
         // 白名单内工具照常放行
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "builtin-memory_read",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-user_todo_create_item",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "builtin-user_todo_search",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "builtin-qbank_get_stats",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "builtin-review_get_due",
             &json!({}),
             &allowed
         ));
         // 控制类元工具始终放行
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "attempt_completion",
             &json!({}),
             &allowed

@@ -80,7 +80,7 @@
 }
 
 .wb-body-frozen:focus-visible {
-  outline: 2px solid hsl(var(--ring));
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--ring)));
   outline-offset: -2px;
 }
 
@@ -94,6 +94,16 @@
   padding: 1.5rem 1.25rem;
   border-radius: 14px;
   box-shadow: var(--wb-glass-edge, none), var(--wb-shadow-popover, 0 8px 28px rgba(0, 0, 0, 0.12));
+  /* 悬停轻浮起 / 按压回落（仅 transform；motion token 归零时同步失效） */
+  transition: transform var(--wb-motion-quick, 150ms) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1));
+}
+
+.wb-body-frozen:hover .wb-body-frozen-card {
+  transform: translateY(-2px);
+}
+
+.wb-body-frozen:active .wb-body-frozen-card {
+  transform: translateY(0) scale(0.985);
 }
 
 .wb-body-frozen-icon {
@@ -162,6 +172,8 @@
 
 .wb-body-crash-icon {
   display: flex;
+  /* 警示图标带 destructive 色相，与玻璃卡中性灰区分（不喧宾夺主） */
+  color: hsl(var(--destructive));
   opacity: 0.78;
 }
 
@@ -178,6 +190,12 @@
   opacity: 0.62;
   overflow-wrap: anywhere;
   word-break: break-word;
+  /* 超长堆栈式错误信息最多 4 行，避免撑破玻璃卡 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
 }
 
 .wb-body-crash-reload {
@@ -205,6 +223,6 @@
 }
 
 .wb-body-crash-reload:focus-visible {
-  outline: 2px solid hsl(var(--ring));
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--ring)));
   outline-offset: 2px;
 }

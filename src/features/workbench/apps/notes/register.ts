@@ -14,9 +14,7 @@ async function canCloseNotesWorkspace(_instanceKey: string | null): Promise<bool
   if (!hasUnsavedNotesWorkspaceChanges()) return true;
   try {
     return await requestContentCloseConfirmation({
-      description: i18next.t('workbench:content.confirmCloseUnsaved', {
-        defaultValue: '当前内容有未保存的修改，确定要关闭窗口吗？',
-      }),
+      description: i18next.t('workbench:content.confirmCloseUnsaved'),
     });
   } catch {
     // If the confirmation host cannot respond, retain the window and edits.

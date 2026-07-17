@@ -46,7 +46,7 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
           prevStatus === 'reviewing'
         ) {
           announceWorkbench(
-            t('agent.core.announceDone', { defaultValue: 'AI 已完成操作' }),
+            t('agent.core.announceDone'),
             'polite',
           );
         }
@@ -65,26 +65,20 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
       // 首次出现或从暂停续放
       if (!prev || prev.startsWith('pausedByUser:')) {
         announceWorkbench(
-          t('agent.core.announceStarted', {
-            label: presence.label,
-            defaultValue: `AI 开始操作：${presence.label}`,
-          }),
+          t('agent.core.announceStarted', { label: presence.label }),
           'polite',
         );
       }
     } else if (presence.status === 'pausedByUser') {
       announceWorkbench(
-        t('agent.core.announcePaused', {
-          label: presence.label,
-          defaultValue: `AI 已暂停操作：${presence.label}`,
-        }),
+        t('agent.core.announcePaused', { label: presence.label }),
         'polite',
       );
     } else if (presence.status === 'done' || presence.status === 'aborted') {
       announceWorkbench(
         presence.status === 'done'
-          ? t('agent.core.announceDone', { defaultValue: 'AI 已完成操作' })
-          : t('agent.core.announceStopped', { defaultValue: 'AI 已停止操作' }),
+          ? t('agent.core.announceDone')
+          : t('agent.core.announceStopped'),
         'polite',
       );
     }
@@ -123,29 +117,38 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
     presence.status === 'pausedByUser' ||
     presence.status === 'reviewing';
 
-  const dotState = isPaused ? 'paused' : 'acting';
+  // 状态点五态语义：进行中呼吸 / 待确认空心 / 暂停方点 / 完成绿点 / 停止灰点
+  const dotState =
+    presence.status === 'pausedByUser'
+      ? 'paused'
+      : presence.status === 'reviewing'
+        ? 'reviewing'
+        : presence.status === 'done'
+          ? 'done'
+          : presence.status === 'aborted'
+            ? 'aborted'
+            : 'acting';
+  // 文案不唯颜色：终态（done/aborted 短暂保留供撤销）复用 announce 文案，不再显示「正在操作」
   const labelText = isPaused
-    ? t('agent.core.pausedLabel', {
-        label: presence.label,
-        defaultValue: `已暂停：${presence.label}`,
-      })
-    : t('agent.core.operating', {
-        label: presence.label,
-        defaultValue: `AI 正在操作：${presence.label}`,
-      });
+    ? t('agent.core.pausedLabel', { label: presence.label })
+    : presence.status === 'done'
+      ? t('agent.core.announceDone')
+      : presence.status === 'aborted'
+        ? t('agent.core.announceStopped')
+        : t('agent.core.operating', { label: presence.label });
 
   const statusForAria = (status: AcrRunStatus): string => {
     switch (status) {
       case 'pausedByUser':
-        return t('agent.core.paused', { defaultValue: '已暂停' });
+        return t('agent.core.paused');
       case 'reviewing':
-        return t('agent.core.reviewing', { defaultValue: '待确认' });
+        return t('agent.core.reviewing');
       case 'done':
-        return t('agent.core.done', { defaultValue: '已完成' });
+        return t('agent.core.done');
       case 'aborted':
-        return t('agent.core.stopped', { defaultValue: '已停止' });
+        return t('agent.core.stopped');
       default:
-        return t('agent.core.acting', { defaultValue: '操作中' });
+        return t('agent.core.acting');
     }
   };
 
@@ -154,9 +157,7 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
     <div
       className="acr-agent-strip"
       role="region"
-      aria-label={t('agent.core.stripRegion', {
-        defaultValue: 'AI 桌面操控',
-      })}
+      aria-label={t('agent.core.stripRegion')}
       data-acr-agent-strip
       data-status={presence.status}
       data-run-id={presence.runId}
@@ -170,12 +171,13 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
           data-state={dotState}
           aria-hidden
         />
-        <span className="truncate">
+        {/* 截断时悬停可读全文 */}
+        <span className="truncate" title={labelText}>
           <span className="sr-only">{statusForAria(presence.status)}：</span>
           {labelText}
         </span>
       </span>
-      <span className="acr-agent-strip-actions" role="group" aria-label={t('agent.core.actions', { defaultValue: '操控操作' })}>
+      <span className="acr-agent-strip-actions" role="group" aria-label={t('agent.core.actions')}>
         <NotionButton
           type="button"
           size="sm"
@@ -183,11 +185,11 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
           className="acr-agent-strip-btn"
           disabled={isPaused || !canPause}
           onClick={handlePause}
-          aria-label={t('agent.core.pause', { defaultValue: '暂停' })}
+          aria-label={t('agent.core.pause')}
         >
           {isPaused
-            ? t('agent.core.paused', { defaultValue: '已暂停' })
-            : t('agent.core.pause', { defaultValue: '暂停' })}
+            ? t('agent.core.paused')
+            : t('agent.core.pause')}
         </NotionButton>
         <NotionButton
           type="button"
@@ -196,9 +198,9 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
           className="acr-agent-strip-btn"
           disabled={!canStop}
           onClick={handleStop}
-          aria-label={t('agent.core.stop', { defaultValue: '停止' })}
+          aria-label={t('agent.core.stop')}
         >
-          {t('agent.core.stop', { defaultValue: '停止' })}
+          {t('agent.core.stop')}
         </NotionButton>
         <NotionButton
           type="button"
@@ -207,7 +209,7 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
           className="acr-agent-strip-btn"
           disabled={!canRevert || reverting}
           onClick={() => void handleRevert()}
-          aria-label={t('agent.core.revert', { defaultValue: '撤销' })}
+          aria-label={t('agent.core.revert')}
         >
           {reverting
             ? t('agent.core.reverting')

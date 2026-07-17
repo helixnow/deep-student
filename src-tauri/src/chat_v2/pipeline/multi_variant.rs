@@ -8,8 +8,6 @@ fn session_skill_state_from_snapshot(
         mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
         agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
         branch_local_skill_ids: snapshot.branch_local_skill_ids.clone(),
-        effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
-        effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
         effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
         version: snapshot.version,
         legacy_migrated: Some(false),
@@ -21,7 +19,7 @@ fn build_replay_skill_payload_snapshot(
 ) -> Option<crate::chat_v2::types::ReplaySkillPayloadSnapshot> {
     let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
         active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
-        skill_allowed_tools: options.skill_allowed_tools.clone(),
+        execution_allowed_tools: options.execution_allowed_tools.clone(),
         skill_contents: options.skill_contents.clone().unwrap_or_default(),
         skill_dependencies: options.skill_dependencies.clone().unwrap_or_default(),
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
@@ -1483,11 +1481,7 @@ impl ChatV2Pipeline {
             let memory_enabled = options.memory_enabled.unwrap_or(true);
             let rag_enabled = options.rag_enabled.unwrap_or(true);
             let web_search_enabled = options.web_search_enabled.unwrap_or(true);
-            let skill_allowed_tools = if options.disable_tool_whitelist.unwrap_or(false) {
-                None
-            } else {
-                options.skill_allowed_tools.clone()
-            };
+            let execution_allowed_tools = options.execution_allowed_tools.clone();
             let round_id = format!("variant-tool-round-{}", tool_round);
 
             // 🆕 2026-07 Doom loop 检测：拦截连续重复调用（同工具同参数第 3 次起），
@@ -1522,7 +1516,7 @@ impl ChatV2Pipeline {
                     &options.skill_embedded_tools,
                     &options.skill_package_roots,
                     &active_skill_ids,
-                    &skill_allowed_tools,
+                    &execution_allowed_tools,
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
@@ -2956,12 +2950,6 @@ impl ChatV2Pipeline {
                             mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
                             agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
                             branch_local_skill_ids: snapshot.branch_local_skill_ids.clone(),
-                            effective_allowed_internal_tools: snapshot
-                                .effective_allowed_internal_tools
-                                .clone(),
-                            effective_allowed_external_tools: snapshot
-                                .effective_allowed_external_tools
-                                .clone(),
                             effective_allowed_external_servers: snapshot
                                 .effective_allowed_external_servers
                                 .clone(),

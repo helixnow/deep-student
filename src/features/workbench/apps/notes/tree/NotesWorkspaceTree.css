@@ -1,0 +1,294 @@
+/* Notes Workspace Tree — visual tokens aligned with NotesWorkspaceApp.css (.notes-tree-*) */
+
+.nwt-tree {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  padding: 1px 6px 12px;
+  outline: none;
+}
+
+.nwt-root {
+  width: calc(100% - 12px);
+  height: 26px;
+  margin: 5px 6px 2px;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  cursor: default;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.nwt-root:hover,
+.nwt-root[data-selected='true'],
+.nwt-root[data-drop-inside='true'] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--primary) / 14%);
+}
+
+.nwt-root:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.nwt-row {
+  width: 100%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: var(--notes-radius-row);
+  color: hsl(var(--foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: default;
+  position: relative;
+  user-select: none;
+  box-sizing: border-box;
+  transition: background-color var(--notes-hover-transition);
+}
+
+.nwt-row:hover,
+.nwt-row[data-active='true'] {
+  background: hsl(var(--accent));
+}
+
+.nwt-row[data-selected='true'],
+.nwt-row[data-drop-inside='true'] {
+  background: hsl(var(--primary) / 14%);
+}
+
+/* 选中态再 hover 时略加深，避免与普通 hover 无法区分 */
+.nwt-row[data-selected='true']:hover {
+  background: hsl(var(--primary) / 18%);
+}
+
+/* 选中的文件夹行提亮为前景色，保证选中态可读性 */
+.nwt-row--folder[data-selected='true'] {
+  color: hsl(var(--foreground));
+}
+
+.nwt-row[data-active='true'] {
+  font-weight: 500;
+}
+
+.nwt-row:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.nwt-row[data-dragging='true'] {
+  opacity: 0.45;
+}
+
+.nwt-row--folder {
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+.nwt-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.nwt-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  transition: transform 150ms ease;
+  transform: rotate(0deg);
+}
+
+.nwt-caret:hover {
+  color: hsl(var(--foreground));
+}
+
+.nwt-caret.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.nwt-caret-spacer {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.nwt-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.nwt-favorite {
+  flex-shrink: 0;
+  color: hsl(var(--warning, 38 92% 50%));
+}
+
+.nwt-rename-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  padding: 0 4px;
+  border: 1px solid hsl(var(--ring));
+  border-radius: 4px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  /* 与 .notes-search 聚焦态一致的 1px ring 光晕 */
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+.nwt-drop-indicator {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: hsl(var(--primary));
+  pointer-events: none;
+  z-index: 10;
+  border-radius: 1px;
+  box-shadow: 0 0 4px hsl(var(--primary) / 50%);
+}
+
+.nwt-drop-indicator::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 0 2px hsl(var(--primary) / 50%);
+}
+
+.nwt-drag-overlay {
+  padding: 0 10px;
+  height: 28px;
+  max-width: 240px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--notes-radius-row);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  box-shadow: var(--notes-popover-shadow);
+  font-size: 13px;
+  pointer-events: none;
+  opacity: 0.96;
+}
+
+.nwt-drag-overlay-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nwt-context-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup);
+  background: hsl(var(--popover, var(--background)));
+  color: hsl(var(--popover-foreground, var(--foreground)));
+  box-shadow: var(--notes-popover-shadow);
+  animation: nwt-popup-enter var(--notes-popup-enter-duration) var(--notes-popup-enter-easing);
+}
+
+@keyframes nwt-popup-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.nwt-context-menu-item {
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+  transition: background-color var(--notes-hover-transition);
+}
+
+.nwt-context-menu-item:hover,
+.nwt-context-menu-item:focus-visible {
+  background: hsl(var(--accent));
+  outline: none;
+}
+
+.nwt-context-menu-item.is-danger {
+  color: hsl(var(--destructive, 0 72% 51%));
+}
+
+.nwt-context-menu-item:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.nwt-context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: hsl(var(--border));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nwt-caret {
+    transition: none;
+  }
+
+  .nwt-drop-indicator {
+    transition: none;
+  }
+
+  .nwt-root,
+  .nwt-row,
+  .nwt-context-menu-item {
+    transition: none;
+  }
+
+  .nwt-context-menu {
+    animation: none;
+  }
+}

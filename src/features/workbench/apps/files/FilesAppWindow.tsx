@@ -67,7 +67,7 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
   const interactionEnabled = renderThrottleMs <= 0 && !gesturePaused;
 
   useEffect(() => {
-    onTitleChange(t('workbench:apps.files', '资源库'));
+    onTitleChange(t('workbench:apps.files'));
     // onTitleChange 由窗口壳提供，标题只需在挂载时设置一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -167,9 +167,7 @@ export const WorkbenchEventBridge: React.FC = () => {
           if (!sourceId) {
             console.warn('[workbench] context-ref:preview resource has no sourceId:', resourceId);
             announceBridgeFailure(
-              i18n.t('workbench:a11y.previewFailed', {
-                defaultValue: '无法打开预览：资源缺少来源',
-              }),
+              i18n.t('workbench:a11y.previewFailed'),
             );
             return;
           }
@@ -178,9 +176,7 @@ export const WorkbenchEventBridge: React.FC = () => {
         } catch (error) {
           console.warn('[workbench] context-ref:preview failed:', error);
           announceBridgeFailure(
-            i18n.t('workbench:a11y.previewFailed', {
-              defaultValue: '无法打开预览',
-            }),
+            i18n.t('workbench:a11y.previewFailed'),
           );
         }
       })();
@@ -194,9 +190,7 @@ export const WorkbenchEventBridge: React.FC = () => {
         if (!sourceId) {
           console.warn('[workbench] pdf-ref:open without sourceId ignored');
           announceBridgeFailure(
-            i18n.t('workbench:a11y.pdfRefOpenFailed', {
-              defaultValue: '无法打开 PDF 引用：缺少来源',
-            }),
+            i18n.t('workbench:a11y.pdfRefOpenFailed'),
           );
         }
         return;

@@ -213,7 +213,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   // a11y 播报：审批请求出现时
   useEffect(() => {
     setLiveMessage(
-      t('approval.aria.requested', '工具 {{tool}} 等待审批，{{seconds}} 秒后将自动拒绝', {
+      t('approval.aria.requested', {
         tool: displayToolName,
         seconds: interaction.timeoutSeconds,
       })
@@ -225,14 +225,14 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   // a11y 播报：剩余 10 秒警告
   useEffect(() => {
     if (remainingSeconds === 10 && !isCountdownPaused && !hasResponded && !isResolved) {
-      setLiveMessage(t('approval.aria.countdownWarning', '还剩 {{seconds}} 秒，超时将自动拒绝', { seconds: remainingSeconds }));
+      setLiveMessage(t('approval.aria.countdownWarning', { seconds: remainingSeconds }));
     }
   }, [remainingSeconds, isCountdownPaused, hasResponded, isResolved, t]);
 
   // a11y 播报：键盘交互触发的暂停（hover 暂停不播报，避免鼠标划过刷屏）
   useEffect(() => {
     if (interactPaused) {
-      setLiveMessage(t('approval.aria.countdownPaused', '自动拒绝倒计时已暂停'));
+      setLiveMessage(t('approval.aria.countdownPaused'));
     }
   }, [interactPaused, t]);
 
@@ -267,15 +267,15 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
           className="ml-auto flex items-center gap-1 text-xs text-muted-foreground shrink-0"
           aria-label={
             isCountdownPaused
-              ? t('approval.aria.countdownPaused', '自动拒绝倒计时已暂停')
-              : t('approval.aria.autoRejectCountdown', '{{seconds}} 秒后自动拒绝', { seconds: remainingSeconds })
+              ? t('approval.aria.countdownPaused')
+              : t('approval.aria.autoRejectCountdown', { seconds: remainingSeconds })
           }
         >
           <Clock size={14} aria-hidden="true" />
           <span aria-hidden="true">{remainingSeconds}s</span>
           {isCountdownPaused && (
             <span aria-hidden="true" className="text-[10px]">
-              {t('approval.countdownPaused', '已暂停')}
+              {t('approval.countdownPaused')}
             </span>
           )}
         </div>
@@ -521,8 +521,8 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               className="text-success hover:text-success/80"
             >
               {shellScope
-                ? t('approval.allowScope', 'Allow scope')
-                : t('approval.allowSession', 'Allow for session')}
+                ? t('approval.allowScope')
+                : t('approval.allowSession')}
             </NotionButton>
           )}
 

@@ -270,7 +270,7 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       resourceId,
       hash: resourceHash,
       typeId: 'image',
-      displayName: prompt || t('blocks.imageGen.generatedImage', 'AI 生成图片'),
+      displayName: prompt || t('blocks.imageGen.generatedImage'),
       injectModes: { image: ['image'] },
     });
   }, [store, resourceId, resourceHash, prompt, t]);
@@ -372,7 +372,7 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         <div className="flex items-center justify-end gap-2 border-t border-border/30 px-3 py-2">
           <NotionButton variant="ghost" size="sm" onClick={handleUseForFollowup} className="text-primary hover:bg-primary/10">
             <ChatDots size={14} />
-            <span>{t('blocks.imageGen.useForFollowup', '用于追问')}</span>
+            <span>{t('blocks.imageGen.useForFollowup')}</span>
           </NotionButton>
         </div>
       )}

@@ -148,8 +148,8 @@ pub struct ExecutionContext {
     pub skill_embedded_tools: Option<std::collections::HashMap<String, Vec<McpToolSchema>>>,
     /// Skill package roots exposed as read-only `skill:<skillId>` runtime roots.
     pub skill_package_roots: Option<std::collections::HashMap<String, String>>,
-    /// 当前 Skill 运行时工具白名单；Some(empty) 表示明确不允许业务工具。
-    pub skill_allowed_tools: Option<Vec<String>>,
+    /// 后端受限运行时的工具执行白名单；普通对话为 None。
+    pub execution_allowed_tools: Option<Vec<String>>,
     /// 🆕 取消令牌：用于工具执行取消机制
     /// 工具执行器可以检查此令牌以响应取消请求
     pub cancellation_token: Option<CancellationToken>,
@@ -201,7 +201,7 @@ impl ExecutionContext {
             skill_contents: None,
             skill_embedded_tools: None,
             skill_package_roots: None,
-            skill_allowed_tools: None,
+            execution_allowed_tools: None,
             cancellation_token: None,
             rag_top_k: None,
             rag_enable_reranking: None,
@@ -344,8 +344,11 @@ impl ExecutionContext {
         self
     }
 
-    pub fn with_skill_allowed_tools(mut self, skill_allowed_tools: Option<Vec<String>>) -> Self {
-        self.skill_allowed_tools = skill_allowed_tools;
+    pub fn with_execution_allowed_tools(
+        mut self,
+        execution_allowed_tools: Option<Vec<String>>,
+    ) -> Self {
+        self.execution_allowed_tools = execution_allowed_tools;
         self
     }
 

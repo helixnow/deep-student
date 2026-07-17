@@ -1,0 +1,195 @@
+/* FavoritesSection — class prefix: nfs- */
+
+.nfs-section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-bottom: 1px solid hsl(var(--border) / 55%);
+}
+
+.nfs-header {
+  min-height: 28px;
+  padding: 2px 6px 2px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  border-radius: var(--notes-radius-row);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.nfs-header:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 40%);
+}
+
+.nfs-header:focus-visible {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 40%);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.nfs-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform 150ms ease;
+  transform: rotate(0deg);
+}
+
+.nfs-caret.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.nfs-header-label {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nfs-header-count {
+  flex-shrink: 0;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.nfs-list {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 4px 8px;
+  gap: 1px;
+}
+
+.nfs-empty {
+  margin: 0;
+  padding: 6px 10px 10px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.nfs-item {
+  min-height: 28px;
+  padding: 0 4px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--notes-radius-row);
+  color: hsl(var(--foreground));
+  transition: background-color var(--notes-hover-transition);
+}
+
+.nfs-item:hover,
+.nfs-item:focus-within {
+  background: hsl(var(--muted) / 45%);
+}
+
+.nfs-item.is-active {
+  background: hsl(var(--accent) / 55%);
+}
+
+.nfs-item-main {
+  min-width: 0;
+  flex: 1;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nfs-item-main:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.nfs-item-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.nfs-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nfs-unfavorite {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 4px;
+  color: hsl(var(--warning, 38 92% 50%));
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity var(--notes-hover-transition),
+    background-color var(--notes-hover-transition);
+}
+
+.nfs-item:hover .nfs-unfavorite,
+.nfs-item:focus-within .nfs-unfavorite,
+.nfs-unfavorite:focus-visible {
+  opacity: 1;
+}
+
+.nfs-unfavorite:hover {
+  background: hsl(var(--muted) / 60%);
+}
+
+.nfs-unfavorite:focus-visible {
+  background: hsl(var(--muted) / 60%);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .nfs-unfavorite {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nfs-caret {
+    transition: none;
+  }
+
+  .nfs-header,
+  .nfs-item,
+  .nfs-unfavorite {
+    transition: none;
+  }
+}

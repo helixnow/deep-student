@@ -760,7 +760,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     } catch (error: unknown) {
       showGlobalNotification(
         'warning',
-        t('agentPanel.revealFailed', '无法定位文件'),
+        t('agentPanel.revealFailed'),
         getErrorMessage(error),
       );
     }
@@ -837,13 +837,13 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
       showGlobalNotification(
         'success',
         item.backupRef
-          ? t('agentPanel.restoreDone', '已恢复原内容')
-          : t('agentPanel.revertDone', '已撤销该产物写入'),
+          ? t('agentPanel.restoreDone')
+          : t('agentPanel.revertDone'),
       );
     } catch (error: unknown) {
       showGlobalNotification(
         'error',
-        t('agentPanel.revertFailed', '撤销失败'),
+        t('agentPanel.revertFailed'),
         getErrorMessage(error),
       );
     } finally {
@@ -891,13 +891,13 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
       if (file.truncated) {
         showGlobalNotification(
           'warning',
-          t('agentPanel.saveAsNoteTruncated', '产物内容过长，已截断保存'),
+          t('agentPanel.saveAsNoteTruncated'),
         );
       }
     } catch (error: unknown) {
       showGlobalNotification(
         'error',
-        t('agentPanel.saveAsNoteFailed', '存为笔记失败'),
+        t('agentPanel.saveAsNoteFailed'),
         getErrorMessage(error),
       );
     } finally {
@@ -969,27 +969,11 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
       .join(' / ')
     : '';
 
-  const changeActionLabel = (action: ChangeAction) => {
-    const fallback: Record<ChangeAction, string> = {
-      create: 'Create',
-      update: 'Update',
-      delete: 'Delete',
-      append: 'Append',
-      write: 'Write',
-    };
-    return t(`agentPanel.changeActions.${action}`, fallback[action]);
-  };
+  const changeActionLabel = (action: ChangeAction) =>
+    t(`agentPanel.changeActions.${action}`);
 
-  const runtimeActionLabel = (action: RuntimeAction) => {
-    const fallback: Record<RuntimeAction, string> = {
-      list: 'List',
-      read: 'Read',
-      write: 'Write',
-      check: 'Check',
-      blocked: 'Blocked',
-    };
-    return t(`agentPanel.runtimeActions.${action}`, fallback[action]);
-  };
+  const runtimeActionLabel = (action: RuntimeAction) =>
+    t(`agentPanel.runtimeActions.${action}`);
 
   return (
     <div ref={ref} className={cn('w-full px-4 md:px-8 flex-shrink-0 pb-0', className)}>
@@ -1022,7 +1006,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               <span className="truncate max-w-[180px]">
                 {running
                   ? running.description
-                  : title || (has ? t('agentPanel.plan', '计划') : t('agentPanel.environment', '环境信息'))}
+                  : title || (has ? t('agentPanel.plan') : t('agentPanel.environment'))}
               </span>
               <CaretDown size={10} className="text-[color:var(--text-muted)]" />
             </NotionButton>
@@ -1062,7 +1046,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   <Terminal size={15} className="text-[color:hsl(var(--primary))] flex-shrink-0" />
                 )}
                 <span className="text-sm font-semibold text-[color:var(--text-primary)] truncate flex-1 min-w-0">
-                  {title || (has ? t('agentPanel.plan', '计划') : t('agentPanel.environment', '环境信息'))}
+                  {title || (has ? t('agentPanel.plan') : t('agentPanel.environment'))}
                 </span>
                 {has && (
                   <span className="text-[11px] tabular-nums text-[color:var(--text-muted)] flex-shrink-0">
@@ -1073,7 +1057,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   variant="ghost"
                   onClick={() => setExpanded(false)}
                   className="!h-auto !min-w-0 !p-1 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]"
-                  aria-label={t('agentPanel.collapsePanel', '折叠面板')}
+                  aria-label={t('agentPanel.collapsePanel')}
                   aria-expanded={true}
                 >
                   <CaretUp size={10} />
@@ -1083,7 +1067,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
 
               {/* ── 区 1：计划（无 todo 计划时整区隐藏，Runtime/Changes 仍可见） ── */}
               {has && showSections && (
-                <SectionLabel>{t('agentPanel.plan', '计划')}</SectionLabel>
+                <SectionLabel>{t('agentPanel.plan')}</SectionLabel>
               )}
               {has && (
               <div className="py-1 max-h-[260px] overflow-y-auto">
@@ -1129,7 +1113,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 <>
                   <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
                   <SectionLabel>
-                    {t('agentPanel.sources', '来源')}
+                    {t('agentPanel.sources')}
                     <span className="ml-1.5 normal-case tracking-normal font-normal">{sources.length}</span>
                   </SectionLabel>
                   {/* 容器本身可滚动，渲染全部来源，保证与计数一致 */}
@@ -1178,17 +1162,16 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                       aria-expanded={runtimeExpanded}
                     >
                       <Terminal size={14} className="shrink-0 text-[color:var(--text-secondary)]" />
-                      <span className="font-medium">{t('agentPanel.local', '本地')}</span>
+                      <span className="font-medium">{t('agentPanel.local')}</span>
                       <span className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
                         {runtimeItems.some((item) => item.action === 'blocked') && (
                           <span className="text-[color:hsl(var(--destructive))]">
                             {t('agentPanel.blockedCount', {
                               count: runtimeItems.filter((item) => item.action === 'blocked').length,
-                              defaultValue: '{{count}} 项拦截',
                             })}
                           </span>
                         )}
-                        <span>{t('agentPanel.activityCount', { count: runtimeItems.length, defaultValue: '{{count}} 项活动' })}</span>
+                        <span>{t('agentPanel.activityCount', { count: runtimeItems.length })}</span>
                         {runtimeExpanded ? <CaretUp size={11} /> : <CaretDown size={11} />}
                       </span>
                     </NotionButton>
@@ -1209,7 +1192,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                                   <div className="flex min-w-0 items-center gap-2 px-2 py-1 text-[11px]">
                                     <FolderOpen size={12} className="shrink-0 text-[color:var(--text-muted)]" />
                                     <span className="shrink-0 text-[color:var(--text-secondary)]">
-                                      {t('agentPanel.environmentBoundary', '工作边界')}
+                                      {t('agentPanel.environmentBoundary')}
                                     </span>
                                     <code className="min-w-0 truncate font-mono text-[color:var(--text-primary)]" title={runtimeBoundary}>
                                       {runtimeBoundary}
@@ -1220,7 +1203,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                                   <div className="flex min-w-0 items-center gap-2 px-2 py-1 text-[11px]">
                                     <Terminal size={12} className="shrink-0 text-[color:var(--text-muted)]" />
                                     <span className="shrink-0 text-[color:var(--text-secondary)]">
-                                      {t('agentPanel.sandbox', '沙盒')}
+                                      {t('agentPanel.sandbox')}
                                     </span>
                                     <code className="min-w-0 truncate font-mono text-[color:var(--text-primary)]">
                                       {runtimeEnvironment.sandboxBackend}
@@ -1234,21 +1217,20 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                                   <div className="flex min-w-0 items-center gap-2 px-2 py-1 text-[11px]">
                                     <Globe size={12} className="shrink-0 text-[color:var(--text-muted)]" />
                                     <span className="shrink-0 text-[color:var(--text-secondary)]">
-                                      {t('agentPanel.network', '网络')}
+                                      {t('agentPanel.network')}
                                     </span>
                                     <span className={runtimeEnvironment.networkAllowed
                                       ? 'text-[color:var(--text-primary)]'
                                       : 'text-[color:var(--text-muted)]'}>
                                       {runtimeEnvironment.networkAllowed
-                                        ? t('agentPanel.networkEnabled', '已启用')
-                                        : t('agentPanel.networkDisabled', '已关闭')}
+                                        ? t('agentPanel.networkEnabled')
+                                        : t('agentPanel.networkDisabled')}
                                     </span>
                                   </div>
                                 )}
                                 <div className="px-2 pb-0.5 pt-1 text-[10px] font-medium text-[color:var(--text-muted)]">
                                   {t('agentPanel.recentActivity', {
                                     count: runtimeItems.length,
-                                    defaultValue: '近期活动 {{count}}',
                                   })}
                                 </div>
                               </div>
@@ -1299,7 +1281,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                                     size="sm"
                                     onClick={openToolPermissionSettings}
                                     className="!flex !h-auto !w-full !min-w-0 !items-start !justify-start !gap-2 rounded-[5px] !border-none !bg-transparent !px-2 !py-1.5 text-left !shadow-none hover:!bg-[color:var(--interactive-hover)]"
-                                    title={`${item.error || item.label} — ${t('agentPanel.goAuthorize', '去授权运行目录')}`}
+                                    title={`${item.error || item.label} — ${t('agentPanel.goAuthorize')}`}
                                   >
                                     {content}
                                   </NotionButton>
@@ -1329,7 +1311,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 <>
                   <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
                   <SectionLabel>
-                    {t('agentPanel.artifacts', '产物')}
+                    {t('agentPanel.artifacts')}
                     <span className="ml-1.5 normal-case tracking-normal font-normal">{artifacts.length}</span>
                   </SectionLabel>
                   <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
@@ -1362,7 +1344,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 <>
                   <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
                   <SectionLabel>
-                    {t('agentPanel.changes', 'Changes')}
+                    {t('agentPanel.changes')}
                     <span className="ml-1.5 normal-case tracking-normal font-normal">{changes.length}</span>
                   </SectionLabel>
                   <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
@@ -1392,7 +1374,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                           <ChangeIcon size={11} className="flex-shrink-0 text-[color:var(--text-muted)]" />
                           <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
                             {isReverted
-                              ? t('agentPanel.reverted', '已撤销')
+                              ? t('agentPanel.reverted')
                               : changeActionLabel(item.action)}
                           </span>
                           <span className={cn('truncate', isReverted && 'line-through opacity-60')}>
@@ -1442,7 +1424,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                             title={
                               item.openId
                                 ? (item.target || item.label)
-                                : t('agentPanel.revealInFolder', { defaultValue: '在文件管理器中显示', path: item.target || item.label })
+                                : t('agentPanel.revealInFolder', { path: item.target || item.label })
                             }
                           >
                             {chip}
@@ -1457,8 +1439,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                                 'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
                                 isPreviewing && 'bg-[color:var(--interactive-hover)] text-[color:var(--text-primary)]',
                               )}
-                              title={t('agentPanel.preview', '预览')}
-                              aria-label={t('agentPanel.preview', '预览')}
+                              title={t('agentPanel.preview')}
+                              aria-label={t('agentPanel.preview')}
                             >
                               <Eye size={10} />
                             </button>
@@ -1473,12 +1455,12 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                                   'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]',
                                   'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
                                 )}
-                                title={t('agentPanel.openSavedNote', '打开笔记')}
-                                aria-label={t('agentPanel.openSavedNote', '打开笔记')}
+                                title={t('agentPanel.openSavedNote')}
+                                aria-label={t('agentPanel.openSavedNote')}
                               >
                                 <Check size={10} className="flex-shrink-0 text-[color:hsl(var(--success))]" />
                                 <span className="text-[10px]">
-                                  {t('agentPanel.savedAsNote', '已存为笔记')}
+                                  {t('agentPanel.savedAsNote')}
                                 </span>
                               </button>
                             ) : (
@@ -1492,8 +1474,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                                   'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
                                   isSavingNote && 'opacity-60 cursor-default',
                                 )}
-                                title={t('agentPanel.saveAsNote', '保存到笔记库')}
-                                aria-label={t('agentPanel.saveAsNote', '保存到笔记库')}
+                                title={t('agentPanel.saveAsNote')}
+                                aria-label={t('agentPanel.saveAsNote')}
                               >
                                 {isSavingNote ? (
                                   <CircleNotch size={10} className="animate-spin" />
@@ -1513,11 +1495,11 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                                 'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
                               )}
                               title={item.backupRef
-                                ? t('agentPanel.revertRestore', '恢复原内容')
-                                : t('agentPanel.revertDeleteNew', '删除新文件')}
+                                ? t('agentPanel.revertRestore')
+                                : t('agentPanel.revertDeleteNew')}
                               aria-label={item.backupRef
-                                ? t('agentPanel.revertRestore', '恢复原内容')
-                                : t('agentPanel.revertDeleteNew', '删除新文件')}
+                                ? t('agentPanel.revertRestore')
+                                : t('agentPanel.revertDeleteNew')}
                             >
                               <ArrowCounterClockwise size={10} />
                             </button>
@@ -1537,14 +1519,14 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                         </span>
                         {preview?.truncated && (
                           <span className="flex-shrink-0 text-[10px] text-[color:var(--text-muted)]">
-                            {t('agentPanel.previewTruncated', '内容过长，已截断')}
+                            {t('agentPanel.previewTruncated')}
                           </span>
                         )}
                         <NotionButton
                           variant="ghost"
                           onClick={closePreview}
                           className="!h-auto !min-w-0 !p-0.5 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]"
-                          aria-label={t('agentPanel.previewClose', '收起预览')}
+                          aria-label={t('agentPanel.previewClose')}
                         >
                           <CaretUp size={9} />
                         </NotionButton>
@@ -1555,7 +1537,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                         </div>
                       ) : preview?.error ? (
                         <div className="px-2.5 py-2 text-[11px] text-[color:hsl(var(--destructive))]">
-                          {t('agentPanel.previewFailed', '预览失败')}: {preview.error}
+                          {t('agentPanel.previewFailed')}: {preview.error}
                         </div>
                       ) : previewDiffLines ? (
                         <pre className="m-0 max-h-60 overflow-auto px-2.5 py-1.5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all">

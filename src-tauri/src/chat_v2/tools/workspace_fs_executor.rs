@@ -11,9 +11,10 @@ use tauri::Manager;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::runtime_roots::{
-    artifact_mutation_guard, create_write_backup_from_file, normalize_runtime_relative_path,
-    open_regular_file_no_follow, revalidate_runtime_root, runtime_root_by_id, temp_root,
-    RuntimeRoot, RuntimeRootAccess, RuntimeRootKind,
+    artifact_mutation_guard, create_write_backup_from_file, explicit_runtime_root_id_from_args,
+    normalize_runtime_relative_path, open_regular_file_no_follow, revalidate_runtime_root,
+    resolve_effective_runtime_root_id_for_session, runtime_root_by_id, temp_root, RuntimeRoot,
+    RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace_change_set::{self, ChangeSet, MutationKind, MutationReceipt};
@@ -427,13 +428,26 @@ impl WorkspaceFsExecutor {
         Ok(())
     }
 
+    fn resolve_read_root_id(args: &Value, ctx: &ExecutionContext) -> String {
+        let explicit = explicit_runtime_root_id_from_args(args);
+        let state = ctx.window.state::<AppState>();
+        resolve_effective_runtime_root_id_for_session(
+            &ctx.window.app_handle(),
+            &state.database,
+            ctx.chat_v2_db.as_deref(),
+            &ctx.session_id,
+            ctx.skill_package_roots.as_ref(),
+            explicit.as_deref(),
+        )
+    }
+
     async fn execute_file_list(
         &self,
         args: &Value,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        let (root, root_canon) =
-            Self::resolve_root(args.get("root_id").and_then(|v| v.as_str()), ctx)?;
+        let root_id = Self::resolve_read_root_id(args, ctx);
+        let (root, root_canon) = Self::resolve_root(Some(root_id.as_str()), ctx)?;
         let relative = Self::normalize_relative_path(args.get("path").and_then(|v| v.as_str()))?;
         Self::ensure_public_runtime_path(&relative)?;
         let max_entries = args
@@ -465,8 +479,8 @@ impl WorkspaceFsExecutor {
         args: &Value,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        let (root, root_canon) =
-            Self::resolve_root(args.get("root_id").and_then(|v| v.as_str()), ctx)?;
+        let root_id = Self::resolve_read_root_id(args, ctx);
+        let (root, root_canon) = Self::resolve_root(Some(root_id.as_str()), ctx)?;
         let relative = Self::normalize_relative_path(args.get("path").and_then(|v| v.as_str()))?;
         if relative.as_os_str().is_empty() {
             return Err("path is required".to_string());

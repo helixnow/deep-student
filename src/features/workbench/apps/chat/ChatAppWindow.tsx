@@ -10,8 +10,9 @@ import type { AppWindowProps } from '../../core/types';
 import { ModernSidebar } from '@/components/ModernSidebar';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
-import { WbSysSidebarLayout, WbSysSkeleton } from '../system/SystemWindowShared';
+import { WbSysSidebarLayout } from '../system/SystemWindowShared';
 import { useWbSysSize } from '../system/useWbSysSize';
+import { ChatWindowSkeleton } from './ChatWindowSkeleton';
 import './ChatAppWindow.css';
 
 const ChatV2Page = React.lazy(() =>
@@ -45,7 +46,7 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
     storeUnsubscribeRef.current?.();
     storeUnsubscribeRef.current = null;
 
-    const fallback = t('workbench:apps.chat.untitledSession', '新对话');
+    const fallback = t('workbench:apps.chat.untitledSession');
     if (!sessionId) {
       onTitleChange(fallback);
       return;
@@ -97,7 +98,7 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
     >
       <WbSysSidebarLayout
         sizeClass={sizeClass}
-        navLabel={t('workbench:apps.chat.sessionNav', '会话导航')}
+        navLabel={t('workbench:apps.chat.sessionNav')}
         sidebar={(
           <ModernSidebar
             currentView="chat-v2"
@@ -108,7 +109,9 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
         )}
       >
         <div className="relative h-full min-h-0 min-w-0 overflow-hidden">
-          <Suspense fallback={<WbSysSkeleton variant="surface" />}>
+          {/* 复用消息气泡骨架（而非通用 surface 骨架）：与 ChatWindowFrame
+              先导骨架同形态，二段加载期间内容区视觉连续无跳变 */}
+          <Suspense fallback={<ChatWindowSkeleton />}>
             <ChatV2Page />
           </Suspense>
         </div>

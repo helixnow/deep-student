@@ -47,14 +47,55 @@
     var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
 }
 
+/* 极轻淡入 + 2px 上浮：切换有"落定"手感又不产生呼吸感（仅 transform/opacity） */
 @keyframes wb-files-view-fade {
   from {
     opacity: 0.86;
+    transform: translate3d(0, 2px, 0);
   }
 
   to {
     opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
+}
+
+/* ==== Finder 项适配层打磨（只读消费 learning-hub DOM，稳定钩子：
+ * [data-finder-item] / aria-selected / role="listbox"；类名选择器为
+ * FinderFileItem 现有 Tailwind 类的覆盖点，若上游改版仅优雅回退） ==== */
+
+/* 键盘走查：焦点环用统一 token，圆角与选中条一致（a11y，minimal 档不降级） */
+.wb-files-host [data-finder-item]:focus-visible {
+  outline: none;
+  border-radius: 8px;
+  box-shadow: var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65));
+}
+
+/* 列表行（wrapper 无 class = list 模式）：macOS 式内嵌圆角选中/悬停条，
+ * 不再通栏平贴，与窗口 18px 圆角呼应 */
+.wb-files-host [data-finder-item]:not([class]) > .group {
+  margin-inline: 6px;
+  border-radius: 7px;
+}
+
+/* 网格瓦片：整体圆角 + 轻悬停底色（Finder 扫过反馈；选中态仍由标签药丸表达） */
+.wb-files-host [data-finder-item][class] > .group {
+  border-radius: 10px;
+}
+
+.wb-files-host [data-finder-item][class]:not([aria-selected='true']) > .group:hover {
+  background: var(--interactive-hover, hsl(var(--muted) / 0.5));
+}
+
+/* 网格选中：图标盒垫一层主题色浅底（macOS 双层高亮：图标底 + 名称药丸） */
+.wb-files-host [data-finder-item][class][aria-selected='true'] div.h-12.rounded-lg {
+  background: hsl(var(--primary) / 0.14);
+}
+
+/* 空文件夹状态的快捷键提示：键帽立体感（1px 描边 + 底缘投影） */
+.wb-files-host kbd {
+  border: 1px solid hsl(var(--border) / 0.6);
+  box-shadow: 0 1px 0 hsl(var(--border) / 0.55);
 }
 
 /* ==== Hover 预览玻璃卡（useFilesHoverPreview） ======================= */
@@ -124,7 +165,10 @@
   pointer-events: none;
   opacity: 0;
   transform: translate3d(-50%, calc(-100% - 12px), 0) scale(0.96);
-  transition: opacity var(--wb-motion-instant, 90ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  /* transform 与 opacity 同步过渡：出现时有轻微"弹起"而非硬切 */
+  transition:
+    opacity var(--wb-motion-instant, 90ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform var(--wb-motion-instant, 90ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
   box-shadow: var(--wb-shadow-popover, 0 10px 28px hsl(0 0% 0% / 0.2));
   white-space: nowrap;
 }

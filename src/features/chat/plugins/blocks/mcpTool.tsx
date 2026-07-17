@@ -245,7 +245,7 @@ const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <PulseDot className="w-1.5 h-1.5 text-primary" />
-          <span>{t('blocks.mcpTool.generatingArgs', { defaultValue: '生成参数中...' })}</span>
+          <span>{t('blocks.mcpTool.generatingArgs')}</span>
           {charCount > 0 && (
             <span className="text-xs text-muted-foreground/60">
               ({(charCount / 1024).toFixed(1)} KB)
@@ -332,7 +332,7 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
                 className="mt-1.5 !h-auto !px-1.5 !py-0.5 text-[11px] text-primary hover:underline"
               >
                 <ArrowSquareOut size={11} />
-                {t('blocks.mcpTool.openRuntimeSettings', { defaultValue: '去授权运行目录' })}
+                {t('blocks.mcpTool.openRuntimeSettings')}
               </NotionButton>
             )}
           </div>

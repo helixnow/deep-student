@@ -54,6 +54,15 @@
     opacity var(--wb-motion-quick, 150ms) var(--wb-ease-in, cubic-bezier(0.4, 0, 1, 1));
 }
 
+/* 玻璃面上的分隔线 / 分组边界：改用玻璃描边 token，明暗主题下对比一致 */
+.app-menu-content.wb-dockmenu .app-menu-separator {
+  background-color: var(--wb-glass-border);
+}
+
+.app-menu-content.wb-dockmenu .app-menu-group + .app-menu-group {
+  border-top-color: var(--wb-glass-border);
+}
+
 /* 危险项：关闭全部 — 强化 destructive 配色 */
 .app-menu-content.wb-dockmenu .wb-dockmenu-destructive,
 .app-menu-content.wb-dockmenu .app-menu-item-destructive {

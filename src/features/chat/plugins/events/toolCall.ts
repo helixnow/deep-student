@@ -26,6 +26,7 @@ import {
   LOAD_SKILLS_TOOL_NAME,
   syncLoadedSkillsFromBackend,
 } from '../../skills/progressiveDisclosure';
+import { reloadSkills } from '../../skills/loader';
 // 🆕 2026-02-16: 工具调用生命周期调试插件
 import {
   emitToolCallDebug,
@@ -679,6 +680,31 @@ const toolCallEventHandler: EventHandler = {
               console.warn('[ToolCall] Failed to persist template_preview block:', e);
             }
           })();
+        }
+      }
+
+      // 技能安装/工坊落地成功后，立即重扫文件系统注册表，
+      // 避免技能管理页仍显示安装前的旧列表。
+      const isSkillFilesystemMutatingTool =
+        toolName === 'skill_install' || toolName === 'skill_workshop_apply';
+      if (isSkillFilesystemMutatingTool && unwrappedResult && typeof unwrappedResult === 'object') {
+        const mutateResult = unwrappedResult as {
+          skill_id?: unknown;
+          applied?: unknown;
+          path?: unknown;
+        };
+        const installed =
+          typeof mutateResult.skill_id === 'string' &&
+          mutateResult.skill_id.length > 0 &&
+          (toolName !== 'skill_workshop_apply' || mutateResult.applied === true);
+        if (installed) {
+          void reloadSkills()
+            .then(() => {
+              console.log('[ToolCall] Reloaded skills after', toolName, mutateResult.skill_id);
+            })
+            .catch((error: unknown) => {
+              console.warn('[ToolCall] Failed to reload skills after', toolName, error);
+            });
         }
       }
 

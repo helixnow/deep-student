@@ -125,7 +125,7 @@ export const EngineSettingsSection: React.FC<{
       const msg = ok ? t('status.test_success', { ns: 'settings' }) : String(res?.message || '');
       setEngineResults(prev => ({ ...prev, [id]: { ok, msg, ms: res?.response_time } }));
     } catch (e: unknown) {
-      setEngineResults(prev => ({ ...prev, [id]: { ok: false, msg: `${t('settings:status.test_failed', '测试失败')}: ${e}` } }));
+      setEngineResults(prev => ({ ...prev, [id]: { ok: false, msg: `${t('settings:status.test_failed')}: ${e}` } }));
     } finally {
       setEngineTesting(null);
     }
@@ -262,8 +262,8 @@ export const EngineSettingsSection: React.FC<{
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0 flex-1 space-y-1">
-            <h3 className="text-sm font-medium text-foreground">{t('settings:advanced_search.providers.strategy_title', '策略配置')}</h3>
-            <p className="text-xs text-muted-foreground">{t('settings:advanced_search.providers.strategy_hint', '未配置则回退 default')}</p>
+            <h3 className="text-sm font-medium text-foreground">{t('settings:advanced_search.providers.strategy_title')}</h3>
+            <p className="text-xs text-muted-foreground">{t('settings:advanced_search.providers.strategy_hint')}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {engineResults[id] && (
@@ -278,7 +278,7 @@ export const EngineSettingsSection: React.FC<{
               {engineTesting === id ? t('settings:status_labels.testing') : t('settings:status_labels.test_availability')}
             </NotionButton>
             <NotionButton size="sm" variant="primary" onClick={handleSaveProviderStrategies} disabled={providerSaving || !providerStrategies}>
-              {providerSaving ? t('common:actions.saving', '保存中…') : t('settings:advanced_search.providers.save_button')}
+              {providerSaving ? t('common:actions.saving') : t('settings:advanced_search.providers.save_button')}
             </NotionButton>
           </div>
         </div>
@@ -297,21 +297,21 @@ export const EngineSettingsSection: React.FC<{
           <div className="w-full">
             <div className="mb-4 flex items-center justify-between gap-2">
               <div className="text-sm font-medium text-foreground">
-                {t('settings:groups.search_engines_list', '搜索引擎列表')}
+                {t('settings:groups.search_engines_list')}
               </div>
             </div>
             
             <div className="flex flex-col gap-1 mt-4">
               {['bing_rss', 'google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'].map((id) => {
                 const labelMap: Record<string, string> = {
-                  bing_rss: t('settings:external_search.bing_rss_name', 'Bing RSS（免费）'),
+                  bing_rss: t('settings:external_search.bing_rss_name'),
                   google_cse: 'Google CSE',
                   serpapi: 'SerpAPI',
                   tavily: 'Tavily',
                   brave: 'Brave',
                   searxng: 'SearXNG',
-                  zhipu: t('settings:external_search.zhipu_name', '智谱 AI 搜索'),
-                  bocha: t('settings:external_search.bocha_name', '博查 AI 搜索')
+                  zhipu: t('settings:external_search.zhipu_name'),
+                  bocha: t('settings:external_search.bocha_name')
                 };
                 const isConfiguredMap: Record<string, boolean> = {
                   bing_rss: true,
@@ -357,10 +357,10 @@ export const EngineSettingsSection: React.FC<{
             <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <h3 className="text-base font-medium text-foreground">
-                  {t('settings:external_search.bing_rss_name', 'Bing RSS（免费）')}
+                  {t('settings:external_search.bing_rss_name')}
                 </h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.bing_rss_desc', '无需 API Key 的内置基础搜索源。公共端点可能限流，适合作为 Best Effort 默认源。')}
+                  {t('settings:descriptions.bing_rss_desc')}
                 </p>
               </div>
               {renderEngineFooter('bing_rss', true)}
@@ -373,13 +373,13 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Google CSE</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search', '创建自定义搜索引擎')}>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://cse.google.com/cse/create/new", "_blank")} title={t('settings:external_search.create_custom_search')}>
                       <ArrowSquareOut size={14} />
                     </NotionButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.google_cse_desc', 'Google 自定义搜索引擎 API，提供最准确全面的网页搜索。')}
+                  {t('settings:descriptions.google_cse_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
@@ -410,13 +410,13 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">SerpAPI</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key', '注册并获取 SerpAPI Key')}>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://serpapi.com/users/sign_up", "_blank")} title={t('settings:external_search.get_serpapi_key')}>
                       <ArrowSquareOut size={14} />
                     </NotionButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.serpapi_desc', '封装了 Google、Bing 等多个引擎的聚合搜索 API。')}
+                  {t('settings:descriptions.serpapi_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
@@ -436,13 +436,13 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Tavily</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key', '注册并获取 Tavily API Key')}>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://tavily.com", "_blank")} title={t('settings:external_search.get_tavily_key')}>
                       <ArrowSquareOut size={14} />
                     </NotionButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.tavily_desc', '专为大语言模型打造的检索优化型搜索引擎。')}
+                  {t('settings:descriptions.tavily_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
@@ -462,13 +462,13 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">Brave</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key', '申请 Brave Search API Key')}>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://api.search.brave.com/", "_blank")} title={t('settings:external_search.get_brave_key')}>
                       <ArrowSquareOut size={14} />
                     </NotionButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.brave_desc', '注重隐私的独立网页搜索引擎。')}
+                  {t('settings:descriptions.brave_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
@@ -488,13 +488,13 @@ export const EngineSettingsSection: React.FC<{
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-base font-medium text-foreground truncate">SearXNG</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs', 'SearXNG 部署文档')}>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://docs.searxng.org/", "_blank")} title={t('settings:external_search.searxng_docs')}>
                       <ArrowSquareOut size={14} />
                     </NotionButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.searxng_desc', '免费开源、聚合多个搜索源的元搜索引擎。')}
+                  {t('settings:descriptions.searxng_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
@@ -524,14 +524,14 @@ export const EngineSettingsSection: React.FC<{
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.zhipu_name', '智谱 AI 搜索')}</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply', '申请智谱大模型 API')}>
+                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.zhipu_name')}</h3>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bigmodel.cn/", "_blank")} title={t('settings:external_search.zhipu_apply')}>
                       <ArrowSquareOut size={14} />
                     </NotionButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.zhipu_desc', '智谱提供的国产化互联网搜索聚合服务。')}
+                  {t('settings:descriptions.zhipu_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
@@ -550,14 +550,14 @@ export const EngineSettingsSection: React.FC<{
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.bocha_name', '博查 AI 搜索')}</h3>
-                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply', '申请博查 API')}>
+                    <h3 className="text-base font-medium text-foreground truncate">{t('settings:external_search.bocha_name')}</h3>
+                    <NotionButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100" onClick={() => window.open("https://open.bochaai.com/", "_blank")} title={t('settings:external_search.bocha_apply')}>
                       <ArrowSquareOut size={14} />
                     </NotionButton>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:descriptions.bocha_desc', '专注于中文资料索引的轻量级检索服务。')}
+                  {t('settings:descriptions.bocha_desc')}
                 </p>
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
@@ -575,7 +575,7 @@ export const EngineSettingsSection: React.FC<{
       </div>
 
       <div className="pt-8 border-t border-border/40 mt-8">
-        <h3 className="text-base font-semibold text-foreground mb-4">{t('settings:groups.global_search_settings', '全局搜索配置')}</h3>
+        <h3 className="text-base font-semibold text-foreground mb-4">{t('settings:groups.global_search_settings')}</h3>
         <div className="space-y-px">
           <SettingRow
           title={t('settings:field_labels.default_search_engine')}

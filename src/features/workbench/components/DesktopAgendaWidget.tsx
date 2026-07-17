@@ -262,7 +262,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
     } catch (error) {
       showGlobalNotification(
         'error',
-        t('agenda.completeFailed', { defaultValue: '完成任务失败' }),
+        t('agenda.completeFailed'),
         error instanceof Error ? error.message : String(error),
       );
     } finally {
@@ -294,7 +294,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
     <section
       ref={widgetRef}
       className="wb-agenda-widget wb-glass wb-glass-highlight"
-      aria-label={t('agenda.label', { defaultValue: '日历与学习日程' })}
+      aria-label={t('agenda.label')}
       data-testid="wb-agenda-widget"
       onClick={(event) => {
         if (event.target === event.currentTarget) void openTodoView();
@@ -308,11 +308,11 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
             setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1));
             setSelectedKey(todayKey);
           }}
-          title={t('agenda.backToToday', { defaultValue: '回到今天' })}
+          title={t('agenda.backToToday')}
         >
           <span className="wb-agenda-month-copy">
             <strong>{monthLabel}</strong>
-            <small>{t('agenda.pendingCount', { count: snapshot.items.length, defaultValue: `${snapshot.items.length} 项待安排` })}</small>
+            <small>{t('agenda.pendingCount', { count: snapshot.items.length })}</small>
           </span>
         </button>
         <div className="wb-agenda-header-actions">
@@ -320,8 +320,8 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
             type="button"
             className="wb-agenda-icon-button"
             onClick={() => changeMonth(-1)}
-            aria-label={t('agenda.previousMonth', { defaultValue: '上个月' })}
-            title={t('agenda.previousMonth', { defaultValue: '上个月' })}
+            aria-label={t('agenda.previousMonth')}
+            title={t('agenda.previousMonth')}
           >
             <CaretLeft size={15} weight="bold" />
           </button>
@@ -329,8 +329,8 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
             type="button"
             className="wb-agenda-icon-button"
             onClick={() => changeMonth(1)}
-            aria-label={t('agenda.nextMonth', { defaultValue: '下个月' })}
-            title={t('agenda.nextMonth', { defaultValue: '下个月' })}
+            aria-label={t('agenda.nextMonth')}
+            title={t('agenda.nextMonth')}
           >
             <CaretRight size={15} weight="bold" />
           </button>
@@ -338,8 +338,8 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
             type="button"
             className="wb-agenda-icon-button wb-agenda-add-button"
             onClick={() => void openQuickAdd()}
-            aria-label={t('agenda.quickAdd', { defaultValue: '添加日程' })}
-            title={t('agenda.quickAdd', { defaultValue: '添加日程' })}
+            aria-label={t('agenda.quickAdd')}
+            title={t('agenda.quickAdd')}
           >
             <Plus size={16} weight="bold" />
           </button>
@@ -352,7 +352,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
             <span key={`${label}-${index}`} role="columnheader">{label}</span>
           ))}
         </div>
-        <div className="wb-agenda-days" key={formatLocalDateKey(visibleMonth)}>
+        <div className="wb-agenda-days" role="row" key={formatLocalDateKey(visibleMonth)}>
           {calendarDays.map((day) => {
             const key = formatLocalDateKey(day);
             const dayItems = itemsByDate.get(key) ?? [];
@@ -373,11 +373,8 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                 aria-selected={isSelected}
                 aria-current={isToday ? 'date' : undefined}
                 aria-label={dayItems.length > 0
-                  ? t('agenda.datePendingCount', {
-                    date: new Intl.DateTimeFormat(locale, { dateStyle: 'full' }).format(day),
-                    count: dayItems.length,
-                    defaultValue: `${new Intl.DateTimeFormat(locale, { dateStyle: 'full' }).format(day)}，${dayItems.length} 项待办`,
-                  })
+                  ? t('agenda.datePendingCount', { date: new Intl.DateTimeFormat(locale, { dateStyle: 'full' }).format(day),
+                    count: dayItems.length })
                   : new Intl.DateTimeFormat(locale, { dateStyle: 'full' }).format(day)}
                 onClick={() => selectDate(day, true)}
                 onKeyDown={(event) => handleDayKeyDown(event, day)}
@@ -405,19 +402,19 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
           {selectedKey === todayKey && overdueItems.length > 0 ? (
             <span className="wb-agenda-overdue-count">
               <WarningCircle size={12} weight="fill" />
-              {t('agenda.overdueCount', { count: overdueItems.length, defaultValue: `${overdueItems.length} 项逾期` })}
+              {t('agenda.overdueCount', { count: overdueItems.length })}
             </span>
           ) : null}
         </div>
         <button type="button" className="wb-agenda-open-button" onClick={() => void openTodoView()}>
-          {t('agenda.openTodo', { defaultValue: '待办' })}
+          {t('agenda.openTodo')}
           <ArrowRight size={13} weight="bold" />
         </button>
       </div>
 
       <div className="wb-agenda-list" aria-live="polite">
         {snapshot.isLoading ? (
-          <div className="wb-agenda-empty">{t('agenda.loading', { defaultValue: '正在整理日程…' })}</div>
+          <div className="wb-agenda-empty">{t('agenda.loading')}</div>
         ) : agendaItems.length === 0 ? (
           <button
             type="button"
@@ -425,7 +422,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
             onClick={() => void openTodoView()}
           >
             <Check size={16} weight="bold" />
-            <span>{t('agenda.clear', { defaultValue: '这一天没有待完成事项' })}</span>
+            <span>{t('agenda.clear')}</span>
             <ArrowRight className="wb-agenda-empty-arrow" size={13} weight="bold" />
           </button>
         ) : (
@@ -439,19 +436,25 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                   className="wb-agenda-check"
                   disabled={completingId === item.id}
                   onClick={() => void completeItem(item)}
-                  aria-label={t('agenda.completeItem', { title: item.title, defaultValue: `完成 ${item.title}` })}
+                  aria-label={t('agenda.completeItem', { title: item.title })}
                 >
                   <span style={{ borderColor: listColor(list, item.todoListId) }}>
                     {completingId === item.id ? <Check size={9} weight="bold" /> : null}
                   </span>
                 </button>
-                <button type="button" className="wb-agenda-item-main" onClick={() => void openTodoItem(item)}>
+                {/* title 提示：标题溢出省略时仍可悬停查看全文 */}
+                <button
+                  type="button"
+                  className="wb-agenda-item-main"
+                  title={item.title}
+                  onClick={() => void openTodoItem(item)}
+                >
                   <span className="wb-agenda-item-title">{item.title}</span>
                   <span className="wb-agenda-item-meta">
                     <i style={{ backgroundColor: listColor(list, item.todoListId) }} />
-                    <span>{list?.title ?? t('agenda.unknownList', { defaultValue: '待办' })}</span>
+                    <span>{list?.title ?? t('agenda.unknownList')}</span>
                     <span>·</span>
-                    <time>{overdue ? item.dueDate : item.dueTime || t('agenda.allDay', { defaultValue: '全天' })}</time>
+                    <time>{overdue ? item.dueDate : item.dueTime || t('agenda.allDay')}</time>
                   </span>
                 </button>
               </div>
@@ -461,11 +464,11 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
       </div>
       {hiddenCount > 0 ? (
         <button type="button" className="wb-agenda-more" onClick={() => void openTodoView()}>
-          {t('agenda.more', { count: hiddenCount, defaultValue: `还有 ${hiddenCount} 项` })}
+          {t('agenda.more', { count: hiddenCount })}
         </button>
       ) : null}
       {snapshot.error && snapshot.updatedAt === 0 ? (
-        <div className="wb-agenda-error">{t('agenda.loadFailed', { defaultValue: '日程暂时不可用' })}</div>
+        <div className="wb-agenda-error">{t('agenda.loadFailed')}</div>
       ) : null}
     </section>
   );

@@ -59,23 +59,20 @@ export const EmptyDesktop: React.FC = React.memo(() => {
         </div>
 
         <h2 className="wb-empty-title wb-empty-rise wb-empty-rise-2">
-          {t('workbench:emptyDesktop.title', '你的学习桌面')}
+          {t('workbench:emptyDesktop.title')}
         </h2>
         <p className="wb-empty-hint wb-empty-rise wb-empty-rise-3">
-          {t(
-            'workbench:emptyDesktop.hint',
-            '从下方 Dock 打开应用开始工作——窗口可以自由摆放、平铺与并排对比。',
-          )}
+          {t('workbench:emptyDesktop.hint')}
         </p>
 
         <div
           className="wb-empty-cta-block wb-empty-rise wb-empty-rise-4"
           role="group"
-          aria-label={t('workbench:emptyDesktop.actionsLabel', '快速开始')}
+          aria-label={t('workbench:emptyDesktop.actionsLabel')}
         >
           <button type="button" className="wb-empty-cta" onClick={openPrimary}>
             <FolderOpen size={18} weight="duotone" aria-hidden="true" />
-            {t('workbench:emptyDesktop.actionFiles', '打开资源库')}
+            {t('workbench:emptyDesktop.actionFiles')}
           </button>
         </div>
 
@@ -83,25 +80,25 @@ export const EmptyDesktop: React.FC = React.memo(() => {
             <div className="wb-empty-onboarding-head">
               <Lightbulb size={14} weight="duotone" aria-hidden="true" />
               <span className="wb-empty-onboarding-title">
-                {t('workbench:emptyDesktop.tipsTitle', '小技巧')}
+                {t('workbench:emptyDesktop.tipsTitle')}
               </span>
               <button
                 type="button"
                 className="wb-empty-onboarding-dismiss"
                 onClick={dismissOnboarding}
               >
-                {t('workbench:emptyDesktop.tipsDismiss', '知道了')}
+                {t('workbench:emptyDesktop.tipsDismiss')}
               </button>
             </div>
             <ul className="wb-empty-onboarding-list">
               <li className="wb-empty-onboarding-item">
-                {t('workbench:emptyDesktop.tipTile', '把窗口拖到屏幕边缘，松手即可平铺')}
+                {t('workbench:emptyDesktop.tipTile')}
               </li>
               <li className="wb-empty-onboarding-item">
                 <kbd className="wb-empty-kbd">Ctrl</kbd>
                 <span className="wb-empty-kbd-plus">+</span>
                 <kbd className="wb-empty-kbd">Tab</kbd>
-                {t('workbench:emptyDesktop.tipSwitch', '在窗口间快速切换')}
+                {t('workbench:emptyDesktop.tipSwitch')}
               </li>
               <li className="wb-empty-onboarding-item">
                 <kbd className="wb-empty-kbd">Ctrl</kbd>
@@ -109,7 +106,7 @@ export const EmptyDesktop: React.FC = React.memo(() => {
                 <kbd className="wb-empty-kbd">Alt</kbd>
                 <span className="wb-empty-kbd-plus">+</span>
                 <kbd className="wb-empty-kbd">E</kbd>
-                {t('workbench:emptyDesktop.tipExpose', '俯瞰所有打开的窗口')}
+                {t('workbench:emptyDesktop.tipExpose')}
               </li>
             </ul>
         </div>

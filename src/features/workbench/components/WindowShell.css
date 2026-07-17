@@ -69,7 +69,9 @@
 }
 
 /* ==========================================================================
- * 八向缩放命中区（视觉透明；边 6px、角 12px）
+ * 八向缩放命中区（视觉透明；边 8px、角 14px）
+ * 边区自角部各退让 14px，保证四角始终由角柄（对角光标）优先命中；
+ * 角柄在 DOM 中后渲染，与边区重叠处按栈序取胜。
  * ========================================================================== */
 
 .wb-shell-rz {
@@ -82,65 +84,65 @@
 }
 
 .wb-shell-rz-n {
-  top: -3px;
-  left: 12px;
-  right: 12px;
-  height: 6px;
+  top: -4px;
+  left: 14px;
+  right: 14px;
+  height: 8px;
   cursor: ns-resize;
 }
 
 .wb-shell-rz-s {
-  bottom: -3px;
-  left: 12px;
-  right: 12px;
-  height: 6px;
+  bottom: -4px;
+  left: 14px;
+  right: 14px;
+  height: 8px;
   cursor: ns-resize;
 }
 
 .wb-shell-rz-e {
-  right: -3px;
-  top: 12px;
-  bottom: 12px;
-  width: 6px;
+  right: -4px;
+  top: 14px;
+  bottom: 14px;
+  width: 8px;
   cursor: ew-resize;
 }
 
 .wb-shell-rz-w {
-  left: -3px;
-  top: 12px;
-  bottom: 12px;
-  width: 6px;
+  left: -4px;
+  top: 14px;
+  bottom: 14px;
+  width: 8px;
   cursor: ew-resize;
 }
 
 .wb-shell-rz-ne {
-  top: -4px;
-  right: -4px;
-  width: 12px;
-  height: 12px;
+  top: -5px;
+  right: -5px;
+  width: 14px;
+  height: 14px;
   cursor: nesw-resize;
 }
 
 .wb-shell-rz-nw {
-  top: -4px;
-  left: -4px;
-  width: 12px;
-  height: 12px;
+  top: -5px;
+  left: -5px;
+  width: 14px;
+  height: 14px;
   cursor: nwse-resize;
 }
 
 .wb-shell-rz-se {
-  bottom: -4px;
-  right: -4px;
-  width: 12px;
-  height: 12px;
+  bottom: -5px;
+  right: -5px;
+  width: 14px;
+  height: 14px;
   cursor: nwse-resize;
 }
 
 .wb-shell-rz-sw {
-  bottom: -4px;
-  left: -4px;
-  width: 12px;
-  height: 12px;
+  bottom: -5px;
+  left: -5px;
+  width: 14px;
+  height: 14px;
   cursor: nesw-resize;
 }

@@ -250,7 +250,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     return (
         <header className="notes-document-header group relative pt-7 pb-3">
             <Input
-                className="h-auto w-full border-none bg-transparent p-0 text-[32px] font-bold leading-[1.2] text-foreground shadow-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
+                className="h-auto w-full border-none bg-transparent p-0 font-semibold leading-[1.2] text-foreground shadow-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
+                style={{ fontSize: 'clamp(26px, 5.2vw, 40px)' }}
                 value={titleInput}
                 onChange={readOnly ? undefined : handleTitleChange}
                 onBlur={readOnly ? undefined : handleTitleSubmit}

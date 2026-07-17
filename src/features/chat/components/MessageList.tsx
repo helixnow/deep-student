@@ -143,9 +143,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   });
 
   const { t } = useTranslation('chatV2');
-  const scrollToBottomLabel = t('messageList.scrollToBottom', {
-    defaultValue: 'Scroll to bottom',
-  });
+  const scrollToBottomLabel = t('messageList.scrollToBottom');
 
   // 📱 移动端适配：检测屏幕尺寸
   const { isSmallScreen } = useBreakpoint();
@@ -184,7 +182,6 @@ const MessageListInner: React.FC<MessageListProps> = ({
       setSrAnnouncement(
         t('messageList.srNewMessages', {
           count: messageOrder.length,
-          defaultValue: `New messages received, total {{count}} messages`,
         })
       );
     }
@@ -755,9 +752,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
     const emptyStatePrimaryAction = emptyStateGroupName
       ? t('messageList.empty.primaryActionInGroup', {
           groupName: emptyStateGroupName,
-          defaultValue: '在「{{groupName}}」里学点什么？',
         })
-      : t('messageList.empty.primaryAction', { defaultValue: '今天想学点什么？' });
+      : t('messageList.empty.primaryAction');
 
     return (
       <div

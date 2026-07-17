@@ -26,7 +26,7 @@ function currentInstances(): ProjectionInstance[] {
       instanceKey: POMODORO_INSTANCE_KEY,
       title:
         state.currentTaskTitle ||
-        i18n.t('workbench:apps.pomodoro', { defaultValue: '番茄钟' }),
+        i18n.t('workbench:apps.pomodoro'),
       initialFrame: { w: 380, h: 560 },
     },
   ];

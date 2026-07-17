@@ -546,6 +546,7 @@ describe('ChatV2TauriAdapter', () => {
         name: 'Math',
         defaultSkillIds: [],
         pinnedResourceIds: ['fld_math', 'res_formula_sheet'],
+        defaultRuntimeRootId: 'authorized_math_root',
         sortOrder: 0,
         persistStatus: 'active',
         createdAt: '2026-01-01T00:00:00Z',
@@ -557,6 +558,55 @@ describe('ChatV2TauriAdapter', () => {
       expect(options.groupId).toBe('group-math');
       expect(options.groupName).toBe('Math');
       expect(options.groupPinnedResourceIds).toEqual(['fld_math', 'res_formula_sheet']);
+      expect(options.groupDefaultRuntimeRootId).toBe('authorized_math_root');
+    });
+
+    it('falls back to groupDefaultRuntimeRootIdSnapshot when group cache lacks runtime root', async () => {
+      await adapter.setup();
+
+      (mockStore as any).groupId = 'group-physics';
+      (mockStore as any).sessionMetadata = {
+        groupDefaultRuntimeRootIdSnapshot: 'authorized_physics_root',
+      };
+      groupCache.set('group-physics', {
+        id: 'group-physics',
+        name: 'Physics',
+        defaultSkillIds: [],
+        pinnedResourceIds: [],
+        defaultRuntimeRootId: null,
+        sortOrder: 0,
+        persistStatus: 'active',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      });
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options.groupDefaultRuntimeRootId).toBe('authorized_physics_root');
+    });
+
+    it('prefers live group defaultRuntimeRootId over stale session snapshot', async () => {
+      await adapter.setup();
+
+      (mockStore as any).groupId = 'group-chem';
+      (mockStore as any).sessionMetadata = {
+        groupDefaultRuntimeRootIdSnapshot: 'authorized_stale_root',
+      };
+      groupCache.set('group-chem', {
+        id: 'group-chem',
+        name: 'Chem',
+        defaultSkillIds: [],
+        pinnedResourceIds: [],
+        defaultRuntimeRootId: 'authorized_live_root',
+        sortOrder: 0,
+        persistStatus: 'active',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      });
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options.groupDefaultRuntimeRootId).toBe('authorized_live_root');
     });
 
     it('should use the current dialog model override for multimodal context handling', async () => {

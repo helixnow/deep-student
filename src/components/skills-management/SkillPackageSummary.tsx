@@ -150,9 +150,9 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             {t('skills:package.dependencies_count', { count: summary.dependencies })}
           </Chip>
         )}
-        {(summary.allowedTools > 0 || summary.embeddedTools > 0) && (
+        {summary.embeddedTools > 0 && (
           <Chip icon={<Wrench size={10} />}>
-            {summary.allowedTools + summary.embeddedTools}
+            {summary.embeddedTools}
           </Chip>
         )}
         {summary.packageFiles > 1 && (
@@ -217,7 +217,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
         )}
         <Chip icon={<Wrench size={11} />}>
           {t('skills:package.permission_tools', {
-            count: summary.allowedTools + summary.embeddedTools,
+            count: summary.embeddedTools,
           })}
         </Chip>
         <Chip icon={<LinkSimple size={11} />}>
@@ -251,7 +251,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
         )}
       </div>
 
-      {(summary.allowedTools > 0 || toolLabels.length > 0) && (
+      {toolLabels.length > 0 && (
         <div className="space-y-1">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
             {t('skills:package.tools_heading')}
@@ -265,13 +265,6 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
                 {label}
               </span>
             ))}
-            {summary.allowedTools > 0 && toolLabels.length === 0 && (
-              <span className="text-[11px] text-muted-foreground">
-                {t('skills:package.allowed_tools_count', {
-                  count: summary.allowedTools,
-                })}
-              </span>
-            )}
           </div>
         </div>
       )}

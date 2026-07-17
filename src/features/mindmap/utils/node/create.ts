@@ -11,7 +11,7 @@ export function generateNodeId(): string {
   return `node_${nanoid(10)}`;
 }
 
-/** 创建新节点 */
+/** 创建新节点（默认非任务：不写 completed，大纲才不会立刻出现 checkbox） */
 export function createNode(params: CreateNodeParams = {}): MindMapNode {
   return {
     id: generateNodeId(),
@@ -19,7 +19,6 @@ export function createNode(params: CreateNodeParams = {}): MindMapNode {
     note: params.note,
     children: [],
     collapsed: false,
-    completed: false,
     style: params.style,
   };
 }

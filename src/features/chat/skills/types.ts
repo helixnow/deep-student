@@ -152,10 +152,10 @@ export interface SkillMetadata {
   priority?: number;
 
   /**
-   * 限制可访问的工具列表
+   * Legacy SKILL.md `allowed-tools` metadata.
    *
-   * SKILL.md 规范的 allowed-tools 字段
-   * 例如：['Read', 'Grep', 'Bash'] 允许读取但限制写入
+   * Deep Student preserves this field for package compatibility only. It does
+   * not filter tool schemas or authorize/block tool execution.
    */
   allowedTools?: string[];
 
@@ -181,9 +181,8 @@ export interface SkillMetadata {
    * 用于在 SKILL.md 中直接定义该 Skill 提供的工具 Schema。
    * 当 Skill 被激活时，这些工具会被注入到 LLM 请求中。
    *
-   * 与 allowedTools 的区别：
-   * - allowedTools: 引用已存在的工具名称，用于权限过滤
-   * - embeddedTools: 直接嵌入完整的工具 Schema 定义
+   * `allowedTools` 仅作为兼容元数据保留；`embeddedTools` 才是技能激活后
+   * 渐进注入的完整工具 Schema。
    *
    * 示例：
    * ```yaml

@@ -155,29 +155,29 @@ export const TodoAutomationWorkspace: React.FC = () => {
     { dateStyle: 'medium', timeStyle: 'short' },
   ), [i18n.resolvedLanguage]);
   const formatDate = (value?: string) => {
-    if (!value) return t('todo:automation.never', '暂无');
+    if (!value) return t('todo:automation.never');
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
   };
 
   const submitCreate = async () => {
     if (!draft.name.trim() || !draft.prompt.trim()) {
-      setCreateError(t('todo:automation.required', '请填写名称和任务说明'));
+      setCreateError(t('todo:automation.required'));
       return;
     }
     if (draft.name.trim().length > 100 || draft.prompt.length > 4000) {
-      setCreateError(t('todo:automation.lengthInvalid', '名称最多 100 字符，任务说明最多 4000 字符'));
+      setCreateError(t('todo:automation.lengthInvalid'));
       return;
     }
     if (draft.kind !== 'interval') {
       if (!TIME_PATTERN.test(draft.time)) {
-        setCreateError(t('todo:automation.timeInvalid', '请输入有效的 24 小时时间'));
+        setCreateError(t('todo:automation.timeInvalid'));
         return;
       }
       try {
         new Intl.DateTimeFormat('en-US', { timeZone: draft.timezone.trim() }).format();
       } catch {
-        setCreateError(t('todo:automation.timezoneInvalid', '请输入有效的 IANA 时区'));
+        setCreateError(t('todo:automation.timezoneInvalid'));
         return;
       }
     }
@@ -200,7 +200,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
       || draft.timeoutSeconds < 30
       || draft.timeoutSeconds > 3600
     ) {
-      setCreateError(t('todo:automation.valuesInvalid', '请检查周期、重试和超时数值'));
+      setCreateError(t('todo:automation.valuesInvalid'));
       return;
     }
     setCreateError(null);
@@ -257,10 +257,10 @@ export const TodoAutomationWorkspace: React.FC = () => {
           <Robot size={20} weight="duotone" className="shrink-0 text-primary" />
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-foreground">
-              {t('todo:automation.title', '定时任务')}
+              {t('todo:automation.title')}
             </h1>
             <p className="truncate text-xs text-muted-foreground">
-              {t('todo:automation.subtitle', '提醒与无人值守 Agent 运行')}
+              {t('todo:automation.subtitle')}
             </p>
           </div>
         </div>
@@ -277,7 +277,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
           </NotionButton>
           <NotionButton variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
             <Plus size={15} />
-            {t('todo:automation.new', '新建任务')}
+            {t('todo:automation.new')}
           </NotionButton>
         </div>
       </header>
@@ -301,13 +301,13 @@ export const TodoAutomationWorkspace: React.FC = () => {
             </div>
           ) : null}
 
-          <section className="overflow-hidden rounded-[var(--radius-shell-control)] border border-[color:var(--border-default)]/60 bg-[color:var(--surface-raised,transparent)]" aria-label={t('todo:automation.summary', '自动化概览')}>
+          <section className="overflow-hidden rounded-[var(--radius-shell-control)] border border-[color:var(--border-default)]/60 bg-[color:var(--surface-raised,transparent)]" aria-label={t('todo:automation.summary')}>
             <div className="grid grid-cols-2 sm:grid-cols-4">
               {[
-                [t('todo:automation.enabled', '已启用'), summary?.enabledCount ?? 0],
-                [t('todo:automation.running', '运行中'), summary?.runningCount ?? 0],
-                [t('todo:automation.failed24h', '24 小时失败'), summary?.failedCount ?? 0],
-                [t('todo:automation.next', '下次执行'), formatDate(summary?.nextRunAt)],
+                [t('todo:automation.enabled'), summary?.enabledCount ?? 0],
+                [t('todo:automation.running'), summary?.runningCount ?? 0],
+                [t('todo:automation.failed24h'), summary?.failedCount ?? 0],
+                [t('todo:automation.next'), formatDate(summary?.nextRunAt)],
               ].map(([label, value], index) => (
                 <div key={String(label)} className={cn('min-w-0 px-4 py-3.5', index > 0 && 'border-l border-border/50', index === 2 && 'max-sm:border-l-0', index >= 2 && 'max-sm:border-t max-sm:border-border/50')}>
                   <div className="text-[11px] text-muted-foreground">{label}</div>
@@ -319,8 +319,8 @@ export const TodoAutomationWorkspace: React.FC = () => {
               <div className="flex min-w-0 items-center gap-2">
                 <ClockCountdown size={16} className="text-muted-foreground" />
                 <div className="min-w-0">
-                  <div className="text-sm font-medium text-foreground">{t('todo:automation.background', '关闭窗口后继续运行')}</div>
-                  <div className="text-xs text-muted-foreground">{t('todo:automation.backgroundHint', '显式退出应用或关机会停止任务，重新打开后按补偿策略恢复')}</div>
+                  <div className="text-sm font-medium text-foreground">{t('todo:automation.background')}</div>
+                  <div className="text-xs text-muted-foreground">{t('todo:automation.backgroundHint')}</div>
                 </div>
               </div>
               <Switch
@@ -348,12 +348,12 @@ export const TodoAutomationWorkspace: React.FC = () => {
               aria-expanded={historyOpen}
               onClick={() => setHistoryOpen((value) => !value)}
             >
-              <span className="text-sm font-semibold text-foreground">{t('todo:automation.history', '运行历史')}</span>
+              <span className="text-sm font-semibold text-foreground">{t('todo:automation.history')}</span>
               <span className="text-xs tabular-nums text-muted-foreground">{runs.length}</span>
             </NotionButton>
             {historyOpen ? (
               <div className="mt-3 divide-y divide-border/50 border-t border-border/50">
-                {runs.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">{t('todo:automation.noHistory', '暂无运行记录')}</div> : runs.map((run) => {
+                {runs.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">{t('todo:automation.noHistory')}</div> : runs.map((run) => {
                   const cancellable = run.status === 'running' || run.status === 'retrying' || run.status === 'queued';
                   const retryable = ['error', 'timeout', 'spawn_error', 'cancelled'].includes(run.status);
                   const automationName = automationNames[run.automationId] ?? run.automationId;
@@ -382,14 +382,14 @@ export const TodoAutomationWorkspace: React.FC = () => {
                             variant="ghost"
                             size="icon"
                             iconOnly
-                            aria-label={t('todo:automation.openSession', '打开运行会话')}
-                            title={t('todo:automation.openSession', '打开运行会话')}
+                            aria-label={t('todo:automation.openSession')}
+                            title={t('todo:automation.openSession')}
                             onClick={() => openAutomationSession(sessionId)}
                           >
                             <ChatCircleDots size={16} />
                           </NotionButton>
                         ) : null}
-                        {retryable ? <NotionButton variant="ghost" size="sm" disabled={busy !== null} onClick={() => void mutateRun(run, 'retry')}>{t('todo:automation.retry', '重试')}</NotionButton> : null}
+                        {retryable ? <NotionButton variant="ghost" size="sm" disabled={busy !== null} onClick={() => void mutateRun(run, 'retry')}>{t('todo:automation.retry')}</NotionButton> : null}
                         {cancellable ? <NotionButton variant="ghost" size="sm" disabled={busy !== null} onClick={() => void mutateRun(run, 'cancel')}>{t('common:actions.cancel')}</NotionButton> : null}
                       </div>
                     </div>
@@ -411,7 +411,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
         }}
         maxWidth="max-w-2xl"
       >
-        <NotionDialogHeader><NotionDialogTitle>{t('todo:automation.createTitle', '新建定时任务')}</NotionDialogTitle></NotionDialogHeader>
+        <NotionDialogHeader><NotionDialogTitle>{t('todo:automation.createTitle')}</NotionDialogTitle></NotionDialogHeader>
         <NotionDialogBody className="max-h-[70vh] space-y-4 overflow-y-auto py-4">
           {createError ? (
             <div role="alert" className="flex items-start gap-2 border-y border-destructive/30 bg-destructive/5 px-2 py-2.5 text-sm text-destructive">
@@ -420,24 +420,24 @@ export const TodoAutomationWorkspace: React.FC = () => {
             </div>
           ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.name', '名称')}</span><input className={inputClass} maxLength={100} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.action', '动作')}</span><select className={inputClass} value={draft.actionType} onChange={(event) => setDraft({ ...draft, actionType: event.target.value as AutomationActionType })}><option value="agent_turn">{t('settings:automation.action_type.agent_turn', 'Agent 任务')}</option><option value="notify">{t('todo:automation.notify', '通知 + 待办')}</option></select></label>
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.schedule', '周期')}</span><select className={inputClass} value={draft.kind} onChange={(event) => setDraft({ ...draft, kind: event.target.value as AutomationScheduleKind })}><option value="daily">{t('todo:automation.daily', '每天')}</option><option value="weekdays">{t('todo:automation.weekdays', '工作日')}</option><option value="weekly">{t('todo:automation.weekly', '每周')}</option><option value="monthly">{t('todo:automation.monthly', '每月')}</option><option value="interval">{t('todo:automation.interval', '固定间隔')}</option></select></label>
-            {draft.kind === 'interval' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.intervalMinutes', '间隔分钟')}</span><input className={inputClass} type="number" min={5} max={1440} value={draft.intervalMinutes} onChange={(event) => setDraft({ ...draft, intervalMinutes: Number(event.target.value) })} /></label> : <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.time', '时间')}</span><input className={inputClass} type="time" value={draft.time} onChange={(event) => setDraft({ ...draft, time: event.target.value })} /></label>}
-            {draft.kind === 'weekly' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.weekday', '星期')}</span><select className={inputClass} value={draft.weekday} onChange={(event) => setDraft({ ...draft, weekday: Number(event.target.value) })}>{[0,1,2,3,4,5,6].map((day) => <option key={day} value={day}>{t(`settings:automation.weekdays.${day}`)}</option>)}</select></label> : null}
-            {draft.kind === 'monthly' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.dayOfMonth', '日期')}</span><input className={inputClass} type="number" min={1} max={31} value={draft.dayOfMonth} onChange={(event) => setDraft({ ...draft, dayOfMonth: Number(event.target.value) })} /></label> : null}
-            {draft.kind !== 'interval' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.timezone', '时区')}</span><input className={inputClass} value={draft.timezone} onChange={(event) => setDraft({ ...draft, timezone: event.target.value })} /></label> : null}
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.catchUp', '错过执行')}</span><select className={inputClass} value={draft.catchUpPolicy} onChange={(event) => setDraft({ ...draft, catchUpPolicy: event.target.value as AutomationCatchUpPolicy })}><option value="run_once">{t('todo:automation.runOnce', '恢复后补跑一次')}</option><option value="catch_up_all">{t('todo:automation.catchAll', '逐次补跑')}</option><option value="skip">{t('todo:automation.skip', '跳过')}</option></select></label>
-            {draft.actionType === 'agent_turn' ? <><label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.sessionMode', '会话')}</span><select className={inputClass} value={draft.sessionMode} onChange={(event) => setDraft({ ...draft, sessionMode: event.target.value as AutomationSessionMode })}><option value="isolated">{t('todo:automation.isolated', '每次独立')}</option><option value="named">{t('todo:automation.named', '连续会话')}</option></select></label><label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.model', '模型配置 ID')}</span><input className={inputClass} value={draft.modelId} placeholder={t('todo:automation.defaultModel', '使用默认模型')} onChange={(event) => setDraft({ ...draft, modelId: event.target.value })} /></label></> : null}
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.retries', '失败重试')}</span><input className={inputClass} type="number" min={0} max={10} value={draft.maxRetries} onChange={(event) => setDraft({ ...draft, maxRetries: Number(event.target.value) })} /></label>
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.retryBackoff', '重试退避秒数')}</span><input className={inputClass} type="number" min={5} max={86400} value={draft.retryBackoffSeconds} onChange={(event) => setDraft({ ...draft, retryBackoffSeconds: Number(event.target.value) })} /></label>
-            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.timeout', '超时秒数')}</span><input className={inputClass} type="number" min={30} max={3600} value={draft.timeoutSeconds} onChange={(event) => setDraft({ ...draft, timeoutSeconds: Number(event.target.value) })} /></label>
+            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.name')}</span><input className={inputClass} maxLength={100} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.action')}</span><select className={inputClass} value={draft.actionType} onChange={(event) => setDraft({ ...draft, actionType: event.target.value as AutomationActionType })}><option value="agent_turn">{t('settings:automation.action_type.agent_turn')}</option><option value="notify">{t('todo:automation.notify')}</option></select></label>
+            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.schedule')}</span><select className={inputClass} value={draft.kind} onChange={(event) => setDraft({ ...draft, kind: event.target.value as AutomationScheduleKind })}><option value="daily">{t('todo:automation.daily')}</option><option value="weekdays">{t('todo:automation.weekdays')}</option><option value="weekly">{t('todo:automation.weekly')}</option><option value="monthly">{t('todo:automation.monthly')}</option><option value="interval">{t('todo:automation.interval')}</option></select></label>
+            {draft.kind === 'interval' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.intervalMinutes')}</span><input className={inputClass} type="number" min={5} max={1440} value={draft.intervalMinutes} onChange={(event) => setDraft({ ...draft, intervalMinutes: Number(event.target.value) })} /></label> : <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.time')}</span><input className={inputClass} type="time" value={draft.time} onChange={(event) => setDraft({ ...draft, time: event.target.value })} /></label>}
+            {draft.kind === 'weekly' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.weekday')}</span><select className={inputClass} value={draft.weekday} onChange={(event) => setDraft({ ...draft, weekday: Number(event.target.value) })}>{[0,1,2,3,4,5,6].map((day) => <option key={day} value={day}>{t(`settings:automation.weekdays.${day}`)}</option>)}</select></label> : null}
+            {draft.kind === 'monthly' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.dayOfMonth')}</span><input className={inputClass} type="number" min={1} max={31} value={draft.dayOfMonth} onChange={(event) => setDraft({ ...draft, dayOfMonth: Number(event.target.value) })} /></label> : null}
+            {draft.kind !== 'interval' ? <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.timezone')}</span><input className={inputClass} value={draft.timezone} onChange={(event) => setDraft({ ...draft, timezone: event.target.value })} /></label> : null}
+            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.catchUp')}</span><select className={inputClass} value={draft.catchUpPolicy} onChange={(event) => setDraft({ ...draft, catchUpPolicy: event.target.value as AutomationCatchUpPolicy })}><option value="run_once">{t('todo:automation.runOnce')}</option><option value="catch_up_all">{t('todo:automation.catchAll')}</option><option value="skip">{t('todo:automation.skip')}</option></select></label>
+            {draft.actionType === 'agent_turn' ? <><label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.sessionMode')}</span><select className={inputClass} value={draft.sessionMode} onChange={(event) => setDraft({ ...draft, sessionMode: event.target.value as AutomationSessionMode })}><option value="isolated">{t('todo:automation.isolated')}</option><option value="named">{t('todo:automation.named')}</option></select></label><label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.model')}</span><input className={inputClass} value={draft.modelId} placeholder={t('todo:automation.defaultModel')} onChange={(event) => setDraft({ ...draft, modelId: event.target.value })} /></label></> : null}
+            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.retries')}</span><input className={inputClass} type="number" min={0} max={10} value={draft.maxRetries} onChange={(event) => setDraft({ ...draft, maxRetries: Number(event.target.value) })} /></label>
+            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.retryBackoff')}</span><input className={inputClass} type="number" min={5} max={86400} value={draft.retryBackoffSeconds} onChange={(event) => setDraft({ ...draft, retryBackoffSeconds: Number(event.target.value) })} /></label>
+            <label className="space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.timeout')}</span><input className={inputClass} type="number" min={30} max={3600} value={draft.timeoutSeconds} onChange={(event) => setDraft({ ...draft, timeoutSeconds: Number(event.target.value) })} /></label>
           </div>
-          <label className="block space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.prompt', '任务说明')}</span><textarea className="min-h-28 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20" maxLength={4000} value={draft.prompt} onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} /></label>
+          <label className="block space-y-1.5 text-sm"><span className="font-medium">{t('todo:automation.prompt')}</span><textarea className="min-h-28 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20" maxLength={4000} value={draft.prompt} onChange={(event) => setDraft({ ...draft, prompt: event.target.value })} /></label>
         </NotionDialogBody>
         <NotionDialogFooter>
           <NotionButton variant="ghost" disabled={busy === 'create'} onClick={() => setCreateOpen(false)}>{t('common:actions.cancel')}</NotionButton>
-          <NotionButton variant="primary" disabled={busy !== null} onClick={() => void submitCreate()}>{busy === 'create' ? <CircleNotch size={15} className="animate-spin" /> : <CalendarBlank size={15} />}{t('todo:automation.create', '创建')}</NotionButton>
+          <NotionButton variant="primary" disabled={busy !== null} onClick={() => void submitCreate()}>{busy === 'create' ? <CircleNotch size={15} className="animate-spin" /> : <CalendarBlank size={15} />}{t('todo:automation.create')}</NotionButton>
         </NotionDialogFooter>
       </NotionDialog>
     </div>

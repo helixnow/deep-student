@@ -185,7 +185,7 @@ describe('NoteTagsEditor', () => {
         fireEvent.change(input, { target: { value: 'new-name' } });
 
         // 点击确认按钮
-        const confirmBtn = screen.getByRole('button', { name: 'confirm' });
+        const confirmBtn = screen.getByRole('button', { name: 'notes:header.confirm_rename' });
         if (confirmBtn) {
             fireEvent.click(confirmBtn);
         }

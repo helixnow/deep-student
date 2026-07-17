@@ -298,8 +298,8 @@ export const SyncQuarantinePanel: React.FC<{
       <NotionAlertDialog
         open={showRetryAllDialog}
         onOpenChange={(open) => { if (!open) setShowRetryAllDialog(false); }}
-        title={t("data:governance.quarantine_retry_all_confirm_title", "确认全部重试")}
-        description={t("data:governance.quarantine_retry_all_confirm_desc", "将对 {{count}} 条隔离记录执行重试操作。失败的记录会增加重试次数并更新错误信息。", { count: rows.length })}
+        title={t("data:governance.quarantine_retry_all_confirm_title")}
+        description={t("data:governance.quarantine_retry_all_confirm_desc", { count: rows.length })}
         confirmText={t("common:actions.retry")}
         cancelText={t("common:actions.cancel")}
         confirmVariant="primary"
@@ -312,9 +312,9 @@ export const SyncQuarantinePanel: React.FC<{
       <NotionAlertDialog
         open={showDiscardAllDialog}
         onOpenChange={(open) => { if (!open) setShowDiscardAllDialog(false); }}
-        title={t("data:governance.quarantine_discard_all_confirm_title", "确认全部清除")}
-        description={t("data:governance.quarantine_discard_all_confirm_desc", "将永久删除 {{count}} 条隔离记录。此操作不可逆。", { count: rows.length })}
-        confirmText={t("data:governance.quarantine_discard_all_confirm", "确认清除")}
+        title={t("data:governance.quarantine_discard_all_confirm_title")}
+        description={t("data:governance.quarantine_discard_all_confirm_desc", { count: rows.length })}
+        confirmText={t("data:governance.quarantine_discard_all_confirm")}
         cancelText={t("common:actions.cancel")}
         confirmVariant="danger"
         onConfirm={handleDiscardAll}

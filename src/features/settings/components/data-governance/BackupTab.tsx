@@ -985,20 +985,20 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
             <Archive className="h-5 w-5 text-primary" />
-            {t('data:governance.import_complete_title', '备份导入完成')}
+            {t('data:governance.import_complete_title')}
           </NotionDialogTitle>
           <NotionDialogDescription>
-            <p>{t('data:governance.import_complete_desc', '备份文件已成功导入。是否立即恢复此备份？恢复将替换当前所有数据。')}</p>
+            <p>{t('data:governance.import_complete_desc')}</p>
             <p className="text-amber-600 dark:text-amber-400 font-medium mt-1">{t('data:governance.restore_save_work_warning')}</p>
           </NotionDialogDescription>
         </NotionDialogHeader>
         <NotionDialogFooter>
           <NotionButton variant="ghost" size="sm" onClick={onRestoreLater}>
-            {t('data:governance.restore_later', '稍后恢复')}
+            {t('data:governance.restore_later')}
           </NotionButton>
           <NotionButton variant="primary" size="sm" onClick={onRestoreNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
-            {t('data:governance.restore_now', '立即恢复')}
+            {t('data:governance.restore_now')}
           </NotionButton>
         </NotionDialogFooter>
       </NotionDialog>

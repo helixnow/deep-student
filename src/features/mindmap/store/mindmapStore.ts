@@ -11,7 +11,7 @@ import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 import { nanoid } from 'nanoid';
 import i18next from 'i18next';
-import type { MindMapDocument, MindMapNode, MindMapNodeRef, LayoutDirection, EdgeType, MindMapRenderConfig, LayoutConfig, UpdateNodeParams, BlankRange } from '../types';
+import type { MindMapDocument, MindMapNode, MindMapNodeRef, MindMapAssociation, LayoutDirection, EdgeType, MindMapRenderConfig, LayoutConfig, UpdateNodeParams, BlankRange } from '../types';
 import * as api from '../api/mindmapApi';
 import type { VfsMindMap, MindMapViewType } from '../types';
 import { PresetRegistry } from '../registry';
@@ -30,6 +30,7 @@ import {
   resolveVisibleIdFromIndex,
 } from '../utils/hideCompleted';
 import { collectSearchPathIds, searchMindMapNodeIds } from '../utils/searchFilter';
+import { mergeMindMapViewport } from '../utils/viewport';
 
 /** ACR R1-11：agentEnteringIds 使用 Set，需启用 Immer MapSet 插件 */
 enableMapSet();
@@ -131,6 +132,33 @@ function collectNodeAndDescendantIds(root: MindMapNode, nodeIds: readonly string
 function removeNodesById(root: MindMapNode, ids: ReadonlySet<string>): void {
   root.children = root.children.filter((child) => !ids.has(child.id));
   for (const child of root.children) removeNodesById(child, ids);
+}
+
+/** 节点删除时级联清理关联线 */
+function pruneAssociationsForRemovedNodes(
+  document: MindMapDocument,
+  removedIds: ReadonlySet<string>,
+): void {
+  if (!document.associations?.length) return;
+  document.associations = document.associations.filter(
+    (a) => !removedIds.has(a.source) && !removedIds.has(a.target),
+  );
+  if (document.associations.length === 0) {
+    delete document.associations;
+  }
+}
+
+function findAssociationPair(
+  associations: MindMapAssociation[] | undefined,
+  source: string,
+  target: string,
+): MindMapAssociation | undefined {
+  if (!associations?.length) return undefined;
+  return associations.find(
+    (a) =>
+      (a.source === source && a.target === target) ||
+      (a.source === target && a.target === source),
+  );
 }
 
 function createDefaultDocument(title?: string): MindMapDocument {
@@ -358,6 +386,11 @@ export interface MindMapStoreState {
   // 节点资源引用
   addNodeRef: (nodeId: string, ref: MindMapNodeRef) => void;
   removeNodeRef: (nodeId: string, sourceId: string) => void;
+
+  // 跨分支关联线（Xmind 式「关联」）
+  addAssociation: (source: string, target: string, label?: string) => string | null;
+  updateAssociationLabel: (id: string, label: string) => void;
+  removeAssociation: (id: string) => void;
 
   // Undo/Redo
   undo: () => void;
@@ -1082,6 +1115,7 @@ export function createMindMapStore(): MindMapStoreApi {
 
         applyMutation((state) => {
           removeNodesById(state.document.root, new Set(normalizedIds));
+          pruneAssociationsForRemovedNodes(state.document, removedIds);
           if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
             state.focusedNodeId = nextFocusedNodeId;
           }
@@ -1162,7 +1196,7 @@ export function createMindMapStore(): MindMapStoreApi {
         }, { skipHistory: true });
       },
 
-      // 更新节点
+      // 更新节点（patch 中显式 undefined 的键会 delete，便于移除任务 completed 等可选字段）
       updateNode: (nodeId: string, patch: UpdateNodeParams, options) => {
         applyMutation((state) => {
           const node = findNodeById(state.document.root, nodeId);
@@ -1176,7 +1210,15 @@ export function createMindMapStore(): MindMapStoreApi {
               delete node.blankedRanges;
               delete state.revealedBlanks[nodeId];
             }
-            Object.assign(node, patch);
+            for (const key of Object.keys(patch) as Array<keyof UpdateNodeParams>) {
+              const value = patch[key];
+              const record = node as unknown as Record<string, unknown>;
+              if (value === undefined) {
+                delete record[key];
+              } else {
+                record[key] = value;
+              }
+            }
           }
         }, options);
       },
@@ -1243,6 +1285,7 @@ export function createMindMapStore(): MindMapStoreApi {
 
         applyMutation((state) => {
           removeNodesById(state.document.root, new Set(normalizedIds));
+          pruneAssociationsForRemovedNodes(state.document, removedIds);
 
           if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
             state.focusedNodeId = nextFocusedNodeId;
@@ -1672,11 +1715,7 @@ export function createMindMapStore(): MindMapStoreApi {
             return;
           }
           const prev = state.viewports.mindmap ?? { x: 0, y: 0, zoom: 1 };
-          state.viewports.mindmap = {
-            x: partial.x ?? prev.x,
-            y: partial.y ?? prev.y,
-            zoom: partial.zoom ?? prev.zoom,
-          };
+          state.viewports.mindmap = mergeMindMapViewport(prev, partial);
         });
       }) as MindMapStoreState['setViewViewport'],
 
@@ -1701,6 +1740,65 @@ export function createMindMapStore(): MindMapStoreApi {
           node.refs = node.refs.filter((r) => r.sourceId !== sourceId);
           if (node.refs.length === 0) {
             delete node.refs;
+          }
+        });
+      },
+
+      // 跨分支关联线
+      addAssociation: (source: string, target: string, label?: string) => {
+        if (!source || !target || source === target) return null;
+        const { document } = get();
+        if (!findNodeById(document.root, source) || !findNodeById(document.root, target)) {
+          return null;
+        }
+        if (findAssociationPair(document.associations, source, target)) {
+          return null;
+        }
+
+        const id = `assoc_${nanoid(10)}`;
+        const association: MindMapAssociation = {
+          id,
+          source,
+          target,
+          ...(label != null && label !== '' ? { label } : {}),
+        };
+
+        applyMutation((state) => {
+          if (!state.document.associations) {
+            state.document.associations = [];
+          }
+          state.document.associations.push(association);
+        });
+
+        return id;
+      },
+
+      updateAssociationLabel: (id: string, label: string) => {
+        const { document } = get();
+        const existing = document.associations?.find((a) => a.id === id);
+        if (!existing) return;
+
+        applyMutation((state) => {
+          const assoc = state.document.associations?.find((a) => a.id === id);
+          if (!assoc) return;
+          const trimmed = label.trim();
+          if (trimmed) {
+            assoc.label = trimmed;
+          } else {
+            delete assoc.label;
+          }
+        });
+      },
+
+      removeAssociation: (id: string) => {
+        const { document } = get();
+        if (!document.associations?.some((a) => a.id === id)) return;
+
+        applyMutation((state) => {
+          if (!state.document.associations) return;
+          state.document.associations = state.document.associations.filter((a) => a.id !== id);
+          if (state.document.associations.length === 0) {
+            delete state.document.associations;
           }
         });
       },
@@ -2372,6 +2470,7 @@ export function createMindMapStore(): MindMapStoreApi {
           };
 
           removeNodesById(state.document.root, new Set(normalizedIds));
+          pruneAssociationsForRemovedNodes(state.document, removedIds);
 
           if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
             state.focusedNodeId = nextFocusedNodeId;

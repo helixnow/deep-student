@@ -67,24 +67,84 @@
  * 注意不能直接淡化 .chat-composer-motion-frame 本身——其入场 animation
  * fill:both 的终帧 opacity:1 会永久压过普通声明；淡化其内层包装 div。
  */
-.wb-chat-surface .chat-composer-motion-frame > div {
+.wb-chat-surface .chat-composer-motion-frame > div,
+.wb-chat-surface .wb-chat-sandbox-expand {
   /* O1 焦点三态 token：--wb-focus-duration/-ease（reduced-motion/minimal 档自动归零） */
   transition: opacity var(--wb-focus-duration, 230ms)
     var(--wb-focus-ease, cubic-bezier(0.3, 1.12, 0.36, 1));
 }
 
-.wb-chat-surface[data-wb-chat-active='false'] .chat-composer-motion-frame > div {
+/* 沙箱展开按钮随窗口失焦一同淡化（与输入区同一套 key window 语义） */
+.wb-chat-surface[data-wb-chat-active='false'] .chat-composer-motion-frame > div,
+.wb-chat-surface[data-wb-chat-active='false'] .wb-chat-sandbox-expand {
   opacity: 0.6;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wb-chat-surface .chat-composer-motion-frame > div {
+  .wb-chat-surface .chat-composer-motion-frame > div,
+  .wb-chat-surface .wb-chat-sandbox-expand {
     transition: none;
   }
 }
 
-:root[data-wb-material='minimal'] .wb-chat-surface .chat-composer-motion-frame > div {
+:root[data-wb-material='minimal'] .wb-chat-surface .chat-composer-motion-frame > div,
+:root[data-wb-material='minimal'] .wb-chat-surface .wb-chat-sandbox-expand {
   transition: none;
+}
+
+/* ==== 4. 沙箱工作台侧板（原内联 tailwind 收编，暗色阴影分档） ========
+ * z-index 为窗口自身 stacking context 内的局部层级（全局刻度见 --wb-z-*）：
+ * 侧板(20) 盖住展开按钮(10)，二者互斥渲染时也保持稳定层序。
+ */
+.wb-chat-sandbox-panel {
+  z-index: 20;
+  border-left: 1px solid var(--shell-inspector-border, hsl(var(--border)));
+  background: hsl(var(--background));
+  box-shadow: -12px 0 32px hsl(var(--shadow-base, 222 47% 11%) / 0.12);
+  /* 入场：右缘滑入 + 淡入（仅 transform/opacity；O1 token 带兜底） */
+  animation: wb-chat-sandbox-in var(--wb-motion-quick, 150ms)
+    var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+:root.dark .wb-chat-sandbox-panel {
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes wb-chat-sandbox-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 展开按钮：与窗口玻璃语言一致的浮起小面；focus-visible 走 O1 焦点环 */
+.wb-chat-sandbox-expand {
+  z-index: 10;
+  border: 1px solid hsl(var(--border) / 0.8);
+  background: hsl(var(--background) / 0.95);
+  box-shadow: var(--shadow-shell-soft, 0 2px 8px hsl(var(--shadow-base, 222 47% 11%) / 0.1));
+}
+
+.wb-chat-sandbox-expand:focus-visible {
+  outline: none;
+  box-shadow:
+    var(--wb-focus-ring, 0 0 0 2px hsl(var(--primary) / 0.65)),
+    var(--shadow-shell-soft, 0 2px 8px hsl(var(--shadow-base, 222 47% 11%) / 0.1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-chat-sandbox-panel {
+    animation: none;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-chat-sandbox-panel {
+  animation: none;
 }
 
 /*
@@ -96,8 +156,16 @@
   transition: none !important;
 }
 
-.wb-chat-surface[data-wb-render-paused] .chat-composer-motion-frame > div {
+.wb-chat-surface[data-wb-render-paused] .chat-composer-motion-frame > div,
+.wb-chat-surface[data-wb-render-paused] .wb-chat-sandbox-expand {
   transition: none !important;
+}
+
+/* 侧板入场动画在拖/缩期间同样让位（animation-play-state 不会自动下沉到后代） */
+.wb-chat-surface[data-wb-render-paused] .wb-chat-sandbox-panel,
+:root[data-wb-dragging] .wb-chat-sandbox-panel,
+:root[data-wb-settling] .wb-chat-sandbox-panel {
+  animation-play-state: paused;
 }
 
 /* CSS 兜底：即使某宿主漏挂 attr，根旗也能停常见宿主动画 */

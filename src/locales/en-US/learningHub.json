@@ -61,10 +61,9 @@
     "exportNoFormats": "This resource does not support export",
     "exportSaveTitle": "Export Resource",
     "exportSuccess": "Exported to: {{path}}",
-    "exportFailed": "Export failed"
-  ,
+    "exportFailed": "Export failed",
     "confirmDelete": "Confirm Delete",
-    "confirmDeleteWithRefs": "Confirm Delete With Refs {{count}}",
+    "confirmDeleteWithRefs": "This resource is referenced by {{count}} chats. Those chats will lose access after deletion. Delete anyway?",
     "favoriteError": "Favorite Error",
     "favoriteSuccess": "Favorite Success",
     "renameError": "Rename Error",
@@ -155,13 +154,11 @@
     "folderCannotAddToChat": "Folders cannot be added to chat",
     "unsupportedResourceType": "Unsupported resource type: {{type}}",
     "openResourceFailed": "Failed to open resource",
-    "imageDecodeFailed": "Failed to decode image"
-  ,
+    "imageDecodeFailed": "Failed to decode image",
     "resourceTypeMismatch": "Resource type mismatch: expected {{expected}}, received {{actual}}"
   },
   "errors": {
-    "openResourceFailed": "Failed to open resource"
-  ,
+    "openResourceFailed": "Failed to open resource",
     "createNotAllowed": "The current view does not support creating resources",
     "resourceDeletedOrMoved": "The resource was deleted or moved. The invalid tab has been closed.",
     "resourceNotFound": "The requested resource was not found"
@@ -316,8 +313,7 @@
     "textFiles": "Text Files",
     "presentationFiles": "Presentations/E-books",
     "dataFiles": "Data Files",
-    "selectFiles": "Select Learning Material Files"
-  ,
+    "selectFiles": "Select Learning Material Files",
     "importEmpty": "No textbooks were imported successfully"
   },
   "preview": {
@@ -434,6 +430,7 @@
       },
       "purpose": {
         "internalized": "Internalized",
+        "memorized": "Memorized",
         "supplementary": "Supplementary",
         "systemic": "Systemic"
       }
@@ -467,7 +464,9 @@
       "translationSuccess": "Translation created",
       "essaySuccess": "Essay created",
       "mindmapSuccess": "Mind map created",
-      "todoSuccess": "Todo list created"
+      "todoSuccess": "Todo list created",
+      "defaultFolderName": "Default Folder Name",
+      "notAllowedHere": "Not Allowed Here"
     },
     "quickAccess": {
       "desktop": "Desktop",
@@ -609,18 +608,13 @@
       "type": "Type",
       "asc": "Ascending",
       "desc": "Descending"
-    }
-  ,
+    },
     "canvas": {
       "addToChat": "Add To Chat",
       "adding": "Adding",
       "exitMultiSelect": "Exit Multi Select",
       "selectHint": "Select Hint",
       "selected": "Selected {{count}}"
-    },
-    "create": {
-      "defaultFolderName": "Default Folder Name",
-      "notAllowedHere": "Not Allowed Here"
     }
   },
   "quickCreate": {
@@ -718,8 +712,7 @@
     "type_fact": "Fact",
     "type_study": "Study",
     "type_note": "Note",
-    "or": "or"
-  ,
+    "or": "or",
     "audit_all_sources": "Audit all sources",
     "audit_all_status": "Audit all status",
     "audit_empty": "Audit empty",
@@ -755,6 +748,8 @@
     "delete_error": "Delete error",
     "delete_success": "Delete success",
     "deselect_all": "Deselect all",
+    "select_all": "Select all",
+    "edit": "Edit",
     "edit_error": "Edit error",
     "edit_success": "Edit success",
     "export": "Export",
@@ -768,6 +763,11 @@
     "frequency_changed": "Frequency changed",
     "hits": "Hits",
     "items": "Items",
+    "count": "{{count}} memories",
+    "list_view": "List view",
+    "tree_view": "Tree view",
+    "no_content": "(No content)",
+    "open_editor": "Editor",
     "no_profile": "No profile",
     "profile_empty": "Profile empty",
     "profile_title": "Profile title",
@@ -775,7 +775,45 @@
     "tree_empty": "Tree empty",
     "tree_load_error": "Tree load error",
     "tree_title": "Tree title",
-    "type": "Type"
+    "type": "Type",
+    "aria": {
+      "clear_search": "Clear search",
+      "refresh": "Refresh",
+      "tree_view": "Tree view",
+      "list_view": "List view",
+      "batch": "Batch select",
+      "export": "Export memories",
+      "profile": "Profile",
+      "audit_log": "Audit log",
+      "refresh_logs": "Refresh logs",
+      "cancel_batch_import": "Cancel batch import",
+      "cancel": "Cancel",
+      "delete": "Delete"
+    },
+    "operation": {
+      "write": "Write",
+      "write_smart": "Smart write",
+      "update": "Update",
+      "delete": "Delete",
+      "search": "Search",
+      "extract": "Extract",
+      "profile_refresh": "Profile refresh",
+      "category_refresh": "Category refresh",
+      "evolution_cycle": "Evolution",
+      "move": "Move",
+      "update_tags": "Update tags",
+      "add_relation": "Add relation",
+      "remove_relation": "Remove relation"
+    },
+    "audit_field": {
+      "note_id": "Note ID",
+      "content": "Content",
+      "folder": "Folder",
+      "confidence": "Confidence",
+      "reason": "Reason",
+      "session": "Session"
+    },
+    "open_folder": "Open folder"
   },
   "desktop": {
     "title": "Desktop",
@@ -910,7 +948,10 @@
       "ocrClearedReindexing": "OCR data cleared, re-indexing...",
       "ocrReindexComplete": "OCR and indexing completed",
       "ocrClearedButReindexFailed": "OCR cleared but re-indexing failed. Please click re-index manually",
-      "clearOcrFailed": "Failed to clear OCR"
+      "clearOcrFailed": "Failed to clear OCR",
+      "autoOcrCompleted": "Auto Ocr Completed",
+      "autoOcrPage": "Auto Ocr Page {{current}} {{total}}",
+      "autoOcrStarting": "Auto Ocr Starting {{pages}}"
     },
     "mmProgress": {
       "preparing": "{{prefix}}Preparing... ({{pages}} pages)",
@@ -966,7 +1007,12 @@
       "disabledReason": "Disabled Reason",
       "contentNote": "Content Note",
       "ocrTextIndexError": "OCR Text Index Error",
-      "nativeMmIndexError": "Native MM Index Error"
+      "nativeMmIndexError": "Native MM Index Error",
+      "viewOcrText": "View OCR text",
+      "viewTextChunks": "View text chunks ({{count}})",
+      "indexUnitCount": "{{count}} index units",
+      "ocrAndExtractedTitle": "OCR text / Extracted text",
+      "ocrText": "OCR text"
     },
     "summary": {
       "mmIndexed": "Indexed {{count}}",
@@ -993,12 +1039,6 @@
       "type": "Type:",
       "chunkIndex": "Chunk Index:"
     }
-  ,
-    "notification": {
-      "autoOcrCompleted": "Auto Ocr Completed",
-      "autoOcrPage": "Auto Ocr Page {{current}} {{total}}",
-      "autoOcrStarting": "Auto Ocr Starting {{pages}}"
-    }
   },
   "exam": {
     "mode": {
@@ -1024,7 +1064,12 @@
       "practice": "Practice",
       "wrongAnswers": "Wrong",
       "topics": "Topics",
-      "add": "OCR Import"
+      "add": "OCR Import",
+      "export": "Export",
+      "favorites": "Favorites",
+      "importCsv": "Import Csv",
+      "manage": "Manage",
+      "stats": "Stats"
     },
     "partialDeleteFailed": "{{success}} deleted, {{failed}} failed",
     "partialResetFailed": "{{success}} reset, {{failed}} failed",
@@ -1036,8 +1081,7 @@
       "deleteQuestionFailed": "Failed to delete question"
     },
     "syncConflictWarning": "{{count}} sync conflict(s) detected. Please review and resolve them.",
-    "untitledEssay": "Untitled Essay"
-  ,
+    "untitledEssay": "Untitled Essay",
     "deleteQuestionsSuccess": "Delete Questions Success {{count}}",
     "mockExamAutoSubmitFailed": "Mock Exam Auto Submit Failed",
     "mockExamAutoSubmitted": "Mock Exam Auto Submitted",
@@ -1045,20 +1089,27 @@
     "resetProgressSuccess": "Reset Progress Success {{count}}",
     "syncConflictsLoadFailed": "Sync Conflicts Load Failed",
     "syncStatusCheckFailed": "Sync Status Check Failed",
-    "tab": {
-      "export": "Export",
-      "favorites": "Favorites",
-      "importCsv": "Import Csv",
-      "manage": "Manage",
-      "stats": "Stats"
-    },
     "timedPracticeTimeout": "Timed Practice Timeout",
     "timer": {
       "pause": "Pause",
       "remaining": "Remaining",
       "resume": "Resume"
     },
-    "timerEnded": "Timer Ended"
+    "timerEnded": "Timer Ended",
+    "controlHints": {
+      "noQuestionsForSettings": "This question set has no questions. Upload questions before opening practice settings.",
+      "confirmEndReviewForSettings": "Confirm ending the current review session before opening practice settings.",
+      "noNavigableQuestions": "There are no navigable questions in this set.",
+      "questionNotFound": "Target question not found.",
+      "confirmDiscardToSwitchQuestion": "Confirm discarding unsaved content before switching questions.",
+      "setFiltersNeedsFilters": "setFilters requires a filters object.",
+      "confirmEndReviewForFilters": "Confirm ending the current review session before filtering questions.",
+      "confirmDiscardToHydratePractice": "Confirm discarding unsaved content before loading the practice session.",
+      "setPracticeModeNeedsMode": "setPracticeMode requires a mode.",
+      "modeNeedsLauncherConfig": "This practice mode must be configured on the practice launcher page.",
+      "byTagNeedsValidTag": "by_tag requires a valid tag in the current question set.",
+      "confirmDiscardToSwitchMode": "Confirm discarding unsaved content before switching practice mode."
+    }
   },
   "diagnostic": {
     "title": "Index Diagnostic Panel",

@@ -71,8 +71,8 @@ export function DockContextMenu({ typeId, children }: DockContextMenuProps) {
   // single：始终「打开」（已运行则禁用）；multi 有实例时「新建窗口」
   const openLabel =
     isMulti && wins.length > 0
-      ? t('workbench:dock.newWindow', '新建窗口')
-      : t('workbench:dock.open', '打开');
+      ? t('workbench:dock.newWindow')
+      : t('workbench:dock.open');
 
   const handleOpen = () => {
     workbenchBus.launch({ typeId, reason: 'dock' });
@@ -110,7 +110,7 @@ export function DockContextMenu({ typeId, children }: DockContextMenuProps) {
         {wins.length > 0 && (
           <>
             <AppMenuSeparator />
-            <AppMenuGroup label={t('workbench:dock.windows', '窗口')}>
+            <AppMenuGroup label={t('workbench:dock.windows')}>
               {wins.map((win) => {
                 const isForeground = win.id === foregroundId && !win.minimized;
                 return (
@@ -122,7 +122,7 @@ export function DockContextMenu({ typeId, children }: DockContextMenuProps) {
                     suffix={
                       win.minimized ? (
                         <span className="wb-dockmenu-min-tag">
-                          {t('workbench:dock.minimized', '已最小化')}
+                          {t('workbench:dock.minimized')}
                         </span>
                       ) : undefined
                     }
@@ -142,8 +142,8 @@ export function DockContextMenu({ typeId, children }: DockContextMenuProps) {
             onClick={() => toggleDockPinned(typeId)}
           >
             {isPinned
-              ? t('workbench:dock.unpin', '从 Dock 移除')
-              : t('workbench:dock.pin', '固定到 Dock')}
+              ? t('workbench:dock.unpin')
+              : t('workbench:dock.pin')}
           </AppMenuItem>
           {wins.length > 0 && (
             <AppMenuItem
@@ -152,7 +152,7 @@ export function DockContextMenu({ typeId, children }: DockContextMenuProps) {
               icon={<XCircle size={16} />}
               onClick={handleCloseAll}
             >
-              {t('workbench:dock.closeAll', '关闭全部窗口')}
+              {t('workbench:dock.closeAll')}
             </AppMenuItem>
           )}
         </AppMenuGroup>

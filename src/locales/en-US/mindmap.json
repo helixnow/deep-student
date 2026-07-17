@@ -123,7 +123,16 @@
     "splitMerge": "Split at caret / merge at line start",
     "multiSelect": "Range select / toggle select",
     "continuousCreate": "While editing: Enter creates next sibling",
-    "batchOps": "With multi-select: Tab / Delete batch ops"
+    "batchOps": "With multi-select: Tab / Delete batch ops",
+    "collapseExpandAll": "Collapse all / Expand all",
+    "marqueeSelect": "Marquee-select nodes",
+    "marqueeSelectKeys": "Drag blank area",
+    "marqueeSelectKeysPanMode": "⇧ + drag blank area",
+    "panCanvas": "Pan canvas",
+    "panCanvasKeys": "Space / Middle / Right button + drag",
+    "panCanvasKeysPanMode": "Drag blank area",
+    "associationEntryKeys": "Right-click node",
+    "associationAdd": "Add association (then click target)"
   },
   "embed": {
     "zoomIn": "Zoom in",
@@ -228,13 +237,17 @@
     "highlight": "Highlight",
     "unnamedNode": "Unnamed node",
     "untitled": "Untitled",
-    "emptyHint": "Click here or press Tab to add the first child node",
+    "emptyHint": "Press Enter to start typing the first node",
     "expandWithCount": "Expand ({{count}})",
     "selectedCount": "{{count}} selected",
     "batchComplete": "Complete",
-    "clearSelection": "Clear selection"
+    "clearSelection": "Clear selection",
+    "convertToTask": "Convert to task",
+    "removeTask": "Remove task"
   },
   "contextMenu": {
+    "clearColor": "Clear color",
+    "selectColor": "Select color {{color}}",
     "addSibling": "Add Sibling",
     "edit": "Edit",
     "editNote": "Edit Note",
@@ -259,7 +272,19 @@
     "copy": "Copy",
     "cut": "Cut",
     "pasteAsChild": "Paste as Child",
-    "linkResource": "Link Resource"
+    "linkResource": "Link Resource",
+    "addTopic": "New Topic",
+    "paste": "Paste",
+    "fitView": "Fit View",
+    "exitFocusMode": "Exit Focus Mode"
+  },
+  "association": {
+    "add": "Add association",
+    "pickTarget": "Click a target node",
+    "editLabel": "Edit label",
+    "delete": "Delete association",
+    "labelPlaceholder": "Label",
+    "doubleClickHint": "Double-click to edit"
   },
   "refs": {
     "pickerTitle": "Link Resource",
@@ -282,7 +307,9 @@
   "canvas": {
     "emptyTitle": "Start creating",
     "emptyHintBefore": "Click",
-    "emptyHintAfter": "to add your first node"
+    "emptyHintAfter": "to add your first node",
+    "dragModeSelect": "Select mode: drag blank area to marquee-select (pan with Space / middle / right button drag)",
+    "dragModePan": "Pan mode: drag blank area to pan (marquee-select with Shift + drag)"
   },
   "recite": {
     "title": "Recite Mode",

@@ -1,0 +1,361 @@
+/* NotesTrashDialog — class prefix: ntd- */
+
+.ntd-scrim {
+  position: absolute;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--notes-overlay-scrim);
+}
+
+.ntd-dialog {
+  position: relative;
+  width: min(420px, calc(100% - 32px));
+  min-height: 240px;
+  max-height: min(560px, calc(100% - 32px));
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup);
+  background: hsl(var(--popover));
+  box-shadow: var(--notes-dialog-shadow);
+  color: hsl(var(--foreground));
+  animation: ntd-popup-enter var(--notes-popup-enter-duration) var(--notes-popup-enter-easing);
+}
+
+.ntd-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ntd-header h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ntd-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.ntd-icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.ntd-icon-button:hover:not(:disabled) {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 55%);
+}
+
+.ntd-icon-button:focus-visible {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 55%);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.ntd-icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ntd-icon-button.is-danger:hover:not(:disabled) {
+  color: hsl(var(--destructive));
+  background: hsl(var(--destructive) / 12%);
+}
+
+.ntd-empty-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--destructive));
+  background: hsl(var(--background));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.ntd-empty-btn:hover:not(:disabled) {
+  border-color: hsl(var(--destructive) / 45%);
+  background: hsl(var(--destructive) / 10%);
+}
+
+.ntd-empty-btn:focus-visible {
+  border-color: hsl(var(--destructive) / 45%);
+  background: hsl(var(--destructive) / 10%);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.ntd-empty-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ntd-body {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.ntd-loading {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.ntd-loading i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: hsl(var(--muted-foreground));
+  animation: ntd-loading-pulse 0.9s ease-in-out infinite alternate;
+}
+
+.ntd-loading i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.ntd-loading i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes ntd-loading-pulse {
+  from { opacity: 0.45; }
+  to { opacity: 0.9; }
+}
+
+@keyframes ntd-popup-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.ntd-message {
+  min-height: 120px;
+  padding: 16px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  text-align: center;
+}
+
+.ntd-message[data-state='error'] {
+  color: hsl(var(--destructive));
+}
+
+.ntd-message button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.ntd-message button:hover:not(:disabled) {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+}
+
+.ntd-message button:focus-visible {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.ntd-list {
+  min-height: 0;
+  max-height: min(420px, 55vh);
+  overflow: auto;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.ntd-item {
+  min-height: 44px;
+  padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid hsl(var(--border) / 65%);
+  transition: background-color var(--notes-hover-transition);
+}
+
+/* 行 hover 轻着色，便于在列表中定位当前行 */
+.ntd-item:hover,
+.ntd-item:focus-within {
+  background: hsl(var(--muted) / 35%);
+}
+
+.ntd-item-icon {
+  flex: 0 0 auto;
+  color: hsl(var(--muted-foreground));
+  display: inline-flex;
+}
+
+.ntd-item-meta {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.ntd-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.ntd-item-time {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 80%);
+}
+
+.ntd-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+/* Nested confirm overlay (within scrim) */
+.ntd-confirm-scrim {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--notes-overlay-scrim);
+  border-radius: var(--notes-radius-popup);
+}
+
+.ntd-confirm {
+  width: min(320px, calc(100% - 28px));
+  padding: 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup);
+  background: hsl(var(--popover));
+  box-shadow: var(--notes-dialog-shadow);
+  animation: ntd-popup-enter var(--notes-popup-enter-duration) var(--notes-popup-enter-easing);
+}
+
+.ntd-confirm h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ntd-confirm p {
+  margin: 0 0 16px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ntd-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.ntd-confirm-actions button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+/* 次要（取消）按钮 hover：accent 底，与危险主按钮拉开层级 */
+.ntd-confirm-actions button:hover:not(:disabled) {
+  background: hsl(var(--accent));
+}
+
+.ntd-confirm-actions button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.ntd-confirm-actions button.is-danger {
+  border-color: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  background: hsl(var(--destructive));
+}
+
+/* 危险主按钮 hover：整体加深而非退回 accent */
+.ntd-confirm-actions button.is-danger:hover:not(:disabled) {
+  border-color: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
+  background: color-mix(in hsl, hsl(var(--destructive)) 86%, hsl(var(--shadow-base, 0 0% 0%)) 14%);
+}
+
+.ntd-confirm-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ntd-dialog,
+  .ntd-confirm {
+    animation: none;
+  }
+
+  .ntd-icon-button,
+  .ntd-empty-btn,
+  .ntd-message button,
+  .ntd-confirm-actions button,
+  .ntd-item {
+    transition: none;
+  }
+
+  .ntd-loading i {
+    animation: none;
+  }
+}

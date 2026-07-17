@@ -60,6 +60,7 @@ import { StyleSettings } from './components/toolbar/StylePanel';
 import { ReciteStatusBar } from './components/shared/ReciteStatusBar';
 import { Progress } from '@/components/ui/shad/Progress';
 import { useMindMapClipboard } from './hooks/useMindMapClipboard';
+import { useCanvasDragMode } from './hooks/useCanvasDragMode';
 import './styles/mindmap.css';
 
 /** 挂在 ActiveContext Provider 内，使大纲/画布共用剪贴板快捷键且受 isActive 门控 */
@@ -152,6 +153,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   const [showMobileStructure, setShowMobileStructure] = useState(false);
   const [showMobileStyle, setShowMobileStyle] = useState(false);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  // 画布空白拖拽模式（框选/平移）：快捷键帮助面板按当前模式展示对应操作
+  const [canvasDragMode] = useCanvasDragMode();
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
   // A6-16: 导入未保存确认改为声明式 NotionAlertDialog（替换 window.confirm）
@@ -187,6 +190,19 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     (next: 'outline' | 'mindmap') => {
       const prev = storeApi.getState().currentView;
       if (prev === next) return;
+
+      // 切换前显式提交正在编辑的文本：卸载 textarea 不会触发 React onBlur，
+      // 依赖 blur 同步派发 commit，避免快速切换丢失未提交字符。
+      const active = window.document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || active.isContentEditable)
+      ) {
+        active.blur();
+      }
+      const state = storeApi.getState();
+      if (state.editingNodeId) state.setEditingNodeId(null);
+      if (state.editingNoteNodeId) state.setEditingNoteNodeId(null);
 
       if (prev === 'outline') {
         const top = outlineViewRef.current?.getScrollTop() ?? 0;
@@ -336,14 +352,32 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     
     const filename = mindmapDocument.root.text || 'mindmap';
     
-    // 图片导出需要特殊处理：必须在思维导图视图才能导出
+    // 图片导出需要特殊处理：必须在思维导图视图才能导出。
+    // 大纲态触发时自动切到导图并等待 ReactFlow 完成渲染，而不是让用户手动切换后重试。
     if (format === 'png' || format === 'svg') {
       if (currentView !== 'mindmap') {
-        showGlobalNotification(
-          'warning',
-          t('mindmap:export.switchToMindMapView')
-        );
-        return;
+        switchView('mindmap');
+        const rendered = await new Promise<boolean>((resolve) => {
+          const start = Date.now();
+          const poll = () => {
+            const hasNodes = containerRef.current?.querySelector('.react-flow__node');
+            if (hasNodes) {
+              // 再等一帧让节点尺寸测量与布局稳定
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)));
+              return;
+            }
+            if (Date.now() - start > 3000) {
+              resolve(false);
+              return;
+            }
+            requestAnimationFrame(poll);
+          };
+          poll();
+        });
+        if (!rendered) {
+          showGlobalNotification('warning', t('mindmap:export.switchToMindMapView'));
+          return;
+        }
       }
       try {
         // ★ 修复：使用当前主题的背景色；传入容器 ref 避免多实例导出错误
@@ -424,7 +458,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
           t('mindmap:export.failed')
         );
     }
-  }, [mindmapDocument, currentView, t, currentTheme, storeApi]);
+  }, [mindmapDocument, currentView, switchView, t, currentTheme, storeApi]);
 
   // 实际执行导入（已确认或无未保存修改时调用）
   const doImport = useCallback(async () => {
@@ -1000,6 +1034,30 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
                   <Row keys={['↑ ↓ ← →']} label={t('mindmap:shortcuts.navigate')} />
                   <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
                   <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  <Row
+                    keys={['⌘/Ctrl + ⇧ + [/]']}
+                    label={t('mindmap:shortcuts.collapseExpandAll', { defaultValue: '全部折叠 / 全部展开' })}
+                  />
+                  <Row
+                    keys={[
+                      canvasDragMode === 'pan'
+                        ? t('mindmap:shortcuts.marqueeSelectKeysPanMode', { defaultValue: '⇧ + 拖拽空白处' })
+                        : t('mindmap:shortcuts.marqueeSelectKeys', { defaultValue: '拖拽空白处' }),
+                    ]}
+                    label={t('mindmap:shortcuts.marqueeSelect', { defaultValue: '框选多选节点' })}
+                  />
+                  <Row
+                    keys={[
+                      canvasDragMode === 'pan'
+                        ? t('mindmap:shortcuts.panCanvasKeysPanMode', { defaultValue: '拖拽空白处' })
+                        : t('mindmap:shortcuts.panCanvasKeys', { defaultValue: 'Space / 中键 / 右键 + 拖拽' }),
+                    ]}
+                    label={t('mindmap:shortcuts.panCanvas', { defaultValue: '平移画布' })}
+                  />
+                  <Row
+                    keys={[t('mindmap:shortcuts.associationEntryKeys', { defaultValue: '右键节点' })]}
+                    label={t('mindmap:shortcuts.associationAdd', { defaultValue: '添加关联线（再点目标）' })}
+                  />
                   <Row keys={['⌘/Ctrl + B']} label={t('mindmap:shortcuts.bold')} />
                   <Row keys={['⌘/Ctrl + C/X/V']} label={t('mindmap:shortcuts.clipboard')} />
                   <Row keys={['Del / ⌫']} label={t('mindmap:shortcuts.deleteNode')} />
@@ -1015,6 +1073,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
                   <Row keys={['↑ ↓']} label={t('mindmap:shortcuts.navigate')} />
                   <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
                   <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  <Row
+                    keys={['⌘/Ctrl + ⇧ + [/]']}
+                    label={t('mindmap:shortcuts.collapseExpandAll', { defaultValue: '全部折叠 / 全部展开' })}
+                  />
                   <Row keys={['⌘/Ctrl + ⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
                   <Row keys={['⌘/Ctrl + C/X/V']} label={t('mindmap:shortcuts.clipboard')} />
                 </Group>

@@ -158,12 +158,12 @@ export const AboutTab: React.FC = () => {
             </div>
           </div>
           <div className="sm:w-2/3">
-            <GroupTitle title={t('acknowledgements.developer.title', '开发信息')} />
+            <GroupTitle title={t('acknowledgements.developer.title')} />
             <div className="space-y-px">
-              <SettingRow title={t('acknowledgements.developer.fields.developer', '开发者')}>
+              <SettingRow title={t('acknowledgements.developer.fields.developer')}>
                 <span className="text-sm text-foreground/90">DeepStudent Team</span>
               </SettingRow>
-            <SettingRow title={t('acknowledgements.developer.fields.version', '版本')}>
+            <SettingRow title={t('acknowledgements.developer.fields.version')}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-mono text-foreground/90 whitespace-nowrap">
                   {VERSION_INFO.FULL_VERSION}
@@ -178,38 +178,38 @@ export const AboutTab: React.FC = () => {
                 >
                   <ArrowClockwise size={12} className={`mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
                   {updater.checking
-                    ? t('about.update.checking', '检查中...')
-                    : t('about.update.check', '检查更新')}
+                    ? t('about.update.checking')
+                    : t('about.update.check')}
                 </NotionButton>
               </div>
             </SettingRow>
 
             <SettingRow
-              title={t('about.update.channel', '更新渠道')}
+              title={t('about.update.channel')}
               description={channel === 'experimental'
-                ? t('about.update.channelExpDesc', '接收实验版更新，可能包含未充分测试的功能')
-                : t('about.update.channelStableDesc', '仅接收经过验证的稳定版更新')}
+                ? t('about.update.channelExpDesc')
+                : t('about.update.channelStableDesc')}
             >
               <Select value={channel} onValueChange={(val) => handleChannelChange(val as UpdateChannel)}>
                 <SelectTrigger className="h-6 px-1.5 text-xs w-auto min-h-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="stable">{t('about.update.channelStable', '稳定版')}</SelectItem>
-                  <SelectItem value="experimental">{t('about.update.channelExp', '实验版')}</SelectItem>
+                  <SelectItem value="stable">{t('about.update.channelStable')}</SelectItem>
+                  <SelectItem value="experimental">{t('about.update.channelExp')}</SelectItem>
                 </SelectContent>
               </Select>
             </SettingRow>
 
             <SettingRow
-              title={t('about.update.frequency', '自动检查更新')}
+              title={t('about.update.frequency')}
               description={noRemind
-                ? t('about.update.frequencyNoRemindDesc', '已关闭自动更新提醒，点击重新开启')
+                ? t('about.update.frequencyNoRemindDesc')
                 : frequency === 'never'
-                  ? t('about.update.frequencyNeverDesc', '不会自动检查更新，可手动检查')
+                  ? t('about.update.frequencyNeverDesc')
                   : frequency === 'every_n_days'
-                    ? t('about.update.frequencyDaysDesc', '每 {{days}} 天自动检查一次', { days: frequencyDays })
-                    : t('about.update.frequencyLaunchDesc', '每次启动时自动检查')}
+                    ? t('about.update.frequencyDaysDesc', { days: frequencyDays })
+                    : t('about.update.frequencyLaunchDesc')}
             >
               <div className="flex items-center gap-1.5">
                 {noRemind ? (
@@ -219,7 +219,7 @@ export const AboutTab: React.FC = () => {
                     onClick={handleResetNoRemind}
                     className="h-6 px-2 text-xs text-primary"
                   >
-                    {t('about.update.frequencyReEnable', '重新开启')}
+                    {t('about.update.frequencyReEnable')}
                   </NotionButton>
                 ) : (
                   <>
@@ -228,9 +228,9 @@ export const AboutTab: React.FC = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="every_launch">{t('about.update.freqEveryLaunch', '每次启动')}</SelectItem>
-                        <SelectItem value="every_n_days">{t('about.update.freqEveryNDays', '每 N 天')}</SelectItem>
-                        <SelectItem value="never">{t('about.update.freqNever', '永不')}</SelectItem>
+                        <SelectItem value="every_launch">{t('about.update.freqEveryLaunch')}</SelectItem>
+                        <SelectItem value="every_n_days">{t('about.update.freqEveryNDays')}</SelectItem>
+                        <SelectItem value="never">{t('about.update.freqNever')}</SelectItem>
                       </SelectContent>
                     </Select>
                     {frequency === 'every_n_days' && (
@@ -252,7 +252,7 @@ export const AboutTab: React.FC = () => {
             {updater.upToDate && !updater.available && (
               <div className="mx-1 p-2 rounded-lg bg-green-500/5 border border-green-500/20">
                 <p className="text-xs text-green-600 dark:text-green-400">
-                  ✓ {t('about.update.upToDate', '已是最新版本')}
+                  ✓ {t('about.update.upToDate')}
                 </p>
               </div>
             )}
@@ -263,7 +263,7 @@ export const AboutTab: React.FC = () => {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">
-                      {t('about.update.available', '发现新版本')}: v{updater.info.version}
+                      {t('about.update.available')}: v{updater.info.version}
                     </p>
                     {updater.info.body && (() => {
                       const md = updater.info!.body!
@@ -297,7 +297,7 @@ export const AboutTab: React.FC = () => {
                           className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                         >
                           <Download size={14} />
-                          {t('about.update.mirrorDownload', '镜像下载')}
+                          {t('about.update.mirrorDownload')}
                         </a>
                       )}
                       <a
@@ -307,7 +307,7 @@ export const AboutTab: React.FC = () => {
                         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
                       >
                         <GithubLogo size={14} />
-                        {t('about.update.githubDownload', 'GitHub 下载')}
+                        {t('about.update.githubDownload')}
                       </a>
                     </div>
                   ) : (
@@ -319,8 +319,8 @@ export const AboutTab: React.FC = () => {
                     >
                       <Download size={14} className={`mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
                       {updater.downloading
-                        ? t('about.update.downloading', '下载中...')
-                        : t('about.update.install', '下载更新')}
+                        ? t('about.update.downloading')
+                        : t('about.update.install')}
                     </NotionButton>
                   )}
                 </div>
@@ -342,19 +342,19 @@ export const AboutTab: React.FC = () => {
                 <p className={`text-xs ${
                   updater.error.phase === 'relaunch' ? 'text-amber-600 dark:text-amber-400' : 'text-destructive'
                 }`}>
-                  {updater.error.phase === 'check' && `${t('about.update.error.check', '检查更新失败')}：`}
-                  {updater.error.phase === 'download' && `${t('about.update.error.download', '下载失败')}：`}
-                  {updater.error.phase === 'install' && `${t('about.update.error.install', '安装失败')}：`}
-                  {updater.error.phase === 'unavailable' && t('about.update.error.unavailable', '更新已不可用，请稍后重试')}
+                  {updater.error.phase === 'check' && `${t('about.update.error.check')}：`}
+                  {updater.error.phase === 'download' && `${t('about.update.error.download')}：`}
+                  {updater.error.phase === 'install' && `${t('about.update.error.install')}：`}
+                  {updater.error.phase === 'unavailable' && t('about.update.error.unavailable')}
                   {updater.error.phase !== 'relaunch' && updater.error.phase !== 'unavailable' && updater.error.message}
-                  {updater.error.phase === 'relaunch' && t('about.update.error.relaunch', '更新已安装，请手动重启应用以完成更新')}
+                  {updater.error.phase === 'relaunch' && t('about.update.error.relaunch')}
                 </p>
               </div>
             )}
-            <SettingRow title={t('acknowledgements.developer.fields.license', '许可证')}>
+            <SettingRow title={t('acknowledgements.developer.fields.license')}>
               <span className="text-sm text-foreground/90">AGPL-3.0-or-later</span>
             </SettingRow>
-            <SettingRow title={t('acknowledgements.developer.fields.platforms', '平台支持')}>
+            <SettingRow title={t('acknowledgements.developer.fields.platforms')}>
               <span className="text-sm text-foreground/90">
                 {t('acknowledgements.developer.values.platforms', 'Windows / macOS / iPadOS / Android')}
               </span>
@@ -364,12 +364,12 @@ export const AboutTab: React.FC = () => {
         </div>
 
         <div className="mt-8">
-          <GroupTitle title={t('acknowledgements.links.title', '官方链接')} />
+          <GroupTitle title={t('acknowledgements.links.title')} />
           <div className="space-y-px">
             {[
-              { icon: Globe, label: t('acknowledgements.links.website', '访问官网'), href: 'https://www.deepstudent.cn' },
+              { icon: Globe, label: t('acknowledgements.links.website'), href: 'https://www.deepstudent.cn' },
               { icon: GithubLogo, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/helixnow/deep-student' },
-              { icon: Bug, label: t('acknowledgements.links.issues', 'Issue 反馈'), href: 'https://github.com/helixnow/deep-student/issues' },
+              { icon: Bug, label: t('acknowledgements.links.issues'), href: 'https://github.com/helixnow/deep-student/issues' },
             ].map((item) => (
               <AboutActionRow
                 key={item.href}
@@ -381,21 +381,21 @@ export const AboutTab: React.FC = () => {
             ))}
             <AboutActionRow
               icon={PhosphorShield}
-              label={t('legal.settingsSection.viewPrivacyPolicy', '查看隐私政策')}
+              label={t('legal.settingsSection.viewPrivacyPolicy')}
               onClick={() => setShowPrivacyPolicy(true)}
             />
           </div>
         </div>
 
         <div className="mt-8">
-          <GroupTitle title={t('acknowledgements.partners.title', '技术合作伙伴致谢')} />
+          <GroupTitle title={t('acknowledgements.partners.title')} />
           <div className="flex items-start justify-between gap-4 px-1 py-1.5">
             <div className="min-w-0 flex-1 max-w-3xl">
               <h4 className="text-sm font-medium text-foreground/90">
                 {t('acknowledgements.partners.cards.siliconflow.title', 'SiliconFlow')}
               </h4>
               <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground/70">
-                {t('acknowledgements.partners.cards.siliconflow.description', '提供多模态与推理模型服务，保障 DeepStudent 在国产算力生态中的高效稳定运行。')}
+                {t('acknowledgements.partners.cards.siliconflow.description')}
               </p>
             </div>
             <SiliconFlowLogo

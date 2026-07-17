@@ -20,7 +20,7 @@
 
 .wb-agenda-widget:hover,
 .wb-agenda-widget:focus-within {
-  box-shadow: var(--wb-shadow-focus, var(--wb-shadow-idle));
+  box-shadow: var(--wb-shadow-focused, var(--wb-shadow-idle));
 }
 
 .wb-agenda-header,
@@ -45,12 +45,22 @@
 .wb-agenda-month {
   min-width: 0;
   gap: 10px;
-  padding: 0;
+
+  /* 负边距抵消 padding：hover 药丸不改变排版基线 */
+  margin: -3px -7px;
+  padding: 3px 7px;
   border: 0;
+  border-radius: 8px;
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.wb-agenda-month:hover,
+.wb-agenda-month:focus-visible {
+  background: var(--interactive-hover, hsl(var(--foreground) / 6%));
 }
 
 .wb-agenda-month-copy {
@@ -108,6 +118,12 @@
 .wb-agenda-add-button {
   margin-left: 2px;
   background: hsl(var(--primary) / 13%);
+  color: hsl(var(--primary));
+}
+
+.wb-agenda-add-button:hover,
+.wb-agenda-add-button:focus-visible {
+  background: hsl(var(--primary) / 22%);
   color: hsl(var(--primary));
 }
 
@@ -245,6 +261,23 @@
   font: inherit;
   font-size: 10px;
   font-weight: 600;
+  opacity: 0.9;
+  transition: opacity 120ms ease;
+}
+
+.wb-agenda-open-button:hover,
+.wb-agenda-open-button:focus-visible {
+  opacity: 1;
+}
+
+/* hover 时箭头轻微右移，暗示可跳转 */
+.wb-agenda-open-button svg {
+  transition: transform 120ms ease;
+}
+
+.wb-agenda-open-button:hover svg,
+.wb-agenda-open-button:focus-visible svg {
+  transform: translateX(2px);
 }
 
 .wb-agenda-list {
@@ -300,6 +333,16 @@
   box-shadow: inset 0 0 0 3px hsl(var(--background) / 70%);
   background: hsl(var(--primary) / 50%);
   transform: scale(1.08);
+}
+
+/* 完成请求进行中：圆点实心填充，让白色对勾有足够对比度 */
+.wb-agenda-check:disabled {
+  cursor: default;
+}
+
+.wb-agenda-check:disabled > span {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
 }
 
 .wb-agenda-item-main {
@@ -397,6 +440,15 @@
   background: transparent;
   color: hsl(var(--primary));
   cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 120ms ease;
+}
+
+.wb-agenda-more:hover,
+.wb-agenda-more:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .wb-agenda-error {

@@ -465,7 +465,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
             onChange={e => setSearchQuery(e.target.value)}
             placeholder={models.length > 0
               ? t('settings:vendor_model_fetcher.search_placeholder')
-              : t('settings:vendor_model_fetcher.search_placeholder_empty', { defaultValue: '\u83b7\u53d6\u6a21\u578b\u5217\u8868\u540e\u53ef\u641c\u7d22...' })
+              : t('settings:vendor_model_fetcher.search_placeholder_empty')
             }
             className="pl-8 h-7 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
             disabled={models.length === 0}
@@ -514,7 +514,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                 className="text-[11px] h-6 px-2"
               >
                 {addingAll ? <Spinner className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-                {t('settings:vendor_model_fetcher.add_all_new', { defaultValue: '\u5168\u90e8\u6dfb\u52a0 ({{count}})', count: newModels.length })}
+                {t('settings:vendor_model_fetcher.add_all_new', { count: newModels.length })}
               </NotionButton>
             )}
           </div>
@@ -635,8 +635,8 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
         /* 空状态：未获取 */
         <div className="px-3 py-6 text-center text-xs text-muted-foreground">
           {hasApiKey && hasBaseUrl
-            ? t('settings:vendor_model_fetcher.click_fetch', { defaultValue: '\u70b9\u51fb\u4e0a\u65b9\u6309\u94ae\u83b7\u53d6\u53ef\u7528\u6a21\u578b\u5217\u8868' })
-            : t('settings:vendor_model_fetcher.need_config', { defaultValue: '\u8bf7\u5148\u914d\u7f6e\u63a5\u53e3\u5730\u5740\u548c API Key' })
+            ? t('settings:vendor_model_fetcher.click_fetch')
+            : t('settings:vendor_model_fetcher.need_config')
           }
         </div>
       ) : null}

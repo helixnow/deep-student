@@ -271,6 +271,9 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   if (!rendered) return null;
 
   const listClass = viewMode === 'grid' ? 'wb-apps-grid' : 'wb-apps-list';
+  // 焦点常驻搜索框：用 aria-activedescendant 告知 AT 当前选中的应用项
+  const activeOptionId =
+    apps.length > 0 && apps[activeIndex] ? `wb-apps-option-${apps[activeIndex].typeId}` : undefined;
 
   return (
     <div
@@ -291,17 +294,17 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
         className="wb-glass wb-glass-highlight wb-apps-panel"
         role="dialog"
         aria-modal="true"
-        aria-label={t('workbench:appsPanel.title', '全部应用')}
+        aria-label={t('workbench:appsPanel.title')}
         tabIndex={-1}
       >
         <div className="wb-apps-header">
-          <h2 className="wb-apps-title">{t('workbench:appsPanel.title', '全部应用')}</h2>
-          <div className="wb-apps-view-toggle" role="group" aria-label={t('workbench:appsPanel.view', '视图')}>
+          <h2 className="wb-apps-title">{t('workbench:appsPanel.title')}</h2>
+          <div className="wb-apps-view-toggle" role="group" aria-label={t('workbench:appsPanel.view')}>
             <button
               type="button"
               className="wb-apps-view-btn"
               aria-pressed={viewMode === 'grid'}
-              aria-label={t('workbench:appsPanel.gridView', '网格')}
+              aria-label={t('workbench:appsPanel.gridView')}
               data-testid="wb-apps-view-grid"
               onClick={() => setViewMode('grid')}
             >
@@ -311,7 +314,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
               type="button"
               className="wb-apps-view-btn"
               aria-pressed={viewMode === 'list'}
-              aria-label={t('workbench:appsPanel.listView', '列表')}
+              aria-label={t('workbench:appsPanel.listView')}
               data-testid="wb-apps-view-list"
               onClick={() => setViewMode('list')}
             >
@@ -322,7 +325,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
             type="button"
             className="wb-apps-close"
             onClick={closeAppsPanel}
-            aria-label={t('workbench:appsPanel.close', '关闭')}
+            aria-label={t('workbench:appsPanel.close')}
             data-testid="wb-apps-close"
           >
             <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
@@ -348,8 +351,10 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
               setQuery(e.target.value);
               setActiveIndex(0);
             }}
-            placeholder={t('workbench:appsPanel.searchPlaceholder', '搜索应用')}
-            aria-label={t('workbench:appsPanel.searchPlaceholder', '搜索应用')}
+            placeholder={t('workbench:appsPanel.searchPlaceholder')}
+            aria-label={t('workbench:appsPanel.searchPlaceholder')}
+            aria-controls="wb-apps-listbox"
+            aria-activedescendant={activeOptionId}
             autoComplete="off"
             spellCheck={false}
           />
@@ -357,11 +362,24 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
 
         <div className="wb-apps-body" ref={listRef}>
           {apps.length === 0 ? (
-            <p className="wb-apps-empty" data-testid="wb-apps-empty">
-              {t('workbench:appsPanel.empty', '没有匹配的应用')}
-            </p>
+            <div className="wb-apps-empty" data-testid="wb-apps-empty" role="status">
+              <span className="wb-apps-empty-icon" aria-hidden>
+                <MagnifyingGlass size={20} />
+              </span>
+              <span className="wb-apps-empty-title">
+                {t('workbench:appsPanel.empty')}
+              </span>
+              <span className="wb-apps-empty-hint">
+                {t('workbench:appsPanel.emptyHint')}
+              </span>
+            </div>
           ) : (
-            <ul className={listClass} role="listbox" aria-label={t('workbench:appsPanel.title', '全部应用')}>
+            <ul
+              id="wb-apps-listbox"
+              className={listClass}
+              role="listbox"
+              aria-label={t('workbench:appsPanel.title')}
+            >
               {apps.map((app, index) => {
                 const name = t(app.nameKey, app.typeId);
                 const active = index === activeIndex;
@@ -370,6 +388,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
                     <button
                       type="button"
                       role="option"
+                      id={`wb-apps-option-${app.typeId}`}
                       className="wb-apps-item"
                       data-testid={`wb-apps-item-${app.typeId}`}
                       data-wb-apps-index={index}
@@ -391,7 +410,18 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
         </div>
 
         <div className="wb-apps-footer">
-          {t('workbench:appsPanel.hint', '↑↓←→ 选择 · Enter 打开 · Esc 关闭')}
+          <span className="wb-apps-footer-hint">
+            <kbd>↑↓←→</kbd>
+            {t('workbench:appsPanel.hintSelect')}
+          </span>
+          <span className="wb-apps-footer-hint">
+            <kbd>Enter</kbd>
+            {t('workbench:appsPanel.hintOpen')}
+          </span>
+          <span className="wb-apps-footer-hint">
+            <kbd>Esc</kbd>
+            {t('workbench:appsPanel.hintClose')}
+          </span>
         </div>
       </div>
     </div>

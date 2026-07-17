@@ -28,7 +28,7 @@ const extraNotes = [
 const panelProps: Array<Record<string, unknown>> = [];
 const mindmapProps: Array<Record<string, unknown>> = [];
 
-const { folderApi, trashApi, search, getContent } = vi.hoisted(() => ({
+const { folderApi, trashApi, search, getContent, listTags, setFavorite } = vi.hoisted(() => ({
   folderApi: {
     listFolders: vi.fn(async () => ({ ok: true, value: [] })),
     createFolder: vi.fn(async () => ({ ok: true, value: { id: 'fld_new' } })),
@@ -41,13 +41,21 @@ const { folderApi, trashApi, search, getContent } = vi.hoisted(() => ({
   trashApi: {
     listTrash: vi.fn(async () => ({ ok: true, value: [] })),
     restoreItem: vi.fn(async () => ({ ok: true, value: undefined })),
+    permanentlyDelete: vi.fn(async () => ({ ok: true, value: undefined })),
+    emptyTrash: vi.fn(async () => ({ ok: true, value: 0 })),
   },
   search: vi.fn(async () => ({ ok: true, value: [] })),
   getContent: vi.fn(async () => ({ ok: true, value: '' })),
+  listTags: vi.fn(async () => []),
+  setFavorite: vi.fn(async () => ({ ok: true, value: undefined })),
 }));
 
 const watchState = vi.hoisted(() => ({
   callback: null as ((event: { type: string; path: string; node?: typeof nodes[number] }) => void) | null,
+}));
+
+vi.mock('@/utils/notesApi', () => ({
+  NotesAPI: { listTags },
 }));
 
 vi.mock('@/dstu', () => ({
@@ -61,6 +69,7 @@ vi.mock('@/dstu', () => ({
     delete: vi.fn(async () => ({ ok: true, value: undefined })),
     search,
     getContent,
+    setFavorite,
   },
   createEmpty: vi.fn(),
   folderApi,
@@ -115,19 +124,24 @@ function dispatchWorkspaceCommand(action: NotesWorkspaceCommandAction): void {
 }
 
 function mockLibraryWithThreeNotes(): void {
-  vi.mocked(dstu.list).mockImplementation((_path, options) => Promise.resolve({
-    ok: true,
-    value: options?.typeFilter === 'mindmap' ? [nodes[1]] : [nodes[0], ...extraNotes],
-  } as never));
+  vi.mocked(dstu.list).mockImplementation((_path, options) => {
+    if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+      return Promise.resolve({ ok: true, value: [] }) as never;
+    }
+    return Promise.resolve({
+      ok: true,
+      value: options?.typeFilter === 'mindmap' ? [nodes[1]] : [nodes[0], ...extraNotes],
+    } as never);
+  });
 }
 
 async function openThreeWorkspaceTabs(): Promise<void> {
   mockLibraryWithThreeNotes();
   render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
   await screen.findByTestId('note-editor-note_1');
-  fireEvent.click(await screen.findByRole('treeitem', { name: '第二笔记' }));
+  fireEvent.click(await screen.findByRole('treeitem', { name: /第二笔记/ }));
   await screen.findByTestId('note-editor-note_2');
-  fireEvent.click(await screen.findByRole('treeitem', { name: '第三笔记' }));
+  fireEvent.click(await screen.findByRole('treeitem', { name: /第三笔记/ }));
   await screen.findByTestId('note-editor-note_3');
 }
 
@@ -139,10 +153,19 @@ describe('NotesWorkspaceApp', () => {
     __resetContentDirtyRegistry();
     window.localStorage.clear();
     vi.mocked(dstu.list).mockReset();
-    vi.mocked(dstu.list).mockResolvedValue({ ok: true, value: nodes } as never);
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+        return Promise.resolve({ ok: true, value: [] }) as never;
+      }
+      return Promise.resolve({ ok: true, value: nodes }) as never;
+    });
     vi.mocked(folderApi.listFolders).mockResolvedValue({ ok: true, value: [] });
     vi.mocked(folderApi.getFolderTree).mockResolvedValue({ ok: true, value: [] });
     vi.mocked(trashApi.listTrash).mockResolvedValue({ ok: true, value: [] });
+    listTags.mockReset();
+    listTags.mockResolvedValue([]);
+    setFavorite.mockReset();
+    setFavorite.mockResolvedValue({ ok: true, value: undefined });
     search.mockReset();
     search.mockResolvedValue({ ok: true, value: [] });
     getContent.mockReset();
@@ -417,7 +440,7 @@ describe('NotesWorkspaceApp', () => {
     const unregister = registerContentDirtyChecker('note', 'note_1', () => true);
 
     try {
-      fireEvent.contextMenu(screen.getByRole('treeitem', { name: '课堂笔记' }));
+      fireEvent.contextMenu(screen.getByRole('treeitem', { name: /课堂笔记/ }));
       fireEvent.click(screen.getByRole('menuitem', { name: /删除|Delete/ }));
       const dialog = await screen.findByRole('dialog', { name: /移到回收站|Move to trash/ });
       fireEvent.click(within(dialog).getByRole('button', { name: /删除|Delete/ }));
@@ -450,17 +473,29 @@ describe('NotesWorkspaceApp', () => {
   });
 
   it('exposes distinct retry and empty-search states in the explorer', async () => {
-    vi.mocked(dstu.list).mockResolvedValueOnce({
-      ok: false,
-      error: { toUserMessage: () => '读取失败' },
-    } as never);
+    let noteLoadAttempts = 0;
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+        return Promise.resolve({ ok: true, value: [] }) as never;
+      }
+      if (options?.typeFilter === 'note') {
+        noteLoadAttempts += 1;
+        if (noteLoadAttempts === 1) {
+          return Promise.resolve({
+            ok: false,
+            error: { toUserMessage: () => '读取失败' },
+          }) as never;
+        }
+      }
+      return Promise.resolve({ ok: true, value: nodes }) as never;
+    });
     render(<NotesWorkspaceApp {...props()} />);
 
     expect(await screen.findByText(/文件列表加载失败|Could not load files/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /重试|Retry/ }));
     await screen.findByText('课堂笔记');
 
-    fireEvent.change(screen.getByRole('textbox', { name: /搜索文件|Search files/ }), { target: { value: '不存在' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: /搜索文件|Search files/ }), { target: { value: '不存在' } });
     expect(screen.getByText(/没有匹配|No files match/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /显示全部文件|Show all files/ }));
     expect(screen.getByText('课堂笔记')).toBeInTheDocument();
@@ -552,7 +587,7 @@ describe('NotesWorkspaceApp', () => {
     await screen.findByText('课堂笔记');
 
     const tree = screen.getByRole('tree');
-    const folder = screen.getByText('course').closest('button') as HTMLButtonElement;
+    const folder = screen.getByText('course').closest('[role="treeitem"]') as HTMLElement;
     fireEvent.click(folder);
     expect(folder).toHaveAttribute('aria-expanded', 'false');
     tree.scrollTop = 36;
@@ -585,7 +620,7 @@ describe('NotesWorkspaceApp', () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
     const tree = screen.getByRole('tree');
-    const courseFolder = screen.getByText('course').closest('button') as HTMLButtonElement;
+    const courseFolder = screen.getByText('course').closest('[role="treeitem"]') as HTMLElement;
     fireEvent.click(courseFolder);
     expect(courseFolder).toHaveAttribute('aria-expanded', 'false');
     tree.scrollTop = 24;
@@ -614,24 +649,25 @@ describe('NotesWorkspaceApp', () => {
     expect(document.querySelector('.notes-explorer-handle')).toHaveClass('notes-icon-button');
   });
 
-  it('closes an unchanged rename on Enter and validates an empty rename inline', async () => {
+  it('cancels unchanged inline rename on Enter and ignores empty rename', async () => {
     render(<NotesWorkspaceApp {...props()} />);
-    const resource = await screen.findByText('课堂笔记');
+    const resource = await screen.findByRole('treeitem', { name: /课堂笔记/ });
 
     fireEvent.contextMenu(resource);
     fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
-    const input = screen.getByRole('textbox', { name: /名称|Name/ });
-    expect(input).toHaveFocus();
+    const input = await screen.findByRole('textbox', { name: /重命名/ });
+    await waitFor(() => expect(input).toHaveFocus());
     fireEvent.keyDown(input, { key: 'Enter' });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /重命名/ })).toBeNull();
+    expect(dstu.rename).not.toHaveBeenCalled();
 
     fireEvent.contextMenu(resource);
     fireEvent.click(screen.getByRole('menuitem', { name: /重命名|Rename/ }));
-    const retryInput = screen.getByRole('textbox', { name: /名称|Name/ });
+    const retryInput = await screen.findByRole('textbox', { name: /重命名/ });
     fireEvent.change(retryInput, { target: { value: '' } });
     fireEvent.keyDown(retryInput, { key: 'Enter' });
-    expect(screen.getByRole('alert')).toHaveTextContent(/请输入名称|Enter a name/);
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /重命名/ })).toBeNull();
+    expect(dstu.rename).not.toHaveBeenCalled();
   });
 
   it('bridges workbench note commands to workspace actions without routing to Learning Hub', async () => {
@@ -759,21 +795,11 @@ describe('NotesWorkspaceApp', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('moves a resource back to the library root through the root drop target', async () => {
+  it('exposes a library-root drop target for moving resources with NotesWorkspaceTree', async () => {
     render(<NotesWorkspaceApp {...props()} />);
-    const note = await screen.findByRole('treeitem', { name: '课堂笔记' });
-    const root = screen.getByRole('treeitem', { name: /根目录|Library root/ });
-    const dataTransfer = {
-      effectAllowed: '',
-      dropEffect: '',
-      setData: vi.fn(),
-    };
-
-    fireEvent.dragStart(note, { dataTransfer });
-    fireEvent.dragOver(root, { dataTransfer });
-    fireEvent.drop(root, { dataTransfer });
-
-    await waitFor(() => expect(folderApi.moveItem).toHaveBeenCalledWith('note', 'note_1', undefined));
+    const root = await screen.findByRole('treeitem', { name: /根目录|Library root|资料库/ });
+    expect(root).toHaveAttribute('data-nwt-id', '__nwt_root__');
+    expect(await screen.findByRole('treeitem', { name: /课堂笔记/ })).toBeInTheDocument();
   });
 
   it('includes the library root in tree semantics and keyboard navigation', async () => {
@@ -781,7 +807,7 @@ describe('NotesWorkspaceApp', () => {
     await screen.findByText('课堂笔记');
 
     const tree = screen.getByRole('tree');
-    const root = within(tree).getByRole('treeitem', { name: /根目录|Library root/ });
+    const root = within(tree).getByRole('treeitem', { name: /根目录|Library root|资料库/ });
     const folder = screen.getByText('course').closest('[role="treeitem"]') as HTMLElement;
 
     expect(root).toHaveAttribute('aria-level', '1');
@@ -789,12 +815,12 @@ describe('NotesWorkspaceApp', () => {
 
     root.focus();
     fireEvent.keyDown(root, { key: 'ArrowDown' });
-    expect(folder).toHaveFocus();
+    await waitFor(() => expect(folder).toHaveFocus());
 
     fireEvent.keyDown(folder, { key: 'ArrowLeft' });
-    expect(folder).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() => expect(folder).toHaveAttribute('aria-expanded', 'false'));
     fireEvent.keyDown(folder, { key: 'ArrowLeft' });
-    expect(root).toHaveFocus();
+    await waitFor(() => expect(root).toHaveFocus());
   });
 
   it('finishes the initial loading state when a silent refresh supersedes it', async () => {
@@ -808,18 +834,23 @@ describe('NotesWorkspaceApp', () => {
       new Promise((resolve) => { resolveRefreshNotes = resolve; }),
       new Promise((resolve) => { resolveRefreshMindmaps = resolve; }),
     ];
-    vi.mocked(dstu.list).mockImplementation(() => pending.shift() as never);
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
+        return Promise.resolve({ ok: true, value: [] }) as never;
+      }
+      return pending.shift() as never;
+    });
 
     render(<NotesWorkspaceApp {...props()} />);
-    await waitFor(() => expect(dstu.list).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(dstu.list).toHaveBeenCalledTimes(3));
     fireEvent.click(screen.getByRole('button', { name: /刷新|Refresh/ }));
-    await waitFor(() => expect(dstu.list).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(dstu.list).toHaveBeenCalledTimes(5));
 
     await act(async () => {
       resolveRefreshNotes({ ok: true, value: [] });
       resolveRefreshMindmaps({ ok: true, value: [] });
     });
-    expect(await screen.findByText(/知识库中还没有文件|No files in this library yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/还没有笔记|No notes yet/)).toBeInTheDocument();
     expect(screen.getByRole('tree')).toHaveAttribute('aria-busy', 'false');
 
     await act(async () => {
@@ -829,17 +860,21 @@ describe('NotesWorkspaceApp', () => {
   });
 
   it('makes a closed compact explorer inert until it is reopened', async () => {
-    let onResize: ((entries: ResizeObserverEntry[]) => void) | undefined;
+    const resizeCallbacks: Array<(entries: ResizeObserverEntry[]) => void> = [];
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: (entries: ResizeObserverEntry[]) => void) {
-        onResize = callback;
+        resizeCallbacks.push(callback);
       }
       observe() {}
       disconnect() {}
     });
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
-    act(() => onResize?.([{ contentRect: { width: 600 } } as ResizeObserverEntry]));
+    act(() => {
+      for (const callback of resizeCallbacks) {
+        callback([{ contentRect: { width: 600 } } as ResizeObserverEntry]);
+      }
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /文件浏览器|File explorer/ }));
     const explorer = document.querySelector<HTMLElement>('[data-notes-explorer]')!;

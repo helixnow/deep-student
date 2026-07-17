@@ -298,10 +298,10 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
             <Prohibit className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <div className="space-y-0.5">
               <Label htmlFor="vendor-no-api-key" className="text-sm font-normal leading-none cursor-pointer">
-                {t('settings:vendor_modal.no_api_key_label', { defaultValue: '无需 API Key' })}
+                {t('settings:vendor_modal.no_api_key_label')}
               </Label>
               <p className="text-xs text-muted-foreground">
-                {t('settings:vendor_modal.no_api_key_desc', { defaultValue: '适用于自搭建后端（Ollama / vLLM / llama.cpp 等）' })}
+                {t('settings:vendor_modal.no_api_key_desc')}
               </p>
             </div>
           </div>

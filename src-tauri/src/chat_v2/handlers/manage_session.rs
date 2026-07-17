@@ -1123,8 +1123,6 @@ fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSk
         mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
         agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
         branch_local_skill_ids: snapshot.branch_local_skill_ids.clone(),
-        effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
-        effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
         effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
         version: snapshot.version,
         legacy_migrated: Some(false),
@@ -1588,8 +1586,6 @@ fn fallback_skill_state_after_history_rebuild(
         mode_required_bundle_ids: existing.mode_required_bundle_ids,
         agentic_session_skill_ids: Vec::new(),
         branch_local_skill_ids: Vec::new(),
-        effective_allowed_internal_tools: Vec::new(),
-        effective_allowed_external_tools: Vec::new(),
         effective_allowed_external_servers: Vec::new(),
         version: existing.version.saturating_add(1),
         legacy_migrated: Some(false),
@@ -1791,7 +1787,6 @@ mod tests {
                     mode_required_bundle_ids: vec!["mode".to_string()],
                     agentic_session_skill_ids: vec!["agentic".to_string()],
                     branch_local_skill_ids: vec!["branch".to_string()],
-                    effective_allowed_internal_tools: vec!["tool_a".to_string()],
                     version: 9,
                     ..Default::default()
                 })
@@ -1804,7 +1799,6 @@ mod tests {
         assert_eq!(rebuilt.mode_required_bundle_ids, vec!["mode".to_string()]);
         assert!(rebuilt.agentic_session_skill_ids.is_empty());
         assert!(rebuilt.branch_local_skill_ids.is_empty());
-        assert!(rebuilt.effective_allowed_internal_tools.is_empty());
         assert_eq!(rebuilt.version, 10);
     }
 }

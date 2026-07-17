@@ -164,12 +164,12 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
           }
         } else {
           setAssignedRerankerLabel(
-            t('settings:advanced_search.reranker.unassigned', '未配置')
+            t('settings:advanced_search.reranker.unassigned')
           );
         }
       } catch (error: unknown) {
         setAssignedRerankerLabel(
-          t('settings:advanced_search.messages.load_model_failed', '加载失败')
+          t('settings:advanced_search.messages.load_model_failed')
         );
         console.warn('Failed to load reranker assignments', error);
       }
@@ -242,7 +242,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
       });
       showGlobalNotification(
         'success',
-        t('settings:advanced_search.tavily_depth.saved', '已保存 Tavily 搜索深度设置')
+        t('settings:advanced_search.tavily_depth.saved')
       );
       onConfigChange?.();
     } catch (error: unknown) {
@@ -354,7 +354,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
     return (
       <div className="flex items-center justify-center py-8 text-xs text-muted-foreground/70">
         <ArrowClockwise size={12} className="mr-2 animate-spin" />
-        {t('common:loading', '加载中…')}
+        {t('common:loading')}
       </div>
     );
   }
@@ -376,7 +376,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
           >
             <div className="px-3 py-1.5 rounded-md bg-muted/50 text-xs text-foreground/80 truncate">
               {assignedRerankerLabel ||
-                t('settings:advanced_search.reranker.unassigned', '未配置')}
+                t('settings:advanced_search.reranker.unassigned')}
             </div>
           </SettingRow>
           <SettingRow
@@ -399,8 +399,8 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
 
       {/* Tavily 搜索深度 */}
       <SettingRow
-        title={t('settings:advanced_search.tavily_depth.title', 'Tavily 搜索深度')}
-        description={t('settings:advanced_search.tavily_depth.description', '仅影响 Tavily 搜索，advanced 可获取更深入的结果。')}
+        title={t('settings:advanced_search.tavily_depth.title')}
+        description={t('settings:advanced_search.tavily_depth.description')}
       >
         <AppSelect value={tavilySearchDepth} onValueChange={handleTavilyDepthChange}
           options={[

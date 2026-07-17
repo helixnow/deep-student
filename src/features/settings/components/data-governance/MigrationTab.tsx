@@ -125,10 +125,10 @@ export const MigrationTab: React.FC<MigrationTabProps> = ({
           >
             <Copy size={12} className="mr-1" />
             {diagCopied
-              ? t('data:governance.copied', '已复制')
+              ? t('data:governance.copied')
               : diagCopyFailed
-                ? t('data:governance.copy_failed', '复制失败')
-                : t('data:governance.copy_diagnostic', '复制诊断信息给开发者')}
+                ? t('data:governance.copy_failed')
+                : t('data:governance.copy_diagnostic')}
           </NotionButton>
         </div>
       )}

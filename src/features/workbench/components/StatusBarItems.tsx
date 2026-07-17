@@ -63,6 +63,11 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({ dueCount, taskCo
   const pomodoroTime = formatStatusBarTime(timeLeft);
   const [automation, setAutomation] = useState<AutomationSummary | null>(null);
 
+  // 悬停 tooltip 与 aria-label 同文案，保持读屏与鼠标一致
+  const pomodoroLabel = t('menubar.pomodoroFocus', { time: pomodoroTime });
+  const flashcardsLabel = t('menubar.flashcardsDue', { count: dueCount });
+  const tasksLabel = t('menubar.tasksRunning', { count: taskCount });
+
   useEffect(() => {
     let disposed = false;
     const refresh = async () => {
@@ -102,10 +107,8 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({ dueCount, taskCo
           className="wb-menubar-item"
           data-testid="wb-menubar-pomodoro"
           data-wb-status-item="pomodoro"
-          aria-label={t('menubar.pomodoroFocus', {
-            time: pomodoroTime,
-            defaultValue: `专注剩余 ${pomodoroTime}`,
-          })}
+          aria-label={pomodoroLabel}
+          title={pomodoroLabel}
           onClick={() => launchApp('pomodoro')}
         >
           <Timer size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
@@ -119,10 +122,8 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({ dueCount, taskCo
           className="wb-menubar-item"
           data-testid="wb-menubar-flashcards"
           data-wb-status-item="flashcards"
-          aria-label={t('menubar.flashcardsDue', {
-            count: dueCount,
-            defaultValue: `${dueCount} 张到期闪卡`,
-          })}
+          aria-label={flashcardsLabel}
+          title={flashcardsLabel}
           onClick={launchFlashcardsDue}
         >
           <Stack size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
@@ -136,10 +137,8 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({ dueCount, taskCo
           className="wb-menubar-item"
           data-testid="wb-menubar-anki-tasks"
           data-wb-status-item="ankiTasks"
-          aria-label={t('menubar.tasksRunning', {
-            count: taskCount,
-            defaultValue: `${taskCount} 个制卡任务进行中`,
-          })}
+          aria-label={tasksLabel}
+          title={tasksLabel}
           onClick={() => launchApp('taskDashboard')}
         >
           <ChartBar size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
@@ -153,13 +152,10 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({ dueCount, taskCo
         data-testid="wb-menubar-automations"
         data-wb-status-item="automations"
         data-status={automation?.runningCount ? 'running' : automation?.failedCount ? 'error' : 'idle'}
-        aria-label={t('menubar.automations', {
-          enabled: automation?.enabledCount ?? 0,
+        aria-label={t('menubar.automations', { enabled: automation?.enabledCount ?? 0,
           running: automation?.runningCount ?? 0,
-          failed: automation?.failedCount ?? 0,
-          defaultValue: '打开定时任务',
-        })}
-        title={t('menubar.automationsTitle', { defaultValue: '定时任务' })}
+          failed: automation?.failedCount ?? 0 })}
+        title={t('menubar.automationsTitle')}
         onClick={launchAutomations}
       >
         <Robot size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />

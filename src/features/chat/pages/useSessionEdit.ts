@@ -238,28 +238,54 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
       // Update groupId in store
       const storeUpdate: Record<string, unknown> = { groupId: groupId ?? null };
 
-      // P0-3 fix: Update groupSystemPromptSnapshot in metadata when moving between groups
+      // P0-3 fix: Update group snapshots in metadata when moving between groups
+      // (groupSystemPromptSnapshot + groupDefaultRuntimeRootIdSnapshot)
       const currentMetadata = store.getState().sessionMetadata;
       if (groupId) {
         const group = groupCache.get(groupId);
+        let nextMetadata: Record<string, unknown> | null = currentMetadata
+          ? { ...currentMetadata }
+          : null;
+        let changed = false;
+
         if (group?.systemPrompt) {
-          storeUpdate.sessionMetadata = {
-            ...(currentMetadata ?? {}),
+          nextMetadata = {
+            ...(nextMetadata ?? {}),
             groupSystemPromptSnapshot: group.systemPrompt,
           };
-        } else {
-          // New group has no systemPrompt — remove stale snapshot
-          if (currentMetadata?.groupSystemPromptSnapshot) {
-            const { groupSystemPromptSnapshot: _, ...rest } = currentMetadata;
-            storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
-          }
+          changed = true;
+        } else if (nextMetadata?.groupSystemPromptSnapshot) {
+          const { groupSystemPromptSnapshot: _, ...rest } = nextMetadata;
+          nextMetadata = Object.keys(rest).length > 0 ? rest : null;
+          changed = true;
         }
-      } else {
-        // Moved to ungrouped — remove stale snapshot
-        if (currentMetadata?.groupSystemPromptSnapshot) {
-          const { groupSystemPromptSnapshot: _, ...rest } = currentMetadata;
-          storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
+
+        if (group?.defaultRuntimeRootId) {
+          nextMetadata = {
+            ...(nextMetadata ?? {}),
+            groupDefaultRuntimeRootIdSnapshot: group.defaultRuntimeRootId,
+          };
+          changed = true;
+        } else if (nextMetadata?.groupDefaultRuntimeRootIdSnapshot) {
+          const { groupDefaultRuntimeRootIdSnapshot: _, ...rest } = nextMetadata;
+          nextMetadata = Object.keys(rest).length > 0 ? rest : null;
+          changed = true;
         }
+
+        if (changed) {
+          storeUpdate.sessionMetadata = nextMetadata;
+        }
+      } else if (
+        currentMetadata?.groupSystemPromptSnapshot ||
+        currentMetadata?.groupDefaultRuntimeRootIdSnapshot
+      ) {
+        // Moved to ungrouped — remove stale snapshots
+        const {
+          groupSystemPromptSnapshot: _sp,
+          groupDefaultRuntimeRootIdSnapshot: _rr,
+          ...rest
+        } = currentMetadata;
+        storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
       }
 
       store.setState(storeUpdate);

@@ -217,7 +217,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
           <CommonTooltip content={option.reason} delay={150} maxWidth={280}>
             <button
               type="button"
-              aria-label={t('askUser.optionReasonLabel', { defaultValue: 'Why this option' })}
+              aria-label={t('askUser.optionReasonLabel')}
               className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
@@ -235,7 +235,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
       return (
         <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground">
           <Check size={16} className="text-[color:var(--button-primary-foreground)]" />
-          <span>{t('askUser.responded', { defaultValue: '已回答' })}</span>
+          <span>{t('askUser.responded')}</span>
         </div>
       );
     }
@@ -288,7 +288,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                       {option.label}
                       {isRecommended && (
                         <span className="ml-1 text-muted-foreground">
-                          ({t('askUser.recommended', { defaultValue: '推荐' })})
+                          ({t('askUser.recommended')})
                         </span>
                       )}
                     </span>
@@ -329,7 +329,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                       {option.label}
                       {isRecommended && (
                         <span className="ml-1 text-muted-foreground">
-                          ({t('askUser.recommended', { defaultValue: '推荐' })})
+                          ({t('askUser.recommended')})
                         </span>
                       )}
                     </span>
@@ -365,9 +365,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                       handlePrimarySubmit();
                     }
                   }}
-                  placeholder={t('askUser.customPlaceholder', {
-                    defaultValue: '或输入自定义回答...',
-                  })}
+                  placeholder={t('askUser.customPlaceholder')}
                   disabled={disabled}
                   className={cn(
                     'flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/60',
@@ -388,7 +386,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               disabled={disabled}
               className="text-muted-foreground hover:text-foreground"
             >
-              {t('askUser.ignore', { defaultValue: '忽略' })}
+              {t('askUser.ignore')}
             </NotionButton>
             <NotionButton
               variant="primary"
@@ -400,7 +398,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                 'bg-[color:var(--button-prominent-bg)] text-white border border-[color:var(--button-prominent-border)] hover:bg-[color:var(--button-prominent-hover-bg)]'
               )}
             >
-              <span>{t('askUser.submit', { defaultValue: '提交' })}</span>
+              <span>{t('askUser.submit')}</span>
             </NotionButton>
           </div>
         </div>

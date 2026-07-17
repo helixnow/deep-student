@@ -9,7 +9,7 @@ import './ThinkingIndicator.css';
 
 export const ThinkingIndicator: React.FC<{ className?: string }> = ({ className }) => {
   const { t } = useTranslation('chatV2');
-  const label = t('messageList.waiting', { defaultValue: '正在思考...' });
+  const label = t('messageList.waiting');
   return (
     <div className={`thinking-indicator ${className ?? ''}`} role="status" aria-label={label}>
       <TextShimmer className="thinking-indicator-text">{label}</TextShimmer>

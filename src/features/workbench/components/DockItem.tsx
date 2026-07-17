@@ -206,7 +206,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         : null;
 
     // 可访问名：应用名 + 运行中 + 角标数量（角标视觉节点 aria-hidden，避免重复朗读）
-    const ariaLabel = [label, running ? t('workbench:dock.running', '运行中') : null, badgeText]
+    const ariaLabel = [label, running ? t('workbench:dock.running') : null, badgeText]
       .filter(Boolean)
       .join(', ');
 

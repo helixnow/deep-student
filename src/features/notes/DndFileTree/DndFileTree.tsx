@@ -17,7 +17,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
+import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Folder, FileText, Star } from '@phosphor-icons/react';
 import { ReferenceIcon } from './ReferenceIcon';
@@ -28,7 +28,8 @@ import type { Modifier } from '@dnd-kit/core';
 import '../styles/dnd-file-tree.css';
 
 const LEVEL_INDENT = 20;
-const BASE_INDENT = 8;
+// 与 TreeNode.tsx 的 BASE_INDENT 保持一致，保证拖放指示线与节点文字左缘对齐
+const BASE_INDENT = 16;
 const DROP_INDICATOR_SIDE_GAP = 12;
 const AUTO_EXPAND_DELAY_MS = 420;
 
@@ -172,7 +173,8 @@ export function DndFileTree({
   const virtualizer = useVirtualizer({
     count: flattenedNodes.length,
     getScrollElement: () => treeRef.current,
-    estimateSize: () => 32,
+    // 与 .rct-tree-item-button 的 28px 高度一致，避免虚拟行与实际行错位
+    estimateSize: () => 28,
     overscan: 12,
   });
 
@@ -420,7 +422,7 @@ export function DndFileTree({
           },
         }}
         modifiers={[restrictToVerticalAxis]}
-        autoScroll={{ enabled: true, threshold: { x: 1, y: 0.25 } }}
+        autoScroll={{ enabled: true, threshold: { x: 1, y: 0.25 }, ...SHELL_SAFE_AUTO_SCROLL }}
       >
         <SortableContext
           items={visibleNodeIds}
@@ -508,7 +510,7 @@ export function DndFileTree({
                     ) : isReference && sourceDb ? (
                       <ReferenceIcon sourceDb={sourceDb} previewType={previewType} size="sm" />
                     ) : (
-                      <FileText className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
+                      <FileText className="w-3.5 h-3.5 text-primary" />
                     )}
                   </span>
                   <span className="dnd-drag-overlay-title">

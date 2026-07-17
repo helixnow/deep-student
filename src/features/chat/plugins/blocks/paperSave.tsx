@@ -60,16 +60,16 @@ interface ProgressSnapshot {
 // 阶段配置
 // ============================================================================
 
-// label 为 zh 兜底文案，渲染时经 chatV2:blocks.paperSave.stage.* 走 i18n
-const STAGE_CONFIG: Record<string, { label: string; icon: React.ElementType; weight: number }> = {
-  resolving:     { label: '解析地址',   icon: MagnifyingGlass, weight: 5 },
-  downloading:   { label: '下载中',     icon: DownloadSimple,  weight: 60 },
-  deduplicating: { label: '去重检查',   icon: Copy,            weight: 5 },
-  storing:       { label: '存储中',     icon: HardDrive,       weight: 10 },
-  processing:    { label: '文本提取',   icon: FileText,        weight: 10 },
-  indexing:      { label: '建立索引',   icon: Database,        weight: 10 },
-  done:          { label: '完成',       icon: CheckCircle,     weight: 0 },
-  error:         { label: '失败',       icon: WarningCircle,   weight: 0 },
+/** Stage weight/icon only — labels come from chatV2:blocks.paperSave.stage.* */
+const STAGE_CONFIG: Record<string, { icon: React.ElementType; weight: number }> = {
+  resolving:     { icon: MagnifyingGlass, weight: 5 },
+  downloading:   { icon: DownloadSimple,  weight: 60 },
+  deduplicating: { icon: Copy,            weight: 5 },
+  storing:       { icon: HardDrive,       weight: 10 },
+  processing:    { icon: FileText,        weight: 10 },
+  indexing:      { icon: Database,        weight: 10 },
+  done:          { icon: CheckCircle,     weight: 0 },
+  error:         { icon: WarningCircle,   weight: 0 },
 };
 
 const STAGE_ORDER = ['resolving', 'downloading', 'deduplicating', 'storing', 'processing', 'indexing', 'done'];
@@ -143,7 +143,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
       setRetryState('success');
     } catch (e) {
       setRetryState('error');
-      setRetryError(typeof e === 'string' ? e : (e as Error)?.message ?? t('blocks.paperSave.downloadFailed', '下载失败'));
+      setRetryError(typeof e === 'string' ? e : (e as Error)?.message ?? t('blocks.paperSave.downloadFailed'));
     }
   }, [sources, paper.t, t]);
 
@@ -179,15 +179,15 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
         <div className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground">
           {/* 当前源标签 */}
           {isActive && paper.src && (
-            <span className="text-muted-foreground/60" title={t('blocks.paperSave.sourceTitle', '下载源: {{source}}', { source: paper.src })}>
+            <span className="text-muted-foreground/60" title={t('blocks.paperSave.sourceTitle', { source: paper.src })}>
               {paper.src}
             </span>
           )}
 
           {/* 去重标识 */}
           {paper.dedup && (
-            <span className="text-amber-500" title={t('blocks.paperSave.dedupTitle', '已存在于资料库')}>
-              {t('blocks.paperSave.dedup', '去重')}
+            <span className="text-amber-500" title={t('blocks.paperSave.dedupTitle')}>
+              {t('blocks.paperSave.dedup')}
             </span>
           )}
 
@@ -201,30 +201,30 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
           {/* 阶段标签 */}
           {isActive && (
-            <span className="text-primary">{t(`blocks.paperSave.stage.${paper.s}`, config.label)}</span>
+            <span className="text-primary">{t(`blocks.paperSave.stage.${paper.s}`)}</span>
           )}
 
           {/* 完成 */}
           {(isDone || retryState === 'success') && (
-            <span className="text-green-500">{t('blocks.paperSave.saved', '已保存')}</span>
+            <span className="text-green-500">{t('blocks.paperSave.saved')}</span>
           )}
 
           {/* 错误 + 重试按钮 */}
           {isError && retryState !== 'success' && (
             <>
               <span className="text-destructive truncate max-w-[100px]" title={paper.err}>
-                {paper.err || t('blocks.paperSave.stage.error', '失败')}
+                {paper.err || t('blocks.paperSave.stage.error')}
               </span>
               {retryState === 'loading' ? (
                 <CircleNotch size={12} className="animate-spin text-primary" />
               ) : (
                 <div className="relative flex items-center gap-0.5">
-                  <NotionButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title={t('blocks.paperSave.retryTitle', '重试下载')}>
+                  <NotionButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title={t('blocks.paperSave.retryTitle')}>
                     <ArrowCounterClockwise size={12} />
-                    <span>{t('blocks.paperSave.retry', '重试')}</span>
+                    <span>{t('blocks.paperSave.retry')}</span>
                   </NotionButton>
                   {hasMultipleSources && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="!h-5 !w-5" aria-label={t('blocks.paperSave.switchSource', '切换下载源')} title={t('blocks.paperSave.switchSource', '切换下载源')}>
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="!h-5 !w-5" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
                       <CaretDown className={cn('transition-transform', showSources && 'rotate-180')} size={12} />
                     </NotionButton>
                   )}
@@ -235,7 +235,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
           {/* 重试失败 */}
           {retryState === 'error' && (
-            <span className="text-destructive" title={retryError ?? undefined}>{t('blocks.paperSave.retryFailed', '重试失败')}</span>
+            <span className="text-destructive" title={retryError ?? undefined}>{t('blocks.paperSave.retryFailed')}</span>
           )}
         </div>
       </div>
@@ -333,7 +333,7 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
     return (
       <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
         <CircleNotch size={16} className="animate-spin text-primary" />
-        <span>{t('blocks.paperSave.preparing', '准备下载论文…')}</span>
+        <span>{t('blocks.paperSave.preparing')}</span>
       </div>
     );
   }
@@ -359,16 +359,16 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-foreground">
-              {t('blocks.paperSave.title', '论文下载')}
+              {t('blocks.paperSave.title')}
             </span>
             <span className="text-xs text-muted-foreground">
               {isComplete
-                ? `${t('blocks.paperSave.summaryDone', '{{done}}/{{total}} 篇完成', { done: doneCount, total: totalCount, count: totalCount })}${errorCount > 0 ? t('blocks.paperSave.summaryFailedSuffix', '，{{count}} 篇失败', { count: errorCount }) : ''}`
+                ? `${t('blocks.paperSave.summaryDone', { done: doneCount, total: totalCount, count: totalCount })}${errorCount > 0 ? t('blocks.paperSave.summaryFailedSuffix', { count: errorCount }) : ''}`
                 : isError
                   ? (totalCount > 0
-                    ? `${t('blocks.paperSave.summaryDone', '{{done}}/{{total}} 篇完成', { done: doneCount, total: totalCount, count: totalCount })}${t('blocks.paperSave.summaryFailedSuffix', '，{{count}} 篇失败', { count: errorCount })}`
-                    : t('blocks.paperSave.downloadFailed', '下载失败'))
-                  : t('blocks.paperSave.downloading', '下载中 {{done}}/{{total}}', { done: doneCount, total: totalCount })}
+                    ? `${t('blocks.paperSave.summaryDone', { done: doneCount, total: totalCount, count: totalCount })}${t('blocks.paperSave.summaryFailedSuffix', { count: errorCount })}`
+                    : t('blocks.paperSave.downloadFailed'))
+                  : t('blocks.paperSave.downloading', { done: doneCount, total: totalCount })}
             </span>
           </div>
         </div>
@@ -402,7 +402,7 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
       {/* 错误信息 */}
       {isError && !snapshot && (
         <div className="p-3 text-sm text-destructive">
-          {block.error || t('blocks.paperSave.blockError', '论文下载失败')}
+          {block.error || t('blocks.paperSave.blockError')}
         </div>
       )}
     </div>

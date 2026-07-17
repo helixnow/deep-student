@@ -225,13 +225,13 @@ function closeAllWindows(): void {
   for (const id of ids) void requestCloseAnimated(id);
 }
 
-const TILE_ZONE_LABEL: Partial<Record<DisplayMode, string>> = {
-  'tiled-left': '左半屏',
-  'tiled-right': '右半屏',
-  'tiled-tl': '左上',
-  'tiled-tr': '右上',
-  'tiled-bl': '左下',
-  'tiled-br': '右下',
+const TILE_ZONE_I18N_KEY: Partial<Record<DisplayMode, string>> = {
+  'tiled-left': 'workbench:tile.zone.left',
+  'tiled-right': 'workbench:tile.zone.right',
+  'tiled-tl': 'workbench:tile.zone.topLeft',
+  'tiled-tr': 'workbench:tile.zone.topRight',
+  'tiled-bl': 'workbench:tile.zone.bottomLeft',
+  'tiled-br': 'workbench:tile.zone.bottomRight',
 };
 
 // ---------------------------------------------------------------------------
@@ -296,14 +296,11 @@ function runShortcut(id: WorkbenchShortcutId): void {
           (w) => !w.minimized,
         ).length;
         announceWorkbench(
-          i18n.t('workbench:a11y.exposeOpened', {
-            count,
-            defaultValue: `俯瞰已打开，共 ${count} 个窗口`,
-          }),
+          i18n.t('workbench:a11y.exposeOpened', { count }),
         );
       } else if (!nowOpen && wasOpen) {
         announceWorkbench(
-          i18n.t('workbench:a11y.exposeClosed', { defaultValue: '俯瞰已关闭' }),
+          i18n.t('workbench:a11y.exposeClosed'),
         );
       }
       return;
@@ -341,17 +338,15 @@ function runShortcut(id: WorkbenchShortcutId): void {
       announceWorkbench(
         i18n.t('workbench:a11y.zoomed', {
           title: win.title,
-          defaultValue: `${win.title} 已最大化`,
         }),
       );
     } else {
-      const zone = TILE_ZONE_LABEL[tileMode];
-      if (zone) {
+      const zoneKey = TILE_ZONE_I18N_KEY[tileMode];
+      if (zoneKey) {
         announceWorkbench(
           i18n.t('workbench:a11y.windowTiled', {
             title: win.title,
-            zone,
-            defaultValue: `${win.title} 已平铺至${zone}`,
+            zone: i18n.t(zoneKey),
           }),
         );
       }
@@ -379,7 +374,6 @@ function runShortcut(id: WorkbenchShortcutId): void {
         announceWorkbench(
           i18n.t('workbench:a11y.restored', {
             title: win.title,
-            defaultValue: `${win.title} 已恢复`,
           }),
         );
       } else {

@@ -158,9 +158,7 @@ async function canCloseExamWorkspace(instanceKey: string | null): Promise<boolea
 
   if (hasRemainingItems && ownsReviewSession) {
     const confirmed = await requestContentCloseConfirmation({
-      description: i18next.t('review:session.exitDescription', {
-        defaultValue: '已提交的评分会保留，剩余题目可稍后重新开始复习。',
-      }),
+      description: i18next.t('workbench:resourceWorkspace.reviewExitDescription'),
     });
     if (!confirmed) return false;
     store.endSession();
@@ -168,9 +166,7 @@ async function canCloseExamWorkspace(instanceKey: string | null): Promise<boolea
 
   if (!isContentDirty('exam', examId)) return true;
   return requestContentCloseConfirmation({
-    description: i18next.t('workbench:content.confirmCloseUnsaved', {
-      defaultValue: '当前内容有未保存的修改，确定要关闭窗口吗？',
-    }),
+    description: i18next.t('workbench:content.confirmCloseUnsaved'),
   });
 }
 

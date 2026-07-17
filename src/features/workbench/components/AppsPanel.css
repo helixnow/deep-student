@@ -119,7 +119,14 @@
   transform: scale(0.92);
 }
 
+.wb-apps-close:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: var(--wb-focus-ring);
+}
+
 .wb-apps-search-wrap {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -131,9 +138,31 @@
   background: color-mix(in hsl, hsl(var(--background)) 55%, transparent 45%);
 }
 
+/* 聚焦态描边走独立伪元素的 opacity 淡入（动画纪律：仅 transform/opacity） */
+.wb-apps-search-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.14);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--wb-apps-duration) var(--wb-apps-ease);
+}
+
+.wb-apps-search-wrap:focus-within::after {
+  opacity: 1;
+}
+
 .wb-apps-search-icon {
   flex: none;
   opacity: 0.55;
+  transition: opacity var(--wb-apps-duration) var(--wb-apps-ease);
+}
+
+.wb-apps-search-wrap:focus-within .wb-apps-search-icon {
+  opacity: 0.9;
 }
 
 .wb-apps-search {
@@ -157,6 +186,9 @@
   gap: 2px;
   margin-left: auto;
   flex: none;
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 8%, transparent 92%);
 }
 
 .wb-apps-view-btn {
@@ -164,22 +196,30 @@
   align-items: center;
   justify-content: center;
   width: 28px;
-  height: 28px;
+  height: 24px;
   border: none;
   border-radius: 7px;
   background: transparent;
   color: inherit;
   cursor: pointer;
   opacity: 0.55;
+  transition: opacity var(--wb-apps-duration) var(--wb-apps-ease);
 }
 
 .wb-apps-view-btn[aria-pressed='true'] {
   opacity: 1;
   background: color-mix(in hsl, hsl(var(--muted-foreground)) 18%, transparent 82%);
+  box-shadow: inset 0 1px 0 var(--wb-glass-highlight, rgba(255, 255, 255, 0.35));
 }
 
 .wb-apps-view-btn:hover {
   opacity: 0.9;
+}
+
+.wb-apps-view-btn:focus-visible {
+  outline: none;
+  opacity: 1;
+  box-shadow: var(--wb-focus-ring);
 }
 
 /* ==== 列表 / 网格 ======================================================= */
@@ -242,8 +282,18 @@
   background: color-mix(in hsl, hsl(var(--muted-foreground)) 14%, transparent 86%);
 }
 
+/* 键盘/悬停选中态：内缘 1px 微光圈，让高亮项在网格里更可辨（状态切换，非动画） */
+.wb-apps-item[data-wb-apps-active='true'] {
+  box-shadow: inset 0 0 0 1px color-mix(in hsl, hsl(var(--primary)) 32%, transparent 68%);
+}
+
 .wb-apps-item:active {
   transform: scale(0.97);
+}
+
+.wb-apps-item:focus-visible {
+  outline: none;
+  box-shadow: var(--wb-focus-ring);
 }
 
 .wb-apps-item-icon {
@@ -255,8 +305,20 @@
   height: 44px;
   border-radius: 12px;
   background: color-mix(in hsl, hsl(var(--muted-foreground)) 10%, transparent 90%);
+  box-shadow: inset 0 1px 0 var(--wb-glass-highlight, rgba(255, 255, 255, 0.3));
   font-size: 22px;
   line-height: 1;
+  transition: transform var(--wb-hover-duration, 150ms) var(--wb-ease-swift, ease-out);
+}
+
+/* 网格视图：选中/悬停时图标轻微上浮（仅 transform） */
+.wb-apps-grid .wb-apps-item:hover .wb-apps-item-icon,
+.wb-apps-grid .wb-apps-item[data-wb-apps-active='true'] .wb-apps-item-icon {
+  transform: translateY(-1px) scale(1.04);
+}
+
+.wb-apps-item:active .wb-apps-item-icon {
+  transform: scale(0.96);
 }
 
 .wb-apps-list .wb-apps-item-icon {
@@ -282,23 +344,76 @@
   -webkit-line-clamp: 1;
 }
 
+/* ==== 空搜索结果 ======================================================== */
+
 .wb-apps-empty {
-  margin: 32px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 36px 12px;
   text-align: center;
-  font-size: 13px;
-  opacity: 0.65;
 }
+
+.wb-apps-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 10%, transparent 90%);
+  box-shadow: inset 0 1px 0 var(--wb-glass-highlight, rgba(255, 255, 255, 0.3));
+  opacity: 0.7;
+}
+
+.wb-apps-empty-title {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.wb-apps-empty-hint {
+  font-size: 12px;
+  opacity: 0.5;
+}
+
+/* ==== 底部快捷键提示 ==================================================== */
 
 .wb-apps-footer {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
   padding: 8px 16px 12px;
   font-size: 11px;
-  opacity: 0.55;
+  opacity: 0.6;
   border-top: 1px solid color-mix(in hsl, var(--wb-glass-border, hsl(var(--border))) 60%, transparent 40%);
 }
 
+.wb-apps-footer-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wb-apps-footer kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 8%, transparent 92%);
+  box-shadow: inset 0 -1px 0 color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .wb-apps-item:active {
+  .wb-apps-item:active,
+  .wb-apps-item .wb-apps-item-icon,
+  .wb-apps-grid .wb-apps-item:hover .wb-apps-item-icon,
+  .wb-apps-grid .wb-apps-item[data-wb-apps-active='true'] .wb-apps-item-icon {
     transform: none;
   }
 
@@ -308,6 +423,8 @@
 }
 
 :root[data-wb-material='minimal'] .wb-apps-item:active,
+:root[data-wb-material='minimal'] .wb-apps-item .wb-apps-item-icon,
+:root[data-wb-material='minimal'] .wb-apps-grid .wb-apps-item:hover .wb-apps-item-icon,
 :root[data-wb-material='minimal'] .wb-apps-close:active {
   transform: none;
 }

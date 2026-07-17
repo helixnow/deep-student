@@ -36,7 +36,7 @@ export interface BatchChanges {
 }
 
 const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClose }) => {
-  const { t } = useTranslation('anki');
+  const { t } = useTranslation(['anki', 'common']);
   
   const [changes, setChanges] = useState<BatchChanges>({
     front: { enabled: false, mode: 'replace', value: '' },
@@ -170,7 +170,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
       <div className="batch-edit-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-header">
           <h3>{t('batch_edit_title', { count: cards.length })}</h3>
-          <NotionButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label="close">
+          <NotionButton variant="ghost" size="icon" iconOnly className="close-btn" onClick={onClose} aria-label={t('common:a11y.close')}>
             <X size={20} />
           </NotionButton>
         </div>
@@ -368,11 +368,11 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                 <h4>{t('preview_changes')}</h4>
                 {cards.length > 1 && (
                   <div className="preview-nav">
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} className="nav-btn" aria-label="prev">
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} className="nav-btn" aria-label={t('common:a11y.prev')}>
                       <CaretLeft size={16} />
                     </NotionButton>
                     <span className="nav-info">{previewIndex + 1} / {cards.length}</span>
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))} disabled={previewIndex === cards.length - 1} className="nav-btn" aria-label="next">
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))} disabled={previewIndex === cards.length - 1} className="nav-btn" aria-label={t('common:a11y.next')}>
                       <CaretRight size={16} />
                     </NotionButton>
                   </div>

@@ -13,7 +13,11 @@ vi.mock('@/dstu', () => ({
   dstu: { getContent, search, watch },
 }));
 
-import { BACKLINK_CANDIDATE_LIMIT, NotesBacklinksPanel } from '../NotesBacklinksPanel';
+import {
+  BACKLINK_CANDIDATE_LIMIT,
+  extractContextSnippet,
+  NotesBacklinksPanel,
+} from '../NotesBacklinksPanel';
 
 const notes: DstuNode[] = [
   {
@@ -56,11 +60,27 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof NotesBacklin
   };
 }
 
+describe('extractContextSnippet', () => {
+  it('keeps ~radius characters around the match and marks truncation', () => {
+    const content = `${'a'.repeat(100)}[[Target]]${'b'.repeat(100)}`;
+    const start = 100;
+    const end = start + '[[Target]]'.length;
+    const snippet = extractContextSnippet(content, start, end, 80);
+    expect(snippet).not.toBeNull();
+    expect(snippet!.before).toHaveLength(80);
+    expect(snippet!.match).toBe('[[Target]]');
+    expect(snippet!.after).toHaveLength(80);
+    expect(snippet!.truncatedStart).toBe(true);
+    expect(snippet!.truncatedEnd).toBe(true);
+  });
+});
+
 describe('NotesBacklinksPanel', () => {
   beforeEach(() => {
     getContent.mockReset();
     search.mockReset();
     watch.mockReset();
+    localStorage.clear();
     getContent.mockImplementation(async (path: string) => ({ ok: true, value: contentByPath[path] }));
     search.mockImplementation(async (query: string) => ({
       ok: true,
@@ -91,7 +111,7 @@ describe('NotesBacklinksPanel', () => {
       />,
     );
 
-    expect(await screen.findByText('Outgoing links')).toBeInTheDocument();
+    expect(await screen.findByText('出链')).toBeInTheDocument();
     expect(getContent).toHaveBeenCalledTimes(3);
     expect(getContent).toHaveBeenCalledWith('/math/note_alpha');
     expect(getContent).toHaveBeenCalledWith('/math/note_beta');
@@ -123,21 +143,35 @@ describe('NotesBacklinksPanel', () => {
     });
     expect(screen.getByText('Gamma alias')).toBeInTheDocument();
     expect(screen.getByText('[[missing]]')).toBeInTheDocument();
-    expect(screen.getByText('Backlinks')).toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: /Outgoing links/ }))
-      .getByRole('button', { name: 'Open Beta' })).toHaveTextContent('Beta');
+    expect(screen.getByText('入链')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: /出链/ }))
+      .getByRole('button', { name: '打开 Beta' })).toHaveTextContent('Beta');
     expect(screen.queryByText('Alpha alias')).toBeNull();
+  });
+
+  it('shows inbound context snippets and a more-context toggle', async () => {
+    renderPanel();
+    await screen.findByText('入链');
+
+    const incoming = screen.getByRole('region', { name: /入链/ });
+    expect(within(incoming).getAllByText(/Points back to/).length).toBeGreaterThanOrEqual(1);
+    expect(within(incoming).getByText('[[Alpha|Alpha alias]]')).toBeInTheDocument();
+    expect(within(incoming).getByText('[[note_alpha]]')).toBeInTheDocument();
+
+    fireEvent.click(within(incoming).getByRole('button', { name: '显示更多上下文' }));
+    expect(within(incoming).getByRole('button', { name: '显示更少上下文' })).toBeInTheDocument();
+    expect(localStorage.getItem('notes-backlinks-panel:more-context')).toBe('1');
   });
 
   it('opens a resolved linked note and refreshes all cached note contents on request', async () => {
     const { onOpenResource } = renderPanel();
-    await screen.findByText('Outgoing links');
+    await screen.findByText('出链');
 
-    fireEvent.click(within(screen.getByRole('region', { name: /Outgoing links/ }))
-      .getByRole('button', { name: 'Open Gamma' }));
+    fireEvent.click(within(screen.getByRole('region', { name: /出链/ }))
+      .getByRole('button', { name: '打开 Gamma' }));
     await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(notes[2]));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh linked notes' }));
+    fireEvent.click(screen.getByRole('button', { name: '刷新关联笔记' }));
     await waitFor(() => expect(getContent).toHaveBeenCalledTimes(6));
     expect(search).toHaveBeenCalledTimes(24);
   });
@@ -176,11 +210,12 @@ describe('NotesBacklinksPanel', () => {
     expect(maxInFlight).toBe(8);
     releaseGate();
 
-    await screen.findByText('Outgoing links');
+    await screen.findByText('出链');
     expect(getContent).toHaveBeenCalledTimes(12);
   });
 
-  it('bounds popular backlink loads and marks the incoming list as partial', async () => {
+  it('bounds popular backlink loads at 256 and reports scanned candidate count', async () => {
+    expect(BACKLINK_CANDIDATE_LIMIT).toBe(256);
     const activeNote: DstuNode = {
       id: 'note_active', sourceId: 'note_active', path: '/math/note_active', name: 'Active', type: 'note', createdAt: 0, updatedAt: 0,
     };
@@ -204,10 +239,12 @@ describe('NotesBacklinksPanel', () => {
 
     renderPanel({ activeResource: activeNote, notes: [activeNote, ...candidateNotes] });
 
-    expect(await screen.findByText('Outgoing links')).toBeInTheDocument();
+    expect(await screen.findByText('出链')).toBeInTheDocument();
     expect(getContent).toHaveBeenCalledTimes(BACKLINK_CANDIDATE_LIMIT + 1);
     expect(getContent).not.toHaveBeenCalledWith(candidateNotes[0].path);
-    expect(screen.getByRole('status')).toHaveTextContent(String(BACKLINK_CANDIDATE_LIMIT));
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(String(BACKLINK_CANDIDATE_LIMIT));
+    expect(status).toHaveTextContent('已扫描');
   });
 
   it('invalidates cached markdown from an updated-note event while the panel is open', async () => {
@@ -217,7 +254,7 @@ describe('NotesBacklinksPanel', () => {
       return () => {};
     });
     const { rerender } = renderPanel();
-    await screen.findByText('Outgoing links');
+    await screen.findByText('出链');
     expect(getContent).toHaveBeenCalledTimes(3);
 
     getContent.mockImplementation(async (path: string) => ({
@@ -247,10 +284,10 @@ describe('NotesBacklinksPanel', () => {
     const { onClose } = renderPanel();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('offline');
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    await screen.findByText('Outgoing links');
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    await screen.findByText('出链');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close linked notes' }));
+    fireEvent.click(screen.getByRole('button', { name: '关闭关联笔记' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -276,7 +313,7 @@ describe('NotesBacklinksPanel', () => {
 
     renderPanel();
 
-    const incoming = await screen.findByRole('region', { name: /Backlinks/ });
+    const incoming = await screen.findByRole('region', { name: /入链/ });
     expect(search).toHaveBeenCalledWith('[[ Alpha ', {
       typeFilter: 'note',
       limit: BACKLINK_CANDIDATE_LIMIT + 1,
@@ -288,8 +325,53 @@ describe('NotesBacklinksPanel', () => {
     expect(getContent).toHaveBeenCalledWith(notes[1].path);
     expect(getContent).toHaveBeenCalledWith(notes[2].path);
     expect(getContent).toHaveBeenCalledWith(notes[3].path);
-    expect(within(incoming).getByRole('button', { name: 'Open Beta' })).toBeInTheDocument();
-    expect(within(incoming).getByRole('button', { name: 'Open Gamma' })).toBeInTheDocument();
-    expect(within(incoming).getByRole('button', { name: 'Open Delta' })).toBeInTheDocument();
+    expect(within(incoming).getByRole('button', { name: '打开 Beta' })).toBeInTheDocument();
+    expect(within(incoming).getByRole('button', { name: '打开 Gamma' })).toBeInTheDocument();
+    expect(within(incoming).getByRole('button', { name: '打开 Delta' })).toBeInTheDocument();
+  });
+
+  it('calls onCreateFromUnresolved and hides the unresolved section when empty', async () => {
+    const onCreateFromUnresolved = vi.fn().mockResolvedValue(undefined);
+    const onRefresh = vi.fn();
+    renderPanel({ onCreateFromUnresolved, onRefresh });
+    await screen.findByText('[[missing]]');
+    expect(screen.getByRole('region', { name: /未解析链接/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '创建笔记「missing」' }));
+    await waitFor(() => expect(onCreateFromUnresolved).toHaveBeenCalledWith('missing'));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('[[missing]]')).toBeNull();
+    expect(screen.queryByRole('region', { name: /未解析链接/ })).toBeNull();
+  });
+
+  it('does not render create buttons when onCreateFromUnresolved is omitted', async () => {
+    renderPanel();
+    await screen.findByText('[[missing]]');
+    expect(screen.queryByRole('button', { name: /创建笔记/ })).toBeNull();
+  });
+
+  it('shows partitioned empty copy for outgoing and incoming, and hides empty unresolved', async () => {
+    getContent.mockImplementation(async (path: string) => ({
+      ok: true,
+      value: path === notes[3].path ? 'No links here.' : '',
+    }));
+    search.mockResolvedValue({ ok: true, value: [] });
+
+    renderPanel({ activeResource: notes[3], notes });
+
+    const outgoing = await screen.findByRole('region', { name: /出链/ });
+    const incoming = screen.getByRole('region', { name: /入链/ });
+    expect(within(outgoing).getByText('本篇还没有链接其他笔记，输入 [[ 即可创建双链')).toBeInTheDocument();
+    expect(within(incoming).getByText('还没有其他笔记链接到这里')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /未解析链接/ })).toBeNull();
+    expect(screen.queryByText('没有未解析的链接。')).toBeNull();
+  });
+
+  it('persists section collapse state in localStorage', async () => {
+    renderPanel();
+    await screen.findByText('出链');
+
+    fireEvent.click(screen.getByRole('button', { name: /出链/ }));
+    expect(localStorage.getItem('notes-backlinks-panel:section-collapse')).toContain('"outgoing":true');
   });
 });

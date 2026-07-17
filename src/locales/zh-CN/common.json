@@ -3,7 +3,8 @@
     "name": "Deep Student",
     "title": "Deep Student",
     "description": "AI驱动的智能学习助手",
-    "version": "版本"
+    "version": "版本",
+    "default_header": "新对话"
   },
   "contextMenu": {
     "cut": "剪切",
@@ -129,7 +130,8 @@
     "expandAll": "展开全部",
     "scrollLeft": "向左滚动",
     "scrollRight": "向右滚动",
-    "clear_all": "清空全部"
+    "clear_all": "清空全部",
+    "backToHome": "返回主页"
   },
   "labels": {
     "optional": "选填",
@@ -300,6 +302,7 @@
   "page": "页",
   "prev": "上一页",
   "next": "下一页",
+  "cancelled": "已取消",
   "cancel": "取消",
   "confirm": "确定",
   "confirmMessages": {
@@ -1139,9 +1142,10 @@
     "pdf_reader": "PDF 阅读器",
     "sandbox_workbench": "沙箱工作台",
     "todo": "待办",
-    "tree_test": "Tree Test",
     "crepe_demo": "Crepe Demo",
-    "chat_v2_test": "Chat V2 Test"
+    "chat_v2_test": "Chat V2 Test",
+    "toggle_sidebar": "切换边栏",
+    "llm_playground": "LLM Playground"
   },
   "time": {
     "now": "刚刚",
@@ -3440,6 +3444,8 @@
     "title": "欢迎使用 DeepStudent",
     "subtitle": "本地优先的 AI 学习工作台，数据保存在你自己的设备上。",
     "language_label": "界面语言 / Language",
+    "lang_zh": "简体中文",
+    "lang_en": "English",
     "feature_hub_title": "学习资料库",
     "feature_hub_desc": "导入 PDF、教材与笔记，统一管理你的学习材料。",
     "feature_chat_title": "AI 对话与解题",
@@ -3912,5 +3918,42 @@
   "model_selector": {
     "total_model_count": "共 {{count}} 个模型",
     "cached": "已缓存"
+  },
+  "question_bank": {
+    "source_images": "原始导入图片",
+    "crop_hint": "在图片上拖拽选取区域，点击「裁剪并添加」将选区添加为题目配图",
+    "no_source_images": "该题目集没有原始导入图片",
+    "crop_selected": "已选择裁剪区域",
+    "drag_to_crop": "拖拽选取裁剪区域",
+    "clear_selection": "清除",
+    "crop_and_add": "裁剪并添加",
+    "crop_success": "图片裁剪成功",
+    "crop_failed": "裁剪失败: {{error}}"
+  },
+  "a11y": {
+    "close": "关闭",
+    "edit": "编辑",
+    "delete": "删除",
+    "save": "保存",
+    "cancel": "取消",
+    "search": "搜索",
+    "home": "首页",
+    "back": "返回",
+    "next": "下一步",
+    "prev": "上一个",
+    "previous": "上一个",
+    "open": "打开",
+    "refresh": "刷新",
+    "menu": "菜单",
+    "settings": "设置"
+  },
+  "workflow": {
+    "progress": {
+      "processing": "流程进行中",
+      "stage_done": "阶段已完成",
+      "stage_active": "阶段执行中",
+      "stage_pending": "阶段待执行",
+      "percentage": "{{value}}%"
+    }
   }
 }

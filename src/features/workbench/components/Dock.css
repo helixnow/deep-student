@@ -82,6 +82,21 @@ div.wb-dock {
   transform: scale(1.12);
 }
 
+/* 焦点环统一走 O1 焦点 token（压过契约类的 snap-stroke 描边，与全局 a11y 一致） */
+.wb-dock .wb-dock-item:focus-visible {
+  box-shadow: var(--wb-focus-ring);
+}
+
+/* 固定区 / 运行区 / 全部应用 分隔线：颜色走 Dock token（明暗主题自动协调） */
+.wb-dock .wb-dock-separator {
+  background: var(--wb-dock-divider);
+}
+
+/* 角标：微投影提升在彩色图标上的可辨识度（静态样式，非动画） */
+.wb-dock .wb-dock-badge {
+  box-shadow: 0 1px 4px hsl(var(--shadow-base, 0 0% 0%) / 0.28);
+}
+
 /* ==========================================================================
  * hover tooltip（玻璃气泡带箭头；hover / focus-within 显示，带出现延迟）
  * --wb-dock-lift 由放大循环按帧写在 wrap 上 = 图标向上溢出量；
@@ -99,6 +114,10 @@ div.wb-dock {
   font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
+  /* 超长应用名：钳到视口内并省略，避免气泡溢出屏幕 */
+  max-width: min(60vw, 280px);
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--wb-titlebar-fg, inherit);
   background-color: var(--wb-glass-bg-strong);
   background-image: var(--wb-glass-sheen);

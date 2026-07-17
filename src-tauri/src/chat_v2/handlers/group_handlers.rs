@@ -2,15 +2,18 @@
 //!
 //! 提供会话分组的 CRUD、排序、会话移动等功能。
 
+use std::path::Path;
 use std::sync::Arc;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::repo::ChatV2Repo;
+use crate::chat_v2::runtime_roots::runtime_root_by_id;
 use crate::chat_v2::state::ChatV2State;
 use crate::chat_v2::types::{CreateGroupRequest, PersistStatus, SessionGroup, UpdateGroupRequest};
+use crate::commands::AppState;
 use crate::vfs::{VfsDatabase, VfsFolder, VfsFolderRepo, MAX_FOLDER_TITLE_LENGTH};
 
 use super::manage_session::decrement_vfs_refs_for_session;
@@ -97,12 +100,61 @@ pub(crate) fn ensure_group_folder(
     Ok(prepend_unique_pinned_folder(pinned_resource_ids, folder.id))
 }
 
+/// 校验并解析课题首选 runtime root。
+///
+/// - 空 / None → 清除绑定（id 与 path 均为 None）
+/// - 非空 id 必须能通过本机 `runtime_root_by_id` 解析；拒绝绝对路径当 id
+/// - 绑定时写入 root 的本机绝对路径到 preferred_project_root_path
+fn resolve_group_preferred_runtime_root(
+    app: &AppHandle,
+    database: &crate::database::Database,
+    root_id: Option<String>,
+) -> Result<(Option<String>, Option<String>), String> {
+    let Some(raw) = root_id else {
+        return Ok((None, None));
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok((None, None));
+    }
+    if Path::new(trimmed).is_absolute() {
+        return Err(ChatV2Error::Validation(
+            "defaultRuntimeRootId must be a runtime root id (workspace / authorized_*), not a filesystem path"
+                .to_string(),
+        )
+        .to_string());
+    }
+
+    let root = runtime_root_by_id(
+        app,
+        database,
+        "session-preview",
+        None,
+        Some(trimmed),
+        false,
+    )
+    .map_err(|e| {
+        ChatV2Error::Validation(format!(
+            "defaultRuntimeRootId '{}' is not resolvable on this device: {}",
+            trimmed, e
+        ))
+        .to_string()
+    })?;
+
+    Ok((
+        Some(trimmed.to_string()),
+        Some(root.path.to_string_lossy().into_owned()),
+    ))
+}
+
 /// 创建分组
 #[tauri::command]
 pub async fn chat_v2_create_group(
+    app: AppHandle,
     request: CreateGroupRequest,
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    app_state: State<'_, AppState>,
 ) -> Result<SessionGroup, String> {
     let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
 
@@ -118,6 +170,13 @@ pub async fn chat_v2_create_group(
         &request.name,
         request.pinned_resource_ids.unwrap_or_default(),
     )?;
+    let (default_runtime_root_id, preferred_project_root_path) =
+        resolve_group_preferred_runtime_root(
+            &app,
+            &app_state.database,
+            request.default_runtime_root_id,
+        )?;
+    let _ = request.preferred_project_root_path; // path 由绑定 root 派生，忽略客户端传入
     let group = SessionGroup {
         id: SessionGroup::generate_id(),
         name: request.name,
@@ -128,6 +187,8 @@ pub async fn chat_v2_create_group(
         default_skill_ids: request.default_skill_ids.unwrap_or_default(),
         pinned_resource_ids,
         workspace_id: request.workspace_id,
+        default_runtime_root_id,
+        preferred_project_root_path,
         sort_order: next_sort,
         persist_status: PersistStatus::Active,
         created_at: now,
@@ -141,10 +202,12 @@ pub async fn chat_v2_create_group(
 /// 更新分组
 #[tauri::command]
 pub async fn chat_v2_update_group(
+    app: AppHandle,
     group_id: String,
     request: UpdateGroupRequest,
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
+    app_state: State<'_, AppState>,
 ) -> Result<SessionGroup, String> {
     let mut conn = db.get_conn_safe().map_err(|e| e.to_string())?;
     let existing = ChatV2Repo::get_group_with_conn(&conn, &group_id)
@@ -174,6 +237,22 @@ pub async fn chat_v2_update_group(
             .unwrap_or(existing.pinned_resource_ids),
     )?;
 
+    let (default_runtime_root_id, preferred_project_root_path) =
+        match request.default_runtime_root_id {
+            None => (
+                existing.default_runtime_root_id,
+                // 绑定未变时保留本机 path；空字符串可单独清除展示缓存
+                merge_optional_string(
+                    request.preferred_project_root_path,
+                    existing.preferred_project_root_path,
+                ),
+            ),
+            Some(root_id) => {
+                // 绑定变更：校验并写 path；清除绑定时一并清 path
+                resolve_group_preferred_runtime_root(&app, &app_state.database, Some(root_id))?
+            }
+        };
+
     let requested_status = request.persist_status;
     let updated = SessionGroup {
         id: existing.id,
@@ -187,6 +266,8 @@ pub async fn chat_v2_update_group(
             .unwrap_or(existing.default_skill_ids),
         pinned_resource_ids,
         workspace_id: merge_optional_string(request.workspace_id, existing.workspace_id),
+        default_runtime_root_id,
+        preferred_project_root_path,
         sort_order: request.sort_order.unwrap_or(existing.sort_order),
         persist_status: requested_status.clone().unwrap_or(existing.persist_status),
         created_at: existing.created_at,

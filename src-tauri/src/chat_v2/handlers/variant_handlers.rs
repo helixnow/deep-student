@@ -60,8 +60,6 @@ fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSk
         mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
         agentic_session_skill_ids,
         branch_local_skill_ids: Vec::new(),
-        effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
-        effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
         effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
         version: snapshot.version.saturating_add(1),
         legacy_migrated: Some(false),

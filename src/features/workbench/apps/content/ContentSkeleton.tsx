@@ -142,7 +142,7 @@ export const ContentSkeleton: React.FC<ContentSkeletonProps> = ({
   className,
 }) => {
   const { t } = useTranslation('workbench');
-  const statusLabel = label ?? t('workbench:content.loading', '正在加载内容…');
+  const statusLabel = label ?? t('workbench:content.loading');
   const Body = VARIANT_BODY[variant];
 
   return (

@@ -1,14 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { extractShellExecuteOutput, ShellOutputView } from '../ShellOutputView';
+import zhChatV2 from '@/locales/zh-CN/chatV2.json';
+
+function lookup(path: string): string | undefined {
+  const parts = path.split('.');
+  let cur: unknown = zhChatV2;
+  for (const part of parts) {
+    if (cur == null || typeof cur !== 'object') return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return typeof cur === 'string' ? cur : undefined;
+}
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, opts?: { defaultValue?: string; code?: number | string }) => {
-      if (key === 'shellOutput.exitCode' && opts?.code !== undefined) {
-        return `退出码 ${opts.code}`;
-      }
-      return opts?.defaultValue ?? key;
+    t: (key: string, opts?: Record<string, unknown>) => {
+      const template = lookup(key);
+      if (!template) return (opts?.defaultValue as string | undefined) ?? key;
+      return template.replace(/\{\{\s*([^}\s]+)\s*\}\}/g, (placeholder, name) => {
+        const replacement = opts?.[name];
+        return replacement == null ? placeholder : String(replacement);
+      });
     },
   }),
 }));

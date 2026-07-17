@@ -410,7 +410,7 @@ const ExposeOverlayComponent: React.FC = () => {
       const fallback = appRegistry.get(w.typeId)?.nameKey;
       const title = w.title
         || (fallback ? t(fallback, w.typeId) : '')
-        || t('workbench:expose.untitled', '未命名窗口');
+        || t('workbench:expose.untitled');
       return [w.id, title] as const;
     }));
     const nextTargets = layout.map((tg) => ({ ...tg, title: titleById.get(tg.id) ?? '' }));
@@ -650,13 +650,16 @@ const ExposeOverlayComponent: React.FC = () => {
         role="dialog"
         tabIndex={-1}
         aria-modal="true"
-        aria-label={t('workbench:expose.title', '窗口俯瞰')}
+        aria-label={t('workbench:expose.title')}
         onClick={() => closeExpose()}
       >
         {targets.length === 0 && !fading && (
           <div className="wb-expose-empty">
-            <div className="wb-expose-empty-card wb-glass">
-              {t('workbench:expose.empty', '没有打开的窗口')}
+            <div className="wb-expose-empty-card wb-glass" role="status">
+              <span>{t('workbench:expose.empty')}</span>
+              <span className="wb-expose-empty-hint">
+                {t('workbench:expose.emptyHint')}
+              </span>
             </div>
           </div>
         )}
@@ -684,6 +687,7 @@ const ExposeOverlayComponent: React.FC = () => {
                 className="wb-expose-cell-pick"
                 tabIndex={selected ? 0 : -1}
                 aria-label={target.title}
+                title={target.title}
                 aria-current={selected ? 'true' : undefined}
                 onFocus={() => setSelectedId(target.id)}
                 onClick={(e) => {
@@ -709,14 +713,22 @@ const ExposeOverlayComponent: React.FC = () => {
                 type="button"
                 className="wb-expose-close"
                 tabIndex={selected ? 0 : -1}
-                aria-label={t('workbench:expose.closeWindow', '关闭窗口')}
-                title={t('workbench:expose.closeWindow', '关闭窗口')}
+                aria-label={t('workbench:expose.closeWindow')}
+                title={t('workbench:expose.closeWindow')}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleCloseCell(target.id);
                 }}
               >
-                ×
+                {/* 矢量叉线：任意缩放下都保持锐利（与速查表关闭按钮一致） */}
+                <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
+                  <path
+                    d="M2 2 L10 10 M10 2 L2 10"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
               </button>
             </div>
           );

@@ -19,11 +19,23 @@ function buildMetadata(
 ): Record<string, unknown> | null {
   if (!groupId) return metadata ?? null;
   const group = groupCache.get(groupId);
-  if (!group?.systemPrompt) return metadata ?? null;
+  if (!group) return metadata ?? null;
+
+  const needsSystemPrompt =
+    Boolean(group.systemPrompt) && !metadata?.groupSystemPromptSnapshot;
+  const needsRuntimeRoot =
+    Boolean(group.defaultRuntimeRootId) && !metadata?.groupDefaultRuntimeRootIdSnapshot;
+
+  if (!needsSystemPrompt && !needsRuntimeRoot) {
+    return metadata ?? null;
+  }
 
   const base = metadata ? { ...metadata } : {};
-  if (!base.groupSystemPromptSnapshot) {
+  if (needsSystemPrompt) {
     base.groupSystemPromptSnapshot = group.systemPrompt;
+  }
+  if (needsRuntimeRoot) {
+    base.groupDefaultRuntimeRootIdSnapshot = group.defaultRuntimeRootId;
   }
   return base;
 }

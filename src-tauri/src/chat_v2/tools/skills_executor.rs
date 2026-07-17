@@ -289,8 +289,8 @@ impl ToolExecutor for SkillsExecutor {
                                     let next_runtime = ReplaySkillPayloadSnapshot {
                                         active_skill_ids: next_skill_state
                                             .resolved_active_skill_ids(),
-                                        skill_allowed_tools: previous_runtime
-                                            .skill_allowed_tools
+                                        execution_allowed_tools: previous_runtime
+                                            .execution_allowed_tools
                                             .clone(),
                                         skill_contents: if previous_runtime
                                             .skill_contents

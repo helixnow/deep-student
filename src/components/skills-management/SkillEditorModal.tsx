@@ -71,7 +71,7 @@ export interface SkillFormData {
   relatedSkills?: string[];
   /** 依赖技能（结构化） */
   dependencies?: string[];
-  /** 允许的工具白名单 */
+  /** Legacy allowed-tools metadata; preserved for package compatibility only. */
   allowedTools?: string[];
   /** Markdown 内容 */
   content: string;
@@ -612,20 +612,6 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
 />
                 <p className="text-[10px] text-muted-foreground/60">
                   {t('skills:editor.related_skills_hint')}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                  {t('skills:editor.allowed_tools')}
-                </Label>
-                <TagInput
-                  value={formData.allowedTools ?? []}
-                  onChange={(next) => updateField('allowedTools', next)}
-                  placeholder={t('skills:editor.allowed_tools_placeholder')}
-/>
-                <p className="text-[10px] text-muted-foreground/60">
-                  {t('skills:editor.allowed_tools_hint')}
                 </p>
               </div>
 

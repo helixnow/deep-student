@@ -483,6 +483,27 @@ describe('autohide', () => {
     expect(dock).toHaveAttribute('data-hidden', 'true');
   });
 
+  it('弹出后指针未进入 Dock 直接离开底缘 → 收起', () => {
+    vi.useFakeTimers();
+    setDockPinned(['chat']);
+    render(<Dock autohide />);
+    const dock = screen.getByTestId('wb-dock');
+    const hotzone = screen.getByTestId('wb-dock-hotzone');
+
+    fireEvent.pointerEnter(hotzone);
+    act(() => {
+      vi.advanceTimersByTime(180);
+    });
+    expect(dock).not.toHaveAttribute('data-hidden');
+
+    // 指针一直停在底缘热区（从未上移到 Dock）就离开 → conceal 150ms 后隐藏
+    fireEvent.pointerLeave(hotzone);
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(dock).toHaveAttribute('data-hidden', 'true');
+  });
+
   it('焦点在 Dock 内时不收回', () => {
     vi.useFakeTimers();
     setDockPinned(['chat']);

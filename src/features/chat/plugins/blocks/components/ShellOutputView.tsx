@@ -191,7 +191,7 @@ const StreamPane: React.FC<{
           className="mt-0.5 !h-auto !p-1 text-[10px] text-muted-foreground hover:text-foreground"
         >
           {t('shellOutput.showFull', {
-            defaultValue: '显示全部（{{kb}} KB）',
+            
             kb: (displayText.length / 1024).toFixed(0),
           })}
         </NotionButton>
@@ -232,19 +232,13 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
   // 失败解释：把 exit code / 超时翻译成可操作提示
   const failureHint = useMemo(() => {
     if (timedOut) {
-      return t('shellOutput.hint.timeout', {
-        defaultValue: '命令执行超时并已被终止。可缩小任务范围或提高 timeout_ms 后重试。',
-      });
+      return t('shellOutput.hint.timeout');
     }
     if (!success && exitCode !== null && exitCode !== 0) {
       if (hasStderr) {
-        return t('shellOutput.hint.nonZeroWithStderr', {
-          defaultValue: '命令以非 0 退出码结束，请查看上方 stderr 了解原因。',
-        });
+        return t('shellOutput.hint.nonZeroWithStderr');
       }
-      return t('shellOutput.hint.nonZero', {
-        defaultValue: '命令以非 0 退出码结束，可能是参数错误、缺少依赖或路径不存在。',
-      });
+      return t('shellOutput.hint.nonZero');
     }
     return null;
   }, [timedOut, success, exitCode, hasStderr, t]);
@@ -262,7 +256,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
       {/* 头部：图标 + 命令 + 状态徽章 */}
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
         <Terminal size={12} />
-        <span>{t('shellOutput.title', { defaultValue: '本地命令' })}</span>
+        <span>{t('shellOutput.title')}</span>
       </div>
 
       <div className="rounded border border-border/30 bg-muted/30 dark:bg-muted/20 overflow-hidden">
@@ -273,7 +267,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
             <code className="flex-1 min-w-0 font-mono text-xs text-foreground break-all">
               {data.command}
             </code>
-            <CopyButton text={data.command} label={t('shellOutput.copyCommand', { defaultValue: '复制命令' })} />
+            <CopyButton text={data.command} label={t('shellOutput.copyCommand')} />
           </div>
         )}
 
@@ -302,8 +296,8 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
           >
             <StatusIcon size={13} weight="fill" />
             {timedOut
-              ? t('shellOutput.timedOut', { defaultValue: '已超时' })
-              : t('shellOutput.exitCode', { code: exitCode ?? '—', defaultValue: `退出码 ${exitCode ?? '—'}` })}
+              ? t('shellOutput.timedOut')
+              : t('shellOutput.exitCode', { code: exitCode ?? '—' })}
           </span>
           {durationMs !== undefined && (
             <span className="inline-flex items-center gap-1 text-muted-foreground">
@@ -341,20 +335,20 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
             tone="stdout"
             text={data.stdout ?? ''}
             truncated={data.stdout_truncated}
-            copyLabel={t('shellOutput.copyStdout', { defaultValue: '复制 stdout' })}
-            truncatedLabel={t('shellOutput.truncated', { defaultValue: '输出过长，已截断' })}
+            copyLabel={t('shellOutput.copyStdout')}
+            truncatedLabel={t('shellOutput.truncated')}
           />
           <StreamPane
             title="stderr"
             tone="stderr"
             text={data.stderr ?? ''}
             truncated={data.stderr_truncated}
-            copyLabel={t('shellOutput.copyStderr', { defaultValue: '复制 stderr' })}
-            truncatedLabel={t('shellOutput.truncated', { defaultValue: '输出过长，已截断' })}
+            copyLabel={t('shellOutput.copyStderr')}
+            truncatedLabel={t('shellOutput.truncated')}
           />
           {!hasStdout && !hasStderr && (
             <div className="mt-2 text-xs text-muted-foreground italic">
-              {t('shellOutput.noOutput', { defaultValue: '命令没有输出' })}
+              {t('shellOutput.noOutput')}
             </div>
           )}
         </div>
@@ -376,20 +370,20 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
               className="!h-auto !p-0.5 !gap-1 text-[10px] text-muted-foreground hover:text-foreground"
             >
               {showMeta ? <CaretDown size={10} /> : <CaretRight size={10} />}
-              {t('shellOutput.policy', { defaultValue: '执行策略' })}
+              {t('shellOutput.policy')}
             </NotionButton>
             {showMeta && (
               <div className="mt-1 flex flex-wrap gap-1.5 pb-1">
                 {netPolicy && (
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                     {netPolicy.allow_network
-                      ? t('shellOutput.netOn', { defaultValue: '网络：允许' })
-                      : t('shellOutput.netOff', { defaultValue: '网络：禁止' })}
+                      ? t('shellOutput.netOn')
+                      : t('shellOutput.netOff')}
                   </span>
                 )}
                 {envPolicy?.allowlist_mode && (
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    {t('shellOutput.envAllowlist', { defaultValue: '环境变量：白名单' })}
+                    {t('shellOutput.envAllowlist')}
                   </span>
                 )}
                 {envPolicy?.inherit_parent_env === true && (
@@ -408,7 +402,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
                 )}
                 {envExplicit > 0 && (
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    {t('shellOutput.envExplicit', { count: envExplicit, defaultValue: `自定义变量 ${envExplicit}` })}
+                    {t('shellOutput.envExplicit', { count: envExplicit })}
                   </span>
                 )}
                 {sandbox?.backend && (

@@ -25,7 +25,7 @@ export const QueueErrorBar: React.FC<Props> = React.memo(({
     >
       <Warning size={14} weight="fill" className="text-red-500 shrink-0" aria-hidden="true" />
       <span className="flex-1 truncate text-red-500/90">
-        {t('chatV2:queue.error.tooltipPrefix')}{failedItem.error ?? t('chatV2:queue.error.unknown', '未知错误')}
+        {t('chatV2:queue.error.tooltipPrefix')}{failedItem.error ?? t('chatV2:queue.error.unknown')}
       </span>
       <button
         type="button"

@@ -24,16 +24,16 @@ pub fn is_control_tool(tool_name: &str) -> bool {
     )
 }
 
-pub fn is_tool_allowed_by_skill_policy(
+pub fn is_tool_allowed_by_execution_policy(
     tool_name: &str,
     arguments: &Value,
-    skill_allowed_tools: &Option<Vec<String>>,
+    execution_allowed_tools: &Option<Vec<String>>,
 ) -> bool {
     if is_control_tool(tool_name) {
         return true;
     }
 
-    let Some(allowed_tools) = skill_allowed_tools.as_ref() else {
+    let Some(allowed_tools) = execution_allowed_tools.as_ref() else {
         return true;
     };
 
@@ -74,10 +74,10 @@ fn tool_call_is_mcp_sourced(tool_name: &str, arguments: &Value) -> bool {
     !is_builtin_namespaced(tool_name) && server_id_from_args(arguments).is_some()
 }
 
-/// 🔧 P2-4 修复（08 报告）：按源隔离匹配，消除命名空间塌陷。
+/// 受限运行时工具匹配按源隔离，避免命名空间塌陷。
 ///
-/// 之前双方剥前缀后按短名互比，allowedTools 写 `builtin-web_search`（或 `web_search`）
-/// 的技能会同时放行任意 MCP 服务器暴露的同名工具（`mcp_web_search`），与
+/// 若双方剥前缀后按短名互比，`builtin-web_search` 会同时放行任意
+/// MCP 服务器暴露的同名工具（`mcp_web_search`），与
 /// approval_scope 声明的「两个不同 server 暴露同名工具，批准一个绝不能自动批准另一个」
 /// 原则冲突。现在的规则：
 /// - 完整名精确相等：始终匹配；
@@ -129,19 +129,19 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn skill_policy_allows_exact_and_canonical_builtin_names() {
+    fn execution_policy_allows_exact_and_canonical_builtin_names() {
         let allowed = Some(vec!["builtin-web_search".to_string()]);
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "builtin-web_search",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "web_search",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-note_read",
             &json!({}),
             &allowed
@@ -149,24 +149,24 @@ mod tests {
     }
 
     #[test]
-    fn skill_policy_empty_list_blocks_business_tools_but_allows_control_tools() {
+    fn execution_policy_empty_list_blocks_business_tools_but_allows_control_tools() {
         let allowed = Some(Vec::new());
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-web_search",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "builtin-load_skills",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "attempt_completion",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "builtin:load_skills",
             &json!({}),
             &allowed
@@ -174,19 +174,19 @@ mod tests {
     }
 
     #[test]
-    fn skill_policy_does_not_treat_mcp_prefixed_sleep_as_control_tool() {
+    fn execution_policy_does_not_treat_mcp_prefixed_sleep_as_control_tool() {
         let allowed = Some(Vec::new());
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "mcp_coordinator_sleep",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "mcp.tools.coordinator_sleep",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "workspace_coordinator_sleep",
             &json!({}),
             &allowed
@@ -194,14 +194,14 @@ mod tests {
     }
 
     #[test]
-    fn skill_policy_matches_server_scoped_tools() {
+    fn execution_policy_matches_server_scoped_tools() {
         let allowed = Some(vec!["server-a::builtin-fetch".to_string()]);
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "fetch",
             &json!({ "_serverId": "server-a" }),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "fetch",
             &json!({ "_serverId": "server-b" }),
             &allowed
@@ -210,30 +210,30 @@ mod tests {
 
     /// 🔧 P2-4 回归：builtin 白名单条目不得跨源放行任意 MCP 服务器的同名工具
     #[test]
-    fn skill_policy_builtin_entry_does_not_allow_mcp_tools() {
+    fn execution_policy_builtin_entry_does_not_allow_mcp_tools() {
         let allowed = Some(vec!["builtin-web_search".to_string()]);
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "mcp_web_search",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "mcp.tools.web_search",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "mcp_web_search",
             &json!({ "_serverId": "evil-server" }),
             &allowed
         ));
         // builtin / 裸名调用仍正常匹配
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "builtin-web_search",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "web_search",
             &json!({}),
             &allowed
@@ -242,21 +242,21 @@ mod tests {
 
     /// 🔧 P2-4 回归：裸名条目也不得放行携带 _serverId 的外部 MCP 同名工具
     #[test]
-    fn skill_policy_bare_entry_does_not_allow_mcp_sourced_calls() {
+    fn execution_policy_bare_entry_does_not_allow_mcp_sourced_calls() {
         let allowed = Some(vec!["web_search".to_string()]);
         // 外部 MCP 路由（带 _serverId 或 mcp 前缀）必须用 server::tool 显式声明
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "web_search",
             &json!({ "_serverId": "some-mcp-server" }),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "mcp_web_search",
             &json!({}),
             &allowed
         ));
         // 无 _serverId 的裸名调用（builtin 执行器）仍匹配
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "web_search",
             &json!({}),
             &allowed
@@ -265,24 +265,24 @@ mod tests {
 
     /// 🔧 P2-4 回归：mcp 条目仍可匹配 mcp 前缀形态互换，但不匹配 builtin 工具
     #[test]
-    fn skill_policy_mcp_entry_matches_only_mcp_namespace() {
+    fn execution_policy_mcp_entry_matches_only_mcp_namespace() {
         let allowed = Some(vec!["mcp_note_set".to_string()]);
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "mcp_note_set",
             &json!({}),
             &allowed
         ));
-        assert!(is_tool_allowed_by_skill_policy(
+        assert!(is_tool_allowed_by_execution_policy(
             "mcp.tools.note_set",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "builtin-note_set",
             &json!({}),
             &allowed
         ));
-        assert!(!is_tool_allowed_by_skill_policy(
+        assert!(!is_tool_allowed_by_execution_policy(
             "note_set",
             &json!({}),
             &allowed

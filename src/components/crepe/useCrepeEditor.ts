@@ -15,6 +15,8 @@ import { listItemSchema, wrapInBlockTypeCommand } from '@milkdown/kit/preset/com
 import type { CrepeEditorApi } from './types';
 import type { AgentHighlightMeta } from './plugins/agentHighlight';
 import { agentHighlightKey } from './plugins/agentHighlight';
+import { applyCrepePlugins, type CrepePluginsOptions } from './plugins';
+import { appendCalloutToggleSlashItems } from './plugins/slashMenuExtras';
 import { createImageBlockConfig } from './features/imageUpload';
 import i18next from 'i18next';
 
@@ -33,6 +35,12 @@ export interface UseCrepeEditorOptions {
   
   /** 只读模式 */
   readonly?: boolean;
+
+  /**
+   * 扩展插件配置（传给 applyCrepePlugins）。
+   * 与 CrepeEditor `plugins` prop 同契约。
+   */
+  plugins?: CrepePluginsOptions;
   
   /** 内容变化回调 */
   onChange?: (markdown: string) => void;
@@ -112,6 +120,7 @@ export function useCrepeEditor(options: UseCrepeEditorOptions): UseCrepeEditorRe
     noteId,
     placeholder,
     readonly = false,
+    plugins: pluginsOptions,
     onChange,
     onReady,
     onFocus,
@@ -794,11 +803,19 @@ export function useCrepeEditor(options: UseCrepeEditorOptions): UseCrepeEditorRe
               text: placeholder || i18next.t('notes:editor.placeholder.body'),
               mode: 'doc',
             },
+            [CrepeFeature.BlockEdit]: {
+              buildMenu: (builder) => {
+                appendCalloutToggleSlashItems(builder);
+              },
+            },
             [CrepeFeature.Latex]: {
               katexOptions: { throwOnError: false },
             },
           },
         });
+
+        // 扩展插件须在 create() 之前（与 CrepeEditor 同路径）
+        applyCrepePlugins(crepe, pluginsOptions);
 
         // 注册事件监听
         crepe.on((listener) => {

@@ -5,14 +5,13 @@ import { useTranslation } from 'react-i18next';
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelGroupHandle } from 'react-resizable-panels';
 import {
   ArrowsClockwise,
-  CaretDown,
   FileText,
   Files,
   FolderPlus,
-  FolderSimple,
   LinkSimple,
+  List,
   MagnifyingGlass,
-  NotePencil,
+  Notebook,
   PushPin,
   PushPinSlash,
   SidebarSimple,
@@ -35,6 +34,7 @@ import {
 } from '@/command-palette/modules/notes.commands';
 import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { isMacOS } from '@/utils/platform';
 import type { FolderTreeNode, VfsFolder } from '@/dstu/types/folder';
 import { requestContentCloseConfirmation } from '../content/ContentCloseConfirmation';
 import { isContentDirty } from '../content/contentDirtyRegistry';
@@ -46,8 +46,30 @@ import {
   type NotesWorkspaceResourceRef,
 } from './workspaceRegistry';
 import { NotesBacklinksPanel } from './NotesBacklinksPanel';
+import { NotesPropertiesTab } from './NotesPropertiesTab';
 import { NotesSearchOverlay, type NotesSearchMode } from './NotesSearchOverlay';
+import { NotesTrashDialog } from './NotesTrashDialog';
+import { FavoritesSection } from './FavoritesSection';
+import { TagFilter } from './TagFilter';
+import { useNoteFavorites } from './hooks/useNoteFavorites';
+import {
+  useNotesNavHistory,
+  type NotesNavHistoryEntry,
+} from './hooks/useNotesNavHistory';
+import { nodeMatchesTags } from './parseTagQuery';
+import {
+  NotesWorkspaceTree,
+  mapWorkspaceTreeFolder,
+  expandedIdsFromCollapsedPaths,
+  collectFolderEntries,
+  findItemById,
+  NOTES_WORKSPACE_TREE_ROOT_ID,
+  type NotesWorkspaceDropPosition,
+  type NotesWorkspaceTreeItem,
+  type NotesWorkspaceTreeMenuItem,
+} from './tree';
 import './NotesWorkspaceApp.css';
+import './notes-empty-states.css';
 
 type ResourceType = NotesWorkspaceResourceRef['type'];
 
@@ -60,7 +82,6 @@ interface WorkspaceTab extends NotesWorkspaceResourceRef {
 type SaveState = 'saved' | 'saving' | 'dirty';
 type WorkspacePaneId = 'main' | 'right';
 type SplitLayout = [number, number];
-type TrashItemType = ResourceType | 'folder';
 type TabDropPosition = 'before' | 'after';
 
 const DEFAULT_SPLIT_LAYOUT: SplitLayout = [50, 50];
@@ -93,12 +114,6 @@ interface TreeFolder {
   resources: DstuNode[];
 }
 
-function canDropExplorerItemIntoFolder(item: DraggedExplorerItem, folder: TreeFolder): boolean {
-  if (!folder.id) return false;
-  if (item.kind === 'resource') return true;
-  return folder.id !== item.folder.id && !folder.path.startsWith(`${item.folder.path}/`);
-}
-
 interface ExplorerFolderTarget {
   kind: 'folder';
   id: string;
@@ -112,10 +127,6 @@ interface ExplorerResourceTarget {
 }
 
 type ExplorerTarget = ExplorerFolderTarget | ExplorerResourceTarget;
-
-type DraggedExplorerItem =
-  | { kind: 'resource'; node: DstuNode }
-  | { kind: 'folder'; folder: TreeFolder };
 
 type ResourceDialog =
   | { mode: 'rename' | 'delete'; target: ExplorerTarget; value: string }
@@ -138,13 +149,50 @@ interface PersistedWorkspaceState {
 const resourceType = (value: unknown): ResourceType | null =>
   value === 'note' || value === 'mindmap' ? value : null;
 
-const trashItemType = (value: unknown): TrashItemType | null =>
-  value === 'folder' ? 'folder' : resourceType(value);
-
 const treeResourceKey = (type: string, id: string): string => `${type}:${id}`;
 
-const ROOT_TREE_DROP_TARGET = '__notes-workspace-root__';
 const EMPTY_RESOURCE_FOLDER_IDS: ReadonlyMap<string, string> = new Map();
+
+function isStableVfsFolderId(id: string): boolean {
+  return Boolean(id) && !id.startsWith('synth:');
+}
+
+function isReservedFolderTitle(title: string): boolean {
+  return title.trim().toLocaleLowerCase() === '__system__';
+}
+
+function findParentDeep(
+  items: readonly NotesWorkspaceTreeItem[],
+  childId: string,
+): { found: boolean; parentId: string | null } {
+  for (const item of items) {
+    if (!item.children?.length) continue;
+    if (item.children.some((child) => child.id === childId)) {
+      return {
+        found: true,
+        parentId: item.kind === 'folder' && isStableVfsFolderId(item.id) ? item.id : null,
+      };
+    }
+    const nested = findParentDeep(item.children, childId);
+    if (nested.found) return nested;
+  }
+  return { found: false, parentId: null };
+}
+
+function resolveMoveDestinationFolderId(
+  items: readonly NotesWorkspaceTreeItem[],
+  targetId: string,
+  position: NotesWorkspaceDropPosition,
+): string | null | undefined {
+  if (targetId === NOTES_WORKSPACE_TREE_ROOT_ID) return undefined;
+  const target = findItemById(items, targetId);
+  if (!target) return null;
+  if (position === 'inside' && target.kind === 'folder') {
+    return isStableVfsFolderId(target.id) ? target.id : null;
+  }
+  const parent = findParentDeep(items, targetId);
+  return parent.found ? parent.parentId ?? undefined : null;
+}
 
 function parseSplitLayout(value: unknown): SplitLayout {
   if (!Array.isArray(value) || value.length !== 2) return DEFAULT_SPLIT_LAYOUT;
@@ -208,6 +256,10 @@ export function buildTree(
     const parentFolder = folder.parentId ? foldersById.get(folder.parentId) : undefined;
     const parent = parentFolder ? ensureKnownFolder(parentFolder) : root;
     resolvingFolderIds.delete(folder.id);
+    if (isReservedFolderTitle(folder.title)) {
+      knownTreeFolders.set(folder.id, parent);
+      return parent;
+    }
     const key = `id:${folder.id}`;
     const existing = parent.folders.get(key);
     if (existing) return existing;
@@ -227,6 +279,7 @@ export function buildTree(
     let cursor = root;
     const pathSegments: string[] = [];
     for (const segment of segments) {
+      if (isReservedFolderTitle(segment)) continue;
       pathSegments.push(segment);
       const knownMatches = [...cursor.folders.values()].filter((folder) => folder.name === segment);
       if (knownMatches.length === 1) {
@@ -339,147 +392,6 @@ const ResourceGlyph: React.FC<{ type: ResourceType; size?: number }> = ({ type, 
     ? <FileText size={size} aria-hidden />
     : <TreeStructure size={size} aria-hidden />;
 
-const TrashGlyph: React.FC<{ type: TrashItemType; size?: number }> = ({ type, size = 15 }) =>
-  type === 'folder'
-    ? <FolderSimple size={size} weight="fill" aria-hidden />
-    : <ResourceGlyph type={type} size={size} />;
-
-interface TreeBranchProps {
-  folder: TreeFolder;
-  depth?: number;
-  activeId: string | null;
-  selectedFolderId: string | null;
-  collapsedFolderPaths: ReadonlySet<string>;
-  dragOverFolderPath: string | null;
-  onOpen: (ref: NotesWorkspaceResourceRef, title?: string) => void;
-  onContextMenu: (event: React.MouseEvent, node: DstuNode) => void;
-  onFolderContextMenu: (event: React.MouseEvent, folder: TreeFolder) => void;
-  onToggleFolder: (folder: TreeFolder) => void;
-  onSelectFolder: (folder: TreeFolder) => void;
-  onResourceDragStart: (event: React.DragEvent, node: DstuNode) => void;
-  onFolderDragStart: (event: React.DragEvent, folder: TreeFolder) => void;
-  onDragEnd: () => void;
-  onDragOverFolder: (event: React.DragEvent, folder: TreeFolder) => void;
-  onDragLeaveFolder: (event: React.DragEvent, folder: TreeFolder) => void;
-  onDropIntoFolder: (event: React.DragEvent, folder: TreeFolder) => void;
-}
-
-const TreeBranch: React.FC<TreeBranchProps> = ({
-  folder,
-  depth = 0,
-  activeId,
-  selectedFolderId,
-  collapsedFolderPaths,
-  dragOverFolderPath,
-  onOpen,
-  onContextMenu,
-  onFolderContextMenu,
-  onToggleFolder,
-  onSelectFolder,
-  onResourceDragStart,
-  onFolderDragStart,
-  onDragEnd,
-  onDragOverFolder,
-  onDragLeaveFolder,
-  onDropIntoFolder,
-}) => {
-  const { t } = useTranslation('workbench');
-  const expanded = !collapsedFolderPaths.has(folder.path);
-  const folders = [...folder.folders.values()].sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
-  const resources = [...folder.resources].sort((a, b) => a.name.localeCompare(b.name));
-  const level = depth + 1;
-  return (
-    <>
-      {folder.name && (
-        <button
-          type="button"
-          className="notes-tree-row notes-tree-folder"
-          role="treeitem"
-          data-notes-tree-item
-          data-notes-tree-folder
-          data-depth={level}
-          data-expanded={expanded ? 'true' : 'false'}
-          data-selected={selectedFolderId === folder.id ? 'true' : 'false'}
-          data-drop-target={dragOverFolderPath === folder.path ? 'true' : 'false'}
-          style={{ paddingLeft: 8 + depth * 14 }}
-          onClick={() => {
-            onSelectFolder(folder);
-            onToggleFolder(folder);
-          }}
-          onContextMenu={(event) => onFolderContextMenu(event, folder)}
-          draggable={Boolean(folder.id)}
-          onDragStart={(event) => onFolderDragStart(event, folder)}
-          onDragEnd={onDragEnd}
-          onDragOver={(event) => onDragOverFolder(event, folder)}
-          onDragLeave={(event) => onDragLeaveFolder(event, folder)}
-          onDrop={(event) => onDropIntoFolder(event, folder)}
-          aria-expanded={expanded}
-          aria-selected={selectedFolderId === folder.id}
-          aria-level={level}
-          aria-label={t('notesWorkspace.tree.folder', { defaultValue: 'Folder: {{name}}', name: folder.name })}
-        >
-          <CaretDown size={12} className={expanded ? '' : 'is-collapsed'} aria-hidden />
-          <FolderSimple size={15} weight="fill" aria-hidden />
-          <span>{folder.name}</span>
-        </button>
-      )}
-      {(folder.name ? expanded : true) && (
-        <div role={folder.name ? 'group' : undefined}>
-          {folders.map((child) => (
-            <TreeBranch
-              key={child.path}
-              folder={child}
-              depth={folder.name ? depth + 1 : depth}
-              activeId={activeId}
-              selectedFolderId={selectedFolderId}
-              collapsedFolderPaths={collapsedFolderPaths}
-              dragOverFolderPath={dragOverFolderPath}
-              onOpen={onOpen}
-              onContextMenu={onContextMenu}
-              onFolderContextMenu={onFolderContextMenu}
-              onToggleFolder={onToggleFolder}
-              onSelectFolder={onSelectFolder}
-              onResourceDragStart={onResourceDragStart}
-              onFolderDragStart={onFolderDragStart}
-              onDragEnd={onDragEnd}
-              onDragOverFolder={onDragOverFolder}
-              onDragLeaveFolder={onDragLeaveFolder}
-              onDropIntoFolder={onDropIntoFolder}
-            />
-          ))}
-          {resources.map((node) => {
-            const type = node.type as ResourceType;
-            return (
-              <button
-                type="button"
-                key={node.id}
-                className="notes-tree-row notes-tree-resource"
-                role="treeitem"
-                data-notes-tree-item
-                data-depth={folder.name ? level + 1 : level}
-                data-active={activeId === node.id ? 'true' : 'false'}
-                style={{ paddingLeft: 25 + (folder.name ? depth : 0) * 14 }}
-                onClick={() => onOpen({ type, id: node.id }, node.name)}
-                onContextMenu={(event) => onContextMenu(event, node)}
-                draggable
-                onDragStart={(event) => onResourceDragStart(event, node)}
-                onDragEnd={onDragEnd}
-                data-resource-type={type}
-                data-resource-id={node.id}
-                aria-selected={activeId === node.id}
-                aria-level={folder.name ? level + 1 : level}
-              >
-                <ResourceGlyph type={type} />
-                <span>{node.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </>
-  );
-};
-
 interface WorkspacePaneProps {
   paneId: WorkspacePaneId;
   tabs: WorkspaceTab[];
@@ -489,7 +401,16 @@ interface WorkspacePaneProps {
   onActivate: (key: string) => void;
   onTitleChange: (key: string, title: string) => void;
   onSaveStateChange: (key: string, state: SaveState) => void;
+  onCreateNote?: () => void;
+  onOpenSearch?: () => void;
 }
+
+const TREE_SKELETON_ROWS: Array<{ indent: number; width: string }> = [
+  { indent: 0, width: '68%' },
+  { indent: 1, width: '54%' },
+  { indent: 1, width: '62%' },
+  { indent: 2, width: '48%' },
+];
 
 const WorkspacePane: React.FC<WorkspacePaneProps> = ({
   paneId,
@@ -500,9 +421,12 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
   onActivate,
   onTitleChange,
   onSaveStateChange,
+  onCreateNote,
+  onOpenSearch,
 }) => {
   const { t } = useTranslation('workbench');
   const active = tabs.find((tab) => tab.key === activeKey) ?? null;
+  const modKey = isMacOS() ? '⌘' : 'Ctrl+';
   return (
     <section
       className="notes-workspace-pane"
@@ -518,9 +442,43 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
     >
       <div className="notes-pane-content">
         {!active && (
-          <div className="notes-empty-pane">
-            <NotePencil size={34} weight="thin" aria-hidden />
-            <span>{t('notesWorkspace.emptyPane', 'Select a note or mind map')}</span>
+          <div className="nes-empty-pane notes-empty-pane" data-nes-empty-pane>
+            <div className="nes-empty-pane__inner ui-zoom-fade-in">
+              <div className="nes-empty-pane__icon" aria-hidden>
+                <Notebook size={48} weight="thin" />
+              </div>
+              <p className="nes-empty-pane__title">
+                {t('workbench:notesWorkspace.empty.paneTitle')}
+              </p>
+              <div className="nes-empty-pane__actions">
+                <button
+                  type="button"
+                  className="nes-action"
+                  onClick={() => onCreateNote?.()}
+                >
+                  <FileText size={14} aria-hidden />
+                  {t('workbench:notesWorkspace.empty.paneNewNote')}
+                </button>
+                <button
+                  type="button"
+                  className="nes-action nes-action--ghost"
+                  onClick={() => onOpenSearch?.()}
+                >
+                  <MagnifyingGlass size={14} aria-hidden />
+                  {t('workbench:notesWorkspace.empty.paneOpenSearch')}
+                </button>
+              </div>
+              <ul className="nes-empty-pane__hints">
+                <li className="nes-empty-pane__hint">
+                  <kbd className="nes-kbd">{modKey}O</kbd>
+                  <span>{t('workbench:notesWorkspace.empty.hintQuickOpen')}</span>
+                </li>
+                <li className="nes-empty-pane__hint">
+                  <kbd className="nes-kbd">{modKey}N</kbd>
+                  <span>{t('workbench:notesWorkspace.empty.hintNewNote')}</span>
+                </li>
+              </ul>
+            </div>
           </div>
         )}
         {tabs.map((tab) => {
@@ -536,6 +494,7 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
                   isActive={workspaceActive && visible}
                   focusOnActive={workspaceActive && visible}
                   hostWindowId={windowId}
+                  propertiesPanelDisabled
                   onTitleChange={(title) => onTitleChange(tab.key, title)}
                   onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
                   className="h-full"
@@ -592,6 +551,18 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   const stripRef = useRef<HTMLDivElement>(null);
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ key: string; position: TabDropPosition } | null>(null);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && overflowRef.current?.contains(event.target)) return;
+      setOverflowOpen(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [overflowOpen]);
 
   useEffect(() => {
     const active = stripRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
@@ -759,6 +730,34 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
         </div>
       );})}
     </div>
+    {tabs.length > 0 && (
+      <div className="notes-tabs-overflow" ref={overflowRef}>
+        <IconButton
+          label={t('notesWorkspace.tabs.showAll', 'Show all open files')}
+          aria-haspopup="menu"
+          aria-expanded={overflowOpen}
+          onClick={() => setOverflowOpen((open) => !open)}
+        >
+          <List size={15} />
+        </IconButton>
+        {overflowOpen && (
+          <div className="notes-tabs-overflow-menu" role="menu">
+            {tabs.map((tab) => (
+              <button
+                type="button"
+                role="menuitem"
+                key={tab.key}
+                data-active={tab.key === activeKey ? 'true' : 'false'}
+                onClick={() => { onActivate(tab.key); setOverflowOpen(false); }}
+              >
+                <ResourceGlyph type={tab.type} size={14} />
+                <span>{tab.title}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
   </div>
   );
 };
@@ -796,21 +795,20 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     () => new Set(persistedState.collapsedFolderPaths),
   );
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [draggedItem, setDraggedItem] = useState<DraggedExplorerItem | null>(null);
-  const [dragOverFolderPath, setDragOverFolderPath] = useState<string | null>(null);
+  const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [compact, setCompact] = useState(false);
+  const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
   const [status, setStatus] = useState(() => t('notesWorkspace.status.ready', 'Ready'));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tabSaveStates, setTabSaveStates] = useState<Record<string, SaveState>>({});
-  const [contextMenu, setContextMenu] = useState<{ target: ExplorerTarget; x: number; y: number } | null>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenu | null>(null);
   const [resourceDialog, setResourceDialog] = useState<ResourceDialog | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
-  const [trashLoading, setTrashLoading] = useState(false);
-  const [trashItems, setTrashItems] = useState<DstuNode[]>([]);
-  const [trashError, setTrashError] = useState<string | null>(null);
+  const favorites = useNoteFavorites();
+  const navHistory = useNotesNavHistory();
   const initialRef = useRef(parseInitialResource(instanceKey, launchPayload));
   const openResourceRef = useRef<(ref: NotesWorkspaceResourceRef, title?: string) => Promise<void>>(async () => undefined);
   const closeTabRef = useRef<(key: string, options?: CloseTabOptions) => Promise<boolean>>(async () => false);
@@ -825,11 +823,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const loadSequenceRef = useRef(0);
   const refreshTimerRef = useRef<number | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const trashDialogRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const tabContextTriggerRef = useRef<HTMLElement | null>(null);
   const restoreTabContextFocusRef = useRef(false);
-  const treeTypeaheadRef = useRef<{ value: string; timer: number | null }>({ value: '', timer: null });
   const paneGroupRef = useRef<ImperativePanelGroupHandle>(null);
   const splitLayoutRef = useRef<SplitLayout>(splitLayout);
 
@@ -860,17 +856,32 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   resourcesRef.current = resources;
   const filteredResources = useMemo(() => {
     const term = query.trim().toLocaleLowerCase();
-    return term ? resources.filter((node) => node.name.toLocaleLowerCase().includes(term)) : resources;
-  }, [query, resources]);
+    return resources.filter((node) => {
+      if (term && !node.name.toLocaleLowerCase().includes(term)) return false;
+      if (!nodeMatchesTags(node.metadata, selectedTags)) return false;
+      return true;
+    });
+  }, [query, resources, selectedTags]);
   const tree = useMemo(
     () => buildTree(
       filteredResources,
-      query.trim() ? [] : folders,
-      query.trim() ? EMPTY_RESOURCE_FOLDER_IDS : resourceFolderIds,
+      query.trim() || selectedTags.length > 0 ? [] : folders,
+      query.trim() || selectedTags.length > 0 ? EMPTY_RESOURCE_FOLDER_IDS : resourceFolderIds,
     ),
-    [filteredResources, folders, query, resourceFolderIds],
+    [filteredResources, folders, query, resourceFolderIds, selectedTags.length],
   );
-  const hasTreeItems = tree.folders.size > 0 || tree.resources.length > 0;
+  const treeItems = useMemo(() => mapWorkspaceTreeFolder(tree), [tree]);
+  const folderEntries = useMemo(() => collectFolderEntries(treeItems), [treeItems]);
+  const expandedIds = useMemo(
+    () => expandedIdsFromCollapsedPaths(folderEntries, collapsedFolderPaths),
+    [collapsedFolderPaths, folderEntries],
+  );
+  const hasTreeItems = treeItems.length > 0;
+  const availableMainWidth = workspaceWidth - 44 - (explorerOpen && !compact ? explorerWidth : 0);
+  const backlinksOverlay = compact
+    || Boolean(splitTab)
+    || workspaceWidth < 1180
+    || availableMainWidth < 760;
   const titlebarTabsLeft = Math.max(76, 44 + (explorerOpen && !compact ? explorerWidth : 0));
   const saveStates = useMemo(
     () => new Map(tabs.map((tab) => [tab.key, tabSaveStates[tab.key] ?? getTabSaveState(tab, windowId)])),
@@ -958,6 +969,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     }
   }, [t]);
 
+  useEffect(() => {
+    void favorites.refresh();
+  }, [favorites.refresh]);
+
   const queueResourceRefresh = useCallback(() => {
     if (refreshTimerRef.current !== null) window.clearTimeout(refreshTimerRef.current);
     refreshTimerRef.current = window.setTimeout(() => {
@@ -973,12 +988,16 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (rightTabKeyRef.current === key) {
       focusedPaneRef.current = 'right';
       setFocusedPane('right');
-      return;
+    } else {
+      focusedPaneRef.current = 'main';
+      setFocusedPane('main');
+      setActiveTabKey(key);
     }
-    focusedPaneRef.current = 'main';
-    setFocusedPane('main');
-    setActiveTabKey(key);
-  }, []);
+    const tab = tabsRef.current.find((item) => item.key === key);
+    if (tab) {
+      navHistory.push({ key: tab.key, type: tab.type, id: tab.id });
+    }
+  }, [navHistory]);
 
   const openResource = useCallback((ref: NotesWorkspaceResourceRef, title?: string) => {
     const key = `${ref.type}:${ref.id}`;
@@ -1002,8 +1021,19 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       setFocusedPane('main');
       setActiveTabKey(key);
     }
+    navHistory.push({ key, type: ref.type, id: ref.id });
     return new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-  }, [t]);
+  }, [navHistory, t]);
+
+  const activateHistoryEntry = useCallback(async (entry: NotesNavHistoryEntry) => {
+    const exists = tabsRef.current.some((tab) => tab.key === entry.key)
+      || resourcesRef.current.some((node) => node.id === entry.id && node.type === entry.type);
+    if (!exists) {
+      navHistory.prune(entry.key);
+      return;
+    }
+    await openResource({ type: entry.type, id: entry.id });
+  }, [navHistory, openResource]);
 
   const openTabInRightSplit = useCallback((key: string) => {
     const currentTabs = tabsRef.current;
@@ -1315,12 +1345,13 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     await loadResources({ blocking: false });
   }, [loadResources, resourceDialog, t]);
 
-  const createResource = useCallback(async (type: ResourceType) => {
+  const createResource = useCallback(async (type: ResourceType, folderId?: string | null) => {
     setStatus(t(
       type === 'note' ? 'notesWorkspace.status.creatingNote' : 'notesWorkspace.status.creatingMindmap',
       type === 'note' ? 'Creating note...' : 'Creating mind map...',
     ));
-    const result = await createEmpty({ type, folderId: selectedFolderId ?? undefined });
+    const targetFolderId = folderId === undefined ? selectedFolderId : folderId;
+    const result = await createEmpty({ type, folderId: targetFolderId ?? undefined });
     if (!result.ok) {
       setStatus(result.error.toUserMessage());
       return;
@@ -1329,32 +1360,22 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     await openResource({ type, id: result.value.id }, result.value.name);
   }, [loadResources, openResource, selectedFolderId, t]);
 
-  const loadTrash = useCallback(async () => {
-    setTrashLoading(true);
-    setTrashError(null);
-    const result = await trashApi.listTrash(100, 0);
+  const createFromUnresolved = useCallback(async (title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    setStatus(t('notesWorkspace.status.creatingNote', 'Creating note...'));
+    const result = await createEmpty({
+      type: 'note',
+      name: trimmed,
+      folderId: selectedFolderId ?? undefined,
+    });
     if (!result.ok) {
-      setTrashError(result.error.toUserMessage());
-    } else {
-      setTrashItems(result.value.filter((node) => trashItemType(node.type)));
+      setStatus(result.error.toUserMessage());
+      throw new Error(result.error.toUserMessage());
     }
-    setTrashLoading(false);
-  }, []);
-
-  const restoreTrashItem = useCallback(async (node: DstuNode) => {
-    const type = trashItemType(node.type);
-    if (!type) return;
-    const result = await trashApi.restoreItem(node.id, type);
-    if (!result.ok) {
-      setTrashError(result.error.toUserMessage());
-      return;
-    }
-    setTrashItems((current) => current.filter((item) => item.id !== node.id));
-    setStatus(t('notesWorkspace.status.restored', { defaultValue: '{{name}} restored', name: node.name }));
     await loadResources({ blocking: false });
-  }, [loadResources, t]);
-
-  const closeTrash = useCallback(() => setTrashOpen(false), []);
+    await openResource({ type: 'note', id: result.value.id }, trimmed);
+  }, [loadResources, openResource, selectedFolderId, t]);
 
   useEffect(() => {
     onTitleChange(t('notesWorkspace.title', 'Notes'));
@@ -1497,12 +1518,19 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     const host = hostRef.current;
     if (!host) return;
     const observer = new ResizeObserver(([entry]) => {
-      const nextCompact = entry.contentRect.width < 720;
+      const width = entry.contentRect.width;
+      const nextCompact = width < 720;
+      setWorkspaceWidth(width);
       setCompact(nextCompact);
     });
     observer.observe(host);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!backlinksOverlay) return;
+    if (explorerOpen && backlinksOpen) setExplorerOpen(false);
+  }, [backlinksOpen, backlinksOverlay, explorerOpen]);
 
   useEffect(() => {
     const explorer = explorerRef.current;
@@ -1512,13 +1540,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, [compact, explorerOpen]);
 
   useEffect(() => {
-    if (!contextMenu && !tabContextMenu) return;
+    if (!tabContextMenu) return;
     const dismiss = (event?: Event) => {
       if (event?.target instanceof Node && contextMenuRef.current?.contains(event.target)) return;
-      if (tabContextMenu) {
-        restoreTabContextFocusRef.current = event instanceof KeyboardEvent && event.key === 'Escape';
-      }
-      setContextMenu(null);
+      restoreTabContextFocusRef.current = event instanceof KeyboardEvent && event.key === 'Escape';
       setTabContextMenu(null);
     };
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss(event); };
@@ -1533,7 +1558,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       window.removeEventListener('click', dismiss, true);
       window.removeEventListener('keydown', onKey);
     };
-  }, [contextMenu, tabContextMenu]);
+  }, [tabContextMenu]);
 
   useEffect(() => {
     if (!tabContextMenu) return;
@@ -1590,46 +1615,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       previouslyFocused?.focus();
     };
   }, [resourceDialog]);
-
-  useEffect(() => {
-    if (trashOpen) void loadTrash();
-  }, [loadTrash, trashOpen]);
-
-  useEffect(() => {
-    if (!trashOpen) return;
-    const previouslyFocused = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-    const focusable = () => Array.from(trashDialogRef.current?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ) ?? []);
-    const frame = window.requestAnimationFrame(() => focusable()[0]?.focus());
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeTrash();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const elements = focusable();
-      if (elements.length === 0) return;
-      const first = elements[0];
-      const last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('keydown', onKeyDown, true);
-      previouslyFocused?.focus();
-    };
-  }, [closeTrash, trashOpen]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -1744,28 +1729,193 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     window.addEventListener('pointerup', up);
   }, [explorerWidth]);
 
-  const toggleFolder = useCallback((folder: TreeFolder) => {
+  const toggleTreeExpand = useCallback((id: string) => {
+    const item = findItemById(treeItems, id);
+    if (!item?.path || item.kind !== 'folder') return;
     setCollapsedFolderPaths((current) => {
       const next = new Set(current);
-      if (next.has(folder.path)) next.delete(folder.path);
-      else next.add(folder.path);
+      if (next.has(item.path!)) next.delete(item.path!);
+      else next.add(item.path!);
       return next;
     });
-  }, []);
+  }, [treeItems]);
 
-  const openContextMenu = useCallback((event: React.MouseEvent, target: ExplorerTarget) => {
-    event.preventDefault();
-    restoreTabContextFocusRef.current = false;
-    setTabContextMenu(null);
-    setContextMenu({
-      target,
-      x: Math.min(event.clientX, window.innerWidth - 176),
-      y: Math.min(event.clientY, window.innerHeight - 72),
+  const expandTreeFolder = useCallback((id: string) => {
+    const item = findItemById(treeItems, id);
+    if (!item?.path || item.kind !== 'folder') return;
+    setCollapsedFolderPaths((current) => {
+      if (!current.has(item.path!)) return current;
+      const next = new Set(current);
+      next.delete(item.path!);
+      return next;
     });
-  }, []);
+  }, [treeItems]);
+
+  const selectTreeItem = useCallback((id: string | null) => {
+    setSelectedTreeId(id);
+    if (id === null) {
+      setSelectedFolderId(null);
+      return;
+    }
+    const item = findItemById(treeItems, id);
+    if (item?.kind === 'folder' && isStableVfsFolderId(item.id)) {
+      setSelectedFolderId(item.id);
+    }
+  }, [treeItems]);
+
+  const openTreeItem = useCallback((id: string) => {
+    const item = findItemById(treeItems, id);
+    if (!item || item.kind === 'folder') return;
+    void openResource({ type: item.kind, id: item.id }, item.name);
+  }, [openResource, treeItems]);
+
+  const renameTreeItem = useCallback(async (id: string, newName: string) => {
+    const item = findItemById(treeItems, id);
+    if (!item || item.canRename === false) return;
+    const name = newName.trim();
+    if (!name || name === item.name) return;
+    if (item.kind === 'folder') {
+      if (!isStableVfsFolderId(item.id)) return;
+      const result = await folderApi.renameFolder(item.id, name);
+      if (!result.ok) {
+        setStatus(result.error.toUserMessage());
+        return;
+      }
+    } else {
+      const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
+      const path = node?.path || `/${item.id}`;
+      const result = await dstu.rename(path, name);
+      if (!result.ok) {
+        setStatus(result.error.toUserMessage());
+        return;
+      }
+      updateTabTitle(`${item.kind}:${item.id}`, name);
+    }
+    await loadResources({ blocking: false });
+  }, [loadResources, treeItems, updateTabTitle]);
+
+  const moveTreeItem = useCallback(async (
+    dragId: string,
+    targetId: string,
+    position: NotesWorkspaceDropPosition,
+  ) => {
+    const dragItem = findItemById(treeItems, dragId);
+    if (!dragItem || dragItem.canMove === false) return;
+    const destination = resolveMoveDestinationFolderId(treeItems, targetId, position);
+    if (destination === null) return;
+    let result: Awaited<ReturnType<typeof folderApi.moveItem>>;
+    if (dragItem.kind === 'folder') {
+      if (!isStableVfsFolderId(dragItem.id)) return;
+      result = await folderApi.moveFolder(dragItem.id, destination);
+    } else {
+      result = await folderApi.moveItem(dragItem.kind, dragItem.id, destination);
+    }
+    if (!result.ok) {
+      setStatus(result.error.toUserMessage());
+      return;
+    }
+    setSelectedFolderId(destination ?? null);
+    await loadResources({ blocking: false });
+  }, [loadResources, treeItems]);
+
+  const resolveCreateFolderId = useCallback((item: NotesWorkspaceTreeItem): string | undefined => {
+    if (item.kind === 'folder' && isStableVfsFolderId(item.id)) return item.id;
+    return selectedFolderId ?? undefined;
+  }, [selectedFolderId]);
+
+  const getTreeMenuItems = useCallback((
+    item: NotesWorkspaceTreeItem,
+    helpers: { beginRename: () => void },
+  ): NotesWorkspaceTreeMenuItem[] => {
+    const items: NotesWorkspaceTreeMenuItem[] = [];
+    if (item.kind === 'note' || item.kind === 'mindmap') {
+      const resourceType = item.kind;
+      items.push({
+        id: 'open',
+        label: t('notesWorkspace.context.open'),
+        onSelect: () => void openResource({ type: resourceType, id: item.id }, item.name),
+      });
+      items.push({
+        id: 'openSplit',
+        label: t('notesWorkspace.context.openSplit'),
+        onSelect: () => {
+          void (async () => {
+            await openResource({ type: resourceType, id: item.id }, item.name);
+            openTabInRightSplit(`${resourceType}:${item.id}`);
+          })();
+        },
+      });
+      const isFavorite = favorites.items.some((entry) => entry.id === item.id && entry.type === resourceType)
+        || item.favorite === true;
+      items.push({
+        id: 'favorite',
+        label: isFavorite
+          ? t('notesWorkspace.context.unfavorite')
+          : t('notesWorkspace.context.favorite'),
+        onSelect: () => { void favorites.toggle(item.id, resourceType); },
+      });
+    }
+    if (item.canRename !== false) {
+      items.push({
+        id: 'rename',
+        label: t('notesWorkspace.context.rename'),
+        onSelect: () => helpers.beginRename(),
+      });
+    }
+    const createFolderId = resolveCreateFolderId(item);
+    items.push({
+      id: 'newNote',
+      label: t('notesWorkspace.context.newNote'),
+      separatorBefore: true,
+      onSelect: () => { void createResource('note', createFolderId ?? null); },
+    });
+    items.push({
+      id: 'newFolder',
+      label: t('notesWorkspace.context.newFolder'),
+      onSelect: () => {
+        setDialogError(null);
+        setResourceDialog({
+          mode: 'create-folder',
+          value: '',
+          parentId: createFolderId ?? null,
+        });
+      },
+    });
+    items.push({
+      id: 'newMindmap',
+      label: t('notesWorkspace.context.newMindmap'),
+      onSelect: () => { void createResource('mindmap', createFolderId ?? null); },
+    });
+    if (item.kind === 'folder' ? isStableVfsFolderId(item.id) : true) {
+      items.push({
+        id: 'delete',
+        label: t('notesWorkspace.context.delete'),
+        danger: true,
+        separatorBefore: true,
+        onSelect: () => {
+          setDialogError(null);
+          if (item.kind === 'folder') {
+            setResourceDialog({
+              mode: 'delete',
+              target: { kind: 'folder', id: item.id, name: item.name, path: item.path ?? item.id },
+              value: '',
+            });
+          } else {
+            const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
+            if (!node) return;
+            setResourceDialog({
+              mode: 'delete',
+              target: { kind: 'resource', node },
+              value: '',
+            });
+          }
+        },
+      });
+    }
+    return items;
+  }, [createResource, favorites, openResource, openTabInRightSplit, resolveCreateFolderId, t]);
 
   const openTabContextMenu = useCallback((key: string, x: number, y: number, trigger: HTMLElement) => {
-    setContextMenu(null);
     restoreTabContextFocusRef.current = false;
     tabContextTriggerRef.current = trigger;
     setTabContextMenu({
@@ -1775,110 +1925,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     });
   }, []);
 
-  const handleTreeKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-notes-tree-item]') : null;
-    if (!target) return;
-    const treeElement = event.currentTarget;
-    // Collapsed descendants are unmounted, so the DOM order already contains
-    // exactly the navigable tree items without relying on layout APIs.
-    const rows = Array.from(treeElement.querySelectorAll<HTMLElement>('[data-notes-tree-item]'));
-    const index = rows.indexOf(target);
-    if (index < 0) return;
-    const key = event.key;
-    const focusRow = (nextIndex: number) => rows[nextIndex]?.focus();
-    if (key === 'ArrowDown') {
-      event.preventDefault();
-      focusRow(Math.min(rows.length - 1, index + 1));
-      return;
-    }
-    if (key === 'ArrowUp') {
-      event.preventDefault();
-      focusRow(Math.max(0, index - 1));
-      return;
-    }
-    if (key === 'Home') {
-      event.preventDefault();
-      focusRow(0);
-      return;
-    }
-    if (key === 'End') {
-      event.preventDefault();
-      focusRow(rows.length - 1);
-      return;
-    }
-    const isFolder = target.hasAttribute('data-notes-tree-folder');
-    if (key === 'ArrowRight' && isFolder) {
-      event.preventDefault();
-      if (target.dataset.expanded === 'false') target.click();
-      else focusRow(Math.min(rows.length - 1, index + 1));
-      return;
-    }
-    if (key === 'ArrowLeft' && isFolder) {
-      event.preventDefault();
-      if (target.dataset.expanded === 'true') {
-        target.click();
-      } else {
-        const currentDepth = Number(target.dataset.depth ?? 0);
-        for (let previous = index - 1; previous >= 0; previous -= 1) {
-          if (Number(rows[previous].dataset.depth ?? 0) < currentDepth) {
-            rows[previous].focus();
-            break;
-          }
-        }
-      }
-      return;
-    }
-    if (key === 'ArrowLeft') {
-      event.preventDefault();
-      const currentDepth = Number(target.dataset.depth ?? 0);
-      for (let previous = index - 1; previous >= 0; previous -= 1) {
-        if (Number(rows[previous].dataset.depth ?? 0) < currentDepth) {
-          rows[previous].focus();
-          break;
-        }
-      }
-      return;
-    }
-    if (key.length !== 1 || event.metaKey || event.ctrlKey || event.altKey) return;
-    const typeahead = treeTypeaheadRef.current;
-    typeahead.value += key.toLocaleLowerCase();
-    if (typeahead.timer !== null) window.clearTimeout(typeahead.timer);
-    typeahead.timer = window.setTimeout(() => {
-      typeahead.value = '';
-      typeahead.timer = null;
-    }, 650);
-    const match = [...rows.slice(index + 1), ...rows.slice(0, index + 1)]
-      .find((row) => row.textContent?.trim().toLocaleLowerCase().startsWith(typeahead.value));
-    if (match) {
-      event.preventDefault();
-      match.focus();
-    }
-  }, []);
-
-  const handleDropIntoFolder = useCallback(async (event: React.DragEvent, folder: TreeFolder | null) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragOverFolderPath(null);
-    const dragged = draggedItem;
-    setDraggedItem(null);
-    if (!dragged || (folder && !canDropExplorerItemIntoFolder(dragged, folder))) return;
-    const destinationFolderId = folder?.id;
-    let result: Awaited<ReturnType<typeof folderApi.moveItem>>;
-    if (dragged.kind === 'resource') {
-      const type = resourceType(dragged.node.type);
-      if (!type) return;
-      result = await folderApi.moveItem(type, dragged.node.id, destinationFolderId);
-    } else {
-      if (!dragged.folder.id) return;
-      result = await folderApi.moveFolder(dragged.folder.id, destinationFolderId);
-    }
-    if (!result.ok) {
-      setStatus(result.error.toUserMessage());
-      return;
-    }
-    setSelectedFolderId(destinationFolderId ?? null);
-    await loadResources({ blocking: false });
-  }, [draggedItem, loadResources]);
+  const handleWorkspaceKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (navHistory.handleKeyDown(event, activateHistoryEntry)) return;
+  }, [activateHistoryEntry, navHistory]);
 
   return (
     <>
@@ -1906,14 +1955,15 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         data-compact={compact ? 'true' : 'false'}
         data-explorer-open={explorerOpen ? 'true' : 'false'}
         style={{ '--notes-explorer-width': `${explorerWidth}px` } as React.CSSProperties}
+        onKeyDown={handleWorkspaceKeyDown}
       >
       <nav className="notes-ribbon" data-notes-ribbon aria-label={t('notesWorkspace.ribbon.aria', 'Notes navigation')}>
         <div>
-          <IconButton label={t('notesWorkspace.ribbon.explorer', 'File explorer')} data-active={explorerOpen ? 'true' : 'false'} onClick={() => setExplorerOpen((value) => !value)}><Files size={20} /></IconButton>
+          <IconButton label={t('notesWorkspace.ribbon.explorer', 'File explorer')} data-active={explorerOpen ? 'true' : 'false'} onClick={() => setExplorerOpen((value) => { const next = !value; if (next && backlinksOverlay) setBacklinksOpen(false); return next; })}><Files size={20} /></IconButton>
           <IconButton label={t('notesWorkspace.ribbon.search', 'Search notes')} onClick={() => openSearchOverlay('full-text')}><MagnifyingGlass size={20} /></IconButton>
         </div>
         <div>
-          <IconButton label={t('notesWorkspace.ribbon.backlinks', 'Linked notes')} data-active={backlinksOpen ? 'true' : 'false'} onClick={() => setBacklinksOpen((open) => !open)}><LinkSimple size={20} /></IconButton>
+          <IconButton label={t('notesWorkspace.ribbon.backlinks', 'Linked notes')} data-active={backlinksOpen ? 'true' : 'false'} onClick={() => setBacklinksOpen((open) => { const next = !open; if (next && backlinksOverlay) setExplorerOpen(false); return next; })}><LinkSimple size={20} /></IconButton>
           <IconButton label={t('notesWorkspace.ribbon.trash', 'Trash')} onClick={() => setTrashOpen(true)}><Trash size={20} /></IconButton>
         </div>
       </nav>
@@ -1946,111 +1996,138 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           />
           {query && <IconButton label={t('notesWorkspace.search.clear', 'Clear search')} onClick={() => setQuery('')}><X size={12} /></IconButton>}
         </div>
-        <div
-          className="notes-tree"
-          role="tree"
-          aria-label={t('notesWorkspace.tree.aria', 'File tree')}
-          aria-busy={loading}
-          aria-live="polite"
-          onKeyDown={handleTreeKeyDown}
-        >
-          <button
-            type="button"
-            className="notes-tree-root"
-            role="treeitem"
-            data-notes-tree-item
-            data-depth={1}
-            data-selected={selectedFolderId === null ? 'true' : 'false'}
-            data-drop-target={dragOverFolderPath === ROOT_TREE_DROP_TARGET ? 'true' : 'false'}
-            aria-selected={selectedFolderId === null}
-            aria-level={1}
-            onClick={() => setSelectedFolderId(null)}
-            onDragOver={(event) => {
-              if (!draggedItem) return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = 'move';
-              setDragOverFolderPath(ROOT_TREE_DROP_TARGET);
-            }}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                setDragOverFolderPath((current) => current === ROOT_TREE_DROP_TARGET ? null : current);
-              }
-            }}
-            onDrop={(event) => void handleDropIntoFolder(event, null)}
-          >
-            <FolderSimple size={14} weight="fill" aria-hidden />
-            <span>{t('notesWorkspace.tree.root', 'Library root')}</span>
-          </button>
+        <TagFilter
+          selectedTags={selectedTags}
+          onChange={setSelectedTags}
+          className="notes-explorer-tag-filter"
+        />
+        <FavoritesSection
+          items={favorites.items}
+          activeId={activeTab?.id ?? null}
+          onOpen={(item) => void openResource({ type: item.type, id: item.id }, item.name)}
+          onUnfavorite={(item) => {
+            void favorites.setFavorite(item.id, item.type, false, { path: item.path, name: item.name });
+          }}
+        />
+        <div className="notes-tree-host" aria-live="polite">
           {loading && !hasTreeItems ? (
-            <div className="notes-tree-loading" aria-label={t('notesWorkspace.tree.loading', 'Loading files')}>
-              <i /><i /><i /><i />
+            <div
+              className="notes-tree"
+              role="tree"
+              aria-label={t('notesWorkspace.tree.aria')}
+              aria-busy="true"
+            >
+              <div
+                className="nes-tree-skeleton notes-tree-loading"
+                aria-label={t('notesWorkspace.tree.loading', 'Loading files')}
+              >
+                {TREE_SKELETON_ROWS.map((row, index) => (
+                  <div
+                    key={index}
+                    className="nes-tree-skeleton__row"
+                    style={{ '--nes-indent': row.indent } as React.CSSProperties}
+                  >
+                    <i
+                      className="nes-tree-skeleton__bar"
+                      style={{ '--nes-bar-w': row.width } as React.CSSProperties}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           ) : loadError && !hasTreeItems ? (
-            <div className="notes-tree-message" data-state="error">
-              <span>{t('notesWorkspace.tree.loadFailed', 'Could not load files')}</span>
-              <button type="button" onClick={() => void loadResources({ blocking: true })}>{t('notesWorkspace.tree.retry', 'Retry')}</button>
+            <div
+              className="notes-tree"
+              role="tree"
+              aria-label={t('notesWorkspace.tree.aria')}
+              aria-busy="false"
+            >
+              <div className="notes-tree-message" data-state="error">
+                <span>{t('notesWorkspace.tree.loadFailed', 'Could not load files')}</span>
+                <button type="button" onClick={() => void loadResources({ blocking: true })}>{t('notesWorkspace.tree.retry', 'Retry')}</button>
+              </div>
             </div>
           ) : !hasTreeItems ? (
-            <div className="notes-tree-message" data-state="empty">
-              <span>{query
-                ? t('notesWorkspace.tree.noMatches', { defaultValue: 'No files match "{{query}}"', query })
-                : t('notesWorkspace.tree.empty', 'No files in this library yet')}</span>
-              {query ? (
-                <button type="button" onClick={() => setQuery('')}>{t('notesWorkspace.tree.showAll', 'Show all files')}</button>
-              ) : (
-                <button type="button" onClick={() => void createResource('note')}>{t('notesWorkspace.explorer.newNote', 'New note')}</button>
-              )}
+            <div
+              className="notes-tree"
+              role="tree"
+              aria-label={t('notesWorkspace.tree.aria')}
+              aria-busy="false"
+            >
+              <div className="nes-tree-empty notes-tree-message" data-state="empty">
+                {query || selectedTags.length > 0 ? (
+                  <>
+                    <p className="nes-tree-empty__message">
+                      {t('notesWorkspace.tree.noMatches', {
+                        defaultValue: 'No files match "{{query}}"',
+                        query: query || selectedTags.join(', '),
+                      })}
+                    </p>
+                    <button
+                      type="button"
+                      className="nes-action"
+                      onClick={() => { setQuery(''); setSelectedTags([]); }}
+                    >
+                      {t('notesWorkspace.tree.showAll', 'Show all files')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="nes-tree-empty__icon" aria-hidden>
+                      <Notebook size={32} weight="thin" />
+                    </div>
+                    <p className="nes-tree-empty__title">
+                      {t('workbench:notesWorkspace.empty.treeTitle')}
+                    </p>
+                    <div className="nes-tree-empty__actions">
+                      <button
+                        type="button"
+                        className="nes-action"
+                        onClick={() => void createResource('note')}
+                      >
+                        <FileText size={13} aria-hidden />
+                        {t('workbench:notesWorkspace.empty.treeNewNote')}
+                      </button>
+                      <button
+                        type="button"
+                        className="nes-action nes-action--ghost"
+                        onClick={() => {
+                          setDialogError(null);
+                          setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId });
+                        }}
+                      >
+                        <FolderPlus size={13} aria-hidden />
+                        {t('workbench:notesWorkspace.empty.treeNewFolder')}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           ) : (
-            <TreeBranch
-              folder={tree}
-              depth={1}
+            <NotesWorkspaceTree
+              items={treeItems}
+              expandedIds={expandedIds}
+              selectedId={selectedTreeId ?? selectedFolderId}
               activeId={activeTab?.id ?? null}
-              selectedFolderId={selectedFolderId}
-              collapsedFolderPaths={collapsedFolderPaths}
-              dragOverFolderPath={dragOverFolderPath}
-              onOpen={(ref, title) => void openResource(ref, title)}
-              onContextMenu={(event, node) => openContextMenu(event, { kind: 'resource', node })}
-              onFolderContextMenu={(event, folder) => {
-                if (!folder.id) return;
-                openContextMenu(event, { kind: 'folder', id: folder.id, name: folder.name, path: folder.path });
-              }}
-              onToggleFolder={toggleFolder}
-              onSelectFolder={(folder) => setSelectedFolderId(folder.id ?? null)}
-              onResourceDragStart={(event, node) => {
-                event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData('text/plain', node.id);
-                setDraggedItem({ kind: 'resource', node });
-              }}
-              onFolderDragStart={(event, folder) => {
-                if (!folder.id) return;
-                event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData('text/plain', folder.id);
-                setDraggedItem({ kind: 'folder', folder });
-              }}
-              onDragEnd={() => {
-                setDraggedItem(null);
-                setDragOverFolderPath(null);
-              }}
-              onDragOverFolder={(event, folder) => {
-                if (!draggedItem || !canDropExplorerItemIntoFolder(draggedItem, folder)) return;
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'move';
-                setDragOverFolderPath(folder.path);
-              }}
-              onDragLeaveFolder={(event, folder) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragOverFolderPath((current) => current === folder.path ? null : current);
-              }}
-              onDropIntoFolder={(event, folder) => void handleDropIntoFolder(event, folder)}
+              aria-busy={loading}
+              rootLabel={t('notesWorkspace.tree.root')}
+              onToggleExpand={toggleTreeExpand}
+              onExpand={expandTreeFolder}
+              onSelect={selectTreeItem}
+              onOpen={openTreeItem}
+              onMove={(dragId, targetId, position) => { void moveTreeItem(dragId, targetId, position); }}
+              onRename={(id, name) => { void renameTreeItem(id, name); }}
+              getMenuItems={getTreeMenuItems}
             />
           )}
         </div>
         <div className="notes-explorer-resize" onPointerDown={startExplorerResize} />
       </aside>
 
-      {!explorerOpen && <IconButton label={t('notesWorkspace.explorer.open', 'Open file explorer')} className="notes-explorer-handle" onClick={() => setExplorerOpen(true)}><SidebarSimple size={15} /></IconButton>}
+      {!explorerOpen && <IconButton label={t('notesWorkspace.explorer.open', 'Open file explorer')} className="notes-explorer-handle" onClick={() => { if (backlinksOverlay) setBacklinksOpen(false); setExplorerOpen(true); }}><SidebarSimple size={15} /></IconButton>}
       <main className="notes-workspace-main" data-notes-split={splitTab ? 'true' : 'false'}>
-        <div className="notes-main-content" data-backlinks-open={backlinksOpen ? 'true' : 'false'}>
+        <div className="notes-main-content" data-backlinks-open={backlinksOpen ? 'true' : 'false'} data-backlinks-overlay={backlinksOverlay ? 'true' : 'false'}>
           <PanelGroup
             ref={paneGroupRef}
             direction={compact ? 'vertical' : 'horizontal'}
@@ -2074,6 +2151,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                 onActivate={activateTab}
                 onTitleChange={updateTabTitle}
                 onSaveStateChange={updateTabSaveState}
+                onCreateNote={() => { void createResource('note'); }}
+                onOpenSearch={() => openSearchOverlay('quick-open')}
               />
             </Panel>
             {splitTab && (
@@ -2098,6 +2177,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                     onActivate={activateTab}
                     onTitleChange={updateTabTitle}
                     onSaveStateChange={updateTabSaveState}
+                    onCreateNote={() => { void createResource('note'); }}
+                    onOpenSearch={() => openSearchOverlay('quick-open')}
                   />
                 </Panel>
               </>
@@ -2109,6 +2190,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             notes={resources}
             onOpenResource={openWorkspaceSearchResult}
             onClose={() => setBacklinksOpen(false)}
+            onCreateFromUnresolved={createFromUnresolved}
+            onRefresh={() => { void loadResources({ blocking: false }); }}
+            propertiesContent={(
+              <NotesPropertiesTab
+                activeResource={activeResource}
+                onRefresh={() => { void loadResources({ blocking: false }); }}
+              />
+            )}
           />
         </div>
         <footer className="notes-statusbar" data-notes-statusbar>
@@ -2133,12 +2222,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         onClose={() => setSearchOpen(false)}
       />
       {explorerOpen && <button className="notes-explorer-scrim" aria-label={t('notesWorkspace.explorer.close', 'Close file explorer')} onClick={() => setExplorerOpen(false)} />}
-      {contextMenu && (
-        <div ref={contextMenuRef} className="notes-context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
-          <button type="button" role="menuitem" onClick={() => { setDialogError(null); setResourceDialog({ mode: 'rename', target: contextMenu.target, value: getExplorerTargetName(contextMenu.target) }); setContextMenu(null); }}>{t('notesWorkspace.context.rename', 'Rename')}</button>
-          <button type="button" role="menuitem" className="is-danger" onClick={() => { setDialogError(null); setResourceDialog({ mode: 'delete', target: contextMenu.target, value: '' }); setContextMenu(null); }}>{t('notesWorkspace.context.delete', 'Delete')}</button>
-        </div>
-      )}
       {tabContextMenu && tabContextTarget && (
         <div ref={contextMenuRef} id="notes-tab-context-menu" className="notes-context-menu notes-tab-context-menu" role="menu" style={{ left: tabContextMenu.x, top: tabContextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
           <button
@@ -2250,40 +2333,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           </div>
         </div>
       )}
-      {trashOpen && (
-        <div className="notes-dialog-scrim" role="presentation" onPointerDown={closeTrash}>
-          <div ref={trashDialogRef} className="notes-resource-dialog notes-trash-dialog" role="dialog" aria-modal="true" aria-labelledby="notes-trash-dialog-title" onPointerDown={(event) => event.stopPropagation()}>
-            <div className="notes-trash-dialog-header">
-              <h2 id="notes-trash-dialog-title">{t('notesWorkspace.trash.title', 'Trash')}</h2>
-              <IconButton label={t('notesWorkspace.trash.close', 'Close trash')} onClick={closeTrash}><X size={14} /></IconButton>
-            </div>
-            {trashLoading ? (
-              <div className="notes-tree-loading" aria-label={t('notesWorkspace.trash.loading', 'Loading trash')}><i /><i /><i /></div>
-            ) : trashError ? (
-              <div className="notes-tree-message" data-state="error">
-                <span>{trashError}</span>
-                <button type="button" onClick={() => void loadTrash()}>{t('notesWorkspace.tree.retry', 'Retry')}</button>
-              </div>
-            ) : trashItems.length === 0 ? (
-              <div className="notes-tree-message" data-state="empty"><span>{t('notesWorkspace.trash.empty', 'Trash is empty')}</span></div>
-            ) : (
-              <div className="notes-trash-list">
-                {trashItems.map((node) => {
-                  const type = trashItemType(node.type);
-                  if (!type) return null;
-                  return (
-                    <div key={`${type}:${node.id}`} className="notes-trash-item">
-                      <TrashGlyph type={type} />
-                      <span>{node.name}</span>
-                      <IconButton label={t('notesWorkspace.trash.restore', { defaultValue: 'Restore {{name}}', name: node.name })} onClick={() => void restoreTrashItem(node)}><ArrowsClockwise size={14} /></IconButton>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <NotesTrashDialog
+        open={trashOpen}
+        onOpenChange={setTrashOpen}
+        onChanged={() => {
+          void loadResources({ blocking: false });
+          void favorites.refresh();
+        }}
+      />
       </div>
     </>
   );

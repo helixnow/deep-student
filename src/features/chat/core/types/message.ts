@@ -60,15 +60,14 @@ export interface SkillStateSnapshot {
   modeRequiredBundleIds?: string[];
   agenticSessionSkillIds?: string[];
   branchLocalSkillIds?: string[];
-  effectiveAllowedInternalTools?: string[];
-  effectiveAllowedExternalTools?: string[];
   effectiveAllowedExternalServers?: string[];
   version?: number;
 }
 
 export interface ReplaySkillPayloadSnapshot {
   activeSkillIds?: string[];
-  skillAllowedTools?: string[];
+  /** Backend-only execution scope used by unattended/worker runtimes. */
+  executionAllowedTools?: string[];
   skillContents?: Record<string, string>;
   skillDependencies?: Record<string, string[]>;
   skillEmbeddedTools?: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>>;

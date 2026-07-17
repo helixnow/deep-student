@@ -66,6 +66,11 @@
     "title": "重命名对话",
     "label": "对话名称"
   },
+  "update": {
+    "short": "更新",
+    "available": "有可用更新",
+    "downloading": "下载中..."
+  },
   "expand": "展开侧边栏",
   "collapse": "收起侧边栏",
   "theme_toggle": {

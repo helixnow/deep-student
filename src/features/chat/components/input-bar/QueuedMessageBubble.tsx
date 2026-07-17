@@ -60,8 +60,8 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
           <span className="text-muted-foreground italic">
             {/* No body text — only attachments / context refs */}
             ({item.attachments.length > 0 || item.contextRefs.length > 0
-              ? t('chatV2:queue.bubble.attachmentsOnly', '仅附件')
-              : t('chatV2:queue.bubble.empty', '空消息')})
+              ? t('chatV2:queue.bubble.attachmentsOnly')
+              : t('chatV2:queue.bubble.empty')})
           </span>
         )}
       </div>

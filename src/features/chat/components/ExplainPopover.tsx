@@ -189,11 +189,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     setError(null);
 
     // 通过 i18n 生成 prompt，使回答语言跟随界面语言
-    const prompt = t(
-      'explainPopover.prompt',
-      '请用简洁清晰的语言解释以下内容。如果是专业术语，给出定义和通俗解释；如果是一段话，概括其核心含义。用中文回答。\n\n"{{text}}"',
-      { text: sourceText }
-    );
+    const prompt = t('explainPopover.prompt', { text: sourceText });
 
     invoke<{ assistant_message: string; input_tokens: number; output_tokens: number }>(
       'call_llm_for_boundary',
@@ -343,7 +339,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
             <button
               type="button"
               onClick={onClose}
-              aria-label={t('common:actions.close', '关闭')}
+              aria-label={t('common:actions.close')}
               className="shrink-0 p-1 rounded-md hover:bg-accent/60 text-muted-foreground/50 hover:text-foreground transition-colors"
             >
               <X size={13} />
@@ -358,8 +354,8 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                 <button
                   type="button"
                   onClick={handleRetry}
-                  aria-label={t('common:actions.retry', '重试')}
-                  title={t('common:actions.retry', '重试')}
+                  aria-label={t('common:actions.retry')}
+                  title={t('common:actions.retry')}
                   className="shrink-0 p-1 rounded-md hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ArrowsClockwise size={14} />
@@ -370,7 +366,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                 {explanation}
               </p>
             ) : isLoading ? (
-              <ThinkingIndicator label={t('explainPopover.thinking', '思考中...')} />
+              <ThinkingIndicator label={t('explainPopover.thinking')} />
             ) : null}
           </div>
 
@@ -386,13 +382,13 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                     b={<Check size={13} className="text-green-500" />}
                   />
                 }
-                label={copied ? t('selectionToolbar.copied', '已复制') : t('selectionToolbar.copy', '复制')}
+                label={copied ? t('selectionToolbar.copied') : t('selectionToolbar.copy')}
               />
               {onAddToInput && (
                 <ActionButton
                   onClick={handleAddToInput}
                   icon={<ChatDots size={13} />}
-                  label={t('selectionToolbar.addToChat', '添加到聊天')}
+                  label={t('selectionToolbar.addToChat')}
                 />
               )}
             </div>

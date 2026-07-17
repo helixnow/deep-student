@@ -11,8 +11,9 @@ use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{analyze_shell_command, redact_shell_command_for_display};
 use crate::chat_v2::context::local_shell_contract_for_platform;
 use crate::chat_v2::runtime_roots::{
-    normalize_runtime_relative_path, runtime_root_by_id, RuntimeRoot, RuntimeRootAccess,
-    RuntimeRootKind,
+    explicit_runtime_root_id_from_args, normalize_runtime_relative_path,
+    resolve_effective_runtime_root_id_for_session, runtime_root_by_id, RuntimeRoot,
+    RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
@@ -158,10 +159,7 @@ impl LocalShellPreflightExecutor {
             .unwrap_or("")
             .trim()
             .to_string();
-        let root_id_input = args
-            .get("root_id")
-            .or_else(|| args.get("rootId"))
-            .and_then(|v| v.as_str());
+        let explicit_root_id = explicit_runtime_root_id_from_args(args);
         let skill_root_id_input = args
             .get("skill_root_id")
             .or_else(|| args.get("skillRootId"))
@@ -195,6 +193,15 @@ impl LocalShellPreflightExecutor {
             ));
         }
         let state = ctx.window.state::<AppState>();
+        let effective_root_id = resolve_effective_runtime_root_id_for_session(
+            &ctx.window.app_handle(),
+            &state.database,
+            ctx.chat_v2_db.as_deref(),
+            &ctx.session_id,
+            ctx.skill_package_roots.as_ref(),
+            explicit_root_id.as_deref(),
+        );
+        let root_id_input = Some(effective_root_id.as_str());
         let root_result = runtime_root_by_id(
             &ctx.window.app_handle(),
             &state.database,

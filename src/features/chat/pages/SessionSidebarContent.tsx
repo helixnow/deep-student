@@ -271,8 +271,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     const isExpanded = expandedGroupIds.has(id);
     const nonPinnedSessions = sessionsForFolder.filter((session) => !isSessionPinned(session));
     const createSessionLabel = id === 'ungrouped'
-      ? t('page.newSession', '新建会话')
-      : t('page.newSessionInGroup', { groupName: label, defaultValue: '在 {{groupName}} 中新建会话' });
+      ? t('page.newSession')
+      : t('page.newSessionInGroup', {groupName: label});
     // 触屏无 hover：常显「…」菜单承载分组的新建会话/重命名/编辑/归档（与桌面 ModernSidebar 分组操作对齐）
     const hasGroupMenu = !!group && editableGroupIds.has(group.id);
 
@@ -343,8 +343,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   size="icon"
                   iconOnly
                   className="!h-11 !w-11"
-                  aria-label={t('page.groupActions', '分组操作')}
-                  title={t('page.groupActions', '分组操作')}
+                  aria-label={t('page.groupActions')}
+                  title={t('page.groupActions')}
                 >
                   <DotsThree size={18} className="text-muted-foreground/80" />
                 </NotionButton>
@@ -355,26 +355,26 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     icon={<Plus size={16} />}
                     onClick={() => handleCreateSessionInFolder(group.id)}
                   >
-                    {t('page.newSession', '新建会话')}
+                    {t('page.newSession')}
                   </AppMenuItem>
                   <AppMenuItem
                     icon={<PencilSimple size={16} />}
                     onClick={() => onRenameGroup(group)}
                   >
-                    {t('page.renameGroup', '重命名分组')}
+                    {t('page.renameGroup')}
                   </AppMenuItem>
                   <AppMenuItem
                     icon={<Gear size={16} />}
                     onClick={() => onEditGroup(group)}
                   >
-                    {t('page.editGroup', '编辑分组')}
+                    {t('page.editGroup')}
                   </AppMenuItem>
                   <AppMenuSeparator />
                   <AppMenuItem
                     icon={<Archive size={16} />}
                     onClick={() => onArchiveGroup(group)}
                   >
-                    {t('page.archiveGroup', '归档分组')}
+                    {t('page.archiveGroup')}
                   </AppMenuItem>
                 </AppMenuGroup>
               </AppMenuContent>
@@ -414,7 +414,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       <div className={cn('space-y-3', unified ? 'pb-0' : 'pb-2 pt-1')}>
         {pinnedSessions.length > 0 && (
           <section className="space-y-0.5">
-            <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions', '置顶会话')}>
+            <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions')}>
               <AnimatePresence initial={false} mode="popLayout">
                 {pinnedSessions.map(renderAnimatedSessionRow)}
               </AnimatePresence>
@@ -422,18 +422,18 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           </section>
         )}
 
-        <section className="space-y-0.5" aria-label={t('page.studySessions', '课题')}>
+        <section className="space-y-0.5" aria-label={t('page.studySessions')}>
           <div className="flex items-center justify-between gap-2 pr-0.5">
             <div className="min-w-0 flex-1">
-              {renderSectionLabel(t('page.studySessions', '课题'), unified)}
+              {renderSectionLabel(t('page.studySessions'), unified)}
             </div>
             <NotionButton
               variant="ghost"
               size="icon"
               iconOnly
               onClick={onCreateGroup}
-              aria-label={t('page.createGroup', '新建分组')}
-              title={t('page.createGroup', '新建分组')}
+              aria-label={t('page.createGroup')}
+              title={t('page.createGroup')}
               className="!h-11 !w-11 -my-2.5 shrink-0 text-muted-foreground/80"
             >
               <Plus size={15} />
@@ -454,19 +454,19 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               )
             ) : (
               <div className="px-3 py-2 text-[13px] text-muted-foreground opacity-80">
-                {t('page.studySessionsEmpty', '暂无课题')}
+                {t('page.studySessionsEmpty')}
               </div>
             )}
           </div>
         </section>
 
         {(visibleGroups.length > 0 || ungroupedNonPinned.length > 0) && (
-          <section className="space-y-0.5" aria-label={t('page.recentSessions', '最近')}>
-            {renderSectionLabel(t('page.recentSessions', '最近'), unified)}
+          <section className="space-y-0.5" aria-label={t('page.recentSessions')}>
+            {renderSectionLabel(t('page.recentSessions'), unified)}
             <div className="space-y-0.5">
               {ungroupedNonPinned.length > 0 && renderFolderRow(
                 'ungrouped',
-                t('page.ungrouped', '未分组'),
+                t('page.ungrouped'),
                 ungroupedNonPinned,
                 activeGroupId === 'ungrouped',
                 unified,
@@ -479,7 +479,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     className="w-full justify-start gap-2 rounded-2xl px-3 text-[13px] font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
                   >
                     {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
-                    <span>{t('page.loadMore', '加载更多')}</span>
+                    <span>{t('page.loadMore')}</span>
                   </NotionButton>
                 ) : undefined,
               )}
@@ -501,7 +501,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>
               <Archive size={unified ? 18 : 15} className={unified ? undefined : 'h-[15px] w-[15px] shrink-0'} />
             </span>
-            <span className={unified ? mobileDrawerRowTitleClassName : 'min-w-0 flex-1 truncate'}>{t('page.archivedSessionsEntry', '已归档会话')}</span>
+            <span className={unified ? mobileDrawerRowTitleClassName : 'min-w-0 flex-1 truncate'}>{t('page.archivedSessionsEntry')}</span>
           </button>
         </section>
       </div>
@@ -512,12 +512,12 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     <div className="space-y-3 pb-1 pt-1">
       {unified && (
         <span className={mobileDrawerSectionLabelClassName}>
-          {t('sidebar:mobile_drawer.section_chat', '会话')}
+          {t('sidebar:mobile_drawer.section_chat')}
         </span>
       )}
-      <nav aria-label={t('page.primaryNavigation', '主入口')} className="space-y-0.5">
-        {renderPrimaryItem('new-chat', t('page.newChat', '新对话'), ChatCenteredText, !currentSessionId, handleCreateSession, unified)}
-        {renderPrimaryItem('session-browser', t('browser.allSessions', '所有对话'), SquaresFour, viewMode === 'browser', handleOpenBrowser, unified)}
+      <nav aria-label={t('page.primaryNavigation')} className="space-y-0.5">
+        {renderPrimaryItem('new-chat', t('page.newChat'), ChatCenteredText, !currentSessionId, handleCreateSession, unified)}
+        {renderPrimaryItem('session-browser', t('browser.allSessions'), SquaresFour, viewMode === 'browser', handleOpenBrowser, unified)}
       </nav>
       {renderStudySidebarContent(unified)}
     </div>

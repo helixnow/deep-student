@@ -511,7 +511,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     if (screenPosition !== 'right') return undefined;
     if (rightPanelType === 'vendorConfig') {
       return (
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label="save" className="text-primary">
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label={t('settings:a11y.save')} className="text-primary">
           <Check size={20} />
         </NotionButton>
       );
@@ -527,7 +527,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             if (form instanceof HTMLFormElement) form.requestSubmit();
           }}
           title={t('common:actions.save')}
-          aria-label="save"
+          aria-label={t('settings:a11y.save')}
           className="text-primary"
         >
           <Check size={20} />
@@ -1299,7 +1299,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 marginBottom: '16px'
               }}>
                 <h3 style={{ margin: '0', fontSize: '18px', fontWeight: '600' }}>{t('settings:mcp.security_policy')}</h3>
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label="close">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))} aria-label={t('settings:a11y.close')}>
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                     <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>

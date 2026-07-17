@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -149,9 +150,12 @@ function renderTemplateSides(
     );
     return { front, back };
   } catch (err: unknown) {
+    const renderFailed = i18next.t('chatV2:codeBlock.renderFailed');
+    const unknownError = i18next.t('chatV2:codeBlock.unknownError');
+    const message = err instanceof Error ? err.message : unknownError;
     return {
-      front: `<div style="color:red;padding:8px;">渲染失败: ${err instanceof Error ? err.message : '未知错误'}</div>`,
-      back: `<div style="color:red;padding:8px;">渲染失败</div>`,
+      front: `<div style="color:red;padding:8px;">${renderFailed}: ${message}</div>`,
+      back: `<div style="color:red;padding:8px;">${renderFailed}</div>`,
     };
   }
 }

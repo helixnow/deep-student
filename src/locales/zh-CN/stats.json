@@ -1,31 +1,31 @@
 {
   "heatmap": {
     "title": "学习热力图",
-    "loading": "加载中...",
+    "loading": "加载学习数据...",
     "error": "加载失败：{{error}}",
     "retry": "重试",
     "refresh": "刷新",
     "totalActivities": "共 {{count}} 次学习活动",
     "noActivity": "无活动记录",
     "stats": {
-      "totalActivities": "总活动次数",
+      "totalActivities": "总活动",
       "activeDays": "活跃天数",
-      "maxDaily": "单日最高"
+      "maxDaily": "单日峰值"
     },
     "legend": {
       "less": "少",
       "more": "多"
     },
     "details": {
-      "chatSessions": "对话会话：{{count}} 次",
-      "chatMessages": "发送消息：{{count}} 条",
-      "notesEdited": "编辑笔记：{{count}} 篇",
-      "textbooksOpened": "打开教材：{{count}} 次",
-      "examsCreated": "整卷识别：{{count}} 份",
-      "translationsCreated": "翻译：{{count}} 次",
-      "essaysCreated": "作文批改：{{count}} 篇",
-      "ankiCardsCreated": "创建卡片：{{count}} 张",
-      "questionsAnswered": "做题：{{count}} 道"
+      "chatSessions": "会话",
+      "chatMessages": "消息",
+      "notesEdited": "笔记",
+      "textbooksOpened": "阅读",
+      "examsCreated": "测验",
+      "translationsCreated": "翻译",
+      "essaysCreated": "作文",
+      "ankiCardsCreated": "卡片",
+      "questionsAnswered": "做题"
     }
   },
   "calendar": {

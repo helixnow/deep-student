@@ -40,7 +40,7 @@ const SandboxAppWindow: React.FC<AppWindowProps> = ({ onTitleChange, requestClos
   ));
 
   useEffect(() => {
-    onTitleChange(sessionTitle || t('workbench:apps.sandbox', '沙箱工作台'));
+    onTitleChange(sessionTitle || t('workbench:apps.sandbox'));
   }, [onTitleChange, t, sessionTitle]);
 
   return (

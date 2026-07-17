@@ -58,7 +58,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
   onSkipVersion,
   onNeverRemind,
 }) => {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation('settings');
   const [showNeverRemindConfirm, setShowNeverRemindConfirm] = useState(false);
 
   const handleNeverRemind = useCallback(() => {
@@ -92,7 +92,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
         <div className="flex items-center gap-2.5">
           <ArrowCircleUp size={20} className="text-primary flex-shrink-0" />
           <NotionDialogTitle>
-            {t('about.update.dialog.title', '有可用新版本')}
+            {t('about.update.dialog.title')}
           </NotionDialogTitle>
         </div>
         <NotionDialogDescription>
@@ -148,7 +148,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
             disabled={downloading}
             className="text-muted-foreground"
           >
-            {t('about.update.dialog.skipVersion', '跳过版本')}
+            {t('about.update.dialog.skipVersion')}
           </NotionButton>
           <NotionButton
             variant="ghost"
@@ -156,7 +156,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
             onClick={handleClose}
             disabled={downloading}
           >
-            {t('about.update.dialog.ignore', '忽略')}
+            {t('about.update.dialog.ignore')}
           </NotionButton>
           {isMobile ? (
             <div className="flex items-center gap-1.5">
@@ -168,7 +168,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
                   className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                 >
                   <Download size={14} />
-                  {t('about.update.mirrorDownload', '镜像下载')}
+                  {t('about.update.mirrorDownload')}
                 </a>
               )}
               <a
@@ -178,7 +178,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
                 className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
               >
                 <GithubLogo size={14} />
-                {t('about.update.githubDownload', 'GitHub 下载')}
+                {t('about.update.githubDownload')}
               </a>
             </div>
           ) : (
@@ -190,8 +190,8 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
             >
               <Download size={14} className={`mr-1 ${downloading ? 'animate-bounce' : ''}`} />
               {downloading
-                ? t('about.update.downloading', '下载中...')
-                : t('about.update.dialog.update', '更新')}
+                ? t('about.update.downloading')
+                : t('about.update.dialog.update')}
             </NotionButton>
           )}
         </div>
@@ -200,12 +200,12 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
         <div className="flex items-center justify-start border-t border-border/30 pt-2 -mb-1">
           {showNeverRemindConfirm ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>{t('about.update.dialog.neverRemindConfirm', '确定不再提醒？可在设置中重新开启')}</span>
+              <span>{t('about.update.dialog.neverRemindConfirm')}</span>
               <NotionButton variant="ghost" size="sm" onClick={handleNeverRemind} className="text-xs h-6 px-2">
-                {t('about.update.dialog.confirm', '确定')}
+                {t('about.update.dialog.confirm')}
               </NotionButton>
               <NotionButton variant="ghost" size="sm" onClick={() => setShowNeverRemindConfirm(false)} className="text-xs h-6 px-2">
-                {t('about.update.dialog.cancel', '取消')}
+                {t('about.update.dialog.cancel')}
               </NotionButton>
             </div>
           ) : (
@@ -214,7 +214,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
               disabled={downloading}
               className="text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors disabled:opacity-50"
             >
-              {t('about.update.dialog.neverRemind', '不再提醒')}
+              {t('about.update.dialog.neverRemind')}
             </button>
           )}
         </div>

@@ -13,7 +13,8 @@ use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensi
 use super::strip_tool_namespace;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::{
-    runtime_roots_for_session, skill_package_runtime_root, RuntimeRoot,
+    redact_path_for_display, resolve_group_preferred_runtime_root, runtime_roots_for_session,
+    skill_package_runtime_root, RuntimeRoot,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
@@ -143,7 +144,22 @@ impl SelfInspectExecutor {
             }
         }
 
-        json!({ "roots": entries })
+        let preferred = ctx.chat_v2_db.as_ref().and_then(|db| {
+            resolve_group_preferred_runtime_root(db.as_ref(), &ctx.session_id).map(|pref| {
+                json!({
+                    "root_id": pref.root_id,
+                    "project_root_path": pref
+                        .project_root_path
+                        .as_deref()
+                        .map(redact_path_for_display),
+                })
+            })
+        });
+
+        json!({
+            "roots": entries,
+            "group_preferred_runtime_root": preferred,
+        })
     }
 
     fn collect_skills(ctx: &ExecutionContext, limitations: &mut Vec<String>) -> Value {

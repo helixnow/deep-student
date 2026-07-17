@@ -8,13 +8,14 @@
  */
 
 .wb-chat-skeleton {
-  display: flex;
-  flex-direction: column;
   height: 100%;
   width: 100%;
   min-height: 0;
   overflow: hidden;
-  padding: 1.5rem clamp(1rem, 5%, 2rem) 1rem;
+
+  /* 容器查询锚：窄窗留白跟随 wb-chat-surface 的紧凑档同节奏收缩 */
+  container-type: inline-size;
+  container-name: wb-chat-skeleton;
 
   /* 延迟淡入：挂载先保持透明 ~120ms，快速加载等效“骨架从未出现”。
      时长/曲线引用 O1 token（quick/swift，reduced-motion/minimal 自动归零）；
@@ -23,6 +24,30 @@
   opacity: 0;
   animation: wb-chat-skeleton-in var(--wb-motion-quick, 150ms)
     var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)) 120ms forwards;
+}
+
+/* 排版层（容器查询不能作用于容器自身的 padding，由 inner 承载） */
+.wb-chat-skeleton__inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  padding: 1.5rem clamp(1rem, 5%, 2rem) 1rem;
+}
+
+/* 窄窗留白节奏：与 ChatSessionSurface 的 640/520 两档紧凑值严格对齐，
+   使“骨架 → legacy 骨架 → 真实内容”的接力在窄窗下边缘不跳变 */
+@container wb-chat-skeleton (max-width: 640px) {
+  .wb-chat-skeleton__inner {
+    padding-inline: 1rem;
+  }
+}
+
+@container wb-chat-skeleton (max-width: 520px) {
+  .wb-chat-skeleton__inner {
+    padding-inline: 0.75rem;
+  }
 }
 
 @keyframes wb-chat-skeleton-in {
@@ -49,6 +74,8 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  /* 矮窗时气泡行在 thread 内裁切，不会压到下方输入栏骨架上 */
+  overflow: hidden;
 }
 
 .wb-chat-skeleton__row {
@@ -167,6 +194,14 @@
 
 .wb-chat-skeleton__chip--wide {
   width: 6rem;
+}
+
+/* ==== 拖拽期性能纪律：壳层拖/缩/settle 时暂停骨架动画（根旗兜底） ==== */
+:root[data-wb-dragging] .wb-chat-skeleton,
+:root[data-wb-settling] .wb-chat-skeleton,
+:root[data-wb-dragging] .wb-chat-skeleton__bone,
+:root[data-wb-settling] .wb-chat-skeleton__bone {
+  animation-play-state: paused;
 }
 
 /* ==== 降级：reduced-motion / minimal 材质档 → 静态骨架 ============= */

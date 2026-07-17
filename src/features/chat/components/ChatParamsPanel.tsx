@@ -27,7 +27,6 @@ import {
   Wrench,
   CaretDown,
   ArrowCounterClockwise,
-  ShieldSlash,
 } from '@phosphor-icons/react';
 import { UnifiedModelSelector } from '@/components/shared/UnifiedModelSelector';
 import type { ChatStore, ChatParams } from '../core/types';
@@ -373,14 +372,6 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
               icon={<Wrench size={16} />}
             />
 
-            {/* 关闭工具白名单检查 */}
-            <ToggleControl
-              label={t('chatParams.disableToolWhitelist')}
-              description={t('chatParams.disableToolWhitelistDesc')}
-              checked={chatParams.disableToolWhitelist ?? false}
-              onChange={(v) => updateParam('disableToolWhitelist', v)}
-              icon={<ShieldSlash size={16} />}
-            />
           </div>
 
           {/* 工具递归限制（仅在启用工具时显示） */}

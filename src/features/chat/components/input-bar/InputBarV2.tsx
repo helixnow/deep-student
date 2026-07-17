@@ -126,7 +126,7 @@ function getThinkingDepthLabel(
   value: DeepSeekReasoningOptionValue | undefined,
   t: TFunction
 ): string {
-  if (!value) return t('chatV2:inputBar.thinkingOn', '开启');
+  if (!value) return t('chatV2:inputBar.thinkingOn');
   const keySuffix = THINKING_DEPTH_LABEL_KEYS[kind][value];
   if (!keySuffix) return value;
   return t(`chatV2:inputBar.thinkingDepth.${keySuffix}`, THINKING_DEPTH_LABEL_FALLBACKS[keySuffix] ?? value);
@@ -598,14 +598,14 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     );
 
     const thinkingStateLabel = useMemo(() => {
-      if (!runtimeModelSupportsReasoning) return t('chatV2:inputBar.thinkingState.unsupported', '推理: 不支持');
-      if (!effectiveEnableThinking) return t('chatV2:inputBar.thinkingState.off', '推理: 关闭');
+      if (!runtimeModelSupportsReasoning) return t('chatV2:inputBar.thinkingState.unsupported');
+      if (!effectiveEnableThinking) return t('chatV2:inputBar.thinkingState.off');
       const depthLabel = getThinkingDepthLabel(
         thinkingControl.kind,
         normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined,
         t
       );
-      return t('chatV2:inputBar.thinkingState.on', '推理: {{depth}}', { depth: depthLabel });
+      return t('chatV2:inputBar.thinkingState.on', { depth: depthLabel });
     }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, thinkingControl.kind, t]);
 
     // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 handleToggleAnkiTools

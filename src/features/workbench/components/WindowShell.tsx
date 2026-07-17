@@ -81,14 +81,14 @@ const RESTORE_SETTLE_MS = 120;
  * - scheduler 使用明确 begin/end，不得恢复定时续期。
  */
 
-/** 与 useWorkbenchShortcuts TILE_ZONE_LABEL 对齐（windowTiled 公告 zone） */
-const TILE_ZONE_LABEL: Partial<Record<DisplayMode, string>> = {
-  'tiled-left': '左半屏',
-  'tiled-right': '右半屏',
-  'tiled-tl': '左上',
-  'tiled-tr': '右上',
-  'tiled-bl': '左下',
-  'tiled-br': '右下',
+/** 与 useWorkbenchShortcuts TILE_ZONE_I18N_KEY 对齐（windowTiled 公告 zone） */
+const TILE_ZONE_I18N_KEY: Partial<Record<DisplayMode, string>> = {
+  'tiled-left': 'tile.zone.left',
+  'tiled-right': 'tile.zone.right',
+  'tiled-tl': 'tile.zone.topLeft',
+  'tiled-tr': 'tile.zone.topRight',
+  'tiled-bl': 'tile.zone.bottomLeft',
+  'tiled-br': 'tile.zone.bottomRight',
 };
 
 function cursorForResizeEdge(dir: ResizeDirection): WorkbenchCursorKind {
@@ -986,13 +986,13 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     if (current.displayMode === 'maximized') {
       restoreToFloating();
       announceWorkbench(
-        t('a11y.restored', { title, defaultValue: `${title} 已恢复` }),
+        t('a11y.restored', { title }),
       );
     } else {
       // floating / tiled → maximized（tiled 进入方向由 SnapPreview settle 承接）
       store.setDisplayMode(windowId, 'maximized');
       announceWorkbench(
-        t('a11y.zoomed', { title, defaultValue: `${title} 已最大化` }),
+        t('a11y.zoomed', { title }),
       );
     }
     recomputeLifecycles();
@@ -1007,7 +1007,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       if (action === 'restore') {
         restoreToFloating();
         announceWorkbench(
-          t('a11y.restored', { title, defaultValue: `${title} 已恢复` }),
+          t('a11y.restored', { title }),
         );
       } else if (action === 'center') {
         const desktop = store.desktopSize;
@@ -1029,23 +1029,22 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         // 快捷键 center 无独立 a11y key；从平铺/最大化居中时播 restored（几何已回 floating）
         if (current.displayMode !== 'floating') {
           announceWorkbench(
-            t('a11y.restored', { title, defaultValue: `${title} 已恢复` }),
+            t('a11y.restored', { title }),
           );
         }
       } else if (action === 'maximized') {
         store.setDisplayMode(windowId, action);
         announceWorkbench(
-          t('a11y.zoomed', { title, defaultValue: `${title} 已最大化` }),
+          t('a11y.zoomed', { title }),
         );
       } else {
         store.setDisplayMode(windowId, action);
-        const zone = TILE_ZONE_LABEL[action];
-        if (zone) {
+        const zoneKey = TILE_ZONE_I18N_KEY[action];
+        if (zoneKey) {
           announceWorkbench(
             t('a11y.windowTiled', {
               title,
-              zone,
-              defaultValue: `${title} 已平铺至${zone}`,
+              zone: t(zoneKey),
             }),
           );
         }
@@ -1082,7 +1081,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     focused,
     minimized: win.minimized,
     // useTranslation('workbench') 已绑定 namespace，解析为 workbench:a11y.windowRole（locale 已落盘）
-    roleDescription: t('a11y.windowRole', { defaultValue: '窗口' }),
+    roleDescription: t('a11y.windowRole'),
   });
 
   // 手势中可能因 focus/store 触发重渲染：读 gestureRef 保持瞬态定位不被 React style 冲掉

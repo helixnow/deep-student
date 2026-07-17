@@ -92,6 +92,7 @@ const TabPanelItem = React.memo<TabPanelItemProps>(({
           onClose={handleClose}
           onTitleChange={handleTitleChange}
           isActive={visible}
+          focusOnActive={visible}
           reloadNonce={reloadNonce}
           className="h-full w-full"
         />

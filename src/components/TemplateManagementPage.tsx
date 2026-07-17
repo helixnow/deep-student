@@ -88,7 +88,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   refreshToken = 0,
   workbenchWindowId,
 }) => {
-  const { t } = useTranslation('template');
+  const { t } = useTranslation(['template', 'common']);
   const { t: tAnki } = useTranslation('anki');
   const { isSmallScreen } = useBreakpoint();
   const desktopShellSidebarTarget = useDesktopShellSidebarPortal('template-management');
@@ -805,7 +805,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               <Warning size={16} />
               {error}
             </span>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-[color:var(--button-danger-foreground)] hover:text-[color:var(--button-danger-foreground)]" aria-label="close">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-[color:var(--button-danger-foreground)] hover:text-[color:var(--button-danger-foreground)]" aria-label={t('common:a11y.close')}>
               <X size={14} />
             </NotionButton>
           </div>

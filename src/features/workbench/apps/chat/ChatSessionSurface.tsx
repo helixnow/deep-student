@@ -101,7 +101,7 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
         {sandboxWorkbenchOpen && sandboxActiveSession ? (
           <div
             data-wb-chat-sandbox-owner={sandboxOwnerKey}
-            className="absolute inset-y-0 right-0 z-20 w-[min(100%,720px)] overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_rgba(15,23,42,0.12)]"
+            className="wb-chat-sandbox-panel absolute inset-y-0 right-0 w-[min(100%,720px)] overflow-hidden"
           >
             <SandboxWorkbenchSurface
               embedded
@@ -114,7 +114,7 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
             variant="ghost"
             size="icon"
             iconOnly
-            className="absolute right-2 top-2 z-10 !h-8 !w-8 border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)]"
+            className="wb-chat-sandbox-expand absolute right-2 top-2 !h-8 !w-8"
             onClick={() => openSandboxWorkbench(sandboxOwnerKey)}
             aria-label="展开沙箱工作台"
             title="展开沙箱工作台"

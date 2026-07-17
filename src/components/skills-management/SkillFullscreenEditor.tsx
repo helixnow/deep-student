@@ -563,21 +563,6 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                       </p>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                        {t('skills:editor.allowed_tools')}
-                      </Label>
-                      <TagInput
-                        value={formData.allowedTools ?? []}
-                        onChange={(next) => updateField('allowedTools', next)}
-                        placeholder={t('skills:editor.allowed_tools_placeholder')}
-/>
-                      <p className="text-[10px] text-muted-foreground/60">
-                        {t('skills:editor.allowed_tools_hint')}
-                      </p>
-                    </div>
-
-
                     {/* 绑定工具 */}
                     <div className="pt-4 border-t border-border/20">
                       <EmbeddedToolsEditor

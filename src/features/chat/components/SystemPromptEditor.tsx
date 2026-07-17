@@ -519,8 +519,8 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
             iconOnly
             onClick={handleClear}
             disabled={(!value && lastCleared === null) || disabled}
-            aria-label={value ? t('systemPrompt.clear') : t('systemPrompt.undoClear', '撤销清空')}
-            title={value ? t('systemPrompt.clear') : t('systemPrompt.undoClear', '撤销清空')}
+            aria-label={value ? t('systemPrompt.clear') : t('systemPrompt.undoClear')}
+            title={value ? t('systemPrompt.clear') : t('systemPrompt.undoClear')}
           >
             <ArrowCounterClockwise size={16} />
           </NotionButton>

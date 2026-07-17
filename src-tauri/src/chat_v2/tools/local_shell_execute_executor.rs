@@ -17,13 +17,14 @@ use tokio_util::sync::CancellationToken;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::approval_scope::{
-    analyze_shell_command, normalized_shell_runtime_location, redact_shell_command_for_display,
-    redact_tool_arguments_for_display, validate_shell_path_operands_within_root,
+    analyze_shell_command, normalized_shell_runtime_location_with_default,
+    redact_shell_command_for_display, redact_tool_arguments_for_display,
+    validate_shell_path_operands_within_root,
 };
 use crate::chat_v2::runtime_roots::{
-    normalize_runtime_relative_path, revalidate_runtime_root, runtime_root_by_id,
-    runtime_roots_for_session, skill_package_runtime_root, temp_root, RuntimeRoot,
-    RuntimeRootAccess, RuntimeRootKind,
+    explicit_runtime_root_id_from_args, normalize_runtime_relative_path, revalidate_runtime_root,
+    resolve_effective_runtime_root_id_for_session, runtime_root_by_id, runtime_roots_for_session,
+    skill_package_runtime_root, temp_root, RuntimeRoot, RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace_change_set::{self, ExternalFileSnapshot, ExternalFileState};
@@ -1259,7 +1260,21 @@ impl LocalShellExecuteExecutor {
             );
         }
 
-        let (root_id, cwd_input) = normalized_shell_runtime_location(args);
+        let explicit_root_id = explicit_runtime_root_id_from_args(args);
+        let preferred_default = if explicit_root_id.is_none() {
+            Some(resolve_effective_runtime_root_id_for_session(
+                &ctx.window.app_handle(),
+                &state.database,
+                ctx.chat_v2_db.as_deref(),
+                &ctx.session_id,
+                ctx.skill_package_roots.as_ref(),
+                None,
+            ))
+        } else {
+            None
+        };
+        let (root_id, cwd_input) =
+            normalized_shell_runtime_location_with_default(args, preferred_default.as_deref());
         let root_id_input = Some(root_id.as_str());
         let cwd_relative = normalize_runtime_relative_path(Some(cwd_input.as_str()))?;
         let cwd_display = if cwd_relative.as_os_str().is_empty() {
@@ -2269,8 +2284,8 @@ mod tests {
             "workingDir": "src-tauri",
         });
         assert_eq!(
-            normalized_shell_runtime_location(&snake),
-            normalized_shell_runtime_location(&camel)
+            normalized_shell_runtime_location_with_default(&snake, None),
+            normalized_shell_runtime_location_with_default(&camel, None)
         );
     }
 

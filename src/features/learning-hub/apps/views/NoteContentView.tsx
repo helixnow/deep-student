@@ -93,7 +93,7 @@ const NoteEditorSkeleton: React.FC<{ label: string }> = ({ label }) => (
         <Skeleton className="h-7 w-7" />
       </div>
     </div>
-    <div className="w-full max-w-[816px] mx-auto px-5 sm:px-12 pt-7 flex flex-col">
+    <div className="w-full max-w-[var(--notes-content-max-w,816px)] mx-auto px-5 sm:px-12 pt-7 flex flex-col">
       {/* 标题行 */}
       <Skeleton className="h-9 w-1/2" />
       {/* 正文行 */}
@@ -124,6 +124,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   focusOnActive = false,
   onSaveStateChange,
   hostWindowId,
+  propertiesPanelDisabled = false,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
   const focusOnActiveRef = useRef(focusOnActive);
@@ -924,7 +925,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             windowingState={editorWindowingState}
             onRequestLoadMore={handleRequestLoadMore}
             onRetryLoadMore={handleRetryLoadMore}
-            headerActions={(
+            headerActions={propertiesPanelDisabled ? undefined : (
               <CommonTooltip content={t('notes:contextPanel.title')} position="bottom">
                 <NotionButton
                   variant="ghost"
@@ -948,7 +949,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         )}
       </main>
 
-      {!isSmallScreen && rightPanelVisible && (
+      {!propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && (
         <aside
           className="notes-properties-overlay absolute bottom-3 right-3 top-12 z-30 flex flex-col overflow-hidden border border-border bg-background/98 shadow-md"
           style={{ width: 'min(288px, calc(100% - 24px))' }}
@@ -967,7 +968,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       )}
 
       {/* 移动端：上下文 inline 子屏（大纲/标签/元信息）——全屏替换内容 + 顶部返回 + Android 返回键 */}
-      {isSmallScreen && mobilePanelOpen && (
+      {!propertiesPanelDisabled && isSmallScreen && mobilePanelOpen && (
         <div className="absolute inset-0 z-40 flex flex-col bg-background">
           <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 flex-shrink-0">
             <NotionButton

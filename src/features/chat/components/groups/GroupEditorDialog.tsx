@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
 import { 
   Archive, Check, X, TextT, Smiley, TextAlignLeft, Terminal, Lightning,
   Folder, FolderOpen, Star, Heart, BookOpen, GraduationCap,
@@ -14,6 +15,17 @@ import type { VfsResourceRef } from '../../context/vfsRefTypes';
 import { getResourceRefsV2 } from '../../context/vfsRefApi';
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem } from '@/features/learning-hub/types';
+
+interface RuntimeRootEntry {
+  id: string;
+  kind: string;
+  path: string;
+  access: 'read_only' | 'read_write' | string;
+  label: string;
+  description?: string;
+  session_scoped?: boolean;
+  configured?: boolean;
+}
 
 function getResourceTypeIcon(type: string): React.ElementType {
   switch (type) {
@@ -129,6 +141,11 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [registryVersion, setRegistryVersion] = useState(0);
+  const [defaultRuntimeRootId, setDefaultRuntimeRootId] = useState('');
+  const [preferredProjectRootPath, setPreferredProjectRootPath] = useState('');
+  const [runtimeRoots, setRuntimeRoots] = useState<RuntimeRootEntry[]>([]);
+  const [rootsLoading, setRootsLoading] = useState(false);
+  const [isAuthorizingRoot, setIsAuthorizingRoot] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -155,6 +172,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       setSystemPrompt(initial.systemPrompt ?? '');
       setDefaultSkillIds(initial.defaultSkillIds ?? []);
       setPinnedResourceIds(initial.pinnedResourceIds ?? []);
+      setDefaultRuntimeRootId(initial.defaultRuntimeRootId ?? '');
+      setPreferredProjectRootPath(initial.preferredProjectRootPath ?? '');
     } else {
       setName('');
       setDescription('');
@@ -163,8 +182,29 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       setDefaultSkillIds([]);
       setPinnedResourceIds([]);
       setResolvedPinnedRefs([]);
+      setDefaultRuntimeRootId('');
+      setPreferredProjectRootPath('');
     }
   }, [mode, initial]);
+
+  const loadRuntimeRoots = useCallback(async () => {
+    setRootsLoading(true);
+    try {
+      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_list_runtime_roots');
+      // 课题绑定仅使用持久根（workspace / authorized），排除会话临时根
+      setRuntimeRoots((roots ?? []).filter((root) => !root.session_scoped));
+    } catch (err) {
+      console.error('[GroupEditorPanel] Failed to load runtime roots:', err);
+      setRuntimeRoots([]);
+      showGlobalNotification('error', t('page.groupDefaultRuntimeRootLoadFailed'));
+    } finally {
+      setRootsLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void loadRuntimeRoots();
+  }, [loadRuntimeRoots]);
 
   // Resolve pinned resource IDs to display info
   useEffect(() => {
@@ -240,6 +280,66 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     });
   }, []);
 
+  const bindRuntimeRoot = useCallback((root: RuntimeRootEntry) => {
+    setDefaultRuntimeRootId(root.id);
+    setPreferredProjectRootPath(root.path);
+  }, []);
+
+  const clearRuntimeRoot = useCallback(() => {
+    setDefaultRuntimeRootId('');
+    setPreferredProjectRootPath('');
+  }, []);
+
+  const handleSelectRuntimeRoot = useCallback((rootId: string) => {
+    if (!rootId) {
+      clearRuntimeRoot();
+      return;
+    }
+    const root = runtimeRoots.find((entry) => entry.id === rootId);
+    if (root) {
+      bindRuntimeRoot(root);
+      return;
+    }
+    setDefaultRuntimeRootId(rootId);
+  }, [bindRuntimeRoot, clearRuntimeRoot, runtimeRoots]);
+
+  const handleBrowseAndAuthorizeRoot = useCallback(async () => {
+    if (isAuthorizingRoot) return;
+    try {
+      const { open: dialogOpen } = await import('@tauri-apps/plugin-dialog');
+      const selected = await dialogOpen({
+        directory: true,
+        multiple: false,
+        title: t('page.groupDefaultRuntimeRootBrowseTitle'),
+      });
+      if (typeof selected !== 'string' || !selected.trim()) return;
+
+      setIsAuthorizingRoot(true);
+      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_authorize_runtime_root', {
+        path: selected.trim(),
+      });
+      const nextRoots = (roots ?? []).filter((root) => !root.session_scoped);
+      setRuntimeRoots(nextRoots);
+      const matched =
+        nextRoots.find((root) => root.path === selected.trim())
+        ?? nextRoots.find((root) => root.kind !== 'workspace' && selected.trim().startsWith(root.path));
+      if (matched) {
+        bindRuntimeRoot(matched);
+      }
+    } catch (err) {
+      console.error('[GroupEditorPanel] Authorize runtime root failed:', err);
+      showGlobalNotification('error', t('page.groupDefaultRuntimeRootAuthorizeFailed'));
+    } finally {
+      setIsAuthorizingRoot(false);
+    }
+  }, [bindRuntimeRoot, isAuthorizingRoot, t]);
+
+  const selectedRuntimeRootPath = useMemo(() => {
+    if (preferredProjectRootPath.trim()) return preferredProjectRootPath.trim();
+    const matched = runtimeRoots.find((root) => root.id === defaultRuntimeRootId);
+    return matched?.path ?? '';
+  }, [defaultRuntimeRootId, preferredProjectRootPath, runtimeRoots]);
+
   const handleSubmit = useCallback(async () => {
     if (!name.trim()) return;
     setIsSaving(true);
@@ -252,6 +352,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           systemPrompt: systemPrompt.trim() || undefined,
           defaultSkillIds,
           pinnedResourceIds,
+          defaultRuntimeRootId: defaultRuntimeRootId.trim() || undefined,
+          preferredProjectRootPath: preferredProjectRootPath.trim() || undefined,
         };
         await onSubmit(payload);
       } else {
@@ -263,6 +365,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           systemPrompt: systemPrompt.trim(),
           defaultSkillIds,
           pinnedResourceIds,
+          defaultRuntimeRootId: defaultRuntimeRootId.trim(),
+          preferredProjectRootPath: preferredProjectRootPath.trim(),
         };
         await onSubmit(payload);
       }
@@ -272,7 +376,19 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [defaultSkillIds, pinnedResourceIds, description, icon, mode, name, onSubmit, systemPrompt, t]);
+  }, [
+    defaultRuntimeRootId,
+    defaultSkillIds,
+    pinnedResourceIds,
+    description,
+    icon,
+    mode,
+    name,
+    onSubmit,
+    preferredProjectRootPath,
+    systemPrompt,
+    t,
+  ]);
 
   return (
     <div className="flex flex-col h-full bg-background relative">
@@ -384,6 +500,70 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
               />
             </PropertyRow>
 
+            <PropertyRow icon={FolderOpen} label={t('page.groupDefaultRuntimeRoot')} mobileStacked>
+              <div className="space-y-2 px-0 md:px-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={defaultRuntimeRootId}
+                    onChange={(e) => handleSelectRuntimeRoot(e.target.value)}
+                    disabled={rootsLoading || isAuthorizingRoot}
+                    className="h-9 min-w-[12rem] max-w-full flex-1 rounded-md border border-border/60 bg-background px-2 text-sm text-foreground outline-none focus:border-primary/50 disabled:opacity-50"
+                  >
+                    <option value="">{t('page.groupDefaultRuntimeRootNone')}</option>
+                    {defaultRuntimeRootId
+                      && !runtimeRoots.some((root) => root.id === defaultRuntimeRootId) && (
+                      <option value={defaultRuntimeRootId}>
+                        {selectedRuntimeRootPath || defaultRuntimeRootId}
+                      </option>
+                    )}
+                    {runtimeRoots.map((root) => (
+                      <option key={root.id} value={root.id}>
+                        {root.label || root.id}
+                        {root.access === 'read_only' ? ' (RO)' : ''}
+                        {root.path ? ` — ${root.path}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <NotionButton
+                    variant="ghost"
+                    onClick={() => void handleBrowseAndAuthorizeRoot()}
+                    disabled={isAuthorizingRoot}
+                    className="h-8 px-3 shrink-0"
+                  >
+                    {isAuthorizingRoot ? (
+                      <CircleNotch size={14} className="mr-1.5 animate-spin" />
+                    ) : (
+                      <Folder size={14} className="mr-1.5" />
+                    )}
+                    {t('page.groupDefaultRuntimeRootBrowse')}
+                  </NotionButton>
+                  {defaultRuntimeRootId && (
+                    <NotionButton
+                      variant="ghost"
+                      onClick={clearRuntimeRoot}
+                      disabled={isAuthorizingRoot}
+                      className="h-8 px-3 shrink-0 text-muted-foreground hover:text-destructive"
+                      title={t('common:clear')}
+                    >
+                      <X size={14} className="mr-1.5" />
+                      {t('common:clear')}
+                    </NotionButton>
+                  )}
+                </div>
+                {selectedRuntimeRootPath ? (
+                  <div
+                    className="text-xs text-muted-foreground font-mono truncate"
+                    title={selectedRuntimeRootPath}
+                  >
+                    {selectedRuntimeRootPath}
+                  </div>
+                ) : null}
+                <p className="text-xs text-muted-foreground/60 leading-relaxed">
+                  {t('page.groupDefaultRuntimeRootHint')}
+                </p>
+              </div>
+            </PropertyRow>
+
             <PropertyRow icon={Lightning} label={t('page.groupDefaultSkills')} mobileStacked>
                 <div className="flex flex-wrap gap-2 pt-1.5 px-0 md:px-2">
                     {skillList.length === 0 ? (
@@ -428,7 +608,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
             {pinnedLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                 <CircleNotch size={16} className="animate-spin" />
-                <span>{t('common:loading', '加载中...')}</span>
+                <span>{t('common:loading')}</span>
               </div>
             ) : resolvedPinnedRefs.length > 0 ? (
               <div className="space-y-1">
@@ -452,7 +632,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                           'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors relative after:absolute after:-inset-2.5 after:content-[\'\']',
                           isSmallScreen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                         )}
-                        aria-label={t('common:remove', '移除')}
+                        aria-label={t('common:remove')}
                       >
                         <X size={14} />
                       </button>

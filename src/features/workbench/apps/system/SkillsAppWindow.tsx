@@ -22,7 +22,7 @@ const SkillsAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
   const { ref } = useWbSysSize();
 
   useEffect(() => {
-    onTitleChange(t('workbench:apps.skills', '技能管理'));
+    onTitleChange(t('workbench:apps.skills'));
   }, [onTitleChange, t]);
 
   return (

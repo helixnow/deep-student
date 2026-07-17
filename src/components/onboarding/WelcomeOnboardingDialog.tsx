@@ -121,9 +121,7 @@ interface WelcomeOnboardingDialogProps {
 interface FeatureRow {
   icon: React.ReactNode;
   titleKey: string;
-  titleFallback: string;
   descKey: string;
-  descFallback: string;
 }
 
 export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = ({
@@ -212,24 +210,18 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
     {
       icon: <Books size={18} weight="duotone" className="text-blue-500/80" />,
       titleKey: 'welcome_onboarding.feature_hub_title',
-      titleFallback: '学习资料库',
       descKey: 'welcome_onboarding.feature_hub_desc',
-      descFallback: '导入 PDF、教材与笔记，统一管理你的学习材料。',
     },
     {
       icon: <ChatCircleText size={18} weight="duotone" className="text-emerald-500/80" />,
       titleKey: 'welcome_onboarding.feature_chat_title',
-      titleFallback: 'AI 对话与解题',
       descKey: 'welcome_onboarding.feature_chat_desc',
-      descFallback: '多模型对话、题目分析、知识库检索一站完成。',
     },
     {
       icon: <Cards size={18} weight="duotone" className="text-orange-500/80" />,
       titleKey: 'welcome_onboarding.feature_anki_title',
-      titleFallback: '制卡与复习',
       // ★ 2026-07-08：修正文案——实际复习调度为 SM-2（reviewPlanStore），并非 FSRS
       descKey: 'welcome_onboarding.feature_anki_desc',
-      descFallback: 'AI 生成 Anki 卡片，内置间隔重复复习闭环。',
     },
   ];
 
@@ -271,10 +263,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h1 id="welcome-onboarding-title" className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
-                {t('welcome_onboarding.title', '欢迎使用 DeepStudent')}
+                {t('welcome_onboarding.title')}
               </h1>
               <p className="mt-1.5 text-[13px] text-foreground/50 leading-relaxed">
-                {t('welcome_onboarding.subtitle', '本地优先的 AI 学习工作台，数据保存在你自己的设备上。')}
+                {t('welcome_onboarding.subtitle')}
               </p>
             </div>
           </div>
@@ -282,7 +274,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           {/* 语言切换（即时生效，i18next 自动持久化） */}
           <div className="mt-4">
             <SegmentedControl
-              ariaLabel={t('welcome_onboarding.language_label', '界面语言 / Language')}
+              ariaLabel={t('welcome_onboarding.language_label')}
               value={currentLanguage}
               onValueChange={(next) => {
                 void i18n.changeLanguage(next);
@@ -290,8 +282,8 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               size="compact"
               stretch
               options={[
-                { value: 'zh-CN', label: '简体中文' },
-                { value: 'en-US', label: 'English' },
+                { value: 'zh-CN', label: t('welcome_onboarding.lang_zh') },
+                { value: 'en-US', label: t('welcome_onboarding.lang_en') },
               ]}
             />
           </div>
@@ -310,10 +302,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
                 </span>
                 <div className="min-w-0">
                   <p className="text-[13px] font-medium text-foreground/85 leading-snug">
-                    {t(f.titleKey, f.titleFallback)}
+                    {t(f.titleKey)}
                   </p>
                   <p className="mt-0.5 text-[12px] text-foreground/50 leading-[1.55]">
-                    {t(f.descKey, f.descFallback)}
+                    {t(f.descKey)}
                   </p>
                 </div>
               </div>
@@ -326,13 +318,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               <Sparkle size={15} weight="fill" className="mt-[2px] flex-shrink-0 text-primary/70" />
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-foreground/85 leading-snug">
-                  {t('welcome_onboarding.ai_setup_title', '连接一个 AI 服务后即可开始')}
+                  {t('welcome_onboarding.ai_setup_title')}
                 </p>
                 <p className="mt-1 text-[12px] text-foreground/50 leading-[1.6]">
-                  {t(
-                    'welcome_onboarding.ai_setup_desc',
-                    '支持 SiliconFlow 一键配置全部模型，也可接入 OpenAI、Claude、Gemini、Ollama 等任意兼容服务。',
-                  )}
+                  {t('welcome_onboarding.ai_setup_desc')}
                 </p>
               </div>
             </div>
@@ -349,7 +338,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
             className="w-full justify-center text-[13px] font-medium"
             onClick={onConfigure}
           >
-            {t('welcome_onboarding.cta_configure', '去配置 AI 服务')}
+            {t('welcome_onboarding.cta_configure')}
           </NotionButton>
           <NotionButton
             variant="ghost"
@@ -357,7 +346,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
             className="w-full justify-center text-[13px] text-foreground/55"
             onClick={onSkip}
           >
-            {t('welcome_onboarding.cta_skip', '先随便看看')}
+            {t('welcome_onboarding.cta_skip')}
           </NotionButton>
         </div>
       </div>

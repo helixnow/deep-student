@@ -27,16 +27,16 @@ export const TILE_MENU_GRID: TileMenuAction[][] = [
 /** 退出动画兜底卸载（> --wb-tilemenu-out-duration / --wb-motion-quick） */
 export const TILE_MENU_EXIT_FALLBACK_MS = 260;
 
-const ACTION_LABELS: Record<TileMenuAction, { key: string; fallback: string }> = {
-  'tiled-tl': { key: 'workbench:tile.topLeft', fallback: '平铺到左上角' },
-  maximized: { key: 'workbench:tile.fill', fallback: '填满' },
-  'tiled-tr': { key: 'workbench:tile.topRight', fallback: '平铺到右上角' },
-  'tiled-left': { key: 'workbench:tile.left', fallback: '平铺到左半屏' },
-  center: { key: 'workbench:tile.center', fallback: '居中' },
-  'tiled-right': { key: 'workbench:tile.right', fallback: '平铺到右半屏' },
-  'tiled-bl': { key: 'workbench:tile.bottomLeft', fallback: '平铺到左下角' },
-  restore: { key: 'workbench:tile.restore', fallback: '恢复原尺寸' },
-  'tiled-br': { key: 'workbench:tile.bottomRight', fallback: '平铺到右下角' },
+const ACTION_LABEL_KEYS: Record<TileMenuAction, string> = {
+  'tiled-tl': 'workbench:tile.topLeft',
+  maximized: 'workbench:tile.fill',
+  'tiled-tr': 'workbench:tile.topRight',
+  'tiled-left': 'workbench:tile.left',
+  center: 'workbench:tile.center',
+  'tiled-right': 'workbench:tile.right',
+  'tiled-bl': 'workbench:tile.bottomLeft',
+  restore: 'workbench:tile.restore',
+  'tiled-br': 'workbench:tile.bottomRight',
 };
 
 type GlyphCell = { slot: string; active: boolean };
@@ -258,7 +258,7 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
     <div
       ref={menuRef}
       role="menu"
-      aria-label={t('workbench:window.tileMenu', '平铺选项')}
+      aria-label={t('workbench:window.tileMenu')}
       data-wb-tile-menu
       data-phase={phase}
       className="wb-tilemenu wb-glass wb-glass-lens"
@@ -282,7 +282,7 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
         const isActive = active.row === r && active.col === c;
         const isCurrent =
           action !== 'center' && action !== 'restore' && action === currentMode;
-        const label = t(ACTION_LABELS[action].key, ACTION_LABELS[action].fallback);
+        const label = t(ACTION_LABEL_KEYS[action]);
         return (
           <button
             key={action}

@@ -43,6 +43,11 @@ export interface SendOptions {
   groupName?: string;
   /** 当前课题绑定的资源 ID（DSTU sourceId 或 VFS resourceId） */
   groupPinnedResourceIds?: string[];
+  /**
+   * 课题首选 runtime root id（workspace / authorized_*）。
+   * 后端以 DB 课题字段为准；前端透传仅作可观测/兜底辅助，不可信任覆盖未校验 id。
+   */
+  groupDefaultRuntimeRootId?: string | null;
 
   // RAG 选项
   ragEnabled?: boolean;
@@ -132,9 +137,6 @@ export interface SendOptions {
   /** 当前会话激活的 Skill IDs */
   activeSkillIds?: string[];
 
-  /** 当前启用 Skills 声明允许使用的工具 ID；undefined 表示无策略，[] 表示明确不允许业务工具 */
-  skillAllowedTools?: string[];
-
   /** Skill 内容（SKILL.md 内容） */
   skillContents?: Record<string, string>;
   /** Historical skill contents for replay/regenerate */
@@ -150,8 +152,6 @@ export interface SendOptions {
   }>>;
   /** Skill package roots exposed to local runtime as read-only skill:<id> roots */
   skillPackageRoots?: Record<string, string>;
-  /** 关闭工具白名单检查 */
-  disableToolWhitelist?: boolean;
   /** 图片压缩质量策略 */
   visionQuality?: string;
 }
