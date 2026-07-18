@@ -1,13 +1,6 @@
-.wb-chat-app-host .wb-sys-aside {
-  width: 272px;
-  /* 侧栏与消息区之间补 1px 软分隔线（与窄窗抽屉边线同色系），
-     避免会话导航面与内容面在同色背景下糊成一片 */
-  border-right: 1px solid color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
-}
-
-.wb-chat-app-host[data-wb-sys-size='medium'] .wb-sys-aside {
-  width: 240px;
-}
+/* 侧栏宽度 / 右缘软分隔线已由 workbench.tokens.css + SystemWindowShared.css
+   的 .wb-sys-aside 统一提供（272px / medium 240px + --wb-sidebar-seam），
+   对话窗口即基准本身，无需覆盖。 */
 
 .wb-chat-app-host .chat-v2 {
   position: absolute;

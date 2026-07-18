@@ -44,7 +44,7 @@ vi.mock('../../system/useWbSysSize', () => ({
 }));
 
 vi.mock('../../system/SystemWindowShared', () => ({
-  WbSysSidebarLayout: ({ sidebar, children }: { sidebar: React.ReactNode; children: React.ReactNode }) => (
+  WorkbenchSidebarLayout: ({ sidebar, children }: { sidebar: React.ReactNode; children: React.ReactNode }) => (
     <div><aside>{sidebar}</aside><main>{children}</main></div>
   ),
   WbSysSkeleton: () => <div data-testid="chat-skeleton" />,

@@ -4,7 +4,7 @@
  * - WbSysSkeleton：应用形态骨架屏（sidebar / list / dashboard / surface 四变体），
  *   替代 lazy 加载期的通用转圈——形态与目标页面布局一致，加载完成无跳变；
  * - WbSysFade：内容就绪淡入壳（transform + opacity，引用 O1 缓动 token）；
- * - WbSysSidebarLayout：待办/设置的「侧栏 + 内容」窗口布局。宽窗并排；
+ * - WorkbenchSidebarLayout：所有 OS 子应用共用的「侧栏 + 内容」窗口布局。宽窗并排；
  *   窄窗（compact 档）侧栏收纳为左缘玻璃抽屉——这是 legacy 页面在
  *   窗口化后拿不到的紧凑布局（legacy 断点全看视口）；
  * - WbSysActivityStrip：「任务进行中」窗口顶部活动条（transform 跑马，
@@ -15,6 +15,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SidebarSimple, X } from '@phosphor-icons/react';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { WbSysSizeClass } from './useWbSysSize';
 import './SystemWindowShared.css';
 
@@ -124,7 +126,7 @@ export const WbSysFade: React.FC<{ children: React.ReactNode; className?: string
 // 侧栏 + 内容布局（窄窗抽屉化）
 // ============================================================================
 
-export interface WbSysSidebarLayoutProps {
+export interface WorkbenchSidebarLayoutProps {
   /** 侧栏内容（legacy Shell 侧栏组件） */
   sidebar: React.ReactNode;
   /** 主内容 */
@@ -133,31 +135,44 @@ export interface WbSysSidebarLayoutProps {
   sizeClass: WbSysSizeClass;
   /** 抽屉/侧栏的无障碍名称（如「待办导航」） */
   navLabel: string;
+  /** Compact drawer controlled state. Wide and medium sidebars remain visible. */
+  drawerOpen?: boolean;
+  onDrawerOpenChange?: (open: boolean) => void;
 }
 
 /**
- * 宽窗（wide）：侧栏 224px 并排；中窗（medium）：侧栏收窄到 200px；
+ * 宽窗（wide）：侧栏 272px 并排（--wb-sidebar-width，对话标准）；
+ * 中窗（medium）：侧栏收窄到 240px；
  * 窄窗（compact）：侧栏离场，改为左缘把手 + 玻璃抽屉。
  *
  * 抽屉面板**始终挂载**（visibility 隐藏）：lazy 侧栏随首屏一起加载，
  * 打开抽屉绝不触发 Suspense 回退。
  */
-export const WbSysSidebarLayout: React.FC<WbSysSidebarLayoutProps> = ({
+export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
   sidebar,
   children,
   sizeClass,
   navLabel,
+  drawerOpen: controlledDrawerOpen,
+  onDrawerOpenChange,
 }) => {
   const { t } = useTranslation('workbench');
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [internalDrawerOpen, setInternalDrawerOpen] = useState(false);
+  const drawerOpen = controlledDrawerOpen ?? internalDrawerOpen;
+  const setDrawerOpen = useCallback((open: boolean) => {
+    setInternalDrawerOpen(open);
+    onDrawerOpenChange?.(open);
+  }, [onDrawerOpenChange]);
   const drawerRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
   const compact = sizeClass === 'compact';
+  const wasCompactRef = useRef(compact);
 
   // 离开 compact 档时收起抽屉，避免回宽窗后残留状态
   useEffect(() => {
-    if (!compact) setDrawerOpen(false);
-  }, [compact]);
+    if (wasCompactRef.current && !compact) setDrawerOpen(false);
+    wasCompactRef.current = compact;
+  }, [compact, setDrawerOpen]);
 
   // 焦点管理：开抽屉焦点入面板（aria-modal 对话框契约），关抽屉还给把手
   useEffect(() => {
@@ -176,28 +191,32 @@ export const WbSysSidebarLayout: React.FC<WbSysSidebarLayoutProps> = ({
     return undefined;
   }, [drawerOpen]);
 
-  // Esc 关闭（仅在抽屉开启时监听）
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setDrawerOpen(false);
-      }
-    };
-    // capture：先于 workbench 全局快捷键（Esc 退出俯瞰等）消费掉
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [drawerOpen]);
+  const handleEscape = useCallback((event: Event) => {
+    const e = event as KeyboardEvent;
+    if (drawerOpen && e.key === 'Escape') {
+      e.stopPropagation();
+      setDrawerOpen(false);
+    }
+  }, [drawerOpen, setDrawerOpen]);
 
-  // 抽屉内点中导航项（button / a / [role=button]）后自动收起
+  // capture：先于 workbench 全局快捷键（Esc 退出俯瞰等）消费掉
+  useEventRegistry(drawerOpen ? [{
+    target: 'document',
+    type: 'keydown',
+    listener: handleEscape,
+    options: true,
+  }] : [], [drawerOpen, handleEscape]);
+
+  /*
+   * 抽屉内点中导航项（button / a / [role=button]）后自动收起。
+   * 让侧栏先处理选中，再在下一帧收抽屉，避免打断其事件流。
+   */
   const handleDrawerClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement | null;
     if (target?.closest('button, a, [role="button"]')) {
-      // 让 legacy 侧栏先处理选中，再收抽屉（下一帧，避免打断其事件流）
       window.setTimeout(() => setDrawerOpen(false), 0);
     }
-  }, []);
+  }, [setDrawerOpen]);
 
   const openLabel = t('workbench:apps.system.showNav');
   const closeLabel = t('workbench:apps.system.hideNav');
@@ -205,18 +224,20 @@ export const WbSysSidebarLayout: React.FC<WbSysSidebarLayoutProps> = ({
   return (
     <div className="wb-sys-split" data-wb-sys-drawer-mode={compact ? 'true' : 'false'}>
       {/* 并排侧栏（compact 档由 CSS 离场） */}
-      <aside className="wb-sys-aside" aria-label={navLabel} aria-hidden={compact}>
+      <div className="wb-sys-aside" aria-hidden={compact}>
         {!compact && sidebar}
-      </aside>
+      </div>
 
       <div className="wb-sys-content">{children}</div>
 
       {compact && (
         <>
           {/* 左缘玻璃把手：窄窗唯一的导航入口 */}
-          <button
+          <NotionButton
             ref={handleRef}
-            type="button"
+            variant="ghost"
+            size="icon"
+            iconOnly
             className="wb-sys-drawer-handle"
             onClick={() => setDrawerOpen(true)}
             aria-label={openLabel}
@@ -225,7 +246,7 @@ export const WbSysSidebarLayout: React.FC<WbSysSidebarLayoutProps> = ({
             data-wb-sys-drawer-handle
           >
             <SidebarSimple size={14} weight="bold" aria-hidden />
-          </button>
+          </NotionButton>
 
           {/* 遮罩 */}
           <div
@@ -250,15 +271,18 @@ export const WbSysSidebarLayout: React.FC<WbSysSidebarLayoutProps> = ({
           >
             <div className="wb-sys-drawer-head">
               <span className="wb-sys-drawer-title">{navLabel}</span>
-              <button
+              <NotionButton
                 type="button"
+                variant="ghost"
+                size="icon"
+                iconOnly
                 className="wb-sys-drawer-close"
                 onClick={() => setDrawerOpen(false)}
                 aria-label={closeLabel}
                 title={closeLabel}
               >
                 <X size={13} weight="bold" aria-hidden />
-              </button>
+              </NotionButton>
             </div>
             <div className="wb-sys-drawer-body">{sidebar}</div>
           </div>

@@ -6,7 +6,6 @@ import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelGroupHandle }
 import {
   ArrowsClockwise,
   FileText,
-  Files,
   FolderPlus,
   LinkSimple,
   List,
@@ -69,6 +68,9 @@ import {
   type NotesWorkspaceTreeMenuItem,
 } from './tree';
 import './NotesWorkspaceApp.css';
+import { WorkbenchSidebarSurface } from '../../components/sidebar';
+import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
+import { classifyWbSysWidth, type WbSysSizeClass } from '../system/useWbSysSize';
 import './notes-empty-states.css';
 
 type ResourceType = NotesWorkspaceResourceRef['type'];
@@ -327,7 +329,8 @@ function readPersistedWorkspaceState(): PersistedWorkspaceState {
     splitLayout: DEFAULT_SPLIT_LAYOUT,
     backlinksOpen: false,
     explorerOpen: true,
-    explorerWidth: 240,
+    /* 默认宽度对齐对话标准 --wb-sidebar-width；已持久化的自定义宽度不动 */
+    explorerWidth: 272,
     collapsedFolderPaths: [],
   };
   if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return fallback;
@@ -362,7 +365,7 @@ function readPersistedWorkspaceState(): PersistedWorkspaceState {
       explorerOpen: typeof value.explorerOpen === 'boolean' ? value.explorerOpen : true,
       explorerWidth: typeof value.explorerWidth === 'number'
         ? Math.max(200, Math.min(360, value.explorerWidth))
-        : 240,
+        : 272,
       collapsedFolderPaths: Array.isArray(value.collapsedFolderPaths)
         ? value.collapsedFolderPaths.filter((path): path is string => typeof path === 'string')
         : [],
@@ -797,14 +800,13 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<NotesSearchMode>('quick-open');
   const [explorerOpen, setExplorerOpen] = useState(() => persistedState.explorerOpen);
-  const [explorerWidth, setExplorerWidth] = useState(() => persistedState.explorerWidth);
   const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(
     () => new Set(persistedState.collapsedFolderPaths),
   );
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [compact, setCompact] = useState(false);
+  const [sizeClass, setSizeClass] = useState<WbSysSizeClass>('wide');
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
   const [status, setStatus] = useState(() => t('notesWorkspace.status.ready', 'Ready'));
@@ -884,27 +886,32 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     [collapsedFolderPaths, folderEntries],
   );
   const hasTreeItems = treeItems.length > 0;
-  const availableMainWidth = workspaceWidth - 44 - (explorerOpen && !compact ? explorerWidth : 0);
-  const backlinksOverlay = compact
+  const sidebarLayoutWidth = sizeClass === 'wide' ? 272 : sizeClass === 'medium' ? 240 : 0;
+  const availableMainWidth = workspaceWidth - sidebarLayoutWidth;
+  const backlinksOverlay = sizeClass === 'compact'
     || Boolean(splitTab)
     || workspaceWidth < 1180
     || availableMainWidth < 760;
-  const titlebarTabsLeft = Math.max(76, 44 + (explorerOpen && !compact ? explorerWidth : 0));
+  const titlebarTabsLeft = Math.max(76, sidebarLayoutWidth);
   const saveStates = useMemo(
     () => new Map(tabs.map((tab) => [tab.key, tabSaveStates[tab.key] ?? getTabSaveState(tab, windowId)])),
     [tabSaveStates, tabs, windowId],
   );
 
   useLayoutEffect(() => {
-    const findTarget = () => {
+    let observer: MutationObserver | null = null;
+    const findTarget = (): HTMLElement | null => {
       const target = Array.from(document.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
         .find((element) => element.dataset.windowId === windowId) ?? null;
       setTitlebarTarget((current) => current === target ? current : target);
+      if (target) observer?.disconnect();
+      return target;
     };
-    findTarget();
-    const observer = new MutationObserver(findTarget);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    if (!findTarget()) {
+      observer = new MutationObserver(findTarget);
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+    return () => observer?.disconnect();
   }, [windowId]);
 
   const updateTabSaveState = useCallback((key: string, state: SaveState) => {
@@ -1493,14 +1500,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         splitLayout,
         backlinksOpen,
         explorerOpen,
-        explorerWidth,
+        explorerWidth: 272,
         collapsedFolderPaths: [...collapsedFolderPaths].sort(),
       } satisfies PersistedWorkspaceState));
     } catch {
       // Local storage is a convenience only; a private browser context must
       // not prevent the workspace from opening.
     }
-  }, [backlinksOpen, collapsedFolderPaths, explorerOpen, explorerWidth, mainActiveTab?.key, resolvedFocusedPane, splitLayout, splitTab?.key, tabs]);
+  }, [backlinksOpen, collapsedFolderPaths, explorerOpen, mainActiveTab?.key, resolvedFocusedPane, splitLayout, splitTab?.key, tabs]);
 
   const handleSplitLayout = useCallback((layout: number[]) => {
     if (!splitTab || layout.length !== 2) return;
@@ -1526,9 +1533,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (!host) return;
     const observer = new ResizeObserver(([entry]) => {
       const width = entry.contentRect.width;
-      const nextCompact = width < 720;
       setWorkspaceWidth(width);
-      setCompact(nextCompact);
+      const nextSizeClass = classifyWbSysWidth(width);
+      setSizeClass(nextSizeClass);
+      if (nextSizeClass === 'compact') setExplorerOpen(false);
     });
     observer.observe(host);
     return () => observer.disconnect();
@@ -1538,13 +1546,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (!backlinksOverlay) return;
     if (explorerOpen && backlinksOpen) setExplorerOpen(false);
   }, [backlinksOpen, backlinksOverlay, explorerOpen]);
-
-  useEffect(() => {
-    const explorer = explorerRef.current;
-    if (!explorer) return;
-    if (compact && !explorerOpen) explorer.setAttribute('inert', '');
-    else explorer.removeAttribute('inert');
-  }, [compact, explorerOpen]);
 
   useEffect(() => {
     if (!tabContextMenu) return;
@@ -1722,19 +1723,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     window.addEventListener(NOTES_WORKSPACE_COMMAND_EVENT, onWorkspaceCommand);
     return () => window.removeEventListener(NOTES_WORKSPACE_COMMAND_EVENT, onWorkspaceCommand);
   }, [createResource, focusExplorerSearch, isActive, openSearchOverlay, selectedFolderId]);
-
-  const startExplorerResize = useCallback((event: React.PointerEvent) => {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = explorerWidth;
-    const move = (moveEvent: PointerEvent) => setExplorerWidth(Math.max(200, Math.min(360, startWidth + moveEvent.clientX - startX)));
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  }, [explorerWidth]);
 
   const toggleTreeExpand = useCallback((id: string) => {
     const item = findItemById(treeItems, id);
@@ -1957,28 +1945,20 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         ref={hostRef}
         className="notes-workspace"
         data-wb-notes-workspace
-        data-compact={compact ? 'true' : 'false'}
-        data-explorer-open={explorerOpen ? 'true' : 'false'}
-        style={{ '--notes-explorer-width': `${explorerWidth}px` } as React.CSSProperties}
+        data-compact={sizeClass === 'compact' ? 'true' : 'false'}
+        data-explorer-open={sizeClass === 'compact' ? (explorerOpen ? 'true' : 'false') : 'true'}
         onKeyDown={handleWorkspaceKeyDown}
       >
-      <nav className="notes-ribbon" data-notes-ribbon aria-label={t('notesWorkspace.ribbon.aria', 'Notes navigation')}>
-        <div>
-          <IconButton label={t('notesWorkspace.ribbon.explorer', 'File explorer')} data-active={explorerOpen ? 'true' : 'false'} onClick={() => setExplorerOpen((value) => { const next = !value; if (next && backlinksOverlay) setBacklinksOpen(false); return next; })}><Files size={20} /></IconButton>
-          <IconButton label={t('notesWorkspace.ribbon.search', 'Search notes')} onClick={() => openSearchOverlay('full-text')}><MagnifyingGlass size={20} /></IconButton>
-        </div>
-        <div>
-          <IconButton label={t('notesWorkspace.ribbon.backlinks', 'Linked notes')} data-active={backlinksOpen ? 'true' : 'false'} onClick={() => setBacklinksOpen((open) => { const next = !open; if (next && backlinksOverlay) setExplorerOpen(false); return next; })}><LinkSimple size={20} /></IconButton>
-          <IconButton label={t('notesWorkspace.ribbon.trash', 'Trash')} onClick={() => setTrashOpen(true)}><Trash size={20} /></IconButton>
-        </div>
-      </nav>
-
-      <aside
+      <WorkbenchSidebarLayout
+        sizeClass={sizeClass}
+        navLabel={t('notesWorkspace.explorer.title', 'Files')}
+        drawerOpen={explorerOpen}
+        onDrawerOpenChange={setExplorerOpen}
+        sidebar={<WorkbenchSidebarSurface
+        ariaLabel={t('notesWorkspace.explorer.title', 'Files')}
         ref={explorerRef}
         className="notes-explorer"
         data-notes-explorer
-        data-open={explorerOpen ? 'true' : 'false'}
-        aria-hidden={!explorerOpen}
       >
         <header>
           <span>{t('notesWorkspace.explorer.title', 'Files')}</span>
@@ -1987,6 +1967,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             <IconButton label={t('notesWorkspace.explorer.newFolder', 'New folder')} onClick={() => { setDialogError(null); setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId }); }}><FolderPlus size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.explorer.newMindmap', 'New mind map')} onClick={() => void createResource('mindmap')}><TreeStructure size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.explorer.refresh', 'Refresh')} onClick={() => void loadResources({ blocking: false })}><ArrowsClockwise size={15} /></IconButton>
+            <IconButton label={t('notesWorkspace.ribbon.search', 'Search notes')} onClick={() => openSearchOverlay('full-text')}><MagnifyingGlass size={15} /></IconButton>
+            <IconButton label={t('notesWorkspace.ribbon.backlinks', 'Linked notes')} data-active={backlinksOpen ? 'true' : 'false'} onClick={() => setBacklinksOpen((open) => !open)}><LinkSimple size={15} /></IconButton>
+            <IconButton label={t('notesWorkspace.ribbon.trash', 'Trash')} onClick={() => setTrashOpen(true)}><Trash size={15} /></IconButton>
           </div>
         </header>
         <div className="notes-search">
@@ -2127,15 +2110,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             />
           )}
         </div>
-        <div className="notes-explorer-resize" onPointerDown={startExplorerResize} />
-      </aside>
+      </WorkbenchSidebarSurface>}
+      >
 
-      {!explorerOpen && <IconButton label={t('notesWorkspace.explorer.open', 'Open file explorer')} className="notes-explorer-handle" onClick={() => { if (backlinksOverlay) setBacklinksOpen(false); setExplorerOpen(true); }}><SidebarSimple size={15} /></IconButton>}
       <main className="notes-workspace-main" data-notes-split={splitTab ? 'true' : 'false'}>
         <div className="notes-main-content" data-backlinks-open={backlinksOpen ? 'true' : 'false'} data-backlinks-overlay={backlinksOverlay ? 'true' : 'false'}>
           <PanelGroup
             ref={paneGroupRef}
-            direction={compact ? 'vertical' : 'horizontal'}
+            direction={sizeClass === 'compact' ? 'vertical' : 'horizontal'}
             className="notes-panes"
             id="notes-workspace-panes"
             onLayout={handleSplitLayout}
@@ -2218,6 +2200,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             : t('notesWorkspace.status.library', 'Local library')}</span>
         </footer>
       </main>
+      </WorkbenchSidebarLayout>
       <NotesSearchOverlay
         open={searchOpen}
         mode={searchMode}
@@ -2226,7 +2209,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         onOpenResource={openWorkspaceSearchResult}
         onClose={() => setSearchOpen(false)}
       />
-      {explorerOpen && <button className="notes-explorer-scrim" aria-label={t('notesWorkspace.explorer.close', 'Close file explorer')} onClick={() => setExplorerOpen(false)} />}
       {tabContextMenu && tabContextTarget && (
         <div ref={contextMenuRef} id="notes-tab-context-menu" className="notes-context-menu notes-tab-context-menu" role="menu" style={{ left: tabContextMenu.x, top: tabContextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
           <button

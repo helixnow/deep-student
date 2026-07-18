@@ -8,7 +8,7 @@
 import React from 'react';
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { WbSysSidebarLayout, WbSysSkeleton } from '../SystemWindowShared';
+import { WorkbenchSidebarLayout, WbSysSkeleton } from '../SystemWindowShared';
 
 describe('WbSysSkeleton', () => {
   it('exposes loading semantics for screen readers', () => {
@@ -20,23 +20,23 @@ describe('WbSysSkeleton', () => {
   });
 });
 
-describe('WbSysSidebarLayout（compact 抽屉）', () => {
+describe('WorkbenchSidebarLayout（compact 抽屉）', () => {
   const renderCompact = () =>
     render(
-      <WbSysSidebarLayout
+      <WorkbenchSidebarLayout
         sizeClass="compact"
         navLabel="待办导航"
         sidebar={<button type="button">列表 A</button>}
       >
         <div>主内容</div>
-      </WbSysSidebarLayout>,
+      </WorkbenchSidebarLayout>,
     );
 
   it('wide 档并排渲染侧栏，不出现抽屉把手', () => {
     render(
-      <WbSysSidebarLayout sizeClass="wide" navLabel="待办导航" sidebar={<span>侧栏</span>}>
+      <WorkbenchSidebarLayout sizeClass="wide" navLabel="待办导航" sidebar={<span>侧栏</span>}>
         <div>主内容</div>
-      </WbSysSidebarLayout>,
+      </WorkbenchSidebarLayout>,
     );
     expect(screen.getByText('侧栏')).toBeTruthy();
     expect(document.querySelector('[data-wb-sys-drawer-handle]')).toBeNull();

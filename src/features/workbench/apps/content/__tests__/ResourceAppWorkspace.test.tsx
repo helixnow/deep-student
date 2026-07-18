@@ -133,7 +133,7 @@ describe('ResourceAppWorkspace', () => {
     await expect(waitForResourceWorkspaceActive('exam', 'missing-exam', 5)).resolves.toBe(false);
   });
 
-  it('collapses the shared sidebar and reopens it with the search shortcut', async () => {
+  it('keeps the standard wide sidebar visible and focuses search with the shortcut', async () => {
     render(
       <ResourceAppWorkspace
         type="essay"
@@ -143,11 +143,8 @@ describe('ResourceAppWorkspace', () => {
     );
     await screen.findByText('Synthetic essay');
 
-    fireEvent.click(screen.getByRole('button', { name: '隐藏侧边栏' }));
-    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
-
     fireEvent.keyDown(window, { key: 'f', metaKey: true });
-    await waitFor(() => expect(screen.getByRole('textbox', { name: '搜索' })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole('searchbox', { name: '搜索' })).toHaveFocus());
     expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'true');
   });
 
@@ -197,11 +194,12 @@ describe('ResourceAppWorkspace', () => {
       {} as ResizeObserver,
     ));
     expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-compact', 'true');
-    expect(screen.getAllByRole('button', { name: '隐藏侧边栏' })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '显示导航' }));
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'true');
 
-    fireEvent.click(screen.getByText('Synthetic essay'));
+    fireEvent.click(screen.getAllByText('Synthetic essay')[0]);
     expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
-    expect(screen.queryAllByRole('button', { name: '隐藏侧边栏' })).toHaveLength(0);
+    expect(screen.getByRole('button', { name: '显示导航' })).toBeInTheDocument();
   });
 
   it('uses an in-app confirmation before leaving a dirty essay', async () => {

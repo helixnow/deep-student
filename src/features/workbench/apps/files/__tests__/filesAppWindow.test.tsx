@@ -78,9 +78,10 @@ describe('FilesAppWindow', () => {
     const props = makeWindowProps();
     render(<FilesAppWindow {...props} />);
 
-    expect(sidebarProps).toHaveLength(1);
-    expect(sidebarProps[0].mode).toBe('fullscreen');
-    expect(sidebarProps[0].onOpenApp).toBeTypeOf('function');
+    expect(sidebarProps.length).toBeGreaterThan(0);
+    const latestSidebarProps = sidebarProps.at(-1)!;
+    expect(latestSidebarProps.mode).toBe('fullscreen');
+    expect(latestSidebarProps.onOpenApp).toBeTypeOf('function');
     expect(props.onTitleChange).toHaveBeenCalledWith(expect.any(String));
   });
 

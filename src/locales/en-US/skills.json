@@ -22,6 +22,7 @@
 
   "tap": {
     "entry": "Sources",
+    "installing": "Installing…",
     "title": "Browse Skill Sources",
     "description": "Enter a GitHub repository URL to browse and install its AgentSkills (compatible with OpenClaw / Claude Code / Codex).",
     "url_placeholder": "https://github.com/owner/repo",
@@ -182,6 +183,7 @@
     "update_confirm_title": "Skill updates available",
     "update_confirm_desc": "{{count}} skills have upstream updates. They will be re-downloaded from their install source and reinstalled.",
     "update_apply": "Update All",
+    "update_applying": "Updating…",
     "update_success": "Updated {{count}} skills",
     "update_partial": "Update finished: {{success}} succeeded, {{fail}} failed",
     "update_retrust_hint": "Updated skills return to untrusted state; re-trust them to take effect",

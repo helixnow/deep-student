@@ -22,6 +22,7 @@
 
   "tap": {
     "entry": "技能源",
+    "installing": "安装中…",
     "title": "浏览技能源",
     "description": "输入 GitHub 仓库链接，浏览并安装其中的 AgentSkills 技能（兼容 OpenClaw / Claude Code / Codex 体系）。",
     "url_placeholder": "https://github.com/owner/repo",
@@ -182,6 +183,7 @@
     "update_confirm_title": "发现技能更新",
     "update_confirm_desc": "{{count}} 个技能有上游更新，将按安装来源重新下载并覆盖安装。",
     "update_apply": "全部更新",
+    "update_applying": "更新中…",
     "update_success": "已更新 {{count}} 个技能",
     "update_partial": "更新完成：成功 {{success}}，失败 {{fail}}",
     "update_retrust_hint": "更新后技能内容已变化，将回到未信任状态，需重新信任后生效",

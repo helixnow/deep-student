@@ -6,6 +6,13 @@
  * reduced-motion 与 minimal 材质档下动效归零。
  */
 
+/* ==== 窗口侧栏统一契约 ================================================
+ * Token 定义在 workbench.tokens.css（--wb-sidebar-width /
+ * --wb-sidebar-width-medium / --wb-sidebar-seam），本文件只消费。
+ * 面：透明（透出 --wb-window-bg）+ 右缘软分隔线；
+ * 行：desktop-shell-nav-row（32px / 14px / --shell-nav-row-radius）。
+ */
+
 /* ==== 骨架屏 ========================================================== */
 
 .wb-sys-skeleton {
@@ -83,13 +90,13 @@
 }
 
 .wb-sys-skel-aside {
-  width: 224px;
+  width: var(--wb-sidebar-width, 272px);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
   padding: 18px 16px;
-  border-right: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
 }
 
 .wb-sys-skel-main {
@@ -123,7 +130,7 @@
 
 /* 中窗骨架：侧栏骨架同步收窄，加载完成零跳变 */
 [data-wb-sys-size='medium'] .wb-sys-skel-aside {
-  width: 200px;
+  width: var(--wb-sidebar-width-medium, 240px);
 }
 
 /* 窄窗骨架：侧栏骨架随之收起，与真实布局对齐 */
@@ -164,15 +171,28 @@
 }
 
 .wb-sys-aside {
-  width: 224px;
+  width: var(--wb-sidebar-width, 272px);
   flex-shrink: 0;
   min-height: 0;
   overflow: hidden;
+  /* 侧栏与内容之间的软分隔线：与对话窗口同源，避免同色背景下两面糊成一片 */
+  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
 }
 
 /* 中窗：侧栏收窄，还内容一口气 */
 [data-wb-sys-size='medium'] .wb-sys-aside {
-  width: 200px;
+  width: var(--wb-sidebar-width-medium, 240px);
+}
+
+/* 窗口内的 legacy Shell 侧栏组件（SettingsSidebar / TodoShellSidebar 等）
+ * 自带 study-shell-sidebar-frame 的不透明面 + seam 边框 + 投影——那是给
+ * legacy 全屏壳用的。窗口内统一对齐对话标准：透明面（透出 --wb-window-bg），
+ * 分隔线由 .wb-sys-aside 统一画。依赖类名 study-shell-sidebar-frame 稳定。 */
+.wb-sys-aside .study-shell-sidebar-frame,
+.wb-sys-drawer-body .study-shell-sidebar-frame {
+  background: transparent !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
 }
 
 /* 窄窗：侧栏离场（内容由抽屉接管）——双保险：祖先分级属性或布局自身抽屉模式 */

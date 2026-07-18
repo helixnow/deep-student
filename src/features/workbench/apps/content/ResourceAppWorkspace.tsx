@@ -7,7 +7,6 @@ import {
   PenNib,
   Plus,
   Rows,
-  SidebarSimple,
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
@@ -27,6 +26,9 @@ import {
   type ResourceWorkspaceType,
 } from './resourceWorkspaceRegistry';
 import './ResourceAppWorkspace.css';
+import { WorkbenchSidebarSurface, WorkbenchSidebarRow, WorkbenchSidebarRowLabel } from '../../components/sidebar';
+import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
+import { classifyWbSysWidth, type WbSysSizeClass } from '../system/useWbSysSize';
 
 type LibraryView = 'all' | 'recent';
 
@@ -61,14 +63,11 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-  const [compact, setCompact] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sizeClass, setSizeClass] = useState<WbSysSizeClass>('wide');
   const [pendingNavigation, setPendingNavigation] = useState<PendingNavigation | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
-  const sidebarRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
 
@@ -143,8 +142,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   const commitResourceSelection = useCallback((resourceId: string | null) => {
     selectedIdRef.current = resourceId;
     setSelectedId(resourceId);
-    if (resourceId && compact) setSidebarOpen(false);
-  }, [compact]);
+    if (resourceId && sizeClass === 'compact') setSidebarOpen(false);
+  }, [sizeClass]);
 
   const getLeaveConfirmation = useCallback((): 'unsaved' | 'review' | null => {
     const resourceId = selectedIdRef.current;
@@ -280,23 +279,10 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   useEffect(() => {
     const host = hostRef.current;
     if (!host || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(([entry]) => setCompact(entry.contentRect.width < 720));
+    const observer = new ResizeObserver(([entry]) => setSizeClass(classifyWbSysWidth(entry.contentRect.width)));
     observer.observe(host);
     return () => observer.disconnect();
   }, []);
-
-  useEffect(() => {
-    const sidebar = sidebarRef.current;
-    if (!sidebar) return;
-    sidebar.toggleAttribute('inert', !sidebarOpen);
-    if (!sidebarOpen && sidebar.contains(document.activeElement)) {
-      window.setTimeout(() => {
-        hostRef.current
-          ?.querySelector<HTMLButtonElement>('.wb-resource-workspace-sidebar-handle')
-          ?.focus();
-      }, 0);
-    }
-  }, [sidebarOpen]);
 
   const handleShortcut = useCallback((rawEvent: Event) => {
     const event = rawEvent as KeyboardEvent;
@@ -317,43 +303,20 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     [handleShortcut, isActive],
   );
 
-  const startSidebarResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (compact) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    sidebarResizeRef.current = { startX: event.clientX, startWidth: sidebarWidth };
-  }, [compact, sidebarWidth]);
-
-  const moveSidebarResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const resize = sidebarResizeRef.current;
-    if (!resize) return;
-    setSidebarWidth(Math.max(200, Math.min(
-      340,
-      resize.startWidth + event.clientX - resize.startX,
-    )));
-  }, []);
-
-  const stopSidebarResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    sidebarResizeRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }, []);
-
   return (
     <div
       ref={hostRef}
       className="wb-resource-workspace"
       data-testid={`wb-${type}-workspace`}
-      data-compact={compact ? 'true' : 'false'}
-      data-sidebar-open={sidebarOpen ? 'true' : 'false'}
-      style={{ '--wb-resource-sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+      data-compact={sizeClass === 'compact' ? 'true' : 'false'}
+      data-sidebar-open={sizeClass === 'compact' ? (sidebarOpen ? 'true' : 'false') : 'true'}
     >
-      <aside
-        ref={sidebarRef}
-        className="wb-resource-workspace-sidebar"
-        aria-hidden={!sidebarOpen}
-      >
+      <WorkbenchSidebarLayout
+        sizeClass={sizeClass}
+        navLabel={title}
+        drawerOpen={sidebarOpen}
+        onDrawerOpenChange={setSidebarOpen}
+        sidebar={<WorkbenchSidebarSurface ariaLabel={title} className="wb-resource-workspace-sidebar">
         <header className="wb-resource-workspace-sidebar-title">
           <span className="wb-resource-workspace-app-icon">
             <ResourceIcon size={18} weight="duotone" aria-hidden="true" />
@@ -369,16 +332,6 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             aria-label={newLabel}
           >
             {creating ? <ArrowClockwise size={14} className="animate-spin" /> : <Plus size={14} />}
-          </NotionButton>
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={() => setSidebarOpen(false)}
-            title={t('workbench:resourceWorkspace.hideSidebar')}
-            aria-label={t('workbench:resourceWorkspace.hideSidebar')}
-          >
-            <SidebarSimple size={14} />
           </NotionButton>
         </header>
 
@@ -416,25 +369,21 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
         </div>
 
         <nav className="wb-resource-workspace-nav" aria-label={title}>
-          <NotionButton
-            variant="ghost"
-            className="wb-resource-workspace-nav-row"
-            data-active={libraryView === 'all'}
+          <WorkbenchSidebarRow
+            isActive={libraryView === 'all'}
             onClick={() => setLibraryView('all')}
+            leftSlot={<Rows size={14} />}
+            rightSlot={<small>{items.length}</small>}
           >
-            <Rows size={14} />
-            <span>{t('workbench:resourceHome.all')}</span>
-            <small>{items.length}</small>
-          </NotionButton>
-          <NotionButton
-            variant="ghost"
-            className="wb-resource-workspace-nav-row"
-            data-active={libraryView === 'recent'}
+            <WorkbenchSidebarRowLabel>{t('workbench:resourceHome.all')}</WorkbenchSidebarRowLabel>
+          </WorkbenchSidebarRow>
+          <WorkbenchSidebarRow
+            isActive={libraryView === 'recent'}
             onClick={() => setLibraryView('recent')}
+            leftSlot={<ClockCounterClockwise size={14} />}
           >
-            <ClockCounterClockwise size={14} />
-            <span>{t('workbench:resourceHome.recent')}</span>
-          </NotionButton>
+            <WorkbenchSidebarRowLabel>{t('workbench:resourceHome.recent')}</WorkbenchSidebarRowLabel>
+          </WorkbenchSidebarRow>
         </nav>
 
         <div
@@ -466,18 +415,17 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
               </span>
             </div>
           ) : visibleItems.map((item) => (
-            <NotionButton
+            <WorkbenchSidebarRow
               key={item.id}
-              variant="ghost"
-              className="wb-resource-workspace-resource"
-              data-selected={selectedId === item.id}
+              rowType="thread"
+              isActive={selectedId === item.id}
               role="option"
               aria-selected={selectedId === item.id}
               onClick={() => selectResource(item.id)}
+              leftSlot={<ResourceIcon size={15} weight="duotone" />}
             >
-              <ResourceIcon size={15} weight="duotone" />
-              <span>{item.name || t('resourceHome.untitled')}</span>
-            </NotionButton>
+              <WorkbenchSidebarRowLabel>{item.name || t('resourceHome.untitled')}</WorkbenchSidebarRowLabel>
+            </WorkbenchSidebarRow>
           ))}
         </div>
 
@@ -495,34 +443,10 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <ArrowClockwise size={13} className={cn(loading && 'animate-spin')} />
           </NotionButton>
         </footer>
-        <div
-          className="wb-resource-workspace-resize"
-          role="separator"
-          aria-orientation="vertical"
-          aria-valuemin={200}
-          aria-valuemax={340}
-          aria-valuenow={sidebarWidth}
-          onPointerDown={startSidebarResize}
-          onPointerMove={moveSidebarResize}
-          onPointerUp={stopSidebarResize}
-          onPointerCancel={stopSidebarResize}
-        />
-      </aside>
+      </WorkbenchSidebarSurface>}
+      >
 
       <main className="wb-resource-workspace-main">
-        {!sidebarOpen && (
-          <NotionButton
-            variant="outline"
-            size="icon"
-            iconOnly
-            className="wb-resource-workspace-sidebar-handle"
-            onClick={() => setSidebarOpen(true)}
-            title={t('workbench:resourceWorkspace.showSidebar')}
-            aria-label={t('workbench:resourceWorkspace.showSidebar')}
-          >
-            <SidebarSimple size={15} />
-          </NotionButton>
-        )}
         {selectedItem ? (
           <UnifiedAppPanel
             type={type}
@@ -546,14 +470,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           </div>
         )}
       </main>
-      {compact && sidebarOpen && (
-        <NotionButton
-          variant="ghost"
-          className="wb-resource-workspace-scrim"
-          onClick={() => setSidebarOpen(false)}
-          aria-label={t('workbench:resourceWorkspace.hideSidebar')}
-        />
-      )}
+      </WorkbenchSidebarLayout>
       <NotionAlertDialog
         open={pendingNavigation !== null}
         onOpenChange={(open) => {

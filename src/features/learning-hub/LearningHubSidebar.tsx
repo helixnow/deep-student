@@ -507,6 +507,7 @@ export function LearningHubSidebar({
       const draft: PendingFolderDraft = {
         node: {
           id: pendingId,
+          sourceId: pendingId,
           path: '',
           name: '',
           type: 'folder',

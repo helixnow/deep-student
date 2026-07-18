@@ -1,38 +1,14 @@
 .notes-workspace {
-  --notes-explorer-width: 240px;
   --notes-statusbar-height: 22px;
 
   position: absolute;
   inset: 0;
-  display: grid;
-  grid-template-columns: 44px var(--notes-explorer-width) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  display: block;
   overflow: hidden;
   color: hsl(var(--foreground));
   background: hsl(var(--background));
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
-}
-
-.notes-workspace[data-explorer-open='false']:not([data-compact='true']) {
-  grid-template-columns: 44px 0 minmax(0, 1fr);
-}
-
-.notes-ribbon {
-  z-index: 5;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: center;
-  padding: 7px 0 6px;
-  border-right: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 44%);
-}
-
-.notes-ribbon > div {
-  display: grid;
-  gap: 4px;
 }
 
 .notes-icon-button {
@@ -67,19 +43,10 @@
   z-index: 4;
   min-height: 0;
   display: flex;
-  min-width: 200px;
-  max-width: 360px;
+  min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 30%);
-}
-
-.notes-workspace[data-explorer-open='false']:not([data-compact='true']) .notes-explorer {
-  min-width: 0;
-  width: 0;
-  visibility: hidden;
-  border-right: 0;
+  background: transparent;
 }
 
 .notes-explorer header {
@@ -203,27 +170,36 @@
   padding: 1px 6px 12px;
 }
 
+/* 树行对齐对话标准的行配方；树形内容保留 13px/30px 密度档（最小妥协） */
 .notes-tree-row {
   width: 100%;
-  height: 28px;
+  height: 30px;
+  min-height: 30px;
   display: flex;
   align-items: center;
   gap: 5px;
   border: 0;
-  border-radius: var(--notes-radius-row);
+  border-radius: var(--shell-nav-row-radius, 14px);
   color: hsl(var(--foreground));
   background: transparent;
   font: inherit;
+  font-size: 13px;
   text-align: left;
   cursor: default;
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }
 
-.notes-tree-row:hover, .notes-tree-row[data-active='true'] {
-  background: hsl(var(--accent));
+.notes-tree-row:hover {
+  background: var(--interactive-hover, hsl(var(--accent)));
 }
 
-.notes-tree-row[data-selected='true'], .notes-tree-row[data-drop-target='true'] {
+.notes-tree-row[data-active='true'],
+.notes-tree-row[data-selected='true'] {
+  background: var(--interactive-selected, hsl(var(--accent)));
+}
+
+/* 拖放目标保留主色调提示（与选中态区分） */
+.notes-tree-row[data-drop-target='true'] {
   background: hsl(var(--primary) / 14%);
 }
 
@@ -302,16 +278,6 @@
 .notes-tree-loading i:nth-child(2) { width: 58%; }
 .notes-tree-loading i:nth-child(3) { width: 84%; }
 .notes-tree-loading i:nth-child(4) { width: 66%; }
-
-.notes-explorer-resize {
-  position: absolute;
-  z-index: 2;
-  top: 0;
-  right: -3px;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-}
 
 .notes-workspace-main {
   position: relative;
@@ -670,7 +636,7 @@
   text-align: right;
 }
 
-.notes-explorer-handle, .notes-split-indicator, .notes-explorer-scrim {
+.notes-split-indicator {
   display: none;
 }
 
@@ -901,32 +867,6 @@
   to { opacity: 1; }
 }
 
-.notes-workspace[data-compact='true'] {
-  grid-template-columns: 44px minmax(0, 1fr);
-}
-
-.notes-workspace[data-compact='true'] .notes-explorer {
-  position: absolute;
-  z-index: 4;
-  top: 0;
-  bottom: 0;
-  left: 44px;
-  width: min(var(--notes-explorer-width), calc(100% - 44px));
-  min-width: min(240px, calc(100% - 44px));
-  transform: translateX(calc(-100% - 1px));
-  background: hsl(var(--background));
-  box-shadow: 8px 0 24px hsl(var(--shadow-base) / 0.12);
-  transition: transform 140ms ease;
-}
-
-.notes-workspace[data-compact='true'] .notes-explorer[data-open='true'] {
-  transform: translateX(0);
-}
-
-.notes-workspace[data-compact='true'] .notes-workspace-main {
-  grid-column: 2;
-}
-
 .notes-workspace[data-compact='true'] .notes-main-content[data-backlinks-open='true'] {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -950,34 +890,12 @@
   cursor: row-resize;
 }
 
-.notes-workspace[data-compact='true'] .notes-explorer-scrim {
-  position: absolute;
-  z-index: 3;
-  inset: 0 0 0 44px;
-  display: block;
-  border: 0;
-  /* 抽屉侧遮罩：保留 14% 透明度（轻于 --notes-overlay-scrim 的 32%），仅换黑基 */
-  background: hsl(var(--shadow-base) / 0.14);
-}
-
-.notes-workspace[data-compact='true'] .notes-explorer-handle {
-  position: absolute;
-  z-index: 2;
-  left: 49px;
-  top: 9px;
-  display: grid;
-}
-
 .notes-workspace[data-compact='true'] .notes-statusbar span:first-child {
   display: none;
 }
 
 .notes-workspace[data-compact='true'] .notes-statusbar {
   justify-content: flex-end;
-}
-
-.notes-workspace[data-compact='true'] .notes-explorer-resize {
-  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

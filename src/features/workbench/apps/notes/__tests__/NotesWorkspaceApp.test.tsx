@@ -191,7 +191,8 @@ describe('NotesWorkspaceApp', () => {
     render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
 
     expect(document.querySelector('[data-wb-notes-workspace]')).not.toBeNull();
-    expect(document.querySelector('[data-notes-ribbon]')).not.toBeNull();
+    expect(document.querySelector('[data-notes-ribbon]')).toBeNull();
+    expect(document.querySelector('[data-workbench-sidebar]')).not.toBeNull();
     expect(document.querySelector('[data-notes-explorer]')).not.toBeNull();
     expect(document.querySelector('[data-notes-statusbar]')).not.toBeNull();
     expect(document.querySelector('[data-wb-notes-workspace] [data-notes-tabstrip]')).toBeNull();
@@ -253,14 +254,13 @@ describe('NotesWorkspaceApp', () => {
     expect(screen.getAllByTestId('note-editor-note_1')).toHaveLength(1);
   });
 
-  it('really collapses the desktop explorer and keeps the shell state aligned', async () => {
+  it('keeps the standard desktop explorer visible', async () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
 
-    fireEvent.click(screen.getByRole('button', { name: /文件浏览器|File explorer/ }));
     const workspace = document.querySelector('[data-wb-notes-workspace]');
-    expect(workspace).toHaveAttribute('data-explorer-open', 'false');
-    expect(document.querySelector('[data-notes-explorer]')).toHaveAttribute('aria-hidden', 'true');
+    expect(workspace).toHaveAttribute('data-explorer-open', 'true');
+    expect(document.querySelector('[data-notes-explorer]')).not.toHaveAttribute('aria-hidden');
   });
 
   it('selects the closing tab neighbor and supports automatic keyboard tab navigation', async () => {
@@ -658,12 +658,17 @@ describe('NotesWorkspaceApp', () => {
     expect(tree).toHaveAttribute('aria-busy', 'false');
   });
 
-  it('keeps the icon-button base class when opening the compact explorer handle', async () => {
+  it('uses the shared drawer handle in compact mode', async () => {
+    const resizeCallbacks: Array<(entries: ResizeObserverEntry[]) => void> = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: (entries: ResizeObserverEntry[]) => void) { resizeCallbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    });
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
-
-    fireEvent.click(screen.getByRole('button', { name: /文件浏览器|File explorer/ }));
-    expect(document.querySelector('.notes-explorer-handle')).toHaveClass('notes-icon-button');
+    act(() => resizeCallbacks.forEach((callback) => callback([{ contentRect: { width: 600 } } as ResizeObserverEntry])));
+    expect(screen.getByRole('button', { name: /显示导航|Show navigation/ })).toHaveClass('wb-sys-drawer-handle');
   });
 
   it('cancels unchanged inline rename on Enter and ignores empty rename', async () => {
@@ -876,7 +881,7 @@ describe('NotesWorkspaceApp', () => {
     });
   });
 
-  it('makes a closed compact explorer inert until it is reopened', async () => {
+  it('keeps the compact explorer inside the shared aria-hidden drawer until reopened', async () => {
     const resizeCallbacks: Array<(entries: ResizeObserverEntry[]) => void> = [];
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: (entries: ResizeObserverEntry[]) => void) {
@@ -893,11 +898,9 @@ describe('NotesWorkspaceApp', () => {
       }
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /文件浏览器|File explorer/ }));
-    const explorer = document.querySelector<HTMLElement>('[data-notes-explorer]')!;
-    await waitFor(() => expect(explorer).toHaveAttribute('inert', ''));
-
-    fireEvent.click(screen.getByRole('button', { name: /打开文件浏览器|Open file explorer/ }));
-    await waitFor(() => expect(explorer).not.toHaveAttribute('inert'));
+    const drawer = document.querySelector<HTMLElement>('[data-wb-sys-drawer]')!;
+    await waitFor(() => expect(drawer).toHaveAttribute('aria-hidden', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: /显示导航|Show navigation/ }));
+    await waitFor(() => expect(drawer).toHaveAttribute('aria-hidden', 'false'));
   });
 });

@@ -167,6 +167,8 @@ export const VendorSidebar: React.FC = () => {
           isActive
             ? settingsQuietSelectedRowClassName
             : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
+          // 侧栏统一契约：行圆角/高度/字号对齐对话标准（desktop-shell-nav-row 配方）
+          'min-h-[32px] rounded-[var(--shell-nav-row-radius,14px)] text-sm',
           snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
         )}
       >

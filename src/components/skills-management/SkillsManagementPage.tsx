@@ -312,7 +312,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       setUpdateConfirmOpen(true);
     } catch (error) {
       console.error('[SkillsManagement] 检查更新失败:', error);
-      showGlobalNotification('error', t('skills:management.update_check_failed'), String(error));
+      showGlobalNotification('error', String(error), t('skills:management.update_check_failed'));
     } finally {
       setUpdateChecking(false);
     }
@@ -340,16 +340,17 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       await reloadSkills();
     }
     if (errors.length === 0) {
+      // showGlobalNotification(type, message, title)：短摘要作标题，长提示作正文
       showGlobalNotification(
         'success',
-        t('skills:management.update_success', { count: successCount }),
         t('skills:management.update_retrust_hint'),
+        t('skills:management.update_success', { count: successCount }),
       );
     } else {
       showGlobalNotification(
         successCount > 0 ? 'info' : 'error',
-        t('skills:management.update_partial', { success: successCount, fail: errors.length }),
         errors.join('\n'),
+        t('skills:management.update_partial', { success: successCount, fail: errors.length }),
       );
     }
   }, [pendingUpdates, t]);
@@ -1103,8 +1104,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => setTapBrowserOpen(true)}
-              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+              onClick={() => setTapBrowserOpen((v) => !v)}
+              aria-expanded={tapBrowserOpen}
+              className={cn(
+                'max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground',
+                tapBrowserOpen && 'bg-[color:var(--interactive-hover)] text-foreground',
+              )}
             >
               <Storefront size={14} className="mr-1" />
               {t('skills:tap.entry')}
@@ -1221,6 +1226,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         className="flex-1 min-h-0"
         viewportClassName="p-4 sm:p-6 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:pb-[calc(1.5rem+var(--mobile-safe-area-bottom,0px))]"
       >
+        {/* 技能源浏览器 / 上游更新确认：列表顶部内联展开（非模态，不遮挡页面） */}
+        {tapBrowserOpen && (
+          <SkillTapBrowser onClose={() => setTapBrowserOpen(false)} />
+        )}
+        {renderUpdateConfirm()}
+        {renderZipImportConfirm()}
         <SkillsList
           skills={filteredSkills}
           selectedSkillId={selectedSkillId}
@@ -1262,26 +1273,20 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     </div>
   );
 
-  // ========== 渲染上游更新确认对话框 ==========
+  // ========== 渲染上游更新确认（列表顶部内联横幅，非模态） ==========
   const renderUpdateConfirm = () => {
-    if (pendingUpdates.length === 0) return null;
+    if (!updateConfirmOpen || pendingUpdates.length === 0) return null;
     return (
-      <NotionAlertDialog
-        open={updateConfirmOpen}
-        onOpenChange={setUpdateConfirmOpen}
-        title={t('skills:management.update_confirm_title')}
-        description={t('skills:management.update_confirm_desc', { count: pendingUpdates.length })}
-        confirmText={t('skills:management.update_apply')}
-        cancelText={t('common:actions.cancel')}
-        confirmVariant="warning"
-        loading={updating}
-        onConfirm={handleConfirmUpdates}
-        onCancel={() => {
-          setPendingUpdates([]);
-          setUpdateConfirmOpen(false);
-        }}
-        className="max-h-[85dvh] overflow-y-auto"
+      <section
+        aria-label={t('skills:management.update_confirm_title')}
+        className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
       >
+        <div className="text-[13px] font-medium text-foreground">
+          {t('skills:management.update_confirm_title')}
+        </div>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          {t('skills:management.update_confirm_desc', { count: pendingUpdates.length })}
+        </p>
         <div className="space-y-2">
           {pendingUpdates.map((item) => (
             <div key={item.skillId} className="space-y-0.5">
@@ -1292,43 +1297,62 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               <div className="truncate text-[10px] text-muted-foreground/70">{item.sourceSummary}</div>
             </div>
           ))}
-          <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
-            {t('skills:management.update_retrust_hint')}
-          </p>
         </div>
-      </NotionAlertDialog>
+        <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+          {t('skills:management.update_retrust_hint')}
+        </p>
+        <div className="flex items-center justify-end gap-2">
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setPendingUpdates([]);
+              setUpdateConfirmOpen(false);
+            }}
+            disabled={updating}
+            className="h-7 px-2.5 text-xs"
+          >
+            {t('common:actions.cancel')}
+          </NotionButton>
+          <NotionButton
+            variant="primary"
+            size="sm"
+            onClick={() => void handleConfirmUpdates()}
+            disabled={updating}
+            className="h-7 px-2.5 text-xs"
+          >
+            {updating ? t('skills:management.update_applying') : t('skills:management.update_apply')}
+          </NotionButton>
+        </div>
+      </section>
     );
   };
 
-  // ========== 渲染 zip 导入装前确认对话框（扫描先行：分级可见后再安装） ==========
+  // ========== 渲染 zip 导入装前确认（列表顶部内联横幅，非模态；扫描先行：分级可见后再安装） ==========
   const renderZipImportConfirm = () => {
-    if (!pendingZipConfirm) return null;
+    if (!zipConfirmOpen || !pendingZipConfirm) return null;
     const { scan, fileName, overwrite } = pendingZipConfirm;
     const riskLevel = RISK_BADGE_CLASSES[scan.risk_level] ? scan.risk_level : 'low';
     const isHighRisk = riskLevel === 'high';
 
     return (
-      <NotionAlertDialog
-        open={zipConfirmOpen}
-        onOpenChange={setZipConfirmOpen}
-        title={overwrite
-          ? t('skills:management.import_confirm_overwrite_title')
-          : t('skills:management.import_confirm_title')}
-        description={t(
-          'skills:management.import_confirm_source',
-          { name: scan.skill_id, file: fileName }
+      <section
+        aria-label={t('skills:management.import_confirm_title')}
+        className={cn(
+          'mb-4 space-y-3 rounded-lg border p-3',
+          isHighRisk
+            ? 'border-red-300/50 bg-red-50/50 dark:border-red-700/40 dark:bg-red-900/10'
+            : 'border-border/60 bg-[color:var(--surface-muted)]',
         )}
-        confirmText={overwrite
-          ? t('skills:management.import_confirm_overwrite_install')
-          : t('skills:management.import_confirm_install')}
-        cancelText={t('common:actions.cancel')}
-        confirmVariant={isHighRisk ? 'danger' : overwrite ? 'warning' : 'primary'}
-        loading={zipInstalling}
-        onConfirm={handleConfirmZipInstall}
-        onCancel={handleCancelZipInstall}
-        // 扫描摘要（chips + 依赖 + 风险信号）内容可变长，小屏防溢出可滚动
-        className="max-h-[85dvh] overflow-y-auto"
       >
+        <div className="text-[13px] font-medium text-foreground">
+          {overwrite
+            ? t('skills:management.import_confirm_overwrite_title')
+            : t('skills:management.import_confirm_title')}
+        </div>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          {t('skills:management.import_confirm_source', { name: scan.skill_id, file: fileName })}
+        </p>
         <div className="space-y-3">
           {/* 包扫描摘要：文件 / 脚本 / 兼容工具声明 / sha256 */}
           <div className="flex flex-wrap items-center gap-1.5">
@@ -1426,7 +1450,32 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
           </div>
         </div>
-      </NotionAlertDialog>
+
+        <div className="flex items-center justify-end gap-2">
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={handleCancelZipInstall}
+            disabled={zipInstalling}
+            className="h-7 px-2.5 text-xs"
+          >
+            {t('common:actions.cancel')}
+          </NotionButton>
+          <NotionButton
+            variant={isHighRisk ? 'danger' : 'primary'}
+            size="sm"
+            onClick={() => void handleConfirmZipInstall()}
+            disabled={zipInstalling}
+            className="h-7 px-2.5 text-xs"
+          >
+            {zipInstalling
+              ? t('skills:tap.installing')
+              : overwrite
+                ? t('skills:management.import_confirm_overwrite_install')
+                : t('skills:management.import_confirm_install')}
+          </NotionButton>
+        </div>
+      </section>
     );
   };
 
@@ -1505,9 +1554,6 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onCancel={handleCancelZipOverwrite}
 />
 
-        {renderZipImportConfirm()}
-        {renderUpdateConfirm()}
-        <SkillTapBrowser open={tapBrowserOpen} onOpenChange={setTapBrowserOpen} />
       </div>
     );
   }
@@ -1565,9 +1611,6 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onCancel={handleCancelZipOverwrite}
 />
 
-        {renderZipImportConfirm()}
-        {renderUpdateConfirm()}
-        <SkillTapBrowser open={tapBrowserOpen} onOpenChange={setTapBrowserOpen} />
       </div>
     </LayoutGroup>
   );

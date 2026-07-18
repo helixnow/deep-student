@@ -10,7 +10,7 @@ import type { AppWindowProps } from '../../core/types';
 import { ModernSidebar } from '@/components/ModernSidebar';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
-import { WbSysSidebarLayout } from '../system/SystemWindowShared';
+import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
 import { useWbSysSize } from '../system/useWbSysSize';
 import { ChatWindowSkeleton } from './ChatWindowSkeleton';
 import './ChatAppWindow.css';
@@ -96,7 +96,7 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
       style={SHELL_VAR_RESET}
       data-wb-chat-app
     >
-      <WbSysSidebarLayout
+      <WorkbenchSidebarLayout
         sizeClass={sizeClass}
         navLabel={t('workbench:apps.chat.sessionNav')}
         sidebar={(
@@ -115,7 +115,7 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
             <ChatV2Page />
           </Suspense>
         </div>
-      </WbSysSidebarLayout>
+      </WorkbenchSidebarLayout>
     </div>
   );
 };

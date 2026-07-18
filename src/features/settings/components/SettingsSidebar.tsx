@@ -9,6 +9,11 @@ import { ArrowLeft, MagnifyingGlass } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
+  WorkbenchSidebarRow,
+  WorkbenchSidebarRowLabel,
+  WorkbenchSidebarSurface,
+} from '@/features/workbench/components/sidebar';
+import {
   SETTINGS_BACK_BUTTON_LABEL,
   SETTINGS_NAV_ITEM_LABEL_CLASS_NAME,
 } from './sidebarSettings';
@@ -74,7 +79,8 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
     : { paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' };
 
   const sidebarContent = (
-    <div
+    <WorkbenchSidebarSurface
+      ariaLabel={t('sidebar.navigation_label')}
       data-shell-layer={!isSmallScreen ? 'navigation' : undefined}
       data-shell-surface={!isSmallScreen ? 'navigation' : undefined}
       data-settings-sidebar
@@ -136,11 +142,10 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
             <ul className="space-y-0.5">
               {searchResults.map((item, idx) => (
                 <li key={`${item.tab}-${idx}`}>
-                  <NotionButton
-                    variant="nav"
-                    size="md"
+                  <WorkbenchSidebarRow
+                    rowType="nav"
+                    isActive={false}
                     onClick={() => handleSearchResultClick(item.tab)}
-                    className="desktop-shell-nav-row !w-full rounded-2xl !justify-start gap-2.5 !px-2.5 !py-1.5"
                   >
                     <span className="flex min-w-0 flex-col items-start text-left">
                       <span className={`truncate ${SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}`}>{item.label}</span>
@@ -148,7 +153,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                         {tabLabelMap.get(item.tab) ?? item.tab}
                       </span>
                     </span>
-                  </NotionButton>
+                  </WorkbenchSidebarRow>
                 </li>
               ))}
             </ul>
@@ -165,35 +170,33 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
 
             return (
               <li key={item.value}>
-                <NotionButton
-                  variant="nav"
-                  size="md"
+                <WorkbenchSidebarRow
+                  rowType="nav"
+                  isActive={isActive}
                   aria-current={isActive ? 'page' : undefined}
                   onClick={isActive ? undefined : () => {
                     setActiveTab(item.value as any);
                     if (isSmallScreen) setSidebarOpen(false);
                   }}
-                  className={cn(
-                    'desktop-shell-nav-row !w-full rounded-2xl',
-                    '!justify-start gap-2.5 !px-2.5 !py-1.5',
-                    isActive && 'desktop-shell-nav-row--active cursor-default'
-                  )}
+                  className={isActive ? 'cursor-default' : undefined}
                   title={undefined}
+                  leftSlot={<Icon className="h-[18px] w-[18px] flex-shrink-0" />}
                 >
-                  <Icon className="h-[18px] w-[18px] flex-shrink-0" />
                   {!isCollapsed && (
-                    <span className={`truncate ${SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}`}>
+                    <WorkbenchSidebarRowLabel>
+                      <span className={SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}>
                       {item.label}
-                    </span>
+                      </span>
+                    </WorkbenchSidebarRowLabel>
                   )}
-                </NotionButton>
+                </WorkbenchSidebarRow>
               </li>
             );
           })}
         </ul>
         )}
       </nav>
-    </div>
+    </WorkbenchSidebarSurface>
   );
 
   // 移动端直接返回内容（由 MobileSlidingLayout 处理滑动）

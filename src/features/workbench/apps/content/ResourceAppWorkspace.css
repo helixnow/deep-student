@@ -1,25 +1,12 @@
 .wb-resource-workspace {
-  --wb-resource-sidebar-width: 240px;
-
   position: absolute;
   inset: 0;
-  display: grid;
-  grid-template-columns: var(--wb-resource-sidebar-width) minmax(0, 1fr);
-
-  /*
-   * app.css 对全局 main 设置了 100vh。显式约束唯一网格行，避免右侧
-   * <main> 的视口高度把整行（含侧栏）撑出浮窗内容区。
-   */
-  grid-template-rows: minmax(0, 1fr);
+  display: block;
   overflow: hidden;
   color: hsl(var(--foreground));
   background: hsl(var(--background));
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
-}
-
-.wb-resource-workspace[data-sidebar-open='false']:not([data-compact='true']) {
-  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .wb-resource-workspace-sidebar {
@@ -29,15 +16,7 @@
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 30%);
-}
-
-.wb-resource-workspace[data-sidebar-open='false']:not([data-compact='true']) .wb-resource-workspace-sidebar {
-  width: 0;
-  min-width: 0;
-  visibility: hidden;
-  border-right: 0;
+  background: transparent;
 }
 
 .wb-resource-workspace-sidebar-title {
@@ -122,41 +101,6 @@
   border-bottom: 1px solid hsl(var(--border) / 70%);
 }
 
-.wb-resource-workspace-nav-row,
-.wb-resource-workspace-resource {
-  width: 100%;
-  height: 28px;
-  min-height: 28px;
-  padding: 0 7px;
-  justify-content: flex-start;
-  gap: 7px;
-  border-radius: 6px;
-  color: hsl(var(--foreground));
-  font: inherit;
-}
-
-.wb-resource-workspace-nav-row:hover,
-.wb-resource-workspace-nav-row[data-active='true'],
-.wb-resource-workspace-resource:hover,
-.wb-resource-workspace-resource[data-selected='true'] {
-  background: hsl(var(--accent));
-}
-
-.wb-resource-workspace-nav-row span,
-.wb-resource-workspace-resource span {
-  overflow: hidden;
-  flex: 1;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wb-resource-workspace-nav-row small {
-  color: hsl(var(--muted-foreground));
-  font-size: 11px;
-  font-weight: 400;
-}
-
 .wb-resource-workspace-list {
   flex: 1;
   min-height: 0;
@@ -167,10 +111,6 @@
 
 .wb-resource-workspace-list:focus-visible {
   box-shadow: inset 0 0 0 2px hsl(var(--ring) / 32%);
-}
-
-.wb-resource-workspace-resource[data-selected='true'] {
-  font-weight: 500;
 }
 
 .wb-resource-workspace-sidebar-footer {
@@ -200,39 +140,6 @@
   max-height: none;
   overflow: hidden;
   background: hsl(var(--background));
-}
-
-.wb-resource-workspace-sidebar-handle {
-  position: absolute;
-  z-index: 2;
-  top: 8px;
-  left: 8px;
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
-  padding: 0;
-  background: hsl(var(--background) / 92%);
-  box-shadow: 0 2px 8px hsl(var(--foreground) / 8%);
-}
-
-.wb-resource-workspace-resize {
-  position: absolute;
-  z-index: 5;
-  top: 0;
-  right: -3px;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  touch-action: none;
-}
-
-.wb-resource-workspace-resize:hover,
-.wb-resource-workspace-resize:active {
-  background: hsl(var(--ring) / 24%);
-}
-
-.wb-resource-workspace-scrim {
-  display: none;
 }
 
 .wb-resource-workspace-empty,
@@ -289,44 +196,6 @@
 @keyframes wb-resource-workspace-loading {
   from { opacity: 0.5; }
   to { opacity: 0.92; }
-}
-
-.wb-resource-workspace[data-compact='true'] {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.wb-resource-workspace[data-compact='true'] .wb-resource-workspace-sidebar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: min(var(--wb-resource-sidebar-width), calc(100% - 44px));
-  min-width: min(220px, calc(100% - 44px));
-  transform: translateX(-105%);
-  box-shadow: 8px 0 24px hsl(var(--foreground) / 12%);
-  transition: transform 140ms ease;
-}
-
-.wb-resource-workspace[data-compact='true'][data-sidebar-open='true'] .wb-resource-workspace-sidebar {
-  transform: translateX(0);
-}
-
-.wb-resource-workspace[data-compact='true'] .wb-resource-workspace-main {
-  grid-column: 1;
-}
-
-.wb-resource-workspace[data-compact='true'] .wb-resource-workspace-resize {
-  display: none;
-}
-
-.wb-resource-workspace[data-compact='true'] .wb-resource-workspace-scrim {
-  position: absolute;
-  z-index: 3;
-  inset: 0;
-  display: block;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: hsl(var(--foreground) / 14%);
 }
 
 @media (prefers-reduced-motion: reduce) {

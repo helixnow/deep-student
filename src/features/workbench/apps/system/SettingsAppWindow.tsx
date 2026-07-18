@@ -10,7 +10,7 @@
 import React, { Suspense, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AppWindowProps } from '../../core/types';
-import { WbSysFade, WbSysSidebarLayout, WbSysSkeleton } from './SystemWindowShared';
+import { WbSysFade, WorkbenchSidebarLayout, WbSysSkeleton } from './SystemWindowShared';
 import { useWbSysSize } from './useWbSysSize';
 import './SettingsAppWindow.css';
 
@@ -52,7 +52,7 @@ const SettingsAppWindow: React.FC<AppWindowProps> = ({
       <div data-wb-settings-layer>
         <Suspense fallback={<WbSysSkeleton variant="sidebar" />}>
           <WbSysFade>
-            <WbSysSidebarLayout
+            <WorkbenchSidebarLayout
               sizeClass={sizeClass}
               navLabel={t('workbench:apps.system.settingsNav')}
               sidebar={
@@ -62,7 +62,7 @@ const SettingsAppWindow: React.FC<AppWindowProps> = ({
               <div className="relative h-full min-h-0 min-w-0">
                 <Settings onBack={requestClose} />
               </div>
-            </WbSysSidebarLayout>
+            </WorkbenchSidebarLayout>
           </WbSysFade>
         </Suspense>
       </div>

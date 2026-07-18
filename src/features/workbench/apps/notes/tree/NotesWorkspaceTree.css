@@ -42,14 +42,16 @@
   outline-offset: -2px;
 }
 
+/* 树行对齐对话标准 nav-row；树形内容保留 13px/30px 密度档（最小妥协） */
 .nwt-row {
   width: 100%;
-  height: 28px;
+  height: 30px;
+  min-height: 30px;
   display: flex;
   align-items: center;
   gap: 5px;
   border: 0;
-  border-radius: var(--notes-radius-row);
+  border-radius: var(--shell-nav-row-radius, 14px);
   color: hsl(var(--foreground));
   background: transparent;
   font: inherit;
@@ -62,28 +64,29 @@
   transition: background-color var(--notes-hover-transition);
 }
 
-.nwt-row:hover,
-.nwt-row[data-active='true'] {
-  background: hsl(var(--accent));
+.nwt-row:hover {
+  background: var(--interactive-hover, hsl(var(--accent)));
 }
 
-.nwt-row[data-selected='true'],
+.nwt-row[data-active='true'],
+.nwt-row[data-selected='true'] {
+  background: var(--interactive-selected, hsl(var(--accent)));
+  font-weight: 500;
+}
+
+/* 拖放目标保留主色调提示（与选中态区分） */
 .nwt-row[data-drop-inside='true'] {
   background: hsl(var(--primary) / 14%);
 }
 
 /* 选中态再 hover 时略加深，避免与普通 hover 无法区分 */
 .nwt-row[data-selected='true']:hover {
-  background: hsl(var(--primary) / 18%);
+  background: color-mix(in hsl, var(--interactive-selected, hsl(var(--accent))) 80%, hsl(var(--foreground)) 8%);
 }
 
 /* 选中的文件夹行提亮为前景色，保证选中态可读性 */
 .nwt-row--folder[data-selected='true'] {
   color: hsl(var(--foreground));
-}
-
-.nwt-row[data-active='true'] {
-  font-weight: 500;
 }
 
 .nwt-row:focus-visible {

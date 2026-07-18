@@ -37,6 +37,11 @@ import { cn } from '@/lib/utils';
 import type { QuickAccessType } from '../../learningHubContracts';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { IndexStatusMiniBar } from './IndexStatusMiniBar';
+import {
+  WorkbenchSidebarRow,
+  WorkbenchSidebarRowLabel,
+  WorkbenchSidebarSurface,
+} from '@/features/workbench/components/sidebar';
 
 interface FinderQuickAccessProps {
   collapsed: boolean;
@@ -138,28 +143,24 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
       )} />
     ) : null;
 
-    if (fillContainer && !collapsed) {
+    // 展开态统一走对话标准的 desktop-shell-nav-row 行配方
+    // （fillContainer 壳位与窗口内自持宽度两种模式共用同一行样式）
+    if (!collapsed) {
       return (
-        <NotionButton
-          variant="nav"
-          size="md"
+        <WorkbenchSidebarRow
+          isActive={isActive}
           aria-current={isActive ? 'page' : undefined}
-          className={cn(
-            'desktop-shell-nav-row !w-full rounded-2xl !justify-start gap-2.5 !px-2.5 !py-1.5',
-            isActive && 'desktop-shell-nav-row--active cursor-default'
-          )}
+          className={isActive ? 'cursor-default' : undefined}
           onClick={isActive ? undefined : () => onNavigate(type)}
-        >
-          {renderedIcon}
-          <span className="min-w-0 flex-1 truncate text-left text-[color:var(--shell-navigation-foreground)]">
-            {label}
-          </span>
-          {count !== undefined && count > 0 && (
-            <span className="min-w-[24px] shrink-0 text-right text-[11px] tabular-nums text-[color:var(--shell-navigation-muted)]">
+          leftSlot={renderedIcon}
+          rightSlot={count !== undefined && count > 0 ? (
+            <span className="text-[11px] tabular-nums text-[color:var(--shell-navigation-muted)]">
               {count}
             </span>
-          )}
-        </NotionButton>
+          ) : null}
+        >
+          <WorkbenchSidebarRowLabel>{label}</WorkbenchSidebarRowLabel>
+        </WorkbenchSidebarRow>
       );
     }
 
@@ -281,12 +282,16 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   };
 
   return (
-    <div 
+    <WorkbenchSidebarSurface
+      ariaLabel={t('learningHub:title')}
       className={cn(
         'flex flex-col overflow-hidden transition-all duration-200 ease-out',
         fillContainer && 'font-sidebar-study-ui h-full min-w-0',
-        fillContainer ? 'bg-transparent text-[color:var(--shell-navigation-foreground)]' : 'bg-muted/30 border-r border-border/40',
-        fillContainer ? 'w-full' : collapsed ? 'w-14' : 'w-52'
+        /* 对话标准：透明面 + 右缘软分隔线（seam token 见 workbench.tokens.css） */
+        fillContainer
+          ? 'bg-transparent text-[color:var(--shell-navigation-foreground)]'
+          : 'bg-transparent border-r border-[color:var(--wb-sidebar-seam,hsl(var(--border)/0.55))]',
+        fillContainer ? 'w-full' : collapsed ? 'w-14' : 'w-[var(--wb-sidebar-width,272px)]'
       )}
     >
         {!hideSearch && <div className={cn(
@@ -425,6 +430,6 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
             </NotionButton>
           </div>
         )}
-      </div>
+      </WorkbenchSidebarSurface>
   );
 });

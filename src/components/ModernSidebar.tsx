@@ -13,7 +13,6 @@ import {
   Check,
   CaretDoubleDown,
   CaretDoubleUp,
-  CaretRight,
   Code,
   FileText,
   Flask,
@@ -50,7 +49,6 @@ import {
   NotionDialogHeader,
   NotionDialogTitle,
 } from '@/components/ui/NotionDialog';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Input } from '@/components/ui/shad/Input';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { beginSessionHoverPrefetch, cancelSessionHoverPrefetch } from '@/features/chat/core/session/sessionPrefetch';
@@ -80,6 +78,14 @@ import {
   useSessionSidebarIndicators,
 } from '@/features/chat/hooks/useSessionSidebarIndicators';
 import { isMacOS, isMobilePlatform } from '@/utils/platform';
+import {
+  WorkbenchSidebarRow as SidebarRow,
+  WorkbenchSidebarRowLabel as SidebarRowLabel,
+  WorkbenchSidebarSectionHeader,
+  WorkbenchSidebarSurface,
+  WorkbenchSidebarFixed,
+  WorkbenchSidebarScroll,
+} from '@/features/workbench/components/sidebar';
 
 interface NavigationHistory {
   canGoBack: boolean;
@@ -196,34 +202,6 @@ function isChatSession(value: unknown): value is ChatSession {
   return typeof candidate.id === 'string' && typeof candidate.mode === 'string';
 }
 
-function getSidebarRowClassName({
-  rowType,
-  isActive,
-  className,
-}: {
-  rowType: 'nav' | 'thread';
-  isActive: boolean;
-  className?: string;
-}) {
-  return cn(
-    'desktop-shell-sidebar-row',
-    rowType === 'thread' ? 'desktop-shell-thread-row' : 'desktop-shell-nav-row',
-    '!w-full !justify-start !px-2.5 !py-1.5 text-left',
-    isActive
-      ? rowType === 'thread' ? 'desktop-shell-thread-row--active' : 'desktop-shell-nav-row--active'
-      : null,
-    className
-  );
-}
-
-function SidebarRowLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4">
-      {children}
-    </span>
-  );
-}
-
 function NewSessionShortcutHint({ shortcut }: { shortcut: string }) {
   return (
     <kbd
@@ -241,42 +219,6 @@ function isFinePointerDesktopSurface(): boolean {
   }
 
   return window.matchMedia('(pointer: fine)').matches;
-}
-
-function SidebarRow({
-  rowType,
-  isActive,
-  className,
-  leftSlot,
-  rightSlot,
-  children,
-  ...buttonProps
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  rowType: 'nav' | 'thread';
-  isActive: boolean;
-  leftSlot?: React.ReactNode;
-  rightSlot?: React.ReactNode;
-}) {
-  return (
-    <NotionButton
-      variant="nav"
-      size="md"
-      className={getSidebarRowClassName({ rowType, isActive, className })}
-      {...buttonProps}
-    >
-      <span className="flex min-w-0 flex-1 items-center gap-2.5">
-        <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">
-          {leftSlot}
-        </span>
-        <span className="min-w-0 flex-1">
-          {children}
-        </span>
-        <span className="flex min-w-[24px] shrink-0 items-center justify-end gap-0.5">
-          {rightSlot}
-        </span>
-      </span>
-    </NotionButton>
-  );
 }
 
 function SidebarSessionOverflowToggle({
@@ -1282,29 +1224,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   }) => {
     const isCollapsed = collapsedSidebarSectionIds.has(id);
 
-    return (
-      <div className="group/sidebar-top-section flex items-center justify-between gap-2 px-2">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-0.5 text-left text-[color:var(--shell-navigation-muted)] outline-none transition-colors hover:text-[color:var(--shell-navigation-foreground)] focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={label}
-          aria-expanded={!isCollapsed}
-          onClick={() => toggleSidebarSection(id)}
-        >
-          <span className="desktop-shell-nav-section-label min-w-0 truncate">
-            {label}
-          </span>
-          <CaretRight
-            className={cn(
-              'size-3 shrink-0 text-[color:var(--shell-navigation-section-label)] opacity-0 transition-[opacity,transform] duration-150 ease-[var(--dropdown-ease)] group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100 motion-reduce:transition-none',
-              !isCollapsed && 'rotate-90'
-            )}
-            strokeWidth={2.25}
-/>
-        </button>
-        {action}
-      </div>
-    );
+    return <WorkbenchSidebarSectionHeader label={label} collapsed={isCollapsed} onToggle={() => toggleSidebarSection(id)} action={action} />;
   };
 
   const conversationHeaderAction = (
@@ -1331,16 +1251,12 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
   return (
     <>
-    <aside
-      role="navigation"
-      aria-label={t('sidebar:aria.sidebar_navigation')}
-      data-shell-layer="navigation"
-      data-shell-surface="navigation"
-      className="font-sidebar-study-ui relative z-20 flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]"
+    <WorkbenchSidebarSurface
+      ariaLabel={t('sidebar:aria.sidebar_navigation')}
+      className="z-20"
       style={{ paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' }}
     >
-      <div
-        className="shrink-0 px-2 pb-2 pt-0.5"
+      <WorkbenchSidebarFixed
         data-no-drag
         data-sidebar-fixed-region="primary-navigation"
       >
@@ -1355,16 +1271,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             )}
           </div>
         </nav>
-      </div>
+      </WorkbenchSidebarFixed>
 
-      <div className="desktop-shell-sidebar-session-scroll-shell min-h-0 flex-1 w-full">
-        <CustomScrollArea
-          className="desktop-shell-sidebar-session-scroll min-h-0 flex-1 w-full"
-          viewportClassName="desktop-shell-sidebar-session-scroll-viewport h-full w-full"
-          viewportProps={{
-            'data-sidebar-scroll-region': 'sessions',
-          } as React.HTMLAttributes<HTMLDivElement>}
-        >
+      <WorkbenchSidebarScroll>
           <div
             className="flex flex-col gap-3 px-2 pb-6 pt-4"
             data-no-drag
@@ -1458,8 +1367,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             ) : null}
             </section>
           </div>
-        </CustomScrollArea>
-      </div>
+      </WorkbenchSidebarScroll>
 
       {navigationScope === 'full' ? (
       <div className="mt-auto shrink-0 px-2 pb-3 pt-1" data-no-drag>
@@ -1498,7 +1406,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         </div>
       </div>
       ) : null}
-    </aside>
+    </WorkbenchSidebarSurface>
 
     <NotionDialog
       open={editingRecentSessionId !== null}

@@ -1187,20 +1187,20 @@ describe('ModernSidebar shell navigation', () => {
 
   it('keeps thread text padding unchanged without left or right quick action buttons', () => {
     const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+    const primitiveSource = readFileSync(resolve(process.cwd(), 'src/features/workbench/components/sidebar/WorkbenchSidebar.tsx'), 'utf-8');
 
-    expect(sidebarSource).toContain('function SidebarRow(');
-    expect(sidebarSource).toContain('function getSidebarRowClassName(');
-    expect(sidebarSource).toContain("rowType === 'thread' ? 'desktop-shell-thread-row' : 'desktop-shell-nav-row'");
-    expect(sidebarSource).toContain("rowType === 'thread' ? 'desktop-shell-thread-row--active' : 'desktop-shell-nav-row--active'");
-    expect(sidebarSource).toContain("'!w-full !justify-start !px-2.5 !py-1.5 text-left'");
+    expect(primitiveSource).toContain('function WorkbenchSidebarRow(');
+    expect(primitiveSource).toContain("rowType === 'thread' ? 'desktop-shell-thread-row' : 'desktop-shell-nav-row'");
+    expect(primitiveSource).toContain("rowType === 'thread' ? 'desktop-shell-thread-row--active' : 'desktop-shell-nav-row--active'");
+    expect(primitiveSource).toContain("'!w-full !justify-start !px-2.5 !py-1.5 text-left'");
     expect(sidebarSource).toContain('<SidebarRow');
     expect(sidebarSource).toContain('rowType="thread"');
     expect(sidebarSource).toContain('rowType="nav"');
-    expect(sidebarSource).toContain('flex min-w-0 flex-1 items-center gap-2.5');
-    expect(sidebarSource).toContain('w-4 shrink-0');
-    expect(sidebarSource).toContain('min-w-0 flex-1');
-    expect(sidebarSource).toContain('min-w-[24px] shrink-0');
-    expect(sidebarSource).not.toContain('{leftSlot ? (');
+    expect(primitiveSource).toContain('flex min-w-0 flex-1 items-center gap-2.5');
+    expect(primitiveSource).toContain('w-4 shrink-0');
+    expect(primitiveSource).toContain('min-w-0 flex-1');
+    expect(primitiveSource).toContain('min-w-[24px] shrink-0');
+    expect(primitiveSource).not.toContain('{leftSlot ? (');
     expect(sidebarSource).not.toContain("showPinAction ? '!pl-10 !pr-3' : '!px-2.5'");
     expect(sidebarSource).not.toContain("'absolute left-3 top-1/2 z-10 -translate-x-full -translate-y-1/2 !h-6 !w-6'");
   });

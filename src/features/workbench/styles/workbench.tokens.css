@@ -82,6 +82,16 @@
   /* 外圈 1px 亮描边模拟玻璃壳厚度，暗色下换白色微光 */
   --wb-window-rim: rgba(255, 255, 255, 0.55);
 
+  /* ==== 窗口侧栏统一契约（以对话窗口为唯一基准） ====================
+   * 所有工作台窗口的一级侧栏必须引用这组 token，禁止再写字面量。
+   * 行配方复用 app.css 的 desktop-shell-nav-row（32px / 14px /
+   * --shell-nav-row-radius）；本层只定义宽度与软分隔线。
+   * 挂在 workbench.tokens.css：WorkbenchDesktop 必载，避免先开
+   * 资源库/笔记时 SystemWindowShared 尚未挂载而丢 token。 */
+  --wb-sidebar-width: 272px;
+  --wb-sidebar-width-medium: 240px;
+  --wb-sidebar-seam: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+
   /* 焦点强度分档阴影（多层：0.5px 描边环 + 环境光 + 接触阴影）
    * idle < focused < lifted（拖拽抬升）；popover/overlay 供悬浮玻璃件 */
   --wb-shadow-focused:

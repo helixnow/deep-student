@@ -25,6 +25,7 @@ import {
   Robot,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { WorkbenchSidebarRow, WorkbenchSidebarRowLabel } from '@/features/workbench/components/sidebar';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
@@ -53,15 +54,6 @@ const SMART_VIEWS: SmartView[] = [
 // 与 ModernSidebar 保持一致的行样式原语
 // ============================================================================
 
-function getNavRowClassName(isActive: boolean, className?: string) {
-  return cn(
-    'desktop-shell-sidebar-row desktop-shell-nav-row',
-    '!w-full !justify-start !px-2.5 !py-1.5 text-left',
-    isActive && 'desktop-shell-nav-row--active',
-    className,
-  );
-}
-
 interface NavRowProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   isActive: boolean;
   leftSlot?: React.ReactNode;
@@ -80,26 +72,16 @@ const NavRow: React.FC<NavRowProps> = ({
   // 统一抽屉内行高对齐 mobileDrawerNavRowClassName 的 44px 触控标准
   const unifiedDrawer = useMobileUnifiedDrawer();
   return (
-  <NotionButton
-    variant="nav"
-    size="md"
-    className={getNavRowClassName(isActive, cn(unifiedDrawer && 'min-h-[2.75rem]', className))}
+  <WorkbenchSidebarRow
+    rowType="nav"
+    isActive={isActive}
+    className={cn(unifiedDrawer && 'min-h-[2.75rem]', className)}
+    leftSlot={leftSlot}
+    rightSlot={rightSlot}
     {...rest}
   >
-    <span className="flex min-w-0 flex-1 items-center gap-2.5">
-      <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">
-        {leftSlot}
-      </span>
-      <span className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4">
-        {children}
-      </span>
-      {rightSlot !== undefined && (
-        <span className="flex min-w-[24px] shrink-0 items-center justify-end gap-0.5">
-          {rightSlot}
-        </span>
-      )}
-    </span>
-  </NotionButton>
+    <WorkbenchSidebarRowLabel>{children}</WorkbenchSidebarRowLabel>
+  </WorkbenchSidebarRow>
   );
 };
 

@@ -4,7 +4,7 @@
  * 覆盖：
  * - useWbSysSize 纯分级函数阈值；
  * - WbSysSkeleton / WbSysActivityStrip 呈现契约；
- * - WbSysSidebarLayout 宽窗并排 / 窄窗抽屉（开合、遮罩、Esc）；
+ * - WorkbenchSidebarLayout 宽窗并排 / 窄窗抽屉（开合、遮罩、Esc）；
  * - PomodoroAppWindow 计时视觉状态机（idle/运行/暂停/正计时/严格模式）与模式化标题；
  * - TaskDashboardAppWindow 标题实时任务计数 + 活动条 + subscribeAnkiTaskCount 生命周期；
  * - SandboxAppWindow iframe 焦点守卫（非焦点有 / 焦点无）。
@@ -111,7 +111,7 @@ import {
 import {
   WbSysSkeleton,
   WbSysActivityStrip,
-  WbSysSidebarLayout,
+  WorkbenchSidebarLayout,
 } from '@/features/workbench/apps/system/SystemWindowShared';
 import {
   refreshAnkiTaskCount,
@@ -186,12 +186,12 @@ describe('O18 共享呈现件', () => {
 // 侧栏布局：宽窗并排 / 窄窗抽屉
 // ============================================================================
 
-describe('O18 WbSysSidebarLayout', () => {
+describe('O18 WorkbenchSidebarLayout', () => {
   it('wide：侧栏并排渲染，无抽屉把手', () => {
     const { container } = render(
-      <WbSysSidebarLayout sizeClass="wide" navLabel="待办导航" sidebar={<div data-testid="side" />}>
+      <WorkbenchSidebarLayout sizeClass="wide" navLabel="待办导航" sidebar={<div data-testid="side" />}>
         <div data-testid="main" />
-      </WbSysSidebarLayout>,
+      </WorkbenchSidebarLayout>,
     );
     expect(screen.getByTestId('side')).toBeInTheDocument();
     expect(screen.getByTestId('main')).toBeInTheDocument();
@@ -201,13 +201,13 @@ describe('O18 WbSysSidebarLayout', () => {
 
   it('compact：把手开抽屉、遮罩点击 / Esc 关抽屉', () => {
     const { container } = render(
-      <WbSysSidebarLayout
+      <WorkbenchSidebarLayout
         sizeClass="compact"
         navLabel="待办导航"
         sidebar={<div data-testid="side" />}
       >
         <div data-testid="main" />
-      </WbSysSidebarLayout>,
+      </WorkbenchSidebarLayout>,
     );
 
     const drawer = container.querySelector('[data-wb-sys-drawer]')!;
@@ -231,13 +231,13 @@ describe('O18 WbSysSidebarLayout', () => {
     vi.useFakeTimers();
     try {
       const { container } = render(
-        <WbSysSidebarLayout
+        <WorkbenchSidebarLayout
           sizeClass="compact"
           navLabel="导航"
           sidebar={<button type="button" data-testid="nav-item" />}
         >
           <div />
-        </WbSysSidebarLayout>,
+        </WorkbenchSidebarLayout>,
       );
       const drawer = container.querySelector('[data-wb-sys-drawer]')!;
       fireEvent.click(container.querySelector('[data-wb-sys-drawer-handle]')!);

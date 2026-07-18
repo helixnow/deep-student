@@ -31,6 +31,8 @@ import { useFilesViewTransition } from './useFilesViewTransition';
 import { useFilesHoverPreview } from './useFilesHoverPreview';
 import { useResourceDragOut } from './useResourceDragOut';
 import './FilesAppWindow.css';
+import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
+import { useWbSysSize } from '../system/useWbSysSize';
 
 /**
  * ResourceListItem → workbenchBus.launch 请求。
@@ -60,7 +62,9 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
 }) => {
   const { t } = useTranslation(['workbench']);
   const hostRef = useRef<HTMLDivElement>(null);
+  const { ref: sizeRef, sizeClass } = useWbSysSize();
   const viewportRef = useRef<HTMLDivElement>(null);
+  const [quickAccessTarget, setQuickAccessTarget] = useState<HTMLDivElement | null>(null);
   // 不依赖 hint 刷新：起拖同步旗后下一帧关掉 hover/拖出（避免跟手中途仍跑预览）
   const [gesturePaused, setGesturePaused] = useState(() => shouldPauseHeavyContent());
   const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
@@ -115,8 +119,18 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
     launchResourceItem(item);
   }, []);
 
+  const setHostRef = useCallback((node: HTMLDivElement | null) => {
+    hostRef.current = node;
+    (sizeRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+  }, [sizeRef]);
+
   return (
-    <div ref={hostRef} className="wb-files-host" data-wb-files-host>
+    <div ref={setHostRef} className="wb-files-host" data-wb-files-host>
+      <WorkbenchSidebarLayout
+        sizeClass={sizeClass}
+        navLabel={t('workbench:apps.files')}
+        sidebar={<div ref={setQuickAccessTarget} className="h-full min-h-0 w-full" />}
+      >
       <div ref={viewportRef} className="wb-files-viewport" data-wb-files-viewport>
         <LearningHubSidebar
           mode="fullscreen"
@@ -125,8 +139,10 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
           className="h-full w-full"
           isCollapsed={false}
           toolbarPortalTarget={titlebarTarget}
+          quickAccessPortalTarget={quickAccessTarget}
         />
       </div>
+      </WorkbenchSidebarLayout>
     </div>
   );
 };

@@ -15,7 +15,7 @@ import React, { Suspense, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TodoContentView, TodoShellSidebar } from '@/features/todo';
 import type { AppWindowProps } from '../../core/types';
-import { WbSysFade, WbSysSidebarLayout, WbSysSkeleton } from './SystemWindowShared';
+import { WbSysFade, WorkbenchSidebarLayout, WbSysSkeleton } from './SystemWindowShared';
 import { useWbSysSize } from './useWbSysSize';
 
 const SHELL_VAR_RESET = {
@@ -51,13 +51,13 @@ const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange 
     >
       <Suspense fallback={<WbSysSkeleton variant="sidebar" />}>
         <WbSysFade>
-          <WbSysSidebarLayout
+          <WorkbenchSidebarLayout
             sizeClass={sizeClass}
             navLabel={t('workbench:apps.system.todoNav')}
             sidebar={<TodoShellSidebar isSmallScreen={false} globalLeftPanelCollapsed={false} />}
           >
             <TodoContentView todoListId={todoListId} initialView={initialView} className="h-full" />
-          </WbSysSidebarLayout>
+          </WorkbenchSidebarLayout>
         </WbSysFade>
       </Suspense>
     </div>

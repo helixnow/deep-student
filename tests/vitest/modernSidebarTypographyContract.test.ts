@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('modern sidebar typography contract', () => {
-  const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+  const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8')
+    + readFileSync(resolve(process.cwd(), 'src/features/workbench/components/sidebar/WorkbenchSidebar.tsx'), 'utf-8');
   const appCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf-8');
   const typographyCssSource = readFileSync(resolve(process.cwd(), 'src/styles/typography.css'), 'utf-8');
   const themeColorsSource = readFileSync(resolve(process.cwd(), 'src/styles/theme-colors.css'), 'utf-8');
@@ -14,12 +15,12 @@ describe('modern sidebar typography contract', () => {
 
   it('keeps sidebar labels on the quieter study-ui weight scale', () => {
     expect(sidebarSource).toContain('font-sidebar-study-ui');
-    expect(sidebarSource).toContain("aria-label={t('sidebar:aria.workspace_primary_entry', '工作区主入口')}");
+    expect(sidebarSource).toContain("aria-label={t('sidebar:aria.workspace_primary_entry')}");
     expect(sidebarSource).toContain('className="space-y-0.5" role="list"');
     expect(sidebarSource).toContain('className="desktop-shell-nav-section-label min-w-0 truncate"');
     expect(sidebarSource).toContain('className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4"');
-    expect(sidebarSource).toContain("aria-label={t('sidebar:aria.topic_sessions', '课题')}");
-    expect(sidebarSource).toContain("aria-label={t('sidebar:aria.conversation_sessions', '对话')}");
+    expect(sidebarSource).toContain("aria-label={t('sidebar:aria.topic_sessions')}");
+    expect(sidebarSource).toContain("aria-label={t('sidebar:aria.conversation_sessions')}");
     expect(sidebarSource).toContain('className="group/sidebar-top-section flex items-center justify-between gap-2 px-2"');
     expect(shadcnVariablesSource).toContain('--app-font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;');
     expect(typographyCssSource).toMatch(/\.font-sidebar-study-ui\s*\{[\s\S]*font-family:\s*ui-sans-serif,\s*system-ui,\s*sans-serif,\s*"Apple Color Emoji",\s*"Segoe UI Emoji",\s*"Segoe UI Symbol",\s*"Noto Color Emoji";/);

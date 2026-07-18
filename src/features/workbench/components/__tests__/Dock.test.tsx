@@ -466,6 +466,10 @@ describe('autohide', () => {
       vi.advanceTimersByTime(180);
     });
     expect(dock).not.toHaveAttribute('data-hidden');
+    expect(dock).toHaveAttribute('data-revealing', 'true');
+
+    fireEvent.animationEnd(dock, { animationName: 'wb-dock-reveal' });
+    expect(dock).not.toHaveAttribute('data-revealing');
 
     fireEvent.pointerLeave(dock);
     // conceal 延迟 150ms

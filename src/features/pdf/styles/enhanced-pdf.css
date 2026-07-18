@@ -424,8 +424,9 @@
 
 .ds-pdf__sidebar {
   width: 200px;
-  background: hsl(var(--card));
-  border-right: 1px solid hsl(var(--border));
+  /* 对话标准 token：透明面 + 右缘软分隔线（阅读器内部面板保留 200px 层级宽度） */
+  background: transparent;
+  border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
   overflow-y: auto;
   flex-shrink: 0;
 }
@@ -457,13 +458,17 @@
   padding: 8px 0;
 }
 
+/* 目录行对齐对话标准 nav-row token（二级面板保留 200px 宽度层级） */
 .ds-outline-item {
   display: block;
-  width: 100%;
-  padding: 8px 12px;
+  width: calc(100% - 8px);
+  min-height: 32px;
+  margin: 0 4px;
+  padding: 6px 10px;
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
   border: none;
+  border-radius: var(--shell-nav-row-radius, 14px);
   background: transparent;
   color: hsl(var(--foreground));
   cursor: pointer;
@@ -474,7 +479,13 @@
 }
 
 .ds-outline-item:hover {
-  background: hsl(var(--accent));
+  background: var(--interactive-hover, hsl(var(--accent)));
+}
+
+.ds-outline-item:focus-visible,
+.ds-outline-item[aria-current='true'],
+.ds-outline-item.active {
+  background: var(--interactive-selected, hsl(var(--accent)));
 }
 
 /* 缩略图面板 */
@@ -1019,6 +1030,8 @@
     top: 0;
     bottom: 0;
     z-index: 100;
+    /* overlay 悬浮在正文上方，必须回到不透明面（透明面只用于并排布局） */
+    background: hsl(var(--card));
     box-shadow: 2px 0 8px hsl(var(--shadow-base) / 0.1);
     transform: translateX(-100%);
     transition: transform .2s ease;

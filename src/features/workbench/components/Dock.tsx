@@ -475,8 +475,20 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
 
   // ---- autohide（reveal ~180ms / conceal ~150ms 防误触；离开热区取消）----
   const [revealed, setRevealed] = React.useState(!autohide);
+  const [revealing, setRevealing] = React.useState(false);
+  const revealedRef = React.useRef(!autohide);
   const revealTimerRef = React.useRef(0);
   const concealTimerRef = React.useRef(0);
+
+  const updateRevealed = React.useCallback((next: boolean) => {
+    revealedRef.current = next;
+    setRevealed(next);
+  }, []);
+
+  const revealDock = React.useCallback(() => {
+    if (!revealedRef.current) setRevealing(true);
+    updateRevealed(true);
+  }, [updateRevealed]);
 
   const clearAutohideTimers = React.useCallback(() => {
     if (revealTimerRef.current) {
@@ -497,9 +509,9 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     if (revealTimerRef.current) return;
     revealTimerRef.current = window.setTimeout(() => {
       revealTimerRef.current = 0;
-      setRevealed(true);
+      revealDock();
     }, 180);
-  }, []);
+  }, [revealDock]);
 
   const scheduleConceal = React.useCallback(() => {
     if (revealTimerRef.current) {
@@ -509,16 +521,17 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     if (concealTimerRef.current) return;
     concealTimerRef.current = window.setTimeout(() => {
       concealTimerRef.current = 0;
-      setRevealed(false);
+      setRevealing(false);
+      updateRevealed(false);
     }, 150);
-  }, []);
+  }, [updateRevealed]);
 
   React.useEffect(() => {
     clearAutohideTimers();
-    if (!autohide) setRevealed(true);
-    else setRevealed(false);
+    setRevealing(false);
+    updateRevealed(!autohide);
     return () => clearAutohideTimers();
-  }, [autohide, clearAutohideTimers]);
+  }, [autohide, clearAutohideTimers, updateRevealed]);
   const hidden = autohide && !revealed;
 
   const dockRef = React.useRef<HTMLDivElement | null>(null);
@@ -606,7 +619,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           setActiveId(typeId);
           if (autohide) {
             clearAutohideTimers();
-            setRevealed(true);
+            revealDock();
           }
         }}
       />
@@ -648,6 +661,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         data-testid="wb-dock"
         data-autohide={autohide || undefined}
         data-hidden={hidden || undefined}
+        data-revealing={revealing || undefined}
         data-size={Math.round(dockScale * 100)}
         style={{ '--wb-dock-scale': dockScale } as React.CSSProperties}
         className={cn(
@@ -661,15 +675,18 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         onPointerEnter={() => {
           if (!autohide) return;
           clearAutohideTimers();
-          setRevealed(true);
+          revealDock();
         }}
         onPointerLeave={handleDockPointerLeave}
         onFocusCapture={() => {
           if (!autohide) return;
           clearAutohideTimers();
-          setRevealed(true);
+          revealDock();
         }}
         onBlurCapture={handleDockBlur}
+        onAnimationEnd={(event) => {
+          if (event.target === event.currentTarget) setRevealing(false);
+        }}
       >
         {pinned.map(renderItem)}
         {pinned.length > 0 && runningExtra.length > 0 && (
@@ -710,7 +727,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
                   setActiveId(APPS_DOCK_TYPE_ID);
                   if (autohide) {
                     clearAutohideTimers();
-                    setRevealed(true);
+                    revealDock();
                   }
                 }}
               >
@@ -734,7 +751,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
             setActiveId(AGENT_CONTROL_DOCK_ID);
             if (autohide) {
               clearAutohideTimers();
-              setRevealed(true);
+              revealDock();
             }
           }}
         />

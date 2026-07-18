@@ -12,6 +12,7 @@ import { ArrowLeft } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { TodoSidebar } from './TodoSidebar';
+import { WorkbenchSidebarSurface } from '@/features/workbench/components/sidebar';
 
 interface TodoShellSidebarProps {
   isSmallScreen: boolean;
@@ -31,7 +32,8 @@ export const TodoShellSidebar: React.FC<TodoShellSidebarProps> = ({
     : { paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' };
 
   return (
-    <div
+    <WorkbenchSidebarSurface
+      ariaLabel={t('todo:sidebar.title', { defaultValue: '待办导航' })}
       data-todo-shell-sidebar
       data-shell-layer={!isSmallScreen ? 'navigation' : undefined}
       data-shell-surface={!isSmallScreen ? 'navigation' : undefined}
@@ -62,6 +64,6 @@ export const TodoShellSidebar: React.FC<TodoShellSidebarProps> = ({
       <div className={cn('flex-1 min-h-0 overflow-hidden', isCollapsed && 'pointer-events-none opacity-0')}>
         <TodoSidebar />
       </div>
-    </div>
+    </WorkbenchSidebarSurface>
   );
 };
