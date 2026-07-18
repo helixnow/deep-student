@@ -1,2 +1,3 @@
-// Public API for template-management feature — exports will be added during migration
-export {};
+// Public API for template-management feature
+export { TemplateManagementApp, default } from './TemplateManagementApp';
+export type { TemplateManagementAppProps } from './TemplateManagementApp';

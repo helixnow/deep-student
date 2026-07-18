@@ -251,7 +251,7 @@ describe('OS mode drag performance anti-regression', () => {
     expect(workbenchRule).not.toMatch(/contain\s*:\s*[^;]*(layout|paint|content|strict)/);
   });
 
-  it('Windows WebView2 呈现自愈两层接线存在（宿主 Notify + 前端 nudge）', () => {
+  it('桌面 WebView 呈现自愈接线覆盖 Windows 与 macOS', () => {
     // 宿主侧：Focused/Resized/ScaleFactorChanged → NotifyParentWindowPositionChanged
     const librs = readRepo('src-tauri', 'src', 'lib.rs');
     expect(librs).toContain('NotifyParentWindowPositionChanged');
@@ -270,6 +270,9 @@ describe('OS mode drag performance anti-regression', () => {
     expect(hook).toContain('data-wb-dragging');
     expect(hook).toContain('isShellGestureActive');
     expect(hook).toContain("translateZ(0)");
+    expect(hook).toContain('isMacOS');
+    expect(hook).toContain("window.addEventListener('focus', schedule)");
+    expect(hook).toContain("window.removeEventListener('focus', schedule)");
   });
 
   it('交互延迟时间线接线存在（interactionTrace + DevPanel + 落盘）', () => {

@@ -67,6 +67,15 @@ describe('content app registers', () => {
     }
   });
 
+  it('需要既有资源的窗口不作为独立应用展示', () => {
+    for (const typeId of ['textbook', 'translation', 'image', 'file']) {
+      expect(appRegistry.get(typeId)?.showInLauncher, `${typeId} launcher visibility`).toBe(false);
+    }
+    for (const typeId of ['exam', 'essay']) {
+      expect(appRegistry.get(typeId)?.showInLauncher, `${typeId} launcher visibility`).not.toBe(false);
+    }
+  });
+
   it('独立编辑类应用接了 canClose 未保存拦截', () => {
     for (const typeId of ['translation', 'essay']) {
       expect(appRegistry.get(typeId)?.canClose, `${typeId} canClose`).toBeTypeOf('function');

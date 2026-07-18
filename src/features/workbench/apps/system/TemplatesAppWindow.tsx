@@ -1,8 +1,8 @@
 /**
  * 模板管理应用窗口（P9 薄包装 → O18 窗口化打磨）
  *
- * `TemplateManagementPage` 依赖 `useDesktopShellSidebarPortal('template-management')`：
- * workbench 窗口内没有壳侧栏 portal 目标 → 组件自动回退为内部侧栏布局，无需额外适配。
+ * `TemplateManagementApp` 依赖 `useDesktopShellSidebarPortal('template-management')`：
+ * workbench 窗口内没有壳侧栏 portal 目标 → 组件切换为顶部标签导航布局（wb-tm-nav）。
  * O18 打磨：lazy 化 + 列表形态骨架屏 + 内容淡入 + 尺寸分级 data 属性。
  */
 import React, { Suspense, useEffect } from 'react';
@@ -11,7 +11,7 @@ import type { AppWindowProps } from '../../core/types';
 import { WbSysFade, WbSysSkeleton } from './SystemWindowShared';
 import { useWbSysSize } from './useWbSysSize';
 
-const TemplateManagementPage = React.lazy(() => import('@/components/TemplateManagementPage'));
+const TemplateManagementApp = React.lazy(() => import('@/features/template-management/TemplateManagementApp'));
 
 const TemplatesAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleChange }) => {
   const { t } = useTranslation('workbench');
@@ -29,7 +29,7 @@ const TemplatesAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleChange 
     >
       <Suspense fallback={<WbSysSkeleton variant="list" />}>
         <WbSysFade>
-          <TemplateManagementPage workbenchWindowId={windowId} />
+          <TemplateManagementApp workbenchWindowId={windowId} />
         </WbSysFade>
       </Suspense>
     </div>

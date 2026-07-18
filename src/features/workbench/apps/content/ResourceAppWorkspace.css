@@ -5,6 +5,12 @@
   inset: 0;
   display: grid;
   grid-template-columns: var(--wb-resource-sidebar-width) minmax(0, 1fr);
+
+  /*
+   * app.css 对全局 main 设置了 100vh。显式约束唯一网格行，避免右侧
+   * <main> 的视口高度把整行（含侧栏）撑出浮窗内容区。
+   */
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   color: hsl(var(--foreground));
   background: hsl(var(--background));
@@ -82,6 +88,7 @@
   border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
   border-radius: 5px;
   color: hsl(var(--muted-foreground));
+
   /* 玻璃面搜索框：低透明墨色 inset，不用实色灰底 */
   background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
 }
@@ -189,6 +196,8 @@
   position: relative;
   min-width: 0;
   min-height: 0;
+  height: auto;
+  max-height: none;
   overflow: hidden;
   background: hsl(var(--background));
 }

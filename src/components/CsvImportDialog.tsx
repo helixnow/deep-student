@@ -93,7 +93,24 @@ interface CsvImportAttempt {
   backendStarted: boolean;
 }
 
-interface CsvImportDialogProps {
+interface CsvImportFlowProps {
+  /** 目标题目集 ID */
+  examId: string;
+  /** 题目集名称（用于创建新题目集） */
+  examName?: string;
+  /** 文件夹 ID（可选） */
+  folderId?: string;
+  /** 导入完成回调 */
+  onImportComplete?: (result: CsvImportResult) => void;
+  /** 关闭/返回：内嵌模式返回题库列表；模态模式关闭对话框（导入中由内部先请求取消） */
+  onClose: () => void;
+  /** 展示形式：dialog = 模态框（默认）；inline = 页面内嵌 */
+  layout?: 'dialog' | 'inline';
+  /** 导入中状态上报（外层用于阻止关闭/切换视图） */
+  onImportingChange?: (importing: boolean) => void;
+}
+
+export interface CsvImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** 目标题目集 ID */
@@ -104,6 +121,13 @@ interface CsvImportDialogProps {
   folderId?: string;
   /** 导入完成回调 */
   onImportComplete?: (result: CsvImportResult) => void;
+}
+
+export interface CsvImportPanelProps extends Omit<CsvImportDialogProps, 'open' | 'onOpenChange'> {
+  /** 返回题库列表 */
+  onClose: () => void;
+  /** 导入中状态上报（用于阻止视图切换） */
+  onImportingChange?: (importing: boolean) => void;
 }
 
 const STEP_KEYS = ['select', 'mapping', 'strategy', 'progress'] as const;
@@ -151,13 +175,14 @@ const createCsvImportId = (): string => {
   return `csv-import-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 };
 
-export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
-  open,
-  onOpenChange,
+const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
   examId,
   examName,
   folderId,
   onImportComplete,
+  onClose,
+  layout = 'dialog',
+  onImportingChange,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common']);
 
@@ -200,47 +225,9 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   const activeImportAttemptRef = useRef<CsvImportAttempt | null>(null);
   const mountedRef = useRef(true);
 
-  // 重置状态
-  const resetState = useCallback(() => {
-    importSessionRef.current += 1;
-    setCurrentStep('select');
-    setSelectedFile(null);
-    setPreview(null);
-    setFieldMapping({});
-    setDuplicateStrategy('skip');
-    setImportProgress(null);
-    setImportResult(null);
-    setImportError(null);
-    setIsImporting(false);
-    setIsLoadingPreview(false);
-    setIsCancelled(false);
-    setIsCancelling(false);
-    activeImportAttemptRef.current = null;
-  }, []);
-
-  // 关闭对话框时重置
-  useEffect(() => {
-    if (!open) {
-      const attempt = activeImportAttemptRef.current;
-      if (attempt?.backendStarted) {
-        void invoke<boolean>('cancel_questions_csv_import', { import_id: attempt.id })
-          .catch(() => undefined);
-      }
-      // A parent resource/window can close the dialog while an import is still
-      // running. Invalidate that generation immediately so its eventual result
-      // cannot reopen the old progress/result state when this dialog is shown
-      // again, and release its now-stale event listener before another import.
-      if (unlistenRef.current) {
-        unlistenRef.current();
-        unlistenRef.current = null;
-      }
-      resetState();
-    }
-  }, [open, resetState]);
-
-  // Stop an orphaned backend import and clean up a listener even when a
-  // resource/window transition unmounts the dialog outside its visible Cancel
-  // button path.
+  // 卸载即重置：外层（模态框关闭 / 内嵌视图切换）卸载本流程组件，
+  // 重新挂载时从初始 state 重新开始，无需手动 reset。
+  // 卸载清理同时负责终止孤立的后端导入与释放事件监听器。
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -256,6 +243,11 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       }
     };
   }, []);
+
+  // 导入中状态上报（外层模态框阻止关闭 / 内嵌面板阻止视图切换）
+  useEffect(() => {
+    onImportingChange?.(isImporting);
+  }, [isImporting, onImportingChange]);
 
   // 处理文件选择
   const handleFileSelect = useCallback(async (filePath: string) => {
@@ -528,16 +520,8 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       void handleCancelImport();
       return;
     }
-    onOpenChange(false);
-  }, [isImporting, onOpenChange, handleCancelImport]);
-
-  const handleDialogOpenChange = useCallback((nextOpen: boolean) => {
-    if (!nextOpen && isImporting) {
-      showGlobalNotification('warning', t('exam_sheet:csv.import_in_progress_close_blocked'));
-      return;
-    }
-    onOpenChange(nextOpen);
-  }, [isImporting, onOpenChange, t]);
+    onClose();
+  }, [isImporting, onClose, handleCancelImport]);
 
   // 重试
   const handleRetry = useCallback(() => {
@@ -910,13 +894,12 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   // 渲染底部按钮
   const renderFooter = () => {
     const isFirstStep = stepIndex === 0;
-    const isLastStep = stepIndex === STEPS.length - 1;
     const showResult = currentStep === 'progress' && (importResult || importError || isCancelled);
     const canRetry = !isImporting && (Boolean(importError && !importResult) || Boolean(importResult?.cancelled));
 
-    return (
-      <NotionDialogFooter>
-        {/* 取消/关闭按钮 */}
+    const footerContent = (
+      <>
+        {/* 取消/关闭/返回按钮 */}
         <NotionButton
           variant="outline"
           onClick={handleCancel}
@@ -928,7 +911,9 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
               : t('exam_sheet:csv.cancel_import'))
             : showResult
               ? t('common:close')
-              : t('common:cancel')}
+              : layout === 'inline'
+                ? t('common:actions.back')
+                : t('common:cancel')}
         </NotionButton>
 
         {/* 重试按钮（错误或已取消时显示） */}
@@ -970,37 +955,122 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
             )}
           </>
         )}
-      </NotionDialogFooter>
+      </>
     );
+
+    // 内嵌模式使用页内页脚样式；模态模式沿用对话框页脚
+    if (layout === 'inline') {
+      return (
+        <div className="mt-4 flex items-center justify-end gap-2 border-t border-border/40 pt-4">
+          {footerContent}
+        </div>
+      );
+    }
+    return <NotionDialogFooter>{footerContent}</NotionDialogFooter>;
   };
+
+  const header = layout === 'dialog' ? (
+    <NotionDialogHeader>
+      <NotionDialogTitle className="flex items-center gap-2">
+        <Table size={20} />
+        {t('exam_sheet:csv.import_title')}
+      </NotionDialogTitle>
+      <NotionDialogDescription>
+        {t('exam_sheet:csv.import_description')}
+      </NotionDialogDescription>
+    </NotionDialogHeader>
+  ) : (
+    <div className="mb-6 space-y-1.5 text-center">
+      <h2 className="flex items-center justify-center gap-2 text-lg font-semibold">
+        <Table size={20} />
+        {t('exam_sheet:csv.import_title')}
+      </h2>
+      <p className="text-sm text-muted-foreground">{t('exam_sheet:csv.import_description')}</p>
+    </div>
+  );
+
+  const body = (
+    <>
+      {/* 步骤指示器 */}
+      {renderStepIndicator()}
+
+      {/* 步骤内容（内嵌模式不强制最小高度，避免下拉区与页脚之间出现大段空白） */}
+      <div className={layout === 'dialog' ? 'min-h-[300px]' : undefined}>{renderStepContent()}</div>
+    </>
+  );
+
+  // 内嵌模式：整页内容（外层面板提供滚动与居中）
+  if (layout === 'inline') {
+    return (
+      <div className="w-full">
+        {header}
+        {body}
+        {renderFooter()}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {header}
+      <NotionDialogBody>
+        {body}
+      </NotionDialogBody>
+      {/* 底部按钮 */}
+      {renderFooter()}
+    </>
+  );
+};
+
+/** CSV 导入内嵌面板：在题目集内容区直接渲染完整导入流程（非模态） */
+export const CsvImportPanel: React.FC<CsvImportPanelProps> = ({ onImportingChange, ...rest }) => (
+  <div className="flex h-full flex-col bg-background">
+    <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+      <div className="my-auto w-full max-w-2xl mx-auto py-4">
+        <CsvImportFlow {...rest} layout="inline" onImportingChange={onImportingChange} />
+      </div>
+    </div>
+  </div>
+);
+
+export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
+  open,
+  onOpenChange,
+  examId,
+  examName,
+  folderId,
+  onImportComplete,
+}) => {
+  const { t } = useTranslation(['exam_sheet', 'common']);
+  const [isImporting, setIsImporting] = useState(false);
+
+  // 导入中阻止关闭（与内嵌面板导入中阻止视图切换的行为一致）
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen && isImporting) {
+      showGlobalNotification('warning', t('exam_sheet:csv.import_in_progress_close_blocked'));
+      return;
+    }
+    onOpenChange(nextOpen);
+  }, [isImporting, onOpenChange, t]);
 
   return (
     <NotionDialog
       open={open}
-      onOpenChange={handleDialogOpenChange}
+      onOpenChange={handleOpenChange}
       closeOnOverlay={!isImporting}
       maxWidth="max-w-2xl"
     >
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
-            <Table size={20} />
-            {t('exam_sheet:csv.import_title')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>
-            {t('exam_sheet:csv.import_description')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
-
-        {/* 步骤指示器 */}
-        {renderStepIndicator()}
-
-        {/* 步骤内容 */}
-        <div className="min-h-[300px]">{renderStepContent()}</div>
-
-        </NotionDialogBody>
-        {/* 底部按钮 */}
-        {renderFooter()}
+      {/* 仅在打开时挂载流程：关闭即卸载，天然重置状态并清理后端任务/监听器 */}
+      {open && (
+        <CsvImportFlow
+          examId={examId}
+          examName={examName}
+          folderId={folderId}
+          onImportComplete={onImportComplete}
+          onClose={() => onOpenChange(false)}
+          onImportingChange={setIsImporting}
+        />
+      )}
     </NotionDialog>
   );
 };

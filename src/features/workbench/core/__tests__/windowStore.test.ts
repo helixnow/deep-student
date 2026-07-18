@@ -476,4 +476,25 @@ describe('windowStore — hydrate 与 desktopSize', () => {
     expect(f.y).toBe(600 - 38); // 标题栏保持可见
     expect(store().windows[tiledId].frame).toEqual(tiledFrameBefore);
   });
+
+  it('desktopSize 缩小时比桌面还大的 floating 窗同步收缩适配（内容不再被截断）', () => {
+    // 桌面 1600x1200 时摆下的浮窗；原生窗口随后缩到 800x600
+    const floatId = store().openWindow({
+      typeId: 'test-app',
+      initialFrame: { x: 60, y: 40, w: 1400, h: 1000 },
+    });
+
+    store().setDesktopSize({ w: 800, h: 600 });
+    const f = store().windows[floatId].frame;
+    // 等比收缩到放得下（fit = min(800/1400, 600/1000) = 0.571）
+    expect(f.w).toBe(800);
+    expect(f.h).toBeCloseTo(1000 * (800 / 1400), 5);
+    // 尺寸收缩后仍钳在可视区内
+    expect(f.x).toBeGreaterThanOrEqual(Math.min(0, 48 - f.w));
+    expect(f.x).toBeLessThanOrEqual(Math.max(0, 800 - 48));
+    expect(f.y).toBeGreaterThanOrEqual(0);
+    expect(f.y).toBeLessThanOrEqual(Math.max(0, 600 - 38));
+    expect(f.x + f.w).toBeLessThanOrEqual(800);
+    expect(f.y + f.h).toBeLessThanOrEqual(600);
+  });
 });

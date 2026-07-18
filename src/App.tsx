@@ -16,14 +16,14 @@ import { useUIStore } from '@/stores/uiStore';
 
 // 🚀 性能优化：DataImportExport, ImportConversationDialog 改为懒加载
 // ★ 2026-07-08（审计 30-P1-4）：CloudStorageSection（≈1300 行，仅云存储弹窗使用）与
-// TaskDashboardPage（≈1295 行）改为 React.lazy，静态导入会把它们及其依赖树拖进首屏 chunk
+// 制卡任务应用改为 React.lazy，静态导入会把它们及其依赖树拖进首屏 chunk
 const CloudStorageSection = React.lazy(() =>
   import('@/features/settings/components/CloudStorageSection').then(m => ({ default: m.CloudStorageSection }))
 );
 import { NotionDialog, NotionDialogBody } from './components/ui/NotionDialog';
 // 🚀 性能优化：Template*, IrecInsightRecall 等页面组件改为懒加载
-const TaskDashboardPage = React.lazy(() =>
-  import('@/components/anki/TaskDashboardPage').then(m => ({ default: m.TaskDashboardPage }))
+const AnkiTasksApp = React.lazy(() =>
+  import('@/features/anki-tasks/AnkiTasksApp').then(m => ({ default: m.AnkiTasksApp }))
 );
 import { useWindowDrag } from './hooks/useWindowDrag';
 // 🚀 性能优化：ImageViewer 改为懒加载
@@ -2207,7 +2207,7 @@ function App() {
 
   const taskDashboardContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
-      <TaskDashboardPage
+      <AnkiTasksApp
         onNavigateToChat={(sessionId) => {
           setCurrentView('chat-v2');
           window.dispatchEvent(

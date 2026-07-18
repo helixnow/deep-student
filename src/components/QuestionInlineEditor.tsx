@@ -470,11 +470,12 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
       data-question-inline-editor
       className={cn(
         'mt-1.5 border border-border/60 rounded-lg bg-card/80 overflow-hidden',
-        'ui-drop-in',
+        'ui-drop-in flex max-h-full flex-col',
         className
       )}
     >
-      <div className="p-4 space-y-4">
+      {/* 内容区内部滚动 + 页脚钉底：矮窗口下保存按钮不再被截断 */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         {/* 错误提示 */}
         {error && (
           <div className="flex items-center gap-2 p-2.5 rounded-md bg-destructive/10 text-destructive text-sm">
@@ -819,8 +820,8 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         )}
       </div>
 
-      {/* 底部操作栏：左侧预览切换，右侧取消/保存 */}
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-t border-border/40 bg-muted/20">
+      {/* 底部操作栏：左侧预览切换，右侧取消/保存（钉底，不随内容滚动） */}
+      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-2.5 border-t border-border/40 bg-muted/20">
         <NotionButton
           variant="ghost"
           size="sm"

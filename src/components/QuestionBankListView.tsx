@@ -682,9 +682,9 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     const showCreateEditor = expandedEditId === '__new__' && canCreate;
 
     const launcher = showCreateEditor ? (
-      // 编辑器打开：隐藏启动台头部，顶部对齐 + 可滚动（否则高表单会被溢出裁剪）
-      <div className={cn('h-full overflow-y-auto px-3 py-4 sm:px-4', className)}>
-        <div className="mx-auto w-full max-w-2xl">
+      // 编辑器打开：隐藏启动台头部；容器收敛高度，滚动交给编辑器内容区（页脚钉底）
+      <div className={cn('flex h-full flex-col px-3 py-4 sm:px-4', className)}>
+        <div className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col">
           <QuestionInlineEditor
             question={null}
             mode="create"
@@ -699,7 +699,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         </div>
       </div>
     ) : (
-      <div className={cn('flex h-full flex-col items-center justify-center px-4 py-10', className)}>
+      <div className={cn('flex h-full flex-col items-center justify-center overflow-y-auto px-4 py-10', className)}>
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
             <ExamIcon size={28} className="opacity-80" />

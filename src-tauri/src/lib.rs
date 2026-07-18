@@ -1640,6 +1640,12 @@ pub fn run() {
             ,crate::chat_v2::skills::skill_update
             ,crate::chat_v2::skills::skill_delete
             ,crate::chat_v2::skills::skill_import_zip
+            ,crate::chat_v2::skill_updates::skill_check_updates
+            ,crate::chat_v2::skill_updates::skill_update_from_source
+            ,crate::chat_v2::skill_requires::skill_probe_requires
+            ,crate::chat_v2::skill_taps::skill_tap_catalog
+            ,crate::chat_v2::skill_taps::skill_tap_install
+            ,crate::chat_v2::skill_taps::skill_export_tap
             // =================================================
             // VFS 虚拟文件系统命令
             // =================================================

@@ -25,6 +25,8 @@ export interface CreateContentAppOptions {
   /** i18n key in the workbench namespace. */
   nameKey: string;
   icon: React.ReactNode;
+  /** Whether this app can be launched without selecting a resource first. */
+  showInLauncher?: boolean;
   memoryWeight: 1 | 2 | 3;
   instanceMode?: 'single' | 'multi';
   defaultFrame: Size;
@@ -65,6 +67,7 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
     typeId,
     nameKey: options.nameKey,
     icon: options.icon,
+    showInLauncher: options.showInLauncher,
     instanceMode: options.instanceMode ?? 'multi',
     memoryWeight: options.memoryWeight,
     defaultFrame: options.defaultFrame,

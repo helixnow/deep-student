@@ -87,6 +87,7 @@ describe('WorkbenchSettingsSection', () => {
   it('restores persisted values on a fresh mount (settings round-trip)', async () => {
     settingsStore.set('desktop.workbenchMode', 'true');
     settingsStore.set('desktop.workbenchDockAutohide', 'true');
+    settingsStore.set('desktop.workbenchDockSize', '120');
     settingsStore.set('desktop.workbenchTileMargins', JSON.stringify({ enabled: false, px: 12 }));
     settingsStore.set('desktop.workbenchMaterialTier', 'reduced');
 
@@ -95,6 +96,7 @@ describe('WorkbenchSettingsSection', () => {
     const modeSwitch = await screen.findByRole('switch', { name: '启用学习桌面' });
     expect(modeSwitch).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('switch', { name: '自动隐藏 Dock' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('slider', { name: 'Dock 大小' })).toHaveValue('120');
     expect(screen.getByRole('switch', { name: '平铺间距' })).toHaveAttribute('aria-checked', 'false');
     // tileMargins 关闭时数值行隐藏
     expect(screen.queryByText('间距（px）')).not.toBeInTheDocument();
@@ -183,6 +185,32 @@ describe('WorkbenchSettingsSection', () => {
     await waitFor(() => {
       expect(screen.queryByText('间距（px）')).not.toBeInTheDocument();
     });
+  });
+
+  it('persists Dock size changes and dispatches the live settings event', async () => {
+    const changedEvents: Array<{ key: string; value: unknown }> = [];
+    const onChanged = (event: Event) => {
+      changedEvents.push((event as CustomEvent<{ key: string; value: unknown }>).detail);
+    };
+    window.addEventListener('workbench:settings-changed', onChanged);
+
+    try {
+      render(<WorkbenchSettingsSection />);
+      const slider = await screen.findByRole('slider', { name: 'Dock 大小' });
+
+      fireEvent.change(slider, { target: { value: '115' } });
+
+      await waitFor(() => {
+        expect(settingsStore.get('desktop.workbenchDockSize')).toBe('115');
+      });
+      expect(changedEvents).toContainEqual({
+        key: 'desktop.workbenchDockSize',
+        value: 115,
+      });
+      expect(screen.getByText('115%')).toBeInTheDocument();
+    } finally {
+      window.removeEventListener('workbench:settings-changed', onChanged);
+    }
   });
 
   it('falls back to defaults on corrupted JSON settings', async () => {

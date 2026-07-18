@@ -220,6 +220,24 @@ describe('渲染与 aria', () => {
     expect(close).toHaveAttribute('aria-label', '关闭窗口');
     expect(close!.querySelector('svg')).not.toBeNull();
   });
+
+  it('窗口落位前保持 entering，完成后才开放目标框', () => {
+    vi.useFakeTimers();
+    const id = openWin('chat', 'entering-guard', '落位测试');
+    mountWindowShell(id);
+    render(<ExposeOverlay />);
+    openExpose();
+
+    const root = document.querySelector('[data-wb-expose-root]');
+    const cell = document.querySelector(`[data-wb-expose-cell="${id}"]`);
+    expect(root).toHaveAttribute('data-phase', 'entering');
+    expect(cell).not.toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(320);
+    });
+    expect(root).toHaveAttribute('data-phase', 'open');
+  });
 });
 
 describe('退出恢复', () => {

@@ -9,6 +9,7 @@ describe('file preview app registration', () => {
   it('registers one multi-instance application for previewable files', () => {
     expect(appRegistry.get(FILE_PREVIEW_APP_TYPE_ID)).toBe(FILE_PREVIEW_APP_DEFINITION);
     expect(FILE_PREVIEW_APP_DEFINITION.instanceMode).toBe('multi');
+    expect(FILE_PREVIEW_APP_DEFINITION.showInLauncher).toBe(false);
     expect(FILE_PREVIEW_APP_DEFINITION.memoryWeight).toBe(3);
     expect(React.isValidElement(FILE_PREVIEW_APP_DEFINITION.icon)).toBe(true);
   });

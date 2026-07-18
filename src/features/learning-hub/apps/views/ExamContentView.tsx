@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 import { CircleNotch, WarningCircle, ArrowClockwise, Scan, ArrowCounterClockwise, ListNumbers, Shuffle, Tag, Clock, CalendarBlank, FileText, Timer, BookOpen, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -56,10 +57,10 @@ const ReviewSession = lazy(() => import('@/components/ReviewSession'));
 const ReviewCalendarView = lazy(() => import('@/components/ReviewCalendarView'));
 const TagNavigationView = lazy(() => import('@/components/TagNavigationView'));
 const PracticeLauncher = lazy(() => import('@/components/practice/PracticeLauncher'));
-const CsvImportDialog = lazy(() => import('@/components/CsvImportDialog'));
+const CsvImportPanel = lazy(() => import('@/components/CsvImportDialog').then((module) => ({ default: module.CsvImportPanel })));
 const QuestionBankExportDialog = lazy(() => import('@/components/QuestionBankExportDialog'));
 
-type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher';
+type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher' | 'csvImport';
 type LauncherRequestedMode = 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper';
 type DraftSource = 'practice' | 'inlineEditor';
 
@@ -254,7 +255,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [showSyncConflictDialog, setShowSyncConflictDialog] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedTag, setSelectedTag] = useState<string>('');
-  const [showCsvImportDialog, setShowCsvImportDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [historyQuestionId, setHistoryQuestionId] = useState<string | null>(null);
@@ -280,6 +280,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const pendingQbankRefreshRef = useRef<DomainChangePayload | undefined>(undefined);
   const hasPendingQbankRefreshRef = useRef(false);
   const flushPendingQbankRefreshRef = useRef<(() => void) | null>(null);
+  // CSV 内嵌导入的进行中标记（导入中阻止切换到其他视图）
+  const csvImportingRef = useRef(false);
   activeDraftExamIdRef.current = sessionId;
 
   const isCurrentExamDraftDirty = draftState.examId === sessionId && draftState.dirty;
@@ -367,6 +369,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // Keep submitted ratings, but ask before discarding the remaining local queue.
   const applyViewMode = useCallback((mode: ViewMode): boolean => {
     if (mode === viewMode) return true;
+
+    // CSV 内嵌导入中：阻止切换视图（与模态框导入中阻止关闭的行为一致）。
+    // 用全局 i18n 而非组件 t：避免 t 的引用变化打进依赖数组导致 applyViewMode 每渲染换向
+    if (viewMode === 'csvImport' && mode !== 'csvImport' && csvImportingRef.current) {
+      showGlobalNotification('warning', i18n.t('exam_sheet:csv.import_in_progress_close_blocked'));
+      return false;
+    }
 
     const ownsReviewSession = reviewSession.isActive && reviewSession.examId === sessionId;
     if (viewMode === 'sm2' && mode !== 'sm2' && ownsReviewSession) {
@@ -477,7 +486,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setSelectedTag('');
     setManageFilters({});
     setShowSyncConflictDialog(false);
-    setShowCsvImportDialog(false);
     setShowExportDialog(false);
     setShowHistoryDialog(false);
     setHistoryQuestionId(null);
@@ -1201,8 +1209,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   }, [handleRetryQuestions]);
 
   const handleOpenCsvImport = useCallback(() => {
-    setShowCsvImportDialog(true);
-  }, []);
+    requestViewMode('csvImport');
+  }, [requestViewMode]);
 
   const handleOpenExport = useCallback(() => {
     setShowExportDialog(true);
@@ -1448,9 +1456,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 空会话停留在题库列表：列表的空状态就是「新建/导入」启动台
 
   // 题目清空（如在管理/练习视图删光题目）后，依赖题目的视图已无内容支撑，
-  // 回退到题库列表，保持 Tab 高亮与实际内容一致
+  // 回退到题库列表，保持 Tab 高亮与实际内容一致（上传/CSV 导入不依赖题目，不在此列）
   useEffect(() => {
-    if (!hasQuestions && !isLoading && viewMode !== 'list' && viewMode !== 'upload') {
+    if (!hasQuestions && !isLoading && viewMode !== 'list' && viewMode !== 'upload' && viewMode !== 'csvImport') {
       switchViewMode('list');
     }
   }, [hasQuestions, isLoading, viewMode, switchViewMode]);
@@ -1815,7 +1823,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     {t('learningHub:exam.tab.add')}
                   </AppMenuItem>
                   <AppMenuItem
-                    onClick={() => setShowCsvImportDialog(true)}
+                    onClick={handleOpenCsvImport}
                     icon={<TableIcon size={16} />}
                   >
                     {t('learningHub:exam.tab.importCsv')}
@@ -1897,6 +1905,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onResetProgress={readOnly ? undefined : handleResetProgress}
               onDelete={readOnly ? undefined : handleDeleteQuestions}
             />
+          ) : viewMode === 'csvImport' && !readOnly ? (
+            /* CSV 导入 — 内嵌整页流程（非模态） */
+            <CsvImportPanel
+              examId={sessionId}
+              examName={sessionDetail?.summary?.exam_name || node.name}
+              onClose={() => switchViewMode('list')}
+              onImportComplete={handleImportComplete}
+              onImportingChange={(importing) => { csvImportingRef.current = importing; }}
+            />
           ) : viewMode === 'upload' && !readOnly ? (
             <ExamSheetUploader
               sessionId={sessionId}
@@ -1905,6 +1922,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onInitialFilesConsumed={() => setPendingUploadFiles(null)}
               onUploadSuccess={handleUploadSuccess}
               onBack={handleUploaderBack}
+              onManualCreate={handleCreateQuestionEntry}
             />
           ) : viewMode === 'practice' && hasQuestions ? (
             <QuestionBankEditor
@@ -2016,13 +2034,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       />
 
       <Suspense fallback={null}>
-        <CsvImportDialog
-          open={showCsvImportDialog}
-          onOpenChange={setShowCsvImportDialog}
-          examId={sessionId}
-          examName={sessionDetail?.summary?.exam_name || node.name}
-          onImportComplete={handleImportComplete}
-        />
         <QuestionBankExportDialog
           open={showExportDialog}
           onOpenChange={setShowExportDialog}

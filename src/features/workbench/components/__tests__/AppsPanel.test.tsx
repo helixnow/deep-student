@@ -59,6 +59,7 @@ beforeAll(() => {
   appRegistry.register(makeApp('files'));
   appRegistry.register(makeApp('pomodoro'));
   appRegistry.register(makeApp('skills'));
+  appRegistry.register(makeApp('resource-preview', { showInLauncher: false }));
 });
 
 beforeEach(() => {
@@ -88,7 +89,7 @@ describe('appsPanelStore', () => {
 });
 
 describe('AppsPanel', () => {
-  it('打开后列出 registry 全部应用', () => {
+  it('打开后仅列出可独立启动的 registry 应用', () => {
     render(<AppsPanel />);
     expect(screen.queryByTestId('wb-apps-panel')).toBeNull();
 
@@ -101,6 +102,18 @@ describe('AppsPanel', () => {
     expect(screen.getByTestId('wb-apps-item-files')).toBeInTheDocument();
     expect(screen.getByTestId('wb-apps-item-pomodoro')).toBeInTheDocument();
     expect(screen.getByTestId('wb-apps-item-skills')).toBeInTheDocument();
+    expect(screen.queryByTestId('wb-apps-item-resource-preview')).toBeNull();
+  });
+
+  it('搜索不会暴露需要资源上下文的应用', () => {
+    render(<AppsPanel />);
+    act(() => openAppsPanel());
+
+    fireEvent.change(screen.getByTestId('wb-apps-search'), {
+      target: { value: 'resource-preview' },
+    });
+
+    expect(screen.queryByTestId('wb-apps-item-resource-preview')).toBeNull();
   });
 
   it('搜索过滤应用名 / typeId', () => {

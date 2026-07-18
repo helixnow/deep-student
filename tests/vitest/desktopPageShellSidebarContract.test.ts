@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 describe('desktop page shell sidebar contract', () => {
   const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
   const learningHubPageSource = readFileSync(resolve(process.cwd(), 'src/features/learning-hub/LearningHubPage.tsx'), 'utf-8');
-  const templatePageSource = readFileSync(resolve(process.cwd(), 'src/components/TemplateManagementPage.tsx'), 'utf-8');
+  const templatePageSource = readFileSync(resolve(process.cwd(), 'src/features/template-management/TemplateManagementApp.tsx'), 'utf-8');
 
   it('uses the shared desktop page shell sidebar target for learning hub and template management', () => {
     expect(appSource).toContain('const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);');
@@ -14,7 +14,7 @@ describe('desktop page shell sidebar contract', () => {
     expect(appSource).toContain("currentView === 'learning-hub'");
     expect(appSource).toContain("currentView === 'template-management' && templateManagementShellBackVisible");
     expect(appSource).toContain('const desktopPageShellSidebarElement = useMemo(() => (');
-    expect(appSource).toContain("{t('common:actions.backToHome', { defaultValue: '返回主页' })}");
+    expect(appSource).toContain("{t('common:actions.backToHome')}");
     expect(appSource).toContain('ref={handleDesktopPageSidebarTarget}');
     expect(appSource).toContain('value={desktopShellSidebarPortalValue}');
   });

@@ -55,6 +55,8 @@ export {
 export interface DockProps {
   /** 自动隐藏（设置接线 P11）：隐藏至底缘 4px 热区 */
   autohide?: boolean;
+  /** Dock 尺寸百分比，默认 100，桌面设置范围 75..125 */
+  size?: number;
   className?: string;
 }
 
@@ -409,7 +411,7 @@ function useDockMagnification(
 // Dock
 // ---------------------------------------------------------------------------
 
-function DockImpl({ autohide = false, className }: DockProps) {
+function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   const { t } = useTranslation();
   useRegistryVersion();
 
@@ -439,6 +441,8 @@ function DockImpl({ autohide = false, className }: DockProps) {
   const appOrderedIds = [...pinned, ...runningExtra];
   const orderedIds = [...appOrderedIds, APPS_DOCK_TYPE_ID, AGENT_CONTROL_DOCK_ID];
   const orderedKey = orderedIds.join('|');
+  const normalizedSize = Number.isFinite(size) ? size : 100;
+  const dockScale = Math.max(0.75, Math.min(1.25, normalizedSize / 100));
 
   // ---- roving tabindex ----
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -644,6 +648,8 @@ function DockImpl({ autohide = false, className }: DockProps) {
         data-testid="wb-dock"
         data-autohide={autohide || undefined}
         data-hidden={hidden || undefined}
+        data-size={Math.round(dockScale * 100)}
+        style={{ '--wb-dock-scale': dockScale } as React.CSSProperties}
         className={cn(
           'wb-dock flex items-end gap-1 py-1.5 mb-2',
           // 水平 padding 由 Dock.css 管（基础 + --wb-dock-mag-extra 磁吸扩张）
@@ -737,6 +743,6 @@ function DockImpl({ autohide = false, className }: DockProps) {
   );
 }
 
-/** props 仅 autohide/className（稳定），memo 隔离父级（桌面壳）重渲染 */
+/** props 仅 autohide/size/className（稳定），memo 隔离父级（桌面壳）重渲染 */
 export const Dock = React.memo(DockImpl);
 Dock.displayName = 'Dock';

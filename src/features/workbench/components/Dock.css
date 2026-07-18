@@ -17,12 +17,16 @@
 
 /* ==== O5 可调 token（挂在 .wb-dock 上，JS 通过 getComputedStyle 读取） ==== */
 .wb-dock {
+  --wb-dock-scale: 1;
+
   /* 邻近放大：峰值倍率 / 高斯衰减半径（px）/ 进出场强度时间常数（ms） */
   --wb-dock-mag-scale: 1.5;
   --wb-dock-mag-sigma: 56;
   --wb-dock-mag-attack: 60;
+
   /* 磁吸总扩张量（rAF 写入）；对称加到左右 padding，玻璃随图标铺开 */
   --wb-dock-mag-extra: 0px;
+
   /* autohide 滑入（spring-soft，无假 overshoot）/ 滑出时长 */
   --wb-dock-reveal-duration: 300ms;
   --wb-dock-conceal-duration: 200ms;
@@ -30,8 +34,21 @@
 
 /* 水平 padding：基础 0.5rem + 磁吸扩张；element+class 压过契约 shorthand */
 div.wb-dock {
-  padding-left: calc(0.5rem + var(--wb-dock-mag-extra) / 2);
-  padding-right: calc(0.5rem + var(--wb-dock-mag-extra) / 2);
+  gap: calc(0.25rem * var(--wb-dock-scale));
+  padding:
+    calc(0.375rem * var(--wb-dock-scale))
+    calc(0.5rem * var(--wb-dock-scale) + var(--wb-dock-mag-extra) / 2);
+  border-radius: calc(22px * var(--wb-dock-scale));
+}
+
+.wb-dock .wb-dock-item {
+  width: calc(44px * var(--wb-dock-scale));
+  height: calc(44px * var(--wb-dock-scale));
+  border-radius: calc(12px * var(--wb-dock-scale));
+}
+
+.wb-dock .wb-dock-item-icon {
+  transform: scale(var(--wb-dock-scale));
 }
 
 /* ==========================================================================
@@ -79,7 +96,7 @@ div.wb-dock {
 
 /* 键盘用户（不触发指针放大）：focus-visible 时图标内层放大，与 hover 手感对齐 */
 .wb-dock-item:focus-visible .wb-dock-item-icon {
-  transform: scale(1.12);
+  transform: scale(calc(var(--wb-dock-scale) * 1.12));
 }
 
 /* 焦点环统一走 O1 焦点 token（压过契约类的 snap-stroke 描边，与全局 a11y 一致） */
@@ -90,6 +107,9 @@ div.wb-dock {
 /* 固定区 / 运行区 / 全部应用 分隔线：颜色走 Dock token（明暗主题自动协调） */
 .wb-dock .wb-dock-separator {
   background: var(--wb-dock-divider);
+  height: calc(32px * var(--wb-dock-scale));
+  margin-left: calc(0.25rem * var(--wb-dock-scale));
+  margin-right: calc(0.25rem * var(--wb-dock-scale));
 }
 
 /* 角标：微投影提升在彩色图标上的可辨识度（静态样式，非动画） */

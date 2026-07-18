@@ -459,17 +459,26 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
     set((s) => {
       // tiled/maximized 的渲染矩形由 computeTiledFrame(desktopSize) 派生，frame 不动；
       // floating 窗口钳回可视区，避免缩小桌面后窗口整体丢失在屏幕外。
+      // ★ 2026-07：桌面缩小时同步收缩比桌面还大的浮窗（此前只钳位置不缩尺寸，
+      //   原生窗口变小后浮窗保持超大 frame，内部内容按超大高度居中/拉伸，
+      //   可视区表现为内容整体下移、底部被截断）。与 hydrate 的 adaptFrameToDesktop 同一逻辑。
       let changed = false;
       const windows = { ...s.windows };
       for (const win of Object.values(s.windows)) {
         if (win.displayMode !== 'floating') continue;
         const f = win.frame;
-        const maxX = Math.max(0, size.w - MIN_VISIBLE_EDGE);
-        const minX = Math.min(0, MIN_VISIBLE_EDGE - f.w);
-        const x = clampNumber(f.x, minX, maxX);
-        const y = clampNumber(f.y, 0, Math.max(0, size.h - TITLEBAR_HEIGHT));
-        if (x !== f.x || y !== f.y) {
-          windows[win.id] = { ...win, frame: { ...f, x, y } };
+        const minSize = appRegistry.get(win.typeId)?.minSize ?? ADAPT_FALLBACK_MIN_SIZE;
+        const adapted = adaptFrameToDesktop(f, null, size, minSize);
+        const wasShrunk = adapted.w !== f.w || adapted.h !== f.h;
+        // 因超出桌面被收缩的窗口：进一步完全钳入桌面（不只做边缘可见性钳制），
+        // 否则底/右缘仍留在屏外，窗口内容照样被截断。
+        // 未收缩的窗口保持原有边缘钳制，尊重用户有意半停放的摆位。
+        if (wasShrunk && adapted.w <= size.w && adapted.h <= size.h) {
+          adapted.x = clampNumber(adapted.x, 0, size.w - adapted.w);
+          adapted.y = clampNumber(adapted.y, 0, size.h - adapted.h);
+        }
+        if (adapted.x !== f.x || adapted.y !== f.y || adapted.w !== f.w || adapted.h !== f.h) {
+          windows[win.id] = { ...win, frame: adapted };
           changed = true;
         }
       }

@@ -327,6 +327,16 @@ export function loadSkillsToSession(
   // 通知订阅者
   if (loaded.length > 0) {
     notifyListeners(sessionId);
+    // 使用遥测：记录工具加载（仅统计显式请求的技能，依赖不计）
+    void import('./skillUsageStats')
+      .then(({ recordSkillToolLoad }) => {
+        for (const info of loaded) {
+          if (skillIds.includes(info.id)) {
+            recordSkillToolLoad(info.id);
+          }
+        }
+      })
+      .catch(() => { /* telemetry optional */ });
   }
 
   return { loaded, alreadyLoaded, notFound };

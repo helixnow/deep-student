@@ -1,7 +1,7 @@
 /**
  * 制卡任务面板应用窗口（P9 薄包装 → O18 窗口化打磨）
  *
- * 复用 `TaskDashboardPage`；页面内两个导航回调改走 workbenchBus：
+ * 复用 `features/anki-tasks` 的 `AnkiTasksApp`；页面内两个导航回调改走 workbenchBus：
  * - 「去聊天」→ launch chat 窗口（instanceKey = sessionId，与 P7 约定一致）；
  * - 「模板管理」→ launch templates 窗口。
  *
@@ -23,8 +23,8 @@ import { getActiveAnkiTaskCount, subscribeAnkiTaskCount } from './ankiTaskSource
 import { WbSysActivityStrip, WbSysFade, WbSysSkeleton } from './SystemWindowShared';
 import { useWbSysSize } from './useWbSysSize';
 
-const TaskDashboardPage = React.lazy(() =>
-  import('@/components/anki/TaskDashboardPage').then((m) => ({ default: m.TaskDashboardPage })),
+const AnkiTasksApp = React.lazy(() =>
+  import('@/features/anki-tasks/AnkiTasksApp').then((m) => ({ default: m.AnkiTasksApp })),
 );
 
 const getServerAnkiCount = () => 0;
@@ -57,7 +57,7 @@ const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleCha
       />
       <Suspense fallback={<WbSysSkeleton variant="dashboard" />}>
         <WbSysFade>
-          <TaskDashboardPage
+          <AnkiTasksApp
             workbenchWindowId={windowId}
             isVisible={isVisible}
             onNavigateToChat={(sessionId) => openChatSession(sessionId, 'api')}

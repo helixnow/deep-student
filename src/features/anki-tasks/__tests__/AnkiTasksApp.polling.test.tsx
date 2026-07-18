@@ -30,7 +30,7 @@ vi.mock('@/debug-panel/debugMasterSwitch', () => ({
   debugLog: { error: vi.fn() },
 }));
 
-import { TaskDashboardPage } from '../TaskDashboardPage';
+import { AnkiTasksApp } from '../AnkiTasksApp';
 
 interface TestSession {
   documentId: string;
@@ -86,7 +86,7 @@ const emptyStats: TestStats = {
   templateCount: 0,
 };
 
-describe('TaskDashboardPage visibility, polling, and request ordering', () => {
+describe('AnkiTasksApp visibility, polling, and request ordering', () => {
   let sessionResponses: Array<Promise<TestSession[]>>;
   let statsResponses: Array<Promise<TestStats>>;
   let mediaListenerCount: number;
@@ -145,7 +145,7 @@ describe('TaskDashboardPage visibility, polling, and request ordering', () => {
     ]));
     statsResponses.push(Promise.resolve(emptyStats));
 
-    render(<TaskDashboardPage isVisible />);
+    render(<AnkiTasksApp isVisible />);
 
     expect(await screen.findByText('row one')).toBeInTheDocument();
     expect(visibilityMock).toHaveBeenCalledWith('task-dashboard');
@@ -163,7 +163,7 @@ describe('TaskDashboardPage visibility, polling, and request ordering', () => {
     sessionResponses.push(oldSessions.promise, latestSessions.promise);
     statsResponses.push(oldStats.promise, latestStats.promise);
 
-    render(<TaskDashboardPage isVisible />);
+    render(<AnkiTasksApp isVisible />);
     await waitFor(() => {
       expect(invokeMock.mock.calls.filter(([command]) => command === 'list_document_sessions')).toHaveLength(1);
     });
@@ -203,7 +203,7 @@ describe('TaskDashboardPage visibility, polling, and request ordering', () => {
     );
     statsResponses.push(Promise.resolve(emptyStats), oldStats.promise, latestStats.promise);
 
-    render(<TaskDashboardPage isVisible />);
+    render(<AnkiTasksApp isVisible />);
     expect(await screen.findByText('initial')).toBeInTheDocument();
 
     const refresh = screen.getByRole('button', { name: 'taskDashboard.refresh' });
@@ -241,7 +241,7 @@ describe('TaskDashboardPage visibility, polling, and request ordering', () => {
       Promise.resolve(emptyStats),
     );
 
-    render(<TaskDashboardPage isVisible />);
+    render(<AnkiTasksApp isVisible />);
     const listCallCount = () =>
       invokeMock.mock.calls.filter(([command]) => command === 'list_document_sessions').length;
     expect(listCallCount()).toBe(1);

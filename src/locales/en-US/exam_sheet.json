@@ -532,8 +532,6 @@
     "no_content": "(No content)",
     "options_count": "{{count}} options",
     "answer_prefix": "Answer: {{answer}}",
-    "tip_image": "Images will be processed through OCR",
-    "tip_document": "Documents will be parsed then AI recognizes question structure",
     "file_type_image": "image",
     "file_type_document": "document",
     "import_failed_prefix": "Import failed: {{error}}",
@@ -570,7 +568,8 @@
       "processing": "AI parsing",
       "summary": "Confirm import"
     },
-    "manual_create_link": "No files? Create a question manually"
+    "manual_create_link": "No files? Create a question manually",
+    "tips_combined": "Images are recognized via OCR; document text is parsed and structured by AI"
   },
   "questionTypes": {
     "single_choice": "Single Choice",

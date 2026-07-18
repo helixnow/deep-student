@@ -4,8 +4,8 @@
  * 系统应用（全部 single——各页面依赖全局 store / 全局数据，天然单例）：
  * - todo          待办（TodoContentView + TodoShellSidebar）
  * - skills        技能管理（SkillsManagementPage）
- * - templates     模板管理（TemplateManagementPage）
- * - taskDashboard 制卡任务（TaskDashboardPage，Dock 角标 = 活跃任务数）
+ * - templates     模板管理（features/template-management · TemplateManagementApp）
+ * - taskDashboard 制卡任务（features/anki-tasks · AnkiTasksApp，Dock 角标 = 活跃任务数）
  * - flashcards    闪卡复习（FlashcardsApp，Dock 角标 = 到期数，M3 占位）
  * - settings      设置（Settings + SettingsShellSidebar）
  * - pomodoro      番茄钟（PomodoroPanel，投射目标，Dock 角标 = 运行中圆点）

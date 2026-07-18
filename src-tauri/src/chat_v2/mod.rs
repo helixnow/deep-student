@@ -32,6 +32,8 @@ pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（�
 pub mod runtime_roots;
 pub mod shell_command_policy;
 pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
+pub mod skill_taps; // 🆕 Tap 式技能源（GitHub 仓库即技能目录）
+pub mod skill_updates; // 🆕 技能更新检查与一键更新（基于 provenance URL）
 pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
 pub mod tool_approval_policy;

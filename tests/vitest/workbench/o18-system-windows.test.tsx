@@ -62,8 +62,8 @@ vi.mock('@/features/todo/index.ts', () => ({
   ),
 }));
 
-vi.mock('@/components/anki/TaskDashboardPage', () => ({
-  TaskDashboardPage: () => <div data-testid="mock-task-dashboard" />,
+vi.mock('@/features/anki-tasks/AnkiTasksApp', () => ({
+  AnkiTasksApp: () => <div data-testid="mock-task-dashboard" />,
 }));
 
 vi.mock('@/features/pomodoro', () => ({

@@ -57,6 +57,22 @@ pub struct SkillRequiresProbe {
     pub missing_count: usize,
 }
 
+/// 前端运行时探测入口：按声明的 bins/env 探测本机满足情况。
+///
+/// 用于加载期 requires 门控（不满足的技能不进入 `<available_skills>`），
+/// 与安装期扫描共用同一套探测逻辑。名称非法的条目记入 `invalid`。
+#[tauri::command]
+pub async fn skill_probe_requires(
+    bins: Option<Vec<String>>,
+    env: Option<Vec<String>>,
+) -> SkillRequiresProbe {
+    probe_requires(SkillRequires {
+        bins: bins.unwrap_or_default(),
+        env: env.unwrap_or_default(),
+    })
+    .await
+}
+
 /// Extract YAML frontmatter body (without `---` delimiters).
 pub fn extract_frontmatter(text: &str) -> Option<&str> {
     let trimmed = text.trim_start();

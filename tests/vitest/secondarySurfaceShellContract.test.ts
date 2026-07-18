@@ -3,30 +3,35 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('secondary surface shell migration contract', () => {
-  const templatePageSource = readFileSync(resolve(process.cwd(), 'src/components/TemplateManagementPage.tsx'), 'utf-8');
-  const templatePageCssSource = readFileSync(resolve(process.cwd(), 'src/components/TemplateManagementPage.css'), 'utf-8');
-  const taskDashboardSource = readFileSync(resolve(process.cwd(), 'src/components/anki/TaskDashboardPage.tsx'), 'utf-8');
+  const templateAppSource = readFileSync(resolve(process.cwd(), 'src/features/template-management/TemplateManagementApp.tsx'), 'utf-8');
+  const templateBrowserSource = readFileSync(resolve(process.cwd(), 'src/features/template-management/components/TemplateBrowser.tsx'), 'utf-8');
+  const templateAppCssSource = readFileSync(resolve(process.cwd(), 'src/features/template-management/template-management.css'), 'utf-8');
+  const ankiTasksSource = readFileSync(resolve(process.cwd(), 'src/features/anki-tasks/AnkiTasksApp.tsx'), 'utf-8');
+  const ankiTasksCssSource = readFileSync(resolve(process.cwd(), 'src/features/anki-tasks/anki-tasks.css'), 'utf-8');
   const chatPageSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/ChatV2Page.tsx'), 'utf-8');
   const skillsPageSource = readFileSync(resolve(process.cwd(), 'src/components/skills-management/SkillsManagementPage.tsx'), 'utf-8');
   const skillsListSource = readFileSync(resolve(process.cwd(), 'src/components/skills-management/SkillsList.tsx'), 'utf-8');
   const notesSidebarSource = readFileSync(resolve(process.cwd(), 'src/features/notes/NotesSidebarV2.tsx'), 'utf-8');
 
-  it('routes template management through shell page/pane wrappers and shell card classes', () => {
-    expect(templatePageSource).toContain('study-shell-page');
-    expect(templatePageSource).toContain('study-shell-pane');
-    expect(templatePageSource).toContain('template-shell-card');
-    expect(templatePageCssSource).toContain('.template-shell-card');
+  it('routes template management through workbench-aligned wb-tm surfaces', () => {
+    expect(templateAppSource).toContain('wb-tm-root');
+    expect(templateAppSource).toContain('wb-tm-nav');
+    expect(templateBrowserSource).toContain('wb-tm-card');
+    expect(templateAppCssSource).toContain('.wb-tm-card');
+    // token 引用 workbench 窗口平铺背景（带兜底），与 flashcards/wb-fc 同源
+    expect(templateAppCssSource).toContain('--wb-window-bg');
   });
 
-  it('routes task dashboard through shell page, pane, panel, and segmented controls', () => {
-    expect(taskDashboardSource).toContain('study-shell-page');
-    expect(taskDashboardSource).toContain('study-shell-pane');
-    expect(taskDashboardSource).toContain('study-shell-panel');
+  it('routes anki tasks through workbench-aligned wb-at surfaces and segmented controls', () => {
+    expect(ankiTasksSource).toContain('wb-at-root');
+    expect(ankiTasksSource).toContain('wb-at-panel');
+    expect(ankiTasksSource).toContain('wb-at-list');
+    expect(ankiTasksCssSource).toContain('--wb-window-bg');
     // The shared SegmentedControl primitive applies the
     // `study-shell-segmented` class itself, so consumers may route through
     // the primitive instead of writing the class string inline. Either is
     // acceptable — the visual contract is satisfied in both cases.
-    expect(taskDashboardSource).toMatch(/study-shell-segmented|SegmentedControl/);
+    expect(ankiTasksSource).toMatch(/study-shell-segmented|SegmentedControl/);
   });
 
   it('routes skills and notes secondary surfaces through shared shell classes', () => {

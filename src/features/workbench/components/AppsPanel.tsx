@@ -1,7 +1,7 @@
 /**
  * AppsPanel（L4）— 全部应用发现面板（统一搜索：应用 + 命令）
  *
- * - 玻璃面板 + 顶部搜索；列表 / 网格展示 appRegistry.list()
+ * - 玻璃面板 + 顶部搜索；列表 / 网格展示可独立启动的注册应用
  * - Enter / 点击 → workbenchBus.launch({ typeId, reason: 'api' }) 并关闭
  * - 搜索时同时命中命令面板注册命令（commandRegistry 中 'workbench' 视图可见集），
  *   结果分区「应用 / 命令」展示，Enter 执行；OS 模式下它是唯一的搜索入口
@@ -110,7 +110,11 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
 
   const apps = useMemo(() => {
     void registryVersion;
-    return filterApps(appRegistry.list(), query, t);
+    return filterApps(
+      appRegistry.list().filter((app) => app.showInLauncher !== false),
+      query,
+      t,
+    );
   }, [registryVersion, query, t]);
 
   const commands = useMemo<Command[]>(() => {

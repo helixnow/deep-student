@@ -18,6 +18,9 @@ import {
   Globe,
   FolderOpen,
   Package,
+  CloudArrowDown,
+  Storefront,
+  UploadSimple,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -45,6 +48,12 @@ import {
   useSkillDefaults,
   extractCustomizationFromSkill,
 } from '@/features/chat/skills';
+import {
+  checkSkillUpdates,
+  updateSkillFromSource,
+  exportSkillsAsTap,
+  type SkillUpdateCheckResult,
+} from '@/features/chat/skills/api';
 import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
@@ -54,6 +63,7 @@ import { SkillEditorModal, type SkillFormData } from './SkillEditorModal';
 import { SkillFullscreenEditor } from './SkillFullscreenEditor';
 import './SkillFullscreenEditor.css';
 import { SkillDeleteConfirm } from './SkillDeleteConfirm';
+import { SkillTapBrowser } from './SkillTapBrowser';
 
 // ============================================================================
 // 类型定义
@@ -150,6 +160,15 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     overwrite: boolean;
   } | null>(null);
   const [zipInstalling, setZipInstalling] = useState(false);
+
+  // Tap 技能源浏览对话框
+  const [tapBrowserOpen, setTapBrowserOpen] = useState(false);
+
+  // 上游更新检查状态（基于安装 provenance 的 drift 检测）
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [pendingUpdates, setPendingUpdates] = useState<SkillUpdateCheckResult[]>([]);
+  const [updateConfirmOpen, setUpdateConfirmOpen] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   // 卡片位置（用于全屏编辑器动画）
   const [editOriginRect, setEditOriginRect] = useState<DOMRect | null>(null);
@@ -266,6 +285,74 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       setIsLoading(false);
     }
   }, [t]);
+
+  // 检查上游更新（只覆盖有 provenance 记录的链接/zip 安装技能）
+  const handleCheckUpdates = useCallback(async () => {
+    setUpdateChecking(true);
+    try {
+      const results = await checkSkillUpdates();
+      const checkable = results.filter((r) => r.checkable);
+      if (checkable.length === 0) {
+        showGlobalNotification('info', t('skills:management.update_none_checkable'));
+        return;
+      }
+      const available = checkable.filter((r) => r.updateAvailable);
+      const failed = checkable.filter((r) => r.error);
+      if (available.length === 0) {
+        showGlobalNotification(
+          'success',
+          t('skills:management.update_all_latest', { count: checkable.length }),
+          failed.length > 0
+            ? t('skills:management.update_check_partial_failed', { count: failed.length })
+            : undefined,
+        );
+        return;
+      }
+      setPendingUpdates(available);
+      setUpdateConfirmOpen(true);
+    } catch (error) {
+      console.error('[SkillsManagement] 检查更新失败:', error);
+      showGlobalNotification('error', t('skills:management.update_check_failed'), String(error));
+    } finally {
+      setUpdateChecking(false);
+    }
+  }, [t]);
+
+  // 应用全部可用更新（逐个重装；更新后回到未信任状态）
+  const handleConfirmUpdates = useCallback(async () => {
+    if (pendingUpdates.length === 0) return;
+    setUpdating(true);
+    let successCount = 0;
+    const errors: string[] = [];
+    for (const item of pendingUpdates) {
+      try {
+        const result = await updateSkillFromSource(item.skillId);
+        if (result.updated) successCount++;
+      } catch (error) {
+        errors.push(`${item.skillId}: ${String(error)}`);
+      }
+    }
+    setUpdating(false);
+    setPendingUpdates([]);
+    setUpdateConfirmOpen(false);
+
+    if (successCount > 0) {
+      await reloadSkills();
+    }
+    if (errors.length === 0) {
+      showGlobalNotification(
+        'success',
+        t('skills:management.update_success', { count: successCount }),
+        t('skills:management.update_retrust_hint'),
+      );
+    } else {
+      showGlobalNotification(
+        successCount > 0 ? 'info' : 'error',
+        t('skills:management.update_partial', { success: successCount, fail: errors.length }),
+        errors.join('\n'),
+      );
+    }
+  }, [pendingUpdates, t]);
 
   // 打开创建编辑器
   const handleCreate = useCallback(() => {
@@ -553,6 +640,36 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         'success',
         t('skills:management.export_all_success', { count: exportedCount })
       );
+    }
+  }, [allSkills, t]);
+
+  // 导出为 tap 结构 zip：所有非内置技能一包带走（README + 每技能一个顶层目录）
+  const handleExportTap = useCallback(async () => {
+    const exportableIds = allSkills
+      .filter((s) => !s.isBuiltin && s.location === 'global')
+      .map((s) => s.id);
+    if (exportableIds.length === 0) {
+      showGlobalNotification('info', t('skills:management.export_no_skills'));
+      return;
+    }
+    try {
+      const { save: dialogSave } = await import('@tauri-apps/plugin-dialog');
+      const picked = await dialogSave({
+        title: t('skills:management.export_tap_title'),
+        defaultPath: 'my-skills-tap.zip',
+        filters: [{ name: 'Zip', extensions: ['zip'] }],
+      });
+      if (!picked) return;
+      const result = await exportSkillsAsTap(exportableIds, picked);
+      // showGlobalNotification(type, message, title)：第三参是短标题
+      showGlobalNotification(
+        'success',
+        t('skills:management.export_tap_hint'),
+        t('skills:management.export_tap_success', { count: result.skillCount }),
+      );
+    } catch (error) {
+      console.error('[SkillsManagement] 导出技能源失败:', error);
+      showGlobalNotification('error', String(error), t('skills:management.export_tap_failed'));
     }
   }, [allSkills, t]);
 
@@ -986,6 +1103,27 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             <NotionButton
               variant="ghost"
               size="sm"
+              onClick={() => setTapBrowserOpen(true)}
+              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+            >
+              <Storefront size={14} className="mr-1" />
+              {t('skills:tap.entry')}
+            </NotionButton>
+
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleCheckUpdates()}
+              disabled={updateChecking}
+              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+            >
+              <CloudArrowDown size={14} className={cn('mr-1', updateChecking && 'animate-pulse')} />
+              {t('skills:management.check_updates')}
+            </NotionButton>
+
+            <NotionButton
+              variant="ghost"
+              size="sm"
               onClick={handleImportZipClick}
               className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
             >
@@ -1012,6 +1150,17 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             >
               <Download size={14} className="mr-1" />
               {t('skills:management.export_all_short')}
+            </NotionButton>
+
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleExportTap()}
+              disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
+              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+            >
+              <UploadSimple size={14} className="mr-1" />
+              {t('skills:management.export_tap')}
             </NotionButton>
 
           </div>
@@ -1112,6 +1261,44 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       )}
     </div>
   );
+
+  // ========== 渲染上游更新确认对话框 ==========
+  const renderUpdateConfirm = () => {
+    if (pendingUpdates.length === 0) return null;
+    return (
+      <NotionAlertDialog
+        open={updateConfirmOpen}
+        onOpenChange={setUpdateConfirmOpen}
+        title={t('skills:management.update_confirm_title')}
+        description={t('skills:management.update_confirm_desc', { count: pendingUpdates.length })}
+        confirmText={t('skills:management.update_apply')}
+        cancelText={t('common:actions.cancel')}
+        confirmVariant="warning"
+        loading={updating}
+        onConfirm={handleConfirmUpdates}
+        onCancel={() => {
+          setPendingUpdates([]);
+          setUpdateConfirmOpen(false);
+        }}
+        className="max-h-[85dvh] overflow-y-auto"
+      >
+        <div className="space-y-2">
+          {pendingUpdates.map((item) => (
+            <div key={item.skillId} className="space-y-0.5">
+              <div className="text-xs font-medium text-foreground">{item.skillId}</div>
+              <div className="font-mono text-[10px] text-muted-foreground">
+                {item.currentSha256.slice(0, 12)} → {item.remoteSha256?.slice(0, 12) ?? '?'}
+              </div>
+              <div className="truncate text-[10px] text-muted-foreground/70">{item.sourceSummary}</div>
+            </div>
+          ))}
+          <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+            {t('skills:management.update_retrust_hint')}
+          </p>
+        </div>
+      </NotionAlertDialog>
+    );
+  };
 
   // ========== 渲染 zip 导入装前确认对话框（扫描先行：分级可见后再安装） ==========
   const renderZipImportConfirm = () => {
@@ -1319,6 +1506,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 />
 
         {renderZipImportConfirm()}
+        {renderUpdateConfirm()}
+        <SkillTapBrowser open={tapBrowserOpen} onOpenChange={setTapBrowserOpen} />
       </div>
     );
   }
@@ -1377,6 +1566,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 />
 
         {renderZipImportConfirm()}
+        {renderUpdateConfirm()}
+        <SkillTapBrowser open={tapBrowserOpen} onOpenChange={setTapBrowserOpen} />
       </div>
     </LayoutGroup>
   );

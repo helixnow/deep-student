@@ -17,6 +17,7 @@ import type {
   SkillLoadConfig,
 } from './types';
 import { SKILL_DEFAULT_PRIORITY } from './types';
+import { getRequiresGate, isSkillRequiresSatisfied } from './requiresGating';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from 'i18next';
 
@@ -281,8 +282,20 @@ class SkillRegistry {
       return '';
     }
 
+    // 加载期 requires 门控：本机缺少声明依赖的技能不进入推荐列表
+    const availableSkills = autoInvokeSkills.filter((skill) =>
+      isSkillRequiresSatisfied(skill.id)
+    );
+    const gatedSkills = autoInvokeSkills.filter(
+      (skill) => !isSkillRequiresSatisfied(skill.id)
+    );
+
+    if (availableSkills.length === 0 && gatedSkills.length === 0) {
+      return '';
+    }
+
     // 生成技能列表
-    const skillList = autoInvokeSkills
+    const skillList = availableSkills
       .map((skill) => {
         let line = `- **${skill.name}** (id: \`${skill.id}\`)`;
         if (skill.description) {
@@ -291,6 +304,26 @@ class SkillRegistry {
         return line;
       })
       .join('\n');
+
+    // 被门控的技能作为附注：告知 LLM 存在但缺依赖，不要尝试加载
+    const gatedList = gatedSkills
+      .map((skill) => {
+        const gate = getRequiresGate(skill.id);
+        const missing = [
+          ...(gate?.missingBins ?? []).map((name) => `缺少命令 ${name}`),
+          ...(gate?.missingEnv ?? []).map((name) => `缺少环境变量 ${name}`),
+        ].join('、');
+        return `- \`${skill.id}\`：${missing || '依赖不满足'}`;
+      })
+      .join('\n');
+
+    const gatedSection = gatedSkills.length > 0
+      ? `
+
+以下技能因本机缺少运行依赖暂不可用（不要加载；如需使用请提示用户安装缺失依赖）：
+
+${gatedList}`
+      : '';
 
     return `<available_skills>
 ## 可用技能
@@ -305,7 +338,7 @@ ${skillList}
 
 注意：
 - 支持同时激活多个技能，根据需要组合使用
-- 技能激活后持续生效直到用户取消
+- 技能激活后持续生效直到用户取消${gatedSection}
 </available_skills>`;
   }
 

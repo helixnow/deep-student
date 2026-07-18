@@ -190,6 +190,12 @@ export function createSkillActions(
           }
         }
 
+        // 使用遥测：记录显式激活（本地存储，不上报）
+        try {
+          const { recordSkillActivation } = await import('../../skills/skillUsageStats');
+          recordSkillActivation(skillId);
+        } catch { /* telemetry optional */ }
+
         console.log(LOG_PREFIX, `Activated skill: ${skill.name} (${skillId})`);
         return true;
       } catch (error: unknown) {

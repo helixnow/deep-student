@@ -11,7 +11,7 @@
  * - 点击缩略聚焦并退出；Esc / 点击空白退出；方向键导航 + Enter 选中；
  * - 背景使用 §0.3 契约类 `wb-expose-backdrop`；动效仅 transform/opacity。
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWindowStore } from '../core/windowStore';
 import { useWorkbenchOverlay } from '../core/shortcuts';
@@ -360,14 +360,13 @@ const ExposeOverlayComponent: React.FC = () => {
   }, [restoreOne]);
 
   // 打开/窗口集合变化 → 量测 + 施加 FLIP transform
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!exposeOpen) return;
     if (exitTimerRef.current) {
       clearTimeout(exitTimerRef.current);
       exitTimerRef.current = null;
     }
     setRendered(true);
-    setPhase((p) => (p === 'closing' ? 'entering' : p === 'open' ? 'open' : 'entering'));
 
     const visibleWindows = Object.values(windows).filter((w) => !w.minimized);
     const elements = collectWindowElements();
@@ -458,6 +457,9 @@ const ExposeOverlayComponent: React.FC = () => {
     if (duration <= 0) {
       setPhase('open');
     } else {
+      // 框位会立即切到新布局，而真实窗口仍在 FLIP 途中。重排期间统一
+      // 回到 entering，避免显示/命中尚未与窗口重合的目标框。
+      setPhase('entering');
       const tOpen = window.setTimeout(() => setPhase('open'), duration);
       return () => window.clearTimeout(tOpen);
     }
@@ -591,6 +593,8 @@ const ExposeOverlayComponent: React.FC = () => {
         closeExpose();
         return;
       }
+      // 真实窗口尚未落到目标框时，仅保留可随时取消的 Esc。
+      if (phase !== 'open') return;
       if (e.key === 'Tab') {
         const dialog = hitLayerRef.current;
         if (!dialog) return;
@@ -643,11 +647,11 @@ const ExposeOverlayComponent: React.FC = () => {
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [exposeOpen, closeExpose, handlePick, targets, desktopSize]);
+  }, [exposeOpen, phase, closeExpose, handlePick, targets, desktopSize]);
 
   // 选中项变化时把焦点落到对应 pick 按钮（焦点环 + 键盘可达）
   useEffect(() => {
-    if (!exposeOpen || phase === 'closing') return;
+    if (!exposeOpen || phase !== 'open') return;
     const root = rootRef.current;
     if (!root) return;
     if (!selectedId) {

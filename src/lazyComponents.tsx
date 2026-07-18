@@ -71,7 +71,7 @@ export const LazySkillsManagementPage = React.lazy(() =>
 
 // 模板管理
 export const LazyTemplateManagementPage = React.lazy(() =>
-  import('./components/TemplateManagementPage').then(m => ({ default: m.default }))
+  import('./features/template-management/TemplateManagementApp').then(m => ({ default: m.default }))
 );
 
 // UI 样式调试

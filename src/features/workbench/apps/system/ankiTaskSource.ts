@@ -1,7 +1,7 @@
 /**
  * 制卡任务投射源（P9）
  *
- * 数据源与 `TaskDashboardPage` 一致：`list_document_sessions` invoke。
+ * 数据源与 `AnkiTasksApp` 一致：`list_document_sessions` invoke。
  * 后端没有前端 store，采用「自适应轮询 + 事件触发即时刷新」：
  * - 有活跃任务时约 5s 对账一次；无任务时约 60s（事件仍即时刷新）；
  * - 通过 eventHub 订阅 `anki_generation_event`（单一 Tauri listener，

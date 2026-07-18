@@ -5,6 +5,10 @@ import zhNotes from '../../../src/locales/zh-CN/notes.json';
 import zhData from '../../../src/locales/zh-CN/data.json';
 import zhWorkbench from '../../../src/locales/zh-CN/workbench.json';
 import zhSettings from '../../../src/locales/zh-CN/settings.json';
+import zhExamSheet from '../../../src/locales/zh-CN/exam_sheet.json';
+import zhPractice from '../../../src/locales/zh-CN/practice.json';
+import zhLearningHub from '../../../src/locales/zh-CN/learningHub.json';
+import zhReview from '../../../src/locales/zh-CN/review.json';
 
 type Dict = Record<string, unknown>;
 
@@ -16,6 +20,10 @@ const NS_BUNDLES: Record<string, Dict> = {
   data: zhData as Dict,
   workbench: zhWorkbench as Dict,
   settings: zhSettings as Dict,
+  exam_sheet: zhExamSheet as Dict,
+  practice: zhPractice as Dict,
+  learningHub: zhLearningHub as Dict,
+  review: zhReview as Dict,
 };
 
 function lookupPath(root: Dict, path: string): string | undefined {

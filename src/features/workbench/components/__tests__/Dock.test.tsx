@@ -78,6 +78,17 @@ afterEach(() => {
 });
 
 describe('Dock 三分支点击', () => {
+  it('applies and clamps the configured Dock size', () => {
+    const { rerender } = render(<Dock size={120} />);
+    const dock = screen.getByTestId('wb-dock');
+    expect(dock).toHaveAttribute('data-size', '120');
+    expect(dock.style.getPropertyValue('--wb-dock-scale')).toBe('1.2');
+
+    rerender(<Dock size={200} />);
+    expect(dock).toHaveAttribute('data-size', '125');
+    expect(dock.style.getPropertyValue('--wb-dock-scale')).toBe('1.25');
+  });
+
   it('无实例 → launch 新窗口', () => {
     setDockPinned(['chat']);
     render(<Dock />);

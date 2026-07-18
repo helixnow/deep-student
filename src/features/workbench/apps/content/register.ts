@@ -18,11 +18,13 @@
 import React from 'react';
 import i18next from 'i18next';
 import {
-  TextbookIcon,
-  ImageFileIcon,
-  GenericFileIcon,
-} from '@/features/learning-hub/icons';
-import { ExamAppIcon, TranslationAppIcon, EssayAppIcon } from '../../icons/appIcons';
+  ExamAppIcon,
+  TranslationAppIcon,
+  EssayAppIcon,
+  TextbookAppIcon,
+  ImageAppIcon,
+  FileAppIcon,
+} from '../../icons/appIcons';
 import {
   useQuestionBankStore,
   validateQbankPracticeHandoff,
@@ -485,14 +487,16 @@ function createContentActivationHandler(typeId: string) {
   };
 }
 
+// 与其他应用注册处一致用 h-8 w-8：AppIconImage 自带底座,撑满 Dock 按钮会显得比别的图标大
 const icon = (Component: React.FC<{ className?: string }>): React.ReactNode =>
-  React.createElement(Component, { className: 'h-full w-full' });
+  React.createElement(Component, { className: 'h-8 w-8' });
 
 const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
   {
     typeId: 'textbook',
     nameKey: 'workbench:apps.textbook',
-    icon: icon(TextbookIcon),
+    icon: icon(TextbookAppIcon),
+    showInLauncher: false,
     memoryWeight: 3,
     defaultFrame: { w: 920, h: 700 },
     minSize: { w: 420, h: 320 },
@@ -509,6 +513,7 @@ const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
     typeId: 'translation',
     nameKey: 'workbench:apps.translation',
     icon: icon(TranslationAppIcon),
+    showInLauncher: false,
     memoryWeight: 2,
     defaultFrame: { w: 880, h: 620 },
     confirmUnsavedOnClose: true,
@@ -525,14 +530,16 @@ const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
   {
     typeId: 'image',
     nameKey: 'workbench:apps.image',
-    icon: icon(ImageFileIcon),
+    icon: icon(ImageAppIcon),
+    showInLauncher: false,
     memoryWeight: 1,
     defaultFrame: { w: 720, h: 560 },
   },
   {
     typeId: 'file',
     nameKey: 'workbench:apps.file',
-    icon: icon(GenericFileIcon),
+    icon: icon(FileAppIcon),
+    showInLauncher: false,
     memoryWeight: 1,
     defaultFrame: { w: 780, h: 600 },
   },

@@ -7,7 +7,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Lightning, ArrowClockwise, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal } from '@phosphor-icons/react';
+import { Lightning, ArrowClockwise, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal, Stack, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -28,6 +28,13 @@ import {
 import { getSkillEmbeddedToolLabels, getSkillPermissionSummary } from '../packageMetadata';
 import { resolveEffectiveTrustStatus, setSkillTrustOverride } from '../skillTrustStorage';
 import { isSkillDisabled, setSkillDisabled, SKILL_ENABLED_CHANGED_EVENT } from '../skillEnableStorage';
+import { getSkillUsageScore, SKILL_USAGE_CHANGED_EVENT } from '../skillUsageStats';
+import {
+  getSkillBundles,
+  saveSkillBundle,
+  deleteSkillBundle,
+  SKILL_BUNDLES_CHANGED_EVENT,
+} from '../skillBundles';
 
 // ============================================================================
 // 类型定义
@@ -37,7 +44,7 @@ export interface SkillSelectorProps {
   /** 当前激活的技能 ID 列表（支持多选） */
   activeSkillIds: string[];
   /** 激活/取消激活技能回调（切换模式） */
-  onToggleSkill: (skillId: string) => void;
+  onToggleSkill: (skillId: string) => void | Promise<void>;
   /** 关闭面板回调 */
   onClose?: () => void;
   /** 刷新技能列表回调 */
@@ -77,6 +84,11 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
   const [, setTrustTick] = useState(0);
   // 停用覆盖同样存在 localStorage，变更后靠 tick 强制重算 isSkillDisabled
   const [, setEnableTick] = useState(0);
+  // 使用遥测同样存在 localStorage，变更后靠 tick 重算排序
+  const [usageTick, setUsageTick] = useState(0);
+  // 技能组合（Bundles）
+  const [bundlesTick, setBundlesTick] = useState(0);
+  const [bundleNameInput, setBundleNameInput] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = subscribeToSkillRegistry(() => {
@@ -89,6 +101,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     [
       { target: 'window', type: 'SKILL_TRUST_CHANGED', listener: () => setTrustTick((v) => v + 1) },
       { target: 'window', type: SKILL_ENABLED_CHANGED_EVENT, listener: () => setEnableTick((v) => v + 1) },
+      { target: 'window', type: SKILL_USAGE_CHANGED_EVENT, listener: () => setUsageTick((v) => v + 1) },
+      { target: 'window', type: SKILL_BUNDLES_CHANGED_EVENT, listener: () => setBundlesTick((v) => v + 1) },
     ],
     []
   );
@@ -120,9 +134,12 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
       if (aFav !== bFav) return aFav - bFav;
       const aDefault = defaultSet.has(a.id) ? 0 : 1;
       const bDefault = defaultSet.has(b.id) ? 0 : 1;
-      return aDefault - bDefault;
+      if (aDefault !== bDefault) return aDefault - bDefault;
+      // 使用遥测：同层级内常用技能靠前
+      return getSkillUsageScore(b.id) - getSkillUsageScore(a.id);
     });
-  }, [allSkills, searchTerm, isFavorite, defaultIds, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allSkills, searchTerm, isFavorite, defaultIds, t, usageTick]);
 
   // 从全量技能解析选中项：搜索词过滤掉选中技能时，详情面板仍保持可见
   // （尤其是移动端，否则列表隐藏 + 详情空白会造成无法返回的死角）
@@ -179,6 +196,34 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     setEnableTick((v) => v + 1);
   }, []);
 
+  // ========== 技能组合（Bundles） ==========
+  const bundles = useMemo(() => {
+    void bundlesTick;
+    return getSkillBundles();
+  }, [bundlesTick]);
+
+  // 一键激活组合：只补激活未激活的技能，不做取消。
+  // ★ 必须顺序 await：activateSkill 内有 per-store 并发锁，同步循环会导致
+  // 第二个及之后的激活请求被锁丢弃（整组只激活第一个）。
+  const handleActivateBundle = useCallback(async (skillIds: string[]) => {
+    if (disabled) return;
+    for (const skillId of skillIds) {
+      if (activeSkillIds.includes(skillId)) continue;
+      if (!skillRegistry.get(skillId)) continue;
+      if (isSkillDisabled(skillId)) continue;
+      await onToggleSkill(skillId);
+    }
+  }, [disabled, activeSkillIds, onToggleSkill]);
+
+  const handleSaveBundle = useCallback(() => {
+    const name = (bundleNameInput ?? '').trim();
+    if (!name || activeSkillIds.length === 0) return;
+    const saved = saveSkillBundle(name, activeSkillIds);
+    if (saved) {
+      setBundleNameInput(null);
+    }
+  }, [bundleNameInput, activeSkillIds]);
+
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
 
@@ -225,6 +270,81 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         placeholder={t('skills:selector.searchPlaceholder')}
         ariaLabel={t('skills:selector.searchPlaceholder')}
       />
+
+      {/* 技能组合：一键整组激活 + 保存当前激活为组合 */}
+      {(bundles.length > 0 || activeSkillIds.length >= 2) && (
+        <div className="flex flex-wrap items-center gap-1.5 px-1 pb-1.5">
+          {bundles.map((bundle) => (
+            <span
+              key={bundle.id}
+              className="group inline-flex items-center gap-1 rounded-full border border-[color:var(--composer-panel-control-border)] pl-2 pr-1 py-0.5 text-[11px]"
+            >
+              {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联小按钮，NotionButton 尺寸体系不适配 */}
+              <button
+                type="button"
+                onClick={() => void handleActivateBundle(bundle.skillIds)}
+                disabled={disabled}
+                title={bundle.skillIds.join(', ')}
+                aria-label={t('skills:bundles.activate', { name: bundle.name })}
+                className="inline-flex items-center gap-1 text-foreground hover:opacity-80 disabled:opacity-50"
+              >
+                <Stack size={11} />
+                {bundle.name}
+                <span className="text-muted-foreground/60">{bundle.skillIds.length}</span>
+              </button>
+              {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联删除按钮 */}
+              <button
+                type="button"
+                onClick={() => deleteSkillBundle(bundle.id)}
+                aria-label={t('skills:bundles.delete', { name: bundle.name })}
+                title={t('skills:bundles.delete', { name: bundle.name })}
+                className="ml-0.5 rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-lg:opacity-100"
+              >
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+
+          {activeSkillIds.length >= 2 && (
+            bundleNameInput === null ? (
+              // eslint-disable-next-line ds-components/no-native-button -- chip 形态入口
+              <button
+                type="button"
+                onClick={() => setBundleNameInput('')}
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-[color:var(--composer-panel-control-border)] px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+              >
+                <Stack size={11} />
+                {t('skills:bundles.save_current', { count: activeSkillIds.length })}
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1">
+                <input
+                  autoFocus
+                  value={bundleNameInput}
+                  onChange={(e) => setBundleNameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveBundle();
+                    if (e.key === 'Escape') setBundleNameInput(null);
+                  }}
+                  placeholder={t('skills:bundles.name_placeholder')}
+                  aria-label={t('skills:bundles.name_placeholder')}
+                  className="h-6 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] outline-none focus:border-[color:var(--button-primary-border)]"
+                />
+                {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联确认按钮 */}
+                <button
+                  type="button"
+                  onClick={handleSaveBundle}
+                  disabled={!(bundleNameInput ?? '').trim()}
+                  aria-label={t('common:actions.confirm')}
+                  className="rounded-md p-1 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                >
+                  <Check size={12} weight="bold" />
+                </button>
+              </span>
+            )
+          )}
+        </div>
+      )}
 
       {/* 分栏布局：左侧技能列表 + 右侧详情面板 */}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">

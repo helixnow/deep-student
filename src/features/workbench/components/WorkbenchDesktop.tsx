@@ -86,6 +86,7 @@ const SETTING_KEYS = {
   materialTier: 'desktop.workbenchMaterialTier',
   wallpaper: 'desktop.workbenchWallpaper',
   tileMargins: 'desktop.workbenchTileMargins',
+  dockSize: 'desktop.workbenchDockSize',
   dockAutohide: 'desktop.workbenchDockAutohide',
   devPanel: 'desktop.workbenchDevPanel',
   dockMagnification: 'desktop.workbenchDockMagnification',
@@ -107,6 +108,15 @@ interface TileMarginsSetting {
 }
 
 const DEFAULT_TILE_MARGINS: TileMarginsSetting = { enabled: true, px: 8 };
+const DOCK_SIZE_MIN = 75;
+const DOCK_SIZE_MAX = 125;
+const DOCK_SIZE_DEFAULT = 100;
+
+function parseDockSize(raw: unknown): number {
+  const value = Number.parseInt(String(raw ?? ''), 10);
+  if (!Number.isFinite(value)) return DOCK_SIZE_DEFAULT;
+  return Math.max(DOCK_SIZE_MIN, Math.min(DOCK_SIZE_MAX, value));
+}
 
 function isTauriRuntime(): boolean {
   return (
@@ -264,6 +274,7 @@ export const WorkbenchDesktop: React.FC = () => {
   // ---- 设置状态（启动回放 + workbench:settings-changed 热更新）----
   const [wallpaper, setWallpaper] = useState<WallpaperConfig>(DEFAULT_WALLPAPER);
   const [tileMargins, setTileMargins] = useState<TileMarginsSetting>(DEFAULT_TILE_MARGINS);
+  const [dockSize, setDockSize] = useState(DOCK_SIZE_DEFAULT);
   const [dockAutohide, setDockAutohide] = useState(false);
   const [devPanel, setDevPanel] = useState(false);
 
@@ -282,6 +293,7 @@ export const WorkbenchDesktop: React.FC = () => {
         tierVal,
         wallpaperVal,
         marginsVal,
+        dockSizeVal,
         autohideVal,
         devPanelVal,
         dockMagVal,
@@ -289,6 +301,7 @@ export const WorkbenchDesktop: React.FC = () => {
         readSetting(SETTING_KEYS.materialTier),
         readSetting(SETTING_KEYS.wallpaper),
         readSetting(SETTING_KEYS.tileMargins),
+        readSetting(SETTING_KEYS.dockSize),
         readSetting(SETTING_KEYS.dockAutohide),
         readSetting(SETTING_KEYS.devPanel),
         readSetting(SETTING_KEYS.dockMagnification),
@@ -302,6 +315,7 @@ export const WorkbenchDesktop: React.FC = () => {
       );
       setWallpaper(parseJson<WallpaperConfig>(wallpaperVal, DEFAULT_WALLPAPER));
       setTileMargins(parseJson<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
+      setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
       setDevPanel(String(devPanelVal ?? '') === 'true');
       // 未设置默认开放大；显式 'false' 关闭（写 dataset 供 Dock 门控）
@@ -321,6 +335,9 @@ export const WorkbenchDesktop: React.FC = () => {
           break;
         case SETTING_KEYS.dockAutohide:
           setDockAutohide(value === true);
+          break;
+        case SETTING_KEYS.dockSize:
+          setDockSize(parseDockSize(value));
           break;
         case SETTING_KEYS.devPanel:
           setDevPanel(value === true);
@@ -540,7 +557,7 @@ export const WorkbenchDesktop: React.FC = () => {
         <WindowSwitcher />
         <ShortcutCheatsheet />
 
-        <Dock autohide={dockAutohide || dockForceAutohide} />
+        <Dock autohide={dockAutohide || dockForceAutohide} size={dockSize} />
 
         {/* 全部应用是工作台内的启动器，不覆盖常驻顶栏。 */}
         <AppsPanel />

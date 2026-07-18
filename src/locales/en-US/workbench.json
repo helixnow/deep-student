@@ -486,6 +486,10 @@
       "title": "Dock Magnification",
       "desc": "Enlarges Dock icons under the pointer. Turn off to reduce hover layout measurement and compositing cost."
     },
+    "dockSize": {
+      "title": "Dock Size",
+      "desc": "Adjust the overall size of the Dock, app icons, and spacing."
+    },
     "wallpaper": {
       "title": "Desktop Wallpaper",
       "desc": "Pick a built-in nature scene or theme gradient, or use a custom image.",

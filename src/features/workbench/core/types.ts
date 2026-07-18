@@ -412,6 +412,8 @@ export interface AppDefinition {
   /** i18n key（namespace: workbench） */
   nameKey: string;
   icon: React.ReactNode;
+  /** false when the window requires resource context and cannot be launched on its own. */
+  showInLauncher?: boolean;
   instanceMode: 'single' | 'multi';
   /** 调度器内存预算权重：PDF/教材=3，编辑器/Chat/思维导图=2，纯展示=1 */
   memoryWeight: 1 | 2 | 3;

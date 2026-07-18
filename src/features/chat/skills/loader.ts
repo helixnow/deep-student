@@ -18,6 +18,7 @@ import { DEFAULT_SKILL_LOAD_CONFIG } from './types';
 import { classifySkillPackageFile, enrichSkillPackageMetadata, getSkillPackageRoot } from './packageMetadata';
 import { applyTrustOverride } from './skillTrustStorage';
 import { applyEnableOverride } from './skillEnableStorage';
+import { refreshRequiresGates } from './requiresGating';
 import { getBuiltinSkills } from './builtin';
 import {
   getAllBuiltinSkillCustomizations,
@@ -360,6 +361,14 @@ export async function loadSkillsFromFileSystem(
     LOG_PREFIX,
     `加载完成: 内置=${stats.builtin}, 全局=${stats.global}, 项目=${stats.project}, 总计=${stats.total}`
   );
+
+  // 加载期 requires 门控：重新探测带 requires 声明技能的本机满足情况，
+  // 不满足的技能不进入 <available_skills> 推荐（探测失败 fail-open）
+  try {
+    await refreshRequiresGates(skillRegistry.getAll());
+  } catch (error: unknown) {
+    console.warn(LOG_PREFIX, 'requires gating probe failed:', error);
+  }
 
   return stats;
 }

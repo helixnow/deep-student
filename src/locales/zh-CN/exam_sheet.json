@@ -532,8 +532,6 @@
     "no_content": "(无内容)",
     "options_count": "{{count}} 个选项",
     "answer_prefix": "答案: {{answer}}",
-    "tip_image": "图片将通过 OCR 识别题目",
-    "tip_document": "文档将解析文本后由 AI 识别题目结构",
     "file_type_image": "图片",
     "file_type_document": "文档",
     "import_failed_prefix": "导入失败: {{error}}",
@@ -570,7 +568,8 @@
       "processing": "智能解析",
       "summary": "确认录入"
     },
-    "manual_create_link": "没有文件？手动新建一道题"
+    "manual_create_link": "没有文件？手动新建一道题",
+    "tips_combined": "图片将通过 OCR 识别，文档解析文本后由 AI 识别题目结构"
   },
   "questionTypes": {
     "single_choice": "单选",

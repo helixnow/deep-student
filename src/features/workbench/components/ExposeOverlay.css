@@ -118,6 +118,15 @@
   opacity: 0;
 }
 
+/*
+ * 目标框直接使用最终网格坐标，真实窗口则通过 FLIP 飞向该位置。
+ * 入场/重排完成前隐藏并禁用框，避免框先到、窗口后到造成错位和误点。
+ */
+.wb-expose-root[data-phase='entering'] .wb-expose-cell {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* 非 hover / 非选中：轻微暗化（根上有 hover 目标时） */
 .wb-expose-hitlayer[data-dim='true'] .wb-expose-cell:not(:hover):not([data-selected='true']) {
   opacity: 0.72;

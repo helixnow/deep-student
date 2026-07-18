@@ -116,3 +116,133 @@ export async function updateSkill(params: SkillUpdateParams): Promise<SkillFileC
 export async function deleteSkill(path: string): Promise<void> {
   await invoke<void>('skill_delete', { path });
 }
+
+// ============================================================================
+// Tap 式技能源（GitHub 仓库即技能目录）
+// ============================================================================
+
+export interface TapCatalogEntry {
+  /** 相对仓库根的技能目录（根目录技能为空串） */
+  subdir: string;
+  /** 技能目录名（即安装后的 skill id；根目录技能为空串） */
+  skillId: string;
+  name: string;
+  description: string;
+  version: string;
+  fileCount: number;
+}
+
+export interface TapCatalog {
+  repoUrl: string;
+  /** 解析出的 codeload zip 直链（传给 installTapSkill） */
+  resolvedZipUrl: string;
+  skills: TapCatalogEntry[];
+}
+
+/** 与后端 SkillImportZipResult 对齐（snake_case） */
+export interface SkillPackageScanResult {
+  skill_id: string;
+  path: string;
+  files_extracted: number;
+  scripts_count: number;
+  references_count: number;
+  allowed_tools_count: number;
+  package_sha256: string;
+  risk_level: string;
+  risk_signals: string[];
+  requires?: {
+    bins: Array<{ name: string; found: boolean }>;
+    env: Array<{ name: string; set: boolean }>;
+    invalid: string[];
+    missing_count: number;
+  };
+}
+
+/**
+ * 浏览 tap 技能源：列出 GitHub 仓库中的全部技能（只读，不落盘）
+ */
+export async function fetchTapCatalog(repoUrl: string): Promise<TapCatalog> {
+  return invoke<TapCatalog>('skill_tap_catalog', { repoUrl });
+}
+
+/**
+ * 从 tap 技能源安装（或 dry_run 装前扫描）一个技能子目录
+ */
+export async function installTapSkill(params: {
+  zipUrl: string;
+  subdir: string;
+  overwrite: boolean;
+  dryRun?: boolean;
+}): Promise<SkillPackageScanResult> {
+  return invoke<SkillPackageScanResult>('skill_tap_install', {
+    zipUrl: params.zipUrl,
+    subdir: params.subdir,
+    overwrite: params.overwrite,
+    dryRun: params.dryRun ?? false,
+  });
+}
+
+export interface TapExportResult {
+  path: string;
+  skillCount: number;
+  fileCount: number;
+}
+
+/**
+ * 把选定技能导出为 tap 结构 zip（README + 每技能一个顶层目录）。
+ * 解压推到 GitHub 仓库即可作为技能源分享。
+ */
+export async function exportSkillsAsTap(
+  skillIds: string[],
+  destPath: string,
+): Promise<TapExportResult> {
+  return invoke<TapExportResult>('skill_export_tap', { skillIds, destPath });
+}
+
+// ============================================================================
+// 更新检查（基于安装 provenance 的上游 drift 检测）
+// ============================================================================
+
+export interface SkillUpdateCheckResult {
+  skillId: string;
+  /** 是否可远程复查（url 来源才可） */
+  checkable: boolean;
+  /** 远程包与本地记录的 sha256 不同 */
+  updateAvailable: boolean;
+  sourceKind: string;
+  sourceSummary: string;
+  currentSha256: string;
+  remoteSha256: string | null;
+  error: string | null;
+}
+
+export interface SkillUpdateApplyResult {
+  skillId: string;
+  updated: boolean;
+  packageSha256: string;
+  riskLevel: string;
+  path: string;
+  /** 更新后包内容变化，信任指纹失效，需用户重新信任 */
+  trustStatus: string;
+}
+
+/**
+ * 检查已安装技能的上游更新
+ *
+ * 只覆盖有 provenance 记录（链接/zip 安装）的技能；单个技能的
+ * 下载失败记录在对应条目的 error 字段，不会使整个调用失败。
+ */
+export async function checkSkillUpdates(skillIds?: string[]): Promise<SkillUpdateCheckResult[]> {
+  return invoke<SkillUpdateCheckResult[]>('skill_check_updates', {
+    skillIds: skillIds ?? null,
+  });
+}
+
+/**
+ * 按 provenance 记录的来源 URL 重新安装（更新）技能
+ *
+ * 更新后技能回到未信任状态，需用户重新信任。
+ */
+export async function updateSkillFromSource(skillId: string): Promise<SkillUpdateApplyResult> {
+  return invoke<SkillUpdateApplyResult>('skill_update_from_source', { skillId });
+}

@@ -138,7 +138,9 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
   }
 
   return (
-    <div className={cn('space-y-6', className)}>
+    // h-full + 内部滚动：父容器（ExamContentView 内容区）是 overflow-hidden，
+    // 矮窗口下统计卡片不再被整体裁掉
+    <div className={cn('h-full overflow-y-auto p-4 space-y-6', className)}>
       {/* 概览卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <StatCard

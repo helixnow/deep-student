@@ -20,6 +20,7 @@ import { QueuedMessageStack } from './QueuedMessageStack';
 import { modeRegistry } from '../../registry';
 import { ModelPicker, type ModelPickerMode } from './ModelPicker';
 import { SkillSelector } from '../../skills/components/SkillSelector';
+import { parseLeadingSkillCommands } from '../../skills/slashCommands';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
 import { reloadSkills } from '../../skills/loader';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
@@ -1050,6 +1051,28 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       );
     }, [activeSkillIds, handleToggleSkill, setPanelState, handleRefreshSkills, isStreaming, sessionId]);
 
+    // ★ 技能斜杠命令：消息开头的 /skill-id 令牌在发送前解析为显式激活
+    //（对标 OpenClaw /skill、Codex $Skill；最多叠加 5 个，遇到非技能令牌即停）
+    const sendMessageWithSkillCommands = useCallback(async () => {
+      const rawInput = store.getState().inputValue;
+      const parsed = parseLeadingSkillCommands(rawInput);
+      if (parsed.skillIds.length > 0) {
+        for (const skillId of parsed.skillIds) {
+          if (!activeSkillIds.includes(skillId)) {
+            await activateSkill(skillId);
+          }
+        }
+        // 纯激活命令（无剩余正文）：只激活不发送，输入框清空
+        if (parsed.rest.trim() === '') {
+          store.getState().setInputValue('');
+          return;
+        }
+        // zustand setState 同步生效，sendMessage 内部读到的是剥离命令后的正文
+        store.getState().setInputValue(parsed.rest);
+      }
+      await sendMessage();
+    }, [store, activeSkillIds, activateSkill, sendMessage]);
+
     return (
       <>
         {/* 🆕 排队气泡的横向布局与 InputBarUI 内部容器保持一致：
@@ -1076,7 +1099,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         panelStates={panelStates}
         // 回调
         onInputChange={setInputValue}
-        onSend={sendMessage}
+        onSend={sendMessageWithSkillCommands}
         onAbort={abortStream}
         onAddAttachment={addAttachment}
         onUpdateAttachment={updateAttachment}

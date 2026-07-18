@@ -42,6 +42,7 @@ export const FILE_PREVIEW_APP_DEFINITION: AppDefinition = {
   typeId: FILE_PREVIEW_APP_TYPE_ID,
   nameKey: 'workbench:apps.filePreview',
   icon: React.createElement(AppIconImage, { typeId: 'file-preview', className: 'h-8 w-8' }),
+  showInLauncher: false,
   instanceMode: 'multi',
   memoryWeight: 3,
   defaultFrame: { w: 920, h: 700 },

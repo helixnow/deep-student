@@ -694,15 +694,15 @@ describe('ChatV2TauriAdapter', () => {
             expect.objectContaining({ name: 'builtin-test_loaded_tool' }),
           ]),
         );
-        expect(options.skillAllowedTools).toEqual(
-          expect.arrayContaining(['builtin-test_loaded_tool'])
-        );
+        // ★ allowedTools 执行策略已收归后端（tool_policy / send_message），
+        // 前端不再发送 skillAllowedTools（types.rs 有 boundary 断言）
+        expect(options.skillAllowedTools).toBeUndefined();
       } finally {
         skillRegistry.unregister(skillId);
       }
     });
 
-    it('should use embedded tool names as the runtime policy for embedded-only skills', async () => {
+    it('should inject embedded tool schemas for embedded-only skills without a frontend policy', async () => {
       await adapter.setup();
 
       const skillId = 'embedded-only-skill';
@@ -737,7 +737,13 @@ describe('ChatV2TauriAdapter', () => {
 
         const options = (adapter as any).buildSendOptions();
 
-        expect(options.skillAllowedTools).toEqual(['builtin-embedded_only_tool']);
+        // 嵌入式工具 schema 仍由前端注入；执行白名单由后端从技能状态推导
+        expect(options.mcpToolSchemas).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: 'builtin-embedded_only_tool' }),
+          ]),
+        );
+        expect(options.skillAllowedTools).toBeUndefined();
       } finally {
         skillRegistry.unregister(skillId);
       }
@@ -790,9 +796,7 @@ describe('ChatV2TauriAdapter', () => {
             expect.objectContaining({ name: 'builtin-runtime_loaded_tool' }),
           ]),
         );
-        expect(options.skillAllowedTools).toEqual(
-          expect.arrayContaining(['builtin-runtime_loaded_tool'])
-        );
+        expect(options.skillAllowedTools).toBeUndefined();
       } finally {
         skillRegistry.unregister(skillId);
         clearSessionSkills('test-session-id');
@@ -861,7 +865,7 @@ describe('ChatV2TauriAdapter', () => {
       }
     });
 
-    it('should filter selected external MCP schemas by the active skill policy', async () => {
+    it('should expose selected external MCP schemas without frontend policy filtering', async () => {
       await adapter.setup();
 
       const skillId = 'external-mcp-policy-skill';
@@ -901,15 +905,13 @@ describe('ChatV2TauriAdapter', () => {
 
         const options = (adapter as any).buildSendOptions();
 
-        expect(options.skillAllowedTools).toEqual(['server-a::builtin-allowed_tool']);
+        // ★ 白名单裁剪已收归后端执行策略：前端如实上报选中服务器的全部 schema，
+        // 不发送 skillAllowedTools；越权调用由后端 tool_policy 在执行时拦截
+        expect(options.skillAllowedTools).toBeUndefined();
         expect(options.mcpToolSchemas).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ name: 'load_skills' }),
             expect.objectContaining({ name: 'allowed_tool', serverId: 'server-a' }),
-          ]),
-        );
-        expect(options.mcpToolSchemas).not.toEqual(
-          expect.arrayContaining([
             expect.objectContaining({ name: 'blocked_tool', serverId: 'server-a' }),
           ]),
         );
@@ -919,7 +921,7 @@ describe('ChatV2TauriAdapter', () => {
       }
     });
 
-    it('should send an empty skillAllowedTools policy for active skills without allowed tools', async () => {
+    it('should not send any skillAllowedTools policy for active skills without allowed tools', async () => {
       await adapter.setup();
 
       const skillId = 'instruction-only-skill';
@@ -943,7 +945,7 @@ describe('ChatV2TauriAdapter', () => {
         const options = (adapter as any).buildSendOptions();
 
         expect(options.activeSkillIds).toEqual([skillId]);
-        expect(options.skillAllowedTools).toEqual([]);
+        expect(options.skillAllowedTools).toBeUndefined();
       } finally {
         skillRegistry.unregister(skillId);
       }
@@ -1280,7 +1282,9 @@ describe('ChatV2TauriAdapter', () => {
       );
 
       expect(options.activeSkillIds).toEqual(['variant-skill']);
-      expect(options.skillAllowedTools).toEqual(['server-a::fetch']);
+      // ★ 执行白名单快照恢复已收归后端（send_message.rs 从 runtime snapshot 恢复
+      // execution_allowed_tools，含 Rust 单测），前端回放不再设置 skillAllowedTools
+      expect(options.skillAllowedTools).toBeUndefined();
       expect(options.mcpTools).toEqual(['server-a']);
       expect(options.mcpToolSchemas).toEqual(
         expect.arrayContaining([
@@ -1289,7 +1293,7 @@ describe('ChatV2TauriAdapter', () => {
       );
     });
 
-    it('should preserve explicit empty skillAllowedTools from original replay runtime snapshot', async () => {
+    it('should leave caller skillAllowedTools untouched when replaying runtime snapshot (policy is backend-only)', async () => {
       await adapter.setup();
 
       (mockStore.messageMap as Map<string, unknown>).set('msg-replay-empty-policy', {
@@ -1312,10 +1316,13 @@ describe('ChatV2TauriAdapter', () => {
       );
 
       expect(options.activeSkillIds).toEqual(['instruction-only-skill']);
-      expect(options.skillAllowedTools).toEqual([]);
+      // 空策略的保留/恢复由后端 send_message.rs 负责
+      // （test_apply_original_skill_snapshot_overrides_preserves_explicit_empty_execution_allowed_tools），
+      // 前端仅透传调用方字段
+      expect(options.skillAllowedTools).toEqual(['current-tool']);
     });
 
-    it('should not merge legacy effective tools into explicit empty replay runtime policy', async () => {
+    it('should not merge legacy effective tools into caller skillAllowedTools during replay', async () => {
       await adapter.setup();
 
       (mockStore.messageMap as Map<string, unknown>).set('msg-replay-empty-policy-with-legacy', {
@@ -1342,7 +1349,8 @@ describe('ChatV2TauriAdapter', () => {
         [],
       );
 
-      expect(options.skillAllowedTools).toEqual([]);
+      // 旧快照的 effectiveAllowed* 不得混入前端字段；执行约束由后端策略推导
+      expect(options.skillAllowedTools).toEqual(['current-tool']);
     });
 
     it('should not invent an empty skillAllowedTools policy from legacy replay skill snapshot', async () => {

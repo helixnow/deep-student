@@ -1,5 +1,5 @@
 /**
- * WebView2 合成器整面重绘 nudge（仅 Windows + Tauri 运行时）
+ * 桌面 WebView 合成器整面重绘 nudge（Windows/macOS + Tauri 运行时）
  *
  * 背景（2026-07-10 OS 模式整层错位事故）：WebView2 的 DirectComposition
  * 局部脏区跟踪，在「全客户区尺寸的合成层（最大化窗口/壁纸/桌面根）+
@@ -16,14 +16,15 @@
  * - 只动 transform，两帧内完成；OS 模式下桌面根与视口同几何，
  *   fixed 后代（SnapPreview / 菜单栏弹层背板等）无视觉跳变；
  * - 拖拽中（<html data-wb-dragging>）跳过，不与跟手 translate3d 抢帧；
- * - 非 Windows / 非 Tauri 为 no-op（WKWebView / WebKitGTK 无此病）。
+ * - 仅 Windows WebView2 / macOS WKWebView 的 Tauri 主窗口启用；浏览器与
+ *   WebKitGTK 保持 no-op。
  *
  * 配套：Rust 侧在 Focused/Resized/ScaleFactorChanged 时调用
  * ICoreWebView2Controller::NotifyParentWindowPositionChanged（lib.rs），
  * 两层自愈相互独立。CI：platformPerformanceConfig.test.ts。
  */
 import { useEffect, type RefObject } from 'react';
-import { isWindows } from '@/utils/platform';
+import { isMacOS, isWindows } from '@/utils/platform';
 import { isShellGestureActive } from '../core/shellGestureFlags';
 
 /** resize 连发的尾随防抖；与 WorkbenchDesktop 的 160ms settle 同数量级 */
@@ -39,7 +40,7 @@ function isTauriRuntime(): boolean {
 
 export function useCompositorNudge(rootRef: RefObject<HTMLElement | null>): void {
   useEffect(() => {
-    if (!isWindows() || !isTauriRuntime()) return undefined;
+    if ((!isWindows() && !isMacOS()) || !isTauriRuntime()) return undefined;
 
     let timer = 0;
     let raf1 = 0;
@@ -81,6 +82,10 @@ export function useCompositorNudge(rootRef: RefObject<HTMLElement | null>): void
     };
 
     window.addEventListener('resize', schedule);
+    // macOS WKWebView 在应用切到后台再回来时，偶尔只提交部分 CALayer：
+    // DOM 几何正确，但标题栏、Dock 等旧图层仍停在离屏位置。focus 不一定
+    // 伴随 visibilitychange，因此必须独立触发一次整面提交。
+    window.addEventListener('focus', schedule);
     document.addEventListener('visibilitychange', onVisibility);
     // 进入 OS 模式即校一次：挂载瞬间正是层结构大改的时刻
     schedule();
@@ -89,6 +94,7 @@ export function useCompositorNudge(rootRef: RefObject<HTMLElement | null>): void
       window.clearTimeout(timer);
       clearRafs();
       window.removeEventListener('resize', schedule);
+      window.removeEventListener('focus', schedule);
       document.removeEventListener('visibilitychange', onVisibility);
       const el = rootRef.current;
       if (el && el.style.transform === 'translateZ(0)') el.style.transform = '';

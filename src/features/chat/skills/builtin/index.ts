@@ -7,8 +7,10 @@
 import type { SkillDefinition } from '../types';
 import { SKILL_DEFAULT_PRIORITY } from '../types';
 import { deepScholarSkill } from './dstu-memory-orchestrator';
+import { skillInstallerSkill } from './skill-installer';
 
 export { deepScholarSkill, dstuMemoryOrchestratorSkill } from './dstu-memory-orchestrator';
+export { skillInstallerSkill } from './skill-installer';
 
 // ============================================================================
 // 内置 Skills 定义
@@ -1619,6 +1621,7 @@ export const builtinSkills: SkillDefinition[] = [
   literatureReviewSkill,
   researchModeSkill,
   examAnalysisSkill,
+  skillInstallerSkill,
   // templateDesignerSkill 已迁移到 builtin-tools/template-designer.ts，通过渐进披露加载
 ];
 

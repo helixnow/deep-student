@@ -177,7 +177,9 @@ vi.mock('@/components/QuestionBankManageView', () => ({
 }));
 
 vi.mock('@/components/CsvImportDialog', () => ({
-  default: ({ open }: { open: boolean }) => (open ? <div data-testid="csv-import-dialog" /> : null),
+  default: () => null,
+  // CSV 导入已从模态框改为内嵌面板（viewMode = 'csvImport'）
+  CsvImportPanel: () => <div data-testid="csv-import-panel" />,
 }));
 
 vi.mock('@/components/QuestionBankExportDialog', () => ({
@@ -266,10 +268,13 @@ describe('ExamContentView secondary entry points', () => {
     }, { timeout: 5000 });
 
     fireEvent.click(screen.getByTitle(/CSV 导入|import/i));
+    // CSV 导入已改为内嵌面板视图（不再弹出模态框），管理视图随之卸载
     await waitFor(() => {
-      expect(screen.getByTestId('csv-import-dialog')).toBeInTheDocument();
+      expect(screen.getByTestId('csv-import-panel')).toBeInTheDocument();
     }, { timeout: 5000 });
 
+    // 导出对话框仍挂载在背景层，先从内嵌 CSV 视图返回管理视图
+    await openSecondaryMenuItem([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
     fireEvent.click(screen.getByTitle(/导出|export/i));
     await waitFor(() => {
       expect(screen.getByTestId('question-bank-export-dialog')).toBeInTheDocument();

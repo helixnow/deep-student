@@ -42,6 +42,7 @@ export const WORKBENCH_SETTING_KEYS = {
   materialTier: 'desktop.workbenchMaterialTier',
   wallpaper: 'desktop.workbenchWallpaper',
   tileMargins: 'desktop.workbenchTileMargins',
+  dockSize: 'desktop.workbenchDockSize',
   dockAutohide: 'desktop.workbenchDockAutohide',
   dockMagnification: 'desktop.workbenchDockMagnification',
   devPanel: 'desktop.workbenchDevPanel',
@@ -84,6 +85,9 @@ export interface TileMarginsSetting {
 const DEFAULT_TILE_MARGINS: TileMarginsSetting = { enabled: true, px: 8 };
 const TILE_MARGIN_MIN = 0;
 const TILE_MARGIN_MAX = 32;
+export const DOCK_SIZE_MIN = 75;
+export const DOCK_SIZE_MAX = 125;
+export const DOCK_SIZE_DEFAULT = 100;
 const PRESET_IDS = WALLPAPER_PRESETS.map((preset) => preset.id);
 
 function dispatchSettingsChanged(key: string, value: unknown): void {
@@ -142,6 +146,12 @@ function parseAgentPacing(raw: unknown): WorkbenchAgentPacing {
   return 'normal';
 }
 
+export function parseDockSize(raw: unknown): number {
+  const value = Number.parseInt(String(raw ?? ''), 10);
+  if (!Number.isFinite(value)) return DOCK_SIZE_DEFAULT;
+  return Math.max(DOCK_SIZE_MIN, Math.min(DOCK_SIZE_MAX, value));
+}
+
 export interface WorkbenchSettingsSectionProps {
   className?: string;
 }
@@ -158,6 +168,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const [wallpaperImportPending, setWallpaperImportPending] = useState(false);
   const wallpaperImportPendingRef = useRef(false);
   const [tileMargins, setTileMargins] = useState<TileMarginsSetting>(DEFAULT_TILE_MARGINS);
+  const [dockSize, setDockSize] = useState(DOCK_SIZE_DEFAULT);
   const [dockAutohide, setDockAutohide] = useState(false);
   const [devPanel, setDevPanel] = useState(false);
   const [browserEnabled, setBrowserEnabled] = useState(false);
@@ -181,6 +192,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         tierVal,
         wallpaperVal,
         marginsVal,
+        dockSizeVal,
         autohideVal,
         dockMagVal,
         devPanelVal,
@@ -196,6 +208,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         read(WORKBENCH_SETTING_KEYS.materialTier),
         read(WORKBENCH_SETTING_KEYS.wallpaper),
         read(WORKBENCH_SETTING_KEYS.tileMargins),
+        read(WORKBENCH_SETTING_KEYS.dockSize),
         read(WORKBENCH_SETTING_KEYS.dockAutohide),
         read(WORKBENCH_SETTING_KEYS.dockMagnification),
         read(WORKBENCH_SETTING_KEYS.devPanel),
@@ -215,6 +228,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       const wp = parseJsonSetting<WallpaperSetting>(wallpaperVal, DEFAULT_WALLPAPER);
       setWallpaper(wp);
       setTileMargins(parseJsonSetting<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
+      setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
       setDevPanel(String(devPanelVal ?? '') === 'true');
       setBrowserEnabled(String(browserEnabledVal ?? '') === 'true');
@@ -596,6 +610,36 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           </div>
         </SettingRow>
       )}
+
+      <SettingRow
+        title={t('workbench:settings.dockSize.title')}
+        description={t('workbench:settings.dockSize.desc')}
+        className="items-center"
+      >
+        <div className="flex w-52 items-center gap-3">
+          <input
+            type="range"
+            aria-label={t('workbench:settings.dockSize.title')}
+            value={dockSize}
+            min={DOCK_SIZE_MIN}
+            max={DOCK_SIZE_MAX}
+            step={5}
+            disabled={!loaded}
+            onChange={(event) => {
+              const next = parseDockSize(event.target.value);
+              setDockSize(next);
+              void persist(WORKBENCH_SETTING_KEYS.dockSize, String(next), next);
+            }}
+            className="h-5 min-w-0 flex-1 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          <output
+            aria-live="polite"
+            className="w-10 text-right text-xs tabular-nums text-muted-foreground"
+          >
+            {dockSize}%
+          </output>
+        </div>
+      </SettingRow>
 
       <SwitchRow
         title={t('workbench:settings.dockAutohide.title')}

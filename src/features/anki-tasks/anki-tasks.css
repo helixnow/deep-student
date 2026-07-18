@@ -1,0 +1,181 @@
+/**
+ * Anki 制卡任务（wb-at-*）— 对齐 SystemWindowShared / flashcards（wb-fc-*）表面体系。
+ * 引用 workbench token（带兜底值），legacy 壳下同样成立；
+ * 不引入大面积渐变 / 卡片墙，保持学习工具密度。
+ */
+
+.wb-at-root {
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-window-bg, hsl(var(--card)));
+}
+
+.wb-at-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 14px 16px;
+}
+
+@media (min-width: 640px) {
+  .wb-at-screen {
+    padding: 16px 18px;
+  }
+}
+
+/* ==== 头部 ==== */
+
+.wb-at-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wb-at-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: hsl(var(--foreground));
+}
+
+.wb-at-subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-at-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ==== 概览面板 ==== */
+
+.wb-at-panel {
+  padding: 12px 14px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+}
+
+.wb-at-panel-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ==== 任务列表 ==== */
+
+.wb-at-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+  overflow: hidden;
+}
+
+.wb-at-list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  background: color-mix(in hsl, var(--wb-window-bg, hsl(var(--card))) 92%, hsl(var(--muted)) 8%);
+}
+
+.wb-at-list-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground) / 0.7);
+  user-select: none;
+}
+
+.wb-at-row {
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
+}
+
+.wb-at-row:last-child {
+  border-bottom: none;
+}
+
+.wb-at-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 100ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-at-row-main:hover {
+  background: var(--interactive-hover, hsl(var(--muted) / 0.4));
+}
+
+.wb-at-row-detail {
+  padding: 4px 12px 14px 40px;
+}
+
+.wb-at-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.6);
+}
+
+/* 进度列：视口 md 起显示；workbench 窄/中窗（data-wb-sys-size 由窗口壳标注）再隐藏，
+   避免窄窗口在大视口下仍渲染 140px 进度列导致挤压 */
+.wb-at-col-progress {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .wb-at-col-progress {
+    display: block;
+  }
+}
+
+[data-wb-sys-size='compact'] .wb-at-col-progress,
+[data-wb-sys-size='medium'] .wb-at-col-progress {
+  display: none;
+}
+
+/* ==== 空 / 加载态 ==== */
+
+.wb-at-empty,
+.wb-at-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 10rem;
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}

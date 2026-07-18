@@ -156,7 +156,7 @@ export async function handleMindmapActivation(
 export const MINDMAP_APP_DEFINITION: AppDefinition = {
   typeId: MINDMAP_APP_TYPE_ID,
   nameKey: 'workbench:apps.mindmap',
-  icon: React.createElement(AppIconImage, { typeId: 'mindmap', className: 'h-full w-full' }),
+  icon: React.createElement(AppIconImage, { typeId: 'mindmap', className: 'h-8 w-8' }),
   instanceMode: 'multi',
   memoryWeight: 2,
   defaultFrame: { w: 920, h: 660 },

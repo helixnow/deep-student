@@ -72,6 +72,8 @@ export interface ExamSheetUploaderProps {
   onUploadSuccess?: (detail: ExamSheetSessionDetail) => void;
   /** 返回按钮回调 */
   onBack?: () => void;
+  /** 「没有文件？手动新建一道题」回调（缺省回退到 onBack） */
+  onManualCreate?: () => void;
   /** 从题目集启动台拖入的初始文件（传入后自动带入选择流程） */
   initialFiles?: File[] | null;
   /** initialFiles 消费完成回调（父组件应清空对应状态） */
@@ -173,6 +175,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   sessionName,
   onUploadSuccess,
   onBack,
+  onManualCreate,
   initialFiles,
   onInitialFilesConsumed,
   className,
@@ -1056,11 +1059,12 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="max-w-2xl mx-auto space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+        {/* min-h-full 列：内容矮时撑满高度让 dropzone 弹性扩展；内容高时自然向下滚动 */}
+        <div className="w-full max-w-2xl mx-auto flex min-h-full flex-col gap-6">
           
           {/* 头部：标题 + 步骤指示 */}
-          <div className="space-y-4 pt-2">
+          <div className="flex-shrink-0 space-y-4 pt-2">
             <div className="space-y-1.5 text-center">
               <h2 className="text-lg font-semibold">{t('exam_sheet:uploader.header_title')}</h2>
               <p className="text-sm text-muted-foreground">{t('exam_sheet:uploader.header_desc')}</p>
@@ -1068,9 +1072,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             <UploadStepIndicator step={step} />
           </div>
           
-          {/* 文件选择步骤 */}
+          {/* 文件选择步骤：dropzone flex-1 弹性填充，高窗撑开 / 矮窗压缩（min-h 保底） */}
           {step === 'select' && (
-            <>
+            <div className="flex flex-1 min-h-0 flex-col gap-4">
               {/* 拖放区域 - 使用统一的 UnifiedDragDropZone */}
               <UnifiedDragDropZone
                 zoneId="exam-sheet-uploader"
@@ -1081,14 +1085,14 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 showOverlay={true}
                 enabled={!isProcessing}
                 className={cn(
-                  'rounded-md',
+                  'flex min-h-[160px] flex-1 flex-col rounded-md',
                   isProcessing && 'pointer-events-none opacity-60'
                 )}
               >
                 <div
                   onClick={!isProcessing ? handleClick : undefined}
                   className={cn(
-                    'relative rounded-md border-2 border-dashed p-5 sm:p-6 transition-all',
+                    'relative flex flex-1 flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-8 transition-all',
                     !isProcessing && 'cursor-pointer hover:border-primary/50 hover:bg-primary/5',
                     'border-border/60 bg-card/30'
                   )}
@@ -1116,12 +1120,12 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
                   <div className="flex flex-col items-center gap-4 text-center">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted transition-colors">
-                        <Image size={20} className="text-muted-foreground transition-colors" />
+                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted transition-colors">
+                        <Image size={22} className="text-muted-foreground transition-colors" />
                       </div>
                       <div className="text-lg font-light text-muted-foreground/30">/</div>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted transition-colors">
-                        <FileText size={20} className="text-muted-foreground transition-colors" />
+                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted transition-colors">
+                        <FileText size={22} className="text-muted-foreground transition-colors" />
                       </div>
                     </div>
                     
@@ -1151,6 +1155,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   </div>
                 </div>
               </UnifiedDragDropZone>
+
+              {/* 识别方式说明（未选文件时显示，选了文件就让位给文件列表） */}
+              {selectedFiles.length === 0 && !isProcessing && (
+                <p className="flex-shrink-0 text-center text-xs text-muted-foreground">
+                  {t('exam_sheet:uploader.tips_combined')}
+                </p>
+              )}
 
               {/* 已选图片列表 */}
               {currentCategory === 'image' && selectedFiles.length > 0 && !isProcessing && (
@@ -1288,7 +1299,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               )}
 
               {/* 提取中提示已移除：后端统一处理，无需单独的前端提取步骤 */}
-            </>
+            </div>
           )}
 
           {/* 文档预览步骤已移除：后端统一处理文档解析，无需前端预览 */}
@@ -1586,8 +1597,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             </div>
           )}
 
-          {/* 操作按钮 */}
-          {step === 'select' && (
+          {/* 操作按钮：选了文件（或处理中）才出现，避免空态下的 disabled 主按钮 */}
+          {step === 'select' && (selectedFiles.length > 0 || isProcessing) && (
             <div className="flex gap-3">
               {onBack && (
                 <NotionButton variant="ghost" onClick={onBack} disabled={isProcessing} className="flex-1">
@@ -1621,13 +1632,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
           {/* preview 步骤已移除：后端统一处理文档解析和 LLM，无需前端预览 */}
 
-          {/* 没有文件可导入？回到启动台手动新建 */}
-          {step === 'select' && !isProcessing && onBack && (
+          {/* 没有文件可导入？回启动台手动新建（优先走专用回调，直接打开创建编辑器） */}
+          {step === 'select' && !isProcessing && (onManualCreate || onBack) && (
             <div className="text-center">
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={onBack}
+                onClick={onManualCreate ?? onBack}
                 className="!h-auto !px-2 !py-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
                 {t('exam_sheet:uploader.manual_create_link')}
@@ -1643,13 +1654,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             </div>
           )}
 
-          {/* 提示信息 */}
-          {step === 'select' && !isProcessing && (
-            <div className="text-center text-xs text-muted-foreground space-y-1">
-              <p>• {t('exam_sheet:uploader.tip_image')}</p>
-              <p>• {t('exam_sheet:uploader.tip_document')}</p>
-            </div>
-          )}
+          {/* 提示信息已合并到拖放区下方（tips_combined），未选文件时显示 */}
         </div>
       </div>
     </div>
