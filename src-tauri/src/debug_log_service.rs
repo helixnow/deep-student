@@ -207,7 +207,7 @@ pub fn write_debug_log_entry(
     let timestamp = Local::now();
     let time_str = timestamp.format("%Y-%m-%dT%H-%M-%S%.3f").to_string();
     let seq = SEQ_COUNTER.fetch_add(1, Ordering::Relaxed) % 10000;
-    let model_short = model.split('/').last().unwrap_or(model);
+    let model_short = model.split('/').next_back().unwrap_or(model);
     let model_safe: String = model_short
         .chars()
         .map(|c| {
@@ -250,7 +250,7 @@ pub fn write_debug_log_entry(
             Ok(_) => info!("[DebugLog] Wrote: {} ({} bytes)", filename_clone, json_len),
             Err(e) => warn!("[DebugLog] Write failed {}: {}", filename_clone, e),
         }
-        if seq % 50 == 0 {
+        if seq.is_multiple_of(50) {
             auto_cleanup_if_needed(&log_dir_owned);
         }
     });
@@ -340,10 +340,8 @@ pub fn cleanup_old_debug_logs(app_data_dir: &Path, max_age_days: u32) -> Result<
             .ok()
             .and_then(|m| m.modified().ok())
             .unwrap_or(std::time::SystemTime::now());
-        if modified < cutoff {
-            if fs::remove_file(f).is_ok() {
-                removed += 1;
-            }
+        if modified < cutoff && fs::remove_file(f).is_ok() {
+            removed += 1;
         }
     }
     info!(

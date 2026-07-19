@@ -4,22 +4,15 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum McpFraming {
     /// JSONL 格式：每条消息一行
     #[serde(rename = "jsonl")]
+    #[default]
     JsonLines,
     /// Content-Length 头格式：类似 LSP/JSON-RPC
     #[serde(rename = "content_length")]
     ContentLength,
-}
-
-impl Default for McpFraming {
-    fn default() -> Self {
-        // MCP 规范的 stdio 传输是换行分隔 JSON（JSONL）；
-        // Content-Length 头分帧是 LSP 的做法，仅作为显式 opt-in 供私有 server 使用。
-        Self::JsonLines
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,15 +114,20 @@ pub enum McpTransportConfig {
 /// OAuth配置
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OAuthConfig {
-    /// OAuth客户端ID
+    /// OAuth客户端ID（空则尝试 RFC 7591 动态注册）
+    #[serde(default)]
     pub client_id: String,
-    /// 授权URL
+    /// 授权URL（空则从 resource 发现）
+    #[serde(default)]
     pub auth_url: String,
     /// 令牌URL
+    #[serde(default)]
     pub token_url: String,
-    /// 重定向URI
+    /// 重定向URI（桌面流运行时覆盖为 127.0.0.1 动态端口）
+    #[serde(default)]
     pub redirect_uri: String,
     /// 权限范围
+    #[serde(default)]
     pub scopes: Vec<String>,
     /// 客户端密钥（可选）
     #[serde(skip_serializing_if = "Option::is_none")]

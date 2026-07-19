@@ -1002,8 +1002,8 @@ impl NotesManager {
 
             let page = opt.page.max(0);
             let page_size = opt.page_size.max(1);
-            let limit = page_size as i64;
-            let offset = (page * page_size) as i64;
+            let limit = page_size;
+            let offset = page * page_size;
 
             let count_sql = format!(
                 "SELECT COUNT(*) FROM notes n LEFT JOIN resources r ON r.id = n.resource_id{}",
@@ -1349,7 +1349,7 @@ impl NotesManager {
             title: new_title.to_string(),
             content_md: new_content.to_string(),
             tags: tags_vec,
-            created_at: created_at,
+            created_at,
             updated_at: now.clone(),
             is_favorite: is_favorite_raw != 0,
         };

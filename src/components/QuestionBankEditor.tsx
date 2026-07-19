@@ -1272,7 +1272,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   <span className="text-xl font-mono tabular-nums">{formatTime(timerDisplay)}</span>
                   {remainingTime != null && (
                     <span className="text-[11px] text-muted-foreground">
-                      {t('editor.remainingTime')}
+                      {t('timed.remaining')}
                     </span>
                   )}
                 </div>
@@ -1645,7 +1645,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       onClick={() => setCropDialogOpen(true)}
                     >
                       <Crop size={14} className="mr-1.5" />
-                      {t('question_bank.source_images_btn')}
+                      {t('common:question_bank.source_images')}
                     </NotionButton>
 
                     {/* 答题区域 */}
@@ -2104,7 +2104,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 onClick={() => setCropDialogOpen(true)}
               >
                 <Crop size={14} className="mr-1.5" />
-                {t('question_bank.source_images_btn')}
+                {t('common:question_bank.source_images')}
               </NotionButton>
 
               {/* 编辑模式：直接显示答案和解析 */}

@@ -108,6 +108,21 @@
         "name": "Browser",
         "actions": "Navigate, go back or forward, reload, focus the address field, and show the page window"
       }
+    },
+    "killSwitch": {
+      "emergencyStop": "Emergency stop",
+      "emergencyStopConfirm": "Stop all agents and pause automations now?",
+      "confirmStop": "Stop now",
+      "cancelConfirm": "Cancel",
+      "trippedBanner": "Agents are powered off",
+      "trippedReason": "Reason: {{reason}}",
+      "automationsStillPaused": "Automations are still paused",
+      "resumeAgents": "Resume agents",
+      "resumeAutomations": "Resume automations",
+      "resumeAutomationsConfirm": "Resume scheduled automations? They may start running again.",
+      "confirmResumeAutomations": "Resume automations",
+      "stopFailed": "Could not power off agents. Try again.",
+      "resumeFailed": "Could not resume. Try again."
     }
   },
   "menubar": {
@@ -128,9 +143,9 @@
     "openCommandPalette": "Open command palette",
     "openAppsPanel": "Search apps and commands",
     "openSettings": "Open settings",
-    "openCenter": "Open Study Center",
-    "centerShort": "Center",
-    "centerTitle": "Study Center",
+    "openCenter": "Open today's rhythm",
+    "centerShort": "Rhythm",
+    "centerTitle": "Today's rhythm",
     "moduleFlashcards": "Today's review",
     "moduleTasks": "Card tasks",
     "moduleFocus": "Focus",
@@ -138,6 +153,12 @@
     "desktopHint": "All apps and window overview",
     "flashcardsDueShort": "{{count}} due",
     "tasksRunningShort": "{{count}} running",
+    "rhythmFlashcards": "Flashcards due today",
+    "rhythmPomodoro": "Pomodoro status",
+    "rhythmAutomation": "Automation health",
+    "rhythmAutomationDetail": "{{running}} running · {{failed}} failed · {{enabled}} enabled",
+    "rhythmTasks": "Tasks",
+    "rhythmTasksDetail": "{{count}} card tasks",
     "startReview": "Start review",
     "openTasks": "Open",
     "openPomodoro": "Open Pomodoro",
@@ -237,8 +258,8 @@
   },
   "appsPanel": {
     "title": "All Apps",
-    "searchPlaceholder": "Search apps and commands",
-    "empty": "No matching apps or commands",
+    "searchPlaceholder": "Search apps, commands, resources, and chats",
+    "empty": "No matching results",
     "close": "Close",
     "view": "View",
     "gridView": "Grid",
@@ -249,7 +270,11 @@
     "hintOpen": "Open",
     "hintClose": "Close",
     "sectionApps": "Apps",
-    "sectionCommands": "Commands"
+    "sectionCommands": "Commands",
+    "sectionResources": "Resources",
+    "sectionChat": "Chats",
+    "searching": "Searching…",
+    "resultCount": "{{count}} results"
   },
   "window": {
     "close": "Close",
@@ -316,7 +341,31 @@
     "tipsDismiss": "Got it",
     "tipTile": "Drag a window to the screen edge to tile",
     "tipSwitch": "Quickly switch between windows",
-    "tipExpose": "Overview all open windows"
+    "tipExpose": "Overview all open windows",
+    "tourTitle": "Quick tour",
+    "tourSkip": "Skip",
+    "tourDontShow": "Don't show again",
+    "tourNext": "Next",
+    "tourDone": "Done",
+    "tourStep": "{{current}} / {{total}}",
+    "tourSteps": {
+      "dock": {
+        "title": "Dock apps",
+        "body": "Launch study apps from the Dock at the bottom. Windows can be arranged, tiled, and compared side by side."
+      },
+      "search": {
+        "title": "Quick search",
+        "body": "Press {{shortcut}} to search apps and commands without leaving the desktop."
+      },
+      "statusBar": {
+        "title": "Status bar rhythm",
+        "body": "The top status bar surfaces due flashcards, pomodoro, and automation health — open it for today's rhythm."
+      },
+      "agent": {
+        "title": "Agent control",
+        "body": "When needed, let AI locate content and run authorized actions inside study apps."
+      }
+    }
   },
   "agenda": {
     "label": "Calendar and study agenda",
@@ -460,11 +509,12 @@
     "cheatsheet": "Shortcut cheatsheet"
   },
   "settings": {
-    "sectionTitle": "Study Desktop (Experimental)",
-    "sectionDesc": "Turns the main content area into a windowed study desktop (Workbench). Experimental — you can switch back anytime.",
+    "sectionTitle": "Study Desktop",
+    "sectionDesc": "Study Desktop is the product default: a windowed desktop for opening and tiling study apps. You can turn it off anytime to use Classic mode for compatibility.",
     "mode": {
-      "title": "Enable Study Desktop",
-      "desc": "Switches the main content area to the windowed desktop mode. Turning it off restores the current layout; the desktop snapshot is kept."
+      "title": "Study Desktop (default)",
+      "desc": "When on, use the windowed Study Desktop. Turning it off restores Classic layout as a compatibility mode; the desktop snapshot is kept.",
+      "migratedNotice": "Study Desktop is enabled. You can switch back to Classic mode in Settings."
     },
     "performanceProfile": {
       "title": "Performance Profile",
@@ -733,6 +783,7 @@
       "pin": "Pin {{title}}",
       "unpin": "Unpin {{title}}",
       "pinned": "Pinned",
+      "showAll": "Show all open files",
       "openInRightSplit": "Open {{title}} in right split",
       "closeRightSplit": "Close {{title}} from right split"
     },

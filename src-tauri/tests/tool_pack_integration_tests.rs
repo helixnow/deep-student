@@ -69,7 +69,7 @@ fn create_execution_context(
         block_id.to_string(),
         emitter,
         Arc::new(ToolRegistry::new()),
-        window,
+        Some(window),
     )
     .with_feature_flags(true, true, true);
 
@@ -387,7 +387,7 @@ async fn tool_pack_harness_constructs_execution_context() {
     assert_eq!(harness.context.session_id, "phase-3-session");
     assert_eq!(harness.context.message_id, "phase-3-message");
     assert_eq!(harness.context.block_id, "harness-block");
-    assert_eq!(harness.context.window.label(), "tool-pack-test");
+    assert_eq!(harness.context.window_ref().label(), "tool-pack-test");
     assert_eq!(harness.context.emitter.session_id(), "phase-3-session");
     assert!(harness.registry.has_specific_executor("builtin-tool_pack"));
 }

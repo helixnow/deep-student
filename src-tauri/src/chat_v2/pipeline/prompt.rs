@@ -6,18 +6,64 @@ impl ChatV2Pipeline {
     /// 使用 prompt_builder 模块统一格式化，采用 XML 标签分隔各部分，
     /// 统一引用格式为 `[类型-编号]`，并添加使用指引。
     /// 如果有 Canvas 笔记，也会一并注入。
+    /// 若会话绑定了 workspace（或配置了全局 AGENTS.md），注入 `<project_agents_instructions>`。
     pub(crate) async fn build_system_prompt(&self, ctx: &PipelineContext) -> String {
         let canvas_note = self.build_canvas_note_info(ctx).await;
 
         // 读取用户画像摘要（如果 VFS 可用）
         let user_profile = self.load_user_profile(ctx).await;
 
-        prompt_builder::build_system_prompt_with_profile(
+        // AGENTS.md：会话绑定 workspace 根 → ~/.deep-student/AGENTS.md
+        let agents_instructions = self.load_project_agents_instructions(ctx);
+
+        prompt_builder::build_system_prompt_with_profile_and_agents(
             &ctx.options,
             &ctx.retrieved_sources,
             canvas_note,
             user_profile,
+            agents_instructions,
         )
+    }
+
+    /// 解析会话绑定 workspace 根并加载 AGENTS.md 常驻指令
+    ///
+    /// 发现优先级由 `agents_md::load_agents_instructions` 负责：
+    /// workspace `AGENTS.md` → `~/.deep-student/AGENTS.md`。
+    fn load_project_agents_instructions(&self, ctx: &PipelineContext) -> Option<String> {
+        let workspace_root = self.resolve_session_workspace_root(ctx);
+        crate::chat_v2::agents_md::load_agents_instructions(workspace_root.as_deref())
+    }
+
+    /// 会话绑定 workspace 根：组 preferred_project_root_path → 配置的 runtime workspace → cwd
+    fn resolve_session_workspace_root(&self, ctx: &PipelineContext) -> Option<std::path::PathBuf> {
+        use crate::chat_v2::runtime_roots;
+        use std::path::PathBuf;
+
+        if let Some(pref) =
+            runtime_roots::resolve_group_preferred_runtime_root(&self.db, &ctx.session_id)
+        {
+            if let Some(path) = pref
+                .project_root_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+            {
+                let pb = PathBuf::from(path);
+                if pb.is_dir() {
+                    return Some(pb);
+                }
+            }
+        }
+
+        if let Some(ref main_db) = self.main_db {
+            if let Ok(root) = runtime_roots::workspace_root(main_db) {
+                if root.path.is_dir() {
+                    return Some(root.path);
+                }
+            }
+        }
+
+        std::env::current_dir().ok()
     }
 
     /// 从 MemoryService 读取用户画像 + 分类摘要（双模检索的 LLM 直读模式）

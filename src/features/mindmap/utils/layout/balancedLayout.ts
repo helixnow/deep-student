@@ -6,6 +6,7 @@ import type { Node, Edge } from '@xyflow/react';
 import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../types';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
 import { calculateSubtreeHeight, calculateNodeWidth, calculateNodeHeight } from './helpers';
+import { countAllDescendants } from './countDescendants';
 
 /** 节点数据类型 */
 interface BalancedNodeData extends Record<string, unknown> {
@@ -20,15 +21,6 @@ interface BalancedNodeData extends Record<string, unknown> {
   nodeId: string;
   side: 'left' | 'right' | 'center';
   style?: NodeStyle;
-}
-
-/** 计算所有后代数量 */
-function countAllDescendants(node: MindMapNode): number {
-  if (!node.children) return 0;
-  return node.children.reduce(
-    (sum, child) => sum + 1 + countAllDescendants(child),
-    0
-  );
 }
 
 /** 按子树大小分配左右 */

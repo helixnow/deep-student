@@ -7,18 +7,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// 功能开关状态
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum FeatureState {
-    Disabled,                  // 完全禁用
+    #[default]
+    Disabled, // 完全禁用
     Enabled,                   // 完全启用
     Gradual(f32),              // 渐进发布，0.0-1.0表示启用比例
     UserSpecific(Vec<String>), // 针对特定用户启用
-}
-
-impl Default for FeatureState {
-    fn default() -> Self {
-        FeatureState::Disabled
-    }
 }
 
 /// 功能开关配置

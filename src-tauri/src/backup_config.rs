@@ -355,7 +355,7 @@ async fn check_and_perform_auto_backup(
 }
 
 /// 获取有效的备份目录
-pub(crate) fn get_effective_backup_dir(config: &BackupConfig, root: &PathBuf) -> Result<PathBuf> {
+pub(crate) fn get_effective_backup_dir(config: &BackupConfig, root: &Path) -> Result<PathBuf> {
     match &config.backup_directory {
         Some(custom_dir) => {
             let path = PathBuf::from(custom_dir);
@@ -375,7 +375,7 @@ pub(crate) fn get_effective_backup_dir(config: &BackupConfig, root: &PathBuf) ->
 }
 
 /// 清理旧的自动备份，只保留指定数量
-pub(crate) fn cleanup_old_backups(backups_dir: &PathBuf, max_count: u32) -> Result<()> {
+pub(crate) fn cleanup_old_backups(backups_dir: &Path, max_count: u32) -> Result<()> {
     let mut auto_backups: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
 
     // 收集所有自动备份文件
@@ -396,7 +396,7 @@ pub(crate) fn cleanup_old_backups(backups_dir: &PathBuf, max_count: u32) -> Resu
     }
 
     // 按时间排序（最新的在前）
-    auto_backups.sort_by(|a, b| b.1.cmp(&a.1));
+    auto_backups.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     // 删除多余的备份
     for (path, _) in auto_backups.iter().skip(max_count as usize) {

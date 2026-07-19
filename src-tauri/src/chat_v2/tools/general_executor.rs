@@ -13,7 +13,6 @@ use serde_json::json;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::is_canvas_tool;
 use super::types::is_external_mcp_tool_name;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::tools::ToolContext;
 
@@ -85,7 +84,7 @@ impl ToolExecutor for GeneralToolExecutor {
             db: ctx.main_db.as_ref().map(|db| db.as_ref()),
             mcp_client: None,
             supports_tools: true,
-            window: Some(&ctx.window),
+            window: Some(ctx.window_ref()),
             stream_event: None,
             stage: Some("tool_call"),
             memory_enabled: None, // 🔧 P1-36: 通用工具执行不涉及记忆开关

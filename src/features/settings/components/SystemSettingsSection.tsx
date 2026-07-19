@@ -450,7 +450,7 @@ export const SystemSettingsSection: React.FC = () => {
               disabled={saving}
             >
               <ArrowCounterClockwise size={14} />
-              {t('common:actions.reset_default')}
+              {t('common:actions.reset')}
             </NotionButton>
           </div>
         )}

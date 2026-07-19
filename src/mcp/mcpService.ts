@@ -103,6 +103,16 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   cwd?: string;
   framing?: 'jsonl' | 'content_length';
+  /** 显式 API Key（优先于 OAuth） */
+  apiKey?: string;
+  /** OAuth 占位：存在且无 apiKey 时连接前注入 Bearer */
+  oauth?: {
+    client_id?: string;
+    auth_url?: string;
+    token_url?: string;
+    redirect_uri?: string;
+    scopes?: string[];
+  };
 }
 
 export interface McpConfig {
@@ -175,7 +185,7 @@ const isMethodNotFoundError = (error: any): boolean => {
 /**
  * 检测是否为认证相关错误 (401/403)
  */
-const isAuthError = (error: unknown): boolean => {
+export const isAuthError = (error: unknown): boolean => {
   const msg = getErrorMessage(error).toLowerCase();
   return msg.includes('401') ||
          msg.includes('403') ||
@@ -185,6 +195,67 @@ const isAuthError = (error: unknown): boolean => {
          msg.includes('invalid api key') ||
          msg.includes('invalid_api_key');
 };
+
+export type McpAuthHeaderResolveDeps = {
+  isTauri?: boolean;
+  /** 测试可注入；默认 invoke get_mcp_oauth_access_token */
+  getAccessToken?: (serverId: string, resourceUrl: string) => Promise<string | null>;
+};
+
+/**
+ * 连接前解析 Authorization：apiKey / 已有 Authorization > OAuth Bearer。
+ * 抽离供 hermetic 单测；connectServer 复用同一逻辑。
+ */
+export async function resolveMcpAuthHeaders(
+  cfg: Pick<McpServerConfig, 'id' | 'apiKey' | 'oauth' | 'headers' | 'url'>,
+  deps: McpAuthHeaderResolveDeps = {},
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...(cfg.headers ?? {}) };
+  const isTauri = deps.isTauri ?? isTauriEnvironment;
+  const hasApiKeyAuth =
+    Boolean(cfg.apiKey && String(cfg.apiKey).trim()) ||
+    Boolean(headers['Authorization'] || headers['authorization']);
+  if (cfg.apiKey && !headers['Authorization'] && !headers['authorization']) {
+    headers['Authorization'] = `Bearer ${cfg.apiKey}`;
+    if (!headers['X-API-Key']) headers['X-API-Key'] = String(cfg.apiKey);
+  } else if (!hasApiKeyAuth && cfg.oauth && isTauri) {
+    try {
+      const getToken =
+        deps.getAccessToken ??
+        (async (serverId: string, resourceUrl: string) => {
+          const { invoke } = await import('@tauri-apps/api/core');
+          return invoke<string | null>('get_mcp_oauth_access_token', { serverId, resourceUrl });
+        });
+      const resourceUrl = cfg.url;
+      if (!resourceUrl) throw new Error('OAuth MCP server is missing resource URL');
+      const token = await getToken(cfg.id, resourceUrl);
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      } else {
+        throw new Error(i18next.t('mcp:service.oauth_reauth_required', {
+          defaultValue: 'OAuth re-authorization required for this MCP server',
+        }));
+      }
+    } catch (oauthErr) {
+      const msg = getErrorMessage(oauthErr);
+      if (msg.toLowerCase().includes('oauth') || msg.toLowerCase().includes('re-auth')) {
+        throw oauthErr;
+      }
+      throw new Error(i18next.t('mcp:service.oauth_reauth_required', {
+        defaultValue: 'OAuth re-authorization required for this MCP server',
+      }));
+    }
+  }
+  return headers;
+}
+
+/** 401/认证失败时是否应提示 OAuth 再授权（有 oauth 且无 apiKey） */
+export function mcpAuthFailureNeedsReauth(
+  cfg: Pick<McpServerConfig, 'apiKey' | 'oauth'>,
+  error: unknown,
+): boolean {
+  return isAuthError(error) && Boolean(cfg.oauth) && !cfg.apiKey;
+}
 
 /**
  * 检测是否为连接断开/传输层错误（可通过重连恢复）
@@ -407,7 +478,9 @@ class McpServiceImpl {
       );
 
       const { cfg, client } = rt;
-      const headers = cfg.headers ?? {};
+      // 认证优先级：apiKey / 已有 Authorization > OAuth Bearer
+      const headers = await resolveMcpAuthHeaders(cfg);
+
       // Map remote URLs via local dev proxy to bypass CORS
       const mapUrl = (raw: string) => {
         try {
@@ -710,11 +783,18 @@ class McpServiceImpl {
       // 检测认证错误 (401/403)
       const authFailed = isAuthError(e);
       if (authFailed) {
-        rt.error = i18next.t('mcp:service.auth_failed', { error: rawError });
+        const needsReauth = mcpAuthFailureNeedsReauth(rt.cfg, e);
+        const oauthHint = needsReauth
+          ? i18next.t('mcp:service.oauth_reauth_required', {
+              defaultValue: 'OAuth re-authorization required for this MCP server',
+            })
+          : null;
+        rt.error = oauthHint
+          || i18next.t('mcp:service.auth_failed', { error: rawError });
         
         debugLog.warn(`[MCP] Authentication failed for ${rt.cfg.id}:`, {
           error: rawError,
-          hint: 'Check API key or token configuration',
+          hint: oauthHint || 'Check API key or token configuration',
         });
         
         // 触发认证失败专用事件
@@ -722,6 +802,7 @@ class McpServiceImpl {
           serverId: rt.cfg.id,
           transport: rt.cfg.type,
           error: rt.error,
+          needsReauth,
         });
         
         // 认证错误不重试，更新状态后返回
@@ -1671,6 +1752,9 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
     if (item.apiKey && !headers['X-API-Key']) {
       headers['X-API-Key'] = String(item.apiKey);
     }
+    const oauthCfg = item.oauth && typeof item.oauth === 'object'
+      ? item.oauth as McpServerConfig['oauth']
+      : undefined;
 
     const namespace = guessNamespace(item);
 
@@ -1728,6 +1812,8 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
         url: String(item.url),
         namespace,
         headers,
+        apiKey: item.apiKey ? String(item.apiKey) : undefined,
+        oauth: oauthCfg,
       });
       continue;
     }
@@ -1741,6 +1827,8 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
           url: String(httpUrl),
           namespace,
           headers,
+          apiKey: item.apiKey ? String(item.apiKey) : undefined,
+          oauth: oauthCfg,
         });
       }
       continue;
@@ -1754,6 +1842,8 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
         url: String(sseUrl),
         namespace,
         headers,
+        apiKey: item.apiKey ? String(item.apiKey) : undefined,
+        oauth: oauthCfg,
       });
     }
   }

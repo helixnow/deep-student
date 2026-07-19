@@ -275,7 +275,7 @@ impl ExportRegistry {
 #[tauri::command]
 pub async fn dstu_export_formats(
     path: String,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
+    _vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<Vec<String>, String> {
     log::info!("[DSTU::export] dstu_export_formats: path={}", path);
 

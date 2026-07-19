@@ -658,6 +658,68 @@ pub const V20260715_AUTOMATION_TODO_DELIVERY_RECEIPTS: MigrationDef = MigrationD
 .with_expected_indexes(&["idx_automation_todo_deliveries_item"])
 .idempotent();
 
+/// V20260718: mastery intermediate layer (events + aggregated states)
+pub const V20260718_ADD_MASTERY_TABLES: MigrationDef = MigrationDef::new(
+    20260718,
+    "add_mastery_tables",
+    include_str!("../../../migrations/vfs/V20260718__add_mastery_tables.sql"),
+)
+.with_expected_tables(&["mastery_events", "mastery_states"])
+.with_expected_columns(&[
+    ("mastery_events", "id"),
+    ("mastery_events", "created_at"),
+    ("mastery_events", "source"),
+    ("mastery_events", "concept_key"),
+    ("mastery_events", "item_id"),
+    ("mastery_events", "outcome"),
+    ("mastery_events", "weight"),
+    ("mastery_states", "concept_key"),
+    ("mastery_states", "score"),
+    ("mastery_states", "streak"),
+    ("mastery_states", "total"),
+    ("mastery_states", "wrong_count"),
+    ("mastery_states", "last_signal_at"),
+])
+.with_expected_indexes(&[
+    "idx_mastery_events_concept_time",
+    "idx_mastery_events_item_time",
+    "idx_mastery_states_score",
+])
+.idempotent();
+
+/// V20260719: optional signal strength on mastery_events (A-P1 FSRS rating differentiation)
+pub const V20260719_MASTERY_EVENTS_SIGNAL: MigrationDef = MigrationDef::new(
+    20260719,
+    "mastery_events_signal",
+    include_str!("../../../migrations/vfs/V20260719__mastery_events_signal.sql"),
+)
+.with_expected_columns(&[("mastery_events", "signal")])
+.idempotent();
+
+/// V20260720: sync append-only mastery evidence; states remain derived.
+pub const V20260720_MASTERY_EVENTS_SYNC: MigrationDef = MigrationDef::new(
+    20260720,
+    "mastery_events_sync",
+    include_str!("../../../migrations/vfs/V20260720__mastery_events_sync.sql"),
+)
+.with_expected_columns(&[
+    ("mastery_events", "device_id"),
+    ("mastery_events", "local_version"),
+    ("mastery_events", "updated_at"),
+    ("mastery_events", "deleted_at"),
+])
+.with_expected_indexes(&[
+    "idx_mastery_events_local_version",
+    "idx_mastery_events_updated_at",
+    "idx_mastery_events_device_version",
+])
+.with_expected_queries(&[
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__change_log_mastery_events_insert'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__change_log_mastery_events_update'",
+    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg__change_log_mastery_events_delete'",
+])
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -701,6 +763,9 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260615_TODO_CYCLE_CHECK_FULL_GRAPH,
     V20260714_ADD_VECTOR_INDEX_PROFILES,
     V20260715_AUTOMATION_TODO_DELIVERY_RECEIPTS,
+    V20260718_ADD_MASTERY_TABLES,
+    V20260719_MASTERY_EVENTS_SIGNAL,
+    V20260720_MASTERY_EVENTS_SYNC,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -758,6 +823,9 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "todo_items",
     "automation_todo_deliveries",
     "pomodoro_records",
+    // 掌握度中间层
+    "mastery_events",
+    "mastery_states",
     // 本地辅助队列
     "__blob_deletion_queue",
     "__asset_deletion_queue",
@@ -770,7 +838,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 37;
+pub const VFS_TABLE_COUNT: usize = 39;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -816,6 +884,8 @@ mod tests {
         // + V20260615 (todo_cycle_check_full_graph)
         // + V20260714 (add_vector_index_profiles)
         // + V20260715 (automation_todo_delivery_receipts)
+        // + V20260718 (add_mastery_tables)
+        // + V20260719 (mastery_events_signal)
         assert_eq!(
             VFS_MIGRATION_SET.migrations.as_ptr(),
             VFS_MIGRATIONS.as_ptr()

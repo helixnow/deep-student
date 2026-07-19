@@ -860,7 +860,7 @@ pub fn search_all(
     }
 
     // 按更新时间排序（标题命中和内容命中统一排序）
-    results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
     Ok(results)
 }

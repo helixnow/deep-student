@@ -35,19 +35,16 @@ impl InjectionType {
 }
 
 /// 优先级级别
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 pub enum Priority {
     Critical = 1, // 关键内容，必须包含
     High = 2,     // 高优先级
-    Medium = 3,   // 中等优先级
+    #[default]
+    Medium = 3, // 中等优先级
     Low = 4,      // 低优先级
     Optional = 5, // 可选内容，预算不足时可丢弃
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Medium
-    }
 }
 
 /// 注入内容项
@@ -219,7 +216,7 @@ impl InjectionBudgetManager {
         for item in &self.pending_items {
             items_by_priority
                 .entry(item.priority)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(item.clone());
         }
 
@@ -396,7 +393,7 @@ impl InjectionBudgetManager {
     pub fn generate_injection_summary(&self, result: &AllocationResult) -> String {
         let mut summary = String::new();
 
-        summary.push_str(&format!("# 注入预算分配报告\n\n"));
+        summary.push_str("# 注入预算分配报告\n\n");
         summary.push_str(&format!("- 总预算: {} 字符\n", self.config.total_budget));
         summary.push_str(&format!("- 已使用: {} 字符\n", result.total_chars_used));
         summary.push_str(&format!("- 剩余: {} 字符\n", result.budget_remaining));

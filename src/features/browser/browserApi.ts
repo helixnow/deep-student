@@ -6,6 +6,7 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 
+import { assertBrowserGatesOpen, BrowserGateClosedError } from './gates';
 import type {
   BrowserCommandName,
   BrowserControlMode,
@@ -24,6 +25,17 @@ export class BrowserApiError extends Error {
     this.name = 'BrowserApiError';
     this.command = command;
     this.code = code;
+  }
+}
+
+async function ensureGatesOpen(command: BrowserCommandName): Promise<void> {
+  try {
+    await assertBrowserGatesOpen();
+  } catch (err) {
+    if (err instanceof BrowserGateClosedError) {
+      throw new BrowserApiError(command, err.message, err.code);
+    }
+    throw err;
   }
 }
 
@@ -234,6 +246,7 @@ export async function openSession(
   url?: string,
   opts?: { fromAgent?: boolean },
 ): Promise<BrowserSessionSnapshot> {
+  await ensureGatesOpen('browser_open_session');
   const normalized = url ? normalizeNavigationInput(url) : 'https://example.com';
   return invokeState('browser_open_session', {
     url: normalized,
@@ -252,6 +265,7 @@ export async function navigate(
   sessionId: string,
   opts?: { replace?: boolean; fromAgent?: boolean },
 ): Promise<BrowserSessionSnapshot> {
+  await ensureGatesOpen('browser_navigate');
   return invokeState('browser_navigate', {
     sessionId,
     url: normalizeNavigationInput(url),

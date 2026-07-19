@@ -475,7 +475,7 @@ impl PaperSaveExecutor {
         folder_id: Option<&str>,
         vfs_db: &Arc<crate::vfs::database::VfsDatabase>,
         ctx: &ExecutionContext,
-        progress: &mut Vec<PaperProgressItem>,
+        progress: &mut [PaperProgressItem],
         idx: usize,
     ) -> Result<Value, String> {
         let url = paper.get("url").and_then(|v| v.as_str());
@@ -617,7 +617,7 @@ impl PaperSaveExecutor {
         let blobs_dir = vfs_db.blobs_dir();
         let blob_hash = VfsBlobRepo::store_blob_with_conn(
             &conn,
-            &blobs_dir,
+            blobs_dir,
             &pdf_bytes,
             Some("application/pdf"),
             None,
@@ -631,7 +631,7 @@ impl PaperSaveExecutor {
 
         use crate::vfs::repos::pdf_preview::{render_pdf_preview, PdfPreviewConfig};
         let (preview_json, extracted_text, page_count) =
-            match render_pdf_preview(&conn, &blobs_dir, &pdf_bytes, &PdfPreviewConfig::default()) {
+            match render_pdf_preview(&conn, blobs_dir, &pdf_bytes, &PdfPreviewConfig::default()) {
                 Ok(result) => {
                     let preview_str = result
                         .preview_json
@@ -915,7 +915,7 @@ impl PaperSaveExecutor {
         &self,
         url: &str,
         ctx: &ExecutionContext,
-        progress: &mut Vec<PaperProgressItem>,
+        progress: &mut [PaperProgressItem],
         idx: usize,
     ) -> Result<Vec<u8>, String> {
         // 安全检查：只允许 HTTPS（除 localhost）

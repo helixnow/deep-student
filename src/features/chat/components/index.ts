@@ -61,6 +61,8 @@ export type { ContextRefsDisplayProps } from './ContextRefsDisplay';
 // Agent 能力增强组件（文档 29）
 export { ToolApprovalCard } from './ToolApprovalCard';
 export type { ApprovalRequestData, ToolApprovalCardProps } from './ToolApprovalCard';
+export { PlanGateCard } from './PlanGateCard';
+export type { PlanGateRequestData, PlanGateCardProps } from './PlanGateCard';
 export { CompletionCard } from './CompletionCard';
 export type { CompletionData, CompletionCardProps } from './CompletionCard';
 

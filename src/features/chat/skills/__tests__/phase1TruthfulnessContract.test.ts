@@ -34,9 +34,13 @@ describe('phase 1 truthfulness contracts', () => {
     expect(tool!.description).toContain(risk);
     expect(tool!.inputSchema).toMatchObject({
       additionalProperties: false,
-      required: ['plan_id'],
+      required: ['plan_id', 'expected_updated_at'],
     });
     expect(tool!.inputSchema.properties.plan_id).toMatchObject({
+      type: 'string',
+      minLength: 1,
+    });
+    expect(tool!.inputSchema.properties.expected_updated_at).toMatchObject({
       type: 'string',
       minLength: 1,
     });
@@ -52,9 +56,9 @@ describe('phase 1 truthfulness contracts', () => {
     expect(reviewPlanningSkill.content).not.toContain('可在复习界面暂停');
   });
 
-  it('documents the non-Windows browser fallback', () => {
-    expect(workbenchToolsSkill.content).toContain('browser 领域工具当前只在 Windows 暴露');
-    expect(workbenchToolsSkill.content).toContain('macOS/Linux');
+  it('documents the Linux browser fallback', () => {
+    expect(workbenchToolsSkill.content).toContain('browser 领域工具当前在 Windows/macOS 暴露');
+    expect(workbenchToolsSkill.content).toContain('Linux');
     expect(workbenchToolsSkill.content).toContain('请用户接管');
   });
 });

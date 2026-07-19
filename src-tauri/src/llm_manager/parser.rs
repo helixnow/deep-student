@@ -173,7 +173,7 @@ pub(crate) fn extract_semantic_sections(content: &str) -> Vec<serde_json::Value>
 
     // 尝试按句号或换行符分割
     let sentences: Vec<&str> = trimmed_content
-        .split(|c| c == '。' || c == '.' || c == '\n')
+        .split(['。', '.', '\n'])
         .map(|s| s.trim())
         .filter(|s| !s.is_empty() && s.len() > 10) // 过滤太短的内容
         .collect();

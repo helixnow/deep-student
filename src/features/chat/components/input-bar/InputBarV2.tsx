@@ -127,7 +127,7 @@ function getThinkingDepthLabel(
   value: DeepSeekReasoningOptionValue | undefined,
   t: TFunction
 ): string {
-  if (!value) return t('chatV2:inputBar.thinkingOn');
+  if (!value) return t('chatV2:inputBar.thinkingOn', '开启');
   const keySuffix = THINKING_DEPTH_LABEL_KEYS[kind][value];
   if (!keySuffix) return value;
   return t(`chatV2:inputBar.thinkingDepth.${keySuffix}`, THINKING_DEPTH_LABEL_FALLBACKS[keySuffix] ?? value);
@@ -271,6 +271,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       clearContextRefs,
       // 🆕 工具审批请求
       pendingApprovalRequest,
+      authorityMode,
+      authorityAskBlockedHint,
+      setAuthorityMode,
+      setAuthorityAskBlockedHint,
+      liveAuthorityBlockedBlockId,
     } = useStore(
       store,
       useShallow((s) => ({
@@ -310,8 +315,47 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         clearContextRefs: s.clearContextRefs,
         // 🆕 阻塞交互请求
         pendingApprovalRequest: s.pendingBlockingInteraction,
+        authorityMode: s.authorityMode ?? 'craft',
+        authorityAskBlockedHint: s.authorityAskBlockedHint ?? false,
+        setAuthorityMode: s.setAuthorityMode,
+        setAuthorityAskBlockedHint: s.setAuthorityAskBlockedHint,
+        liveAuthorityBlockedBlockId: (() => {
+          if (!s.currentStreamingMessageId) return null;
+          const messageMap = s.messageMap instanceof Map ? s.messageMap : new Map();
+          const blocks = s.blocks instanceof Map ? s.blocks : new Map();
+          const message = messageMap.get(s.currentStreamingMessageId);
+          if (message?.role !== 'assistant') return null;
+          return (message.blockIds ?? []).find((blockId) => {
+            const block = blocks.get(blockId) as {
+              error?: unknown;
+              toolOutput?: unknown;
+              output?: unknown;
+            } | undefined;
+            const error = typeof block?.error === 'string' ? block.error : '';
+            if (error.includes('AUTHORITY_BLOCKED') || error.includes('suggestedMode=plan')) {
+              return true;
+            }
+            const output = block?.toolOutput ?? block?.output;
+            return Boolean(
+              output &&
+              typeof output === 'object' &&
+              (output as { authorityBlocked?: boolean }).authorityBlocked === true,
+            );
+          }) ?? null;
+        })(),
       }))
     );
+
+    const handledAuthorityBlockRef = useRef<string | null>(null);
+    useEffect(() => {
+      handledAuthorityBlockRef.current = null;
+    }, [sessionId]);
+    useEffect(() => {
+      if (!liveAuthorityBlockedBlockId) return;
+      if (handledAuthorityBlockRef.current === liveAuthorityBlockedBlockId) return;
+      handledAuthorityBlockRef.current = liveAuthorityBlockedBlockId;
+      if (authorityMode === 'ask') setAuthorityAskBlockedHint(true);
+    }, [authorityMode, liveAuthorityBlockedBlockId, setAuthorityAskBlockedHint]);
 
     // 🆕 队列模式设置（来自本地存储）
     const queueSettings = useQueueSettings();
@@ -599,14 +643,14 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     );
 
     const thinkingStateLabel = useMemo(() => {
-      if (!runtimeModelSupportsReasoning) return t('chatV2:inputBar.thinkingState.unsupported');
-      if (!effectiveEnableThinking) return t('chatV2:inputBar.thinkingState.off');
+      if (!runtimeModelSupportsReasoning) return t('chatV2:inputBar.thinkingState.unsupported', '推理: 不支持');
+      if (!effectiveEnableThinking) return t('chatV2:inputBar.thinkingState.off', '推理: 关闭');
       const depthLabel = getThinkingDepthLabel(
         thinkingControl.kind,
         normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined,
         t
       );
-      return t('chatV2:inputBar.thinkingState.on', { depth: depthLabel });
+      return t('chatV2:inputBar.thinkingState.on', '推理: {{depth}}', { depth: depthLabel });
     }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, thinkingControl.kind, t]);
 
     // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 handleToggleAnkiTools
@@ -1164,6 +1208,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 🆕 工具审批请求
         pendingApprovalRequest={pendingApprovalRequest}
         sessionId={sessionId}
+        authorityMode={authorityMode}
+        onAuthorityModeChange={(mode) => setAuthorityMode(mode)}
+        authorityAskBlockedHint={authorityAskBlockedHint}
         // ★ PDF 页码引用
         pdfPageRefs={pdfPageRefs}
         onRemovePdfPageRef={removePdfPageRef}

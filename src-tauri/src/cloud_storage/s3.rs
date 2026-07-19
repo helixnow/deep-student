@@ -502,7 +502,7 @@ impl CloudStorage for S3Storage {
         }
 
         // 按修改时间降序排列
-        files.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+        files.sort_by_key(|b| std::cmp::Reverse(b.last_modified));
         Ok(files)
     }
 

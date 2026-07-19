@@ -84,7 +84,8 @@
       "cached_badge": "缓存",
       "server": "服务器",
       "no_tools": "暂无工具",
-      "builtin_hint": "在设置 → MCP 中管理"
+      "builtin_hint": "在设置 → MCP 中管理",
+      "no_matches": "没有匹配的服务器或工具"
     },
     "search_engine": {
       "title": "网络搜索",

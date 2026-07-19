@@ -141,6 +141,12 @@ pub struct QuestionImportCancellation {
     state: AtomicU8,
 }
 
+impl Default for QuestionImportCancellation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QuestionImportCancellation {
     pub fn new() -> Self {
         Self {
@@ -213,7 +219,9 @@ pub struct PdfTextInspection {
 /// 管线阶段标识（用于断点续导的状态机）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ImportStage {
+    #[default]
     Rasterized,
     VlmAnalyzing,
     VlmCompleted,
@@ -228,12 +236,6 @@ pub enum ImportStage {
     // DOCX VLM 直提路径阶段
     DocxVlmDirect,
     DocxVlmDirectDone,
-}
-
-impl Default for ImportStage {
-    fn default() -> Self {
-        Self::Rasterized
-    }
 }
 
 /// 断点续导状态（分阶段 checkpoint 状态机）
@@ -1051,7 +1053,7 @@ impl QuestionImportService {
     ) -> Result<Vec<PageSlice>, AppError> {
         let format = request.format.as_str();
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::RenderingPages {
                 current: 0,
                 total: 1,
@@ -1078,7 +1080,7 @@ impl QuestionImportService {
             .await
             .map_err(|e| AppError::internal(format!("渲染任务调度失败: {}", e)))??;
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::RenderingPages {
                 current: result.pages.len(),
                 total: result.pages.len(),
@@ -1532,7 +1534,7 @@ impl QuestionImportService {
             request.content.len()
         );
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "decoding".to_string(),
                 message: "正在解码文档...".to_string(),
@@ -1550,7 +1552,7 @@ impl QuestionImportService {
             docx_bytes.len()
         );
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "extracting".to_string(),
                 message: "正在提取文本和图片...".to_string(),
@@ -1584,7 +1586,7 @@ impl QuestionImportService {
                 continue;
             }
 
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Preprocessing {
                     stage: "storing_images".to_string(),
                     message: format!("正在存储图片 {}/{}...", idx + 1, total_to_store),
@@ -1604,7 +1606,7 @@ impl QuestionImportService {
         }
 
         // ===== 创建会话 =====
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "creating_session".to_string(),
                 message: "正在创建导入会话...".to_string(),
@@ -1685,7 +1687,7 @@ impl QuestionImportService {
         };
         save_checkpoint(vfs_db, &session_id, &checkpoint);
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::SessionCreated {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
@@ -1734,7 +1736,7 @@ impl QuestionImportService {
                     let entry = &image_map[idx];
 
                     // 通知前端 VLM 进度
-                    if let Some(ref tx) = progress_tx {
+                    if let Some(tx) = progress_tx {
                         let _ = tx.send(QuestionImportProgress::OcrImageCompleted {
                             image_index: idx,
                             total_images,
@@ -1786,7 +1788,7 @@ impl QuestionImportService {
                     save_checkpoint(vfs_db, session_id, checkpoint);
                 }
 
-                if let Some(ref tx) = progress_tx {
+                if let Some(tx) = progress_tx {
                     let _ = tx.send(QuestionImportProgress::OcrPhaseCompleted {
                         total_images,
                         total_chars: checkpoint
@@ -1850,7 +1852,7 @@ impl QuestionImportService {
                 continue;
             }
 
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::ChunkStart {
                     chunk_index: chunk_idx,
                     total_chunks,
@@ -1922,7 +1924,7 @@ impl QuestionImportService {
                         total_parsed += 1;
                         questions_in_chunk += 1;
 
-                        if let Some(ref tx) = progress_tx {
+                        if let Some(tx) = progress_tx {
                             let _ = tx.send(QuestionImportProgress::QuestionParsed {
                                 question: q.clone(),
                                 question_index: total_parsed - 1,
@@ -1945,7 +1947,7 @@ impl QuestionImportService {
             checkpoint.chunks_completed = chunk_idx + 1;
             save_checkpoint(vfs_db, session_id, checkpoint);
 
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::ChunkCompleted {
                     chunk_index: chunk_idx,
                     total_chunks,
@@ -1975,7 +1977,7 @@ impl QuestionImportService {
             } else {
                 "未能提取到题目".to_string()
             };
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
                     session_id: Some(session_id.to_string()),
                     error: error_msg.clone(),
@@ -1992,7 +1994,7 @@ impl QuestionImportService {
             log::warn!("[QuestionImport] 统计刷新失败: {}", e);
         }
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Completed {
                 session_id: session_id.to_string(),
                 name: qbank_name.clone(),
@@ -2124,7 +2126,7 @@ impl QuestionImportService {
         request: &ImportRequest,
         progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
     ) -> Result<ImportResult, AppError> {
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "decoding".to_string(),
                 message: "正在解析文档内容...".to_string(),
@@ -2146,7 +2148,7 @@ impl QuestionImportService {
             return Err(AppError::validation("文档内容为空"));
         }
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Preprocessing {
                 stage: "chunking".to_string(),
                 message: format!(
@@ -2242,7 +2244,7 @@ impl QuestionImportService {
         };
         save_checkpoint(vfs_db, &session_id, &checkpoint);
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::SessionCreated {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
@@ -2257,7 +2259,7 @@ impl QuestionImportService {
         let mut total_save_failed: usize = 0;
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::ChunkStart {
                     chunk_index: chunk_idx,
                     total_chunks,
@@ -2291,7 +2293,7 @@ impl QuestionImportService {
                         total_parsed += 1;
                         questions_in_chunk += 1;
 
-                        if let Some(ref tx) = progress_tx {
+                        if let Some(tx) = progress_tx {
                             let _ = tx.send(QuestionImportProgress::QuestionParsed {
                                 question: q.clone(),
                                 question_index: total_parsed - 1,
@@ -2317,7 +2319,7 @@ impl QuestionImportService {
             checkpoint.chunks_completed = chunk_idx + 1;
             save_checkpoint(vfs_db, &session_id, &checkpoint);
 
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::ChunkCompleted {
                     chunk_index: chunk_idx,
                     total_chunks,
@@ -2334,7 +2336,7 @@ impl QuestionImportService {
             } else {
                 "未能提取到题目".to_string()
             };
-            if let Some(ref tx) = progress_tx {
+            if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
                     session_id: Some(session_id.clone()),
                     error: error_msg.clone(),
@@ -2353,7 +2355,7 @@ impl QuestionImportService {
             log::warn!("[QuestionImport] 统计刷新失败: {}", e);
         }
 
-        if let Some(ref tx) = progress_tx {
+        if let Some(tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::Completed {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
@@ -2848,32 +2850,30 @@ fn json_to_question_params(
         }
     }
 
-    let question_type = q
-        .get("question_type")
-        .and_then(|v| v.as_str())
-        .and_then(|t| match t.to_lowercase().as_str() {
-            "single_choice" | "单选" | "单选题" => {
-                Some(crate::vfs::repos::QuestionType::SingleChoice)
-            }
-            "multiple_choice" | "多选" | "多选题" => {
-                Some(crate::vfs::repos::QuestionType::MultipleChoice)
-            }
-            "indefinite_choice" | "不定项" => {
-                Some(crate::vfs::repos::QuestionType::IndefiniteChoice)
-            }
-            "fill_blank" | "填空" | "填空题" => {
-                Some(crate::vfs::repos::QuestionType::FillBlank)
-            }
-            "short_answer" | "简答" | "简答题" => {
-                Some(crate::vfs::repos::QuestionType::ShortAnswer)
-            }
-            "essay" | "论述" | "论述题" => Some(crate::vfs::repos::QuestionType::Essay),
-            "calculation" | "计算" | "计算题" => {
-                Some(crate::vfs::repos::QuestionType::Calculation)
-            }
-            "proof" | "证明" | "证明题" => Some(crate::vfs::repos::QuestionType::Proof),
-            _ => Some(crate::vfs::repos::QuestionType::Other),
-        });
+    let question_type =
+        q.get("question_type")
+            .and_then(|v| v.as_str())
+            .map(|t| match t.to_lowercase().as_str() {
+                "single_choice" | "单选" | "单选题" => {
+                    crate::vfs::repos::QuestionType::SingleChoice
+                }
+                "multiple_choice" | "多选" | "多选题" => {
+                    crate::vfs::repos::QuestionType::MultipleChoice
+                }
+                "indefinite_choice" | "不定项" => {
+                    crate::vfs::repos::QuestionType::IndefiniteChoice
+                }
+                "fill_blank" | "填空" | "填空题" => crate::vfs::repos::QuestionType::FillBlank,
+                "short_answer" | "简答" | "简答题" => {
+                    crate::vfs::repos::QuestionType::ShortAnswer
+                }
+                "essay" | "论述" | "论述题" => crate::vfs::repos::QuestionType::Essay,
+                "calculation" | "计算" | "计算题" => {
+                    crate::vfs::repos::QuestionType::Calculation
+                }
+                "proof" | "证明" | "证明题" => crate::vfs::repos::QuestionType::Proof,
+                _ => crate::vfs::repos::QuestionType::Other,
+            });
 
     let difficulty = q.get("difficulty").and_then(|v| v.as_str()).and_then(|d| {
         match d.to_lowercase().as_str() {
@@ -3116,10 +3116,7 @@ fn extract_marker_positions(enriched_text: &str) -> Vec<(usize, usize)> {
 /// 2. 将换行符替换为空格，防止 segment_document 在标记 `<<IMG:N:[...]>>` 内部断开
 /// 3. 截断到 max_chars 防止单个标记过大
 fn sanitize_vlm_description(desc: &str, max_chars: usize) -> String {
-    let escaped = desc
-        .replace(">>", "> >")
-        .replace('\n', " ")
-        .replace('\r', " ");
+    let escaped = desc.replace(">>", "> >").replace(['\n', '\r'], " ");
     if escaped.chars().count() <= max_chars {
         escaped
     } else {
@@ -3549,6 +3546,12 @@ const CSV_IMPORT_COMPLETED: u8 = 2;
 #[derive(Debug)]
 pub struct CsvImportCancellation {
     state: AtomicU8,
+}
+
+impl Default for CsvImportCancellation {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CsvImportCancellation {
@@ -4112,10 +4115,7 @@ impl CsvImportService {
             }
         }
         for target_field in field_mapping.values() {
-            if !CSV_IMPORT_TARGET_FIELDS
-                .iter()
-                .any(|allowed| *allowed == target_field.as_str())
-            {
+            if !CSV_IMPORT_TARGET_FIELDS.contains(&target_field.as_str()) {
                 return Err(AppError::validation(format!(
                     "不支持的目标字段 '{}', 仅支持: {}",
                     target_field,

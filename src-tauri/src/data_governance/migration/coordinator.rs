@@ -398,7 +398,7 @@ impl MigrationCoordinator {
                 p.is_dir()
                     && p.file_name()
                         .and_then(|n| n.to_str())
-                        .map_or(false, |n| n.starts_with("startup_"))
+                        .is_some_and(|n| n.starts_with("startup_"))
             })
             .collect();
 
@@ -1307,43 +1307,99 @@ impl MigrationCoordinator {
         Ok(())
     }
 
+    /// Drop leading `--` / `/* */` trivia so statement classifiers see real SQL.
+    #[cfg(feature = "data_governance")]
+    fn strip_leading_sql_trivia(sql: &str) -> &str {
+        let mut rest = sql.trim_start();
+        loop {
+            if rest.starts_with("--") {
+                match rest.find('\n') {
+                    Some(pos) => rest = rest[pos + 1..].trim_start(),
+                    None => return "",
+                }
+                continue;
+            }
+            if let Some(body) = rest.strip_prefix("/*") {
+                match body.find("*/") {
+                    Some(pos) => rest = body[pos + 2..].trim_start(),
+                    None => return "",
+                }
+                continue;
+            }
+            break;
+        }
+        rest
+    }
+
+    #[cfg(feature = "data_governance")]
+    fn is_alter_add_column_statement(stmt: &str) -> bool {
+        let upper = Self::strip_leading_sql_trivia(stmt).to_uppercase();
+        upper.starts_with("ALTER TABLE ") && upper.contains(" ADD COLUMN ")
+    }
+
+    /// Split migration SQL using SQLite's own completeness parser. This covers
+    /// trigger bodies, CASE/END, all SQLite identifier quoting forms, comments,
+    /// and transaction statements without maintaining a second SQL grammar.
+    #[cfg(feature = "data_governance")]
+    fn split_sql_statements(sql: &str) -> Vec<String> {
+        let mut statements = Vec::new();
+        let mut current = String::new();
+        for ch in sql.chars() {
+            current.push(ch);
+            if ch != ';' {
+                continue;
+            }
+            let Ok(candidate) = std::ffi::CString::new(current.as_bytes()) else {
+                continue;
+            };
+            // SAFETY: candidate is NUL-terminated and valid for the duration of
+            // this call. sqlite3_complete performs no allocation or mutation.
+            let complete = unsafe { rusqlite::ffi::sqlite3_complete(candidate.as_ptr()) } != 0;
+            if complete {
+                let stmt = current.trim().trim_end_matches(';').trim().to_string();
+                if !stmt.is_empty() {
+                    statements.push(stmt);
+                }
+                current.clear();
+            }
+        }
+        let stmt = current.trim().to_string();
+        if !stmt.is_empty() {
+            statements.push(stmt);
+        }
+        statements
+    }
+
     /// 从迁移 SQL 中解析 ALTER TABLE ... ADD COLUMN 语句
     ///
     /// 返回 `(table_name, column_name)` 列表
     #[cfg(feature = "data_governance")]
     fn parse_alter_add_columns(sql: &str) -> Vec<(String, String)> {
         let mut results = Vec::new();
-        // 匹配 ALTER TABLE xxx ADD COLUMN yyy（不区分大小写）
-        for line in sql.lines() {
-            let trimmed = line.trim();
-            let upper = trimmed.to_uppercase();
-            if upper.contains("ALTER")
-                && upper.contains("TABLE")
-                && upper.contains("ADD")
-                && upper.contains("COLUMN")
-            {
-                // 解析: ALTER TABLE <table> ADD COLUMN <column> ...
-                let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-                // 找到 TABLE 后面的表名和 COLUMN 后面的列名
-                let mut table = None;
-                let mut column = None;
-                for i in 0..tokens.len() {
-                    let t = tokens[i].to_uppercase();
-                    if t == "TABLE" && i + 1 < tokens.len() && table.is_none() {
-                        table = Some(
-                            tokens[i + 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '_'),
-                        );
-                    }
-                    if t == "COLUMN" && i + 1 < tokens.len() && column.is_none() {
-                        column = Some(
-                            tokens[i + 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '_'),
-                        );
-                    }
+        for stmt in Self::split_sql_statements(sql) {
+            if !Self::is_alter_add_column_statement(&stmt) {
+                continue;
+            }
+            let trimmed = Self::strip_leading_sql_trivia(&stmt);
+            let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+            let mut table = None;
+            let mut column = None;
+            for i in 0..tokens.len() {
+                let t = tokens[i].to_uppercase();
+                if t == "TABLE" && i + 1 < tokens.len() && table.is_none() {
+                    table = Some(
+                        tokens[i + 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '_'),
+                    );
                 }
-                if let (Some(t), Some(c)) = (table, column) {
-                    if !t.is_empty() && !c.is_empty() {
-                        results.push((t.to_string(), c.to_string()));
-                    }
+                if t == "COLUMN" && i + 1 < tokens.len() && column.is_none() {
+                    column = Some(
+                        tokens[i + 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '_'),
+                    );
+                }
+            }
+            if let (Some(t), Some(c)) = (table, column) {
+                if !t.is_empty() && !c.is_empty() {
+                    results.push((t.to_string(), c.to_string()));
                 }
             }
         }
@@ -1353,37 +1409,37 @@ impl MigrationCoordinator {
     /// 从 SQL 中提取列定义（ALTER TABLE xxx ADD COLUMN yyy <definition>）
     ///
     /// 返回 COLUMN 名称之后的类型定义部分，如 "TEXT DEFAULT 'pending'"
+    ///（含跨行 `CHECK (...)` 约束）
     #[cfg(feature = "data_governance")]
     fn extract_column_def(sql: &str, target_table: &str, target_column: &str) -> String {
-        for line in sql.lines() {
-            let trimmed = line.trim().trim_end_matches(';');
-            let upper = trimmed.to_uppercase();
-            if !upper.contains("ALTER") || !upper.contains("ADD") || !upper.contains("COLUMN") {
+        let upper_table = target_table.to_uppercase();
+        let upper_column = target_column.to_uppercase();
+        for stmt in Self::split_sql_statements(sql) {
+            if !Self::is_alter_add_column_statement(&stmt) {
                 continue;
             }
-            // 检查是否匹配目标表和列
-            let upper_table = target_table.to_uppercase();
-            let upper_column = target_column.to_uppercase();
+            let trimmed = Self::strip_leading_sql_trivia(&stmt)
+                .trim()
+                .trim_end_matches(';');
+            let upper = trimmed.to_uppercase();
             if !upper.contains(&upper_table) || !upper.contains(&upper_column) {
                 continue;
             }
-            // 找到 COLUMN <name> 之后的部分作为类型定义
             let tokens: Vec<&str> = trimmed.split_whitespace().collect();
             for i in 0..tokens.len() {
                 if tokens[i].to_uppercase() == "COLUMN" && i + 1 < tokens.len() {
                     let col_name =
                         tokens[i + 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
                     if col_name.to_uppercase() == upper_column {
-                        // COLUMN 名之后的所有 token 就是类型定义
                         if i + 2 < tokens.len() {
                             return tokens[i + 2..].join(" ");
                         }
-                        return "TEXT".to_string(); // 默认类型
+                        return "TEXT".to_string();
                     }
                 }
             }
         }
-        "TEXT".to_string() // 兜底默认
+        "TEXT".to_string()
     }
 
     /// 重放未记录迁移中除 `ALTER TABLE ... ADD COLUMN` 外的全部 SQL。
@@ -1391,6 +1447,9 @@ impl MigrationCoordinator {
     /// ALTER 列已由 `make_alter_columns_safe` 检查/补齐；其余语句必须作为完整
     /// batch 执行，才能正确恢复多行 trigger/index 以及 backfill/cleanup DML。
     /// 只有 batch 全部成功后调用方才会写入 refinery history。
+    ///
+    /// 必须按语句边界跳过 ALTER（而非按行）：多行
+    /// `ADD COLUMN ... CHECK (...)` 若只跳过首行会留下孤立的 `CHECK` 片段。
     #[cfg(feature = "data_governance")]
     fn replay_migration_without_alter_add_columns(
         conn: &rusqlite::Connection,
@@ -1398,14 +1457,16 @@ impl MigrationCoordinator {
         version: i32,
     ) -> Result<(), MigrationError> {
         let mut replay_sql = String::with_capacity(sql.len());
-        for line in sql.lines() {
-            let trimmed = line.trim_start();
-            let upper = trimmed.to_uppercase();
-            if upper.starts_with("ALTER TABLE ") && upper.contains(" ADD COLUMN ") {
+        for stmt in Self::split_sql_statements(sql) {
+            if Self::is_alter_add_column_statement(&stmt) {
                 continue;
             }
-            replay_sql.push_str(line);
-            replay_sql.push('\n');
+            replay_sql.push_str(&stmt);
+            replay_sql.push_str(";\n");
+        }
+
+        if replay_sql.trim().is_empty() {
+            return Ok(());
         }
 
         conn.execute_batch(&replay_sql).map_err(|e| {
@@ -4201,6 +4262,45 @@ mod tests {
         let coordinator =
             MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None); // 测试时不需要审计日志
         (coordinator, temp_dir)
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn sql_splitter_keeps_case_end_inside_trigger_body() {
+        let sql = r#"
+            ALTER TABLE sample ADD COLUMN extra TEXT;
+            CREATE TRIGGER sample_ai AFTER INSERT ON sample
+            BEGIN
+                INSERT INTO audit(value)
+                VALUES (CASE WHEN NEW.extra IS NULL THEN 'none' ELSE NEW.extra END);
+                UPDATE counters SET value = value + 1;
+            END;
+            CREATE INDEX sample_extra ON sample(extra);
+        "#;
+        let statements = MigrationCoordinator::split_sql_statements(sql);
+        assert_eq!(statements.len(), 3, "{statements:#?}");
+        assert!(statements[1].contains("CASE WHEN"));
+        assert!(statements[1].contains("UPDATE counters"));
+        assert!(statements[1].trim_end().ends_with("END"));
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn sql_splitter_delegates_quotes_comments_and_transactions_to_sqlite() {
+        let sql = r#"
+            /* a block comment containing ; and CASE END */
+            CREATE TABLE [odd;table] (`semi;column` TEXT, "double;column" TEXT);
+            INSERT INTO [odd;table] VALUES ('value;still-string', 'x');
+            BEGIN TRANSACTION;
+            UPDATE [odd;table] SET `semi;column` = 'inside;transaction';
+            COMMIT;
+        "#;
+        let statements = MigrationCoordinator::split_sql_statements(sql);
+        assert_eq!(statements.len(), 5, "{statements:#?}");
+        assert!(statements[0].contains("[odd;table]"));
+        assert!(statements[1].contains("value;still-string"));
+        assert_eq!(statements[2], "BEGIN TRANSACTION");
+        assert_eq!(statements[4], "COMMIT");
     }
 
     fn create_test_sqlite_db(path: &std::path::Path) {

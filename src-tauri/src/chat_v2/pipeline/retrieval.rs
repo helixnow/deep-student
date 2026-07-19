@@ -244,7 +244,7 @@ impl ChatV2Pipeline {
             .search(
                 query,
                 top_k as usize,
-                folder_ids_ref.as_ref().map(|v| v.as_slice()),
+                folder_ids_ref.as_deref(),
                 None, // resource_types
             )
             .await;

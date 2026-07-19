@@ -8,6 +8,17 @@ const mockShowGlobalNotification = vi.hoisted(() => vi.fn());
 const mockShowMigrationStatus = vi.hoisted(() => vi.fn());
 const mockClearMigrationStatus = vi.hoisted(() => vi.fn());
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, defaultValue?: string | Record<string, unknown>) => {
+      if (typeof defaultValue === 'string') return defaultValue;
+      return key;
+    },
+    i18n: { language: 'zh-CN', changeLanguage: vi.fn() },
+  }),
+  initReactI18next: { type: '3rdParty', init: () => undefined },
+}));
+
 vi.mock('@/api/dataGovernance', () => ({
   DataGovernanceApi: {
     runSlotCEmptyDbTest: mockRunSlotCEmptyDbTest,

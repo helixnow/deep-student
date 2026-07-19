@@ -18,7 +18,15 @@
     "listenerRegistrationFailedMessage": "Event listener registration failed",
     "listenerRegistrationFailed": "Listener registration failed",
     "sessionLoadFailedMessage": "A new session was created automatically. Check network or restart the app if needed.",
-    "sessionLoadFailed": "Session load failed"
+    "sessionLoadFailed": "Session load failed",
+    "streamInterrupted": "Stream interrupted",
+    "abortFailed": "Abort failed",
+    "abortFailedMessage": "Could not reliably abort generation; local state was force-reset",
+    "killSwitchBlocked": "Agents are powered off. Resume them from the desktop control center, then try again."
+  },
+  "killSwitch": {
+    "tripped": "Agents powered off",
+    "resumeHint": "Resume agents from AI desktop control"
   },
   "success": {
     "listenerRetrySuccessMessage": "Event listener retry succeeded",
@@ -1404,6 +1412,29 @@
     "showMore": "Show more (+{{count}})",
     "showLess": "Show less",
     "addPlaceholder": "Add tag"
+  },
+  "authority": {
+    "segmentLabel": "Session authority mode",
+    "modes": {
+      "ask": "Ask",
+      "plan": "Plan",
+      "craft": "Craft"
+    },
+    "hints": {
+      "ask": "Read-only: write tools are refused",
+      "plan": "Writes wait for plan confirmation",
+      "craft": "Follow normal tool approval policy"
+    },
+    "switchToPlan": "Switch to Plan",
+    "askBlocked": "Ask mode refused a write tool",
+    "planGate": {
+      "title": "Confirm plan execution",
+      "fallbackSummary": "The model is ready to run write tools",
+      "tool": "Tool",
+      "countdown": "Auto-reject in {{seconds}}s",
+      "approve": "Confirm & run",
+      "reject": "Reject"
+    }
   },
   "approval": {
     "title": "Tool Execution Confirmation",

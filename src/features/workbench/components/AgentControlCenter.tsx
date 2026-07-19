@@ -1,5 +1,6 @@
 import React from 'react';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import {
   Books,
   CaretDown,
@@ -12,6 +13,7 @@ import {
   Globe,
   ListChecks,
   ShieldCheck,
+  Stop,
   Timer,
   TreeStructure,
 } from '@phosphor-icons/react';
@@ -31,8 +33,40 @@ import './AgentControlCenter.css';
 export const AGENT_CONTROL_DOCK_ID = '__agent_control__';
 export const AGENT_CONTROL_SETTING_KEY = 'desktop.workbenchAgentControl';
 export const AGENT_CONTROL_DISCOVERY_SEEN_KEY = 'workbench.agentControl.discoverySeen.v1';
+export const KILL_SWITCH_CHANGED_EVENT = 'chat_v2://kill_switch_changed';
 
 export type AgentControlMode = 'off' | 'background' | 'follow';
+
+export interface KillSwitchStatus {
+  tripped: boolean;
+  trippedAtMs?: number | null;
+  reason?: string | null;
+  automationsPaused: boolean;
+  cancelledStreams?: number;
+}
+
+function parseKillSwitchStatus(raw: unknown): KillSwitchStatus {
+  const value = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    tripped: Boolean(value.tripped),
+    trippedAtMs:
+      typeof value.trippedAtMs === 'number'
+        ? value.trippedAtMs
+        : typeof value.tripped_at_ms === 'number'
+          ? value.tripped_at_ms
+          : null,
+    reason: typeof value.reason === 'string' ? value.reason : null,
+    automationsPaused: Boolean(
+      value.automationsPaused ?? value.automations_paused ?? false,
+    ),
+    cancelledStreams:
+      typeof value.cancelledStreams === 'number'
+        ? value.cancelledStreams
+        : typeof value.cancelled_streams === 'number'
+          ? value.cancelled_streams
+          : undefined,
+  };
+}
 
 const CAPABILITY_APP_IDS = [
   'note',
@@ -202,6 +236,14 @@ export function AgentControlDockEntry({
   const [loading, setLoading] = React.useState(true);
   const [saveError, setSaveError] = React.useState(false);
   const [seen, setSeen] = React.useState(readDiscoverySeen);
+  const [killSwitch, setKillSwitch] = React.useState<KillSwitchStatus>({
+    tripped: false,
+    automationsPaused: false,
+  });
+  const [killSwitchBusy, setKillSwitchBusy] = React.useState(false);
+  const [killSwitchError, setKillSwitchError] = React.useState<string | null>(null);
+  const [confirmStop, setConfirmStop] = React.useState(false);
+  const [confirmResumeAutomations, setConfirmResumeAutomations] = React.useState(false);
   const popoverRef = React.useRef<HTMLDivElement | null>(null);
 
   useLiquidGlassLens(popoverRef, open);
@@ -232,8 +274,38 @@ export function AgentControlDockEntry({
         if (!cancelled) setLoading(false);
       });
 
+    void (tauriInvoke('chat_v2_kill_switch_status') as Promise<unknown>)
+      .then((raw) => {
+        if (!cancelled) setKillSwitch(parseKillSwitchStatus(raw));
+      })
+      .catch(() => {
+        // Kill switch status is optional outside Tauri/tests.
+      });
+
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void listen<unknown>(KILL_SWITCH_CHANGED_EVENT, (event) => {
+      setKillSwitch(parseKillSwitchStatus(event.payload));
+      setConfirmStop(false);
+      setConfirmResumeAutomations(false);
+      setKillSwitchError(null);
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
+        // Event bridge unavailable in pure vitest / non-Tauri shells.
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
     };
   }, []);
 
@@ -264,6 +336,11 @@ export function AgentControlDockEntry({
       setSeen(true);
       markDiscoverySeen();
     }
+    if (!next) {
+      setConfirmStop(false);
+      setConfirmResumeAutomations(false);
+      setKillSwitchError(null);
+    }
   }, [seen]);
 
   const openChat = React.useCallback(() => {
@@ -283,10 +360,63 @@ export function AgentControlDockEntry({
     window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'general' } }));
   }, [handleOpenChange]);
 
+  const runEmergencyStop = React.useCallback(async () => {
+    if (killSwitchBusy) return;
+    setKillSwitchBusy(true);
+    setKillSwitchError(null);
+    try {
+      const raw = await tauriInvoke('chat_v2_emergency_stop', {
+        reason: 'user_emergency_stop',
+      });
+      setKillSwitch(parseKillSwitchStatus(raw));
+      setConfirmStop(false);
+    } catch {
+      setKillSwitchError(t('agentControlCenter.killSwitch.stopFailed'));
+    } finally {
+      setKillSwitchBusy(false);
+    }
+  }, [killSwitchBusy, t]);
+
+  const runResumeAgents = React.useCallback(async () => {
+    if (killSwitchBusy) return;
+    setKillSwitchBusy(true);
+    setKillSwitchError(null);
+    try {
+      const raw = await tauriInvoke('chat_v2_resume_agents');
+      setKillSwitch(parseKillSwitchStatus(raw));
+    } catch {
+      setKillSwitchError(t('agentControlCenter.killSwitch.resumeFailed'));
+    } finally {
+      setKillSwitchBusy(false);
+    }
+  }, [killSwitchBusy, t]);
+
+  const runResumeAutomations = React.useCallback(async () => {
+    if (killSwitchBusy) return;
+    setKillSwitchBusy(true);
+    setKillSwitchError(null);
+    try {
+      const raw = await tauriInvoke('chat_v2_resume_automations');
+      setKillSwitch(parseKillSwitchStatus(raw));
+      setConfirmResumeAutomations(false);
+    } catch {
+      setKillSwitchError(t('agentControlCenter.killSwitch.resumeFailed'));
+    } finally {
+      setKillSwitchBusy(false);
+    }
+  }, [killSwitchBusy, t]);
+
   const statusLabel = t(`settings.agentControl.${mode}`);
-  const triggerLabel = t('agentControlCenter.triggerLabel', {
+  const showAutomationsPausedNotice =
+    !killSwitch.tripped && killSwitch.automationsPaused;
+  const baseTriggerLabel = t('agentControlCenter.triggerLabel', {
     status: statusLabel,
   });
+  const triggerLabel = killSwitch.tripped
+    ? `${baseTriggerLabel}. ${t('agentControlCenter.killSwitch.trippedBanner')}`
+    : showAutomationsPausedNotice
+      ? `${baseTriggerLabel}. ${t('agentControlCenter.killSwitch.automationsStillPaused')}`
+      : baseTriggerLabel;
 
   return (
     <div
@@ -304,6 +434,7 @@ export function AgentControlDockEntry({
                 data-type-id={AGENT_CONTROL_DOCK_ID}
                 data-testid="wb-dock-agent-control-button"
                 data-mode={mode}
+                data-kill-switch={killSwitch.tripped ? 'tripped' : undefined}
                 data-unseen={!seen || undefined}
                 className="wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none"
                 aria-label={triggerLabel}
@@ -320,6 +451,14 @@ export function AgentControlDockEntry({
                     className="wb-agent-control-app-icon"
                   />
                 </span>
+                {(killSwitch.tripped || showAutomationsPausedNotice) && (
+                  <span
+                    aria-hidden="true"
+                    className="wb-agent-kill-dock-badge"
+                    data-testid="wb-agent-kill-switch-dock-badge"
+                    data-state={killSwitch.tripped ? 'tripped' : 'paused'}
+                  />
+                )}
               </button>
             </PopoverTrigger>
 
@@ -380,6 +519,136 @@ export function AgentControlDockEntry({
                       {t('agentControlCenter.saveFailed')}
                     </p>
                   )}
+                </div>
+
+                {(killSwitch.tripped || showAutomationsPausedNotice) && (
+                  <div
+                    className="wb-agent-kill-banner"
+                    data-testid="wb-agent-kill-switch-banner"
+                    role="status"
+                    aria-live="assertive"
+                    aria-atomic="true"
+                    aria-busy={killSwitchBusy || undefined}
+                  >
+                    <p>
+                      {killSwitch.tripped
+                        ? t('agentControlCenter.killSwitch.trippedBanner')
+                        : t('agentControlCenter.killSwitch.automationsStillPaused')}
+                    </p>
+                    {killSwitch.tripped && killSwitch.reason ? (
+                      <small>
+                        {t('agentControlCenter.killSwitch.trippedReason', {
+                          reason: killSwitch.reason,
+                        })}
+                      </small>
+                    ) : null}
+                    <div className="wb-agent-kill-banner-actions">
+                      {killSwitch.tripped ? (
+                        <NotionButton
+                          type="button"
+                          size="sm"
+                          variant="shell"
+                          disabled={killSwitchBusy}
+                          data-testid="wb-agent-resume-agents"
+                          onClick={() => void runResumeAgents()}
+                        >
+                          {t('agentControlCenter.killSwitch.resumeAgents')}
+                        </NotionButton>
+                      ) : null}
+                      {showAutomationsPausedNotice ? (
+                        confirmResumeAutomations ? (
+                          <>
+                            <NotionButton
+                              type="button"
+                              size="sm"
+                              variant="shell"
+                              disabled={killSwitchBusy}
+                              data-testid="wb-agent-resume-automations-confirm"
+                              onClick={() => void runResumeAutomations()}
+                            >
+                              {t('agentControlCenter.killSwitch.confirmResumeAutomations')}
+                            </NotionButton>
+                            <NotionButton
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={killSwitchBusy}
+                              onClick={() => setConfirmResumeAutomations(false)}
+                            >
+                              {t('agentControlCenter.killSwitch.cancelConfirm')}
+                            </NotionButton>
+                          </>
+                        ) : (
+                          <NotionButton
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={killSwitchBusy}
+                            data-testid="wb-agent-resume-automations"
+                            onClick={() => setConfirmResumeAutomations(true)}
+                          >
+                            {t('agentControlCenter.killSwitch.resumeAutomations')}
+                          </NotionButton>
+                        )
+                      ) : null}
+                    </div>
+                    {confirmResumeAutomations && showAutomationsPausedNotice ? (
+                      <small className="wb-agent-kill-confirm-copy">
+                        {t('agentControlCenter.killSwitch.resumeAutomationsConfirm')}
+                      </small>
+                    ) : null}
+                  </div>
+                )}
+
+                <div
+                  className="wb-agent-kill-switch"
+                  data-testid="wb-agent-kill-switch"
+                  aria-busy={killSwitchBusy || undefined}
+                >
+                  {confirmStop ? (
+                    <div className="wb-agent-kill-confirm">
+                      <p>{t('agentControlCenter.killSwitch.emergencyStopConfirm')}</p>
+                      <div className="wb-agent-kill-banner-actions">
+                        <NotionButton
+                          type="button"
+                          size="sm"
+                          className="wb-agent-emergency-stop"
+                          disabled={killSwitchBusy}
+                          data-testid="wb-agent-emergency-stop-confirm"
+                          onClick={() => void runEmergencyStop()}
+                        >
+                          <Stop size={14} weight="fill" aria-hidden="true" />
+                          {t('agentControlCenter.killSwitch.confirmStop')}
+                        </NotionButton>
+                        <NotionButton
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={killSwitchBusy}
+                          onClick={() => setConfirmStop(false)}
+                        >
+                          {t('agentControlCenter.killSwitch.cancelConfirm')}
+                        </NotionButton>
+                      </div>
+                    </div>
+                  ) : (
+                    <NotionButton
+                      type="button"
+                      size="sm"
+                      className="wb-agent-emergency-stop"
+                      disabled={killSwitchBusy || killSwitch.tripped}
+                      data-testid="wb-agent-emergency-stop"
+                      onClick={() => setConfirmStop(true)}
+                    >
+                      <Stop size={14} weight="fill" aria-hidden="true" />
+                      {t('agentControlCenter.killSwitch.emergencyStop')}
+                    </NotionButton>
+                  )}
+                  {killSwitchError ? (
+                    <p className="wb-agent-control-error" role="alert">
+                      {killSwitchError}
+                    </p>
+                  ) : null}
                 </div>
 
                 <AgentCapabilitySummary />

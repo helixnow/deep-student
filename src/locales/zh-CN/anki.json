@@ -789,6 +789,7 @@
     "expandAll": "展开全部",
     "collapseAll": "收起全部",
     "editInline": "编辑",
+    "editCard": "编辑卡片 {{index}}",
     "saveEdit": "保存",
     "cancelEdit": "取消",
     "cardIndex": "第 {{index}} 张",

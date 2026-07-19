@@ -5,19 +5,25 @@
  * zip 直链、ClawHub / skills.sh 页面）转化为 scan → 确认 → install 的治理正门安装流。
  * 对标 Codex App 的 Skill Installer / Hermes 的 skills install。
  *
- * 无自带 embeddedTools：通过 dependencies 拉起 workspace-tools（shell +
- * skill_scan / skill_install）完成实际操作。
+ * 自带 ClawHub 只读 embeddedTools（search / skill_detail）；写操作（download+install）
+ * 仍需用户确认。其余通过 dependencies 拉起 workspace-tools（shell +
+ * skill_scan / skill_install）。
  */
 
 import type { SkillDefinition } from '../types';
 import { SKILL_DEFAULT_PRIORITY } from '../types';
 
+export const CLAWHUB_READ_TOOL_NAMES = [
+  'builtin-clawhub_search',
+  'builtin-clawhub_skill_detail',
+] as const;
+
 export const skillInstallerSkill: SkillDefinition = {
   id: 'skill-installer',
   name: '技能安装器',
   description:
-    '从链接安装技能包：用户粘贴 GitHub 仓库/子目录链接、SKILL.md 原始链接、zip 直链或 ClawHub/skills.sh 页面链接时使用。兼容 OpenClaw、Claude Code、Codex 等 AgentSkills 体系的 SKILL.md 技能。负责拉取、规范打包、风险扫描、征求用户确认后经审批安装。',
-  version: '1.0.0',
+    '从链接安装技能包：用户粘贴 GitHub 仓库/子目录链接、SKILL.md 原始链接、zip 直链或 ClawHub/skills.sh 页面链接时使用。ClawHub 用 builtin-clawhub_search / builtin-clawhub_skill_detail 只读检索，安装仍需用户确认后走 clawhub_download_and_scan / skill_install。兼容 OpenClaw、Claude Code、Codex 等 AgentSkills 体系的 SKILL.md 技能。',
+  version: '1.2.0',
   author: 'Deep Student',
   location: 'builtin',
   sourcePath: 'builtin://skill-installer',
@@ -26,16 +32,65 @@ export const skillInstallerSkill: SkillDefinition = {
   isBuiltin: true,
   skillType: 'composite',
   dependencies: ['workspace-tools'],
+  allowedTools: [...CLAWHUB_READ_TOOL_NAMES],
+  embeddedTools: [
+    {
+      name: 'builtin-clawhub_search',
+      description:
+        'Search or browse ClawHub skill marketplace (read-only). Empty q returns trending/sorted list. Prefer this over web_fetch for ClawHub discovery. Default nonSuspiciousOnly=true.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          q: {
+            type: 'string',
+            description: 'Search query; omit or empty for browse/trending list',
+          },
+          limit: {
+            type: 'integer',
+            description: 'Max results (default 24, max 50)',
+            minimum: 1,
+            maximum: 50,
+          },
+          nonSuspiciousOnly: {
+            type: 'boolean',
+            description: 'Filter out suspicious skills (default true)',
+            default: true,
+          },
+          sort: {
+            type: 'string',
+            enum: ['trending', 'downloads', 'stars'],
+            description: 'Browse sort when q is empty (default trending)',
+          },
+        },
+      },
+    },
+    {
+      name: 'builtin-clawhub_skill_detail',
+      description:
+        'Fetch ClawHub skill detail by slug (read-only): display name, summary, latest version, downloads, owner. Use before verify/install to confirm slug and version.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          slug: {
+            type: 'string',
+            description: 'ClawHub skill slug (e.g. sonoscli)',
+          },
+        },
+        required: ['slug'],
+      },
+    },
+  ],
   content: `# 技能安装器（Skill Installer）
 
 用户发来一个"技能链接"希望安装时，按本流程操作。目标：**链接 → 拉取 → 规范打包 → 扫描预览 → 用户确认 → 审批安装**。
 
 ## 铁律（先读）
 
-1. **禁止**用 shell / 文件工具直接读写任何技能目录（\`~/.deep-student/skills\`、\`.claude/skills\`、\`.agents/skills\` 等）——shell 已封侧门，命中即被拒绝。落盘技能**只能**经 \`builtin-skill_scan\` → \`builtin-skill_install\`。
+1. **禁止**用 shell / 文件工具直接读写任何技能目录（\`~/.deep-student/skills\`、\`.claude/skills\`、\`.agents/skills\` 等）——shell 已封侧门，命中即被拒绝。落盘技能**只能**经 \`builtin-skill_scan\` → \`builtin-skill_install\`（或 ClawHub 确认后的 \`clawhub_download_and_scan\`）。
 2. 所有下载、解压、打包操作都在会话 **temp** runtime root 里做（\`root_id=temp\`）。
-3. \`skill_install\` 是 High 审批工具：调用前必须先向用户展示 scan 的风险摘要并获得口头确认。
+3. \`skill_install\` / ClawHub 安装是 High 审批或需用户口头确认：调用前必须先向用户展示 scan 的风险摘要并获得确认。
 4. zip 包上限 64MB；大仓库只打包技能子目录，不打包整个仓库。
+5. **ClawHub 只读工具**已对本技能开放：\`builtin-clawhub_search\`、\`builtin-clawhub_skill_detail\`。写操作（下载安装）**不要**擅自执行，须用户确认。
 
 ## 第一步：识别链接形态
 
@@ -45,11 +100,23 @@ export const skillInstallerSkill: SkillDefinition = {
 | GitHub 仓库 | \`github.com/{owner}/{repo}\` | 走 B |
 | GitHub 子目录 | \`github.com/{o}/{r}/tree/{ref}/{path}\` | 走 B（只打包该子目录） |
 | SKILL.md 原始链接 | \`https://.../SKILL.md\` 或 raw.githubusercontent.com | 走 C |
-| ClawHub / skills.sh 页面 | \`clawhub.ai/...\`、\`skills.sh/...\` | 先用 \`builtin-web_fetch\` 读页面找到底层 GitHub 仓库或 zip 链接，再走 B/A |
+| ClawHub 页面 / slug | \`clawhub.ai/...\`、slug 如 \`sonoscli\` | **走路径 D（ClawHub 专用工具）**，不要再用 web_fetch 扒页面 |
+| skills.sh 页面 | \`skills.sh/...\` | 先用 \`builtin-web_fetch\` 读页面找到底层 GitHub 仓库或 zip / ClawHub slug，再走 B/A/D |
 
-无法识别时：用 \`builtin-web_fetch\` 读页面判断，或直接问用户要 GitHub 地址。
+无法识别时：用 \`builtin-web_fetch\` 读页面判断，或直接问用户要 GitHub / ClawHub 地址。
 
-> 提示：对整仓库多技能的场景，也可以建议用户直接打开「技能管理 → 技能源」，粘贴仓库链接即可图形化浏览与安装（同一套扫描/审批管线），无需走终端。
+> 提示：对整仓库多技能的场景，也可以建议用户直接打开「技能管理 → 技能源」，粘贴仓库链接即可图形化浏览与安装（同一套扫描/审批管线），无需走终端。ClawHub 市场在同一面板的「ClawHub」标签页。
+
+## 路径 D：ClawHub（推荐，专用工具）
+
+用户给出 ClawHub 链接或 slug 时，**直接走 ClawHub 工具**，不要 shell/curl 拼装，也不要用 web_fetch 扒市场页：
+
+1. （可选只读）\`builtin-clawhub_search\` 发现技能，或 \`builtin-clawhub_skill_detail\` 确认 slug 与 latest \`version\`。
+2. \`clawhub_verify\`（\`slug\` + \`version\`）——向用户展示 \`ok\` / \`decision\` / \`security.status\` / publisher。
+3. \`clawhub_download_and_scan\`（\`install: false\`）——下载（含 GitHub handoff 分支）并扫描，展示 \`risk_level\` / \`risk_signals\`。
+4. **用户口头确认后**，再调 \`clawhub_download_and_scan\`（\`install: true\`，按需 \`overwrite: true\`）。
+
+provenance 会记为 \`clawhub:{slug}@{version}\`（\`sourceKind=clawhub\`）。默认 \`nonSuspiciousOnly=true\`；仅当用户明确要求查看可疑技能时才关闭该过滤。
 
 ## 路径 A：zip 直链（最简单）
 

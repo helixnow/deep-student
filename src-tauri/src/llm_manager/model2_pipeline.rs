@@ -2178,7 +2178,7 @@ impl LLMManager {
         let merged_history = Self::merge_consecutive_tool_calls(&chat_history);
 
         // 添加聊天历史（逐条处理用户图片与工具调用消息的标准化）
-        for (_index, merged_msg) in merged_history.iter().enumerate() {
+        for merged_msg in merged_history.iter() {
             match merged_msg {
                 // 🔧 P1修复：处理合并的工具调用消息
                 // 🔧 Anthropic 最佳实践：必须保留 thinking_content
@@ -2758,9 +2758,7 @@ impl LLMManager {
                         llm_manager: None, // fallback 场景不需要重排器
                     };
 
-                    if let Some(last_user_msg) =
-                        chat_history.iter().filter(|m| m.role == "user").last()
-                    {
+                    if let Some(last_user_msg) = chat_history.iter().rfind(|m| m.role == "user") {
                         let memory_enabled_effective = memory_enabled_from_context.unwrap_or(true);
                         if memory_enabled_effective {
                             let _ = window.emit(
@@ -2894,7 +2892,7 @@ impl LLMManager {
                                 tc.get("function")
                                     .and_then(|f| f.get("name"))
                                     .and_then(|n| n.as_str())
-                                    .map_or(false, |name| name == "load_skills")
+                                    == Some("load_skills")
                             })
                         })
                 })
@@ -4242,7 +4240,7 @@ impl LLMManager {
         // 对于推理模型，系统消息需要合并到用户消息中
         if config.is_reasoning {
             // 推理模型不支持系统消息，需要将系统提示合并到用户消息中
-            let combined_content = format!("{}", system_content);
+            let combined_content = system_content.to_string();
 
             if config.is_multimodal && images_base64.is_some() && chat_history.is_empty() {
                 let mut content = vec![json!({
@@ -4591,15 +4589,14 @@ impl LLMManager {
         let summary = metadata_value
             .get("summary")
             .and_then(|v| v.as_str())
-            .map(|s| {
+            .and_then(|s| {
                 let trimmed = s.trim();
                 if trimmed.is_empty() {
                     None
                 } else {
                     Some(trimmed.to_string())
                 }
-            })
-            .flatten();
+            });
 
         let tags: Vec<String> = metadata_value
             .get("tags")
@@ -4843,7 +4840,7 @@ impl LLMManager {
         let timeout_duration = std::time::Duration::from_secs(15);
         let request_future = self
             .client
-            .post(&format!("{}/embeddings", base_url))
+            .post(format!("{}/embeddings", base_url))
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .header(
@@ -4899,7 +4896,7 @@ impl LLMManager {
         let timeout_duration = std::time::Duration::from_secs(15);
         let request_future = self
             .client
-            .post(&format!("{}/rerank", base_url))
+            .post(format!("{}/rerank", base_url))
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .header(
@@ -5563,7 +5560,7 @@ impl LLMManager {
         // All non-streaming protocols converge on the OpenAI chat-shaped response used below.
         // This also converts canonical Responses JSON produced by the Codex SSE bridge.
         let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)
-            .map_err(|error| {
+            .inspect_err(|error| {
                 crate::llm_usage::record_llm_usage(
                     caller_type.clone(),
                     &config.model,
@@ -5576,7 +5573,6 @@ impl LLMManager {
                     false,
                     Some(error.to_string()),
                 );
-                error
             })?;
 
         let assistant_message = openai_like_json["choices"][0]["message"]["content"]

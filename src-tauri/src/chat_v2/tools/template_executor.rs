@@ -25,7 +25,6 @@ use super::chatanki_executor::{
 };
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::models::{CreateTemplateRequest, FieldExtractionRule, UpdateTemplateRequest};
 
@@ -158,6 +157,12 @@ fn value_type_label(v: &Value) -> &'static str {
 // ============================================================================
 
 pub struct TemplateDesignerExecutor;
+
+impl Default for TemplateDesignerExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl TemplateDesignerExecutor {
     pub fn new() -> Self {

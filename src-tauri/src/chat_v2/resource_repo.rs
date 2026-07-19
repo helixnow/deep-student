@@ -99,7 +99,7 @@ impl ResourceRepo {
         let metadata_json = params
             .metadata
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let created_at = Utc::now().timestamp_millis();
 

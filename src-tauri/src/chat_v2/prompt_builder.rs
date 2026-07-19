@@ -16,6 +16,10 @@
 //! 回答时如引用了上下文信息，请使用 [来源类型-编号] 格式标注。
 //! </system_instructions>
 //!
+//! <project_agents_instructions>
+//! 项目/全局 AGENTS.md 常驻指令...
+//! </project_agents_instructions>
+//!
 //! <context>
 //! <knowledge_base>
 //! [知识库-1] 内容...
@@ -388,6 +392,8 @@ pub struct PromptBuilder {
     user_profile: Option<String>,
     /// 学习者画像（三层记忆的策展长期层，随会话注入；见 memory/learner_profile.rs）
     learner_profile: Option<String>,
+    /// 项目/全局 AGENTS.md 常驻指令（system_instructions 之后注入）
+    project_agents_instructions: Option<String>,
     /// 活跃待办摘要（始终注入）
     active_todos: Option<String>,
 }
@@ -412,6 +418,7 @@ impl PromptBuilder {
             context_type_hints: Vec::new(),
             user_profile: None,
             learner_profile: None,
+            project_agents_instructions: None,
             active_todos: None,
         }
     }
@@ -419,6 +426,12 @@ impl PromptBuilder {
     /// 添加活跃待办摘要
     pub fn with_active_todos(mut self, todos: Option<String>) -> Self {
         self.active_todos = todos;
+        self
+    }
+
+    /// 添加项目/全局 AGENTS.md 常驻指令
+    pub fn with_project_agents_instructions(mut self, instructions: Option<String>) -> Self {
+        self.project_agents_instructions = instructions.filter(|s| !s.trim().is_empty());
         self
     }
 
@@ -546,6 +559,15 @@ impl PromptBuilder {
             "<system_instructions>\n{}\n</system_instructions>",
             instructions
         ));
+
+        // 1.05 项目/全局 AGENTS.md 常驻指令（紧随 system_instructions）
+        // 内容已在 agents_md 侧做纯文本消毒与预算截断；此处再 XML 转义防标签伪造
+        if let Some(agents) = self.project_agents_instructions {
+            parts.push(format!(
+                "<project_agents_instructions>\n{}\n</project_agents_instructions>",
+                escape_xml_content(&agents)
+            ));
+        }
 
         // 1.1 引用规则（如果有来源）
         if self.has_sources {
@@ -702,12 +724,24 @@ pub fn build_system_prompt_with_profile(
     canvas_note: Option<CanvasNoteInfo>,
     user_profile: Option<String>,
 ) -> String {
+    build_system_prompt_with_profile_and_agents(options, sources, canvas_note, user_profile, None)
+}
+
+/// 带用户画像 + AGENTS.md 常驻指令注入的 System Prompt 构建
+pub fn build_system_prompt_with_profile_and_agents(
+    options: &SendOptions,
+    sources: &MessageSources,
+    canvas_note: Option<CanvasNoteInfo>,
+    user_profile: Option<String>,
+    project_agents_instructions: Option<String>,
+) -> String {
     PromptBuilder::new(options.system_prompt_override.as_deref())
         .with_message_sources(sources)
         .with_options(options)
         .with_canvas_note(canvas_note)
         .with_user_profile(user_profile)
         .with_learner_profile(load_learner_profile_block(options))
+        .with_project_agents_instructions(project_agents_instructions)
         .build()
 }
 
@@ -955,5 +989,64 @@ mod tests {
         assert!(prompt
             .contains("1. 完成 &lt;todo id=\"math\"&gt;数学错题&lt;/todo&gt;\n2. 复习 &amp; 总结"));
         assert!(!prompt.contains("<todo id=\"math\">数学错题</todo>"));
+    }
+
+    #[test]
+    fn test_project_agents_instructions_after_system_and_budget() {
+        use crate::chat_v2::agents_md::{
+            clear_agents_md_cache_for_test, load_agents_instructions, truncate_agents_md_content,
+            AGENTS_MD_MAX_CHARS,
+        };
+        use std::fs;
+
+        clear_agents_md_cache_for_test();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let long_body = format!("AGENT-MARKER-{}", "X".repeat(AGENTS_MD_MAX_CHARS + 80));
+        fs::write(dir.path().join("AGENTS.md"), &long_body).expect("write");
+
+        let loaded = load_agents_instructions(Some(dir.path())).expect("load agents");
+        assert!(loaded.contains("AGENT-MARKER-"));
+        assert!(loaded.contains("…（已截断）"));
+        assert!(loaded.chars().count() <= AGENTS_MD_MAX_CHARS + "…（已截断）".chars().count());
+
+        let prompt = PromptBuilder::new(Some("BASE-SYS"))
+            .with_project_agents_instructions(Some(loaded))
+            .build();
+
+        let sys_pos = prompt.find("<system_instructions>").unwrap();
+        let agents_pos = prompt.find("<project_agents_instructions>").unwrap();
+        assert!(
+            sys_pos < agents_pos,
+            "agents block must follow system_instructions"
+        );
+        assert!(prompt.contains("AGENT-MARKER-"));
+        assert!(prompt.contains("…（已截断）"));
+
+        // 越界：直接构造截断内容验证 builder 本身不丢标记
+        let truncated = truncate_agents_md_content(&"Y".repeat(10), 5);
+        assert!(truncated.ends_with("…（已截断）"));
+    }
+
+    #[test]
+    fn test_project_agents_out_of_bounds_rejected() {
+        use crate::chat_v2::agents_md::{
+            clear_agents_md_cache_for_test, read_agents_md_file, AgentsMdError,
+        };
+        use std::fs;
+
+        clear_agents_md_cache_for_test();
+        let workspace = tempfile::tempdir().expect("workspace");
+        let outside = tempfile::tempdir().expect("outside");
+        fs::write(outside.path().join("AGENTS.md"), "ESCAPE-PAYLOAD").expect("write");
+
+        let err = read_agents_md_file(&outside.path().join("AGENTS.md"), workspace.path())
+            .expect_err("out of bounds must be rejected");
+        assert_eq!(err, AgentsMdError::OutOfBounds);
+
+        let prompt = PromptBuilder::new(None)
+            .with_project_agents_instructions(None)
+            .build();
+        assert!(!prompt.contains("<project_agents_instructions>"));
+        assert!(!prompt.contains("ESCAPE-PAYLOAD"));
     }
 }

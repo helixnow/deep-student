@@ -731,15 +731,15 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!formData.name.trim()) {
-      showGlobalNotification('warning', t('placeholders.enter_name'));
+      showGlobalNotification('warning', t('forms.placeholders.enter_name'));
       return;
     }
     if (!hideConnectionFields && !formData.baseUrl.trim()) {
-      showGlobalNotification('warning', t('placeholders.enter_url'));
+      showGlobalNotification('warning', t('forms.placeholders.enter_url'));
       return;
     }
     if (!formData.model.trim()) {
-      showGlobalNotification('warning', t('labels.model_name'));
+      showGlobalNotification('warning', t('api_config_modal.model_name'));
       return;
     }
     const sanitized: EditApiConfig = {

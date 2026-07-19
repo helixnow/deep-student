@@ -273,7 +273,6 @@ pub fn merge_tags(primary: &[String], secondary: Option<&[String]>) -> Vec<Strin
 use serde_json;
 
 #[cfg(feature = "mcp")]
-
 /// 估算文本Token数量（优先使用tiktoken；不可用时回退启发式估算）
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct EstimateTokensRequest {
@@ -433,11 +432,7 @@ fn normalize_single_bridge_image_path(
     let candidate = if is_absolute {
         cleaned.clone()
     } else {
-        format!(
-            "{}/{}",
-            app_dir,
-            cleaned.trim_start_matches('/').to_string()
-        )
+        format!("{}/{}", app_dir, cleaned.trim_start_matches('/'))
     };
 
     if candidate.starts_with(&images_dir) {
@@ -506,7 +501,7 @@ pub async fn get_debug_logs_info(
 #[tauri::command]
 pub async fn clear_debug_logs(state: State<'_, AppState>) -> Result<usize> {
     let data_dir = state.file_manager.get_app_data_dir();
-    crate::debug_log_service::clear_all_debug_logs(data_dir).map_err(|e| AppError::unknown(e))
+    crate::debug_log_service::clear_all_debug_logs(data_dir).map_err(AppError::unknown)
 }
 
 /// 清理超过指定天数的旧调试日志
@@ -517,7 +512,7 @@ pub async fn cleanup_old_debug_logs(
 ) -> Result<usize> {
     let data_dir = state.file_manager.get_app_data_dir();
     crate::debug_log_service::cleanup_old_debug_logs(data_dir, max_age_days)
-        .map_err(|e| AppError::unknown(e))
+        .map_err(AppError::unknown)
 }
 
 /// 确保 debug-logs 目录存在并返回绝对路径
@@ -533,7 +528,7 @@ pub async fn ensure_debug_log_dir(state: State<'_, AppState>) -> Result<String> 
 pub async fn read_debug_log_file(path: String, state: State<'_, AppState>) -> Result<String> {
     let data_dir = state.file_manager.get_app_data_dir();
     crate::debug_log_service::read_debug_log_file(std::path::Path::new(&path), data_dir)
-        .map_err(|e| AppError::unknown(e))
+        .map_err(AppError::unknown)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1202,7 +1197,7 @@ pub async fn list_importing_sessions(
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
 
     crate::vfs::repos::VfsExamRepo::list_importing_sessions(vfs_db)
-        .map_err(|e| AppError::database(format!("查询中断会话失败: {}", e)).into())
+        .map_err(|e| AppError::database(format!("查询中断会话失败: {}", e)))
 }
 
 // ============================================================================
@@ -1399,7 +1394,7 @@ pub async fn import_questions_csv(
         }
     }
 
-    result.map_err(|e| e.into())
+    result
 }
 
 /// 请求取消正在执行的 CSV 导入。
@@ -1479,7 +1474,7 @@ pub async fn export_questions_csv(
                     );
                 }
             }
-            return Err(err.into());
+            return Err(err);
         }
     };
 
@@ -1535,8 +1530,7 @@ pub async fn get_csv_preview(
     };
 
     let preview_rows = rows.unwrap_or(5);
-    let result =
-        CsvImportService::preview_csv(&preview_file_path, preview_rows).map_err(|e| e.into());
+    let result = CsvImportService::preview_csv(&preview_file_path, preview_rows);
 
     if let Some(cleanup) = cleanup_path {
         if let Err(err) = std::fs::remove_file(&cleanup) {
@@ -1598,10 +1592,8 @@ pub async fn clear_message_embeddings(
             let rows = stmt
                 .query_map(rusqlite::params![stable], |row| row.get::<_, i64>(0))
                 .map_err(|e| AppError::database(e.to_string()))?;
-            for row in rows {
-                if let Ok(id) = row {
-                    resolved_ids.push(id);
-                }
+            for id in rows.flatten() {
+                resolved_ids.push(id);
             }
         }
     }
@@ -2165,10 +2157,8 @@ async fn cleanup_orphan_chat_embeddings(db: Arc<Database>) -> usize {
         };
 
         let mut ids = HashSet::new();
-        for row in rows {
-            if let Ok(id) = row {
-                ids.insert(id.to_string());
-            }
+        for id in rows.flatten() {
+            ids.insert(id.to_string());
         }
         ids
     };
@@ -3979,15 +3969,13 @@ pub async fn get_test_logs(
     let mut log_files = Vec::new();
 
     if let Ok(entries) = fs::read_dir(&log_dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "log") {
-                    if let Some(file_name) = path.file_name() {
-                        if let Some(file_name_str) = file_name.to_str() {
-                            let relative_path = format!("logs/{}/{}", log_type, file_name_str);
-                            log_files.push(relative_path);
-                        }
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "log") {
+                if let Some(file_name) = path.file_name() {
+                    if let Some(file_name_str) = file_name.to_str() {
+                        let relative_path = format!("logs/{}/{}", log_type, file_name_str);
+                        log_files.push(relative_path);
                     }
                 }
             }
@@ -4353,7 +4341,7 @@ async fn calculate_monthly_trend(
         for offset in (0..6).rev() {
             let days_offset = 30_i64 * offset as i64;
             let duration =
-                chrono::Duration::try_days(days_offset).unwrap_or_else(|| chrono::Duration::zero());
+                chrono::Duration::try_days(days_offset).unwrap_or_else(chrono::Duration::zero);
             let month = now - duration;
             trend_data.push(serde_json::json!({
                 "month": format!("{}月", month.format("%m").to_string().parse::<u8>().unwrap_or(1)),

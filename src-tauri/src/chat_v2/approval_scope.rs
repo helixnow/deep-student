@@ -1587,7 +1587,7 @@ fn lex_shell_command_segments(command: &str) -> Vec<Vec<String>> {
 
 fn executable_basename_lower(token: &str) -> String {
     let basename = token
-        .rsplit(|ch| ch == '/' || ch == '\\')
+        .rsplit(['/', '\\'])
         .next()
         .unwrap_or(token)
         .to_ascii_lowercase();
@@ -2044,10 +2044,7 @@ fn contains_shell_operator(trimmed: &str) -> bool {
 }
 
 fn is_script_runner_token(token: &str) -> bool {
-    let basename = token
-        .rsplit(|ch| ch == '/' || ch == '\\')
-        .next()
-        .unwrap_or(token);
+    let basename = token.rsplit(['/', '\\']).next().unwrap_or(token);
     let basename_lower = basename.to_ascii_lowercase();
     // 🔒 直接调用的批处理/脚本文件本身就是任意代码载体（`evil.bat args`），
     // 一律按完整命令哈希，不做 2-token 前缀归一化。
@@ -2547,7 +2544,10 @@ mod tests {
             "workingDir": "out",
         });
         assert_eq!(
-            normalized_shell_runtime_location_with_default(&camel_explicit, Some("authorized_demo")),
+            normalized_shell_runtime_location_with_default(
+                &camel_explicit,
+                Some("authorized_demo")
+            ),
             ("artifacts".to_string(), "out".to_string())
         );
     }

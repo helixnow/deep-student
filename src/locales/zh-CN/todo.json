@@ -402,5 +402,8 @@
       "hintSpacePrefix": "",
       "hintSpaceSuffix": " 暂停/恢复"
     }
+  },
+  "sidebar": {
+    "title": "待办导航"
   }
 }

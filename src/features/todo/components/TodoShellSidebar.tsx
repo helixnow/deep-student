@@ -33,7 +33,7 @@ export const TodoShellSidebar: React.FC<TodoShellSidebarProps> = ({
 
   return (
     <WorkbenchSidebarSurface
-      ariaLabel={t('todo:sidebar.title', { defaultValue: '待办导航' })}
+      ariaLabel={t('todo:sidebar.title')}
       data-todo-shell-sidebar
       data-shell-layer={!isSmallScreen ? 'navigation' : undefined}
       data-shell-surface={!isSmallScreen ? 'navigation' : undefined}

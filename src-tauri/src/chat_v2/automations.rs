@@ -52,6 +52,8 @@ static AUTOMATION_APP_EXITING: AtomicBool = AtomicBool::new(false);
 static AUTOMATION_SHUTDOWN_TOKEN: LazyLock<CancellationToken> =
     LazyLock::new(CancellationToken::new);
 static AUTOMATION_BOOT_ID: LazyLock<String> = LazyLock::new(|| uuid::Uuid::new_v4().to_string());
+/// Kill Switch / 用户显式暂停：调度器仍存活，但跳过一切派发。
+static AUTOMATION_SCHEDULER_PAUSED: AtomicBool = AtomicBool::new(false);
 
 pub fn mark_automation_app_exiting() {
     AUTOMATION_APP_EXITING.store(true, Ordering::SeqCst);
@@ -61,6 +63,27 @@ pub fn mark_automation_app_exiting() {
 
 pub fn automation_app_is_exiting() -> bool {
     AUTOMATION_APP_EXITING.load(Ordering::SeqCst)
+}
+
+/// Pause the automation scheduler (used by Kill Switch emergency_stop).
+pub fn pause_automation_scheduler() {
+    AUTOMATION_SCHEDULER_PAUSED.store(true, Ordering::SeqCst);
+    tracing::warn!("[AutomationScheduler] paused (kill switch / emergency stop)");
+}
+
+/// Resume scheduled automation dispatch (explicit user confirmation after Kill Switch).
+pub fn resume_automation_scheduler() {
+    AUTOMATION_SCHEDULER_PAUSED.store(false, Ordering::SeqCst);
+    tracing::info!("[AutomationScheduler] resumed");
+}
+
+pub fn is_automation_scheduler_paused() -> bool {
+    AUTOMATION_SCHEDULER_PAUSED.load(Ordering::SeqCst)
+}
+
+/// Whether tick / run_now may dispatch work. False while paused or app exiting.
+pub fn automation_dispatch_allowed() -> bool {
+    !is_automation_scheduler_paused() && !automation_app_is_exiting()
 }
 
 /// interval 调度允许的分钟数范围
@@ -2453,6 +2476,27 @@ fn process_due_automation(
     claimed: ClaimedAutomationRun,
     now: DateTime<Local>,
 ) -> Option<Value> {
+    if !automation_dispatch_allowed()
+        || crate::chat_v2::kill_switch::admit_or_block_from_app(app_handle).is_err()
+    {
+        tracing::info!(
+            "[AutomationScheduler] skip dispatch for run={} (scheduler paused / kill switch)",
+            claimed.run_id
+        );
+        // Run was already claimed; mark cancelled so it does not stay stuck as running.
+        let _ = complete_run(
+            db,
+            &claimed.run_id,
+            claimed.attempt,
+            "cancelled",
+            &[],
+            None,
+            Some("Skipped: AgentKillSwitch / automation scheduler paused"),
+            None,
+        );
+        return None;
+    }
+
     let automation = &claimed.automation;
 
     if automation.action_type == AutomationActionType::AgentTurn {
@@ -2682,14 +2726,31 @@ fn automation_run_is_running(db: &Database, run_id: &str, attempt: i64) -> Resul
 }
 
 fn cancel_active_automation_runs_for_shutdown() {
+    cancel_active_automation_run_tokens("shutdown");
+}
+
+/// Cancel in-flight automation agent turns (Kill Switch emergency_stop).
+pub fn cancel_active_automation_runs_for_emergency_stop() {
+    cancel_active_automation_run_tokens("emergency_stop");
+}
+
+fn cancel_active_automation_run_tokens(reason: &str) {
     let tokens: Vec<CancellationToken> = ACTIVE_AUTOMATION_RUNS
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .values()
         .map(|entry| entry.token.clone())
         .collect();
+    let count = tokens.len();
     for token in tokens {
         token.cancel();
+    }
+    if count > 0 {
+        tracing::warn!(
+            "[AutomationScheduler] cancelled {} active automation run token(s) ({})",
+            count,
+            reason
+        );
     }
 }
 
@@ -3609,6 +3670,14 @@ pub fn run_automation_now_core(
     db: Arc<Database>,
     agent_facing: bool,
 ) -> std::result::Result<Value, String> {
+    if !automation_dispatch_allowed() {
+        return Err(
+            "Automation dispatch is paused (AgentKillSwitch / scheduler pause). Resume agents and automations first."
+                .to_string(),
+        );
+    }
+    crate::chat_v2::kill_switch::admit_or_block_from_app(&app_handle)?;
+
     let automation = get_automation(&db, automation_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("Automation '{}' not found", automation_id))?;
@@ -3914,7 +3983,7 @@ fn recover_stale_automation_runs(db: &Database) -> Result<usize> {
         let lease_expired = lease_expires_at
             .as_deref()
             .and_then(|value| parse_utc_datetime(value).ok())
-            .map_or(true, |expires_at| expires_at <= now);
+            .is_none_or(|expires_at| expires_at <= now);
         if !foreign_owner && !lease_expired {
             continue;
         }
@@ -4046,6 +4115,14 @@ pub fn tick_automations(
     vfs_db: Option<&Arc<VfsDatabase>>,
     app_handle: &AppHandle,
 ) -> Result<()> {
+    if !automation_dispatch_allowed() {
+        tracing::debug!(
+            "[AutomationScheduler] tick skipped: paused={}, exiting={}",
+            is_automation_scheduler_paused(),
+            automation_app_is_exiting()
+        );
+        return Ok(());
+    }
     recover_stale_automation_runs(db)?;
     deliver_pending_agent_notifications(db, app_handle)?;
     let automations = load_automations(db)?;
@@ -4139,6 +4216,7 @@ pub async fn start_automation_scheduler(
         if AUTOMATION_SHUTDOWN_TOKEN.is_cancelled() {
             break;
         }
+        // Pause keeps the loop alive but tick_automations no-ops until resume.
         let tick_database = database.clone();
         let tick_vfs_db = vfs_db.clone();
         let tick_app_handle = app_handle.clone();

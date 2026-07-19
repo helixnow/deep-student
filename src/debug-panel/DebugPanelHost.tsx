@@ -958,7 +958,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 variant="ghost"
                 size="sm"
                 className="text-[10px] h-6 px-2"
-                title={t('debug_panel.expand', '展开')}
+                title={t('debug_panel.expand')}
               >
                 <ArrowsOut size={12} />
               </NotionButton>

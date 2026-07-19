@@ -225,6 +225,7 @@ impl LlmUsageDatabase {
     ///
     /// # 返回
     /// * `LlmUsageResult<u32>` - 当前版本号
+    ///
     /// 从 Refinery 的 refinery_schema_history 表读取版本号。
     pub fn get_schema_version(&self) -> LlmUsageResult<u32> {
         let conn = self.get_conn()?;

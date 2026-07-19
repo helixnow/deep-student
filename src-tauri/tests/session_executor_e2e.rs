@@ -142,7 +142,7 @@ fn execution_context(
         block_id.to_string(),
         emitter,
         Arc::new(ToolRegistry::new()),
-        harness.window.clone(),
+        Some(harness.window.clone()),
     )
     .with_chat_v2_db(Some(harness.chat_db.clone()))
     .with_vfs_db(Some(harness.vfs_db.clone()))

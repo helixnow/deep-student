@@ -276,8 +276,7 @@ async fn delete_variant_impl(
         return Err(ChatV2Error::Other(
             "Cannot delete a streaming variant. Please wait for completion or cancel it first."
                 .to_string(),
-        )
-        .into());
+        ));
     }
 
     let block_ids_to_delete = variant_to_delete.block_ids.clone();
@@ -504,7 +503,7 @@ async fn retry_variant_impl(
     if chat_v2_state.has_active_stream(&session_id) {
         return Err(ChatV2Error::Other(
             "Cannot retry variant while session is streaming. Please wait for completion or cancel first.".to_string()
-        ).into());
+        ));
     }
 
     // 3. 获取变体
@@ -707,7 +706,7 @@ async fn retry_variant_impl(
         Err(()) => {
             return Err(ChatV2Error::Other(
                 "Cannot retry variant while session is streaming. Please wait for completion or cancel first.".to_string()
-            ).into());
+            ));
         }
     };
     options.stream_generation = Some(session_registration.generation());
@@ -780,7 +779,7 @@ async fn retry_variants_impl(
     if chat_v2_state.has_active_stream(&session_id) {
         return Err(ChatV2Error::Other(
             "Cannot retry variants while session is streaming. Please wait for completion or cancel first.".to_string()
-        ).into());
+        ));
     }
 
     // 3. 去重 variant_ids（保持顺序）
@@ -1013,7 +1012,7 @@ async fn retry_variants_impl(
         Err(()) => {
             return Err(ChatV2Error::Other(
                 "Cannot retry variants while session is streaming. Please wait for completion or cancel first.".to_string()
-            ).into());
+            ));
         }
     };
 

@@ -1078,6 +1078,12 @@ export function createRestoreActions(
             description: '', // 文档 28 改造：description 由后端事件更新，恢复时初始化为空
             groupId: session.groupId ?? null,
             sessionMetadata: session.metadata ?? null,
+            authorityMode: (() => {
+              const meta = session.metadata as Record<string, unknown> | null | undefined;
+              const raw = meta?.authorityMode ?? meta?.authority_mode;
+              return raw === 'ask' || raw === 'plan' || raw === 'craft' ? raw : 'craft';
+            })(),
+            authorityAskBlockedHint: false,
             sessionStatus: finalSessionStatus,
             isDataLoaded: true,
             messageMap: finalMessageMap,

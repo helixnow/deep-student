@@ -1,3 +1,4 @@
+import '../styles/mcp-preset-oauth.css';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -28,6 +29,7 @@ import { listen as tauriListen } from '@tauri-apps/api/event';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { useUnifiedErrorHandler } from '@/components/UnifiedErrorHandler';
 import { TauriAPI } from '@/utils/tauriApi';
+import { isAndroid } from '@/utils/platform';
 import type { UseMcpEditorSectionDeps, McpToolConfig } from './hookDepsTypes';
 
 interface McpTestResult {
@@ -52,6 +54,141 @@ interface McpPreviewResource {
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 const invoke = isTauri ? tauriInvoke : null;
+
+/** MCP OAuth 登录 / 重新授权 / 注销 */
+function McpOAuthControls({
+  serverId,
+  resourceUrl,
+  hasApiKey,
+  t,
+  onAuthorized,
+  onRevoked,
+}: {
+  serverId: string;
+  resourceUrl: string;
+  hasApiKey: boolean;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+  onAuthorized?: () => void;
+  onRevoked?: () => void;
+}) {
+  const [authorized, setAuthorized] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const refreshStatus = useCallback(async () => {
+    if (!invoke || !serverId || !resourceUrl.trim()) return;
+    try {
+      const status = await invoke<{ authorized: boolean }>('get_mcp_oauth_status', {
+        serverId,
+        resourceUrl: resourceUrl.trim(),
+      });
+      setAuthorized(Boolean(status?.authorized));
+    } catch {
+      setAuthorized(false);
+    }
+  }, [serverId, resourceUrl]);
+
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus]);
+
+  const startOauth = useCallback(async () => {
+    if (!invoke) {
+      showGlobalNotification('error', t('settings:mcp.oauth.desktop_only'));
+      return;
+    }
+    if (!resourceUrl.trim()) {
+      showGlobalNotification('error', t('settings:mcp.oauth.missing_url'));
+      return;
+    }
+    if (hasApiKey) {
+      showGlobalNotification('info', t('settings:mcp.oauth.clear_api_key_first'));
+      return;
+    }
+    setBusy(true);
+    try {
+      await invoke('start_mcp_oauth', {
+        serverId,
+        resourceUrl: resourceUrl.trim(),
+        clientId: null,
+        clientSecret: null,
+        scopes: [],
+      });
+      showGlobalNotification('success', t('settings:mcp.oauth.login_success'));
+      onAuthorized?.();
+      await refreshStatus();
+    } catch (e) {
+      showGlobalNotification('error', getErrorMessage(e) || t('settings:mcp.oauth.login_failed'));
+    } finally {
+      setBusy(false);
+    }
+  }, [serverId, resourceUrl, hasApiKey, refreshStatus, t, onAuthorized]);
+
+  const revokeOauth = useCallback(async () => {
+    if (!invoke || !serverId) return;
+    setBusy(true);
+    try {
+      await invoke('revoke_mcp_oauth', { serverId });
+      showGlobalNotification('success', t('settings:mcp.oauth.logout_success'));
+      setAuthorized(false);
+      onRevoked?.();
+    } catch (e) {
+      showGlobalNotification('error', getErrorMessage(e) || t('settings:mcp.oauth.logout_failed'));
+    } finally {
+      setBusy(false);
+    }
+  }, [serverId, t, onRevoked]);
+
+  const cancelOauth = useCallback(async () => {
+    if (!invoke || !serverId) return;
+    try {
+      await invoke('cancel_mcp_oauth', { serverId });
+      showGlobalNotification('info', t('settings:mcp.oauth.cancelled'));
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(false);
+    }
+  }, [serverId, t]);
+
+  return (
+    <div className="mcp-oauth-controls rounded-lg border border-border/50 bg-muted/20 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-sm font-medium text-foreground">{t('settings:mcp.oauth.title')}</div>
+          <div className="text-xs text-muted-foreground">
+            {authorized
+              ? t('settings:mcp.oauth.status_authorized')
+              : t('settings:mcp.oauth.status_none')}
+          </div>
+        </div>
+        <span className={cn(
+          'w-2 h-2 rounded-full flex-shrink-0',
+          authorized ? 'bg-green-500' : 'bg-muted-foreground/40',
+        )} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <NotionButton
+          size="sm"
+          variant="primary"
+          disabled={busy || hasApiKey || !resourceUrl.trim()}
+          onClick={() => void startOauth()}
+        >
+          {authorized ? t('settings:mcp.oauth.reauth') : t('settings:mcp.oauth.login')}
+        </NotionButton>
+        {busy && (
+          <NotionButton size="sm" variant="default" onClick={() => void cancelOauth()}>
+            {t('settings:mcp.oauth.cancel')}
+          </NotionButton>
+        )}
+        {authorized && (
+          <NotionButton size="sm" variant="default" disabled={busy} onClick={() => void revokeOauth()}>
+            {t('settings:mcp.oauth.logout')}
+          </NotionButton>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   const { config, setConfig, isSmallScreen, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo } = deps;
@@ -89,7 +226,14 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       headers?: Record<string, string>;
       // 旧版兼容字段
       endpoint?: string; 
-      apiKey?: string; 
+      apiKey?: string;
+      oauth?: {
+        client_id: string;
+        auth_url: string;
+        token_url: string;
+        redirect_uri: string;
+        scopes: string[];
+      };
       serverId?: string; 
       region?: string; 
       hosted?: boolean; 
@@ -624,6 +768,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         if (draft.cwd) server.cwd = draft.cwd;
       }
       if (draft.apiKey) server.apiKey = draft.apiKey;
+      else if (draft.oauth) server.oauth = draft.oauth;
       if (draft.namespace) server.namespace = draft.namespace;
       if (draft.env && Object.keys(draft.env).length > 0) server.env = draft.env;
       config.mcpServers[name] = server;
@@ -948,8 +1093,32 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                     showLabel={t('common:securePassword.showPassword')}
                     hideLabel={t('common:securePassword.hidePassword')}
                   />
+                  <p className="text-[11px] text-muted-foreground">{t('settings:mcp.oauth.api_key_priority_hint')}</p>
                 </div>
               </div>
+            )}
+
+            {!isAndroid() && (transport === 'sse' || transport === 'streamable_http') && (
+              <McpOAuthControls
+                serverId={draft.id}
+                resourceUrl={draft.endpoint || draft.fetch?.url || ''}
+                hasApiKey={Boolean((draft.apiKey || '').trim())}
+                t={t}
+                onAuthorized={() => {
+                  updateDraft({
+                    oauth: {
+                      client_id: '',
+                      auth_url: '',
+                      token_url: '',
+                      redirect_uri: 'http://127.0.0.1/auth/callback',
+                      scopes: [],
+                    },
+                  });
+                }}
+                onRevoked={() => {
+                  updateDraft({ oauth: undefined });
+                }}
+              />
             )}
 
             {transport === 'stdio' && (
@@ -1087,7 +1256,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     if (!mcpToolModal.open) {
       return (
         <div className="h-full flex items-center justify-center text-muted-foreground">
-          <p className="text-sm">{t('settings:mcp_descriptions.select_tool_to_edit')}</p>
+          <p className="text-sm">{t('settings:sections.select_tool_to_edit')}</p>
         </div>
       );
     }
@@ -1137,6 +1306,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           if (draft.cwd) server.cwd = draft.cwd;
         }
         if (draft.apiKey) server.apiKey = draft.apiKey;
+        else if (draft.oauth) server.oauth = draft.oauth;
         if (draft.namespace) server.namespace = draft.namespace;
         if (draft.env && Object.keys(draft.env).length > 0) server.env = draft.env;
         config.mcpServers[name] = server;
@@ -1207,6 +1377,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             endpoint: (transport === 'sse' || transport === 'streamable_http') ? (draft.endpoint || draft.fetch?.url) : undefined,
             fetch: (transport === 'sse' || transport === 'streamable_http') ? { type: transport, url: draft.endpoint || draft.fetch?.url || '' } : undefined,
             apiKey: draft.apiKey,
+            oauth: draft.apiKey ? undefined : draft.oauth,
             namespace: draft.namespace,
             cwd: draft.cwd,
             framing: transport === 'stdio' ? resolveSettingsStdioFraming(draft.framing) : draft.framing,
@@ -1444,7 +1615,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     if (!mcpPolicyModal.open) {
       return (
         <div className="h-full flex items-center justify-center text-muted-foreground">
-          <p className="text-sm">{t('settings:mcp_descriptions.select_policy_to_edit')}</p>
+          <p className="text-sm">{t('settings:sections.select_policy_to_edit')}</p>
         </div>
       );
     }
@@ -1495,7 +1666,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         }}
       >
         <div className="px-4 pt-4 pb-2 border-b border-border flex-shrink-0">
-          <h2 className="text-lg font-semibold">{t('settings:mcp_descriptions.policy_title')}</h2>
+          <h2 className="text-lg font-semibold">{t('settings:sections.policy_title')}</h2>
           <p className="text-sm text-muted-foreground mt-1">{t('settings:mcp_descriptions.policy_subtitle')}</p>
         </div>
 
@@ -1509,7 +1680,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                 onCheckedChange={(checked) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: checked === true }))}
               />
               <label htmlFor="advertiseAll" className="text-sm font-medium cursor-pointer">
-                {t('settings:mcp_descriptions.advertise_all')}
+                {t('settings:sections.advertise_all')}
               </label>
             </div>
             <p className="text-xs text-muted-foreground">

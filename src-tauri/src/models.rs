@@ -140,16 +140,12 @@ impl MultimodalContentPart {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TempStreamState {
+    #[default]
     InProgress,
     Completed,
     Failed,
-}
-
-impl Default for TempStreamState {
-    fn default() -> Self {
-        TempStreamState::InProgress
-    }
 }
 
 impl TempStreamState {
@@ -313,6 +309,7 @@ pub struct ExamCardBBox {
 /// 题目类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum QuestionType {
     SingleChoice,     // 单选题
     MultipleChoice,   // 多选题
@@ -322,61 +319,44 @@ pub enum QuestionType {
     Essay,            // 论述题
     Calculation,      // 计算题
     Proof,            // 证明题
-    Other,            // 其他
-}
-
-impl Default for QuestionType {
-    fn default() -> Self {
-        QuestionType::Other
-    }
+    #[default]
+    Other, // 其他
 }
 
 /// 难度等级
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Difficulty {
-    Easy,     // 简单
-    Medium,   // 中等
-    Hard,     // 困难
+    Easy, // 简单
+    #[default]
+    Medium, // 中等
+    Hard, // 困难
     VeryHard, // 极难
-}
-
-impl Default for Difficulty {
-    fn default() -> Self {
-        Difficulty::Medium
-    }
 }
 
 /// 学习状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum QuestionStatus {
-    New,        // 新题，未做过
+    #[default]
+    New, // 新题，未做过
     InProgress, // 学习中
     Mastered,   // 已掌握
     Review,     // 需复习（做错过）
 }
 
-impl Default for QuestionStatus {
-    fn default() -> Self {
-        QuestionStatus::New
-    }
-}
-
 /// 来源类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SourceType {
-    OcrImage,     // 图片 OCR 识别
+    #[default]
+    OcrImage, // 图片 OCR 识别
     ImportFile,   // 文件导入
     ManualCreate, // 手动创建
     AiGenerated,  // AI 生成（变式）
-}
-
-impl Default for SourceType {
-    fn default() -> Self {
-        SourceType::OcrImage
-    }
 }
 
 /// 导入来源详情
@@ -526,16 +506,11 @@ pub struct ExamSheetPreviewRequest {
     pub session_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum ExamSheetOutputFormat {
     #[serde(rename = "deepseek_ocr")]
+    #[default]
     DeepseekOcr,
-}
-
-impl Default for ExamSheetOutputFormat {
-    fn default() -> Self {
-        Self::DeepseekOcr
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

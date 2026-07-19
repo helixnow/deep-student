@@ -127,7 +127,7 @@ impl RuntimeRootRequestExecutor {
             return Err(CRITICAL_REJECTION.to_string());
         }
 
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         let outcome = authorize_runtime_root_path(&state.database, &canonical_display, None)
             .map_err(|error| {
                 format!(

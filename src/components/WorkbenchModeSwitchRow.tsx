@@ -20,7 +20,7 @@ import {
 export const WorkbenchModeSwitchRow: React.FC = () => {
   const { t } = useTranslation('sidebar');
   const [loaded, setLoaded] = useState(false);
-  const [mode, setMode] = useState(false);
+  const [mode, setMode] = useState(true);
 
   useEffect(() => {
     let cancelled = false;

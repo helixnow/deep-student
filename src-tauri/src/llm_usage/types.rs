@@ -382,21 +382,17 @@ impl DailySummary {
 /// 用于指定统计数据的时间聚合粒度。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TimeGranularity {
     /// 按小时聚合
     Hour,
     /// 按天聚合
+    #[default]
     Day,
     /// 按周聚合
     Week,
     /// 按月聚合
     Month,
-}
-
-impl Default for TimeGranularity {
-    fn default() -> Self {
-        Self::Day
-    }
 }
 
 impl std::fmt::Display for TimeGranularity {

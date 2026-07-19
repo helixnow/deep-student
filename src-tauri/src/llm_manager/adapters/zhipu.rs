@@ -167,10 +167,8 @@ impl RequestAdapter for ZhipuAdapter {
         }
 
         // GLM-4.6+ 支持 tool_stream
-        if Self::supports_tool_stream(&config.model) {
-            if body.contains_key("tools") {
-                body.insert("tool_stream".to_string(), json!(true));
-            }
+        if Self::supports_tool_stream(&config.model) && body.contains_key("tools") {
+            body.insert("tool_stream".to_string(), json!(true));
         }
 
         false

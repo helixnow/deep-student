@@ -3,7 +3,7 @@
 //! 提供 pomodoro_records 表的 CRUD 操作。
 
 use log::{info, warn};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, OptionalExtension};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};

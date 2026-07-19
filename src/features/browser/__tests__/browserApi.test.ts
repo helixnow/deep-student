@@ -1,10 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invokeMock = vi.hoisted(() => vi.fn());
+const assertGatesMock = vi.hoisted(() => vi.fn(async () => ({ open: true })));
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
+vi.mock('../gates', async () => {
+  const actual = await vi.importActual<typeof import('../gates')>('../gates');
+  return {
+    ...actual,
+    assertBrowserGatesOpen: assertGatesMock,
+  };
+});
 
 import {
   BrowserApiError,
@@ -20,6 +28,12 @@ import {
 describe('browserApi contracts', () => {
   beforeEach(() => {
     invokeMock.mockReset();
+    assertGatesMock.mockReset();
+    assertGatesMock.mockResolvedValue({
+      workbenchModeEnabled: true,
+      browserEnabled: true,
+      open: true,
+    });
   });
 
   it('forwards Agent origin when opening a new session', async () => {
@@ -27,6 +41,7 @@ describe('browserApi contracts', () => {
 
     await openSession('example.com/path', { fromAgent: true });
 
+    expect(assertGatesMock).toHaveBeenCalled();
     expect(invokeMock).toHaveBeenCalledWith('browser_open_session', {
       url: 'https://example.com/path',
       fromAgent: true,

@@ -12,9 +12,9 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::runtime_roots::{
     artifact_mutation_guard, create_write_backup_from_file, explicit_runtime_root_id_from_args,
-    normalize_runtime_relative_path, open_regular_file_no_follow, revalidate_runtime_root,
-    resolve_effective_runtime_root_id_for_session, runtime_root_by_id, temp_root, RuntimeRoot,
-    RuntimeRootAccess, RuntimeRootKind,
+    normalize_runtime_relative_path, open_regular_file_no_follow,
+    resolve_effective_runtime_root_id_for_session, revalidate_runtime_root, runtime_root_by_id,
+    temp_root, RuntimeRoot, RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace_change_set::{self, ChangeSet, MutationKind, MutationReceipt};
@@ -51,6 +51,12 @@ struct BoundedDirectoryList {
 
 pub struct WorkspaceFsExecutor;
 
+impl Default for WorkspaceFsExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkspaceFsExecutor {
     pub fn new() -> Self {
         Self
@@ -64,9 +70,9 @@ impl WorkspaceFsExecutor {
         root_id: Option<&str>,
         ctx: &ExecutionContext,
     ) -> Result<(RuntimeRoot, PathBuf), String> {
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         let root = runtime_root_by_id(
-            &ctx.window.app_handle(),
+            ctx.window_ref().app_handle(),
             &state.database,
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
@@ -104,7 +110,7 @@ impl WorkspaceFsExecutor {
         let target_canon = target
             .canonicalize()
             .map_err(|e| format!("Path does not exist or cannot be read: {}", e))?;
-        if !target_canon.starts_with(&root_canon) {
+        if !target_canon.starts_with(root_canon) {
             return Err("Path escapes the selected runtime root".to_string());
         }
         let canonical_relative = target_canon
@@ -430,9 +436,9 @@ impl WorkspaceFsExecutor {
 
     fn resolve_read_root_id(args: &Value, ctx: &ExecutionContext) -> String {
         let explicit = explicit_runtime_root_id_from_args(args);
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         resolve_effective_runtime_root_id_for_session(
-            &ctx.window.app_handle(),
+            ctx.window_ref().app_handle(),
             &state.database,
             ctx.chat_v2_db.as_deref(),
             &ctx.session_id,
@@ -550,7 +556,7 @@ impl WorkspaceFsExecutor {
         // 覆盖已存在文件前先把旧内容备份到 temp 根备份区；备份失败则整个写入中止，
         // 保证只要返回了 modified change，就一定有可用的 backup_ref 供撤销恢复。
         let backup = if existed {
-            let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+            let temp = temp_root(ctx.window_ref().app_handle(), &ctx.session_id, true)?;
             let snapshot = create_write_backup_from_file(&temp.path, &file_name, &target)?;
             Some((temp.path, snapshot))
         } else {
@@ -619,7 +625,7 @@ impl WorkspaceFsExecutor {
             ));
         }
         let expected = args.get("expected_current_hash").and_then(Value::as_str);
-        let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+        let temp = temp_root(ctx.window_ref().app_handle(), &ctx.session_id, true)?;
         let receipt = workspace_change_set::write_text(
             &root_canon,
             &temp.path,
@@ -670,7 +676,7 @@ impl WorkspaceFsExecutor {
             .get("expected_current_hash")
             .and_then(Value::as_str)
             .ok_or_else(|| "expected_current_hash is required".to_string())?;
-        let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+        let temp = temp_root(ctx.window_ref().app_handle(), &ctx.session_id, true)?;
         let receipt =
             workspace_change_set::delete_file(&root_canon, &temp.path, &root.id, path, expected)?;
         Self::workspace_change_output(&root, receipt)
@@ -683,7 +689,7 @@ impl WorkspaceFsExecutor {
     ) -> Result<Value, String> {
         let (root, root_canon) = Self::resolve_root(Some("workspace"), ctx)?;
         Self::ensure_writable_workspace(&root)?;
-        let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+        let temp = temp_root(ctx.window_ref().app_handle(), &ctx.session_id, true)?;
         if let Some(value) = args.get("change_set") {
             let change_set: ChangeSet = serde_json::from_value(value.clone())
                 .map_err(|error| format!("Invalid workspace change set: {}", error))?;

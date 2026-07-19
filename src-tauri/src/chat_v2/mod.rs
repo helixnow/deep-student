@@ -14,15 +14,18 @@
 //! - `pipeline`: 编排引擎（待实现）
 
 pub mod adapters;
+pub mod agents_md; // AGENTS.md 常驻指令发现与注入
 pub mod approval_manager; // 🆕 工具审批管理器（文档 29 P1-3）
 pub mod approval_scope; // 🆕 工具审批作用域键提取器（P2 / M-081 修复）
 pub mod automations; // 🆕 周期自动化定义存储与调度器
+pub mod clawhub_client; // 🆕 ClawHub 技能市场只读客户端（SkillTap 接入）
 pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
 pub mod error;
 pub mod events;
 pub mod handlers;
 pub mod headless; // 🆕 Headless Runner：后端自主发起 agent turn（automations 到点真正跑 agent）
+pub mod kill_switch; // 🆕 全局一键断电（AgentKillSwitch）
 pub mod migration; // 旧版数据迁移模块
 pub mod pipeline;
 pub mod prompt_builder;

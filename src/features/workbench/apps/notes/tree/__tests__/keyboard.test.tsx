@@ -11,10 +11,18 @@ import {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (_key: string, options?: { defaultValue?: string; name?: string }) => {
-      const value = options?.defaultValue ?? _key;
+    t: (key: string, options?: { defaultValue?: string; name?: string }) => {
+      const catalog: Record<string, string> = {
+        'workbench:notesWorkspace.tree.aria': '文件树',
+        'workbench:notesWorkspace.tree.root': '资料库根目录',
+        'workbench:notesWorkspace.tree.folder': '文件夹：{{name}}',
+        'workbench:notesWorkspace.tree.note': '笔记：{{name}}',
+        'workbench:notesWorkspace.tree.mindmap': '导图：{{name}}',
+        'workbench:notesWorkspace.tree.renameInput': '重命名',
+      };
+      const value = options?.defaultValue ?? catalog[key] ?? key;
       return typeof options?.name === 'string'
-        ? value.replace('{{name}}', options.name)
+        ? value.replace(/\{\{name\}\}/g, options.name)
         : value;
     },
   }),

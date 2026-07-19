@@ -2,7 +2,7 @@
 //!
 //! - 持 [`AppHandle`]；lazy 依赖 [`BrowserDatabase`]（首次 open 才 `ensure_open`）
 //! - Content 窗 label 固定 [`BROWSER_CONTENT_LABEL`]
-//! - 双闸：settings（`desktop.workbenchMode` + `desktop.workbenchBrowserEnabled`）
+//! - 双闸：settings（`desktop.workbenchMode` 缺失默认开 + `desktop.workbenchBrowserEnabled` opt-in）
 //!   + feature flag `ui.workbench_browser`
 //!
 //! B1d 接线：`window::bridge_init_script` / 后续 `BridgeClient` 方法挂本服务。
@@ -191,6 +191,11 @@ impl BrowserService {
     // ------------------------------------------------------------------
 
     /// settings 父闸+子闸 且 feature flag 硬闸均开启
+    ///
+    /// 父闸 `desktop.workbenchMode` 与前端 `interpretWorkbenchModeEnabled` /
+    /// `resolveBrowserGates` 对齐：键缺失（或非法值）默认 enabled，仅显式
+    /// `"false"` 关闭。子闸 `desktop.workbenchBrowserEnabled` 仍为 opt-in
+    ///（缺失 → 关闭）。
     pub async fn assert_gates_open(&self) -> BrowserResult<()> {
         let app_state = self
             .app
@@ -200,25 +205,14 @@ impl BrowserService {
         let workbench = app_state
             .database
             .get_setting(SETTING_WORKBENCH_MODE)
-            .map_err(|e| BrowserError::Database(e.to_string()))?
-            .unwrap_or_else(|| "false".into());
-        if !is_truthy(&workbench) {
-            drop(app_state);
-            return self
-                .reject_closed_gate("browser disabled: desktop.workbenchMode is off")
-                .await;
-        }
-
+            .map_err(|e| BrowserError::Database(e.to_string()))?;
         let enabled = app_state
             .database
             .get_setting(SETTING_BROWSER_ENABLED)
-            .map_err(|e| BrowserError::Database(e.to_string()))?
-            .unwrap_or_else(|| "false".into());
-        if !is_truthy(&enabled) {
+            .map_err(|e| BrowserError::Database(e.to_string()))?;
+        if let Err(message) = assert_settings_gates_open(workbench.as_deref(), enabled.as_deref()) {
             drop(app_state);
-            return self
-                .reject_closed_gate("browser disabled: desktop.workbenchBrowserEnabled is off")
-                .await;
+            return self.reject_closed_gate(message).await;
         }
 
         let app_version = env!("CARGO_PKG_VERSION").to_string();
@@ -250,7 +244,7 @@ impl BrowserService {
 
     /// 当前平台是否支持带结果回执的 Agent 浏览器桥。
     pub fn agent_automation_supported() -> bool {
-        cfg!(target_os = "windows")
+        cfg!(any(target_os = "windows", target_os = "macos"))
     }
 
     fn ensure_agent_automation_supported(&self) -> BrowserResult<()> {
@@ -258,7 +252,7 @@ impl BrowserService {
             Ok(())
         } else {
             Err(BrowserError::Validation(
-                "browser agent automation unsupported: result bridge is available on Windows only"
+                "browser agent automation unsupported: result bridge is available on Windows and macOS only"
                     .into(),
             ))
         }
@@ -1464,7 +1458,6 @@ impl BrowserService {
         #[cfg(not(target_os = "linux"))]
         {
             let _ = session_id;
-            return;
         }
 
         #[cfg(target_os = "linux")]
@@ -1881,6 +1874,34 @@ fn is_truthy(value: &str) -> bool {
     )
 }
 
+/// 父闸：与前端 `interpretWorkbenchModeEnabled` 一致——
+/// 缺失 / 空 / 非法 → enabled；仅 trim 后精确 `"false"` 关闭。
+fn is_workbench_mode_enabled(raw: Option<&str>) -> bool {
+    !matches!(raw.map(str::trim), Some("false"))
+}
+
+/// 子闸：显式 opt-in（缺失 → false）。`unwrap_or(false)` 仅作用于子闸，
+/// 不得套用到父闸 `desktop.workbenchMode`（父闸见 `is_workbench_mode_enabled`）。
+fn is_browser_child_gate_enabled(raw: Option<&str>) -> bool {
+    raw.map(is_truthy).unwrap_or(false)
+}
+
+/// settings 层双闸（不含 feature flag）。`assert_gates_open` 的设置语义真源。
+///
+/// 供跨语言一致性测试与调用方复用；与前端 `resolveBrowserGates` 设置半边对齐。
+pub fn assert_settings_gates_open(
+    workbench_raw: Option<&str>,
+    browser_raw: Option<&str>,
+) -> Result<(), &'static str> {
+    if !is_workbench_mode_enabled(workbench_raw) {
+        return Err("browser disabled: desktop.workbenchMode is off");
+    }
+    if !is_browser_child_gate_enabled(browser_raw) {
+        return Err("browser disabled: desktop.workbenchBrowserEnabled is off");
+    }
+    Ok(())
+}
+
 fn effective_allow_insecure_http(network_mode_full: bool, agent_control: bool) -> bool {
     !agent_control || network_mode_full
 }
@@ -1898,6 +1919,43 @@ mod tests {
         assert!(!is_truthy(""));
     }
 
+    /// 对齐前端 `gates.ts` / `interpretWorkbenchModeEnabled`：
+    /// 父闸键缺失 → 开；显式 false → 关；子闸仍需显式 true。
+    #[test]
+    fn assert_settings_gates_open_missing_workbench_defaults_enabled() {
+        // 父闸缺失 + 子闸显式开 → settings 双闸开放（assert_gates_open 同语义）
+        assert!(assert_settings_gates_open(None, Some("true")).is_ok());
+        assert!(assert_settings_gates_open(Some(""), Some("true")).is_ok());
+        assert!(assert_settings_gates_open(Some("  "), Some("true")).is_ok());
+        // 非法值按前端默认 true
+        assert!(assert_settings_gates_open(Some("1"), Some("true")).is_ok());
+        assert!(assert_settings_gates_open(Some("FALSE"), Some("true")).is_ok());
+
+        // 显式 false → 关（即使子闸开）
+        let err = assert_settings_gates_open(Some("false"), Some("true")).unwrap_err();
+        assert_eq!(err, "browser disabled: desktop.workbenchMode is off");
+        assert!(assert_settings_gates_open(Some("  false  "), Some("true")).is_err());
+
+        // 父闸开但子闸缺失/关 → 仍关（子闸 opt-in）
+        let child_err = assert_settings_gates_open(None, None).unwrap_err();
+        assert_eq!(
+            child_err,
+            "browser disabled: desktop.workbenchBrowserEnabled is off"
+        );
+        assert!(assert_settings_gates_open(Some("true"), Some("false")).is_err());
+        assert!(assert_settings_gates_open(Some("true"), Some("true")).is_ok());
+    }
+
+    #[test]
+    fn workbench_mode_enabled_only_explicit_false_closes() {
+        assert!(is_workbench_mode_enabled(None));
+        assert!(is_workbench_mode_enabled(Some("true")));
+        assert!(!is_workbench_mode_enabled(Some("false")));
+        assert!(is_browser_child_gate_enabled(Some("true")));
+        assert!(!is_browser_child_gate_enabled(None));
+        assert!(!is_browser_child_gate_enabled(Some("false")));
+    }
+
     #[test]
     fn content_label_is_fixed() {
         assert_eq!(BrowserService::content_label(), "browser-content");
@@ -1907,7 +1965,7 @@ mod tests {
     fn agent_automation_capability_matches_platform() {
         assert_eq!(
             BrowserService::agent_automation_supported(),
-            cfg!(target_os = "windows")
+            cfg!(any(target_os = "windows", target_os = "macos"))
         );
     }
 

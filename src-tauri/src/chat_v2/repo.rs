@@ -16,9 +16,10 @@ use std::time::Instant;
 use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
 use super::types::{
-    AttachmentMeta, ChatMessage, ChatParams, ChatSession, CompactionRecord, DeleteVariantResult,
-    LoadSessionResponse, MessageBlock, MessageMeta, MessageRole, PanelStates, PersistStatus,
-    SessionGroup, SessionSkillState, SessionState, SharedContext, Variant,
+    AttachmentMeta, AuthorityMode, ChatMessage, ChatParams, ChatSession, CompactionRecord,
+    DeleteVariantResult, LoadSessionResponse, MessageBlock, MessageMeta, MessageRole, PanelStates,
+    PersistStatus, PlanAuthorityState, SessionAuthorityState, SessionGroup, SessionSkillState,
+    SessionState, SharedContext, Variant,
 };
 
 /// 变体 JSON 尺寸告警阈值（64KB）：超过即记录 warn 日志，但不截断。
@@ -160,7 +161,7 @@ impl ChatV2Repo {
         let metadata_json = session
             .metadata
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
 
         let persist_status = match session.persist_status {
@@ -303,7 +304,7 @@ impl ChatV2Repo {
         let metadata_json = session
             .metadata
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
 
         let persist_status = match session.persist_status {
@@ -1095,7 +1096,7 @@ impl ChatV2Repo {
         let attachments_json = message
             .attachments
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let variants_json = match message.variants.as_ref() {
             Some(v) => {
@@ -1115,7 +1116,7 @@ impl ChatV2Repo {
         let shared_context_json = message
             .shared_context
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
 
         let role_str = match message.role {
@@ -1329,7 +1330,7 @@ impl ChatV2Repo {
         let attachments_json = message
             .attachments
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let variants_json = match message.variants.as_ref() {
             Some(v) => {
@@ -1349,7 +1350,7 @@ impl ChatV2Repo {
         let shared_context_json = message
             .shared_context
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
 
         let rows_affected = conn.execute(
@@ -1528,17 +1529,17 @@ impl ChatV2Repo {
         let tool_input_json = block
             .tool_input
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let tool_output_json = block
             .tool_output
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let citations_json = block
             .citations
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
 
         conn.execute(
@@ -1657,17 +1658,17 @@ impl ChatV2Repo {
         let tool_input_json = block
             .tool_input
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let tool_output_json = block
             .tool_output
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let citations_json = block
             .citations
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
 
         let rows_affected = conn.execute(
@@ -2002,22 +2003,22 @@ impl ChatV2Repo {
         let chat_params_json = state
             .chat_params
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let features_json = state
             .features
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let mode_state_json = state
             .mode_state
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
         let panel_states_json = state
             .panel_states
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()?;
 
         conn.execute(
@@ -2180,6 +2181,84 @@ impl ChatV2Repo {
     pub fn update_session_v2(db: &ChatV2Database, session: &ChatSession) -> ChatV2Result<()> {
         let conn = db.get_conn_safe()?;
         Self::update_session_with_conn(&conn, session)
+    }
+
+    /// Read Ask/Plan/Craft authority state from session metadata (defaults to Craft).
+    pub fn get_session_authority_state(
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> ChatV2Result<SessionAuthorityState> {
+        let session = Self::get_session_v2(db, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        Ok(SessionAuthorityState::from_metadata(
+            session.metadata.as_ref(),
+        ))
+    }
+
+    /// Persist authority mode (and clear plan when leaving Plan). Frontend-forged
+    /// mode is ignored — only this backend path updates session metadata.
+    pub fn set_session_authority_mode(
+        db: &ChatV2Database,
+        session_id: &str,
+        mode: AuthorityMode,
+    ) -> ChatV2Result<ChatSession> {
+        let mut session = Self::get_session_v2(db, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut authority = SessionAuthorityState::from_metadata(session.metadata.as_ref());
+        authority.authority_mode = mode;
+        if mode != AuthorityMode::Plan {
+            authority.plan = None;
+        }
+        session.metadata = Some(authority.apply_to_metadata(session.metadata.take()));
+        session.updated_at = Utc::now();
+        Self::update_session_v2(db, &session)?;
+        Ok(session)
+    }
+
+    /// Persist an approved/pending plan batch onto session metadata.
+    pub fn set_session_plan_state(
+        db: &ChatV2Database,
+        session_id: &str,
+        plan: Option<PlanAuthorityState>,
+    ) -> ChatV2Result<ChatSession> {
+        let mut session = Self::get_session_v2(db, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut authority = SessionAuthorityState::from_metadata(session.metadata.as_ref());
+        authority.plan = plan;
+        session.metadata = Some(authority.apply_to_metadata(session.metadata.take()));
+        session.updated_at = Utc::now();
+        Self::update_session_v2(db, &session)?;
+        Ok(session)
+    }
+
+    /// Atomically consume an approved Plan binding. Exactly one concurrent
+    /// caller can transition the matching approval back to no-plan.
+    pub fn consume_session_plan_binding(
+        db: &ChatV2Database,
+        session_id: &str,
+        binding_key: &str,
+        now: DateTime<Utc>,
+    ) -> ChatV2Result<bool> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let mut session = Self::get_session_with_conn(&tx, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut authority = SessionAuthorityState::from_metadata(session.metadata.as_ref());
+        let matches = authority.authority_mode == AuthorityMode::Plan
+            && authority
+                .plan
+                .as_ref()
+                .is_some_and(|plan| plan.is_active_for_binding(binding_key, now));
+        if !matches {
+            tx.commit()?;
+            return Ok(false);
+        }
+        authority.plan = None;
+        session.metadata = Some(authority.apply_to_metadata(session.metadata.take()));
+        session.updated_at = Utc::now();
+        Self::update_session_with_conn(&tx, &session)?;
+        tx.commit()?;
+        Ok(true)
     }
 
     /// 删除会话（使用 ChatV2Database）
@@ -2956,7 +3035,7 @@ impl ChatV2Repo {
             let current_active = message.active_variant_id.as_deref();
             let needs_new_active = current_active
                 .and_then(|id| variants.iter().find(|v| v.id == id))
-                .map_or(true, |v| v.status == variant_status::ERROR);
+                .is_none_or(|v| v.status == variant_status::ERROR);
 
             let new_active_id = if needs_new_active {
                 Self::determine_active_variant(&variants)

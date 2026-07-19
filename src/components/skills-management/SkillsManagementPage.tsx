@@ -54,6 +54,10 @@ import {
   exportSkillsAsTap,
   type SkillUpdateCheckResult,
 } from '@/features/chat/skills/api';
+import {
+  formatSkillUpdateDrift,
+  selectAvailableSkillUpdates,
+} from '@/features/chat/skills/clawhubUi';
 import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
@@ -296,7 +300,8 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         showGlobalNotification('info', t('skills:management.update_none_checkable'));
         return;
       }
-      const available = checkable.filter((r) => r.updateAvailable);
+      // error / RATE_LIMITED 行不得进入 outdated 列表
+      const available = selectAvailableSkillUpdates(results);
       const failed = checkable.filter((r) => r.error);
       if (available.length === 0) {
         showGlobalNotification(
@@ -1289,16 +1294,33 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         </p>
         <div className="space-y-2">
           {pendingUpdates.map((item) => (
-            <div key={item.skillId} className="space-y-0.5">
-              <div className="text-xs font-medium text-foreground">{item.skillId}</div>
+            <div
+              key={item.skillId}
+              className="space-y-0.5"
+              data-testid={`skill-update-outdated-${item.skillId}`}
+              data-source-kind={item.sourceKind}
+            >
+              <div className="flex flex-wrap items-center gap-1.5">
+                <div className="text-xs font-medium text-foreground">{item.skillId}</div>
+                <span
+                  className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-[10px]"
+                  data-testid={`skill-outdated-badge-${item.skillId}`}
+                  title={t('skills:management.update_outdated_hint')}
+                >
+                  {t('skills:management.update_outdated_badge')}
+                </span>
+              </div>
               <div className="font-mono text-[10px] text-muted-foreground">
-                {item.currentSha256.slice(0, 12)} → {item.remoteSha256?.slice(0, 12) ?? '?'}
+                {formatSkillUpdateDrift(item)}
               </div>
               <div className="truncate text-[10px] text-muted-foreground/70">{item.sourceSummary}</div>
             </div>
           ))}
         </div>
-        <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+        <p
+          className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400"
+          data-testid="skill-update-retrust-hint"
+        >
           {t('skills:management.update_retrust_hint')}
         </p>
         <div className="flex items-center justify-end gap-2">

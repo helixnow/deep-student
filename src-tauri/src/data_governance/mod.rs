@@ -13,7 +13,7 @@
 //!
 //! - `schema_registry`: Schema 注册表（派生视图，从各库聚合）
 //! - `migration`: 迁移协调器和执行器（含验证机制）
-//! - `backup`: 备份管理器（SQLite Backup API + 增量备份）
+//! - `backup`: 备份管理器（SQLite Backup API；增量创建已下线，历史包仅识别/拒恢复）
 //! - `sync`: 云同步管理器（记录级冲突检测）
 //! - `audit`: 审计日志
 //! - `dto`: 统一数据传输对象

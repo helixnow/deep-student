@@ -18,7 +18,15 @@
     "listenerRegistrationFailedMessage": "事件监听器注册失败",
     "listenerRegistrationFailed": "监听器注册失败",
     "sessionLoadFailedMessage": "已自动创建新会话，如有需要请检查网络或重启应用",
-    "sessionLoadFailed": "会话加载失败"
+    "sessionLoadFailed": "会话加载失败",
+    "streamInterrupted": "流式响应中断",
+    "abortFailed": "中断失败",
+    "abortFailedMessage": "无法可靠中断生成，已强制重置本地状态",
+    "killSwitchBlocked": "Agent 已断电，无法发送。请在桌面操控中心恢复后再试。"
+  },
+  "killSwitch": {
+    "tripped": "Agent 已断电",
+    "resumeHint": "请在 AI 桌面操控中恢复 Agent"
   },
   "success": {
     "listenerRetrySuccessMessage": "事件监听器重试成功",
@@ -1003,7 +1011,7 @@
     "archiveSessionToast": "已归档。查看已归档的会话：设置",
     "archiveSessionToastMessage": "已归档。查看已归档的会话：",
     "archiveSessionToastSettingsAction": "设置",
-    "pinnedSession": "",
+    "pinnedSession": "置顶",
     "sessionContextMenu": "线程操作菜单",
     "saveSessionName": "保存",
     "cancelEdit": "取消",
@@ -1404,6 +1412,29 @@
     "showMore": "展开更多 (+{{count}})",
     "showLess": "收起",
     "addPlaceholder": "添加标签"
+  },
+  "authority": {
+    "segmentLabel": "会话权限档位",
+    "modes": {
+      "ask": "问一问",
+      "plan": "想一想",
+      "craft": "做一做"
+    },
+    "hints": {
+      "ask": "只读：写工具会被拒绝",
+      "plan": "写操作先确认计划再执行",
+      "craft": "按工具审批策略直接执行"
+    },
+    "switchToPlan": "切换到想一想",
+    "askBlocked": "当前为问一问模式，写操作已被拒绝",
+    "planGate": {
+      "title": "确认执行计划",
+      "fallbackSummary": "模型准备执行写操作",
+      "tool": "工具",
+      "countdown": "{{seconds}} 秒后自动拒绝",
+      "approve": "确认执行",
+      "reject": "拒绝"
+    }
   },
   "approval": {
     "title": "工具执行确认",

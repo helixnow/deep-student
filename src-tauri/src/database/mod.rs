@@ -511,7 +511,7 @@ fn map_anki_fields_for_template(
         }
         let alias_value = nonempty_anki_field_value(&source_fields, &lower)
             .or_else(|| normalized_sources.get(&normalized).copied())
-            .or_else(|| match lower.as_str() {
+            .or(match lower.as_str() {
                 "question" | "word" | "name" => front,
                 "back" | "explanation" | "definition" | "desc" | "expl" | "backdetail"
                 | "answer" => back,
@@ -708,9 +708,7 @@ impl Database {
             "SELECT id FROM chat_messages WHERE mistake_id = ?1 AND role = 'user' AND (turn_id IS NULL OR turn_id = '') ORDER BY timestamp ASC",
         )?;
         let user_rows = users_stmt
-            .query_map(rusqlite::params![mistake_id], |row| {
-                Ok(row.get::<_, i64>(0)?)
-            })?
+            .query_map(rusqlite::params![mistake_id], |row| row.get::<_, i64>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         for user_row_id in user_rows {
             let turn_id = uuid::Uuid::new_v4().to_string();
@@ -725,9 +723,7 @@ impl Database {
             "SELECT id FROM chat_messages WHERE mistake_id = ?1 AND role = 'assistant' AND (turn_id IS NULL OR turn_id = '') ORDER BY timestamp ASC",
         )?;
         let assistant_rows = assistants_stmt
-            .query_map(rusqlite::params![mistake_id], |row| {
-                Ok(row.get::<_, i64>(0)?)
-            })?
+            .query_map(rusqlite::params![mistake_id], |row| row.get::<_, i64>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         for assistant_row_id in assistant_rows {
             let candidate: Option<(i64, String)> = tx
@@ -827,11 +823,11 @@ impl Database {
         let new_conn = Connection::open(&path)
             .with_context(|| format!("重新打开数据库连接失败: {:?}", path))?;
         // 恢复基础 PRAGMA
-        new_conn.pragma_update(None, "journal_mode", &"WAL")?;
-        new_conn.pragma_update(None, "synchronous", &"NORMAL")?;
+        new_conn.pragma_update(None, "journal_mode", "WAL")?;
+        new_conn.pragma_update(None, "synchronous", "NORMAL")?;
         // 🔒 审计修复: 恢复外键约束（SQLite 每次新连接默认关闭，必须显式启用）
-        new_conn.pragma_update(None, "foreign_keys", &"ON")?;
-        new_conn.pragma_update(None, "busy_timeout", &3000i64)?;
+        new_conn.pragma_update(None, "foreign_keys", "ON")?;
+        new_conn.pragma_update(None, "busy_timeout", 3000i64)?;
         *guard = new_conn;
         // 清除维护模式标志
         self.maintenance_mode
@@ -857,10 +853,10 @@ impl Database {
 
         let new_conn = Connection::open(new_path)
             .with_context(|| format!("打开数据库连接失败: {:?}", new_path))?;
-        new_conn.pragma_update(None, "journal_mode", &"WAL")?;
-        new_conn.pragma_update(None, "synchronous", &"NORMAL")?;
-        new_conn.pragma_update(None, "foreign_keys", &"ON")?;
-        new_conn.pragma_update(None, "busy_timeout", &3000i64)?;
+        new_conn.pragma_update(None, "journal_mode", "WAL")?;
+        new_conn.pragma_update(None, "synchronous", "NORMAL")?;
+        new_conn.pragma_update(None, "foreign_keys", "ON")?;
+        new_conn.pragma_update(None, "busy_timeout", 3000i64)?;
 
         {
             let mut guard = self.get_conn_safe()?;
@@ -1066,8 +1062,8 @@ impl Database {
             .optional()?;
 
         if let Some(json_str) = exam_sheet_json {
-            if let Some(mut link) =
-                serde_json::from_str::<crate::models::MistakeExamSheetLink>(&json_str).ok()
+            if let Ok(mut link) =
+                serde_json::from_str::<crate::models::MistakeExamSheetLink>(&json_str)
             {
                 let session_match = link.session_id.as_deref() == Some(session_id);
                 let card_match = card_id
@@ -1188,8 +1184,8 @@ impl Database {
         // SQLite enables foreign keys per connection. Production constructs the
         // database through `new` without calling `initialize_schema`, so this
         // must be applied here for automation run cascades and every other FK.
-        conn.pragma_update(None, "foreign_keys", &"ON")?;
-        conn.pragma_update(None, "busy_timeout", &3000i64)?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "busy_timeout", 3000i64)?;
 
         // 初始化安全存储（使用 db_path 的父目录作为 app_data_dir，确保路径稳定）
         let secure_store_config = SecureStoreConfig::default();
@@ -1216,10 +1212,10 @@ impl Database {
         let conn = self.get_conn_safe()?;
 
         // 启用WAL模式提高并发性能
-        conn.pragma_update(None, "journal_mode", &"WAL")?;
-        conn.pragma_update(None, "synchronous", &"NORMAL")?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
         // 🔒 审计修复: 启用外键约束（SQLite 默认关闭，导致 FOREIGN KEY 和 ON DELETE CASCADE 不生效）
-        conn.pragma_update(None, "foreign_keys", &"ON")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
 
         conn.execute_batch(
             "BEGIN;
@@ -3011,10 +3007,7 @@ impl Database {
                     .get("is_summary")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false)
-                    || overrides
-                        .get("phase")
-                        .and_then(|v| v.as_str())
-                        .map_or(false, |p| p == "SUMMARY")
+                    || (overrides.get("phase").and_then(|v| v.as_str()) == Some("SUMMARY"))
             } else {
                 false
             };
@@ -3176,7 +3169,7 @@ impl Database {
         let conn = self.get_conn_safe()?;
         let mut stmt = conn.prepare("SELECT id FROM chat_messages WHERE mistake_id = ?1")?;
         let rows = stmt
-            .query_map(params![mistake_id], |row| Ok(row.get::<_, i64>(0)?))?
+            .query_map(params![mistake_id], |row| row.get::<_, i64>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -3242,7 +3235,7 @@ impl Database {
                     "SELECT id, stable_id FROM chat_messages WHERE mistake_id = ?1 AND stable_id IS NOT NULL AND stable_id <> ''"
                 )?;
             let rows: Vec<(String, i64)> = stmt
-                .query_map(params![mistake_id], |row| build_existing_message_map(row))?
+                .query_map(params![mistake_id], build_existing_message_map)?
                 .collect::<rusqlite::Result<_>>()?;
             rows.into_iter().collect()
         } else {
@@ -3266,17 +3259,17 @@ impl Database {
             let image_paths_json = message
                 .image_paths
                 .as_ref()
-                .map(|paths| serde_json::to_string(paths))
+                .map(serde_json::to_string)
                 .transpose()?;
             let image_base64_json = message
                 .image_base64
                 .as_ref()
-                .map(|imgs| serde_json::to_string(imgs))
+                .map(serde_json::to_string)
                 .transpose()?;
             let doc_attachments_json = message
                 .doc_attachments
                 .as_ref()
-                .map(|docs| serde_json::to_string(docs))
+                .map(serde_json::to_string)
                 .transpose()?;
 
             // sources 字段：对所有角色保留
@@ -3289,22 +3282,22 @@ impl Database {
                 message
                     .rag_sources
                     .as_ref()
-                    .map(|sources| serde_json::to_string(sources))
+                    .map(serde_json::to_string)
                     .transpose()?,
                 message
                     .memory_sources
                     .as_ref()
-                    .map(|sources| serde_json::to_string(sources))
+                    .map(serde_json::to_string)
                     .transpose()?,
                 message
                     .graph_sources
                     .as_ref()
-                    .map(|sources| serde_json::to_string(sources))
+                    .map(serde_json::to_string)
                     .transpose()?,
                 message
                     .web_search_sources
                     .as_ref()
-                    .map(|sources| serde_json::to_string(sources))
+                    .map(serde_json::to_string)
                     .transpose()?,
             );
 
@@ -3313,12 +3306,12 @@ impl Database {
                 message
                     .tool_call
                     .as_ref()
-                    .map(|tc| serde_json::to_string(tc))
+                    .map(serde_json::to_string)
                     .transpose()?,
                 message
                     .tool_result
                     .as_ref()
-                    .map(|tr| serde_json::to_string(tr))
+                    .map(serde_json::to_string)
                     .transpose()?,
             );
 
@@ -3588,7 +3581,7 @@ impl Database {
                     inserted_ids.push(tx.last_insert_rowid());
                 }
             }
-            if latest_ts.map_or(true, |t: DateTime<Utc>| message.timestamp > t) {
+            if latest_ts.is_none_or(|t: DateTime<Utc>| message.timestamp > t) {
                 latest_ts = Some(message.timestamp);
             }
         }
@@ -3698,7 +3691,7 @@ impl Database {
         let mut stmt = conn.prepare(sql)?;
         let rows = stmt
             .query_map(rusqlite::params![mistake_id, turn_id], |row| {
-                Ok(row.get::<_, i64>(0)?)
+                row.get::<_, i64>(0)
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
@@ -3790,7 +3783,7 @@ impl Database {
         Ok(crate::models::DeleteChatTurnResult {
             mistake_id: mistake_id.to_string(),
             turn_id: turn_id.to_string(),
-            deleted_count: affected as usize,
+            deleted_count: affected,
             full_turn_deleted: delete_user,
             note,
         })
@@ -3809,9 +3802,7 @@ impl Database {
                 "SELECT id FROM chat_messages WHERE mistake_id = ?1 AND role = 'user' AND (turn_id IS NULL OR turn_id = '') ORDER BY timestamp ASC",
             )?;
             let user_rows: Vec<i64> = users_stmt
-                .query_map(rusqlite::params![mistake_id], |row| {
-                    Ok(row.get::<_, i64>(0)?)
-                })?
+                .query_map(rusqlite::params![mistake_id], |row| row.get::<_, i64>(0))?
                 .collect::<std::result::Result<_, _>>()?;
             drop(users_stmt);
             for user_row_id in user_rows {
@@ -3830,9 +3821,7 @@ impl Database {
                 "SELECT id FROM chat_messages WHERE mistake_id = ?1 AND role = 'assistant' AND (turn_id IS NULL OR turn_id = '') ORDER BY timestamp ASC",
             )?;
             let assistant_rows: Vec<i64> = assistants_stmt
-                .query_map(rusqlite::params![mistake_id], |row| {
-                    Ok(row.get::<_, i64>(0)?)
-                })?
+                .query_map(rusqlite::params![mistake_id], |row| row.get::<_, i64>(0))?
                 .collect::<std::result::Result<_, _>>()?;
             drop(assistants_stmt);
             for assistant_row_id in assistant_rows {
@@ -6282,7 +6271,7 @@ impl Database {
                 transaction.prepare("SELECT id FROM rag_documents WHERE sub_library_id = ?1")?;
 
             let document_ids: Vec<String> = stmt
-                .query_map(params![id], |row| Ok(row.get::<_, String>(0)?))?
+                .query_map(params![id], |row| row.get::<_, String>(0))?
                 .collect::<Result<Vec<_>, _>>()?;
 
             // 删除文档关联的向量和块
@@ -6336,20 +6325,23 @@ impl Database {
              LIMIT ?2 OFFSET ?3"
         )?;
 
-        let rows = stmt.query_map(params![sub_library_id, page_size as i64, offset as i64], |row| {
-            Ok(serde_json::json!({
-                "id": row.get::<_, String>(0)?,
-                "file_name": row.get::<_, String>(1)?,
-                "file_path": row.get::<_, Option<String>>(2)?,
-                "file_size": row.get::<_, Option<i64>>(3)?,
-                "total_chunks": row.get::<_, i32>(4)?,
-                "sub_library_id": row.get::<_, String>(5)?,
-                "update_state": row.get::<_, String>(6)?,
-                "update_retry": row.get::<_, i64>(7)?,
-                "created_at": row.get::<_, String>(8)?,
-                "updated_at": row.get::<_, String>(9)?
-            }))
-        })?;
+        let rows = stmt.query_map(
+            params![sub_library_id, page_size as i64, offset as i64],
+            |row| {
+                Ok(serde_json::json!({
+                    "id": row.get::<_, String>(0)?,
+                    "file_name": row.get::<_, String>(1)?,
+                    "file_path": row.get::<_, Option<String>>(2)?,
+                    "file_size": row.get::<_, Option<i64>>(3)?,
+                    "total_chunks": row.get::<_, i32>(4)?,
+                    "sub_library_id": row.get::<_, String>(5)?,
+                    "update_state": row.get::<_, String>(6)?,
+                    "update_retry": row.get::<_, i64>(7)?,
+                    "created_at": row.get::<_, String>(8)?,
+                    "updated_at": row.get::<_, String>(9)?
+                }))
+            },
+        )?;
 
         let mut documents = Vec::new();
         for row in rows {
@@ -7001,7 +6993,7 @@ impl Database {
                value = excluded.value,
                updated_at = excluded.updated_at
              WHERE settings.value IS NOT excluded.value",
-            params![template_id, now]
+            params![template_id, now],
         )?;
 
         Ok(())
@@ -7713,7 +7705,10 @@ mod tests {
         )?;
         let integrity: String = conn.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
 
-        assert_eq!(final_rowid, original_rowid, "UPSERT must not replace the row");
+        assert_eq!(
+            final_rowid, original_rowid,
+            "UPSERT must not replace the row"
+        );
         assert_eq!(integrity, "ok");
         Ok(())
     }

@@ -824,7 +824,7 @@ const SortableOutlineNode: React.FC<{
               e.stopPropagation();
               onZoomIn?.(node.id);
             }}
-            title={`${t('outline.dragToMove')} · ${t('outline.zoomIn')}`}
+            title={`${t('outline.dragToMove')} · ${t('common:zoomIn')}`}
           >
             {isTaskNode ? (
               <input

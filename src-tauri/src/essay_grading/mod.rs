@@ -428,9 +428,7 @@ pub async fn essay_grading_create_custom_mode(
         .as_ref()
         .ok_or_else(|| AppError::internal("自定义模式管理器未初始化".to_string()))?;
 
-    manager
-        .create_mode(input)
-        .map_err(|e| AppError::internal(e))
+    manager.create_mode(input).map_err(AppError::internal)
 }
 
 /// 更新自定义批阅模式
@@ -444,9 +442,7 @@ pub async fn essay_grading_update_custom_mode(
         .as_ref()
         .ok_or_else(|| AppError::internal("自定义模式管理器未初始化".to_string()))?;
 
-    manager
-        .update_mode(input)
-        .map_err(|e| AppError::internal(e))
+    manager.update_mode(input).map_err(AppError::internal)
 }
 
 /// 删除自定义批阅模式
@@ -460,9 +456,7 @@ pub async fn essay_grading_delete_custom_mode(
         .as_ref()
         .ok_or_else(|| AppError::internal("自定义模式管理器未初始化".to_string()))?;
 
-    manager
-        .delete_mode(&mode_id)
-        .map_err(|e| AppError::internal(e))
+    manager.delete_mode(&mode_id).map_err(AppError::internal)
 }
 
 /// 获取所有自定义批阅模式
@@ -491,7 +485,7 @@ pub async fn essay_grading_save_builtin_override(
 
     let mut mode = manager
         .save_builtin_override(input)
-        .map_err(|e| AppError::internal(e))?;
+        .map_err(AppError::internal)?;
 
     // 返回时保持 is_builtin 标记
     mode.is_builtin = true;
@@ -511,7 +505,7 @@ pub async fn essay_grading_reset_builtin_mode(
 
     manager
         .reset_builtin_mode(&builtin_id)
-        .map_err(|e| AppError::internal(e))?;
+        .map_err(AppError::internal)?;
 
     // 返回原始预置模式
     types::get_builtin_grading_modes()

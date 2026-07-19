@@ -718,10 +718,9 @@ impl NotesExporter {
                     continue;
                 }
             };
-            zip.start_file(&zip_entry, file_options.clone())
-                .map_err(|e| {
-                    AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
-                })?;
+            zip.start_file(&zip_entry, file_options).map_err(|e| {
+                AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
+            })?;
             zip.write_all(&bytes).map_err(|e| {
                 AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
             })?;
@@ -735,7 +734,7 @@ impl NotesExporter {
         let id_prefix = &note.id;
         let md_filename = build_md_path_flat(folder_paths.get(&note.id), &safe_title, id_prefix);
         let md_content = self.render_markdown_note_flat(note, folder_paths.get(&note.id));
-        zip.start_file(&md_filename, file_options.clone())
+        zip.start_file(&md_filename, file_options)
             .map_err(|e| AppError::file_system(format!("写入笔记 {} 失败: {}", md_filename, e)))?;
         zip.write_all(md_content.as_bytes())
             .map_err(|e| AppError::file_system(format!("写入笔记 {} 失败: {}", md_filename, e)))?;
@@ -746,7 +745,7 @@ impl NotesExporter {
                 let version_filename =
                     format!("_versions/{}_{}.md", version.note_id, version.version_id);
                 let version_content = self.render_version_markdown_flat(version);
-                zip.start_file(&version_filename, file_options.clone())
+                zip.start_file(&version_filename, file_options)
                     .map_err(|e| {
                         AppError::file_system(format!("写入版本 {} 失败: {}", version_filename, e))
                     })?;
@@ -1219,13 +1218,12 @@ fn yaml_quote(value: &str) -> String {
 
 fn strip_yaml_quotes(s: &str) -> String {
     let trimmed = s.trim();
-    if trimmed.len() >= 2 {
-        if (trimmed.starts_with('"') && trimmed.ends_with('"'))
-            || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
-        {
-            let inner = &trimmed[1..trimmed.len() - 1];
-            return inner.replace(r#"\""#, "\"").replace(r"\\", "\\");
-        }
+    if trimmed.len() >= 2
+        && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+            || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
+    {
+        let inner = &trimmed[1..trimmed.len() - 1];
+        return inner.replace(r#"\""#, "\"").replace(r"\\", "\\");
     }
     trimmed.to_string()
 }

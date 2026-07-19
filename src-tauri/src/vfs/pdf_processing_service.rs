@@ -30,7 +30,7 @@ use futures::stream::{self, StreamExt};
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -407,8 +407,8 @@ impl Default for ImageCompressionConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            size_threshold: 1 * 1024 * 1024, // 1MB
-            pixel_threshold: 2_000_000,      // 2MP
+            size_threshold: 1024 * 1024, // 1MB
+            pixel_threshold: 2_000_000,  // 2MP
             quality: "medium".to_string(),
         }
     }
@@ -534,7 +534,7 @@ impl PdfProcessingService {
         );
 
         // 根据媒体类型选择默认起始阶段
-        let start_stage = start_from_stage.unwrap_or_else(|| match media_type {
+        let start_stage = start_from_stage.unwrap_or(match media_type {
             MediaType::Pdf => ProcessingStage::OcrProcessing,
             MediaType::Image => ProcessingStage::ImageCompression,
         });
@@ -751,7 +751,7 @@ impl PdfProcessingService {
         // 确定初始就绪模式
         // ★ P0 架构改造：image 模式必须等到页面压缩完成后才就绪
         let mut ready_modes: Vec<String> = vec![];
-        let mut issues: Vec<ProcessingIssue> = Vec::new();
+        let _issues: Vec<ProcessingIssue> = Vec::new();
         let mut issues: Vec<ProcessingIssue> = Vec::new();
         if has_extracted_text {
             ready_modes.push("text".to_string());
@@ -815,7 +815,7 @@ impl PdfProcessingService {
                         current_page: Some(0),
                         total_pages: Some(total_pages),
                         percent: 5.0,
-                        ready_modes: ready_modes.clone(),
+                        ready_modes: ready_modes.to_vec(),
                         media_type: Some("pdf".to_string()),
                         failed_stages: None,
                     };
@@ -944,7 +944,7 @@ impl PdfProcessingService {
                         current_page: Some(0),
                         total_pages: Some(total_pages),
                         percent: 20.0,
-                        ready_modes: ready_modes.clone(),
+                        ready_modes: ready_modes.to_vec(),
                         media_type: Some("pdf".to_string()),
                         failed_stages: None,
                     },
@@ -1070,7 +1070,7 @@ impl PdfProcessingService {
             current_page: None,
             total_pages: Some(total_pages),
             percent: 100.0,
-            ready_modes: ready_modes.clone(),
+            ready_modes: ready_modes.to_vec(),
             media_type: Some("pdf".to_string()),
             failed_stages: if completed_with_issues {
                 Some(issues)
@@ -1168,7 +1168,7 @@ impl PdfProcessingService {
         let mut ready_modes: Vec<String> = vec![];
         let mut issues: Vec<ProcessingIssue> = Vec::new();
         // 检查是否已有压缩版本（compressed_blob_hash 不为空且 blob 存在）
-        let has_compressed: bool = conn
+        let _has_compressed: bool = conn
             .query_row(
                 "SELECT compressed_blob_hash FROM files WHERE id = ?1",
                 params![file_id],
@@ -1179,7 +1179,7 @@ impl PdfProcessingService {
             .flatten()
             .map(|h| {
                 !h.trim().is_empty()
-                    && VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &h)
+                    && VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, &h)
                         .ok()
                         .flatten()
                         .is_some()
@@ -1238,7 +1238,7 @@ impl PdfProcessingService {
                     current_page: Some(1),
                     total_pages: Some(1),
                     percent: 10.0,
-                    ready_modes: ready_modes.clone(),
+                    ready_modes: ready_modes.to_vec(),
                     media_type: Some("image".to_string()),
                     failed_stages: None,
                 },
@@ -1284,7 +1284,7 @@ impl PdfProcessingService {
                 } else {
                     // 没有 blob_hash，检查是否有 inline 内容
                     let base64_content =
-                        VfsFileRepo::get_content_with_conn(&conn, &blobs_dir, file_id)?;
+                        VfsFileRepo::get_content_with_conn(&conn, blobs_dir, file_id)?;
                     if base64_content.is_some() {
                         if !ready_modes.contains(&"image".to_string()) {
                             ready_modes.push("image".to_string());
@@ -1301,7 +1301,7 @@ impl PdfProcessingService {
                 let has_content = if blob_hash.is_some() {
                     true
                 } else {
-                    VfsFileRepo::get_content_with_conn(&conn, &blobs_dir, file_id)?.is_some()
+                    VfsFileRepo::get_content_with_conn(&conn, blobs_dir, file_id)?.is_some()
                 };
                 if has_content && !ready_modes.contains(&"image".to_string()) {
                     ready_modes.push("image".to_string());
@@ -1321,7 +1321,7 @@ impl PdfProcessingService {
                     current_page: Some(1),
                     total_pages: Some(1),
                     percent: 25.0,
-                    ready_modes: ready_modes.clone(),
+                    ready_modes: ready_modes.to_vec(),
                     media_type: Some("image".to_string()),
                     failed_stages: None,
                 },
@@ -1369,7 +1369,7 @@ impl PdfProcessingService {
                     current_page: Some(1),
                     total_pages: Some(1),
                     percent: 40.0,
-                    ready_modes: ready_modes.clone(),
+                    ready_modes: ready_modes.to_vec(),
                     media_type: Some("image".to_string()),
                     failed_stages: None,
                 },
@@ -1417,8 +1417,7 @@ impl PdfProcessingService {
                 }
             } else {
                 let blobs_dir = self.db.blobs_dir();
-                let base64_content =
-                    VfsFileRepo::get_content_with_conn(&conn, &blobs_dir, file_id)?;
+                let base64_content = VfsFileRepo::get_content_with_conn(&conn, blobs_dir, file_id)?;
                 if let Some(data) = base64_content {
                     match self
                         .stage_image_ocr_with_base64(file_id, data, mt, &cancel_token, generation)
@@ -1468,7 +1467,7 @@ impl PdfProcessingService {
                     current_page: Some(1),
                     total_pages: Some(1),
                     percent: 60.0,
-                    ready_modes: ready_modes.clone(),
+                    ready_modes: ready_modes.to_vec(),
                     media_type: Some("image".to_string()),
                     failed_stages: None,
                 },
@@ -1540,7 +1539,7 @@ impl PdfProcessingService {
             current_page: Some(1),
             total_pages: Some(1),
             percent: 100.0,
-            ready_modes: ready_modes.clone(),
+            ready_modes: ready_modes.to_vec(),
             media_type: Some("image".to_string()),
             failed_stages: if completed_with_issues {
                 Some(issues)
@@ -1761,7 +1760,7 @@ impl PdfProcessingService {
             if ch.trim().is_empty() {
                 return Ok(true);
             }
-            if VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, ch)?.is_none() {
+            if VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, ch)?.is_none() {
                 return Ok(true);
             }
         }
@@ -1951,7 +1950,7 @@ impl PdfProcessingService {
                     current_page: Some(index + 1),
                     total_pages: Some(total_pages),
                     percent: progress_percent, // 5% - 20%
-                    ready_modes: ready_modes.clone(),
+                    ready_modes: ready_modes.to_vec(),
                     media_type: Some("pdf".to_string()),
                     failed_stages: None,
                 };
@@ -2661,7 +2660,7 @@ impl PdfProcessingService {
         if let Some(app_handle) = self.get_app_handle().await {
             let event = MediaProcessingCompletedEvent {
                 file_id: file_id.to_string(),
-                ready_modes: ready_modes.clone(),
+                ready_modes: ready_modes.to_vec(),
                 stage: stage.as_str().to_string(),
                 media_type: media_type.as_str().to_string(),
             };
@@ -2750,7 +2749,7 @@ impl PdfProcessingService {
     async fn stage_vector_indexing(
         &self,
         file_id: &str,
-        ready_modes: &mut Vec<String>,
+        ready_modes: &mut [String],
         media_type: MediaType,
         generation: u64,
     ) -> VfsResult<()> {
@@ -2838,7 +2837,7 @@ impl PdfProcessingService {
                 current_page: None,
                 total_pages: file.page_count.map(|p| p as usize),
                 percent: 75.0,
-                ready_modes: ready_modes.clone(),
+                ready_modes: ready_modes.to_vec(),
                 media_type: Some(media_type.as_str().to_string()),
                 failed_stages: None,
             },
@@ -2919,7 +2918,7 @@ impl PdfProcessingService {
                 current_page: None,
                 total_pages: file.page_count.map(|p| p as usize),
                 percent: 85.0,
-                ready_modes: ready_modes.clone(),
+                ready_modes: ready_modes.to_vec(),
                 media_type: Some(media_type.as_str().to_string()),
                 failed_stages: None,
             },
@@ -2991,7 +2990,7 @@ impl PdfProcessingService {
                 current_page: None,
                 total_pages: file.page_count.map(|p| p as usize),
                 percent: 95.0,
-                ready_modes: ready_modes.clone(),
+                ready_modes: ready_modes.to_vec(),
                 media_type: Some(media_type.as_str().to_string()),
                 failed_stages: None,
             },
@@ -3094,7 +3093,7 @@ impl PdfProcessingService {
                 current_page: Some(0),
                 total_pages: Some(total_pages),
                 percent: 20.0,
-                ready_modes: ready_modes.clone(),
+                ready_modes: ready_modes.to_vec(),
                 media_type: Some("pdf".to_string()),
                 failed_stages: None,
             },
@@ -3113,8 +3112,8 @@ impl PdfProcessingService {
         let tasks: Vec<_> = preview
             .pages
             .iter()
-            .enumerate()
-            .map(|(_, page)| {
+
+            .map(|page| {
                 let page_index = page.page_index;
                 let blob_hash = page.blob_hash.clone();
                 let blobs_dir = blobs_dir.clone();
@@ -3299,7 +3298,7 @@ impl PdfProcessingService {
     async fn call_ocr_with_retry(
         llm_manager: &Arc<LLMManager>,
         _config: &crate::llm_manager::ApiConfig,
-        image_path: &PathBuf,
+        image_path: &Path,
         page_index: usize,
         cancel_token: &CancellationToken,
     ) -> Result<Vec<PdfOcrTextBlock>, String> {

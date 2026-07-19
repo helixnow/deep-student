@@ -54,7 +54,8 @@ describe('WorkbenchSettingsSection', () => {
     workbenchBus.setEnabled(false);
   });
 
-  it('persists the workbenchMode master switch, enables the bus and dispatches workbench:mode-changed', async () => {
+  it('persists the workbenchMode master switch off, disables the bus and dispatches workbench:mode-changed', async () => {
+    settingsStore.set('desktop.workbenchMode', 'true');
     const modeEvents: Array<{ enabled: boolean }> = [];
     const onModeChanged = (event: Event) => {
       modeEvents.push((event as CustomEvent<{ enabled: boolean }>).detail);
@@ -64,8 +65,8 @@ describe('WorkbenchSettingsSection', () => {
     try {
       render(<WorkbenchSettingsSection />);
 
-      const modeSwitch = await screen.findByRole('switch', { name: '启用学习桌面' });
-      expect(modeSwitch).toHaveAttribute('aria-checked', 'false');
+      const modeSwitch = await screen.findByRole('switch', { name: '学习桌面（默认）' });
+      await waitFor(() => expect(modeSwitch).toHaveAttribute('aria-checked', 'true'));
       expect(workbenchBus.isEnabled()).toBe(false);
 
       fireEvent.click(modeSwitch);
@@ -73,12 +74,12 @@ describe('WorkbenchSettingsSection', () => {
       await waitFor(() => {
         expect(invokeMock).toHaveBeenCalledWith('save_setting', {
           key: 'desktop.workbenchMode',
-          value: 'true',
+          value: 'false',
         });
       });
-      expect(settingsStore.get('desktop.workbenchMode')).toBe('true');
-      await waitFor(() => expect(workbenchBus.isEnabled()).toBe(true));
-      expect(modeEvents).toEqual([{ enabled: true }]);
+      expect(settingsStore.get('desktop.workbenchMode')).toBe('false');
+      await waitFor(() => expect(workbenchBus.isEnabled()).toBe(false));
+      expect(modeEvents).toEqual([{ enabled: false }]);
     } finally {
       window.removeEventListener('workbench:mode-changed', onModeChanged);
     }
@@ -93,7 +94,7 @@ describe('WorkbenchSettingsSection', () => {
 
     render(<WorkbenchSettingsSection />);
 
-    const modeSwitch = await screen.findByRole('switch', { name: '启用学习桌面' });
+    const modeSwitch = await screen.findByRole('switch', { name: '学习桌面（默认）' });
     expect(modeSwitch).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('switch', { name: '自动隐藏 Dock' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('slider', { name: 'Dock 大小' })).toHaveValue('120');
@@ -113,7 +114,7 @@ describe('WorkbenchSettingsSection', () => {
 
     try {
       render(<WorkbenchSettingsSection />);
-      await screen.findByRole('switch', { name: '启用学习桌面' });
+      await screen.findByRole('switch', { name: '学习桌面（默认）' });
 
       // 先选画质预设，再单独改材质 → 应切回自定义
       fireEvent.click(screen.getByRole('radio', { name: '画质' }));
@@ -146,7 +147,7 @@ describe('WorkbenchSettingsSection', () => {
 
   it('applies performance profile levers (balanced → reduced / dock mag on)', async () => {
     render(<WorkbenchSettingsSection />);
-    await screen.findByRole('switch', { name: '启用学习桌面' });
+    await screen.findByRole('switch', { name: '学习桌面（默认）' });
 
     fireEvent.click(screen.getByRole('radio', { name: '均衡' }));
 
@@ -230,7 +231,7 @@ describe('WorkbenchSettingsSection', () => {
 
   it('opens the custom wallpaper picker without exposing an editable path', async () => {
     render(<WorkbenchSettingsSection />);
-    await screen.findByRole('switch', { name: '启用学习桌面' });
+    await screen.findByRole('switch', { name: '学习桌面（默认）' });
 
     expect(screen.queryByRole('textbox', { name: '图片路径' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: '自定义图片' }));
@@ -239,7 +240,7 @@ describe('WorkbenchSettingsSection', () => {
     expect(importCustomWallpaperMock).toHaveBeenCalledWith(
       expect.objectContaining({ pickerTitle: '选择壁纸图片', commit: expect.any(Function) }),
     );
-    expect(screen.getByRole('radio', { name: '主题渐变' })).toHaveAttribute(
+    expect(screen.getByRole('radio', { name: '内置壁纸' })).toHaveAttribute(
       'aria-checked',
       'true',
     );
@@ -259,7 +260,7 @@ describe('WorkbenchSettingsSection', () => {
 
     try {
       render(<WorkbenchSettingsSection />);
-      await screen.findByRole('switch', { name: '启用学习桌面' });
+      await screen.findByRole('switch', { name: '学习桌面（默认）' });
       fireEvent.click(screen.getByRole('radio', { name: '自定义图片' }));
 
       const expected = { kind: 'image', value: managedPath };
@@ -288,7 +289,7 @@ describe('WorkbenchSettingsSection', () => {
       }),
     );
     render(<WorkbenchSettingsSection />);
-    await screen.findByRole('switch', { name: '启用学习桌面' });
+    await screen.findByRole('switch', { name: '学习桌面（默认）' });
 
     const customOption = screen.getByRole('radio', { name: '自定义图片' });
     fireEvent.click(customOption);
@@ -325,7 +326,7 @@ describe('WorkbenchSettingsSection', () => {
 
   it('explains the assistant capability surface and its explicit learning safeguards', async () => {
     render(<WorkbenchSettingsSection />);
-    await screen.findByRole('switch', { name: '启用学习桌面' });
+    await screen.findByRole('switch', { name: '学习桌面（默认）' });
 
     expect(screen.getByText('助手可以做什么')).toBeInTheDocument();
     expect(document.querySelectorAll('.wb-agent-capability-row')).toHaveLength(8);
@@ -335,9 +336,11 @@ describe('WorkbenchSettingsSection', () => {
   });
 
   it('disables browser child controls when workbenchMode is off and shows the parent-gate hint', async () => {
+    settingsStore.set('desktop.workbenchMode', 'false');
     render(<WorkbenchSettingsSection />);
 
-    await screen.findByRole('switch', { name: '启用学习桌面' });
+    const modeSwitch = await screen.findByRole('switch', { name: '学习桌面（默认）' });
+    await waitFor(() => expect(modeSwitch).toHaveAttribute('aria-checked', 'false'));
     const browserSwitch = screen.getByRole('switch', { name: '内置浏览器' });
     const agentSwitch = screen.getByRole('switch', { name: '允许助手操控浏览器' });
 
@@ -406,7 +409,7 @@ describe('WorkbenchSettingsSection', () => {
     });
 
     invokeMock.mockClear();
-    const modeSwitch = screen.getByRole('switch', { name: '启用学习桌面' });
+    const modeSwitch = screen.getByRole('switch', { name: '学习桌面（默认）' });
     fireEvent.click(modeSwitch);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('browser_close', {});

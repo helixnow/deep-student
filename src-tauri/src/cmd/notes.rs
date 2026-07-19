@@ -15,7 +15,6 @@ use crate::vfs::types::VfsCreateNoteParams;
 use crate::vfs::{VfsLanceStore, VfsNoteRepo};
 use chrono::Utc;
 use encoding_rs::{GB18030, GBK, UTF_16BE, UTF_16LE};
-use rusqlite::params;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -667,11 +666,9 @@ pub async fn notes_empty_trash(
         let rows = stmt
             .query_map([], |row| row.get::<_, String>(0))
             .map_err(|e| AppError::database(format!("遍历回收站失败: {}", e)))?;
-        for r in rows {
-            if let Ok(note_id) = r {
-                if let Ok(Some(note)) = VfsNoteRepo::get_note_with_conn(&conn, &note_id) {
-                    ids.push(note.resource_id);
-                }
+        for note_id in rows.flatten() {
+            if let Ok(Some(note)) = VfsNoteRepo::get_note_with_conn(&conn, &note_id) {
+                ids.push(note.resource_id);
             }
         }
         ids.sort();
@@ -969,7 +966,7 @@ pub async fn notes_assets_scan_orphans(
         for cap in HTML_SRCSET_REGEX.captures_iter(trimmed) {
             if let Some(m) = cap.get(1) {
                 for candidate in m.as_str().split(',') {
-                    let path = candidate.trim().split_whitespace().next().unwrap_or("");
+                    let path = candidate.split_whitespace().next().unwrap_or("");
                     if !path.is_empty() {
                         add_ref_path(&mut refs, path);
                     }

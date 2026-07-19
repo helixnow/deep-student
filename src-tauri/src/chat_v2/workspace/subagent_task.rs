@@ -11,18 +11,14 @@ use super::database::WorkspaceDatabase;
 /// 子代理任务状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SubagentTaskStatus {
+    #[default]
     Pending,
     Running,
     Completed,
     Failed,
     Cancelled,
-}
-
-impl Default for SubagentTaskStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 /// 子代理任务数据
@@ -379,10 +375,8 @@ impl SubagentTaskManager {
             .map_err(|e| SubagentTaskError::Database(e.to_string()))?;
 
         let mut result = Vec::new();
-        for task in tasks {
-            if let Ok(t) = task {
-                result.push(t);
-            }
+        for t in tasks.flatten() {
+            result.push(t);
         }
 
         log::info!(

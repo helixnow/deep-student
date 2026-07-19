@@ -16,6 +16,11 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import i18n from 'i18next';
 import { formatUserFacingError, getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import {
+  clearAdapterErrorFlag,
+  reportAdapterError,
+  type AdapterErrorStoreApi,
+} from './errors/adapterErrorChannel';
 import type { StoreApi } from 'zustand';
 import type {
   ChatStore,
@@ -250,6 +255,11 @@ export class ChatV2TauriAdapter {
     return this.storeApi?.getState() ?? this.store;
   }
 
+  /** Narrow storeApi for the adapter error channel (optional adapterError flag). */
+  private getErrorStoreApi(): AdapterErrorStoreApi | null {
+    return (this.storeApi as unknown as AdapterErrorStoreApi | null) ?? null;
+  }
+
   private claimSessionRuntimeOwnership(): boolean {
     const currentOwner = ChatV2TauriAdapter.sessionRuntimeOwners.get(this.sessionId);
     if (!currentOwner || currentOwner.adapterInstanceId <= this.adapterInstanceId) {
@@ -394,7 +404,13 @@ export class ChatV2TauriAdapter {
         messageId: payload.messageId,
         usage: payload.usage,
       }).catch((err) => {
-        console.error(LOG_PREFIX, 'Error in handleStreamComplete:', getErrorMessage(err));
+        reportAdapterError({
+          code: 'stream_cleanup_failed',
+          level: 'dev',
+          sessionId: this.sessionId,
+          message: 'Error in handleStreamComplete',
+          cause: err,
+        });
       });
     }, STREAM_COMPLETE_SETTLE_DELAY_MS);
   }
@@ -647,6 +663,10 @@ export class ChatV2TauriAdapter {
         this.unlisteners.push(...unlistenFns);
         this.claimAnkiEventOwnership('retrySetupListeners');
         this.listenerRegistrationError = null;
+        clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), [
+          'listener_registration_failed',
+          'listener_retry_failed',
+        ]);
       }).catch((err) => {
         const isStaleSetupError = err instanceof Error && err.message.includes('Retry listener setup became stale');
         if (isStaleSetupError) {
@@ -662,6 +682,10 @@ export class ChatV2TauriAdapter {
       await this.waitForListenersReady();
 
       console.log(LOG_PREFIX, `Retry successful: ${this.unlisteners.length} event listeners registered`);
+      clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), [
+        'listener_registration_failed',
+        'listener_retry_failed',
+      ]);
       
       showGlobalNotification(
         'success',
@@ -672,15 +696,19 @@ export class ChatV2TauriAdapter {
       return true;
     } catch (error) {
       const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Retry setup listeners failed:', errorMsg);
       this.listenerRegistrationError = error instanceof Error ? error : new Error(errorMsg);
-      
-      // 通知用户重试失败
-      showGlobalNotification(
-        'error',
-        i18n.t('chatV2:error.listenerRetryFailedMessage'),
-        i18n.t('chatV2:error.listenerRetryFailed')
-      );
+
+      reportAdapterError({
+        code: 'listener_retry_failed',
+        level: 'user',
+        sessionId: this.sessionId,
+        message: i18n.t('chatV2:error.listenerRetryFailedMessage'),
+        title: i18n.t('chatV2:error.listenerRetryFailed'),
+        cause: error,
+        retryable: true,
+        retry: () => { void this.retrySetupListeners(); },
+        storeApi: this.getErrorStoreApi(),
+      });
       
       return false;
     } finally {
@@ -762,6 +790,10 @@ export class ChatV2TauriAdapter {
         this.claimAnkiEventOwnership('setup');
         sessionSwitchPerf.mark('listen_end');
         this.listenerRegistrationError = null;
+        clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), [
+          'listener_registration_failed',
+          'listener_retry_failed',
+        ]);
         console.log(LOG_PREFIX, `Listeners ready for session: ${this.sessionId}`);
         console.log(LOG_PREFIX, `Successfully registered ${this.unlisteners.length} event listeners`);
       }).catch((err) => {
@@ -773,17 +805,21 @@ export class ChatV2TauriAdapter {
 
         // 🆕 P1 修复：事件监听注册失败处理
         const errorMsg = getErrorMessage(err);
-        console.error(LOG_PREFIX, 'Failed to setup event listeners:', errorMsg);
         
         // 保存错误状态，供健康检查和重试使用
         this.listenerRegistrationError = err instanceof Error ? err : new Error(errorMsg);
-        
-        // 通知用户（使用统一通知系统）
-        showGlobalNotification(
-          'error',
-          i18n.t('chatV2:error.listenerRegistrationFailedMessage'),
-          i18n.t('chatV2:error.listenerRegistrationFailed')
-        );
+
+        reportAdapterError({
+          code: 'listener_registration_failed',
+          level: 'user',
+          sessionId: this.sessionId,
+          message: i18n.t('chatV2:error.listenerRegistrationFailedMessage'),
+          title: i18n.t('chatV2:error.listenerRegistrationFailed'),
+          cause: err,
+          retryable: true,
+          retry: () => { void this.retrySetupListeners(); },
+          storeApi: this.getErrorStoreApi(),
+        });
         throw this.listenerRegistrationError;
       });
 
@@ -886,14 +922,20 @@ export class ChatV2TauriAdapter {
         sessionSwitchPerf.mark('adapter_setup_end');
       } else {
         // loadResult === 'error'
-        console.warn(LOG_PREFIX, 'Failed to load session after setup (may be new session):', getErrorMessage(loadError!));
         isNewSession = true;
         // 🔧 用户通知：会话加载失败时提示用户（降级为新会话）
-        showGlobalNotification(
-          'warning',
-          i18n.t('chatV2:error.sessionLoadFailedMessage'),
-          i18n.t('chatV2:error.sessionLoadFailed')
-        );
+        reportAdapterError({
+          code: 'session_load_failed',
+          level: 'user',
+          sessionId: this.sessionId,
+          message: i18n.t('chatV2:error.sessionLoadFailedMessage'),
+          title: i18n.t('chatV2:error.sessionLoadFailed'),
+          cause: loadError,
+          notificationType: 'warning',
+          retryable: true,
+          retry: () => this.loadSession(),
+          storeApi: this.getErrorStoreApi(),
+        });
         // 🔧 P27 修复：新会话加载失败时也要标记 isDataLoaded=true
         // 否则 ChatContainer 会一直显示空白（因为 isDataLoaded 永远是 false）
         // 对于新会话，数据为空但状态是"已加载"，UI 应该正常渲染空态
@@ -945,7 +987,14 @@ export class ChatV2TauriAdapter {
         }
       }
     } catch (error) {
-      console.error(LOG_PREFIX, 'Setup failed:', getErrorMessage(error));
+      // Listener failures already report at user level; keep outer catch as dev breadcrumb.
+      reportAdapterError({
+        code: 'setup_failed',
+        level: 'dev',
+        sessionId: this.sessionId,
+        message: 'Setup failed',
+        cause: error,
+      });
       throw error;
     }
   }
@@ -1928,7 +1977,13 @@ export class ChatV2TauriAdapter {
         variantId: event.variantId,
         error: getErrorMessage(error),
       }, 'error');
-      console.error(LOG_PREFIX, 'Error handling block event:', getErrorMessage(error), event);
+      reportAdapterError({
+        code: 'block_event_failed',
+        level: 'dev',
+        sessionId: this.sessionId,
+        message: `Error handling block event (${event.type})`,
+        cause: error,
+      });
     } finally {
       this.touchPendingStreamCompletion();
     }
@@ -2312,7 +2367,6 @@ export class ChatV2TauriAdapter {
           this.cancelPendingStreamCompletion();
           this.clearStreamExpectation(payload.messageId);
           // 流式错误 - 重置状态为 idle
-          console.error(LOG_PREFIX, 'Stream error:', payload.error);
           chunkBuffer.flushSession(this.sessionId);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
           this.store.completeStream('error');
@@ -2328,11 +2382,26 @@ export class ChatV2TauriAdapter {
             streamReconnect: undefined,
           });
           handleStreamAbort(this.store).catch((err) => {
-            console.error(LOG_PREFIX, 'Error in handleStreamAbort:', getErrorMessage(err));
+            reportAdapterError({
+              code: 'stream_cleanup_failed',
+              level: 'dev',
+              sessionId: this.sessionId,
+              message: 'Error in handleStreamAbort after stream_error',
+              cause: err,
+            });
           });
-          // 显示错误提示
+          // 显示错误提示（经 errorChannel，避免黑盒 console.error）
           if (payload.error) {
-            showGlobalNotification('error', streamError);
+            reportAdapterError({
+              code: 'stream_error',
+              level: 'user',
+              sessionId: this.sessionId,
+              message: streamError,
+              title: i18n.t('chatV2:error.streamInterrupted', { defaultValue: 'Stream interrupted' }),
+              cause: payload.error,
+              retryable: false,
+              storeApi: this.getErrorStoreApi(),
+            });
           }
           break;
         }
@@ -2367,16 +2436,35 @@ export class ChatV2TauriAdapter {
           // 用户取消时也清空多变体 ID
           this.store.setPendingParallelModelIds(null);
           handleStreamAbort(this.store).catch((err) => {
-            console.error(LOG_PREFIX, 'Error in handleStreamAbort:', getErrorMessage(err));
+            reportAdapterError({
+              code: 'stream_cleanup_failed',
+              level: 'dev',
+              sessionId: this.sessionId,
+              message: 'Error in handleStreamAbort after stream_cancelled',
+              cause: err,
+            });
           });
           break;
 
         case 'save_complete':
           console.log(LOG_PREFIX, 'Session saved successfully');
+          clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), ['session_save_failed']);
           break;
 
         case 'save_error':
-          console.error(LOG_PREFIX, 'Session save failed:', payload.error);
+          reportAdapterError({
+            code: 'session_save_failed',
+            level: 'user',
+            sessionId: this.sessionId,
+            message: i18n.t('chatV2:error.saveFailedDesc', {
+              defaultValue: 'Failed to save session, will retry automatically',
+            }),
+            title: i18n.t('chatV2:error.saveFailed', { defaultValue: 'Save failed' }),
+            cause: payload.error,
+            retryable: true,
+            retry: () => this.saveSession(),
+            storeApi: this.getErrorStoreApi(),
+          });
           break;
 
         case 'summary_updated':
@@ -2401,7 +2489,13 @@ export class ChatV2TauriAdapter {
           console.warn(LOG_PREFIX, 'Unknown session event type:', payload.eventType);
       }
     } catch (error) {
-      console.error(LOG_PREFIX, 'Error handling session event:', getErrorMessage(error));
+      reportAdapterError({
+        code: 'session_event_failed',
+        level: 'dev',
+        sessionId: this.sessionId,
+        message: 'Error handling session event',
+        cause: error,
+      });
     }
   }
 
@@ -2950,10 +3044,19 @@ export class ChatV2TauriAdapter {
       await this.store.abortStream();
       console.log(LOG_PREFIX, 'Stream aborted');
     } catch (error) {
-      console.error(LOG_PREFIX, 'Abort stream failed:', getErrorMessage(error));
       // 强制重置前端状态
       console.warn(LOG_PREFIX, 'Forcing frontend state reset');
       this.store.forceResetToIdle?.();
+      reportAdapterError({
+        code: 'abort_failed',
+        level: 'user',
+        sessionId: this.sessionId,
+        message: i18n.t('chatV2:error.abortFailedMessage'),
+        title: i18n.t('chatV2:error.abortFailed'),
+        cause: error,
+        retryable: false,
+        storeApi: this.getErrorStoreApi(),
+      });
       throw error;
     }
   }
@@ -3490,6 +3593,7 @@ export class ChatV2TauriAdapter {
 
       // 使用 Store 的 restoreFromBackend 方法恢复状态
       this.store.restoreFromBackend(response, restoreBaseline);
+      clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), ['session_load_failed']);
 
       this.reconcileLoadedAnkiBlocks();
 

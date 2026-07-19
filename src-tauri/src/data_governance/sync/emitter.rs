@@ -58,7 +58,7 @@ impl SyncProgressEmitter {
         let mut last_phase_guard = self.last_phase.lock().await;
 
         // 检查是否需要强制发射
-        let phase_changed = last_phase_guard.map_or(true, |p| p != progress.phase);
+        let phase_changed = last_phase_guard.is_none_or(|p| p != progress.phase);
         let is_terminal = progress.phase.is_terminal();
 
         // 如果阶段变化或达到终止状态，强制发射

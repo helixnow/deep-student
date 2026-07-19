@@ -1220,7 +1220,7 @@ impl FileManager {
                     return Ok(mime_type.to_string());
                 }
             }
-            return Err(AppError::validation("无效的Data URL格式"));
+            Err(AppError::validation("无效的Data URL格式"))
         } else {
             // 如果不是Data URL，尝试从文件头部识别
             self.detect_image_type_from_content(base64_data)

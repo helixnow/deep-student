@@ -46,7 +46,7 @@ DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部�
 
 | 能力 | **DeepStudent** | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian |
 |---|:---:|:---:|:---:|:---:|:---:|
-| 围绕资料 AI 问答 | **✓ 9家模型** | ✓ 仅Gemini | ✓ 多模型 | ✓ 多Agent | △ Notion AI |
+| 围绕资料 AI 问答 | **✓ 12 家供应商** | ✓ 仅Gemini | ✓ 多模型 | ✓ 多Agent | △ Notion AI |
 | 跨平台开箱即用 | **✓ Win/Mac/Linux/Android** | ✓ 全平台 | △ 需Docker | △ 需Docker | ✓ 全平台 |
 | 智能记忆系统 | **✓ AI驱动持久化** | ✗ | ✗ | △ 会话记忆 | ✗ |
 | 笔记系统 | **✓ 富文本+标签+AI** | △ 简单笔记 | △ AI笔记 | △ Notebook | ✓ 核心功能 |
@@ -65,16 +65,18 @@ DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部�
 | 能力 | **DeepStudent** | NotebookLM | Open Notebook | DeepTutor | Notion/Obsidian |
 |---|:---:|:---:|:---:|:---:|:---:|
 | 数据本地存储 | **✓** | ✗ 云端 | ✓ Docker | ✓ Docker | △ |
-| 云同步 | **△ 实验性** | ✓ 原生 | ✗ | ✗ | ✓ |
+| 云同步 | **△ 实验性**（偏备份式同步，非实时协作） | ✓ 原生 | ✗ | ✗ | ✓ |
 | 开源 / 可自托管 | **✓ AGPL-3.0** | ✗ | ✓ | ✓ AGPL-3.0 | ✗ |
 | 统一数据层 (VFS) | **✓** | ✗ | ✗ | ✗ | ✗ |
 | 导入自动索引 | **✓ 含OCR** | ✓ | ✓ | ✓ | △ |
 | 导图 ↔ 大纲双模式 | **✓** | ✗ | ✗ | ✗ | △ |
 | 深度调研 + 论文搜索 | **✓ 多引擎+arXiv** | △ Discover | ✗ | ✓ | ✗ |
 | AI 作文批改 | **✓ 多场景评分** | ✗ | ✗ | ✗ | △ Notion AI |
-| MCP 生态 / 技能扩展 | **✓ 原生+预置服务** | ✗ | ✗ | ✓ MCP Registry | ✗ |
+| MCP 生态 / 技能扩展 | **✓ 原生+预置服务**<sup>1</sup> | ✗ | ✗ | ✓ MCP Registry | ✗ |
 | 多人协作 | **✗** | △ 可共享 | ✗ | ✗ | ✓ |
 | 社区与生态 | **△ 新项目** | ✓ | △ 新项目 | △ 新项目 | ✓ 插件丰富 |
+
+<sup>1</sup> Agent 浏览器自动化：仅 Windows + macOS（Linux 虽有 WebKitGTK eval 桥代码，但 Agent 工具面仍关闭）
 
 </details>
 
@@ -90,6 +92,8 @@ DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部�
 - 引用面板直选知识库笔记或教材注入上下文，实时 Token 估算
 - 深度推理模式（思维链），展示完整思考过程
 - 多 Tab 会话与会话分支，探索不同解题路径
+- 权限模式 Ask / Plan / Craft（默认 Craft）：只读 · 先确认计划再执行 · 按工具审批策略执行
+- 学习桌面（OS / Workbench 模式）：围绕对话与资源的多窗口学习壳层
 - 多模型对比（实验性）：同一问题并排展示多个模型的回答
 - 会话分组、分组 System Prompt、默认技能配置
 - 子代理执行（实验性）：复杂任务自动拆解、后台完成
@@ -149,7 +153,7 @@ DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部�
 - 每日练习、限时练习、模拟考试，自动判分
 - 做题历史回顾 — 查看过往练习记录，追踪学习进度
 - AI 深度解析，分析知识点与解题思路
-- 按知识点统计掌握率，定位薄弱环节
+- 按知识点掌握度追踪（回流薄弱点画像，并对 FSRS 复习做有界偏置）
 
 <details>
 <summary>📸 查看截图</summary>
@@ -205,7 +209,7 @@ DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部�
 
 - 全文翻译，左右分栏同步滚动
 - 逐段双语对照，精读友好
-- 学术 / 技术 / 文学 / 法律 / 医学等领域预设
+- 7 种领域预设：通用 / 学术 / 技术 / 文学 / 法律 / 医学 / 日常对话
 - 自定义提示词与术语偏好
 
 <details>
@@ -295,11 +299,12 @@ DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部�
 可扩展的工作台，不是封闭的功能集合。
 
 - 技能（Skills）按需加载 AI 能力，激活时才加载对应工具，节省 Token
-- 内置 26 项技能（6 个场景技能 + 20 个工具组）：制卡 · 调研 · 论文 · 导师 · 文献综述 · 试卷分析 · 导图 · 题库 · 记忆 · 会话管理 · Office 套件 · 待办 · 画布笔记 · 图片生成 · 网页抓取 · 子代理工作区等
+- 内置 40+ 技能/工具组：制卡 · 调研 · 论文 · 导师 · 文献综述 · 试卷分析 · 导图 · 题库 · 记忆 · 会话管理 · Office 套件 · 待办 · 画布笔记 · 图片生成 · 网页抓取 · 子代理工作区等
+- ClawHub 技能市场：浏览 / 校验 / 安装社区技能（装前风险扫描）
 - 三级加载（内置 → 全局 → 项目级），支持 SKILL.md 自定义
-- MCP 协议兼容，可连接 Arxiv、Context7 等外部工具
-- 预置 9 家模型供应商，支持任意 OpenAI 兼容接口
-- 已适配 Gemini 3、GPT-5.2 Pro、GLM-5、DeepSeek V4、Seed 2.0、Kimi K2.5 等最新模型
+- MCP 协议兼容（支持预设的 OAuth），可连接 Arxiv、Context7 等外部工具
+- 预置 12 家模型供应商模板（含 Gemini），另支持自建多协议端点（Anthropic / Grok / Ollama 等）
+- 已适配 Gemini 3、GPT-5.5 / GPT-5.2 Pro、GLM-5、DeepSeek V4、Seed 2.0、Kimi K2.5 等最新模型
 
 <details>
 <summary>📸 查看截图</summary>
@@ -315,10 +320,10 @@ DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部�
 学习数据由你控制。
 
 - 全部数据本地存储（SQLite + LanceDB + Blob）
-- 全量备份与恢复，数据导入导出
+- 全量 ZIP 备份与恢复（增量备份已下线），数据导入导出
 - AES-256-GCM 加密敏感数据，双槽位 A/B 切换
 - 审计日志，全操作可追溯
-- 云同步（实验性）：S3 兼容存储与 WebDAV
+- 云同步（实验性）：偏备份式同步，支持 S3 兼容存储与 WebDAV；FTP 后端实验性；非实时协作
 
 </details>
 
@@ -338,7 +343,7 @@ DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部�
 | Linux | `.deb` / `.AppImage` | x86_64 / arm64 |
 | Android | `.apk` | arm64 |
 
-> iOS 可通过 Xcode 本地构建，详见 [构建配置指南](./docs/BUILD-CONFIG.md)。
+> iOS 仅支持通过 Xcode 源码本地构建（无应用商店安装包），详见 [构建配置指南](./docs/BUILD-CONFIG.md)。
 
 ### 上手建议
 
@@ -373,7 +378,7 @@ DeepStudent
 ├── 统一数据层：VFS + SQLite 元数据 + LanceDB 向量索引 + Blob 文件存储
 ├── 工作流层：对话 / 调研 / 导图 / 题目集 / 翻译 / 作文 / 记忆
 ├── 扩展层：Skills / MCP / 多搜索引擎 / 自定义模型供应商
-└── 交互层：桌面端（macOS · Windows）与移动端（Android · iOS）
+└── 交互层：桌面端（macOS · Windows · Linux）与移动端（Android；iOS 仅源码构建）
 ```
 
 <details>
@@ -382,7 +387,7 @@ DeepStudent
 ```
 DeepStudent
 ├── src/                    # React 前端
-│   ├── features/           #   特性模块（14 个：chat / learning-hub / mindmap / notes / pdf / practice / settings / todo / voice-input 等）
+│   ├── features/           #   特性模块（19 个：chat / learning-hub / mindmap / notes / pdf / practice / settings / todo / workbench / voice-input 等）
 │   │   └── chat/           #     Chat V2 对话引擎
 │   │       ├── core/       #       Store / 类型 / 注册表
 │   │       ├── skills/     #       技能系统 (builtin / builtin-tools / 加载器)
@@ -404,14 +409,14 @@ DeepStudent
 ├── src-tauri/              # Tauri / Rust 后端
 │   └── src/
 │       ├── chat_v2/        #   对话 Pipeline & 工具执行器
-│       ├── llm_manager/    #   多模型管理 & 适配 (含 9 家内置供应商)
+│       ├── llm_manager/    #   多模型管理 & 适配 (含 12 家内置供应商)
 │       ├── vfs/            #   虚拟文件系统 & 向量化索引
 │       ├── dstu/           #   DSTU 资源协议后端
 │       ├── tools/          #   联网搜索引擎适配 (7 引擎)
 │       ├── memory/         #   智能记忆（自进化画像 / 三层架构 / LLM 决策）
 │       ├── mcp/            #   MCP 协议实现
 │       ├── translation/    #   翻译 Pipeline 后端
-│       ├── cloud_storage/  #   云同步 (S3 / WebDAV)
+│       ├── cloud_storage/  #   云同步 (S3 / WebDAV；FTP 实验性)
 │       ├── data_governance/ #  备份、审计、迁移
 │       ├── essay_grading/  #   作文批改后端
 │       ├── qbank_grading/  #   题目集 AI 评分
@@ -434,7 +439,7 @@ DeepStudent
 |------|----------|
 | **前端框架** | React 18 + TypeScript 5.6 + Vite 6 |
 | **UI 组件** | Tailwind CSS 3 + Radix UI + Phosphor Icons |
-| **桌面 / 移动** | Tauri 2 (Rust) — macOS · Windows · Android · iOS |
+| **桌面 / 移动** | Tauri 2 (Rust) — macOS · Windows · Linux · Android · iOS |
 | **数据存储** | SQLite (Rusqlite) + LanceDB (向量检索) + 本地 Blob |
 | **状态管理** | Zustand 5 + Immer |
 | **编辑器** | Milkdown (Markdown) + CodeMirror (代码) |
@@ -461,8 +466,7 @@ git clone https://github.com/helixnow/deep-student.git
 cd deep-student
 
 npm ci
-npm run dev
-npm run dev:tauri
+npm run tauri dev
 ```
 
 更多打包与构建信息见 [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md)

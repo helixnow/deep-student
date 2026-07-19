@@ -399,17 +399,17 @@ impl ApprovalManager {
 
         // ADR-B2：权限类工具（skill_install / mcp_server_propose / runtime_root_request）
         // 永不写入 remember —— 即使用户点了「始终允许 / 本会话允许」也降级为单次批准。
-        if remember_disabled || approval_scope::never_remember_approval(&response.tool_name) {
-            if response.remember || response.remember_session {
-                log::info!(
+        if (remember_disabled || approval_scope::never_remember_approval(&response.tool_name))
+            && (response.remember || response.remember_session)
+        {
+            log::info!(
                     "[ApprovalManager] Downgrading remember flags for privilege tool '{}' (session={}, tool_call_id={})",
                     response.tool_name,
                     response.session_id,
                     response.tool_call_id
                 );
-                response.remember = false;
-                response.remember_session = false;
-            }
+            response.remember = false;
+            response.remember_session = false;
         }
 
         if response.remember {
@@ -535,6 +535,93 @@ impl ApprovalManager {
                 poisoned.into_inner()
             })
             .remove(&pending_key);
+    }
+
+    /// 🆕 B2（一键断电）：以拒绝结果 drain 全部挂起审批。
+    ///
+    /// 每个等待中的 pipeline 都会立刻收到 `approved=false` 的响应（reason 为传入
+    /// 的说明），而不是等到超时。返回被拒绝的挂起审批数量。线程安全：pending
+    /// 通道在单个锁作用域内一次性取出，随后逐个在锁外发送响应。
+    pub fn reject_all_pending(&self, reason: &str) -> usize {
+        let drained: Vec<(String, oneshot::Sender<ApprovalResponse>)> = self
+            .pending
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .drain()
+            .collect();
+
+        if drained.is_empty() {
+            return 0;
+        }
+
+        let keys: Vec<String> = drained.iter().map(|(key, _)| key.clone()).collect();
+
+        // 逐 key 清理辅助表（不整表 clear，避免误删 drain 之后并发注册的新条目）
+        let mut tool_names: HashMap<String, String> = {
+            let mut guard = self.pending_tool_names.lock().unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            });
+            keys.iter()
+                .filter_map(|key| guard.remove(key).map(|name| (key.clone(), name)))
+                .collect()
+        };
+        {
+            let mut guard = self.pending_scope_keys.lock().unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            });
+            for key in &keys {
+                guard.remove(key);
+            }
+        }
+        {
+            let mut guard = self.pending_setting_keys.lock().unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            });
+            for key in &keys {
+                guard.remove(key);
+            }
+        }
+        {
+            let mut guard = self
+                .pending_remember_disabled
+                .lock()
+                .unwrap_or_else(|poisoned| {
+                    log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                    poisoned.into_inner()
+                });
+            for key in &keys {
+                guard.remove(key);
+            }
+        }
+
+        let mut rejected = 0usize;
+        for (key, tx) in drained {
+            // pending_key 格式：`{session_id}\n{tool_call_id}`（见 make_pending_key）
+            let (session_id, tool_call_id) = key.split_once('\n').unwrap_or(("", key.as_str()));
+            let tool_name = tool_names.remove(&key).unwrap_or_default();
+            let response = ApprovalResponse::rejected(
+                session_id.to_string(),
+                tool_call_id.to_string(),
+                tool_name,
+                Some(reason.to_string()),
+            );
+            // 接收方可能已退出（流被取消）；drain 本身即视为已拒绝
+            let _ = tx.send(response);
+            rejected += 1;
+        }
+
+        log::warn!(
+            "[ApprovalManager] reject_all_pending: rejected {} pending approval(s), reason={}",
+            rejected,
+            reason
+        );
+        rejected
     }
 
     pub fn cancel(&self, tool_call_id: &str) {
@@ -965,6 +1052,55 @@ mod tests {
         assert!(manager
             .check_remembered("test_tool", &serde_json::json!({"path":"/a"}))
             .is_none());
+    }
+
+    /// B2（一键断电）：两个挂起审批 → reject_all_pending 后两者都立刻收到
+    /// 拒绝响应（reason 透传），返回计数 = 2，pending 清零且辅助表无残留。
+    #[tokio::test]
+    async fn reject_all_pending_drains_all_waiters_with_rejection() {
+        let manager = ApprovalManager::new();
+        let rx_a = manager.register_with_scope(
+            "sess_ks_a",
+            "call_ks_a",
+            "note_set",
+            &serde_json::json!({"noteId": "n1"}),
+        );
+        let rx_b = manager.register_with_scope(
+            "sess_ks_b",
+            "call_ks_b",
+            "execute_command",
+            &serde_json::json!({"command": "git status", "root_id": "workspace", "cwd": "."}),
+        );
+        assert_eq!(manager.pending_count(), 2);
+
+        let rejected = manager.reject_all_pending("emergency_stop");
+        assert_eq!(rejected, 2, "both pending approvals must be counted");
+        assert_eq!(manager.pending_count(), 0);
+
+        let resp_a = rx_a.await.expect("waiter A must receive a response");
+        assert!(!resp_a.approved);
+        assert_eq!(resp_a.reason.as_deref(), Some("emergency_stop"));
+        assert_eq!(resp_a.session_id, "sess_ks_a");
+        assert_eq!(resp_a.tool_call_id, "call_ks_a");
+        assert_eq!(resp_a.tool_name, "note_set");
+
+        let resp_b = rx_b.await.expect("waiter B must receive a response");
+        assert!(!resp_b.approved);
+        assert_eq!(resp_b.reason.as_deref(), Some("emergency_stop"));
+        assert_eq!(resp_b.session_id, "sess_ks_b");
+        assert_eq!(resp_b.tool_call_id, "call_ks_b");
+        assert_eq!(resp_b.tool_name, "execute_command");
+
+        // drain 后再 respond 必须落空（辅助表也已清理）
+        let late = ApprovalResponse::approved(
+            "sess_ks_a".to_string(),
+            "call_ks_a".to_string(),
+            "note_set".to_string(),
+        );
+        assert!(!manager.respond(late));
+
+        // 空表再次调用返回 0
+        assert_eq!(manager.reject_all_pending("emergency_stop"), 0);
     }
 
     /// SECURITY 回归（02 号报告 P2-3）：两个会话共享同一 tool_call_id 时，

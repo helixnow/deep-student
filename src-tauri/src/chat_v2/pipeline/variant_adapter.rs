@@ -496,9 +496,7 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
                 .args_delta_buffer
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            let entry = guard
-                .entry(tool_call_id.to_string())
-                .or_insert_with(String::new);
+            let entry = guard.entry(tool_call_id.to_string()).or_default();
             entry.push_str(delta);
             entry.len() >= 500
         };

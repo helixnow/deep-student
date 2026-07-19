@@ -383,7 +383,7 @@ impl EssayGradingExecutor {
         let deps = GradingDeps {
             llm: llm_manager,
             vfs_db,
-            emitter: GradingEventEmitter::new(ctx.window.clone()),
+            emitter: GradingEventEmitter::new(ctx.window_ref().clone()),
             custom_modes,
         };
         let task_id_for_spawn = task_id.clone();

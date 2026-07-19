@@ -461,7 +461,7 @@ impl VfsAttachmentRepo {
     fn read_file_bounded(path: &Path, max_bytes: u64) -> VfsResult<Vec<u8>> {
         use std::io::Read;
 
-        let mut file = std::fs::File::open(path)
+        let file = std::fs::File::open(path)
             .map_err(|e| VfsError::Io(format!("Failed to open attachment file: {}", e)))?;
         let declared_size = file
             .metadata()
@@ -923,8 +923,7 @@ impl VfsAttachmentRepo {
             }
         }
 
-        if let (Some(ref resource_id), Some(ref text)) =
-            (resource_id.as_ref(), extracted_text.as_ref())
+        if let (Some(ref resource_id), Some(text)) = (resource_id.as_ref(), extracted_text.as_ref())
         {
             if !text.trim().is_empty() {
                 if let Err(e) = VfsResourceRepo::save_ocr_text_with_conn(conn, resource_id, text) {

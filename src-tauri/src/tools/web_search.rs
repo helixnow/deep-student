@@ -643,10 +643,7 @@ impl ProviderRuntimeState {
 
     async fn acquire_permit(&self) -> Option<OwnedSemaphorePermit> {
         if let Some(semaphore) = &self.semaphore {
-            match semaphore.clone().acquire_owned().await {
-                Ok(permit) => Some(permit),
-                Err(_) => None,
-            }
+            semaphore.clone().acquire_owned().await.ok()
         } else {
             None
         }
@@ -1589,13 +1586,13 @@ pub trait Provider: Send + Sync {
 pub fn build_provider(_cfg: &ToolConfig, engine: &str) -> Result<Box<dyn Provider>, ToolError> {
     match engine {
         "bing_rss" => Ok(Box::new(BingRssProvider)),
-        "google_cse" => Ok(Box::new(GoogleCSEProvider::default())),
-        "serpapi" => Ok(Box::new(SerpApiProvider::default())),
-        "tavily" => Ok(Box::new(TavilyProvider::default())),
-        "brave" => Ok(Box::new(BraveProvider::default())),
-        "searxng" => Ok(Box::new(SearxngProvider::default())),
-        "zhipu" => Ok(Box::new(ZhipuProvider::default())),
-        "bocha" => Ok(Box::new(BochaProvider::default())),
+        "google_cse" => Ok(Box::new(GoogleCSEProvider)),
+        "serpapi" => Ok(Box::new(SerpApiProvider)),
+        "tavily" => Ok(Box::new(TavilyProvider)),
+        "brave" => Ok(Box::new(BraveProvider)),
+        "searxng" => Ok(Box::new(SearxngProvider)),
+        "zhipu" => Ok(Box::new(ZhipuProvider)),
+        "bocha" => Ok(Box::new(BochaProvider)),
         _ => Err(ToolError::Config(format!("unknown engine: {}", engine))),
     }
 }

@@ -1693,7 +1693,7 @@ impl ChatAnkiToolExecutor {
                 emit_fsrs_cards_changed_with_cards(
                     ctx,
                     "card_updated",
-                    &[updated.id.clone()],
+                    std::slice::from_ref(&updated.id),
                     vec![convert_backend_card(&updated)],
                 );
                 Ok(finish_chatanki_success(
@@ -2410,7 +2410,7 @@ impl ChatAnkiToolExecutor {
                 emit_fsrs_cards_changed_with_cards(
                     ctx,
                     "card_updated",
-                    &[args.card_id.clone()],
+                    std::slice::from_ref(&args.card_id),
                     vec![convert_backend_card(&updated.library_card.card)],
                 );
                 let review_state =
@@ -2793,7 +2793,7 @@ impl ChatAnkiToolExecutor {
                         "deletedCardIds": [args.card_id],
                     }),
                 );
-                emit_fsrs_cards_changed(ctx, "card_deleted", &[args.card_id.clone()]);
+                emit_fsrs_cards_changed(ctx, "card_deleted", std::slice::from_ref(&args.card_id));
                 Ok(finish_chatanki_success(
                     call,
                     ctx,
@@ -3919,7 +3919,7 @@ impl ChatAnkiToolExecutor {
                 .unwrap_or_else(|| {
                     format!(
                         "{}_chatanki_cards.json",
-                        deck_name.replace('/', "_").replace('\\', "_")
+                        deck_name.replace(['/', '\\'], "_")
                     )
                 });
 
@@ -3944,9 +3944,7 @@ impl ChatAnkiToolExecutor {
             let suggested = args
                 .suggested_name
                 .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| {
-                    format!("{}.apkg", deck_name.replace('/', "_").replace('\\', "_"))
-                });
+                .unwrap_or_else(|| format!("{}.apkg", deck_name.replace(['/', '\\'], "_")));
             let suggested = crate::cmd::anki_connect::sanitize_filename_with_extension(
                 &suggested,
                 "chatanki_cards",
@@ -4534,7 +4532,7 @@ impl ChatAnkiToolExecutor {
         match action.as_str() {
             "pause" => {
                 if let Err(e) = enhanced
-                    .pause_document_processing(document_id.clone(), ctx.window.clone())
+                    .pause_document_processing(document_id.clone(), ctx.window_ref().clone())
                     .await
                 {
                     let error_msg = format!("Pause failed: {}", e);
@@ -4553,7 +4551,7 @@ impl ChatAnkiToolExecutor {
             }
             "resume" => {
                 if let Err(e) = enhanced
-                    .resume_document_processing(document_id.clone(), ctx.window.clone())
+                    .resume_document_processing(document_id.clone(), ctx.window_ref().clone())
                     .await
                 {
                     let error_msg = format!("Resume failed: {}", e);
@@ -4614,7 +4612,7 @@ impl ChatAnkiToolExecutor {
                         .map_err(|e| e.to_string())?;
                 }
                 enhanced
-                    .resume_document_processing(document_id.clone(), ctx.window.clone())
+                    .resume_document_processing(document_id.clone(), ctx.window_ref().clone())
                     .await
                     .map_err(|e| e.to_string())?;
             }
@@ -4622,7 +4620,7 @@ impl ChatAnkiToolExecutor {
                 // 统一走非破坏性取消：停止调度协程+断流+未完成任务置 Cancelled，
                 // 保留已生成卡片。（此前的手工实现只改 DB 状态，调度协程仍会继续跑剩余任务）
                 if let Err(e) = enhanced
-                    .cancel_document_processing(document_id.clone(), ctx.window.clone())
+                    .cancel_document_processing(document_id.clone(), ctx.window_ref().clone())
                     .await
                 {
                     let error_msg = format!("Cancel failed: {}", e);
@@ -5002,7 +5000,7 @@ impl ChatAnkiToolExecutor {
 
         // Spawn background processing pipeline.
         let emitter = ctx.emitter.clone();
-        let window = ctx.window.clone();
+        let window = ctx.window_ref().clone();
         let session_id = ctx.session_id.clone();
         let message_id = ctx.message_id.clone();
         let tool_name = strip_tool_namespace(&call.name).to_string();
@@ -8202,7 +8200,7 @@ fn emit_enqueue_review_changed(
     else {
         return;
     };
-    if let Err(error) = ctx.window.emit("fsrs://changed", payload) {
+    if let Err(error) = ctx.window_ref().emit("fsrs://changed", payload) {
         log::debug!(
             "[ChatAnkiToolExecutor] Failed to emit fsrs://changed after enqueue: {}",
             error
@@ -8439,7 +8437,7 @@ fn emit_agent_review_changed(
     state: &FsrsAgentReviewStateSnapshot,
 ) {
     let payload = build_agent_review_changed_payload(action, state, ctx.run_id());
-    if let Err(error) = ctx.window.emit("fsrs://changed", payload) {
+    if let Err(error) = ctx.window_ref().emit("fsrs://changed", payload) {
         log::debug!(
             "[ChatAnkiToolExecutor] Failed to emit fsrs://changed after {}: {}",
             action,
@@ -9102,7 +9100,7 @@ fn emit_fsrs_cards_changed_with_cards(
     if !cards.is_empty() {
         payload["cards"] = json!(cards);
     }
-    if let Err(error) = ctx.window.emit("fsrs://changed", payload) {
+    if let Err(error) = ctx.window_ref().emit("fsrs://changed", payload) {
         log::debug!(
             "[ChatAnkiToolExecutor] Failed to emit fsrs://changed after {}: {}",
             action,
@@ -9113,7 +9111,7 @@ fn emit_fsrs_cards_changed_with_cards(
 
 fn emit_fsrs_import_changed(ctx: &ExecutionContext, document_id: &str, entity_ids: &[String]) {
     let payload = fsrs_import_changed_payload(document_id, entity_ids, ctx.run_id());
-    if let Err(error) = ctx.window.emit("fsrs://changed", payload) {
+    if let Err(error) = ctx.window_ref().emit("fsrs://changed", payload) {
         log::debug!(
             "[ChatAnkiToolExecutor] Failed to emit fsrs://changed after APKG import: {}",
             error
@@ -9904,19 +9902,19 @@ fn upsert_block_allow_orphan(
     let tool_input_json = block
         .tool_input
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()
         .map_err(|e| e.to_string())?;
     let tool_output_json = block
         .tool_output
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()
         .map_err(|e| e.to_string())?;
     let citations_json = block
         .citations
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()
         .map_err(|e| e.to_string())?;
 
@@ -11030,7 +11028,7 @@ mod tests {
 
         let service = FsrsReviewService::new(db.clone());
         let enqueue_result = service
-            .enqueue_cards_for_session(&[enqueued.id.clone()], "session-owner", None)
+            .enqueue_cards_for_session(std::slice::from_ref(&enqueued.id), "session-owner", None)
             .expect("enqueue owned card");
         assert_eq!(enqueue_result.enqueued, 1);
         let snapshots = service
@@ -11533,11 +11531,18 @@ mod tests {
         assert!(db.insert_anki_card(&card).expect("insert card"));
         let service = FsrsReviewService::new(db.clone());
         let enqueued = service
-            .enqueue_cards_for_session(&[card.id.clone()], "session-delete-review-cas", None)
+            .enqueue_cards_for_session(
+                std::slice::from_ref(&card.id),
+                "session-delete-review-cas",
+                None,
+            )
             .expect("enqueue owned card");
         let state_id = enqueued.states[0].id.clone();
         let preflight = service
-            .get_review_states_for_session(&[card.id.clone()], "session-delete-review-cas")
+            .get_review_states_for_session(
+                std::slice::from_ref(&card.id),
+                "session-delete-review-cas",
+            )
             .expect("load preflight review snapshot")
             .remove(0);
         assert_eq!(preflight.review_version, 0);
@@ -11577,7 +11582,10 @@ mod tests {
             other => panic!("expected post-rating conflict, got {other:?}"),
         };
         let current_review = service
-            .get_review_states_for_session(&[card.id.clone()], "session-delete-review-cas")
+            .get_review_states_for_session(
+                std::slice::from_ref(&card.id),
+                "session-delete-review-cas",
+            )
             .expect("reload current review snapshot")
             .remove(0);
         let payload = chatanki_delete_review_conflict_payload(

@@ -1,16 +1,12 @@
 // ==================== 备份相关命令 ====================
 
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 use tauri::{Manager, State};
 use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
-use super::backup::{
-    export_backup_to_zip, AssetBackupConfig, AssetType, AssetTypeStats, BackupManager,
-    BackupSelection, TieredAssetConfig, ZipExportOptions,
-};
+use super::backup::{AssetType, AssetTypeStats, BackupManager};
 use super::schema_registry::DatabaseId;
 use super::sync::{
     classification::{sync_classification_registry, SyncCategory},
@@ -21,7 +17,6 @@ use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
     BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
 };
-use crate::utils::text::safe_truncate_chars;
 
 #[cfg(feature = "data_governance")]
 use super::commands::try_save_audit_log;
@@ -54,7 +49,7 @@ pub(super) fn get_active_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, Str
 }
 
 /// 获取备份目录
-pub(super) fn get_backup_dir(app_data_dir: &PathBuf) -> PathBuf {
+pub(super) fn get_backup_dir(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("backups")
 }
 
@@ -161,7 +156,9 @@ pub(super) fn infer_database_from_table(table_name: &str) -> Option<&'static str
         | "question_bank_stats"
         | "review_plans"
         | "review_history"
-        | "review_stats" => Some("vfs"),
+        | "review_stats"
+        | "mastery_events"
+        | "mastery_states" => Some("vfs"),
         // llm_usage 数据库
         "llm_usage_logs" | "llm_usage_daily" => Some("llm_usage"),
         // __change_log 是系统表，不应被同步回放
@@ -342,6 +339,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
         applied_keys: std::collections::HashSet::new(),
         total_conflicts: 0,
     };
+    let mut rebuild_mastery_profile = false;
 
     let id_column_map = build_id_column_map();
 
@@ -462,6 +460,10 @@ pub(super) fn apply_downloaded_changes_to_databases(
             .iter()
             .find_map(|change| change.source_device_id.as_deref())
             .filter(|id| !id.trim().is_empty());
+        let rebuild_mastery_states = db_name == "vfs"
+            && owned_changes
+                .iter()
+                .any(|change| change.table_name == "mastery_events");
 
         // 所有策略统一走冲突保护路径（冲突落败方写入 __sync_conflicts）
         let result = SyncManager::apply_downloaded_changes_with_conflict_guard(
@@ -497,6 +499,12 @@ pub(super) fn apply_downloaded_changes_to_databases(
                     apply_result.failure_count,
                     apply_result.skipped_count
                 );
+                if rebuild_mastery_states {
+                    crate::mastery::MasteryService::recompute_all_states_with_conn(&conn).map_err(
+                        |error| format!("同步 mastery_events 后重建 mastery_states 失败: {error}"),
+                    )?;
+                    rebuild_mastery_profile = true;
+                }
             }
             Err(e) => {
                 let err_msg = format!("{}", e);
@@ -532,6 +540,16 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 );
             }
         }
+    }
+
+    if rebuild_mastery_profile {
+        let vfs = std::sync::Arc::new(
+            crate::vfs::database::VfsDatabase::new(active_dir)
+                .map_err(|error| format!("打开 VFS 以回流 mastery 画像失败: {error}"))?,
+        );
+        crate::mastery::MasteryService::new(vfs)
+            .sync_all_learner_profiles()
+            .map_err(|error| format!("同步 mastery learner profile 失败: {error}"))?;
     }
 
     if !agg.db_errors.is_empty() {
@@ -1541,8 +1559,8 @@ pub struct DiskSpaceCheckResponse {
 ///
 /// ## 参数
 /// - `app`: Tauri AppHandle
-/// - `backup_type`: 备份类型，"full"（完整）或 "incremental"（增量）
-/// - `base_version`: 增量备份的基础版本（仅增量备份需要）
+/// - `backup_type`: 备份类型，仅支持 `"full"`（完整）。`"incremental"` 已下线并立即返回错误。
+/// - `base_version`: 保留参数兼容旧调用方（增量已下线，传入无效）
 /// - `include_assets`: 是否包含资产文件备份
 /// - `asset_types`: 要备份的资产类型列表（可选，默认全部）
 ///
@@ -1561,6 +1579,9 @@ pub async fn data_governance_run_backup(
     asset_types: Option<Vec<String>>,
 ) -> Result<BackupJobStartResponse, String> {
     let backup_type = backup_type.unwrap_or_else(|| "full".to_string());
+    if backup_type == "incremental" {
+        return Err(super::backup::INCREMENTAL_BACKUP_REMOVED_MESSAGE.to_string());
+    }
     let include_assets = include_assets.unwrap_or(false);
     info!(
         "[data_governance] 启动后台备份任务: type={}, include_assets={}",
@@ -1574,16 +1595,11 @@ pub async fn data_governance_run_backup(
 
     #[cfg(feature = "data_governance")]
     {
-        let audit_backup_type = if backup_type == "incremental" {
-            super::audit::BackupType::Incremental
-        } else {
-            super::audit::BackupType::Full
-        };
         try_save_audit_log(
             &app,
             AuditLog::new(
                 AuditOperation::Backup {
-                    backup_type: audit_backup_type,
+                    backup_type: super::audit::BackupType::Full,
                     file_count: 0,
                     total_size: 0,
                 },
@@ -1645,6 +1661,13 @@ async fn execute_backup_with_progress(
             Some(p) => p,
             None => return,
         };
+
+    // 防御：在 set_params 之前拒绝 incremental；文案与
+    // INCREMENTAL_BACKUP_REMOVED_MESSAGE / BackupJobManager 封禁常量对齐（UI 侧可 i18n 映射）。
+    if backup_type == "incremental" {
+        job_ctx.fail(super::backup::INCREMENTAL_BACKUP_REMOVED_MESSAGE.to_string());
+        return;
+    }
 
     // 设置任务参数（用于持久化和恢复）
     job_ctx.set_params(BackupJobParams {
@@ -1792,71 +1815,47 @@ async fn execute_backup_with_progress(
         }
     };
 
-    // 根据备份类型执行备份
-    let result = match backup_type.as_str() {
-        "incremental" => {
-            let base = match base_version {
-                Some(v) => v,
-                None => {
-                    job_ctx.fail("增量备份需要指定 base_version 参数".to_string());
-                    return;
-                }
-            };
-
-            // 阶段 3: 复制数据库
-            job_ctx.mark_running(
-                BackupJobPhase::Compress,
-                30.0,
-                Some("正在执行增量备份...".to_string()),
-                0,
-                4,
-            );
-
-            manager.backup_incremental(&base)
-        }
-        _ => {
-            if include_assets {
-                // 构建资产备份配置
-                let asset_config = if let Some(types) = asset_types {
-                    let parsed_types: Vec<AssetType> = types
-                        .iter()
-                        .filter_map(|s| AssetType::from_str(s))
-                        .collect();
-                    if parsed_types.is_empty() {
-                        AssetBackupConfig::default()
-                    } else {
-                        AssetBackupConfig {
-                            asset_types: parsed_types,
-                            ..Default::default()
-                        }
-                    }
-                } else {
-                    AssetBackupConfig::default()
-                };
-
-                // 阶段 3: 复制数据库和资产
-                job_ctx.mark_running(
-                    BackupJobPhase::Compress,
-                    30.0,
-                    Some("正在备份数据库和资产文件...".to_string()),
-                    0,
-                    4,
-                );
-
-                manager.backup_with_assets(Some(asset_config))
+    // 执行完整备份（含可选资产）
+    let result = if include_assets {
+        // 构建资产备份配置
+        let asset_config = if let Some(types) = asset_types {
+            let parsed_types: Vec<AssetType> = types
+                .iter()
+                .filter_map(|s| AssetType::from_str(s))
+                .collect();
+            if parsed_types.is_empty() {
+                AssetBackupConfig::default()
             } else {
-                // 阶段 3: 复制数据库
-                job_ctx.mark_running(
-                    BackupJobPhase::Compress,
-                    30.0,
-                    Some("正在备份数据库...".to_string()),
-                    0,
-                    4,
-                );
-
-                manager.backup_full()
+                AssetBackupConfig {
+                    asset_types: parsed_types,
+                    ..Default::default()
+                }
             }
-        }
+        } else {
+            AssetBackupConfig::default()
+        };
+
+        // 阶段 3: 复制数据库和资产
+        job_ctx.mark_running(
+            BackupJobPhase::Compress,
+            30.0,
+            Some("正在备份数据库和资产文件...".to_string()),
+            0,
+            4,
+        );
+
+        manager.backup_with_assets(Some(asset_config))
+    } else {
+        // 阶段 3: 复制数据库
+        job_ctx.mark_running(
+            BackupJobPhase::Compress,
+            30.0,
+            Some("正在备份数据库...".to_string()),
+            0,
+            4,
+        );
+
+        manager.backup_full()
     };
     drop(snapshot_barrier);
 
@@ -1899,11 +1898,6 @@ async fn execute_backup_with_progress(
 
             #[cfg(feature = "data_governance")]
             {
-                let audit_backup_type = if backup_type == "incremental" {
-                    super::audit::BackupType::Incremental
-                } else {
-                    super::audit::BackupType::Full
-                };
                 let asset_files = manifest.assets.as_ref().map(|a| a.total_files).unwrap_or(0);
                 let file_count = manifest.files.len() + asset_files;
 
@@ -1911,7 +1905,7 @@ async fn execute_backup_with_progress(
                     &app,
                     AuditLog::new(
                         AuditOperation::Backup {
-                            backup_type: audit_backup_type,
+                            backup_type: super::audit::BackupType::Full,
                             file_count,
                             total_size: backup_size,
                         },
@@ -2021,16 +2015,11 @@ async fn execute_backup_with_progress(
             error!("[data_governance] 后台备份失败: {}", e);
             #[cfg(feature = "data_governance")]
             {
-                let audit_backup_type = if backup_type == "incremental" {
-                    super::audit::BackupType::Incremental
-                } else {
-                    super::audit::BackupType::Full
-                };
                 try_save_audit_log(
                     &app,
                     AuditLog::new(
                         AuditOperation::Backup {
-                            backup_type: audit_backup_type,
+                            backup_type: super::audit::BackupType::Full,
                             file_count: 0,
                             total_size: 0,
                         },

@@ -96,7 +96,7 @@ impl SettingsModelsToolExecutor {
         Self
     }
 
-    fn database<'a>(ctx: &'a ExecutionContext) -> Result<&'a Database, String> {
+    fn database(ctx: &ExecutionContext) -> Result<&Database, String> {
         ctx.main_db.as_deref().ok_or_else(|| {
             tool_error(
                 "DEPENDENCY_UNAVAILABLE",
@@ -206,7 +206,7 @@ impl SettingsModelsToolExecutor {
         }
 
         let event_emitted = ctx
-            .window
+            .window_ref()
             .app_handle()
             .emit(
                 SETTINGS_CHANGED_EVENT,
@@ -384,7 +384,7 @@ impl SettingsModelsToolExecutor {
         };
 
         let event_emitted = ctx
-            .window
+            .window_ref()
             .app_handle()
             .emit(
                 MODEL_ASSIGNMENTS_CHANGED_EVENT,
@@ -886,7 +886,7 @@ impl AssignmentSlot {
         }
     }
 
-    fn current<'a>(self, assignments: &'a ModelAssignments) -> Option<&'a str> {
+    fn current(self, assignments: &ModelAssignments) -> Option<&str> {
         match self {
             Self::Model2 => assignments.model2_config_id.as_deref(),
             Self::ReviewAnalysis => assignments.review_analysis_model_config_id.as_deref(),

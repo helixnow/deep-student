@@ -2,7 +2,8 @@ import i18n from 'i18next';
 import type { AttachmentMeta } from '../types/message';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
-import type { ChatStore, BlockingInteraction } from '../types';
+import { invoke } from '@tauri-apps/api/core';
+import type { AuthorityMode, ChatStore, BlockingInteraction } from '../types';
 import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types/common';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
@@ -11,8 +12,40 @@ import { logAttachment } from '../../debug/chatV2Logger';
 import { modeRegistry } from '../../registry';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { eventRegistry, type EventHandler } from '../../registry/eventRegistry';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+let planGateHandlerRegistered = false;
+
+function ensurePlanGateEventHandlerRegistered(): void {
+  if (planGateHandlerRegistered) return;
+  planGateHandlerRegistered = true;
+
+  const planGateEventHandler: EventHandler = {
+    onStart: (store: ChatStore, _messageId: string, payload: Record<string, unknown>): string => {
+      const planId = String(payload.planId ?? '');
+      const toolCallId = String(payload.toolCallId ?? '');
+      store.handlePlanGateRequest({
+        planId,
+        toolCallId,
+        toolName: String(payload.toolName ?? ''),
+        summary: String(payload.summary ?? ''),
+        timeoutSeconds: Number(payload.timeoutSeconds ?? 60) || 60,
+        arguments: (payload.arguments as Record<string, unknown> | undefined) ?? {},
+      });
+      return `plan_gate_${toolCallId || planId}`;
+    },
+    onEnd: (store: ChatStore): void => {
+      store.clearPlanGate();
+    },
+    onError: (store: ChatStore): void => {
+      store.clearPlanGate();
+    },
+  };
+
+  eventRegistry.register('plan_gate', planGateEventHandler);
+}
 
 export function createSessionActions(
   set: SetState,
@@ -296,11 +329,65 @@ export function createSessionActions(
           set({ pendingBlockingInteraction: null });
         },
 
+        setAuthorityMode: async (mode: AuthorityMode): Promise<void> => {
+          const sessionId = getState().sessionId;
+          if (!sessionId) {
+            console.warn('[ChatStore] setAuthorityMode: no sessionId');
+            return;
+          }
+          await invoke('chat_v2_set_authority_mode', { sessionId, mode });
+          const prevMeta = getState().sessionMetadata ?? {};
+          set({
+            authorityMode: mode,
+            authorityAskBlockedHint: false,
+            sessionMetadata: {
+              ...prevMeta,
+              authorityMode: mode,
+              authority_mode: mode,
+              ...(mode === 'plan' ? {} : { plan: undefined }),
+            },
+          });
+        },
+
+        handlePlanGateRequest: (payload: {
+          planId: string;
+          toolCallId: string;
+          toolName: string;
+          summary: string;
+          timeoutSeconds: number;
+          arguments?: Record<string, unknown>;
+        }): void => {
+          set({
+            pendingBlockingInteraction: {
+              kind: 'plan_gate',
+              planId: payload.planId,
+              toolCallId: payload.toolCallId,
+              toolName: payload.toolName,
+              summary: payload.summary,
+              timeoutSeconds: payload.timeoutSeconds,
+              arguments: payload.arguments,
+            },
+          });
+        },
+
+        clearPlanGate: (): void => {
+          const pending = getState().pendingBlockingInteraction;
+          if (pending?.kind === 'plan_gate') {
+            set({ pendingBlockingInteraction: null });
+          }
+        },
+
+        setAuthorityAskBlockedHint: (show: boolean): void => {
+          set({ authorityAskBlockedHint: show });
+        },
+
         // ========== 会话 Actions ==========
 
         initSession: async (mode: string, initConfig?: Record<string, unknown>): Promise<void> => {
           // 🔧 P0修复：保存当前 modeState（如果外部已预设）
           const presetModeState = getState().modeState;
+
+          ensurePlanGateEventHandlerRegistered();
 
           set({
             mode,
@@ -320,6 +407,8 @@ export function createSessionActions(
             inputValue: '',
             attachments: [],
             panelStates: createDefaultPanelStates(),
+            authorityMode: 'craft',
+            authorityAskBlockedHint: false,
           });
 
           // 调用模式插件初始化，传递 initConfig
@@ -517,3 +606,6 @@ export function createSessionActions(
 
   };
 }
+
+// Register plan_gate handler once when session actions module loads.
+ensurePlanGateEventHandlerRegistered();

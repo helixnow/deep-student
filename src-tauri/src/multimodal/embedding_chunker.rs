@@ -62,7 +62,7 @@ impl Default for EmbeddingTokenLimits {
             ("embed-".into(), 512),
         ];
 
-        limits.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        limits.sort_by_key(|b| std::cmp::Reverse(b.0.len()));
 
         Self {
             default_limit: 512,
@@ -105,7 +105,8 @@ impl EmbeddingTokenLimits {
     pub fn add_limit(&mut self, model_prefix: &str, limit: usize) {
         self.model_limits.retain(|(p, _)| p != model_prefix);
         self.model_limits.push((model_prefix.to_string(), limit));
-        self.model_limits.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        self.model_limits
+            .sort_by_key(|b| std::cmp::Reverse(b.0.len()));
     }
 }
 
@@ -187,13 +188,13 @@ impl EmbeddingChunker {
             } else if c.is_ascii_punctuation() || is_cjk_punctuation(c) {
                 // 标点符号（中英文）
                 punct_count += 1;
-            } else if c >= '\u{4E00}' && c <= '\u{9FFF}' {
+            } else if ('\u{4E00}'..='\u{9FFF}').contains(&c) {
                 // CJK 统一汉字
                 chinese_count += 1;
-            } else if c >= '\u{3400}' && c <= '\u{4DBF}' {
+            } else if ('\u{3400}'..='\u{4DBF}').contains(&c) {
                 // CJK 扩展 A
                 chinese_count += 1;
-            } else if c >= '\u{F900}' && c <= '\u{FAFF}' {
+            } else if ('\u{F900}'..='\u{FAFF}').contains(&c) {
                 // CJK 兼容汉字
                 chinese_count += 1;
             } else if c.is_ascii() {
@@ -399,9 +400,9 @@ impl EmbeddingChunker {
                 0.2
             } else if c.is_ascii_punctuation() || is_cjk_punctuation(c) {
                 1.0
-            } else if (c >= '\u{4E00}' && c <= '\u{9FFF}')
-                || (c >= '\u{3400}' && c <= '\u{4DBF}')
-                || (c >= '\u{F900}' && c <= '\u{FAFF}')
+            } else if ('\u{4E00}'..='\u{9FFF}').contains(&c)
+                || ('\u{3400}'..='\u{4DBF}').contains(&c)
+                || ('\u{F900}'..='\u{FAFF}').contains(&c)
             {
                 1.5
             } else if c.is_ascii() {
@@ -456,9 +457,9 @@ impl EmbeddingChunker {
                 0.2
             } else if c.is_ascii_punctuation() || is_cjk_punctuation(c) {
                 1.0
-            } else if (c >= '\u{4E00}' && c <= '\u{9FFF}')
-                || (c >= '\u{3400}' && c <= '\u{4DBF}')
-                || (c >= '\u{F900}' && c <= '\u{FAFF}')
+            } else if ('\u{4E00}'..='\u{9FFF}').contains(&c)
+                || ('\u{3400}'..='\u{4DBF}').contains(&c)
+                || ('\u{F900}'..='\u{FAFF}').contains(&c)
             {
                 1.5
             } else if c.is_ascii() {

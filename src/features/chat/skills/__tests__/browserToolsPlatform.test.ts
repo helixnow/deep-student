@@ -9,11 +9,11 @@ import { webFetchSkill } from '../builtin-tools/web-fetch';
 describe('browser-tools platform registration', () => {
   const skills = [webFetchSkill, browserToolsSkill];
 
-  it('keeps browser Agent tools on Windows', () => {
-    expect(filterBuiltinToolSkillsForPlatform(skills, 'windows')).toEqual(skills);
+  it.each(['windows', 'macos'])('keeps browser Agent tools on %s', (platform) => {
+    expect(filterBuiltinToolSkillsForPlatform(skills, platform)).toEqual(skills);
   });
 
-  it.each(['macos', 'linux', 'android', 'unknown'])(
+  it.each(['linux', 'android', 'unknown'])(
     'does not advertise browser Agent tools on %s',
     (platform) => {
       const filtered = filterBuiltinToolSkillsForPlatform(skills, platform);

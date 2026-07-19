@@ -315,10 +315,10 @@ pub struct PlannedAttempt {
 ///
 /// `enabled=false` 表示用户已停用该配置，不能再通过任务分配、用途路由、
 /// fallback 链或普通 override 被隐式重新启用。
-pub(crate) fn resolve_enabled_text_model<'a, I, S>(
-    configs: &'a [ApiConfig],
+pub(crate) fn resolve_enabled_text_model<I, S>(
+    configs: &[ApiConfig],
     candidate_ids: I,
-) -> Option<&'a ApiConfig>
+) -> Option<&ApiConfig>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,

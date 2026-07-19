@@ -173,14 +173,11 @@ impl DataSpaceManager {
                     migration_errors.len(),
                     error_summary
                 );
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!(
-                        "数据迁移失败 ({} 个错误): {}",
-                        migration_errors.len(),
-                        error_summary
-                    ),
-                ));
+                return Err(std::io::Error::other(format!(
+                    "数据迁移失败 ({} 个错误): {}",
+                    migration_errors.len(),
+                    error_summary
+                )));
             } else {
                 info!("[DataSpace] 数据迁移完成");
             }
@@ -359,12 +356,8 @@ impl DataSpaceManager {
         );
 
         // 使用 backup_common 的磁盘空间检查（含 20% 余量）
-        check_disk_space(target_dir, source_size).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("磁盘空间检查失败: {}", e.message),
-            )
-        })?;
+        check_disk_space(target_dir, source_size)
+            .map_err(|e| std::io::Error::other(format!("磁盘空间检查失败: {}", e.message)))?;
 
         Ok(())
     }
@@ -626,15 +619,12 @@ impl DataSpaceManager {
             }
         }
         if !errors.is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!(
-                    "清空插槽 {} 失败（{} 个条目无法删除，禁止在脏插槽上恢复）: {}",
-                    target.name(),
-                    errors.len(),
-                    errors.join("; ")
-                ),
-            ));
+            return Err(std::io::Error::other(format!(
+                "清空插槽 {} 失败（{} 个条目无法删除，禁止在脏插槽上恢复）: {}",
+                target.name(),
+                errors.len(),
+                errors.join("; ")
+            )));
         }
         info!("[DataSpace] 恢复前已清空插槽 {}（逐条删除）", target.name());
         Ok(None)

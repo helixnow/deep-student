@@ -199,6 +199,95 @@ fn cancel_workspace_active_workers(
     }
 }
 
+/// 🆕 B2（一键断电）：把所有已加载工作区中仍处于活跃态（Running/Queued/Interrupted）
+/// 的 worker 标记为 Cancelled，并把 pending/running 子代理任务一并置 Cancelled。
+///
+/// 供 `kill_switch::chat_v2_emergency_stop` 调用（streams 已由
+/// `ChatV2State::cancel_all_streams` 统一取消，这里只负责状态落库，防止重启
+/// restore 把它们当"中断任务"复活）。返回被置为 Cancelled 的 worker 数量。
+pub fn mark_all_workers_cancelled(
+    coordinator: &WorkspaceCoordinator,
+    chat_v2_state: &ChatV2State,
+    reason: &str,
+) -> usize {
+    let mut cancelled_workers = 0usize;
+    for workspace_id in coordinator.loaded_workspace_ids() {
+        match coordinator.list_agents(&workspace_id) {
+            Ok(agents) => {
+                for agent in agents
+                    .iter()
+                    .filter(|a| matches!(a.role, AgentRole::Worker))
+                {
+                    // 兜底：个别流可能在 cancel_all_streams 之后才注册
+                    let stream_cancelled = chat_v2_state.cancel_stream(&agent.session_id);
+                    let is_active = matches!(
+                        agent.status,
+                        AgentStatus::Running | AgentStatus::Queued | AgentStatus::Interrupted
+                    );
+                    if !(is_active || stream_cancelled) {
+                        continue;
+                    }
+                    match coordinator.update_agent_status(
+                        &workspace_id,
+                        &agent.session_id,
+                        AgentStatus::Cancelled,
+                    ) {
+                        Ok(()) => {
+                            cancelled_workers += 1;
+                            log::info!(
+                                "[Workspace::handlers] mark_all_workers_cancelled ({}): workspace={}, agent={}, prev_status={:?}",
+                                reason,
+                                workspace_id,
+                                agent.session_id,
+                                agent.status
+                            );
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "[Workspace::handlers] Failed to cancel worker {} in {} ({}): {}",
+                                agent.session_id,
+                                workspace_id,
+                                reason,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[Workspace::handlers] mark_all_workers_cancelled: failed to list agents for {} ({}): {}",
+                    workspace_id,
+                    reason,
+                    e
+                );
+            }
+        }
+
+        // pending/running 任务同样置 Cancelled，与 cancel_workspace_active_workers 一致
+        if let Ok(task_manager) = coordinator.get_task_manager(&workspace_id) {
+            if let Ok(tasks) = task_manager.get_tasks_to_restore() {
+                for task in tasks {
+                    if let Err(e) = task_manager.update_status(
+                        &task.id,
+                        SubagentTaskStatus::Cancelled,
+                        Some(reason),
+                    ) {
+                        log::warn!(
+                            "[Workspace::handlers] Failed to cancel task {} in {} ({}): {:?}",
+                            task.id,
+                            workspace_id,
+                            reason,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+    cancelled_workers
+}
+
 // ============================================================
 // 请求/响应类型
 // ============================================================
@@ -767,18 +856,16 @@ pub async fn workspace_list_all(
         .map_err(|e| format!("Failed to query workspaces: {}", e))?;
 
     let mut result = Vec::new();
-    for ws in workspaces {
-        if let Ok(w) = ws {
-            match coordinator.is_member_or_creator_session(&w.id, &session_id) {
-                Ok(true) => result.push(w),
-                Ok(false) => {}
-                Err(e) => {
-                    log::warn!(
-                        "[Workspace::handlers] Failed to check workspace membership: workspace_id={}, error={}",
-                        w.id,
-                        e
-                    );
-                }
+    for w in workspaces.flatten() {
+        match coordinator.is_member_or_creator_session(&w.id, &session_id) {
+            Ok(true) => result.push(w),
+            Ok(false) => {}
+            Err(e) => {
+                log::warn!(
+                    "[Workspace::handlers] Failed to check workspace membership: workspace_id={}, error={}",
+                    w.id,
+                    e
+                );
             }
         }
     }

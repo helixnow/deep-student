@@ -10,11 +10,12 @@ use tauri::{AppHandle, State};
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::clear_session_sequence_counter;
+use crate::chat_v2::pipeline::authority_mode::{global_plan_gate_manager, PlanGateResponse};
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::{cleanup_session_runtime_roots, ensure_session_runtime_roots};
 use crate::chat_v2::state::ChatV2State;
 use crate::chat_v2::types::{
-    ChatSession, PersistStatus, SessionSettings, SessionSkillState, SessionState,
+    AuthorityMode, ChatSession, PersistStatus, SessionSettings, SessionSkillState, SessionState,
     SkillStateSnapshot,
 };
 use crate::vfs::database::VfsDatabase;
@@ -1590,6 +1591,60 @@ fn fallback_skill_state_after_history_rebuild(
         version: existing.version.saturating_add(1),
         legacy_migrated: Some(false),
     }
+}
+
+/// Set session Ask / Plan / Craft authority mode (persisted in session metadata).
+///
+/// Frontend-forged metadata is ignored — only this command updates the mode.
+#[tauri::command]
+pub async fn chat_v2_set_authority_mode(
+    session_id: String,
+    mode: String,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<ChatSession, String> {
+    let parsed = AuthorityMode::parse(&mode).ok_or_else(|| {
+        format!(
+            "Invalid authority mode '{}'. Valid modes: ask, plan, craft",
+            mode
+        )
+    })?;
+    log::info!(
+        "[ChatV2::handlers] chat_v2_set_authority_mode: session={}, mode={}",
+        session_id,
+        parsed.as_str()
+    );
+    ChatV2Repo::set_session_authority_mode(&db, &session_id, parsed).map_err(|e| e.to_string())
+}
+
+/// Respond to a Plan-mode plan_gate wait.
+///
+/// Approving binds write tools to the planId batch only — never remember/global_bypass.
+#[tauri::command]
+pub async fn chat_v2_plan_gate_respond(
+    session_id: String,
+    plan_id: String,
+    tool_call_id: String,
+    approved: bool,
+    reason: Option<String>,
+) -> Result<(), String> {
+    log::info!(
+        "[ChatV2::handlers] chat_v2_plan_gate_respond: session={}, planId={}, tool_call_id={}, approved={}",
+        session_id,
+        plan_id,
+        tool_call_id,
+        approved
+    );
+    let delivered = global_plan_gate_manager().respond(PlanGateResponse {
+        session_id,
+        plan_id,
+        tool_call_id: tool_call_id.clone(),
+        approved,
+        reason,
+    });
+    if !delivered {
+        return Err("plan_gate_expired".to_string());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

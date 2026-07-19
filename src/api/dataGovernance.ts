@@ -194,20 +194,19 @@ export async function setBackupConfig(config: BackupConfig): Promise<void> {
  * 立即返回任务 ID，备份在后台执行。
  * 进度通过 `backup-job-progress` 事件发送。
  *
- * @param backupType 备份类型：'full'（完整）或 'incremental'（增量）
- * @param baseVersion 增量备份的基础版本（仅增量备份需要）
+ * 增量备份（incremental）创建入口已下线；仅支持完整备份。
+ *
+ * @param backupType 备份类型，仅支持 `'full'`（默认）
  * @param includeAssets 是否包含资产文件
  * @param assetTypes 要备份的资产类型列表
  */
 export async function runBackup(
-  backupType?: "full" | "incremental",
-  baseVersion?: string,
+  backupType?: "full",
   includeAssets?: boolean,
   assetTypes?: string[],
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>("data_governance_run_backup", {
     backupType,
-    baseVersion,
     includeAssets,
     assetTypes,
   });

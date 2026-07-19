@@ -131,7 +131,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -145,6 +145,13 @@ jobs:
       - name: Build check
         working-directory: src-tauri
         run: cargo check
+
+      # W0–W1 clippy gate (C3): Cargo.toml [lints.clippy] sets correctness=deny
+      # and style=warn (+ allow-listed debt). CLI -D correctness is belt-and-suspenders;
+      # do not pass -W clippy::style here (would override per-lint allows).
+      - name: Clippy (lib, correctness deny)
+        working-directory: src-tauri
+        run: cargo clippy --lib -- -D clippy::correctness
 
   windows-shell-sandbox:
     name: Windows Shell Sandbox
@@ -276,7 +283,7 @@ jobs:
   # 非 sync 集成测试（tests/ 下的独立 target）
   #
   # 审阅 35 P0-2 接入（2026-07-08）：migration_tests（数据库迁移，数据
-  # 丢失风险最高）、secure_store_tests（密钥存储）等 7 个 --test 目标
+  # 丢失风险最高）、secure_store_tests（密钥存储）等 9 个 --test 目标
   # 此前只写不跑。复用 sync-tests 的单 runner 单 target 模式。
   # ============================================
   integration-tests:
@@ -295,6 +302,7 @@ jobs:
           - mcpbench_integration
           - error_details_tests
           - app_command_acl
+          - c1_cross_lang_consistency
     env:
       CARGO_INCREMENTAL: 0
       DEEP_STUDENT_BUILD_NUMBER: '14635'

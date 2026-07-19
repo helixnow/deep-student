@@ -589,7 +589,7 @@ fn write_qbank_export(
     bytes: &[u8],
 ) -> Result<String, String> {
     let app_data_dir = ctx
-        .window
+        .window_ref()
         .app_handle()
         .path()
         .app_data_dir()
@@ -780,7 +780,7 @@ fn emit_qbank_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String
         "entityIds": entity_ids,
         "runId": ctx.run_id(),
     });
-    if let Err(e) = ctx.window.emit("qbank://changed", payload) {
+    if let Err(e) = ctx.window_ref().emit("qbank://changed", payload) {
         log::debug!("[QBankExecutor] Failed to emit qbank://changed: {}", e);
     }
 }
@@ -1410,10 +1410,7 @@ impl QBankExecutor {
             None
         };
         let card_id = optional_string(&call.arguments, "card_id", 200)?.unwrap_or_else(|| {
-            format!(
-                "card_{}",
-                uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
-            )
+            format!("card_{}", &uuid::Uuid::new_v4().simple().to_string()[..12])
         });
 
         let params = CreateQuestionParams {
@@ -1435,7 +1432,7 @@ impl QBankExecutor {
         let created = service
             .create_question(&params)
             .map_err(|error| error.to_string())?;
-        emit_qbank_changed(ctx, "create_question", &[created.id.clone()]);
+        emit_qbank_changed(ctx, "create_question", std::slice::from_ref(&created.id));
         let undo_versions = HashMap::from([(created.id.clone(), created.updated_at.clone())]);
         let created_value = question_to_bounded_value(&created);
 
@@ -1642,7 +1639,7 @@ impl QBankExecutor {
                 return Err(message);
             }
         };
-        emit_qbank_changed(ctx, "toggle_favorite", &[updated.id.clone()]);
+        emit_qbank_changed(ctx, "toggle_favorite", std::slice::from_ref(&updated.id));
         let updated_value = question_to_bounded_value(&updated);
 
         Ok(json!({
@@ -2066,7 +2063,7 @@ impl QBankExecutor {
                 return Err(message);
             }
         };
-        emit_qbank_changed(ctx, "update_question", &[updated.id.clone()]);
+        emit_qbank_changed(ctx, "update_question", std::slice::from_ref(&updated.id));
         let previous_value = question_to_bounded_value(&question);
         let updated_value = question_to_bounded_value(&updated);
 
@@ -2189,7 +2186,7 @@ impl QBankExecutor {
         let deps = QbankGradingDeps {
             llm: llm.clone(),
             vfs_db,
-            emitter: QbankGradingEmitter::new(ctx.window.clone()),
+            emitter: QbankGradingEmitter::new(ctx.window_ref().clone()),
         };
 
         let grading = run_qbank_grading(request, deps);
@@ -2971,7 +2968,7 @@ impl QBankExecutor {
         let file_created = export_format == PaperExportFormat::Markdown;
         if file_created {
             let app_data_dir = ctx
-                .window
+                .window_ref()
                 .app_handle()
                 .path()
                 .app_data_dir()
@@ -3451,7 +3448,11 @@ impl QBankExecutor {
             .await
             .map_err(|e| format!("导入失败: {}", e))?;
 
-        emit_qbank_changed(ctx, "import_document", &[result.session_id.clone()]);
+        emit_qbank_changed(
+            ctx,
+            "import_document",
+            std::slice::from_ref(&result.session_id),
+        );
 
         Ok(with_localized_message(
             json!({
@@ -3562,7 +3563,7 @@ impl QBankExecutor {
             let question_label = format!("Q{}", existing_count + 1);
             let card_id = format!(
                 "card_{}",
-                uuid::Uuid::new_v4().to_string().replace("-", "")[..12].to_string()
+                &uuid::Uuid::new_v4().to_string().replace("-", "")[..12]
             );
             let question_type = q.get("question_type").and_then(|v| v.as_str());
             let answer = q.get("answer").and_then(|v| v.as_str()).map(String::from);

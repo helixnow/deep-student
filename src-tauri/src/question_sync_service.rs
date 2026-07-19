@@ -43,23 +43,19 @@ use crate::vfs::repos::question_repo::{
 /// 冲突解决策略
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum QuestionConflictStrategy {
     /// 保留本地版本
     KeepLocal,
     /// 保留远程版本
     KeepRemote,
     /// 保留更新时间较新的版本
+    #[default]
     KeepNewer,
     /// 智能合并（字段级别）
     Merge,
     /// 手动选择（保持冲突状态，等待用户决定）
     Manual,
-}
-
-impl Default for QuestionConflictStrategy {
-    fn default() -> Self {
-        Self::KeepNewer
-    }
 }
 
 impl QuestionConflictStrategy {

@@ -371,8 +371,7 @@ impl MigrationScriptChecker {
             let fk_pos = cap.get(0).map(|m| m.start()).unwrap_or(0);
             let owner_table = creates
                 .iter()
-                .filter(|(open, end, _)| fk_pos > *open && fk_pos < *end)
-                .last()
+                .rfind(|(open, end, _)| fk_pos > *open && fk_pos < *end)
                 .map(|(_, _, name)| name.as_str());
 
             // 全新表（非 _NEW 重建表）的内联 FK：无孤儿数据风险，跳过。
@@ -596,7 +595,7 @@ pub fn assert_migration_script_valid(script_name: &str, sql: &str) {
             }
         }
 
-        msg.push_str("\n");
+        msg.push('\n');
         msg.push_str("═".repeat(60).as_str());
         msg.push_str("\n\n如果确认无问题，可在脚本中添加: -- @skip-check: <rule_name>\n");
 

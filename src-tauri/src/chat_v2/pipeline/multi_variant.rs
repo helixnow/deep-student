@@ -2061,10 +2061,7 @@ impl ChatV2Pipeline {
             let (content, vfs_image_base64) = if message.role == MessageRole::User {
                 if let (Some(ref vfs_conn), Some(ref blobs_dir)) = (&vfs_conn_opt, &vfs_blobs_dir) {
                     self.resolve_history_context_snapshot_v2(
-                        &content,
-                        &message,
-                        &**vfs_conn,
-                        blobs_dir,
+                        &content, &message, vfs_conn, blobs_dir,
                     )
                 } else {
                     (content, Vec::new())
@@ -3041,7 +3038,7 @@ impl ChatV2Pipeline {
                 if shared_context
                     .rag_sources
                     .as_ref()
-                    .map_or(false, |v| !v.is_empty())
+                    .is_some_and(|v| !v.is_empty())
                 {
                     let rag_block = MessageBlock {
                         id: block_id.clone(),
@@ -3071,7 +3068,7 @@ impl ChatV2Pipeline {
                 if shared_context
                     .memory_sources
                     .as_ref()
-                    .map_or(false, |v| !v.is_empty())
+                    .is_some_and(|v| !v.is_empty())
                 {
                     let memory_block = MessageBlock {
                         id: block_id.clone(),
@@ -3101,7 +3098,7 @@ impl ChatV2Pipeline {
                 if shared_context
                     .web_search_sources
                     .as_ref()
-                    .map_or(false, |v| !v.is_empty())
+                    .is_some_and(|v| !v.is_empty())
                 {
                     let web_block = MessageBlock {
                         id: block_id.clone(),
@@ -3250,8 +3247,8 @@ impl ChatV2Pipeline {
                     context_snapshot: context_snapshot.clone(),
                     skill_snapshot_before: None,
                     skill_snapshot_after: None,
-                    skill_runtime_before: build_replay_skill_payload_snapshot(&options),
-                    skill_runtime_after: build_replay_skill_payload_snapshot(&options),
+                    skill_runtime_before: build_replay_skill_payload_snapshot(options),
+                    skill_runtime_after: build_replay_skill_payload_snapshot(options),
                     replay_source: None,
                 }),
                 attachments: None,

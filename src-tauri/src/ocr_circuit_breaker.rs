@@ -46,6 +46,12 @@ pub struct OcrCircuitBreaker {
     probe_timeout: Duration,
 }
 
+impl Default for OcrCircuitBreaker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OcrCircuitBreaker {
     pub fn new() -> Self {
         Self::with_config(FAILURE_THRESHOLD, COOLDOWN_DURATION, SLIDING_WINDOW)
@@ -189,6 +195,12 @@ impl OcrCircuitBreaker {
 /// Per-engine 熔断器注册表
 pub struct CircuitBreakerRegistry {
     breakers: Mutex<HashMap<String, std::sync::Arc<OcrCircuitBreaker>>>,
+}
+
+impl Default for CircuitBreakerRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CircuitBreakerRegistry {

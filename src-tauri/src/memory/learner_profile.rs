@@ -22,7 +22,7 @@ use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::repos::embedding_repo::VfsIndexStateRepo;
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
 use crate::vfs::repos::note_repo::VfsNoteRepo;
-use crate::vfs::types::{VfsCreateNoteParams, VfsUpdateNoteParams};
+use crate::vfs::types::{VfsCreateNoteParams, VfsFolder, VfsUpdateNoteParams};
 
 use super::audit_log::{MemoryAuditEntry, MemoryOpSource, MemoryOpType};
 use super::config::MemoryConfig;
@@ -52,6 +52,9 @@ const PROMOTION_FINGERPRINT_JSON_KEY: &str = "_promotion_fingerprint";
 // 数据结构
 // ============================================================================
 
+/// 薄弱知识点来源：掌握度中间层确定性回流（与 LLM 晋升路径共存）
+pub const WEAK_POINT_SOURCE_MASTERY: &str = "mastery";
+
 /// 薄弱知识点：科目→知识点→错误模式，带证据计数
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct WeakPoint {
@@ -70,6 +73,18 @@ pub struct WeakPoint {
     /// 最近一次观察日期（YYYY-MM-DD）
     #[serde(default)]
     pub last_seen: Option<String>,
+    /// 来源标注：`mastery` = 成绩硬回流；缺省/其他 = LLM 提取或工具写入
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+/// 掌握度回流时携带的确定性证据（不经 LLM）
+#[derive(Debug, Clone)]
+pub struct MasteryWeakPointEvidence {
+    pub score: f64,
+    pub total: i32,
+    pub wrong_count: i32,
+    pub recent_wrong_summary: String,
 }
 
 /// 学习偏好（讲解风格、语言、节奏）
@@ -226,6 +241,9 @@ impl LearnerProfile {
                     }
                     if incoming.last_seen.is_some() {
                         wp.last_seen = incoming.last_seen.clone();
+                    }
+                    if incoming.source.is_some() {
+                        wp.source = incoming.source.clone();
                     }
                 }
                 None => {
@@ -429,7 +447,7 @@ impl LearnerProfile {
 
         // 先按证据计数降序排序（保留高证据条目），再应用条数上限
         self.weak_points
-            .sort_by(|a, b| b.evidence_count.cmp(&a.evidence_count));
+            .sort_by_key(|b| std::cmp::Reverse(b.evidence_count));
         if self.weak_points.len() > MAX_WEAK_POINTS {
             self.weak_points.truncate(MAX_WEAK_POINTS);
             trimmed = true;
@@ -884,6 +902,240 @@ where
     })
 }
 
+fn get_or_create_system_folder_id_unlocked(vfs_db: &Arc<VfsDatabase>) -> VfsResult<String> {
+    let config = MemoryConfig::new(vfs_db.clone());
+    let root_id = config.get_or_create_root_folder()?;
+    let children = VfsFolderRepo::list_folders_by_parent(vfs_db, Some(&root_id))?;
+    if let Some(existing) = children.iter().find(|f| f.title == "__system__") {
+        return Ok(existing.id.clone());
+    }
+    let folder = VfsFolder::new("__system__".to_string(), Some(root_id), None, None);
+    VfsFolderRepo::create_folder(vfs_db, &folder)?;
+    Ok(folder.id)
+}
+
+/// 掌握度中间层 → 画像薄弱点确定性 upsert（`source: mastery`，与 LLM 晋升共存）
+pub fn upsert_weak_point_from_mastery(
+    vfs_db: &Arc<VfsDatabase>,
+    concept: &str,
+    evidence: &MasteryWeakPointEvidence,
+) -> VfsResult<LearnerProfileApplyOutcome> {
+    let concept = concept.trim();
+    if concept.is_empty() {
+        return Err(VfsError::InvalidArgument {
+            param: "concept".to_string(),
+            reason: "mastery concept must be non-empty".to_string(),
+        });
+    }
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let error_pattern = format!(
+        "[mastery] score={:.2} total={} wrongs={}; {}",
+        evidence.score, evidence.total, evidence.wrong_count, evidence.recent_wrong_summary
+    );
+    let update = LearnerProfileUpdate {
+        weak_points_add: vec![WeakPoint {
+            subject: "掌握度".to_string(),
+            knowledge_point: concept.to_string(),
+            error_pattern,
+            evidence_count: evidence.wrong_count.max(1) as u32,
+            last_seen: Some(today),
+            source: Some(WEAK_POINT_SOURCE_MASTERY.to_string()),
+        }],
+        ..Default::default()
+    };
+    persist_profile_update_from_vfs(
+        vfs_db,
+        &update,
+        "mastery hard reflux upsert",
+        ProfileLimitPolicy::Enforce,
+    )
+}
+
+/// 掌握度恢复：移除 `source=mastery` 且知识点匹配的薄弱点（不影响 LLM 提取条目）
+pub fn remove_weak_point_from_mastery(
+    vfs_db: &Arc<VfsDatabase>,
+    concept: &str,
+) -> VfsResult<LearnerProfileApplyOutcome> {
+    let concept = concept.trim();
+    if concept.is_empty() {
+        return Err(VfsError::InvalidArgument {
+            param: "concept".to_string(),
+            reason: "mastery concept must be non-empty".to_string(),
+        });
+    }
+
+    for attempt in 0..PROFILE_CAS_MAX_RETRIES {
+        let snapshot = load_profile_snapshot(vfs_db)?;
+        let mut profile = snapshot
+            .as_ref()
+            .map(|(_, profile)| profile.clone())
+            .unwrap_or_default();
+
+        let before = profile.weak_points.len();
+        profile.weak_points.retain(|wp| {
+            let mastery_match = wp.source.as_deref() == Some(WEAK_POINT_SOURCE_MASTERY)
+                && wp.knowledge_point.trim().eq_ignore_ascii_case(concept);
+            !mastery_match
+        });
+        if profile.weak_points.len() == before {
+            return Ok(LearnerProfileApplyOutcome {
+                profile,
+                changed: false,
+            });
+        }
+
+        profile.version = profile.version.saturating_add(1);
+        profile.updated_at = chrono::Utc::now().to_rfc3339();
+        profile.enforce_char_limit();
+        let json = profile.to_json();
+
+        let persisted = match snapshot {
+            Some((note, _)) => match VfsNoteRepo::update_note(
+                vfs_db,
+                &note.note_id,
+                VfsUpdateNoteParams {
+                    title: None,
+                    content: Some(json.clone()),
+                    tags: None,
+                    expected_updated_at: Some(note.updated_at),
+                },
+            ) {
+                Ok(_) => true,
+                Err(VfsError::Conflict { .. }) => false,
+                Err(error) if super::is_retryable_sqlite_lock(&error) => false,
+                Err(error) => return Err(error),
+            },
+            None => true, // nothing to remove from empty profile
+        };
+
+        if !persisted {
+            super::backoff_memory_write(attempt);
+            continue;
+        }
+        debug!(
+            "[LearnerProfile] Removed mastery weak_point concept={}",
+            concept
+        );
+        return Ok(LearnerProfileApplyOutcome {
+            profile,
+            changed: true,
+        });
+    }
+
+    Err(VfsError::Conflict {
+        key: "learner_profile.conflict".to_string(),
+        message: "The learner profile remained busy after mastery recovery retries.".to_string(),
+    })
+}
+
+fn persist_profile_update_from_vfs(
+    vfs_db: &Arc<VfsDatabase>,
+    update: &LearnerProfileUpdate,
+    reason: &str,
+    limit_policy: ProfileLimitPolicy,
+) -> VfsResult<LearnerProfileApplyOutcome> {
+    for attempt in 0..PROFILE_CAS_MAX_RETRIES {
+        let snapshot = load_profile_snapshot(vfs_db)?;
+        let mut profile = snapshot
+            .as_ref()
+            .map(|(_, profile)| profile.clone())
+            .unwrap_or_default();
+
+        let content_changed = profile.merge_update(update);
+        if !content_changed {
+            return Ok(LearnerProfileApplyOutcome {
+                profile,
+                changed: false,
+            });
+        }
+
+        profile.version = profile.version.saturating_add(1);
+        profile.updated_at = chrono::Utc::now().to_rfc3339();
+        match limit_policy {
+            ProfileLimitPolicy::Enforce => {
+                profile.enforce_char_limit();
+            }
+            ProfileLimitPolicy::Reject => {
+                let rendered_chars = profile.rendered_char_count();
+                if rendered_chars > LEARNER_PROFILE_MAX_CHARS {
+                    return Err(VfsError::InvalidArgument {
+                        param: "profile".to_string(),
+                        reason: format!(
+                            "合并后画像 {} 字符，超过 {} 字符硬上限。",
+                            rendered_chars, LEARNER_PROFILE_MAX_CHARS
+                        ),
+                    });
+                }
+            }
+        }
+        let json = profile.to_json();
+
+        let persisted = match snapshot {
+            Some((note, _)) => match VfsNoteRepo::update_note(
+                vfs_db,
+                &note.note_id,
+                VfsUpdateNoteParams {
+                    title: None,
+                    content: Some(json.clone()),
+                    tags: None,
+                    expected_updated_at: Some(note.updated_at),
+                },
+            ) {
+                Ok(_) => true,
+                Err(VfsError::Conflict { .. }) => false,
+                Err(error) if super::is_retryable_sqlite_lock(&error) => false,
+                Err(error) => return Err(error),
+            },
+            None => {
+                let _guard = super::lock_memory_structure();
+                if load_profile_snapshot(vfs_db)?.is_some() {
+                    false
+                } else {
+                    let sys_folder_id = get_or_create_system_folder_id_unlocked(vfs_db)?;
+                    let note = VfsNoteRepo::create_note_in_folder(
+                        vfs_db,
+                        VfsCreateNoteParams {
+                            title: LEARNER_PROFILE_NOTE_TITLE.to_string(),
+                            content: json.clone(),
+                            tags: vec!["_system".to_string()],
+                        },
+                        Some(&sys_folder_id),
+                    )?;
+                    if let Err(e) = VfsIndexStateRepo::mark_disabled_with_reason(
+                        vfs_db,
+                        &note.resource_id,
+                        "system learner profile note",
+                    ) {
+                        warn!(
+                            "[LearnerProfile] Failed to disable indexing for mastery profile note: {}",
+                            e
+                        );
+                    }
+                    debug!(
+                        "[LearnerProfile] Created profile via mastery reflux ({reason}) v{} ({})",
+                        profile.version, note.id
+                    );
+                    true
+                }
+            }
+        };
+
+        if !persisted {
+            super::backoff_memory_write(attempt);
+            continue;
+        }
+        return Ok(LearnerProfileApplyOutcome {
+            profile,
+            changed: true,
+        });
+    }
+
+    Err(VfsError::Conflict {
+        key: "learner_profile.conflict".to_string(),
+        message: "The learner profile remained busy after mastery upsert retries.".to_string(),
+    })
+}
+
 /// 读取画像版本历史（最新在前）
 pub fn load_profile_history(service: &MemoryService) -> VfsResult<Vec<LearnerProfile>> {
     let vfs_db = service.vfs_db_ref();
@@ -1025,6 +1277,7 @@ mod tests {
             error_pattern: pattern.to_string(),
             evidence_count: count,
             last_seen: None,
+            source: None,
         }
     }
 
@@ -1157,6 +1410,7 @@ mod tests {
             error_pattern: "符号错误".to_string(),
             evidence_count: 4,
             last_seen: Some("2026-07-08".to_string()),
+            source: None,
         });
         profile.preferences.explanation_style = Some("先结论后推导".to_string());
         profile.goals.push(LearningGoal {

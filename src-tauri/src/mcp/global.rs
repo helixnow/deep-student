@@ -144,6 +144,8 @@ pub async fn initialize_global_mcp_client(config: McpConfig) -> McpResult<()> {
                     redirect_uri: o.redirect_uri,
                     scopes: o.scopes,
                 }),
+                // 全局单客户端：oauth token 以 "global-mcp" 为 key
+                auth_provider: oauth.as_ref().map(|_| "global-mcp".to_string()),
                 headers: header_map,
                 timeout: config.timeout_duration(),
             };
@@ -192,6 +194,7 @@ pub async fn initialize_global_mcp_client(config: McpConfig) -> McpResult<()> {
                     redirect_uri: o.redirect_uri,
                     scopes: o.scopes,
                 }),
+                auth_provider: oauth.as_ref().map(|_| "global-mcp".to_string()),
                 headers: header_map,
                 timeout: config.timeout_duration(),
             };
@@ -241,6 +244,7 @@ pub async fn initialize_global_mcp_client(config: McpConfig) -> McpResult<()> {
                     redirect_uri: o.redirect_uri,
                     scopes: o.scopes,
                 }),
+                auth_provider: oauth.as_ref().map(|_| "global-mcp".to_string()),
                 headers: header_map,
                 timeout: config.timeout_duration(),
             };

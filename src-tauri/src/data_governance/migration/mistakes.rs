@@ -221,6 +221,19 @@ pub const V20260715_HARDEN_AUTOMATION_RUNTIME: MigrationDef = MigrationDef::new(
 .with_expected_indexes(&["idx_automation_runs_owner_lease"])
 .idempotent();
 
+/// V20260720: durable FSRS -> mastery outbox marker.
+pub const V20260720_FSRS_MASTERY_OUTBOX: MigrationDef = MigrationDef::new(
+    20260720,
+    "fsrs_mastery_outbox",
+    include_str!("../../../migrations/mistakes/V20260720__fsrs_mastery_outbox.sql"),
+)
+.with_expected_columns(&[
+    ("fsrs_review_logs", "mastery_synced_at"),
+    ("fsrs_review_logs", "mastery_revert_pending"),
+])
+.with_expected_indexes(&["idx_fsrs_review_logs_mastery_pending"])
+.idempotent();
+
 /// V20260201 同步字段索引
 const MISTAKES_V20260201_SYNC_INDEXES: &[&str] = &[
     // mistakes 表同步索引
@@ -355,6 +368,7 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260713_APKG_CARD_IDENTITY,
         V20260714_AUTOMATION_SCHEDULER,
         V20260715_HARDEN_AUTOMATION_RUNTIME,
+        V20260720_FSRS_MASTERY_OUTBOX,
     ],
 };
 
@@ -560,9 +574,17 @@ mod tests {
             .expected_tables
             .contains(&"automation_runs"));
 
+        let mastery_outbox = MISTAKES_MIGRATIONS
+            .get(20260720)
+            .expect("V20260720 should exist");
+        assert_eq!(mastery_outbox.name, "fsrs_mastery_outbox");
+        assert!(mastery_outbox
+            .expected_columns
+            .contains(&("fsrs_review_logs", "mastery_synced_at")));
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260715,
+            20260720,
             "Latest version should track the newest published mistakes migration"
         );
     }

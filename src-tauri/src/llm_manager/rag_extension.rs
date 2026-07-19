@@ -1200,10 +1200,10 @@ impl LLMManager {
                         "[标签生成] JSON解析失败 | 原始错误: {} | LLM返回预览: {}",
                         first_err, preview
                     );
-                    Err(serde_json::Error::io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("LLM返回内容不是有效JSON | 原始返回: {}", preview),
-                    )))
+                    Err(serde_json::Error::io(std::io::Error::other(format!(
+                        "LLM返回内容不是有效JSON | 原始返回: {}",
+                        preview
+                    ))))
                 }
             })
             .map_err(|e| {
@@ -1347,26 +1347,22 @@ impl LLMManager {
                     }
                     brace_count += 1;
                 }
-                '}' => {
-                    if brace_count > 0 {
-                        brace_count -= 1;
-                        if brace_count == 0 {
-                            if let Some(start) = start_char_pos {
-                                // 使用字符索引而不是字节索引来安全切片
-                                let json_candidate: String =
-                                    chars[start..=char_idx].iter().collect();
-                                if let Ok(json_value) =
-                                    serde_json::from_str::<serde_json::Value>(&json_candidate)
-                                {
-                                    debug!("成功从JSON片段解析");
-                                    if let Some(result) = self.extract_from_json_value(&json_value)
-                                    {
-                                        return Some(result);
-                                    }
+                '}' if brace_count > 0 => {
+                    brace_count -= 1;
+                    if brace_count == 0 {
+                        if let Some(start) = start_char_pos {
+                            // 使用字符索引而不是字节索引来安全切片
+                            let json_candidate: String = chars[start..=char_idx].iter().collect();
+                            if let Ok(json_value) =
+                                serde_json::from_str::<serde_json::Value>(&json_candidate)
+                            {
+                                debug!("成功从JSON片段解析");
+                                if let Some(result) = self.extract_from_json_value(&json_value) {
+                                    return Some(result);
                                 }
                             }
-                            start_char_pos = None;
                         }
+                        start_char_pos = None;
                     }
                 }
                 _ => {}

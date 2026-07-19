@@ -326,16 +326,12 @@ impl TokenUsage {
 /// 持久化状态（后端存储用，与前端 SessionStatus 分离）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PersistStatus {
+    #[default]
     Active,
     Archived,
     Deleted,
-}
-
-impl Default for PersistStatus {
-    fn default() -> Self {
-        Self::Active
-    }
 }
 
 /// 会话结构（与前端 Session 接口对齐）
@@ -401,6 +397,194 @@ pub struct SessionTag {
     pub tag: String,
     pub tag_type: String,
     pub created_at: String,
+}
+
+// ============================================================================
+// Session authority mode (Ask / Plan / Craft) — stored in session.metadata
+// ============================================================================
+
+/// Session-level Ask / Plan / Craft authority mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthorityMode {
+    /// Read-only: Low tools pass; Medium/High writes are hard-blocked.
+    Ask,
+    /// Writes suspend at plan_gate until the user approves a plan batch.
+    Plan,
+    /// Legacy behaviour (default): only tool-level ApprovalManager applies.
+    #[default]
+    Craft,
+}
+
+impl AuthorityMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ask => "ask",
+            Self::Plan => "plan",
+            Self::Craft => "craft",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "ask" => Some(Self::Ask),
+            "plan" => Some(Self::Plan),
+            "craft" => Some(Self::Craft),
+            _ => None,
+        }
+    }
+}
+
+/// Plan approval lifecycle status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PlanStatus {
+    #[default]
+    Pending,
+    Approved,
+    Rejected,
+    Expired,
+}
+
+impl PlanStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Approved => "approved",
+            Self::Rejected => "rejected",
+            Self::Expired => "expired",
+        }
+    }
+}
+
+/// Plan batch bound to a single user approval (`session.metadata.plan`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanAuthorityState {
+    pub plan_id: String,
+    pub status: PlanStatus,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_until: Option<String>,
+    /// Opaque SHA-256 binding for the approved tool + canonical arguments + round.
+    /// Older persisted plans have no binding and therefore fail closed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding_key: Option<String>,
+}
+
+impl PlanAuthorityState {
+    pub fn new_pending(summary: impl Into<String>) -> Self {
+        Self {
+            plan_id: format!("plan_{}", uuid::Uuid::new_v4()),
+            status: PlanStatus::Pending,
+            summary: summary.into(),
+            approved_at: None,
+            approved_until: None,
+            binding_key: None,
+        }
+    }
+
+    pub fn bind_to_call(&mut self, binding_key: String) {
+        self.binding_key = Some(binding_key);
+    }
+
+    pub fn is_batch_active(&self, now: DateTime<Utc>) -> bool {
+        if self.status != PlanStatus::Approved {
+            return false;
+        }
+        match self.approved_until.as_deref() {
+            None => true,
+            Some(raw) => match DateTime::parse_from_rfc3339(raw) {
+                Ok(until) => until.with_timezone(&Utc) > now,
+                Err(_) => false,
+            },
+        }
+    }
+
+    pub fn is_active_for_binding(&self, binding_key: &str, now: DateTime<Utc>) -> bool {
+        self.binding_key.as_deref() == Some(binding_key) && self.is_batch_active(now)
+    }
+
+    pub fn mark_approved(&mut self, ttl_secs: i64) {
+        let now = Utc::now();
+        self.status = PlanStatus::Approved;
+        self.approved_at = Some(now.to_rfc3339());
+        self.approved_until = Some((now + chrono::Duration::seconds(ttl_secs)).to_rfc3339());
+    }
+
+    pub fn mark_expired(&mut self) {
+        self.status = PlanStatus::Expired;
+    }
+}
+
+/// Persisted authority state inside `ChatSession.metadata`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionAuthorityState {
+    #[serde(default, alias = "authority_mode")]
+    pub authority_mode: AuthorityMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<PlanAuthorityState>,
+}
+
+impl SessionAuthorityState {
+    pub fn craft_default() -> Self {
+        Self {
+            authority_mode: AuthorityMode::Craft,
+            plan: None,
+        }
+    }
+
+    pub fn from_metadata(metadata: Option<&Value>) -> Self {
+        let Some(meta) = metadata else {
+            return Self::craft_default();
+        };
+
+        let mode = meta
+            .get("authorityMode")
+            .or_else(|| meta.get("authority_mode"))
+            .and_then(|v| v.as_str())
+            .and_then(AuthorityMode::parse)
+            .unwrap_or(AuthorityMode::Craft);
+
+        let plan = meta
+            .get("plan")
+            .cloned()
+            .and_then(|v| serde_json::from_value::<PlanAuthorityState>(v).ok());
+
+        Self {
+            authority_mode: mode,
+            plan,
+        }
+    }
+
+    pub fn apply_to_metadata(&self, metadata: Option<Value>) -> Value {
+        let mut obj = match metadata {
+            Some(Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+        obj.insert(
+            "authorityMode".to_string(),
+            Value::String(self.authority_mode.as_str().to_string()),
+        );
+        obj.insert(
+            "authority_mode".to_string(),
+            Value::String(self.authority_mode.as_str().to_string()),
+        );
+        match &self.plan {
+            Some(plan) => {
+                if let Ok(plan_value) = serde_json::to_value(plan) {
+                    obj.insert("plan".to_string(), plan_value);
+                }
+            }
+            None => {
+                obj.remove("plan");
+            }
+        }
+        Value::Object(obj)
+    }
 }
 
 /// 内容搜索结果
@@ -1061,20 +1245,17 @@ impl SharedContext {
 
     /// 检查是否有任何检索结果
     pub fn has_sources(&self) -> bool {
-        self.rag_sources.as_ref().map_or(false, |v| !v.is_empty())
-            || self
-                .memory_sources
-                .as_ref()
-                .map_or(false, |v| !v.is_empty())
-            || self.graph_sources.as_ref().map_or(false, |v| !v.is_empty())
+        self.rag_sources.as_ref().is_some_and(|v| !v.is_empty())
+            || self.memory_sources.as_ref().is_some_and(|v| !v.is_empty())
+            || self.graph_sources.as_ref().is_some_and(|v| !v.is_empty())
             || self
                 .web_search_sources
                 .as_ref()
-                .map_or(false, |v| !v.is_empty())
+                .is_some_and(|v| !v.is_empty())
             || self
                 .multimodal_sources
                 .as_ref()
-                .map_or(false, |v| !v.is_empty())
+                .is_some_and(|v| !v.is_empty())
     }
 }
 
@@ -1200,7 +1381,7 @@ impl ChatMessage {
     ///
     /// 注意：此判断逻辑需与前端 isMultiVariantMessage() 保持一致
     pub fn is_multi_variant(&self) -> bool {
-        self.variants.as_ref().map_or(false, |v| v.len() > 1)
+        self.variants.as_ref().is_some_and(|v| v.len() > 1)
     }
 
     /// 获取当前应该显示的 block_ids（displayBlockIds 的后端权威实现）
@@ -1326,6 +1507,7 @@ impl ChatMessage {
 /// 消息元数据（与前端 MessageMeta 对齐）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MessageMeta {
     /// 生成此消息使用的模型 ID
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1386,27 +1568,6 @@ pub struct MessageMeta {
     pub replay_source: Option<String>,
 }
 
-impl Default for MessageMeta {
-    fn default() -> Self {
-        Self {
-            model_id: None,
-            execution_snapshot: None,
-            canonical_content: None,
-            chat_params: None,
-            sources: None,
-            tool_results: None,
-            anki_cards: None,
-            usage: None,
-            context_snapshot: None,
-            skill_snapshot_before: None,
-            skill_snapshot_after: None,
-            skill_runtime_before: None,
-            skill_runtime_after: None,
-            replay_source: None,
-        }
-    }
-}
-
 impl MessageMeta {
     pub fn without_skill_runtime_contents(&self) -> Self {
         let mut next = self.clone();
@@ -1430,6 +1591,7 @@ pub enum ReplayMode {
 /// 消息来源（与前端 MessageSources 对齐）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MessageSources {
     /// 文档 RAG 来源
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1450,18 +1612,6 @@ pub struct MessageSources {
     /// 多模态知识库来源
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multimodal: Option<Vec<SourceInfo>>,
-}
-
-impl Default for MessageSources {
-    fn default() -> Self {
-        Self {
-            rag: None,
-            memory: None,
-            graph: None,
-            web_search: None,
-            multimodal: None,
-        }
-    }
 }
 
 /// 工具调用请求（LLM 返回的工具调用）

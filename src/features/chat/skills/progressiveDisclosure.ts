@@ -11,6 +11,7 @@
 
 import type { ToolSchema } from './types';
 import { skillRegistry } from './registry';
+import { getRequiresGate, isSkillRequiresSatisfied } from './requiresGating';
 
 // ============================================================================
 // 常量
@@ -475,9 +476,24 @@ export function handleLoadSkillsToolCall(
 // ============================================================================
 
 /**
+ * 格式化 requires 门控缺失说明（与 registry.generateMetadataPrompt 语义对齐）
+ */
+function formatRequiresMissingReason(skillId: string): string {
+  const gate = getRequiresGate(skillId);
+  const missing = [
+    ...(gate?.missingBins ?? []).map((name) => `缺少命令 ${name}`),
+    ...(gate?.missingEnv ?? []).map((name) => `缺少环境变量 ${name}`),
+  ].join('、');
+  return missing || '依赖不满足';
+}
+
+/**
  * 生成 available_skills XML 元数据
  *
- * 用于注入到 System Prompt 中，告知 LLM 可用的技能列表
+ * 用于注入到 System Prompt 中，告知 LLM 可用的技能列表。
+ * 与 `skillRegistry.generateMetadataPrompt` 一致：
+ * - `disableAutoInvoke` 技能不出现
+ * - requires 未满足的技能标注为不可用（不要加载）
  *
  * @param excludeLoaded 是否排除已加载的 Skills
  * @param sessionId 会话 ID（用于检查已加载状态）
@@ -499,17 +515,39 @@ export function generateAvailableSkillsPrompt(
     filteredSkills = filteredSkills.filter(s => !loadedIds.has(s.id));
   }
 
-  if (filteredSkills.length === 0) {
+  // 加载期 requires 门控：与 registry.generateMetadataPrompt 保持同一语义
+  const availableSkills = filteredSkills.filter((skill) =>
+    isSkillRequiresSatisfied(skill.id)
+  );
+  const gatedSkills = filteredSkills.filter(
+    (skill) => !isSkillRequiresSatisfied(skill.id)
+  );
+
+  if (availableSkills.length === 0 && gatedSkills.length === 0) {
     return '';
   }
 
   const lines: string[] = ['<available_skills>'];
 
-  for (const skill of filteredSkills) {
+  for (const skill of availableSkills) {
     const toolCount = skill.embeddedTools?.length ?? 0;
     lines.push(`  <skill id="${escapeXmlAttr(skill.id)}" tools="${toolCount}">`);
     lines.push(`    ${escapeXmlText(skill.description)}`);
     lines.push(`  </skill>`);
+  }
+
+  if (gatedSkills.length > 0) {
+    lines.push('');
+    lines.push('  <!-- 以下技能因本机缺少运行依赖暂不可用（不要加载） -->');
+    for (const skill of gatedSkills) {
+      const toolCount = skill.embeddedTools?.length ?? 0;
+      const reason = formatRequiresMissingReason(skill.id);
+      lines.push(
+        `  <skill id="${escapeXmlAttr(skill.id)}" tools="${toolCount}" available="false" reason="${escapeXmlAttr(reason)}">`
+      );
+      lines.push(`    ${escapeXmlText(skill.description)}`);
+      lines.push(`  </skill>`);
+    }
   }
 
   lines.push('</available_skills>');

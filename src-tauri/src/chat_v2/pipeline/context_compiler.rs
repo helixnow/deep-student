@@ -467,7 +467,7 @@ impl ChatV2Pipeline {
                 .is_some_and(|ids| ids.iter().any(|id| id == &context_ref.resource_id));
             let persisted_images = vfs_conn
                 .as_ref()
-                .map(|conn| self.resolve_canonical_vfs_images(&**conn, &context_ref.resource_id));
+                .map(|conn| self.resolve_canonical_vfs_images(conn, &context_ref.resource_id));
             let persisted_images = persisted_images.unwrap_or_default();
             let mut saw_image = false;
             for image in persisted_images {

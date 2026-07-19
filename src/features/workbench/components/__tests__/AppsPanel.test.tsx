@@ -6,6 +6,14 @@ import { describe, it, expect, beforeEach, beforeAll, afterEach, vi } from 'vite
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(async () => [] as unknown),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: (...args: unknown[]) => invokeMock(...args),
+}));
+
 import type { AppDefinition, AppWindowProps } from '../../core/types';
 import { appRegistry } from '../../core/appRegistry';
 import { useWindowStore } from '../../core/windowStore';
@@ -66,6 +74,8 @@ beforeEach(() => {
   resetStore();
   setDockPinned(['chat']);
   closeAppsPanel();
+  invokeMock.mockReset();
+  invokeMock.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -130,7 +140,7 @@ describe('AppsPanel', () => {
     expect(screen.queryByTestId('wb-apps-item-files')).toBeNull();
   });
 
-  it('无匹配时显示空状态', () => {
+  it('无匹配时显示空状态', async () => {
     render(<AppsPanel />);
     act(() => {
       openAppsPanel();
@@ -139,7 +149,32 @@ describe('AppsPanel', () => {
     fireEvent.change(screen.getByTestId('wb-apps-search'), {
       target: { value: 'zzz-no-match' },
     });
-    expect(screen.getByTestId('wb-apps-empty')).toBeInTheDocument();
+    // ≥2 字符会触发内容检索防抖；本地无命中时先加载再空态
+    await waitFor(() => {
+      expect(screen.getByTestId('wb-apps-empty')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('wb-apps-empty')).toHaveAttribute('role', 'status');
+    expect(screen.getByTestId('wb-apps-result-count')).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('内容检索进行中显示 loading，并播报 aria-live 结果计数', async () => {
+    invokeMock.mockImplementation(() => new Promise(() => undefined));
+
+    render(<AppsPanel />);
+    act(() => {
+      openAppsPanel();
+    });
+
+    fireEvent.change(screen.getByTestId('wb-apps-search'), {
+      target: { value: 'zz' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('wb-apps-loading')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('wb-apps-loading')).toHaveAttribute('role', 'status');
+    expect(screen.getByTestId('wb-apps-result-count')).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
   });
 
   it('点击应用 → launch(reason: api) 并关闭面板', async () => {

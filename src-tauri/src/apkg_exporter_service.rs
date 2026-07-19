@@ -174,6 +174,7 @@ fn strip_html_for_checksum(text: &str) -> String {
 /// - `text` 字段在 `card.text` 为空时回退 `extra_fields`；
 /// - 通用字段支持大小写无关 + `ALIAS_MAP` 别名；
 /// - 选择题模板的 `Front` 优先从 `extra_fields` 取。
+///
 /// 消除多模板 `insert_note` 与单模板路径的字段映射差异。
 fn resolve_card_field_value(card: &AnkiCard, field_name: &str) -> String {
     match field_name.to_lowercase().as_str() {
@@ -182,7 +183,7 @@ fn resolve_card_field_value(card: &AnkiCard, field_name: &str) -> String {
             if card
                 .template_id
                 .as_ref()
-                .map_or(false, |id| id == "choice-card")
+                .is_some_and(|id| id == "choice-card")
             {
                 let field_key = field_name.to_lowercase();
                 card.extra_fields
@@ -789,7 +790,10 @@ fn convert_cards_to_anki_records_with_fields(
     for card in &cards {
         // F9（round2）：全局单调 note_id，避免同秒多次导出碰撞
         let note_id = next_apkg_note_id();
-        let guid = format!("{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
+        let guid = uuid::Uuid::new_v4()
+            .to_string()
+            .replace("-", "")
+            .to_string();
 
         // 根据模板字段或模型类型处理字段
         let (fields, sort_field) = if let Some(field_names) = template_fields {
@@ -956,7 +960,7 @@ pub async fn export_cards_to_apkg_with_full_template(
             .iter()
             .flat_map(|c| c.extra_fields.keys().cloned())
             .collect();
-        extra_keys.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        extra_keys.sort_by_key(|a| a.to_lowercase());
         extra_keys.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
         for key in extra_keys {
             if !final_fields.iter().any(|f| f.eq_ignore_ascii_case(&key)) {
@@ -1251,7 +1255,7 @@ pub async fn export_multi_template_apkg(
                 let mut extra_keys: Vec<String> = group_cards.iter()
                     .flat_map(|c| c.extra_fields.keys().cloned())
                     .collect();
-                extra_keys.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+                extra_keys.sort_by_key(|a| a.to_lowercase());
                 extra_keys.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
                 for key in &extra_keys {
                     if !fields.iter().any(|f| f.eq_ignore_ascii_case(key)) {

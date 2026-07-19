@@ -1,9 +1,27 @@
 use std::collections::BTreeSet;
 
-use syn::parse::Parser;
+use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
-use syn::{Macro, Path, Token};
+use syn::{Attribute, Macro, Path, Token};
+
+/// Path entry that may carry outer attributes such as `#[cfg(...)]`.
+///
+/// `tauri::generate_handler!` accepts cfg-gated command paths; the ACL sync
+/// parser must tolerate those attributes instead of failing with
+/// "expected identifier".
+struct MaybeAttributedPath {
+    path: Path,
+}
+
+impl Parse for MaybeAttributedPath {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let _attrs = Attribute::parse_outer(input)?;
+        Ok(Self {
+            path: input.parse()?,
+        })
+    }
+}
 
 pub fn extract_registered_commands(source: &str) -> Result<BTreeSet<String>, String> {
     let file = syn::parse_file(source).map_err(|error| format!("invalid Rust source: {error}"))?;
@@ -41,11 +59,11 @@ impl<'ast> Visit<'ast> for GenerateHandlerVisitor {
             .is_some_and(|segment| segment.ident == "generate_handler")
         {
             self.invocations += 1;
-            let parser = Punctuated::<Path, Token![,]>::parse_terminated;
+            let parser = Punctuated::<MaybeAttributedPath, Token![,]>::parse_terminated;
             match parser.parse2(node.tokens.clone()) {
                 Ok(paths) => {
-                    for path in paths {
-                        let Some(segment) = path.segments.last() else {
+                    for entry in paths {
+                        let Some(segment) = entry.path.segments.last() else {
                             self.errors.push("empty command path".to_string());
                             continue;
                         };
@@ -98,6 +116,23 @@ mod tests {
         .map(str::to_owned)
         .collect();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn accepts_cfg_gated_command_paths() {
+        let source = r#"
+            fn configure(app: tauri::Builder) {
+                app.invoke_handler(tauri::generate_handler![
+                    crate::commands::always_on,
+                    #[cfg(not(target_os = "android"))]
+                    crate::mcp::commands::start_mcp_oauth,
+                ]);
+            }
+        "#;
+
+        let actual = extract_registered_commands(source).unwrap();
+        assert!(actual.contains("always_on"));
+        assert!(actual.contains("start_mcp_oauth"));
     }
 
     #[test]

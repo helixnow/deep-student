@@ -141,6 +141,28 @@ export interface SkillMetadata {
   author?: string;
 
   /**
+   * 许可证（Agent Skills / Anthropic 生态兼容）
+   *
+   * 可为 SPDX 标识或指向包内 LICENSE 文件的引用，例如 `"MIT"` / `"LICENSE.txt"`。
+   */
+  license?: string;
+
+  /**
+   * 主页 / 文档 URL（可选）
+   */
+  homepage?: string;
+
+  /**
+   * 发现用标签（市场 / 目录筛选）
+   */
+  tags?: string[];
+
+  /**
+   * 环境兼容性说明（Agent Skills `compatibility`，建议 ≤500 字符）
+   */
+  compatibility?: string;
+
+  /**
    * 优先级（默认 3）
    *
    * 优先级值越小越靠前：
@@ -171,9 +193,25 @@ export interface SkillMetadata {
    * 设为 true 时，skill 只能通过 /skill 命令或 UI 手动激活，
    * 不会出现在 <available_skills> 元数据中供 LLM 自动推荐。
    *
-   * 注：Anthropic 官方 Skills 默认自动激活，此为 Deep Student 扩展功能
+   * Anthropic / Claude Code 的 `disable-model-invocation: true` 会映射到此字段；
+   * 若两者同时存在，取更保守值（任一为 true → true）。
    */
   disableAutoInvoke?: boolean;
+
+  /**
+   * 是否允许用户通过 `/skill` 菜单手动调用（Anthropic `user-invocable`）
+   *
+   * 默认 true；设为 false 时对用户隐藏 slash 入口，但仍可被模型发现/加载
+   *（除非同时 `disableAutoInvoke`）。
+   */
+  userInvocable?: boolean;
+
+  /**
+   * Slash 自动补全参数提示（Anthropic `argument-hint`）
+   *
+   * 例如 `"[issue-number]"` 或 `"[filename] [format]"`。
+   */
+  argumentHint?: string;
 
   /**
    * 内嵌工具定义（渐进披露架构核心字段）
@@ -537,6 +575,39 @@ export function validateSkillMetadata(metadata: Partial<SkillMetadata>): SkillVa
 
   if (metadata.author !== undefined && typeof metadata.author !== 'string') {
     errors.push('author 必须是字符串');
+  }
+
+  if (metadata.license !== undefined && typeof metadata.license !== 'string') {
+    errors.push('license 必须是字符串');
+  }
+
+  if (metadata.homepage !== undefined && typeof metadata.homepage !== 'string') {
+    errors.push('homepage 必须是字符串');
+  }
+
+  if (metadata.compatibility !== undefined && typeof metadata.compatibility !== 'string') {
+    errors.push('compatibility 必须是字符串');
+  } else if (
+    typeof metadata.compatibility === 'string' &&
+    metadata.compatibility.length > 500
+  ) {
+    warnings.push(`compatibility 建议不超过 500 字符（当前 ${metadata.compatibility.length}）`);
+  }
+
+  if (metadata.tags !== undefined) {
+    if (!Array.isArray(metadata.tags)) {
+      errors.push('tags 必须是字符串数组');
+    } else if (!metadata.tags.every((t) => typeof t === 'string')) {
+      errors.push('tags 数组中的每个元素必须是字符串');
+    }
+  }
+
+  if (metadata.argumentHint !== undefined && typeof metadata.argumentHint !== 'string') {
+    errors.push('argumentHint 必须是字符串');
+  }
+
+  if (metadata.userInvocable !== undefined && typeof metadata.userInvocable !== 'boolean') {
+    errors.push('userInvocable 必须是布尔值');
   }
 
   if (metadata.priority !== undefined) {

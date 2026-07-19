@@ -137,7 +137,7 @@ extern "C" fn clip_host_hit_test(this: &Object, _cmd: Sel, point: NSPoint) -> id
     unsafe {
         let ns_view = Class::get("NSView").expect("NSView must be registered");
         let target: id = msg_send![super(this, ns_view), hitTest: point];
-        if target == this as *const Object as id {
+        if std::ptr::eq(target, this) {
             // The full-window host itself is transparent. Let the main React
             // WKWebView receive events anywhere the browser child has no view.
             nil

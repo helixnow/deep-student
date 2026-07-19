@@ -275,11 +275,11 @@ fn build_preview_url(input: &AttachmentInput) -> Option<String> {
         // 文本类型：使用 text_content
         let encoded = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
         Some(format!("data:{};base64,{}", input.mime_type, encoded))
-    } else if let Some(ref content) = input.base64_content {
-        // 二进制类型：使用 base64_content
-        Some(format!("data:{};base64,{}", input.mime_type, content))
     } else {
-        None
+        input
+            .base64_content
+            .as_ref()
+            .map(|content| format!("data:{};base64,{}", input.mime_type, content))
     }
 }
 

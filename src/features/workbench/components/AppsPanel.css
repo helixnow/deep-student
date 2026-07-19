@@ -379,7 +379,24 @@
   -webkit-line-clamp: 1;
 }
 
-/* ==== 空搜索结果 ======================================================== */
+/* ==== 加载 / 空搜索结果 ================================================== */
+
+.wb-apps-loading,
+.wb-apps-section-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  opacity: 0.8;
+}
+
+.wb-apps-section-loading {
+  margin: 4px 10px 12px;
+  justify-content: flex-start;
+}
 
 .wb-apps-empty {
   display: flex;

@@ -4,7 +4,7 @@
 use log::{info, warn};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -550,7 +550,7 @@ fn parse_range_header(range_str: &str, file_size: u64) -> Option<(u64, u64)> {
 }
 
 /// 根据文件扩展名返回 MIME 类型
-fn get_mime_type(path: &PathBuf) -> &'static str {
+fn get_mime_type(path: &Path) -> &'static str {
     match path.extension().and_then(|s| s.to_str()) {
         Some("pdf") => "application/pdf",
         Some("png") => "image/png",

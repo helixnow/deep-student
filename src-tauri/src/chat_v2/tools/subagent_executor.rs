@@ -208,7 +208,7 @@ impl SubagentExecutor {
         });
         // Backend-native dispatch. The compatibility event below is observational;
         // execution does not depend on a frontend listener being mounted.
-        let app_handle = ctx.window.app_handle();
+        let app_handle = ctx.window_ref().app_handle();
         let chat_v2_state = app_handle
             .try_state::<Arc<crate::chat_v2::state::ChatV2State>>()
             .ok_or("ChatV2State not available for subagent runtime")?
@@ -231,7 +231,7 @@ impl SubagentExecutor {
                 requester_session_id: ctx.session_id.clone(),
                 reminder: None,
             },
-            ctx.window.clone(),
+            ctx.window_ref().clone(),
             self.coordinator.clone(),
             chat_v2_state,
             pipeline,
@@ -242,7 +242,7 @@ impl SubagentExecutor {
         // Preserve the old signal for UI observation only. Emitting after backend
         // dispatch prevents legacy listeners from winning the startup race.
         if let Err(error) = ctx
-            .window
+            .window_ref()
             .emit(WORKSPACE_WORKER_READY_EVENT, &event_payload)
         {
             log::warn!(

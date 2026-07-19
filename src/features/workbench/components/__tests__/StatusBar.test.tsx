@@ -316,20 +316,60 @@ describe('StatusBar 学习中心 SB3', () => {
     });
   });
 
-  it('flyout 为 2×2 网格，aria-labelledby 挂到标题 h2', () => {
+  it('flyout 为今日节律面板，aria-labelledby 挂到标题 h2', () => {
     render(<StatusBar />);
     fireEvent.click(screen.getByTestId('wb-menubar-center'));
     const flyout = screen.getByTestId('wb-menubar-flyout');
-    expect(flyout.querySelector('.wb-menubar-grid')).toBeTruthy();
+    expect(screen.getByTestId('wb-menubar-rhythm')).toBeTruthy();
+    expect(flyout.querySelector('.wb-menubar-rhythm')).toBeTruthy();
     expect(screen.getByTestId('wb-menubar-module-flashcards')).toBeTruthy();
-    expect(screen.getByTestId('wb-menubar-module-tasks')).toBeTruthy();
     expect(screen.getByTestId('wb-menubar-module-pomodoro')).toBeTruthy();
-    expect(screen.getByTestId('wb-menubar-module-desktop')).toBeTruthy();
+    expect(screen.getByTestId('wb-menubar-module-automations')).toBeTruthy();
+    expect(screen.getByTestId('wb-menubar-module-tasks')).toBeTruthy();
+    expect(screen.queryByTestId('wb-menubar-module-desktop')).toBeNull();
     const labelledBy = flyout.getAttribute('aria-labelledby');
     expect(labelledBy).toBeTruthy();
     const title = document.getElementById(labelledBy!);
     expect(title?.tagName).toBe('H2');
     expect(title?.classList.contains('wb-menubar-flyout-title')).toBe(true);
+    expect(title?.textContent).toMatch(/今日节律|rhythm/i);
+    expect(flyout).toHaveAttribute('role', 'dialog');
+    expect(flyout).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByTestId('wb-menubar-module-flashcards')).toHaveAttribute('aria-label');
+    expect(screen.getByTestId('wb-menubar-module-tasks')).toHaveAttribute('aria-label');
+  });
+
+  it('节律面板展示自动化健康计数并可打开自动化视图', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'chat_v2_automation_summary') {
+        return {
+          enabledCount: 4,
+          runningCount: 1,
+          failedCount: 2,
+          backgroundEnabled: true,
+        };
+      }
+      return [];
+    });
+    render(<StatusBar />);
+    fireEvent.click(screen.getByTestId('wb-menubar-center'));
+    const row = await screen.findByTestId('wb-menubar-module-automations');
+    await waitFor(() => {
+      expect(row.textContent).toMatch(/1/);
+      expect(row.textContent).toMatch(/2/);
+      expect(row.textContent).toMatch(/4/);
+    });
+    fireEvent.click(row);
+    expect(activateSpy).toHaveBeenCalledWith({
+      typeId: 'todo',
+      instanceKey: '',
+      action: 'showAutomations',
+      fallbackLaunch: {
+        typeId: 'todo',
+        reason: 'api',
+        payload: { todoView: 'automations' },
+      },
+    });
   });
 
   it('Tab / Shift+Tab 在 flyout 内循环（焦点陷阱）', async () => {

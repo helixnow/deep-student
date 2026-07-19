@@ -66,6 +66,8 @@ import type {
   MergeStrategy,
 } from '@/types/dataGovernance';
 import {
+  INCREMENTAL_BACKUP_REMOVED_MESSAGE,
+  INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
   isSyncPhaseTerminal,
 } from '@/types/dataGovernance';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -445,6 +447,21 @@ export const DebugTab: React.FC = () => {
   );
 };
 
+/** Map Rust English backup rejection strings to i18n (identity for en-US). */
+function localizeBackupJobError(
+  message: string | undefined,
+  t: (key: string) => string,
+): string {
+  if (!message) return t('data:governance.backup_failed');
+  if (message === INCREMENTAL_BACKUP_REMOVED_MESSAGE) {
+    return t('data:governance.incremental_create_removed');
+  }
+  if (message === INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE) {
+    return t('data:governance.restore_incremental_not_supported');
+  }
+  return message;
+}
+
 // ==================== 主 Dashboard 组件 ====================
 
 export interface DataGovernanceTabTarget {
@@ -729,7 +746,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       stopTabLoading('backup');
       setBackupJobId(null);
       setJobOperation(null);
-      showGlobalNotification('error', event.result?.error || event.message || t('data:governance.backup_failed'));
+      showGlobalNotification(
+        'error',
+        localizeBackupJobError(event.result?.error || event.message, t),
+      );
     },
     onCancelled: () => {
       setIsBackupRunning(false);

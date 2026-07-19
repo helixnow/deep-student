@@ -100,7 +100,7 @@ impl McpProposeExecutor {
         if let Some(db) = ctx.main_db.as_ref() {
             return f(db.as_ref());
         }
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         f(&state.database)
     }
 
@@ -256,16 +256,14 @@ impl McpProposeExecutor {
                             .map(str::to_string)
                             .collect::<Vec<_>>(),
                     )
-                } else if let Some(s) = v.as_str() {
-                    Some(
+                } else {
+                    v.as_str().map(|s| {
                         s.split(',')
                             .map(str::trim)
                             .filter(|part| !part.is_empty())
                             .map(str::to_string)
-                            .collect::<Vec<_>>(),
-                    )
-                } else {
-                    None
+                            .collect::<Vec<_>>()
+                    })
                 }
             })
             .unwrap_or_default();
@@ -391,7 +389,7 @@ impl McpProposeExecutor {
         }
         if out.len() > 500 {
             out.truncate(500);
-            out.push_str("…");
+            out.push('…');
         }
         out
     }

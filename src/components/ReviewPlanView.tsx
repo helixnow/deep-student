@@ -399,7 +399,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             className="gap-1.5"
           >
             <Calendar size={16} />
-            {t('review:calendar')}
+            {t('review:calendar.title')}
           </NotionButton>
           <NotionButton
             variant="ghost"

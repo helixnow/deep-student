@@ -507,7 +507,7 @@ pub fn export_backup_to_zip(
             || entry
                 .path()
                 .strip_prefix(backup_dir)
-                .map_or(false, |path| !is_portable_excluded_relative_path(path))
+                .is_ok_and(|path| !is_portable_excluded_relative_path(path))
     }) {
         let entry = entry.map_err(|error| {
             ZipExportError::ExportFailed(format!("遍历备份目录失败: {}", error))

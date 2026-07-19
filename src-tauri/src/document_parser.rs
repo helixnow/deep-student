@@ -939,7 +939,6 @@ impl DocumentParser {
         bytes: &[u8],
     ) -> Result<std::collections::HashMap<String, Vec<u8>>, ParsingError> {
         use std::collections::HashMap;
-        use std::io::Read;
 
         let cursor = Cursor::new(bytes);
         let mut archive = ZipArchive::new(cursor)
@@ -1557,13 +1556,13 @@ impl DocumentParser {
         // Bold/Italic .val is private in docx-rs 0.4;
         // Bold::Serialize 输出裸 bool（serialize_bool(self.val)），
         // 因此 to_value(&bold) → Value::Bool(true/false)
-        let is_bold = run.run_property.bold.as_ref().map_or(false, |b| {
+        let is_bold = run.run_property.bold.as_ref().is_some_and(|b| {
             serde_json::to_value(b)
                 .ok()
                 .and_then(|v| v.as_bool())
                 .unwrap_or(true)
         });
-        let is_italic = run.run_property.italic.as_ref().map_or(false, |i| {
+        let is_italic = run.run_property.italic.as_ref().is_some_and(|i| {
             serde_json::to_value(i)
                 .ok()
                 .and_then(|v| v.as_bool())
@@ -1667,11 +1666,7 @@ impl DocumentParser {
     /// 检测段落列表前缀（编号/项目符号）
     fn detect_list_prefix(para: &docx_rs::Paragraph) -> Option<String> {
         if let Some(ref numbering) = para.property.numbering_property {
-            let indent_level = numbering
-                .level
-                .as_ref()
-                .map(|l| l.val as usize)
-                .unwrap_or(0);
+            let indent_level = numbering.level.as_ref().map(|l| l.val).unwrap_or(0);
             let indent = "  ".repeat(indent_level);
 
             // 有编号 ID → 有序列表；否则 → 无序列表
@@ -1786,7 +1781,7 @@ impl DocumentParser {
                     let mut has_italic = false;
                     for pc in &para.children {
                         if let docx_rs::ParagraphChild::Run(run) = pc {
-                            if run.run_property.bold.as_ref().map_or(false, |b| {
+                            if run.run_property.bold.as_ref().is_some_and(|b| {
                                 serde_json::to_value(b)
                                     .ok()
                                     .and_then(|v| v.as_bool())
@@ -1794,7 +1789,7 @@ impl DocumentParser {
                             }) {
                                 has_bold = true;
                             }
-                            if run.run_property.italic.as_ref().map_or(false, |i| {
+                            if run.run_property.italic.as_ref().is_some_and(|i| {
                                 serde_json::to_value(i)
                                     .ok()
                                     .and_then(|v| v.as_bool())
@@ -2112,7 +2107,7 @@ impl DocumentParser {
                         docx = docx.add_paragraph(
                             docx_rs::Paragraph::new().add_run(
                                 docx_rs::Run::new()
-                                    .add_text(&format!("{}{}", prefix, text))
+                                    .add_text(format!("{}{}", prefix, text))
                                     .size(24),
                             ),
                         );
@@ -2167,14 +2162,13 @@ impl DocumentParser {
         self.check_pdf_encryption_from_path(file_path)?;
 
         // 使用全局 pdfium 单例 + 从文件路径直接加载（不读入内存）
-        let pdfium =
-            crate::pdfium_utils::load_pdfium().map_err(|e| ParsingError::PdfParsingError(e))?;
+        let pdfium = crate::pdfium_utils::load_pdfium().map_err(ParsingError::PdfParsingError)?;
 
         let text = crate::pdfium_utils::extract_text_from_pdf_file(
             pdfium,
             std::path::Path::new(file_path),
         )
-        .map_err(|e| ParsingError::PdfParsingError(e))?;
+        .map_err(ParsingError::PdfParsingError)?;
 
         Ok(text.trim().to_string())
     }
@@ -2190,11 +2184,10 @@ impl DocumentParser {
         self.check_pdf_encryption(&bytes, "document.pdf")?;
 
         // 使用全局 pdfium 单例
-        let pdfium =
-            crate::pdfium_utils::load_pdfium().map_err(|e| ParsingError::PdfParsingError(e))?;
+        let pdfium = crate::pdfium_utils::load_pdfium().map_err(ParsingError::PdfParsingError)?;
 
         let text = crate::pdfium_utils::extract_text_from_pdf_bytes(pdfium, &bytes)
-            .map_err(|e| ParsingError::PdfParsingError(e))?;
+            .map_err(ParsingError::PdfParsingError)?;
 
         Ok(text.trim().to_string())
     }

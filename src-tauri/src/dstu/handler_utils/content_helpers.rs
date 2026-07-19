@@ -24,7 +24,7 @@ use crate::vfs::{
 };
 
 /// HIGH-R004修复: 最大内容大小限制 - 1MB (与handlers.rs保持一致)
-const MAX_CONTENT_SIZE: usize = 1 * 1024 * 1024; // 1MB
+const MAX_CONTENT_SIZE: usize = 1024 * 1024; // 1MB
 /// 作文会话内容上限（防止超长注入）
 const MAX_ESSAY_SESSION_CHARS: usize = 20000;
 /// 作文会话最多拼接轮次

@@ -98,9 +98,9 @@ fn build_aligned_prompts(req: &ChatTranslationRequest) -> (String, String) {
     if !context_before.is_empty() || !context_after.is_empty() {
         user_prompt.push_str("Context (do NOT translate, for disambiguation only):\n");
         user_prompt.push_str(&context_before);
-        user_prompt.push_str("«");
+        user_prompt.push('«');
         user_prompt.push_str(&req.source);
-        user_prompt.push_str("»");
+        user_prompt.push('»');
         user_prompt.push_str(&context_after);
         user_prompt.push_str("\n\n");
     }
@@ -130,9 +130,9 @@ fn build_plain_prompts(req: &ChatTranslationRequest) -> (String, String) {
     if !context_before.is_empty() || !context_after.is_empty() {
         user_prompt.push_str("Context (do NOT translate):\n");
         user_prompt.push_str(&context_before);
-        user_prompt.push_str("«");
+        user_prompt.push('«');
         user_prompt.push_str(&req.source);
-        user_prompt.push_str("»");
+        user_prompt.push('»');
         user_prompt.push_str(&context_after);
         user_prompt.push_str("\n\n");
     }

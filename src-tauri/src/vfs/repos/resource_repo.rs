@@ -132,7 +132,7 @@ impl VfsResourceRepo {
         let now = chrono::Utc::now().timestamp_millis();
         let type_str = resource_type.to_string();
         let metadata_json = metadata
-            .map(|m| serde_json::to_string(m))
+            .map(serde_json::to_string)
             .transpose()
             .map_err(|e| VfsError::Serialization(e.to_string()))?;
 
@@ -244,7 +244,7 @@ impl VfsResourceRepo {
         let now = chrono::Utc::now().timestamp_millis();
         let type_str = resource_type.to_string();
         let metadata_json = metadata
-            .map(|m| serde_json::to_string(m))
+            .map(serde_json::to_string)
             .transpose()
             .map_err(|e| VfsError::Serialization(e.to_string()))?;
 
@@ -533,6 +533,7 @@ impl VfsResourceRepo {
     /// 修复前的实现中：
     /// - 笔记每次内容编辑都会创建新资源并切换指针，旧资源无人回收；
     /// - 导图 purge 只递减主资源计数，资源行从不删除。
+    ///
     /// 本清扫器在启动时回收这些历史遗留的孤儿行（修复后的代码路径已即时清理）。
     ///
     /// ## 安全条件

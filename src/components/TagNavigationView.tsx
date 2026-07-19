@@ -158,7 +158,7 @@ const TagGroupCard: React.FC<{
         {/* 标签图标和名称 */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <Hash size={14} className="flex-shrink-0 text-primary" />
-          <span className="text-sm font-medium truncate">{group.tag === '__untagged__' ? t('tagNav.untaggedLabel') : group.tag}</span>
+          <span className="text-sm font-medium truncate">{group.tag === '__untagged__' ? t('tagPicker.untagged') : group.tag}</span>
           <span className="text-xs text-muted-foreground ml-1">{group.totalCount}</span>
         </div>
 

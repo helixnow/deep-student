@@ -279,10 +279,8 @@ fn push_openai_content_part_events(events: &mut Vec<StreamEvent>, parts: &[Value
             "thinking" | "think" | "reasoning" => {
                 // ThinkChunk 的 thinking 字段是 TextChunk 列表（也可能是字符串）
                 match part.get("thinking").or_else(|| part.get("text")) {
-                    Some(Value::String(text)) => {
-                        if !text.is_empty() {
-                            events.push(StreamEvent::ReasoningChunk(text.to_string()));
-                        }
+                    Some(Value::String(text)) if !text.is_empty() => {
+                        events.push(StreamEvent::ReasoningChunk(text.to_string()));
                     }
                     Some(Value::Array(chunks)) => {
                         for chunk in chunks {
@@ -568,13 +566,11 @@ impl OpenAIResponsesAdapter {
 
     fn push_message_parts(parts: &mut Vec<Value>, role: &str, content: &Value) {
         match content {
-            Value::String(text) => {
-                if !text.trim().is_empty() {
-                    if role == "assistant" {
-                        parts.push(json!({ "type": "output_text", "text": text }));
-                    } else {
-                        parts.push(json!({ "type": "input_text", "text": text }));
-                    }
+            Value::String(text) if !text.trim().is_empty() => {
+                if role == "assistant" {
+                    parts.push(json!({ "type": "output_text", "text": text }));
+                } else {
+                    parts.push(json!({ "type": "input_text", "text": text }));
                 }
             }
             Value::Array(arr) => {
@@ -869,10 +865,8 @@ impl OpenAIResponsesAdapter {
                 if role == "system" {
                     if let Some(content) = message.get("content") {
                         match content {
-                            Value::String(text) => {
-                                if !text.trim().is_empty() {
-                                    instructions.push(text.to_string());
-                                }
+                            Value::String(text) if !text.trim().is_empty() => {
+                                instructions.push(text.to_string());
                             }
                             Value::Array(parts) => {
                                 for part in parts {
@@ -1017,7 +1011,7 @@ impl OpenAIResponsesAdapter {
                 .and_then(|value| value.as_object())
                 .cloned()
                 .unwrap_or_default();
-            let mut merged = serde_json::Map::from_iter(text_cfg.into_iter());
+            let mut merged = serde_json::Map::from_iter(text_cfg);
             merged.insert("verbosity".to_string(), verbosity.clone());
             payload["text"] = Value::Object(merged);
         }
@@ -1249,11 +1243,11 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                     }
                 }
             }
-            "response.output_text.done" => {
+            "response.output_text.done"
                 if !self
                     .saw_content_delta
                     .load(std::sync::atomic::Ordering::Relaxed)
-                {
+                => {
                     let text = parsed
                         .get("text")
                         .and_then(Value::as_str)
@@ -1264,7 +1258,6 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                         events.push(StreamEvent::ContentChunk(text.to_string()));
                     }
                 }
-            }
             "response.reasoning_text.delta" | "response.reasoning_summary_text.delta" => {
                 let text = parsed
                     .get("delta")
@@ -1280,13 +1273,13 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                     }
                 }
             }
-            "response.reasoning_text.done" | "response.reasoning_summary_text.done" => {
+            "response.reasoning_text.done" | "response.reasoning_summary_text.done"
                 // .done 事件的 text 是全量文本：仅在此前未收到任何 .delta 增量时
                 // 才兜底推送一次，避免思维链重复（研报 01 §1.4）
                 if !self
                     .saw_reasoning_delta
                     .load(std::sync::atomic::Ordering::Relaxed)
-                {
+                => {
                     let text = parsed
                         .get("text")
                         .and_then(|v| v.as_str())
@@ -1299,7 +1292,6 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                         }
                     }
                 }
-            }
             "response.output_item.done" => {
                 if let Some(item) = parsed.get("item") {
                     if Self::is_reasoning_item(item) {
@@ -1450,6 +1442,12 @@ struct PartialToolCall {
     name: String,
     buffer: String,
     base_input: Option<Value>,
+}
+
+impl Default for AnthropicAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AnthropicAdapter {
@@ -2144,10 +2142,8 @@ fn convert_user_message(message: &Value) -> Option<AnthropicMessage> {
     let content = message.get("content").cloned()?;
     let mut blocks = Vec::new();
     match content {
-        Value::String(s) => {
-            if !s.is_empty() {
-                blocks.push(AnthropicContentBlock::Text { text: s });
-            }
+        Value::String(s) if !s.is_empty() => {
+            blocks.push(AnthropicContentBlock::Text { text: s });
         }
         Value::Array(parts) => {
             for part in parts {
@@ -2198,10 +2194,8 @@ fn convert_assistant_message(message: &Value) -> Option<AnthropicMessage> {
 
     if let Some(content_value) = message.get("content") {
         match content_value {
-            Value::String(text) => {
-                if !text.is_empty() {
-                    blocks.push(AnthropicContentBlock::Text { text: text.clone() });
-                }
+            Value::String(text) if !text.is_empty() => {
+                blocks.push(AnthropicContentBlock::Text { text: text.clone() });
             }
             Value::Array(parts) => {
                 for part in parts {
@@ -2360,10 +2354,8 @@ fn convert_tool_result_message(message: &Value) -> Option<AnthropicMessage> {
     let mut parts: Vec<AnthropicToolResultContent> = Vec::new();
     if let Some(content) = message.get("content") {
         match content {
-            Value::String(text) => {
-                if !text.is_empty() {
-                    parts.push(AnthropicToolResultContent::Text { text: text.clone() });
-                }
+            Value::String(text) if !text.is_empty() => {
+                parts.push(AnthropicToolResultContent::Text { text: text.clone() });
             }
             Value::Array(items) => {
                 for item in items {
@@ -2385,10 +2377,7 @@ fn convert_tool_result_message(message: &Value) -> Option<AnthropicMessage> {
     let block = AnthropicContentBlock::ToolResult {
         tool_use_id,
         content: if parts.is_empty() { None } else { Some(parts) },
-        is_error: message
-            .get("is_error")
-            .and_then(|v| v.as_bool())
-            .map(|flag| if flag { true } else { false }),
+        is_error: message.get("is_error").and_then(|v| v.as_bool()),
     };
 
     Some(AnthropicMessage {
@@ -2768,6 +2757,12 @@ pub fn convert_anthropic_response_to_openai(response: &Value, model: &str) -> Op
 // Google Gemini 适配（中转层）：对外保持 OpenAI 兼容，内部完成 OpenAI<->Gemini 转换
 pub struct GeminiAdapter {
     pending_tool_calls: Arc<Mutex<HashMap<i64, (String, String)>>>,
+}
+
+impl Default for GeminiAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GeminiAdapter {

@@ -1082,7 +1082,7 @@ ${resolvedPath}`);
 
     const monthlyTrend = Array.isArray((statsData.enhanced as any).monthly_trend)
       ? (statsData.enhanced as any).monthly_trend.map((item: any) => ({
-          month: typeof item?.month === 'string' ? item.month : t('data:unknown'),
+          month: typeof item?.month === 'string' ? item.month : t('common:unknown'),
           count: Number(item?.count ?? 0) || 0,
         }))
       : [];

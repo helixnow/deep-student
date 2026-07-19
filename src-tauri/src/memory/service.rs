@@ -62,19 +62,15 @@ const TAG_REF_PREFIX: &str = "_ref:";
 /// 记忆类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum MemoryType {
     /// 原子事实（默认）：关于用户的简短陈述句，≤80 字
+    #[default]
     Fact,
     /// 学习记忆：用户明确要求保存的词汇/知识点/错题要点等学习内容
     Study,
     /// 经验笔记：用户明确要求保存的方法论、经验、技巧等，≤2000 字
     Note,
-}
-
-impl Default for MemoryType {
-    fn default() -> Self {
-        Self::Fact
-    }
 }
 
 impl MemoryType {
@@ -117,21 +113,17 @@ impl MemoryType {
 /// 记忆目的（重要程度分类，影响检索时加权和 system prompt 注入策略）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum MemoryPurpose {
     /// 内化型：用户需要理解并记忆的核心内容（最高优先级）
     Internalized,
     /// 记忆型：仅需单独记忆的事实（中高优先级）
+    #[default]
     Memorized,
     /// 补充知识型：辅助理解的补充内容（中低优先级）
     Supplementary,
     /// 系统型：系统用于理解用户的元信息（不直接呈现给用户）
     Systemic,
-}
-
-impl Default for MemoryPurpose {
-    fn default() -> Self {
-        Self::Memorized
-    }
 }
 
 impl MemoryPurpose {
@@ -2346,7 +2338,7 @@ impl MemoryService {
             });
         }
 
-        nodes.sort_by(|a, b| a.folder.sort_order.cmp(&b.folder.sort_order));
+        nodes.sort_by_key(|a| a.folder.sort_order);
         Ok(nodes)
     }
 
@@ -3732,7 +3724,7 @@ impl MemoryService {
             );
             return;
         }
-        let tx_result = (|| {
+        let tx_result = {
             for note_id in note_ids {
                 let tags_json: Option<String> = conn
                     .query_row(
@@ -3751,10 +3743,8 @@ impl MemoryService {
                         false
                     } else if t.starts_with(TAG_LAST_HIT_PREFIX) {
                         false
-                    } else if t == "_stale" {
-                        false
                     } else {
-                        true
+                        t != "_stale"
                     }
                 });
                 tags.push(format!("{}{}", TAG_HITS_PREFIX, hits));
@@ -3772,7 +3762,7 @@ impl MemoryService {
                 }
             }
             conn.execute_batch("COMMIT")
-        })();
+        };
         if let Err(e) = tx_result {
             let _ = conn.execute_batch("ROLLBACK");
             warn!("[Memory] Failed to commit search hits transaction: {}", e);
@@ -3780,7 +3770,7 @@ impl MemoryService {
     }
 
     /// 对搜索结果应用时间衰减（利用结果中携带的 updated_at，无额外查询）
-    pub fn apply_time_decay(&self, results: &mut Vec<MemorySearchResult>) {
+    pub fn apply_time_decay(&self, results: &mut [MemorySearchResult]) {
         let now = chrono::Utc::now();
         let now_ms = now.timestamp_millis() as f64;
         for r in results.iter_mut() {

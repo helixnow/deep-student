@@ -143,6 +143,12 @@ pub fn handle_ask_user_response(response: AskUserResponse) {
 /// 支持单选/多选 + 可选自定义输入。
 pub struct AskUserExecutor;
 
+impl Default for AskUserExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AskUserExecutor {
     pub fn new() -> Self {
         Self

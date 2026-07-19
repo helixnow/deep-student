@@ -60,6 +60,7 @@ pub mod lance_vector_store;
 pub mod llm_manager;
 pub mod llm_structurer;
 pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
+pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
 #[cfg(feature = "mcp")]
 pub mod mcp;
 #[allow(dead_code)]
@@ -81,13 +82,13 @@ pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod providers;
 pub mod qbank_grading;
-pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
 #[allow(dead_code)]
 pub mod question_bank_service;
 pub mod question_export_service;
 #[allow(dead_code)]
 pub mod question_import_service;
 pub mod question_sync_service;
+pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
 pub mod secure_store;
@@ -132,11 +133,7 @@ use std::sync::OnceLock;
 use tokio::sync::{Mutex, RwLock};
 // Register Tauri plugins for dialog, opener and http
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_dialog;
-use tauri_plugin_fs;
-use tauri_plugin_http;
 use tauri_plugin_log::{Target, TargetKind};
-use tauri_plugin_opener;
 // Sentry for Rust (后端)
 use sentry::ClientInitGuard;
 use tracing::{debug, error, info, warn};
@@ -861,6 +858,11 @@ pub fn run() {
                     // 🆕 传入 vfs_db，用于统一资源库（检索结果存储等）
                     // 🆕 使用 with_approval_manager 关联审批管理器（文档 29 P1-3）
                     // 🆕 使用 with_workspace_coordinator 关联工作区协调器（文档 30）
+                    // 与 builder 级 ChatV2State 共享 Kill Switch，使 tool_loop 断电优先于会话档位
+                    let chat_v2_kill_switch = app
+                        .state::<std::sync::Arc<crate::chat_v2::ChatV2State>>()
+                        .kill_switch
+                        .clone();
                     let chat_v2_pipeline = std::sync::Arc::new(
                         crate::chat_v2::pipeline::ChatV2Pipeline::new(
                             chat_v2_db_arc.clone(),
@@ -874,6 +876,7 @@ pub fn run() {
                             Some(app_state.inner().notes_manager.clone()), // NotesManager
                         )
                         .with_approval_manager(approval_manager) // 🆕 关联审批管理器
+                        .with_kill_switch(chat_v2_kill_switch) // 🆕 工具环共享一键断电
                         .with_workspace_coordinator(workspace_coordinator) // 🆕 关联工作区协调器
                         .with_pdf_processing_service(app_state.inner().pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
                     );
@@ -1451,6 +1454,16 @@ pub fn run() {
             crate::commands::export_mcp_config,
             // 2026-06-12 补注册：设置页 MCP 编辑器与 mcpService 启动预热已在调用
             crate::commands::preheat_mcp_tools,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::start_mcp_oauth,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::cancel_mcp_oauth,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::revoke_mcp_oauth,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::get_mcp_oauth_status,
+            #[cfg(not(target_os = "android"))]
+            crate::mcp::commands::get_mcp_oauth_access_token,
             crate::commands::test_all_search_engines
 
             // =============== Notes (isolated) ===============
@@ -1529,6 +1542,10 @@ pub fn run() {
             ,crate::chat_v2::handlers::send_message::chat_v2_retry_message
             ,crate::chat_v2::handlers::send_message::chat_v2_edit_and_resend
             ,crate::chat_v2::handlers::send_message::chat_v2_continue_message
+            ,crate::chat_v2::kill_switch::chat_v2_emergency_stop
+            ,crate::chat_v2::kill_switch::chat_v2_resume_agents
+            ,crate::chat_v2::kill_switch::chat_v2_resume_automations
+            ,crate::chat_v2::kill_switch::chat_v2_kill_switch_status
             ,crate::chat_v2::handlers::load_session::chat_v2_load_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_create_session
             ,crate::chat_v2::handlers::manage_session::chat_v2_get_session
@@ -1577,6 +1594,9 @@ pub fn run() {
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_respond
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_cancel
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_clear_approval_history
+            // Ask / Plan / Craft 会话档位
+            ,crate::chat_v2::handlers::manage_session::chat_v2_set_authority_mode
+            ,crate::chat_v2::handlers::manage_session::chat_v2_plan_gate_respond
             ,crate::chat_v2::runtime_roots::chat_v2_list_runtime_roots
             ,crate::chat_v2::runtime_roots::chat_v2_set_workspace_root
             ,crate::chat_v2::runtime_roots::chat_v2_reset_workspace_root
@@ -1646,6 +1666,10 @@ pub fn run() {
             ,crate::chat_v2::skill_taps::skill_tap_catalog
             ,crate::chat_v2::skill_taps::skill_tap_install
             ,crate::chat_v2::skill_taps::skill_export_tap
+            ,crate::chat_v2::clawhub_client::clawhub_search
+            ,crate::chat_v2::clawhub_client::clawhub_skill_detail
+            ,crate::chat_v2::clawhub_client::clawhub_verify
+            ,crate::chat_v2::clawhub_client::clawhub_download_and_scan
             // =================================================
             // VFS 虚拟文件系统命令
             // =================================================
@@ -2213,7 +2237,7 @@ fn start_vfs_index_worker(
                 }
             };
             let interval = std::time::Duration::from_secs(config.interval_secs.max(1) as u64);
-            let due = last_run.map_or(true, |last| last.elapsed() >= interval);
+            let due = last_run.is_none_or(|last| last.elapsed() >= interval);
             if !config.enabled || !due {
                 let remaining = last_run
                     .map(|last| interval.saturating_sub(last.elapsed()))

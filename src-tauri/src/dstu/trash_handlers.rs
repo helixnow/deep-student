@@ -486,7 +486,7 @@ pub(crate) fn list_trash_with_db(
     }
 
     // 全局按删除时间降序排序（updated_at 在软删除时被更新为删除时间）
-    nodes.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    nodes.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
     // 应用全局分页
     let start = offset as usize;

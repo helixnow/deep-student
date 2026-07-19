@@ -385,8 +385,12 @@ mod tests {
 
     #[test]
     fn safe_local_allow_does_not_cross_external_or_effectful_boundaries() {
+        // Allow rules are advisory: bare PATH executables stay Ask, while
+        // trusted absolute paths / unshadowable builtins may become Allow.
         let raw = policy(serde_json::json!([{
             "id":"allow-ls","effect":"allow","match":{"kind":"executable","value":"ls"}
+        },{
+            "id":"allow-echo","effect":"allow","match":{"kind":"executable","value":"echo"}
         },{
             "id":"allow-rg","effect":"allow","match":{"kind":"executable","value":"rg"}
         },{

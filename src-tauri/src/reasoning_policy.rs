@@ -38,6 +38,7 @@ use crate::llm_manager::{request_adapter_for_config, ApiConfig};
 /// 思维链回传策略
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ReasoningPassbackPolicy {
     /// DeepSeek 风格：回传 `reasoning_content` 字符串
     /// 适用于：DeepSeek R1/Reasoner、Perplexity Sonar、xAI Grok、GLM-4-Thinking
@@ -49,13 +50,8 @@ pub enum ReasoningPassbackPolicy {
 
     /// 不回传思维链
     /// 适用于：Claude、普通 GPT 等
+    #[default]
     NoPassback,
-}
-
-impl Default for ReasoningPassbackPolicy {
-    fn default() -> Self {
-        Self::NoPassback
-    }
 }
 
 // ============================================================================

@@ -251,7 +251,7 @@ impl ErrorDetailsBuilder {
         ErrorDetails::new(
             ErrorCode::ParseError,
             format!("解析{}失败: {}", content_type, details),
-            format!("服务返回的数据格式异常，无法正确解析"),
+            "服务返回的数据格式异常，无法正确解析".to_string(),
         )
         .with_suggestion(ActionSuggestion {
             action_type: "retry".to_string(),

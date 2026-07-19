@@ -405,6 +405,107 @@
   color: hsl(var(--success, 142 64% 32%));
 }
 
+.wb-agent-kill-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.wb-agent-kill-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 12px 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid hsl(0 72% 46% / 42%);
+  background: hsl(0 72% 46% / 12%);
+  color: hsl(0 55% 28%);
+}
+
+:root.dark .wb-agent-kill-banner,
+:root[data-theme='dark'] .wb-agent-kill-banner {
+  color: hsl(0 80% 88%);
+  background: hsl(0 55% 28% / 28%);
+  border-color: hsl(0 72% 56% / 48%);
+}
+
+.wb-agent-kill-banner p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.wb-agent-kill-banner small,
+.wb-agent-kill-confirm-copy {
+  font-size: 10px;
+  line-height: 1.35;
+  opacity: 0.88;
+}
+
+.wb-agent-kill-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.wb-agent-kill-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wb-agent-kill-confirm p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: hsl(var(--foreground) / 78%);
+}
+
+.wb-agent-emergency-stop {
+  height: 30px;
+  min-height: 30px;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 8px;
+  border-color: hsl(0 72% 42% / 55%);
+  background: hsl(0 72% 46%);
+  color: #fff;
+  font-weight: 600;
+}
+
+.wb-agent-emergency-stop:hover:not(:disabled) {
+  background: hsl(0 72% 40%);
+  border-color: hsl(0 72% 36% / 70%);
+}
+
+.wb-agent-emergency-stop:disabled {
+  opacity: 0.55;
+}
+
+.wb-dock-item[data-kill-switch='tripped'] {
+  box-shadow: 0 0 0 2px hsl(0 72% 46% / 55%);
+}
+
+.wb-agent-kill-dock-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1.5px solid hsl(var(--background));
+  background: hsl(0 72% 46%);
+  pointer-events: none;
+}
+
+.wb-agent-kill-dock-badge[data-state='paused'] {
+  background: hsl(38 92% 48%);
+}
+
 .wb-agent-control-actions {
   display: flex;
   align-items: center;

@@ -54,6 +54,7 @@
   "search_tip": "Type > to filter by category",
   "resource_files": "Files",
   "resource_sessions": "Sessions",
+  "resource_searching": "Searching resources and sessions…",
   "resource_not_openable_in_workbench": "This resource cannot be opened in the desktop.",
 
   "categories": {

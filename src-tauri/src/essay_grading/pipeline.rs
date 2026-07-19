@@ -60,7 +60,7 @@ pub async fn run_grading(
     let has_essay_images = request
         .image_base64_list
         .as_ref()
-        .map_or(false, |list| list.iter().any(|s| !s.trim().is_empty()));
+        .is_some_and(|list| list.iter().any(|s| !s.trim().is_empty()));
     let (system_prompt, user_prompt) =
         build_grading_prompts(&request, &grading_mode, has_essay_images)?;
 
@@ -543,19 +543,15 @@ fn build_grading_prompts(
 
     // 2. 添加标记符使用说明
     system_prompt.push_str(MARKER_INSTRUCTIONS);
-    system_prompt.push_str("\n");
+    system_prompt.push('\n');
 
     // 2.5 添加润色提升 section 指令（始终启用）
     system_prompt.push_str(SECTION_INSTRUCTIONS);
     // 如果有作文题干，追加参考范文 section 指令
-    if request
-        .topic
-        .as_ref()
-        .map_or(false, |t| !t.trim().is_empty())
-    {
+    if request.topic.as_ref().is_some_and(|t| !t.trim().is_empty()) {
         system_prompt.push_str(MODEL_ESSAY_INSTRUCTIONS);
     }
-    system_prompt.push_str("\n");
+    system_prompt.push('\n');
 
     // 3. 添加评分格式说明，包含该模式的评分维度
     system_prompt.push_str(SCORE_FORMAT_INSTRUCTIONS);
@@ -567,7 +563,7 @@ fn build_grading_prompts(
         if let Some(desc) = &dim.description {
             system_prompt.push_str(&format!("：{}", desc));
         }
-        system_prompt.push_str("\n");
+        system_prompt.push('\n');
     }
 
     // 4. 添加学生提问解答指令

@@ -22,9 +22,10 @@ use crate::chat_v2::approval_scope::{
     validate_shell_path_operands_within_root,
 };
 use crate::chat_v2::runtime_roots::{
-    explicit_runtime_root_id_from_args, normalize_runtime_relative_path, revalidate_runtime_root,
-    resolve_effective_runtime_root_id_for_session, runtime_root_by_id, runtime_roots_for_session,
-    skill_package_runtime_root, temp_root, RuntimeRoot, RuntimeRootAccess, RuntimeRootKind,
+    explicit_runtime_root_id_from_args, normalize_runtime_relative_path,
+    resolve_effective_runtime_root_id_for_session, revalidate_runtime_root, runtime_root_by_id,
+    runtime_roots_for_session, skill_package_runtime_root, temp_root, RuntimeRoot,
+    RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace_change_set::{self, ExternalFileSnapshot, ExternalFileState};
@@ -99,6 +100,12 @@ struct FileSnapshot {
     truncated: bool,
 }
 
+impl Default for LocalShellExecuteExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LocalShellExecuteExecutor {
     const MAX_FILE_SNAPSHOT_ENTRIES: usize = 1_000;
     const MAX_FILE_CHANGE_ENTRIES: usize = 200;
@@ -124,9 +131,9 @@ impl LocalShellExecuteExecutor {
     }
 
     fn resolve_root(root_id: Option<&str>, ctx: &ExecutionContext) -> Result<RuntimeRoot, String> {
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         runtime_root_by_id(
-            &ctx.window.app_handle(),
+            ctx.window_ref().app_handle(),
             &state.database,
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
@@ -497,14 +504,14 @@ impl LocalShellExecuteExecutor {
         env_plan: &ShellEnvPlan,
         allow_network: bool,
     ) -> Result<SandboxPolicy, String> {
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         let mut readable_roots = Vec::new();
         let mut writable_roots = Vec::new();
         let mut protected_read_roots = Vec::new();
         let mut protected_write_roots = Vec::new();
 
         let mut roots = runtime_roots_for_session(
-            &ctx.window.app_handle(),
+            ctx.window_ref().app_handle(),
             &state.database,
             &ctx.session_id,
             true,
@@ -1231,7 +1238,7 @@ impl LocalShellExecuteExecutor {
         if command.len() > 8192 {
             return Err("command is too long for local shell execution".to_string());
         }
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         let raw_command_policy = state
             .database
             .get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
@@ -1263,7 +1270,7 @@ impl LocalShellExecuteExecutor {
         let explicit_root_id = explicit_runtime_root_id_from_args(args);
         let preferred_default = if explicit_root_id.is_none() {
             Some(resolve_effective_runtime_root_id_for_session(
-                &ctx.window.app_handle(),
+                ctx.window_ref().app_handle(),
                 &state.database,
                 ctx.chat_v2_db.as_deref(),
                 &ctx.session_id,
@@ -1316,7 +1323,7 @@ impl LocalShellExecuteExecutor {
 
         let mut root = Self::resolve_root(root_id_input, ctx)?;
         let validated_root_path = {
-            let state = ctx.window.state::<AppState>();
+            let state = ctx.window_ref().state::<AppState>();
             revalidate_runtime_root(&state.database, &root)?
         };
         root.path = validated_root_path;
@@ -1504,7 +1511,8 @@ impl LocalShellExecuteExecutor {
         let (change_set, change_set_error) = if capture_workspace_change_set {
             match before_snapshot.as_ref().zip(after_snapshot.as_ref()) {
                 Some((before, after)) => {
-                    let checkpoints = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+                    let checkpoints =
+                        temp_root(ctx.window_ref().app_handle(), &ctx.session_id, true)?;
                     match workspace_change_set::record_external_changes(
                         &checkpoints.path,
                         &root.id,

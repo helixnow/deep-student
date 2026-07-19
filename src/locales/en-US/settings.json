@@ -329,6 +329,21 @@
         "reasoning_split_hint": "Separate thinking content to reasoning_details field",
         "no_enable_thinking": "MiniMax API does not support enable_thinking parameter"
       },
+      "mimo": {
+        "title": "Xiaomi MiMo",
+        "description": "Uses thinking.type and returns reasoning_content for thinking mode.",
+        "enable_thinking": "Thinking Mode",
+        "enable_thinking_hint": "Maps to thinking.type enabled or disabled.",
+        "preserve_reasoning": "Preserve Reasoning",
+        "preserve_reasoning_hint": "Keeps returned reasoning_content in multi-turn tool conversations."
+      },
+      "mistral": {
+        "title": "Mistral"
+      },
+      "ernie": {
+        "title": "ERNIE"
+      },
+      "model_adapter": "Model Adapter",
       "capabilities": {
         "title": "Model capabilities",
         "description": "Tag the model with the abilities it supports",
@@ -1508,7 +1523,25 @@
     "backend_disabled_hint": "Backend MCP feature is not enabled. Please enable the mcp feature in Cargo.toml and retry.",
     "load_config_failed": "Failed to load configuration: {{error}}",
     "save_model_assignment_failed": "Failed to save model assignment: {{error}}",
-    "vendor_not_found": "Vendor not found"
+    "vendor_not_found": "Vendor not found",
+    "oauth": {
+      "title": "OAuth authorization",
+      "login": "Sign in with OAuth",
+      "reauth": "Re-authorize",
+      "logout": "Sign out",
+      "cancel": "Cancel authorization",
+      "status_authorized": "Authorized (token stored securely)",
+      "status_none": "Not authorized",
+      "login_success": "OAuth authorization completed",
+      "login_failed": "OAuth authorization failed",
+      "logout_success": "OAuth session revoked",
+      "logout_failed": "Failed to revoke OAuth session",
+      "cancelled": "Authorization cancelled",
+      "desktop_only": "OAuth browser login is only available in the desktop app",
+      "missing_url": "Set the MCP endpoint URL before authorizing",
+      "clear_api_key_first": "Clear the API Key first — API Key takes priority over OAuth",
+      "api_key_priority_hint": "If an API Key is set, it takes priority over OAuth Bearer tokens."
+    }
   },
   "notifications": {
     "config_save_success": "Configuration saved successfully",
@@ -2508,10 +2541,61 @@
     "already_exists": "This server already exists",
     "free_label": "Free",
     "requires_api_key": "Requires API Key",
+    "api_key_required": "This preset requires an API Key (or enable OAuth)",
     "community": "Community",
+    "official": "Official",
     "category_documentation": "Documentation",
-    "context7_desc": "Get up-to-date documentation and code examples for any library, supporting 1000+ frameworks, no API Key required"
+    "category_search": "Search",
+    "category_knowledge": "Knowledge",
+    "category_scraping": "Scraping / Fetch",
+    "category_devops": "DevOps",
+    "risk_label": "Risk",
+    "risk_low": "Low",
+    "risk_medium": "Medium",
+    "risk_high": "High",
+    "data_scope_label": "Data scope",
+    "network_egress_label": "Network egress",
+    "network_egress_yes": "Yes — calls remote services",
+    "network_egress_no": "No",
+    "get_api_key": "Get API Key / Token",
+    "permission_title": "Permissions — {{name}}",
+    "confirm_install": "Install",
+    "enable_oauth_install": "Install with OAuth (authorize in browser after install; mutually exclusive with API Key)",
+    "context7_desc": "Up-to-date library docs and code examples for 1000+ frameworks; no API Key required",
+    "exa_desc": "Exa neural web search / code search (hosted MCP; free tier, optional API Key for higher limits)",
+    "wikipedia_desc": "Wikipedia / Wikimedia summaries and page tools via Pipeworx gateway (no auth)",
+    "firecrawl_desc": "Scrape, crawl and search the live web (keyless free tier; API Key or OAuth unlocks full tools)",
+    "cloudflare_docs_desc": "Search Cloudflare developer documentation (OAuth when connecting)",
+    "tavily_desc": "Tavily real-time search, extract, map and crawl (API Key or OAuth)",
+    "huggingface_desc": "Hugging Face Hub models, datasets, papers and Spaces (token or OAuth)",
+    "github_desc": "Official GitHub remote MCP — repos, issues, PRs (PAT required today; OAuth-ready hosts)",
+    "hints": {
+      "exa_key": "Optional Exa API key",
+      "firecrawl_key": "Optional Firecrawl API key (fc-…)",
+      "tavily_key": "Tavily API key",
+      "huggingface_token": "Hugging Face access token (hf_…)",
+      "github_pat": "GitHub Personal Access Token"
+    },
+    "permissions": {
+      "context7_scope": "Reads public library documentation from Context7; does not access your local files.",
+      "context7_notes": "Queries leave your machine to mcp.context7.com.",
+      "exa_scope": "Runs web/code search queries through Exa; search terms are sent to Exa.",
+      "exa_notes": "Optional API Key raises rate limits. No OAuth required for basic use.",
+      "wikipedia_scope": "Fetches Wikipedia / Wikimedia content via a third-party gateway.",
+      "wikipedia_notes": "Community-hosted remote endpoint; rate limits may apply.",
+      "firecrawl_scope": "Fetches and scrapes arbitrary public URLs you ask for.",
+      "firecrawl_notes": "Keyless tier is rate-limited. Prefer API Key or OAuth for production use.",
+      "cloudflare_docs_scope": "Reads Cloudflare public documentation only (not your Cloudflare account APIs).",
+      "cloudflare_docs_notes": "OAuth may be prompted by the remote server on first connect.",
+      "tavily_scope": "Web search and URL extract/map/crawl via Tavily cloud.",
+      "tavily_notes": "Supports API Key in header/URL or OAuth with compatible clients.",
+      "huggingface_scope": "Searches Hub models/datasets/papers and may invoke Gradio Spaces you enable.",
+      "huggingface_notes": "Token or OAuth (?login) required for private resources; public search may work without.",
+      "github_scope": "Accesses GitHub data allowed by your PAT/OAuth scopes (repos, issues, PRs, etc.).",
+      "github_notes": "High risk: treat tokens as secrets. Host OAuth support varies; PAT is the supported path today."
+    }
   },
+
   "gradingMode": {
     "backToSettings": "Back to settings",
     "badgeBuiltin": "Built-in",
@@ -2640,5 +2724,30 @@
     "edit": "Edit",
     "delete": "Delete",
     "save": "Save"
+  },
+  "quick_assistant": {
+    "title": "Quick Study",
+    "description": "Capture content from other apps, process it quickly, and save it into your learning system.",
+    "enabled": "Enable system quick window",
+    "enabled_description": "Use {{shortcut}} to open Quick Study anytime.",
+    "clipboard": "Read clipboard on open",
+    "clipboard_description": "Reads locally only, to recognize copied questions, passages, or formulas.",
+    "background": "Keep running after main window closes",
+    "background_description": "Hide to the background when the main window closes so the system shortcut can still open the quick window.",
+    "preview": "Preview Quick Study",
+    "preview_description": "Open the quick window to check clipboard capture, search, review, and learning status.",
+    "open": "Open quick window"
+  },
+  "search_engine": {
+    "title": "Search Engine"
+  },
+  "statistics": {
+    "learning_time": "Learning time",
+    "chat_stats": "Chat statistics",
+    "heatmap": "Activity heatmap"
+  },
+  "params": {
+    "temperature": "Temperature",
+    "top_p": "Top P"
   }
 }

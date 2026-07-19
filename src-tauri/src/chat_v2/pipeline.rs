@@ -76,6 +76,7 @@ pub(crate) use super::user_message_builder::{build_user_message, UserMessagePara
 pub(crate) use super::workspace::WorkspaceCoordinator;
 pub(crate) use std::sync::Mutex;
 
+pub mod authority_mode; // Ask / Plan / Craft session authority gate
 pub mod compaction; // 🆕 P1: 上下文压缩 agent（锚定摘要 + 尾部保真）
 pub mod constants;
 pub mod context_compiler;
@@ -93,19 +94,11 @@ pub mod token_resources;
 pub mod tool_loop;
 pub mod variant_adapter;
 
+pub use authority_mode::*;
 pub use compaction::*;
 pub use constants::*;
-pub use context_compiler::*;
 pub use helpers::*;
-pub use history::*;
 pub use llm_adapter::*;
-pub use multi_variant::*;
-pub use persistence::*;
-pub use prompt::*;
-pub use retrieval::*;
-pub use summary::*;
-pub use token_resources::*;
-pub use tool_loop::*;
 pub use variant_adapter::*;
 
 // ============================================================
@@ -138,6 +131,8 @@ pub struct ChatV2Pipeline {
     executor_registry: Arc<ToolExecutorRegistry>,
     /// 🆕 工具审批管理器（文档 29 P1-3）
     approval_manager: Option<Arc<ApprovalManager>>,
+    /// 🆕 全局一键断电（与 ChatV2State 共享；工具执行前强制拦截）
+    kill_switch: Option<Arc<super::kill_switch::AgentKillSwitch>>,
     workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
     /// 🆕 智能题目集服务（用于 qbank_* MCP 工具，2026-01）
     question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
@@ -185,6 +180,7 @@ impl ChatV2Pipeline {
             notes_manager,
             executor_registry,
             approval_manager: None,
+            kill_switch: None,
             workspace_coordinator: None,
             question_bank_service: None,
             pdf_processing_service: None,
@@ -199,6 +195,17 @@ impl ChatV2Pipeline {
     /// 🆕 文档 29 P1-3：敏感工具需要用户审批
     pub fn with_approval_manager(mut self, approval_manager: Arc<ApprovalManager>) -> Self {
         self.approval_manager = Some(approval_manager);
+        self
+    }
+
+    /// 绑定全局 Kill Switch（与 `ChatV2State.kill_switch` 共用同一 `Arc`）。
+    ///
+    /// 工具环在 AuthorityGate / ApprovalManager 之前检查；断电优先于会话档位。
+    pub fn with_kill_switch(
+        mut self,
+        kill_switch: Arc<super::kill_switch::AgentKillSwitch>,
+    ) -> Self {
+        self.kill_switch = Some(kill_switch);
         self
     }
 
@@ -276,6 +283,9 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(
             super::tools::skill_install_executor::SkillInstallExecutor::new(),
         )); // 🆕 skill_scan / skill_install 技能包自装（High 安装必审批 + provenance）
+        executors.push(Arc::new(
+            super::clawhub_client::ClawHubReadToolExecutor::new(),
+        )); // 🆕 clawhub_search / clawhub_skill_detail 只读市场工具（写操作仍走 UI/确认）
         executors.push(Arc::new(
             super::tools::skill_workshop_executor::SkillWorkshopExecutor::new(),
         )); // 🆕 skill_workshop_propose / skill_workshop_apply 提案式自建/自改技能
@@ -1025,6 +1035,24 @@ mod tests {
             "SkillInstallExecutor",
             "SkillInstallExecutor must be matched before GeneralToolExecutor"
         );
+    }
+
+    #[test]
+    fn test_clawhub_read_tools_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let search = registry
+            .get_executor("builtin-clawhub_search")
+            .expect("builtin-clawhub_search must have a registered executor");
+        assert_eq!(search.name(), "ClawHubReadToolExecutor");
+        let detail = registry
+            .get_executor("builtin-clawhub_skill_detail")
+            .expect("builtin-clawhub_skill_detail must have a registered executor");
+        assert_eq!(detail.name(), "ClawHubReadToolExecutor");
+        // 写操作不得由只读执行器承接
+        let download = registry
+            .get_executor("builtin-clawhub_download_and_scan")
+            .expect("fallback executor");
+        assert_ne!(download.name(), "ClawHubReadToolExecutor");
     }
 
     #[test]

@@ -151,6 +151,14 @@ pub struct FsrsRateResult {
     pub due_ms: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct FsrsPendingMasteryReview {
+    pub log_id: String,
+    pub anki_card_id: String,
+    pub rating: u8,
+    pub revert: bool,
+}
+
 /// 撤销最后一次评分后的状态。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1171,8 +1179,31 @@ impl FsrsReviewService {
 
     /// 获取到期卡片（联表 anki_cards 取正反面）
     pub fn get_due(&self, limit: Option<u32>) -> Result<Vec<FsrsDueCard>> {
+        self.get_due_inner(limit, None)
+    }
+
+    /// 到期队列；若提供 concept→score，则按掌握度薄弱程度提升入队优先级（A-P1）。
+    pub fn get_due_with_mastery_priority(
+        &self,
+        limit: Option<u32>,
+        concept_scores: &HashMap<String, f64>,
+    ) -> Result<Vec<FsrsDueCard>> {
+        self.get_due_inner(limit, Some(concept_scores))
+    }
+
+    fn get_due_inner(
+        &self,
+        limit: Option<u32>,
+        concept_scores: Option<&HashMap<String, f64>>,
+    ) -> Result<Vec<FsrsDueCard>> {
         let limit = limit.unwrap_or(50).min(500) as i64;
         let now_ms = Utc::now().timestamp_millis();
+        // 取稍多再排序截断，避免薄弱卡被 due 略晚挡在 limit 外
+        let fetch_limit = if concept_scores.is_some() {
+            (limit * 3).min(500)
+        } else {
+            limit
+        };
         let conn = self
             .db
             .get_conn_safe()
@@ -1201,7 +1232,7 @@ impl FsrsReviewService {
             .map_err(|e| AppError::database(format!("准备到期查询失败: {}", e)))?;
 
         let rows = stmt
-            .query_map(params![now_ms, limit], |row| {
+            .query_map(params![now_ms, fetch_limit], |row| {
                 let state = Self::map_state_row(row)?;
                 let front: String = row.get(17)?;
                 let back: String = row.get(18)?;
@@ -1231,6 +1262,20 @@ impl FsrsReviewService {
         for row in rows {
             out.push(row.map_err(|e| AppError::database(format!("解析到期行失败: {}", e)))?);
         }
+
+        if let Some(scores) = concept_scores {
+            out.sort_by_key(|card| {
+                let concept = card
+                    .tags
+                    .iter()
+                    .map(|t| t.trim())
+                    .find(|t| !t.is_empty())
+                    .map(|t| t.to_string());
+                let score = concept.and_then(|c| scores.get(&c).copied());
+                crate::mastery::mastery_queue_priority_key(score, card.state.due_ms)
+            });
+            out.truncate(limit as usize);
+        }
         Ok(out)
     }
 
@@ -1240,6 +1285,20 @@ impl FsrsReviewService {
         card_state_id: &str,
         rating: u8,
         duration_ms: Option<i64>,
+    ) -> Result<FsrsRateResult> {
+        self.rate_with_mastery_bias(card_state_id, rating, duration_ms, None)
+    }
+
+    /// 评分；可选按掌握度分数对 rs-fsrs 产出的 due 做有界应用层偏置（A-P1）。
+    ///
+    /// `mastery_score` 为评分前该 concept 的 `mastery_states.score`；None 时行为与
+    /// [`Self::rate`] 完全一致，不触碰 rs-fsrs 核心参数。
+    pub fn rate_with_mastery_bias(
+        &self,
+        card_state_id: &str,
+        rating: u8,
+        duration_ms: Option<i64>,
+        mastery_score: Option<f64>,
     ) -> Result<FsrsRateResult> {
         let rating = FsrsRating::from_u8(rating)
             .ok_or_else(|| AppError::validation(format!("rating must be 1..=4, got {}", rating)))?;
@@ -1272,7 +1331,27 @@ impl FsrsReviewService {
         let state_before_json =
             serde_json::to_string(&FsrsStateBeforeSnapshot::from_state(&before))
                 .map_err(|e| AppError::database(format!("序列化评分前状态失败: {}", e)))?;
-        let outcome = schedule_review(&before, rating, now_ms);
+        let mut outcome = schedule_review(&before, rating, now_ms);
+        if let Some(score) = mastery_score {
+            let fsrs_due = outcome.due_ms;
+            let biased_due = crate::mastery::apply_mastery_due_bias(score, now_ms, fsrs_due);
+            if biased_due != fsrs_due {
+                let old_interval = fsrs_due.saturating_sub(now_ms);
+                let new_interval = biased_due.saturating_sub(now_ms);
+                if old_interval > 0 && outcome.scheduled_days > 0.0 {
+                    outcome.scheduled_days =
+                        outcome.scheduled_days * (new_interval as f64) / (old_interval as f64);
+                }
+                outcome.due_ms = biased_due;
+                debug!(
+                    "[FsrsReviewService] mastery due bias: score={:.3} fsrs_due={} biased_due={} delta_ms={}",
+                    score,
+                    fsrs_due,
+                    biased_due,
+                    biased_due - fsrs_due
+                );
+            }
+        }
         let log_id = uuid::Uuid::new_v4().to_string();
 
         let updated = tx
@@ -1375,6 +1454,77 @@ impl FsrsReviewService {
             scheduled_days: outcome.scheduled_days,
             due_ms: outcome.due_ms,
         })
+    }
+
+    /// 按 fsrs_card_states.id 读取调度状态（供命令层掌握度偏置预取）
+    pub fn get_card_state(&self, card_state_id: &str) -> Result<Option<FsrsCardState>> {
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        Self::load_state_by_id(&conn, card_state_id)
+    }
+
+    /// 读取卡片 tags（供 A-P0 mastery emit；无 tags / 解析失败返回空 Vec）
+    pub fn get_card_tags(&self, anki_card_id: &str) -> Result<Vec<String>> {
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let tags_json: Option<String> = conn
+            .query_row(
+                "SELECT tags_json FROM anki_cards WHERE id = ?1 AND deleted_at IS NULL",
+                params![anki_card_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("查询卡片 tags 失败: {}", e)))?;
+        let Some(raw) = tags_json else {
+            return Ok(Vec::new());
+        };
+        Ok(serde_json::from_str::<Vec<String>>(&raw).unwrap_or_default())
+    }
+
+    pub fn pending_mastery_reviews(&self, limit: usize) -> Result<Vec<FsrsPendingMasteryReview>> {
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, anki_card_id, rating, mastery_revert_pending FROM fsrs_review_logs
+                 WHERE (mastery_synced_at IS NULL AND deleted_at IS NULL)
+                    OR mastery_revert_pending = 1
+                 ORDER BY created_at ASC, id ASC LIMIT ?1",
+            )
+            .map_err(|e| AppError::database(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok(FsrsPendingMasteryReview {
+                    log_id: row.get(0)?,
+                    anki_card_id: row.get(1)?,
+                    rating: row.get::<_, i32>(2)? as u8,
+                    revert: row.get::<_, i32>(3)? != 0,
+                })
+            })
+            .map_err(|e| AppError::database(e.to_string()))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| AppError::database(e.to_string()))
+    }
+
+    pub fn mark_mastery_review_synced(&self, log_id: &str) -> Result<()> {
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        conn.execute(
+            "UPDATE fsrs_review_logs
+             SET mastery_synced_at = ?2, mastery_revert_pending = 0, updated_at = ?2
+             WHERE id = ?1",
+            params![log_id, Utc::now().to_rfc3339()],
+        )
+        .map_err(|e| AppError::database(e.to_string()))?;
+        Ok(())
     }
 
     /// Restores the complete state captured immediately before the caller's
@@ -1518,7 +1668,8 @@ impl FsrsReviewService {
                 "UPDATE fsrs_review_logs
                  SET deleted_at = ?1,
                      updated_at = ?1,
-                     local_version = COALESCE(local_version, 0) + 1
+                     local_version = COALESCE(local_version, 0) + 1,
+                     mastery_revert_pending = 1
                  WHERE id = ?2
                    AND card_state_id = ?3
                    AND deleted_at IS NULL",
@@ -1860,7 +2011,8 @@ impl FsrsReviewService {
                 "UPDATE fsrs_review_logs
                  SET deleted_at = ?1,
                      updated_at = ?1,
-                     local_version = COALESCE(local_version, 0) + 1
+                     local_version = COALESCE(local_version, 0) + 1,
+                     mastery_revert_pending = 1
                  WHERE id = ?2
                    AND card_state_id = ?3
                    AND anki_card_id = ?4
@@ -2479,6 +2631,323 @@ mod tests {
         let easy = schedule_review(&before, FsrsRating::Easy, now);
         assert_eq!(easy.state, FsrsState::Review);
         assert!(easy.scheduled_days > hard.scheduled_days);
+    }
+
+    #[test]
+    fn mastery_bias_advances_low_score_and_caps_high_interval() {
+        use crate::mastery::{apply_mastery_due_bias, mastery_due_bias_delta_ms, MAX_ADVANCE_MS};
+
+        let now = 1_700_000_000_000_i64;
+        let mut before = blank_new_card();
+        before.state = FsrsState::Review.as_i32();
+        before.stability = Some(10.0);
+        before.difficulty = Some(5.0);
+        before.scheduled_days = 10.0;
+        before.reps = 5;
+        before.due_ms = now;
+        before.last_review_ms = Some(now - 10 * MS_PER_DAY);
+
+        let fsrs_out = schedule_review(&before, FsrsRating::Good, now);
+        let interval = fsrs_out.due_ms.saturating_sub(now);
+        assert!(
+            interval >= 60 * 60 * 1000,
+            "need biasable review interval, got {interval}"
+        );
+
+        let low_due = apply_mastery_due_bias(0.0, now, fsrs_out.due_ms);
+        let high_due = apply_mastery_due_bias(0.95, now, fsrs_out.due_ms);
+        assert!(low_due < fsrs_out.due_ms);
+        assert_eq!(
+            low_due,
+            fsrs_out.due_ms + mastery_due_bias_delta_ms(0.0, interval)
+        );
+        assert!(high_due >= fsrs_out.due_ms);
+
+        let capped = mastery_due_bias_delta_ms(0.0, 100 * MS_PER_DAY);
+        assert_eq!(capped, -MAX_ADVANCE_MS);
+    }
+
+    #[test]
+    fn rate_with_mastery_bias_persists_advanced_due() {
+        use crate::mastery::apply_mastery_due_bias;
+
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-bias", "task-bias", "card-bias");
+        let service = FsrsReviewService::new(db.clone());
+        let enq = service
+            .enqueue_cards(&["card-bias".to_string()])
+            .expect("enqueue");
+        let state_id = enq.states[0].id.clone();
+
+        let seed_now = Utc::now().timestamp_millis();
+        {
+            let conn = db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE fsrs_card_states SET
+                    state = 2, stability = 10.0, difficulty = 5.0,
+                    scheduled_days = 10.0, reps = 5, lapses = 0,
+                    due_ms = ?1, last_review_ms = ?2, suspended = 0
+                 WHERE id = ?3",
+                params![seed_now, seed_now - 10 * MS_PER_DAY, state_id],
+            )
+            .expect("seed review state");
+        }
+
+        let before = service
+            .get_card_state(&state_id)
+            .expect("load")
+            .expect("state");
+        let rate_now = Utc::now().timestamp_millis();
+        let fsrs_only = schedule_review(&before, FsrsRating::Good, rate_now);
+        let expected_due = apply_mastery_due_bias(0.0, rate_now, fsrs_only.due_ms);
+
+        let biased = service
+            .rate_with_mastery_bias(&state_id, 3, Some(10), Some(0.0))
+            .expect("biased rate");
+
+        // Wall clock may drift a few ms between schedule_review preview and rate();
+        // assert direction + magnitude band rather than exact equality.
+        assert!(
+            biased.due_ms < fsrs_only.due_ms,
+            "low mastery must advance due: got {} vs fsrs {}",
+            biased.due_ms,
+            fsrs_only.due_ms
+        );
+        let delta = fsrs_only.due_ms - biased.due_ms;
+        let expected_delta = fsrs_only.due_ms - expected_due;
+        assert!(
+            (delta - expected_delta).abs() < 5_000,
+            "advance delta {delta} should ≈ expected {expected_delta} (5s clock skew)"
+        );
+
+        // High mastery must not advance
+        insert_card_for_task(&db, "doc-bias", "task-bias", "card-bias-hi");
+        let enq_hi = service
+            .enqueue_cards(&["card-bias-hi".to_string()])
+            .expect("enqueue hi");
+        let state_hi = enq_hi.states[0].id.clone();
+        {
+            let conn = db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE fsrs_card_states SET
+                    state = 2, stability = 10.0, difficulty = 5.0,
+                    scheduled_days = 10.0, reps = 5, lapses = 0,
+                    due_ms = ?1, last_review_ms = ?2, suspended = 0
+                 WHERE id = ?3",
+                params![seed_now, seed_now - 10 * MS_PER_DAY, state_hi],
+            )
+            .expect("seed hi");
+        }
+        let before_hi = service.get_card_state(&state_hi).unwrap().unwrap();
+        let rate_now_hi = Utc::now().timestamp_millis();
+        let fsrs_hi = schedule_review(&before_hi, FsrsRating::Good, rate_now_hi);
+        let high = service
+            .rate_with_mastery_bias(&state_hi, 3, Some(10), Some(0.95))
+            .expect("high bias");
+        assert!(
+            high.due_ms >= fsrs_hi.due_ms - 5_000,
+            "high mastery must not pull due earlier: {} vs {}",
+            high.due_ms,
+            fsrs_hi.due_ms
+        );
+    }
+
+    #[test]
+    fn committed_review_remains_in_mastery_outbox_until_marked() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-outbox", "task-outbox", "card-outbox");
+        let service = FsrsReviewService::new(db);
+        let enqueued = service.enqueue_cards(&["card-outbox".to_string()]).unwrap();
+        let rated = service.rate(&enqueued.states[0].id, 3, None).unwrap();
+
+        let pending = service.pending_mastery_reviews(10).unwrap();
+        assert!(pending.iter().any(|row| row.log_id == rated.log_id));
+        service.mark_mastery_review_synced(&rated.log_id).unwrap();
+        assert!(!service
+            .pending_mastery_reviews(10)
+            .unwrap()
+            .iter()
+            .any(|row| row.log_id == rated.log_id));
+    }
+
+    #[test]
+    fn undo_of_unsynced_review_remains_a_durable_revert_pending() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-revert", "task-revert", "card-revert");
+        let service = FsrsReviewService::new(db);
+        let enqueued = service.enqueue_cards(&["card-revert".to_string()]).unwrap();
+        let state_id = enqueued.states[0].id.clone();
+        let rated = service.rate(&state_id, 3, None).unwrap();
+        service.undo_last_review(&rated.log_id, &state_id).unwrap();
+
+        let pending = service.pending_mastery_reviews(10).unwrap();
+        let row = pending
+            .iter()
+            .find(|row| row.log_id == rated.log_id)
+            .expect("undo outbox row must remain pending");
+        assert!(row.revert);
+    }
+
+    /// C5：VFS mastery_states.score（连错后）驱动 FSRS due 提前；极低分受 3 天上限。
+    #[test]
+    fn e2e_vfs_mastery_score_biases_due_and_respects_three_day_cap() {
+        use crate::mastery::service::{set_now_override_ms, MasteryService};
+        use crate::mastery::{
+            apply_mastery_due_bias, mastery_due_bias_delta_ms, MasteryOutcome, MasterySource,
+            MAX_ADVANCE_MS,
+        };
+        use crate::question_bank_service::QuestionBankService;
+        use crate::vfs::repos::{CreateQuestionParams, QuestionType, VfsQuestionRepo};
+
+        let (_vfs_tmp, vfs_raw) = crate::vfs::database::setup_migrated_test_db();
+        let vfs_db = Arc::new(vfs_raw);
+        let concept = "fsrs_闭环偏置";
+        let qid = {
+            let exam_id = "exam_fsrs_e2e";
+            let conn = vfs_db.get_conn_safe().unwrap();
+            conn.execute(
+                "INSERT INTO exam_sheets (
+                    id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at
+                 ) VALUES (?1, 'e2e', 'completed', 't1', '{}', '{}', '2020-01-01T00:00:00Z', '2020-01-01T00:00:00Z')",
+                params![exam_id],
+            )
+            .unwrap();
+            drop(conn);
+            VfsQuestionRepo::create_question(
+                &vfs_db,
+                &CreateQuestionParams {
+                    exam_id: exam_id.into(),
+                    card_id: None,
+                    question_label: Some("Q".into()),
+                    content: "x?".into(),
+                    options: None,
+                    answer: Some("1".into()),
+                    explanation: None,
+                    question_type: Some(QuestionType::FillBlank),
+                    difficulty: None,
+                    tags: Some(vec![concept.into()]),
+                    source_type: None,
+                    source_ref: None,
+                    images: None,
+                    parent_id: None,
+                },
+            )
+            .unwrap()
+            .id
+        };
+        let qbank = QuestionBankService::new(vfs_db.clone());
+        let mut t0 = Utc::now().timestamp_millis();
+        set_now_override_ms(Some(t0));
+        for i in 0..3 {
+            t0 += 120_000;
+            set_now_override_ms(Some(t0));
+            qbank
+                .submit_answer(&qid, "bad", Some(false), Some(&format!("fw{i}")))
+                .unwrap();
+        }
+        set_now_override_ms(None);
+
+        let mastery = MasteryService::new(vfs_db.clone());
+        let score = mastery.get_state(concept).unwrap().unwrap().score;
+        assert!(score < 0.5, "expected weak score, got {score}");
+
+        let (_fsrs_tmp, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-c5", "task-c5", "card-c5-a");
+        insert_card_for_task(&db, "doc-c5", "task-c5", "card-c5-b");
+        insert_card_for_task(&db, "doc-c5", "task-c5", "card-c5-cap");
+        // tag cards with same concept
+        {
+            let conn = db.get_conn_safe().unwrap();
+            let tags = serde_json::to_string(&vec![concept]).unwrap();
+            for id in ["card-c5-a", "card-c5-b", "card-c5-cap"] {
+                conn.execute(
+                    "UPDATE anki_cards SET tags_json = ?1 WHERE id = ?2",
+                    params![tags, id],
+                )
+                .unwrap();
+            }
+        }
+        let service = FsrsReviewService::new(db.clone());
+        let seed_review = |card_id: &str, stability: f64, scheduled_days: f64| -> String {
+            let enq = service.enqueue_cards(&[card_id.to_string()]).unwrap();
+            let sid = enq.states[0].id.clone();
+            let seed_now = Utc::now().timestamp_millis();
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE fsrs_card_states SET
+                    state = 2, stability = ?1, difficulty = 5.0,
+                    scheduled_days = ?2, reps = 5, lapses = 0,
+                    due_ms = ?3, last_review_ms = ?4, suspended = 0
+                 WHERE id = ?5",
+                params![
+                    stability,
+                    scheduled_days,
+                    seed_now,
+                    seed_now - (scheduled_days as i64) * MS_PER_DAY,
+                    sid
+                ],
+            )
+            .unwrap();
+            sid
+        };
+        let sid_base = seed_review("card-c5-a", 10.0, 10.0);
+        let sid_bias = seed_review("card-c5-b", 10.0, 10.0);
+        let sid_cap = seed_review("card-c5-cap", 200.0, 100.0);
+
+        let baseline = service
+            .rate_with_mastery_bias(&sid_base, 3, Some(10), None)
+            .unwrap();
+        let biased = service
+            .rate_with_mastery_bias(&sid_bias, 3, Some(10), Some(score))
+            .unwrap();
+        let now_ms = Utc::now().timestamp_millis();
+        let interval = baseline.due_ms.saturating_sub(now_ms);
+        let expected_delta = mastery_due_bias_delta_ms(score, interval);
+        let advance = baseline.due_ms.saturating_sub(biased.due_ms);
+        assert!(
+            advance > 60_000,
+            "VFS low mastery must advance due; advance={advance}"
+        );
+        assert!(
+            (advance as i64 - expected_delta.abs()).abs() < 30_000,
+            "advance {advance} ≈ |delta| {}",
+            expected_delta.abs()
+        );
+
+        // Cap: huge interval + score=0 → advance ≤ 3 days on persisted due
+        let before_cap = service.get_card_state(&sid_cap).unwrap().unwrap();
+        let rate_now = Utc::now().timestamp_millis();
+        let fsrs_cap = schedule_review(&before_cap, FsrsRating::Good, rate_now);
+        let capped = service
+            .rate_with_mastery_bias(&sid_cap, 3, Some(10), Some(0.0))
+            .unwrap();
+        let cap_advance = fsrs_cap.due_ms.saturating_sub(capped.due_ms);
+        assert!(
+            cap_advance > 0 && cap_advance <= MAX_ADVANCE_MS + 5_000,
+            "cap advance {cap_advance} must be in (0, 3d]; fsrs={} biased={}",
+            fsrs_cap.due_ms,
+            capped.due_ms
+        );
+        assert_eq!(
+            mastery_due_bias_delta_ms(0.0, 100 * MS_PER_DAY),
+            -MAX_ADVANCE_MS
+        );
+        // 再压低真实 score 后，100d 间隔仍不超过 3 天上限
+        mastery
+            .record_event(
+                MasterySource::Qbank,
+                concept,
+                "extra",
+                &MasteryOutcome::Wrong,
+            )
+            .unwrap();
+        let ultra_low = mastery.get_state(concept).unwrap().unwrap().score;
+        let formula_due = apply_mastery_due_bias(ultra_low, rate_now, rate_now + 100 * MS_PER_DAY);
+        let formula_advance = (rate_now + 100 * MS_PER_DAY) - formula_due;
+        assert!(
+            formula_advance > 0 && formula_advance <= MAX_ADVANCE_MS,
+            "ultra-low score={ultra_low} advance {formula_advance} must be ≤ 3d"
+        );
     }
 
     #[test]

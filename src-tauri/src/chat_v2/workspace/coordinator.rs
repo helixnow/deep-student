@@ -995,6 +995,15 @@ impl WorkspaceCoordinator {
         Ok(Arc::clone(&instance.task_manager))
     }
 
+    /// 🆕 B2（一键断电）：已加载（内存中）工作区 ID 列表，供紧急停止等全局操作遍历。
+    pub fn loaded_workspace_ids(&self) -> Vec<WorkspaceId> {
+        let instances = self.instances.read().unwrap_or_else(|poisoned| {
+            log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
+            poisoned.into_inner()
+        });
+        instances.keys().cloned().collect()
+    }
+
     /// 进入维护模式：暂停所有活跃工作区的数据库连接池
     ///
     /// 在备份/恢复操作期间调用，确保 ws_*.db 文件不被锁定。

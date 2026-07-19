@@ -118,13 +118,19 @@ fn is_session_tool(name: &str) -> bool {
 
 pub struct SessionToolExecutor;
 
+impl Default for SessionToolExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionToolExecutor {
     pub fn new() -> Self {
         Self
     }
 
     /// 从 ExecutionContext 获取 ChatV2Database
-    fn get_db<'a>(ctx: &'a ExecutionContext) -> Result<&'a ChatV2Database, String> {
+    fn get_db(ctx: &ExecutionContext) -> Result<&ChatV2Database, String> {
         ctx.chat_v2_db
             .as_ref()
             .map(|arc| arc.as_ref())
@@ -399,7 +405,7 @@ impl SessionToolExecutor {
 
         let node = note_to_dstu_node(&note);
         emit_watch_event(
-            &ctx.window,
+            ctx.window_ref(),
             DstuWatchEvent::created(&node.path, node.clone()),
         );
 
@@ -1424,9 +1430,7 @@ fn truncate_field(value: &str, max_chars: usize) -> (String, bool) {
     (prefix, chars.next().is_some())
 }
 
-fn group_blocks_by_message<'a>(
-    blocks: &'a [MessageBlock],
-) -> HashMap<&'a str, Vec<&'a MessageBlock>> {
+fn group_blocks_by_message(blocks: &[MessageBlock]) -> HashMap<&str, Vec<&MessageBlock>> {
     let mut grouped: HashMap<&str, Vec<&MessageBlock>> = HashMap::new();
     for block in blocks {
         grouped
@@ -1952,7 +1956,7 @@ impl ToolExecutor for SessionToolExecutor {
                         | "session_stats"
                 );
                 if is_write_op {
-                    let _ = ctx.window.emit(
+                    let _ = ctx.window_ref().emit(
                         SESSION_MGMT_EVENT,
                         json!({"tool": tool_name, "sessionId": ctx.session_id}),
                     );
@@ -2149,11 +2153,11 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("builtin-session_batch_ops"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("session_batch_move"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
     }
 

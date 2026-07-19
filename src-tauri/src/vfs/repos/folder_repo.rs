@@ -1738,18 +1738,11 @@ impl VfsFolderRepo {
                 continue;
             }
 
-            // A child resource can be restored independently of a trashed
-            // parent folder. Refuse the whole folder purge in that case rather
-            // than hard-deleting the restored resource as a side effect.
-            let trash_sql = match canonical_item_type.as_str() {
-                "note" => "SELECT 1 FROM notes WHERE id = ?1 AND deleted_at IS NOT NULL",
-                "file" | "image" => "SELECT 1 FROM files WHERE id = ?1 AND deleted_at IS NOT NULL",
-                "exam" => "SELECT 1 FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL",
-                "translation" => {
-                    "SELECT 1 FROM translations WHERE id = ?1 AND deleted_at IS NOT NULL"
-                }
-                "essay" => "SELECT 1 FROM essays WHERE id = ?1 AND deleted_at IS NOT NULL",
-                "mindmap" => "SELECT 1 FROM mindmaps WHERE id = ?1 AND deleted_at IS NOT NULL",
+            // Folder soft-delete only tombstones folder_items, not entity rows.
+            // Refuse purge when the membership was restored in-place, or when the
+            // resource still has an active membership outside this purge set.
+            match canonical_item_type.as_str() {
+                "note" | "file" | "image" | "exam" | "translation" | "essay" | "mindmap" => {}
                 other => {
                     warn!(
                         "[VFS::FolderRepo] Skipping unsupported folder item during purge: type={}, id={}",
@@ -1757,11 +1750,29 @@ impl VfsFolderRepo {
                     );
                     continue;
                 }
-            };
-            let is_trashed = conn
-                .query_row(trash_sql, params![&item.item_id], |_| Ok(()))
-                .is_ok();
-            if !is_trashed {
+            }
+            let link_trashed: bool = conn.query_row(
+                "SELECT deleted_at IS NOT NULL FROM folder_items WHERE id = ?1",
+                params![&item.id],
+                |row| row.get(0),
+            )?;
+            let folder_id_set: HashSet<&str> = folder_ids.iter().map(String::as_str).collect();
+            let mut live_memberships = conn.prepare(
+                "SELECT folder_id FROM folder_items
+                 WHERE item_id = ?1 AND deleted_at IS NULL",
+            )?;
+            let has_external_live_membership = live_memberships
+                .query_map(params![&item.item_id], |row| {
+                    row.get::<_, Option<String>>(0)
+                })?
+                .map(|folder_id| folder_id.map_err(VfsError::from))
+                .collect::<VfsResult<Vec<_>>>()?
+                .into_iter()
+                .any(|folder_id| match folder_id.as_deref() {
+                    None => true,
+                    Some(id) => !folder_id_set.contains(id),
+                });
+            if !link_trashed || has_external_live_membership {
                 return Err(VfsError::Conflict {
                     key: "folders.purge_conflict".to_string(),
                     message: format!(
@@ -2689,7 +2700,7 @@ impl VfsFolderRepo {
         }
 
         // 按 sort_order 排序
-        nodes.sort_by(|a, b| a.folder.sort_order.cmp(&b.folder.sort_order));
+        nodes.sort_by_key(|a| a.folder.sort_order);
 
         Ok(nodes)
     }
@@ -2741,7 +2752,7 @@ impl VfsFolderRepo {
         }
 
         // 按 sort_order 排序
-        nodes.sort_by(|a, b| a.folder.sort_order.cmp(&b.folder.sort_order));
+        nodes.sort_by_key(|a| a.folder.sort_order);
 
         Ok(nodes)
     }
@@ -3372,6 +3383,9 @@ mod tests {
             .unwrap();
         }
 
+        // purge_folder is the empty-trash path: soft-delete first so membership
+        // tombstones exist, then permanently remove the folder tree + image blob.
+        VfsFolderRepo::delete_folder(&db, &folder.id).expect("soft delete folder");
         VfsFolderRepo::purge_folder(&db, &folder.id).expect("purge folder");
 
         let conn = db.get_conn_safe().unwrap();

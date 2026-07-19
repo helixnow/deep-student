@@ -399,7 +399,7 @@ impl AgentControl {
             .map(serde_json::from_value)
             .transpose()
             .map_err(|e| format!("Invalid agent control state: {e}"))?
-            .unwrap_or_else(|| match &agent.status {
+            .unwrap_or(match &agent.status {
                 AgentStatus::Idle | AgentStatus::Queued => AgentControlState::Queued,
                 AgentStatus::Running => AgentControlState::Running,
                 AgentStatus::Completed => AgentControlState::Completed,

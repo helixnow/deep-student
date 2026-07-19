@@ -3,7 +3,7 @@
 //! 使用 JSON 文件存储用户自定义的批改模式，简单轻量。
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ pub struct CustomModeManager {
 
 impl CustomModeManager {
     /// 创建管理器实例
-    pub fn new(data_dir: &PathBuf) -> Self {
+    pub fn new(data_dir: &Path) -> Self {
         let config_path = data_dir.join(CUSTOM_MODES_FILE);
         Self {
             config_path,

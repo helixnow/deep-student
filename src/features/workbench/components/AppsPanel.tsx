@@ -1,18 +1,24 @@
 /**
- * AppsPanel（L4）— 全部应用发现面板（统一搜索：应用 + 命令）
+ * AppsPanel（L4）— Spotlight 式全局搜索（应用 / 命令 / 学习资源 / 聊天）
  *
- * - 玻璃面板 + 顶部搜索；列表 / 网格展示可独立启动的注册应用
- * - Enter / 点击 → workbenchBus.launch({ typeId, reason: 'api' }) 并关闭
- * - 搜索时同时命中命令面板注册命令（commandRegistry 中 'workbench' 视图可见集），
- *   结果分区「应用 / 命令」展示，Enter 执行；OS 模式下它是唯一的搜索入口
- *   （独立命令面板由 CommandPaletteProvider 在 workbenchActive 时改道至此）
- * - Esc / 点空白关闭；方向键选择；Tab 焦点陷阱；reduced-motion / minimal 友好（见 CSS）
+ * - 玻璃面板 + 顶部搜索；无输入时网格 / 列表展示可独立启动的注册应用
+ * - 有输入时分区展示：应用 / 命令 / 资源 / 聊天（内容检索需 ≥2 字符）
+ * - 应用 / 命令为本地即时过滤；dstu / chat 走独立 250ms 防抖 providers
+ * - Enter / 点击 → 对应 open()（launch / executeCommand / 资源窗 / chat 会话）并关闭
+ * - OS 模式下它是唯一的搜索入口（CommandPaletteProvider 在 workbenchActive 时改道至此）
  *
  * 开合状态见 appsPanelStore（openAppsPanel / closeAppsPanel）。
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GridFour, Lightning, List, MagnifyingGlass } from '@phosphor-icons/react';
+import {
+  ChatCenteredText,
+  File as FileIcon,
+  GridFour,
+  Lightning,
+  List,
+  MagnifyingGlass,
+} from '@phosphor-icons/react';
 import { cn } from '../../../lib/utils';
 import { appRegistry } from '../core/appRegistry';
 import { workbenchBus } from '../core/workbenchBus';
@@ -20,6 +26,18 @@ import type { AppDefinition } from '../core/types';
 import { useCommandPaletteSafe } from '@/command-palette/CommandPaletteProvider';
 import { formatShortcut } from '@/command-palette/registry/shortcutUtils';
 import type { Command } from '@/command-palette/registry/types';
+import {
+  CONTENT_SEARCH_MIN_CHARS,
+  GLOBAL_SEARCH_DEBOUNCE_MS,
+  createChatProvider,
+  createDstuProvider,
+  openChatInWorkbench,
+  openDstuInWorkbench,
+  useAbortableDebouncedQuery,
+  type GlobalSearchItem,
+  type GlobalSearchKind,
+  type WorkbenchSearchHost,
+} from '../search/globalSearchProviders';
 import { closeAppsPanel, useAppsPanelOpen } from './appsPanelStore';
 import { hasWorkbenchAppIcon, WorkbenchAppIcon } from './WorkbenchAppIcon';
 import './AppsPanel.css';
@@ -29,7 +47,6 @@ export const APPS_PANEL_EXIT_MS = 200;
 
 type ViewMode = 'grid' | 'list';
 
-// 注意用 a[href] 而非 [href]:插画图标内的 SVG <image href> 会被 [href] 误匹配为可聚焦元素
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -80,18 +97,35 @@ function filterApps(apps: AppDefinition[], query: string, t: (key: string, fallb
   });
 }
 
+function itemTestId(item: GlobalSearchItem): string {
+  switch (item.kind) {
+    case 'app':
+      return `wb-apps-item-${item.id.replace(/^app:/, '')}`;
+    case 'command':
+      return `wb-apps-command-${item.id.replace(/^command:/, '')}`;
+    case 'dstu':
+      return `wb-apps-dstu-${item.id.replace(/^dstu:/, '')}`;
+    case 'chat':
+      return `wb-apps-chat-${item.id.replace(/^chat:/, '')}`;
+    default:
+      return `wb-apps-result-${item.id}`;
+  }
+}
+
+function itemOptionId(item: GlobalSearchItem): string {
+  return `wb-apps-option-${item.id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+}
+
 export interface AppsPanelProps {
   className?: string;
 }
 
-/** 统一搜索结果项：应用（启动）或命令（执行） */
-type PanelItem = { kind: 'app'; app: AppDefinition } | { kind: 'command'; command: Command };
+const SECTION_ORDER: GlobalSearchKind[] = ['app', 'command', 'dstu', 'chat'];
 
 const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   const { t } = useTranslation();
   const open = useAppsPanelOpen();
   const registryVersion = useRegistryVersion();
-  // 统一搜索：命令面板注册命令（无 Provider 的环境——如测试——退化为仅应用）
   const commandPalette = useCommandPaletteSafe();
 
   const [rendered, setRendered] = useState(open);
@@ -107,20 +141,79 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   const prevFocusRef = useRef<HTMLElement | null>(null);
 
   const searching = query.trim().length > 0;
+  const contentSearchReady = query.trim().length >= CONTENT_SEARCH_MIN_CHARS;
 
-  const apps = useMemo(() => {
+  const launchableApps = useMemo(() => {
     void registryVersion;
-    return filterApps(
-      appRegistry.list().filter((app) => app.showInLauncher !== false),
-      query,
-      t,
-    );
-  }, [registryVersion, query, t]);
+    return appRegistry.list().filter((app) => app.showInLauncher !== false);
+  }, [registryVersion]);
+
+  const host = useMemo<WorkbenchSearchHost>(
+    () => ({
+      listLaunchableApps: () => launchableApps,
+      appName: (app) => t(app.nameKey, app.typeId),
+      searchCommands: (q) => {
+        if (!commandPalette) return [];
+        try {
+          return commandPalette.searchCommands(q);
+        } catch {
+          return [];
+        }
+      },
+      openApp: (typeId) => {
+        workbenchBus.launch({ typeId, reason: 'api' });
+        closeAppsPanel();
+      },
+      openCommand: (id) => {
+        closeAppsPanel();
+        void commandPalette?.executeCommand(id);
+      },
+      openDstu: (node) => {
+        closeAppsPanel();
+        openDstuInWorkbench(node);
+      },
+      openChat: (sessionId) => {
+        closeAppsPanel();
+        openChatInWorkbench(sessionId);
+      },
+      untitledSessionTitle: t('command_palette:untitled', 'Untitled'),
+    }),
+    [launchableApps, commandPalette, t],
+  );
+
+  const dstuProvider = useMemo(() => createDstuProvider(host), [host]);
+  const chatProvider = useMemo(() => createChatProvider(host), [host]);
+
+  const dstuState = useAbortableDebouncedQuery(
+    query,
+    open && searching,
+    (q, signal) => dstuProvider.search(q, signal),
+    {
+      debounceMs: GLOBAL_SEARCH_DEBOUNCE_MS,
+      minChars: CONTENT_SEARCH_MIN_CHARS,
+      empty: [] as GlobalSearchItem[],
+    },
+  );
+
+  const chatState = useAbortableDebouncedQuery(
+    query,
+    open && searching,
+    (q, signal) => chatProvider.search(q, signal),
+    {
+      debounceMs: GLOBAL_SEARCH_DEBOUNCE_MS,
+      minChars: CONTENT_SEARCH_MIN_CHARS,
+      empty: [] as GlobalSearchItem[],
+    },
+  );
+
+  const apps = useMemo(
+    () => filterApps(launchableApps, query, t),
+    [launchableApps, query, t],
+  );
 
   const commands = useMemo<Command[]>(() => {
     if (!searching || !commandPalette) return [];
     try {
-      // 过滤「打开命令面板」自身：OS 模式下本面板即其替身，展示它只会自我指涉
       return commandPalette
         .searchCommands(query)
         .filter((command) => command.id !== 'global.command-palette');
@@ -129,12 +222,62 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     }
   }, [commandPalette, query, searching]);
 
-  /** 键盘/滚动/ARIA 的扁平结果序列：应用在前，命令在后 */
-  const items = useMemo<PanelItem[]>(() => {
-    const appItems = apps.map<PanelItem>((app) => ({ kind: 'app', app }));
+  const appItems = useMemo<GlobalSearchItem[]>(
+    () =>
+      apps.map((app) => ({
+        id: `app:${app.typeId}`,
+        kind: 'app' as const,
+        title: t(app.nameKey, app.typeId),
+        subtitle: searching ? app.typeId : undefined,
+        score: 1,
+        open: () => host.openApp(app.typeId),
+      })),
+    [apps, host, searching, t],
+  );
+
+  const commandItems = useMemo<GlobalSearchItem[]>(
+    () =>
+      commands.map((command) => ({
+        id: `command:${command.id}`,
+        kind: 'command' as const,
+        title: command.name,
+        subtitle: command.description,
+        score: 0.95,
+        shortcut: command.shortcut,
+        open: () => {
+          void host.openCommand(command.id);
+        },
+      })),
+    [commands, host],
+  );
+
+  const itemsByKind = useMemo(
+    () => ({
+      app: appItems,
+      command: searching ? commandItems : [],
+      dstu: searching ? dstuState.data : [],
+      chat: searching ? chatState.data : [],
+    }),
+    [appItems, chatState.data, commandItems, dstuState.data, searching],
+  );
+
+  const items = useMemo<GlobalSearchItem[]>(() => {
     if (!searching) return appItems;
-    return [...appItems, ...commands.map<PanelItem>((command) => ({ kind: 'command', command }))];
-  }, [apps, commands, searching]);
+    return [
+      ...itemsByKind.app,
+      ...itemsByKind.command,
+      ...itemsByKind.dstu,
+      ...itemsByKind.chat,
+    ];
+  }, [appItems, itemsByKind, searching]);
+
+  const loading = dstuState.loading || chatState.loading;
+  const loadingByKind = {
+    app: false,
+    command: false,
+    dstu: dstuState.loading,
+    chat: chatState.loading,
+  };
 
   // 开合：退场动画 + 重置搜索
   useEffect(() => {
@@ -163,7 +306,6 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     };
   }, [open, rendered]);
 
-  // 焦点：打开时聚焦搜索框；关闭时还原
   useEffect(() => {
     if (!open) return undefined;
     prevFocusRef.current =
@@ -179,9 +321,6 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     };
   }, [open]);
 
-  // Tab / Shift+Tab 焦点陷阱：循环在 dialog 内。
-  // 注意：可点关闭的 backdrop 不可设 inert（inert 退出命中测试，真机点空白关不掉）；
-  // AT 隐藏用 backdrop 上的 aria-hidden，勿用 inert。
   useEffect(() => {
     if (!open) return undefined;
 
@@ -216,7 +355,6 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     };
   }, [open]);
 
-  // 过滤结果变化时钳制选中下标
   useEffect(() => {
     setActiveIndex((i) => {
       if (items.length === 0) return 0;
@@ -224,30 +362,17 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     });
   }, [items]);
 
-  // 选中项滚入视野
   useEffect(() => {
     if (!open || !rendered) return;
     const el = listRef.current?.querySelector<HTMLElement>(
       `[data-wb-apps-index="${activeIndex}"]`,
     );
     el?.scrollIntoView({ block: 'nearest' });
-  }, [activeIndex, open, rendered, viewMode]);
+  }, [activeIndex, open, rendered, viewMode, items]);
 
-  const launchApp = (typeId: string) => {
-    workbenchBus.launch({ typeId, reason: 'api' });
-    closeAppsPanel();
-  };
-
-  const runCommand = (id: string) => {
-    closeAppsPanel();
-    // 失败通知由 Provider 统一处理
-    void commandPalette?.executeCommand(id);
-  };
-
-  const activateItem = (item: PanelItem | undefined) => {
+  const activateItem = (item: GlobalSearchItem | undefined) => {
     if (!item) return;
-    if (item.kind === 'app') launchApp(item.app.typeId);
-    else runCommand(item.command.id);
+    void item.open();
   };
 
   const onRootKeyDown = (e: React.KeyboardEvent) => {
@@ -260,7 +385,6 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
 
     if (items.length === 0) return;
     const targetIsSearch = e.target === searchRef.current;
-    // 网格行列导航仅在「未搜索的网格态」成立；搜索结果一律按列表逐行移动
     const gridNav = !searching && viewMode === 'grid';
 
     if (e.key === 'ArrowDown') {
@@ -310,9 +434,8 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       return;
     }
     if (e.key === 'Enter') {
-      // 搜索框 / 列表项 Enter 均启动当前选中
       const target = e.target as HTMLElement | null;
-      if (target?.closest('button.wb-apps-item')) return; // 交给按钮自身 click
+      if (target?.closest('button.wb-apps-item')) return;
       e.preventDefault();
       activateItem(items[activeIndex]);
     }
@@ -321,77 +444,92 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   if (!rendered) return null;
 
   const listClass = viewMode === 'grid' ? 'wb-apps-grid' : 'wb-apps-list';
-  // 焦点常驻搜索框：用 aria-activedescendant 告知 AT 当前选中的应用项
   const activeItem = items[activeIndex];
-  const activeOptionId = activeItem
-    ? activeItem.kind === 'app'
-      ? `wb-apps-option-${activeItem.app.typeId}`
-      : `wb-apps-command-${activeItem.command.id}`
-    : undefined;
+  const activeOptionId = activeItem ? itemOptionId(activeItem) : undefined;
 
-  // 应用行（网格/列表/搜索结果共用）
-  const renderAppRow = (app: AppDefinition, index: number) => {
-    const name = t(app.nameKey, app.typeId);
-    const active = index === activeIndex;
-    return (
-      <li key={app.typeId} role="presentation">
-        <button
-          type="button"
-          role="option"
-          id={`wb-apps-option-${app.typeId}`}
-          className="wb-apps-item"
-          data-testid={`wb-apps-item-${app.typeId}`}
-          data-wb-apps-index={index}
-          data-wb-apps-active={active || undefined}
-          aria-selected={active}
-          onClick={() => launchApp(app.typeId)}
-          onMouseEnter={() => setActiveIndex(index)}
-        >
-          <span className="wb-apps-item-icon" aria-hidden>
-            {hasWorkbenchAppIcon(app.typeId) ? (
-              <WorkbenchAppIcon typeId={app.typeId} />
-            ) : app.icon}
-          </span>
-          <span className="wb-apps-item-name">{name}</span>
-        </button>
-      </li>
-    );
+  const sectionLabel = (kind: GlobalSearchKind): string => {
+    switch (kind) {
+      case 'app':
+        return t('workbench:appsPanel.sectionApps');
+      case 'command':
+        return t('workbench:appsPanel.sectionCommands');
+      case 'dstu':
+        return t('workbench:appsPanel.sectionResources');
+      case 'chat':
+        return t('workbench:appsPanel.sectionChat');
+      default:
+        return kind;
+    }
   };
 
-  // 命令行（搜索结果）
-  const renderCommandRow = (command: Command, index: number) => {
+  const kindIcon = (kind: GlobalSearchKind) => {
+    switch (kind) {
+      case 'command':
+        return <Lightning size={22} weight="duotone" />;
+      case 'dstu':
+        return <FileIcon size={22} weight="duotone" />;
+      case 'chat':
+        return <ChatCenteredText size={22} weight="duotone" />;
+      default:
+        return null;
+    }
+  };
+
+  const renderResultRow = (item: GlobalSearchItem, index: number) => {
     const active = index === activeIndex;
-    const CommandIcon = command.icon ?? Lightning;
+    const typeId = item.kind === 'app' ? item.id.replace(/^app:/, '') : null;
     return (
-      <li key={command.id} role="presentation">
+      <li key={item.id} role="presentation">
         <button
           type="button"
           role="option"
-          id={`wb-apps-command-${command.id}`}
-          className="wb-apps-item wb-apps-command"
-          data-testid={`wb-apps-command-${command.id}`}
+          id={itemOptionId(item)}
+          className={cn('wb-apps-item', item.kind !== 'app' && 'wb-apps-command')}
+          data-testid={itemTestId(item)}
           data-wb-apps-index={index}
           data-wb-apps-active={active || undefined}
+          data-wb-apps-kind={item.kind}
           aria-selected={active}
-          onClick={() => runCommand(command.id)}
+          onClick={() => activateItem(item)}
           onMouseEnter={() => setActiveIndex(index)}
         >
           <span className="wb-apps-item-icon" aria-hidden>
-            <CommandIcon size={22} weight="duotone" />
-          </span>
-          <span className="wb-apps-command-text">
-            <span className="wb-apps-item-name">{command.name}</span>
-            {command.description && (
-              <span className="wb-apps-command-desc">{command.description}</span>
+            {item.kind === 'app' && typeId && hasWorkbenchAppIcon(typeId) ? (
+              <WorkbenchAppIcon typeId={typeId} />
+            ) : item.kind === 'app' && typeId ? (
+              appRegistry.get(typeId)?.icon
+            ) : (
+              kindIcon(item.kind)
             )}
           </span>
-          {command.shortcut && (
-            <kbd className="wb-apps-command-shortcut">{formatShortcut(command.shortcut)}</kbd>
+          {item.kind === 'app' && !searching ? (
+            <span className="wb-apps-item-name">{item.title}</span>
+          ) : (
+            <span className="wb-apps-command-text">
+              <span className="wb-apps-item-name">{item.title}</span>
+              {item.subtitle && item.kind !== 'app' && (
+                <span className="wb-apps-command-desc">{item.subtitle}</span>
+              )}
+            </span>
+          )}
+          {item.shortcut && (
+            <kbd className="wb-apps-command-shortcut">{formatShortcut(item.shortcut)}</kbd>
           )}
         </button>
       </li>
     );
   };
+
+  let flatOffset = 0;
+  const sectionBlocks = SECTION_ORDER.map((kind) => {
+    const sectionItems = itemsByKind[kind];
+    const start = flatOffset;
+    flatOffset += sectionItems.length;
+    return { kind, sectionItems, start };
+  });
+
+  const showEmpty = searching && items.length === 0 && !loading;
+  const showContentLoading = searching && contentSearchReady && loading && items.length === 0;
 
   return (
     <div
@@ -479,7 +617,11 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
         </div>
 
         <div className="wb-apps-body" ref={listRef}>
-          {items.length === 0 ? (
+          {showContentLoading ? (
+            <div className="wb-apps-loading" data-testid="wb-apps-loading" role="status">
+              {t('workbench:appsPanel.searching')}
+            </div>
+          ) : showEmpty ? (
             <div className="wb-apps-empty" data-testid="wb-apps-empty" role="status">
               <span className="wb-apps-empty-icon" aria-hidden>
                 <MagnifyingGlass size={20} />
@@ -498,7 +640,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
               role="listbox"
               aria-label={t('workbench:appsPanel.title')}
             >
-              {apps.map((app, index) => renderAppRow(app, index))}
+              {items.map((item, index) => renderResultRow(item, index))}
             </ul>
           ) : (
             <div
@@ -507,31 +649,69 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
               role="listbox"
               aria-label={t('workbench:appsPanel.title')}
             >
-              {apps.length > 0 && (
-                <>
-                  <div className="wb-apps-section" role="presentation">
-                    {t('workbench:appsPanel.sectionApps')}
-                  </div>
-                  <ul className="wb-apps-list" role="presentation">
-                    {apps.map((app, index) => renderAppRow(app, index))}
-                  </ul>
-                </>
-              )}
-              {commands.length > 0 && (
-                <>
-                  <div className="wb-apps-section" role="presentation">
-                    {t('workbench:appsPanel.sectionCommands')}
-                  </div>
-                  <ul className="wb-apps-list" role="presentation">
-                    {commands.map((command, ci) =>
-                      renderCommandRow(command, apps.length + ci),
-                    )}
-                  </ul>
-                </>
+              {sectionBlocks.map(({ kind, sectionItems, start }) => {
+                if (sectionItems.length === 0) {
+                  if (
+                    (kind === 'dstu' || kind === 'chat') &&
+                    contentSearchReady &&
+                    loadingByKind[kind]
+                  ) {
+                    return (
+                      <React.Fragment key={kind}>
+                        <div className="wb-apps-section" role="presentation">
+                          {sectionLabel(kind)}
+                        </div>
+                        <div
+                          className="wb-apps-section-loading"
+                          data-testid={`wb-apps-loading-${kind}`}
+                          role="status"
+                        >
+                          {t('workbench:appsPanel.searching')}
+                        </div>
+                      </React.Fragment>
+                    );
+                  }
+                  return null;
+                }
+                return (
+                  <React.Fragment key={kind}>
+                    <div className="wb-apps-section" role="presentation">
+                      {sectionLabel(kind)}
+                    </div>
+                    <ul className="wb-apps-list" role="presentation">
+                      {sectionItems.map((item, i) => renderResultRow(item, start + i))}
+                    </ul>
+                  </React.Fragment>
+                );
+              })}
+              {loading && items.length > 0 && (
+                <div
+                  className="wb-apps-section-loading"
+                  data-testid="wb-apps-loading-more"
+                  role="status"
+                >
+                  {t('workbench:appsPanel.searching')}
+                </div>
               )}
             </div>
           )}
         </div>
+
+        {searching ? (
+          <div
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-testid="wb-apps-result-count"
+          >
+            {loading
+              ? t('workbench:appsPanel.searching')
+              : t('workbench:appsPanel.resultCount', '{{count}} results', {
+                  count: items.length,
+                })}
+          </div>
+        ) : null}
 
         <div className="wb-apps-footer">
           <span className="wb-apps-footer-hint">

@@ -777,6 +777,7 @@
     "expandAll": "Expand all",
     "collapseAll": "Collapse all",
     "editInline": "Edit",
+    "editCard": "Edit card {{index}}",
     "saveEdit": "Save",
     "cancelEdit": "Cancel",
     "cardIndex": "Card {{index}}",

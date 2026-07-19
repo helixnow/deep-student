@@ -90,12 +90,12 @@ impl DatabaseManager {
     fn build_pool(db_path: &Path) -> Result<SqlitePool> {
         let manager = SqliteConnectionManager::file(db_path).with_init(|c| {
             // 基础 PRAGMA 设置
-            c.pragma_update(None, "foreign_keys", &"ON")?;
-            c.pragma_update(None, "journal_mode", &"WAL")?;
-            c.pragma_update(None, "synchronous", &"NORMAL")?;
+            c.pragma_update(None, "foreign_keys", "ON")?;
+            c.pragma_update(None, "journal_mode", "WAL")?;
+            c.pragma_update(None, "synchronous", "NORMAL")?;
             // 防止写入互斥等待无界：设置 busy_timeout 以快速失败并交给上层重试/提示
             // 单位毫秒，3 秒足以让短事务释放写锁
-            c.pragma_update(None, "busy_timeout", &3000i64)?;
+            c.pragma_update(None, "busy_timeout", 3000i64)?;
             Ok(())
         });
 
@@ -1247,7 +1247,7 @@ impl DatabaseManager {
                     "ALTER TABLE kg_problem_cards ADD COLUMN original_image_path TEXT NULL",
                     [],
                 )
-                .unwrap_or_else(|_| 0); // 如果列已存在则忽略错误
+                .unwrap_or(0); // 如果列已存在则忽略错误
 
                 tracing::info!("数学工作流图片路径字段添加成功");
                 tracing::info!("数据库迁移 v17 -> v18 完成");
@@ -1563,16 +1563,16 @@ impl DatabaseManager {
                             if let Some(cits) = citations {
                                 let name = tool_name_for_route.unwrap_or_default();
                                 if name == "web_search" {
-                                    let v = web_vec.get_or_insert_with(|| vec![]);
+                                    let v = web_vec.get_or_insert_with(std::vec::Vec::new);
                                     v.extend(cits);
                                 } else if name == "graph" {
-                                    let v = graph_vec.get_or_insert_with(|| vec![]);
+                                    let v = graph_vec.get_or_insert_with(std::vec::Vec::new);
                                     v.extend(cits);
                                 } else if name == "memory" {
-                                    let v = mem_vec.get_or_insert_with(|| vec![]);
+                                    let v = mem_vec.get_or_insert_with(std::vec::Vec::new);
                                     v.extend(cits);
                                 } else {
-                                    let v = rag_vec.get_or_insert_with(|| vec![]);
+                                    let v = rag_vec.get_or_insert_with(std::vec::Vec::new);
                                     v.extend(cits);
                                 }
                             }
@@ -2554,6 +2554,6 @@ impl DatabaseManager {
     #[allow(dead_code)]
     fn migrate_builtin_templates_to_db(&self, _conn: &SqlitePooledConnection) -> Result<()> {
         tracing::info!("跳过旧的内置模板迁移（使用 JSON 导入机制）");
-        return Ok(());
+        Ok(())
     }
 }

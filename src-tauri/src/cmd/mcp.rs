@@ -833,6 +833,7 @@ pub mod mcp_test_helpers {
             endpoint,
             api_key,
             oauth: None,
+            auth_provider: None,
             headers: header_map,
             timeout: CLIENT_TIMEOUT,
         };
@@ -854,6 +855,7 @@ pub mod mcp_test_helpers {
             url: endpoint,
             api_key,
             oauth: None,
+            auth_provider: None,
             headers: header_map,
             timeout: CLIENT_TIMEOUT,
         };

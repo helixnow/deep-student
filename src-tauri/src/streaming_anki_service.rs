@@ -281,7 +281,7 @@ impl StreamingAnkiService {
         // 确定API参数
         let max_tokens = options
             .max_output_tokens_override
-            .or(options.max_tokens.map(|t| t as u32))
+            .or(options.max_tokens)
             .unwrap_or(api_config.max_output_tokens);
         let temperature = options
             .temperature_override
@@ -878,7 +878,7 @@ impl StreamingAnkiService {
                                                             ));
                                                         let _ = self
                                                             .handle_task_error(
-                                                                &task_id,
+                                                                task_id,
                                                                 &app_err,
                                                                 window,
                                                                 None,
@@ -1573,7 +1573,7 @@ impl StreamingAnkiService {
         // 新增动态映射：使用模板定义字段顺序来设置 front/back
         if front.is_empty() {
             if let Some(fields) = template_fields {
-                if let Some(first) = fields.get(0) {
+                if let Some(first) = fields.first() {
                     if let Some(val) = extra_fields.get(&first.to_lowercase()) {
                         front = val.clone();
                     }

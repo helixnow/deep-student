@@ -198,13 +198,7 @@ fn parse_string_or_array(value: &Value) -> Vec<String> {
             .iter()
             .filter_map(|v| v.as_str().map(String::from))
             .collect(),
-        Value::String(s) => {
-            if let Ok(arr) = serde_json::from_str::<Vec<String>>(s) {
-                arr
-            } else {
-                vec![]
-            }
-        }
+        Value::String(s) => serde_json::from_str::<Vec<String>>(s).unwrap_or_default(),
         _ => vec![],
     }
 }

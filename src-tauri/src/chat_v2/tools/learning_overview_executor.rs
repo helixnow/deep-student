@@ -191,6 +191,56 @@ impl LearningOverviewExecutor {
             }
         };
 
+        // A-P0/A-P1：掌握度摘要 + 今日优先复习（可附到期闪卡计数）
+        let mastery = match vfs_db {
+            Some(db) => match crate::mastery::MasteryService::new(db.clone()).overview_summary(5) {
+                Ok(mut summary) => {
+                    if let Some(anki) = ctx.anki_db.as_ref() {
+                        if let Ok(due_cards) =
+                            FsrsReviewService::new(anki.clone()).get_due(Some(200))
+                        {
+                            let mut due_by_concept: HashMap<String, u32> = HashMap::new();
+                            for card in &due_cards {
+                                if let Some(concept) =
+                                    card.tags.iter().map(|t| t.trim()).find(|t| !t.is_empty())
+                                {
+                                    *due_by_concept.entry(concept.to_string()).or_insert(0) += 1;
+                                }
+                            }
+                            for item in &mut summary.today_priority_review {
+                                item.due_card_count =
+                                    due_by_concept.get(&item.concept_key).copied();
+                                if let Some(n) = item.due_card_count {
+                                    item.reason = format!(
+                                        "{}；今日到期 {} 张",
+                                        item.reason.trim_end_matches('。'),
+                                        n
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    serde_json::to_value(summary).ok()
+                }
+                Err(error) => {
+                    source_errors.push(source_error(
+                        "mastery",
+                        "掌握度统计暂时不可用",
+                        format!("Mastery statistics are unavailable: {error}"),
+                    ));
+                    None
+                }
+            },
+            None => {
+                source_errors.push(source_error(
+                    "mastery",
+                    "VFS 数据库尚未初始化，掌握度统计不可用",
+                    "The VFS database is not initialized, so mastery statistics are unavailable.",
+                ));
+                None
+            }
+        };
+
         let activity_totals = aggregate_activities(&activities);
         let pomodoro_totals = aggregate_pomodoro(&pomodoro);
         let daily = merge_daily(&activities, &pomodoro, request.start_date, request.end_date);
@@ -210,6 +260,7 @@ impl LearningOverviewExecutor {
                 "questionBank": qbank,
                 "fsrsReview": fsrs,
                 "sm2Review": sm2_review,
+                "mastery": mastery,
                 "daily": daily_page,
                 "page": request.page.page,
                 "page_size": request.page.page_size,

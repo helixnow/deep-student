@@ -837,6 +837,10 @@ pub async fn run_headless_turn(
 ) -> ChatV2Result<HeadlessTurnResult> {
     let started = std::time::Instant::now();
 
+    if let Err(error) = super::kill_switch::admit_or_block_from_app(&app) {
+        return Err(ChatV2Error::Other(error));
+    }
+
     if req
         .cancellation_token
         .as_ref()
@@ -920,6 +924,8 @@ pub async fn run_headless_agent_turn(
     req: HeadlessSessionTurn,
 ) -> Result<HeadlessTurnOutcome, String> {
     let started = std::time::Instant::now();
+
+    super::kill_switch::admit_or_block_from_app(app)?;
 
     let prompt = req.prompt.trim().to_string();
     if prompt.is_empty() {
@@ -1103,6 +1109,10 @@ async fn execute_headless_pipeline(
         })?
         .inner()
         .clone();
+
+    if let Err(error) = super::kill_switch::admit_or_block(&chat_v2_state) {
+        return Err(HeadlessPipelineTermination::Failed(error));
+    }
 
     // —— 事件发射所需的 Window（AppHandle 全局 emit 语义：无前端监听也无害）。
     //    Tauri 窗口在应用存续期间通常存活（最小化/隐藏不影响 emit）。

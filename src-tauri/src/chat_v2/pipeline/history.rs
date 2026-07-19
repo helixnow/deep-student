@@ -160,9 +160,8 @@ impl ChatV2Pipeline {
             let (content, vfs_image_base64) = if message.role == MessageRole::User {
                 if let (Some(ref vfs_conn), Some(ref blobs_dir)) = (&vfs_conn_opt, &vfs_blobs_dir) {
                     self.resolve_history_context_snapshot_v2(
-                        &content,
-                        &message,
-                        &**vfs_conn, // 解引用 PooledConnection 获取 &Connection
+                        &content, &message,
+                        vfs_conn, // 解引用 PooledConnection 获取 &Connection
                         blobs_dir,
                     )
                 } else {

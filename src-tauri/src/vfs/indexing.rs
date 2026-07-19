@@ -1380,8 +1380,7 @@ fn resolve_indexable_pages(
 
                         if !paragraphs.is_empty() {
                             // 将段落均匀分配到各页
-                            let paragraphs_per_page =
-                                (paragraphs.len() + page_count - 1) / page_count;
+                            let paragraphs_per_page = paragraphs.len().div_ceil(page_count);
                             let result: Vec<PageText> = (0..page_count)
                                 .filter_map(|page_idx| {
                                     let start = page_idx * paragraphs_per_page;
@@ -2377,8 +2376,8 @@ impl VfsFullIndexingService {
                     // 6. ★ 审计修复：维度范围校验
                     if dim > 0 {
                         let dim_i32 = dim as i32;
-                        if dim_i32 < embedding_dim_repo::MIN_DIMENSION
-                            || dim_i32 > embedding_dim_repo::MAX_DIMENSION
+                        if !(embedding_dim_repo::MIN_DIMENSION..=embedding_dim_repo::MAX_DIMENSION)
+                            .contains(&dim_i32)
                         {
                             warn!(
                                 "[VfsFullIndexingService] Embedding dimension {} is outside valid range [{}, {}] for resource {}",
@@ -2443,14 +2442,14 @@ impl VfsFullIndexingService {
                                         })?;
                                     Ok(index_segment_repo::CreateSegmentInput {
                                         unit_id: unit_id.clone(),
-                                        segment_index: chunk.index as i32,
+                                        segment_index: chunk.index,
                                         modality: MODALITY_TEXT.to_string(),
                                         embedding_dim: dim as i32,
                                         lance_row_id,
                                         content_text: Some(chunk.text.clone()),
                                         content_hash: None,
-                                        start_pos: Some(chunk.start_pos as i32),
-                                        end_pos: Some(chunk.end_pos as i32),
+                                        start_pos: Some(chunk.start_pos),
+                                        end_pos: Some(chunk.end_pos),
                                         metadata_json: None,
                                     })
                                 })
@@ -2793,14 +2792,14 @@ impl VfsFullIndexingService {
                             })?;
                         Ok(index_segment_repo::CreateSegmentInput {
                             unit_id: unit.id.clone(),
-                            segment_index: chunk.index as i32,
+                            segment_index: chunk.index,
                             modality: MODALITY_TEXT.to_string(),
                             embedding_dim: extra_result.dim as i32,
                             lance_row_id,
                             content_text: Some(chunk.text.clone()),
                             content_hash: None,
-                            start_pos: Some(chunk.start_pos as i32),
-                            end_pos: Some(chunk.end_pos as i32),
+                            start_pos: Some(chunk.start_pos),
+                            end_pos: Some(chunk.end_pos),
                             metadata_json: None,
                         })
                     })
@@ -3682,14 +3681,14 @@ impl VfsFullIndexingService {
                                 .enumerate()
                                 .map(|(i, chunk)| index_segment_repo::CreateSegmentInput {
                                     unit_id: unit_id.clone(),
-                                    segment_index: chunk.index as i32,
+                                    segment_index: chunk.index,
                                     modality: MODALITY_TEXT.to_string(),
                                     embedding_dim: dim as i32,
                                     lance_row_id: embedding_ids[i].clone(),
                                     content_text: Some(chunk.text.clone()),
                                     content_hash: None,
-                                    start_pos: Some(chunk.start_pos as i32),
-                                    end_pos: Some(chunk.end_pos as i32),
+                                    start_pos: Some(chunk.start_pos),
+                                    end_pos: Some(chunk.end_pos),
                                     metadata_json: None,
                                 })
                                 .collect();

@@ -141,11 +141,7 @@ impl CloudSyncManager {
 
     fn merge_manifest(target: &mut CloudManifest, incoming: CloudManifest) {
         let mut by_id = std::collections::BTreeMap::new();
-        for version in target
-            .versions
-            .drain(..)
-            .chain(incoming.versions.into_iter())
-        {
+        for version in target.versions.drain(..).chain(incoming.versions) {
             by_id.insert(version.id.clone(), version);
         }
         target.versions = by_id.into_values().collect();
@@ -593,11 +589,9 @@ pub fn get_device_id() -> String {
     // 尝试保存到第一个可用路径
     for path in &possible_paths {
         if let Some(parent) = path.parent() {
-            if std::fs::create_dir_all(parent).is_ok() {
-                if std::fs::write(path, &new_id).is_ok() {
-                    tracing::info!("设备 ID 已保存到: {:?}", path);
-                    break;
-                }
+            if std::fs::create_dir_all(parent).is_ok() && std::fs::write(path, &new_id).is_ok() {
+                tracing::info!("设备 ID 已保存到: {:?}", path);
+                break;
             }
         }
     }

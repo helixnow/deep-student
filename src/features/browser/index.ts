@@ -72,3 +72,13 @@ export {
   type NavigationDecision,
   type NavigationDenyReason,
 } from './navigationPolicy';
+
+export {
+  assertBrowserGatesOpen,
+  BrowserGateClosedError,
+  evaluateBrowserSettingsGates,
+  interpretBrowserChildGateEnabled,
+  peekBrowserParentGateFromCache,
+  resolveBrowserGates,
+  type BrowserGatesSnapshot,
+} from './gates';

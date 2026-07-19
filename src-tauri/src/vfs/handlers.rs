@@ -2044,7 +2044,7 @@ pub async fn vfs_upload_file(
                     needs_processing = pdf_preview_needs_compression(preview_json);
                 }
             } else if is_image {
-                needs_processing = image_needs_compression_with_conn(&conn, &blobs_dir, &file.id);
+                needs_processing = image_needs_compression_with_conn(&conn, blobs_dir, &file.id);
             }
 
             if needs_processing {
@@ -2091,7 +2091,7 @@ pub async fn vfs_upload_file(
     let blob_hash = if is_image || size >= 1024 * 1024 {
         let blob = VfsBlobRepo::store_blob_with_conn(
             &conn,
-            &blobs_dir,
+            blobs_dir,
             &content,
             Some(&params.mime_type),
             None,
@@ -2239,9 +2239,9 @@ pub async fn vfs_upload_file(
                 // （ref_count=1>0 → no-op）会漏删 → 孤儿 blob 残留（原 2071 注释已知此问题）。
                 // 正确补偿：先 decrement_ref 抵消本次 store 的 +1（去重命中回到 N，仍被他人引用），
                 // 再 cleanup（仅当回到 0 时真正删除文件+记录）。
-                let _ = VfsBlobRepo::decrement_ref_with_conn(&conn, &blobs_dir, hash);
+                let _ = VfsBlobRepo::decrement_ref_with_conn(&conn, blobs_dir, hash);
                 if let Err(cleanup_err) =
-                    VfsBlobRepo::cleanup_blob_with_conn(&conn, &blobs_dir, hash)
+                    VfsBlobRepo::cleanup_blob_with_conn(&conn, blobs_dir, hash)
                 {
                     log::error!(
                         "[VFS::handlers] 补偿清理 blob 失败（将由后台清理）: {}",
@@ -2520,7 +2520,7 @@ pub async fn vfs_get_file_content(
 
     if let Some(ref blob_hash) = file.blob_hash {
         let blobs_dir = vfs_db.blobs_dir();
-        if let Some(path) = VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, blob_hash)
+        if let Some(path) = VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, blob_hash)
             .map_err(|e| e.to_string())?
         {
             let data = std::fs::read(&path).map_err(|e| e.to_string())?;
@@ -2590,7 +2590,7 @@ pub async fn vfs_get_blob_base64(
         .ok_or_else(|| format!("Blob 不存在: {}", blob_hash))?;
 
     // 2. 获取 blob 文件路径（使用已有连接）
-    let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &blob_hash)
+    let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, &blob_hash)
         .map_err(|e| format!("获取 blob 路径失败: {}", e))?
         .ok_or_else(|| format!("Blob 文件路径不存在: {}", blob_hash))?;
 
@@ -2674,7 +2674,7 @@ pub(crate) fn read_pdf_page_image_bytes(
     let blobs_dir = vfs_db.blobs_dir();
 
     // 1. 获取资源信息，确定来源表
-    let resource = VfsResourceRepo::get_resource_with_conn(&conn, &resource_id)
+    let resource = VfsResourceRepo::get_resource_with_conn(&conn, resource_id)
         .map_err(|e| format!("获取资源失败: {}", e))?
         .ok_or_else(|| format!("资源不存在: {}", resource_id))?;
 
@@ -2777,7 +2777,7 @@ pub(crate) fn read_pdf_page_image_bytes(
         .ok_or_else(|| format!("Blob 不存在: {}", blob_hash))?;
 
     // 5. 获取 blob 文件路径
-    let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &blob_hash)
+    let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, &blob_hash)
         .map_err(|e| format!("获取 blob 路径失败: {}", e))?
         .ok_or_else(|| format!("Blob 文件路径不存在: {}", blob_hash))?;
 
@@ -4614,7 +4614,7 @@ pub async fn vfs_rag_search(
 #[tauri::command]
 pub async fn vfs_get_lance_stats(
     modality: Option<String>,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
+    _vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<Vec<(String, usize)>, String> {
     use crate::vfs::repos::MODALITY_TEXT;
@@ -4633,7 +4633,7 @@ pub async fn vfs_get_lance_stats(
 #[tauri::command]
 pub async fn vfs_optimize_lance(
     modality: Option<String>,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
+    _vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<usize, String> {
     use crate::vfs::repos::MODALITY_TEXT;
@@ -6052,7 +6052,7 @@ pub async fn vfs_multimodal_index_resource(
 #[tauri::command]
 pub async fn vfs_diagnose_lance_schema(
     modality: Option<String>,
-    vfs_db: State<'_, Arc<VfsDatabase>>,
+    _vfs_db: State<'_, Arc<VfsDatabase>>,
     lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<Vec<crate::vfs::lance_store::LanceTableDiagnostic>, String> {
     use crate::vfs::repos::MODALITY_TEXT;
@@ -6991,7 +6991,7 @@ pub async fn vfs_download_paper(
     let blobs_dir = vfs_db.blobs_dir();
     let blob_hash = VfsBlobRepo::store_blob_with_conn(
         &conn,
-        &blobs_dir,
+        blobs_dir,
         &pdf_bytes,
         Some("application/pdf"),
         None,

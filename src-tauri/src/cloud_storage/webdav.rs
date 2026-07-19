@@ -394,7 +394,7 @@ impl WebDavStorage {
             });
         }
 
-        files.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+        files.sort_by_key(|b| std::cmp::Reverse(b.last_modified));
         files
     }
 
@@ -868,7 +868,7 @@ impl CloudStorage for WebDavStorage {
             dirs_to_visit.extend(subdirs);
         }
 
-        all_files.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+        all_files.sort_by_key(|b| std::cmp::Reverse(b.last_modified));
         Ok(ListOutcome {
             files: all_files,
             truncated,

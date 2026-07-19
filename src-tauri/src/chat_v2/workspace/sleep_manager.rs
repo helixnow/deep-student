@@ -21,10 +21,12 @@ use super::types::{AgentStatus, MessageType, WorkspaceMessage};
 /// 唤醒条件
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[derive(Default)]
 pub enum WakeCondition {
     /// 任意消息唤醒
     AnyMessage,
     /// 收到 result 类型消息
+    #[default]
     ResultMessage,
     /// 所有子代理完成
     AllCompleted,
@@ -32,26 +34,16 @@ pub enum WakeCondition {
     Timeout { ms: u64 },
 }
 
-impl Default for WakeCondition {
-    fn default() -> Self {
-        Self::ResultMessage
-    }
-}
-
 /// 睡眠状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SleepStatus {
+    #[default]
     Sleeping,
     Awakened,
     Timeout,
     Cancelled,
-}
-
-impl Default for SleepStatus {
-    fn default() -> Self {
-        Self::Sleeping
-    }
 }
 
 /// 睡眠块数据
@@ -908,10 +900,8 @@ impl SleepManager {
             .map_err(|e| SleepError::Database(e.to_string()))?;
 
         let mut result = Vec::new();
-        for sleep in sleeps {
-            if let Ok(s) = sleep {
-                result.push(s);
-            }
+        for s in sleeps.flatten() {
+            result.push(s);
         }
 
         log::info!("[SleepManager] Restored {} sleeping blocks", result.len());

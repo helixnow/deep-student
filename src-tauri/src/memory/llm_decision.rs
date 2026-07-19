@@ -13,6 +13,7 @@ use crate::llm_manager::LLMManager;
 /// 记忆操作事件类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
+#[derive(Default)]
 pub enum MemoryEvent {
     /// 新增记忆（创建新笔记）
     ADD,
@@ -23,13 +24,8 @@ pub enum MemoryEvent {
     /// 删除过时/矛盾的旧记忆（受 mem0 conflict resolution 启发）
     DELETE,
     /// 无需操作（信息已存在）
+    #[default]
     NONE,
-}
-
-impl Default for MemoryEvent {
-    fn default() -> Self {
-        Self::NONE
-    }
 }
 
 impl MemoryEvent {
@@ -265,13 +261,11 @@ impl MemoryLLMDecision {
                     }
                     depth += 1;
                 }
-                '}' => {
-                    if depth > 0 {
-                        depth -= 1;
-                        if depth == 0 {
-                            if let Some(s) = start {
-                                return Some(text[s..=i].to_string());
-                            }
+                '}' if depth > 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        if let Some(s) = start {
+                            return Some(text[s..=i].to_string());
                         }
                     }
                 }

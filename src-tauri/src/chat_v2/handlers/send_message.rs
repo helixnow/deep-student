@@ -10,7 +10,7 @@ use tauri::{Emitter, State, Window};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
-use crate::chat_v2::events::ChatV2EventEmitter;
+use crate::chat_v2::kill_switch::{admit_or_block, KILL_SWITCH_BLOCKED_MESSAGE};
 use crate::chat_v2::pipeline::ChatV2Pipeline;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::resource_types::{ContentBlock, ContextRef, ContextSnapshot, SendContextRef};
@@ -460,7 +460,7 @@ pub async fn chat_v2_send_message(
         // 🔍 诊断：检查 active_skill_ids 和 skill_contents 是否被正确传递
         log::info!(
             "[ChatV2::handlers] 📦 Skills diag: active_skill_ids={:?}, skill_contents_keys={:?}",
-            options.active_skill_ids.as_ref().map(|ids| ids.as_slice()),
+            options.active_skill_ids.as_deref(),
             options
                 .skill_contents
                 .as_ref()
@@ -475,12 +475,16 @@ pub async fn chat_v2_send_message(
     let has_context_refs = request
         .user_context_refs
         .as_ref()
-        .map_or(false, |refs| !refs.is_empty());
+        .is_some_and(|refs| !refs.is_empty());
     if !has_content && !has_context_refs {
         return Err(ChatV2Error::Validation(
             "Message content or context refs required".to_string(),
         )
         .into());
+    }
+
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
     }
 
     let model_id = request.options.as_ref().and_then(|o| o.model_id.as_deref());
@@ -499,7 +503,7 @@ pub async fn chat_v2_send_message(
     let assistant_message_id = request
         .assistant_message_id
         .clone()
-        .unwrap_or_else(|| ChatMessage::generate_id());
+        .unwrap_or_else(ChatMessage::generate_id);
 
     // 构建带有确定 ID 的请求
     let request_with_id = SendMessageRequest {
@@ -514,6 +518,9 @@ pub async fn chat_v2_send_message(
         match chat_v2_state.try_register_stream_owned(&request_with_id.session_id) {
             Ok(registration) => registration,
             Err(()) => {
+                if chat_v2_state.kill_switch.is_tripped() {
+                    return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+                }
                 return Err(ChatV2Error::Other(
                     "Session has an active stream. Please wait for completion or cancel first."
                         .to_string(),
@@ -590,7 +597,7 @@ pub async fn chat_v2_send_message(
 pub async fn chat_v2_cancel_stream(
     session_id: String,
     message_id: String,
-    window: Window,
+    _window: Window,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
 ) -> Result<(), String> {
     log::info!(
@@ -667,11 +674,18 @@ pub async fn chat_v2_retry_message(
         .into());
     }
 
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
+    }
+
     // 在任何破坏性操作之前取得带 generation 的原子注册租约。guard 立即创建，
     // 因而预处理失败、取消后立即重试、spawn 延迟启动都只会清理本次注册。
     let stream_registration = match chat_v2_state.try_register_stream_owned(&session_id) {
         Ok(registration) => registration,
         Err(()) => {
+            if chat_v2_state.kill_switch.is_tripped() {
+                return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+            }
             return Err(ChatV2Error::Other(
                 "Session has an active stream. Please wait for completion or cancel first."
                     .to_string(),
@@ -716,7 +730,7 @@ pub async fn chat_v2_retry_message(
     );
     let has_context_refs = restored_context_refs
         .as_ref()
-        .map_or(false, |refs| !refs.is_empty());
+        .is_some_and(|refs| !refs.is_empty());
     if has_context_refs {
         log::info!(
             "[ChatV2::handlers] Retry with restored context refs: count={}",
@@ -1014,10 +1028,17 @@ pub async fn chat_v2_edit_and_resend(
         .into());
     }
 
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
+    }
+
     // Keep the registration generation alive from the first mutation through spawned execution.
     let stream_registration = match chat_v2_state.try_register_stream_owned(&session_id) {
         Ok(registration) => registration,
         Err(()) => {
+            if chat_v2_state.kill_switch.is_tripped() {
+                return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+            }
             return Err(ChatV2Error::Other(
                 "Session has an active stream. Please wait for completion or cancel first."
                     .to_string(),
@@ -1070,7 +1091,7 @@ pub async fn chat_v2_edit_and_resend(
             });
             let has_context_refs = restored_context_refs
                 .as_ref()
-                .map_or(false, |refs| !refs.is_empty());
+                .is_some_and(|refs| !refs.is_empty());
             if has_context_refs {
                 log::info!(
                     "[ChatV2::handlers] Edit and resend with restored context refs: count={}",
@@ -1409,8 +1430,7 @@ fn locate_preceding_user_message<'a>(
     } else {
         messages
             .iter()
-            .filter(|m| m.role == MessageRole::User && m.timestamp <= assistant_message.timestamp)
-            .last()
+            .rfind(|m| m.role == MessageRole::User && m.timestamp <= assistant_message.timestamp)
     }
 }
 
@@ -1720,6 +1740,10 @@ pub async fn chat_v2_continue_message(
         todo_list.total_count()
     );
 
+    if let Err(error) = admit_or_block(chat_v2_state.inner()) {
+        return Err(ChatV2Error::Other(error).into());
+    }
+
     // 5. 原子注册流（提前到任何内存状态修改之前）
     // 🔧 修复：之前在 restore_todo_list_from_db 之后才注册流，
     // 若会话已有活跃流，注册失败返回错误，但内存中的 TodoList 已被覆盖，
@@ -1727,6 +1751,9 @@ pub async fn chat_v2_continue_message(
     let stream_registration = match chat_v2_state.try_register_stream_owned(&session_id) {
         Ok(registration) => registration,
         Err(()) => {
+            if chat_v2_state.kill_switch.is_tripped() {
+                return Err(ChatV2Error::Other(KILL_SWITCH_BLOCKED_MESSAGE.to_string()).into());
+            }
             return Err(ChatV2Error::Other(
                 "Session has an active stream. Please wait for completion or cancel first."
                     .to_string(),

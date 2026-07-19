@@ -151,6 +151,12 @@ export interface ChatStoreState extends StoreCallbacks {
   /** 会话元数据 */
   sessionMetadata: Record<string, unknown> | null;
 
+  /** Ask / Plan / Craft */
+  authorityMode: 'ask' | 'plan' | 'craft';
+
+  /** Ask write-blocked CTA */
+  authorityAskBlockedHint: boolean;
+
   /** 会话状态 */
   sessionStatus: SessionStatus;
 
@@ -281,6 +287,8 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     description: description ?? '',
     groupId: null,
     sessionMetadata: null,
+    authorityMode: 'craft',
+    authorityAskBlockedHint: false,
     sessionStatus: 'idle',
     isDataLoaded: false, // 🔧 性能优化：新会话尚未加载数据
     messageMap: new Map(),

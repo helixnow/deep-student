@@ -204,8 +204,24 @@ export interface AuditLogPagedResponse {
 
 // ==================== 备份相关类型 ====================
 
-/** 备份类型 */
+/**
+ * 备份类型。
+ * `incremental` 仅用于识别历史空壳增量包（创建入口已下线，不可恢复）。
+ */
 export type BackupType = 'full' | 'partial_overlay' | 'legacy_unknown' | 'incremental';
+
+/**
+ * 与 Rust `INCREMENTAL_BACKUP_REMOVED_MESSAGE` /
+ * `INCREMENTAL_BACKUP_DISABLED_MESSAGE` 字节级对齐（创建封禁）。
+ */
+export const INCREMENTAL_BACKUP_REMOVED_MESSAGE =
+  'Incremental backup has been removed; use full backup or cloud sync';
+
+/**
+ * 与 Rust `INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE` 字节级对齐（legacy 包拒恢复）。
+ */
+export const INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE =
+  'Legacy incremental backup cannot be restored; use a full backup or cloud sync';
 
 /** 备份结果响应 */
 export interface BackupResultResponse {

@@ -2489,6 +2489,59 @@ impl ChatV2Pipeline {
             }
         };
 
+        // Kill Switch first: blocks every new tool execution regardless of Ask/Plan/Craft.
+        if let Some(kill_switch) = &self.kill_switch {
+            if let Err(message) = kill_switch.ensure_allowed() {
+                log::warn!(
+                    "[ChatV2::pipeline] KillSwitch blocked tool '{}' before authority/approval",
+                    tool_call.name
+                );
+                let display_arguments =
+                    crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
+                        &tool_call.name,
+                        &tool_call.arguments,
+                    );
+                let payload = json!({
+                    "toolName": tool_call.name,
+                    "toolInput": display_arguments.clone(),
+                    "toolCallId": tool_call.id,
+                    "killSwitchBlocked": true,
+                });
+                emitter.emit_start_with_meta(
+                    event_types::TOOL_CALL,
+                    message_id,
+                    Some(block_id),
+                    Some(payload),
+                    variant_id,
+                    skill_state_version,
+                    round_id,
+                );
+                emitter.emit_error_with_meta(
+                    event_types::TOOL_CALL,
+                    block_id,
+                    &message,
+                    variant_id,
+                    skill_state_version,
+                    round_id,
+                );
+                return Ok(ToolResultInfo {
+                    tool_call_id: Some(tool_call.id.clone()),
+                    block_id: Some(block_id.to_string()),
+                    tool_name: tool_call.name.clone(),
+                    input: display_arguments,
+                    output: json!({
+                        "killSwitchBlocked": true,
+                        "message": message,
+                    }),
+                    success: false,
+                    error: Some(message),
+                    duration_ms: None,
+                    reasoning_content: None,
+                    thought_signature: None,
+                });
+            }
+        }
+
         // Feature flag checks (memory, RAG, web search)
         let short_name = Self::canonical_tool_short_name(&tool_call.name);
 
@@ -2619,6 +2672,128 @@ impl ChatV2Pipeline {
                 decision,
                 effective_sensitivity,
             );
+        }
+
+        // AuthorityGate (Ask / Plan / Craft): after sensitivity, before ApprovalManager.
+        let plan_binding_key = super::authority_mode::plan_call_binding_key(
+            &tool_call.name,
+            &approval_arguments,
+            round_id,
+        );
+        let authority_state = match ChatV2Repo::get_session_authority_state(&self.db, session_id) {
+            Ok(state) => state,
+            Err(err) => {
+                log::error!(
+                    "[ChatV2::pipeline] Failed to load authority mode for {}: {}; refusing tool",
+                    session_id,
+                    err
+                );
+                return Ok(build_preflight_blocked_result(
+                    "无法读取会话权限状态，已安全阻止工具执行".to_string(),
+                ));
+            }
+        };
+        let authority_decision = super::authority_mode::evaluate_authority_gate(
+            &authority_state,
+            &tool_call.name,
+            effective_sensitivity,
+            Some(&plan_binding_key),
+            chrono::Utc::now(),
+        );
+        match authority_decision {
+            super::authority_mode::AuthorityGateDecision::Allow => {}
+            super::authority_mode::AuthorityGateDecision::BlockAsk { message, tool_name } => {
+                log::info!(
+                    "[ChatV2::pipeline] AuthorityGate Ask blocked write tool '{}'",
+                    tool_name
+                );
+                let display_arguments =
+                    crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
+                        &tool_call.name,
+                        &tool_call.arguments,
+                    );
+                let payload = json!({
+                    "toolName": tool_call.name,
+                    "toolInput": display_arguments.clone(),
+                    "toolCallId": tool_call.id,
+                    "authorityBlocked": true,
+                    "authorityMode": "ask",
+                    "suggestedMode": "plan",
+                });
+                emitter.emit_start_with_meta(
+                    event_types::TOOL_CALL,
+                    message_id,
+                    Some(block_id),
+                    Some(payload),
+                    variant_id,
+                    skill_state_version,
+                    round_id,
+                );
+                emitter.emit_error_with_meta(
+                    event_types::TOOL_CALL,
+                    block_id,
+                    &message,
+                    variant_id,
+                    skill_state_version,
+                    round_id,
+                );
+                return Ok(ToolResultInfo {
+                    tool_call_id: Some(tool_call.id.clone()),
+                    block_id: Some(block_id.to_string()),
+                    tool_name: tool_call.name.clone(),
+                    input: display_arguments,
+                    output: super::authority_mode::ask_block_structured_output(&tool_name),
+                    success: false,
+                    error: Some(message),
+                    duration_ms: None,
+                    reasoning_content: None,
+                    thought_signature: None,
+                });
+            }
+            super::authority_mode::AuthorityGateDecision::WaitPlanGate { summary } => {
+                let plan_outcome = self
+                    .request_plan_gate(
+                        tool_call,
+                        &approval_arguments,
+                        &summary,
+                        emitter,
+                        session_id,
+                        message_id,
+                        cancellation_token.as_ref(),
+                        &plan_binding_key,
+                        round_id,
+                    )
+                    .await;
+                match plan_outcome {
+                    ApprovalOutcome::Approved => {
+                        // Plan batch approved for this planId; continue to ApprovalManager.
+                    }
+                    ApprovalOutcome::Rejected { reason } => {
+                        let message = match reason {
+                            Some(user_reason) => {
+                                format!("用户拒绝了计划执行。用户说明：{}", user_reason)
+                            }
+                            None => "用户拒绝了计划执行".to_string(),
+                        };
+                        return Ok(build_preflight_blocked_result(message));
+                    }
+                    ApprovalOutcome::Timeout => {
+                        return Ok(build_preflight_blocked_result(
+                            "计划确认等待超时，请重试".to_string(),
+                        ));
+                    }
+                    ApprovalOutcome::ChannelClosed => {
+                        return Ok(build_preflight_blocked_result(
+                            "计划确认通道异常关闭，请重试".to_string(),
+                        ));
+                    }
+                    ApprovalOutcome::Cancelled => {
+                        return Ok(build_preflight_blocked_result(
+                            "流已取消，计划确认中止".to_string(),
+                        ));
+                    }
+                }
+            }
         }
 
         if approval_manager_required(effective_sensitivity) {
@@ -2784,15 +2959,89 @@ impl ChatV2Pipeline {
             }
         }
 
+        // Re-check all revocable authority immediately before the executor. The
+        // preceding plan/tool approvals can wait for user input, during which an
+        // emergency stop or mode change must take effect.
+        if let Some(kill_switch) = &self.kill_switch {
+            if let Err(message) = kill_switch.ensure_allowed() {
+                return Ok(build_preflight_blocked_result(message));
+            }
+        }
+        if cancellation_token
+            .as_ref()
+            .is_some_and(|token| token.is_cancelled())
+        {
+            return Ok(build_preflight_blocked_result(
+                "流已取消，工具执行中止".to_string(),
+            ));
+        }
+        let current_authority = match ChatV2Repo::get_session_authority_state(&self.db, session_id)
+        {
+            Ok(state) => state,
+            Err(error) => {
+                log::error!(
+                    "[ChatV2::pipeline] Authority re-check failed for {}: {}",
+                    session_id,
+                    error
+                );
+                return Ok(build_preflight_blocked_result(
+                    "执行前无法复核会话权限，已安全阻止工具执行".to_string(),
+                ));
+            }
+        };
+        match super::authority_mode::evaluate_authority_gate(
+            &current_authority,
+            &tool_call.name,
+            effective_sensitivity,
+            Some(&plan_binding_key),
+            chrono::Utc::now(),
+        ) {
+            super::authority_mode::AuthorityGateDecision::Allow => {
+                if current_authority.authority_mode == crate::chat_v2::types::AuthorityMode::Plan {
+                    match ChatV2Repo::consume_session_plan_binding(
+                        &self.db,
+                        session_id,
+                        &plan_binding_key,
+                        chrono::Utc::now(),
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            return Ok(build_preflight_blocked_result(
+                                "计划批准已被消费或与当前调用不匹配，请重新确认".to_string(),
+                            ));
+                        }
+                        Err(error) => {
+                            log::error!(
+                                "[ChatV2::pipeline] Failed to consume plan approval: {}",
+                                error
+                            );
+                            return Ok(build_preflight_blocked_result(
+                                "无法原子消费计划批准，已安全阻止工具执行".to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
+            super::authority_mode::AuthorityGateDecision::BlockAsk { message, .. } => {
+                return Ok(build_preflight_blocked_result(message));
+            }
+            super::authority_mode::AuthorityGateDecision::WaitPlanGate { .. } => {
+                return Ok(build_preflight_blocked_result(
+                    "计划批准已过期或与当前工具调用不匹配，请重新确认".to_string(),
+                ));
+            }
+        }
+
         // 🆕 构建执行上下文（文档 29 P0-1）
-        let window = emitter.window();
+        // Windowless emitters (integration tests) pass None; pure side-effect
+        // executors ignore the window, while bridge tools fail clearly via window_ref().
         let mut ctx = ExecutionContext::new(
             session_id.to_string(),
             message_id.to_string(),
             block_id.to_string(),
             emitter.clone(),
             self.tool_registry.clone(),
-            window,
+            emitter.try_window(),
         )
         // ACR R2-01：runId = toolCallId，贯穿桥/presence/账本
         .with_tool_call_id(tool_call.id.clone())
@@ -2823,8 +3072,24 @@ impl ChatV2Pipeline {
         ctx.skill_embedded_tools = skill_embedded_tools.clone();
 
         // 🆕 取消支持：传递取消令牌
-        if let Some(token) = cancellation_token {
-            ctx = ctx.with_cancellation_token(token);
+        if let Some(token) = cancellation_token.as_ref() {
+            ctx = ctx.with_cancellation_token(token.clone());
+        }
+
+        // Final admission point: Plan consumption/context construction above
+        // must not leave a window where emergency stop can still start effects.
+        if let Some(kill_switch) = &self.kill_switch {
+            if let Err(message) = kill_switch.ensure_allowed() {
+                return Ok(build_preflight_blocked_result(message));
+            }
+        }
+        if cancellation_token
+            .as_ref()
+            .is_some_and(|token| token.is_cancelled())
+        {
+            return Ok(build_preflight_blocked_result(
+                "流已取消，工具执行中止".to_string(),
+            ));
         }
 
         // 🆕 委托给 ExecutorRegistry 执行
@@ -2878,19 +3143,18 @@ impl ChatV2Pipeline {
             return Ok(None);
         }
 
-        use tauri::Manager;
         use serde_json::json;
+        use tauri::Manager;
 
         let window = emitter.window();
         let state = window.state::<crate::commands::AppState>();
         // Inject group preferred root into approval args (not ToolCall) before
         // binding/scope so approval sees the same root execute will resolve.
-        let explicit = crate::chat_v2::runtime_roots::explicit_runtime_root_id_from_args(
-            &tool_call.arguments,
-        );
+        let explicit =
+            crate::chat_v2::runtime_roots::explicit_runtime_root_id_from_args(&tool_call.arguments);
         let effective_root_id =
             crate::chat_v2::runtime_roots::resolve_effective_runtime_root_id_for_session(
-                &window.app_handle(),
+                window.app_handle(),
                 &state.database,
                 Some(self.db.as_ref()),
                 session_id,
@@ -2908,7 +3172,7 @@ impl ChatV2Pipeline {
         let support_readable_roots =
             LocalShellExecuteExecutor::runtime_support_read_roots(&approval_args)?;
         let binding = crate::chat_v2::runtime_roots::shell_runtime_approval_binding(
-            &window.app_handle(),
+            window.app_handle(),
             &state.database,
             session_id,
             skill_package_roots,
@@ -3085,6 +3349,167 @@ impl ChatV2Pipeline {
                     event_types::TOOL_APPROVAL_REQUEST,
                     &approval_block_id,
                     "approval_timeout",
+                    None,
+                );
+                ApprovalOutcome::Timeout
+            }
+        }
+    }
+
+    /// Plan mode write gate: emit `plan_gate`, wait for user confirm, then bind planId.
+    /// Approval here must never upgrade to remember / global_bypass.
+    async fn request_plan_gate(
+        &self,
+        tool_call: &ToolCall,
+        approval_arguments: &Value,
+        summary: &str,
+        emitter: &Arc<ChatV2EventEmitter>,
+        session_id: &str,
+        message_id: &str,
+        cancellation_token: Option<&CancellationToken>,
+        binding_key: &str,
+        round_id: Option<&str>,
+    ) -> ApprovalOutcome {
+        use super::authority_mode::{
+            default_plan_ttl_secs, global_plan_gate_manager, PlanGateRequest,
+        };
+        use crate::chat_v2::types::PlanAuthorityState;
+
+        let manager = global_plan_gate_manager();
+        let timeout_seconds = manager.default_timeout();
+        let mut pending_plan = PlanAuthorityState::new_pending(summary);
+        pending_plan.bind_to_call(binding_key.to_string());
+        let plan_id = pending_plan.plan_id.clone();
+        let plan_block_id = format!("plan_gate_{}", tool_call.id);
+
+        // Persist pending plan so UI can show summary even before approval.
+        if let Err(err) =
+            ChatV2Repo::set_session_plan_state(&self.db, session_id, Some(pending_plan.clone()))
+        {
+            log::warn!(
+                "[ChatV2::pipeline] Failed to persist pending plan for {}: {}",
+                session_id,
+                err
+            );
+        }
+
+        let request = PlanGateRequest {
+            session_id: session_id.to_string(),
+            plan_id: plan_id.clone(),
+            tool_call_id: tool_call.id.clone(),
+            tool_name: tool_call.name.clone(),
+            summary: summary.to_string(),
+            timeout_seconds,
+            arguments: crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
+                &tool_call.name,
+                approval_arguments,
+            ),
+        };
+
+        let rx = manager.register(session_id, &tool_call.id, &plan_id);
+        log::info!(
+            "[ChatV2::pipeline] Emitting plan_gate: planId={}, tool={}, round={:?}",
+            plan_id,
+            tool_call.name,
+            round_id
+        );
+        let payload = serde_json::to_value(&request).ok();
+        emitter.emit_start(
+            event_types::PLAN_GATE,
+            message_id,
+            Some(&plan_block_id),
+            payload,
+            None,
+        );
+
+        let timeout_duration = std::time::Duration::from_secs(timeout_seconds as u64);
+        let wait_result = if let Some(cancel_token) = cancellation_token {
+            tokio::select! {
+                result = tokio::time::timeout(timeout_duration, rx) => Some(result),
+                _ = cancel_token.cancelled() => None,
+            }
+        } else {
+            Some(tokio::time::timeout(timeout_duration, rx).await)
+        };
+
+        let Some(timeout_result) = wait_result else {
+            log::info!(
+                "[ChatV2::pipeline] Stream cancelled while waiting plan_gate for tool: {}",
+                tool_call.name
+            );
+            manager.cancel(session_id, &tool_call.id);
+            let _ = ChatV2Repo::set_session_plan_state(&self.db, session_id, None);
+            emitter.emit_error(
+                event_types::PLAN_GATE,
+                &plan_block_id,
+                "plan_gate_cancelled",
+                None,
+            );
+            return ApprovalOutcome::Cancelled;
+        };
+
+        match timeout_result {
+            Ok(Ok(response)) => {
+                let result_payload = json!({
+                    "planId": plan_id,
+                    "toolCallId": tool_call.id,
+                    "approved": response.approved,
+                    "reason": response.reason,
+                });
+                emitter.emit_end(
+                    event_types::PLAN_GATE,
+                    &plan_block_id,
+                    Some(result_payload),
+                    None,
+                );
+                if response.approved {
+                    // Plan approval binds only this planId batch — never remember/global_bypass.
+                    pending_plan.mark_approved(default_plan_ttl_secs());
+                    if let Err(err) =
+                        ChatV2Repo::set_session_plan_state(&self.db, session_id, Some(pending_plan))
+                    {
+                        log::error!(
+                            "[ChatV2::pipeline] Failed to persist approved plan {}: {}",
+                            plan_id,
+                            err
+                        );
+                        return ApprovalOutcome::Rejected {
+                            reason: Some("failed to persist plan approval".to_string()),
+                        };
+                    }
+                    ApprovalOutcome::Approved
+                } else {
+                    let _ = ChatV2Repo::set_session_plan_state(&self.db, session_id, None);
+                    let reason = response.reason.filter(|r| {
+                        let trimmed = r.trim();
+                        !trimmed.is_empty() && trimmed != "user_rejected" && trimmed != "timeout"
+                    });
+                    ApprovalOutcome::Rejected { reason }
+                }
+            }
+            Ok(Err(_)) => {
+                log::warn!("[ChatV2::pipeline] Plan gate channel closed unexpectedly");
+                manager.cancel(session_id, &tool_call.id);
+                let _ = ChatV2Repo::set_session_plan_state(&self.db, session_id, None);
+                emitter.emit_error(
+                    event_types::PLAN_GATE,
+                    &plan_block_id,
+                    "plan_gate_channel_closed",
+                    None,
+                );
+                ApprovalOutcome::ChannelClosed
+            }
+            Err(_) => {
+                log::warn!(
+                    "[ChatV2::pipeline] Plan gate timeout for tool: {}",
+                    tool_call.name
+                );
+                manager.cancel(session_id, &tool_call.id);
+                let _ = ChatV2Repo::set_session_plan_state(&self.db, session_id, None);
+                emitter.emit_error(
+                    event_types::PLAN_GATE,
+                    &plan_block_id,
+                    "plan_gate_timeout",
                     None,
                 );
                 ApprovalOutcome::Timeout
@@ -3334,11 +3759,8 @@ pub(crate) fn merge_round_results_in_call_order(
     executed: Vec<ToolResultInfo>,
     synthetic: Vec<ToolResultInfo>,
 ) -> Vec<ToolResultInfo> {
-    let mut pool: Vec<Option<ToolResultInfo>> = executed
-        .into_iter()
-        .chain(synthetic.into_iter())
-        .map(Some)
-        .collect();
+    let mut pool: Vec<Option<ToolResultInfo>> =
+        executed.into_iter().chain(synthetic).map(Some).collect();
     let mut merged: Vec<ToolResultInfo> = Vec::with_capacity(pool.len());
 
     for tc in original_calls {
@@ -3640,5 +4062,836 @@ mod tests {
             ids,
             vec!["get-before", "retemplate", "get-after", "enqueue", "export"]
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // AuthorityGate behaviour tests (Ask / Plan) through execute_single_tool
+    // -------------------------------------------------------------------------
+
+    struct CountingWriteExecutor {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::chat_v2::tools::ToolExecutor for CountingWriteExecutor {
+        fn can_handle(&self, tool_name: &str) -> bool {
+            crate::chat_v2::pipeline::authority_mode::canonical_tool_name(tool_name)
+                == "authority_probe_write"
+        }
+
+        async fn execute(
+            &self,
+            call: &ToolCall,
+            _ctx: &crate::chat_v2::tools::ExecutionContext,
+        ) -> Result<crate::chat_v2::types::ToolResultInfo, String> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(crate::chat_v2::types::ToolResultInfo {
+                tool_call_id: Some(call.id.clone()),
+                block_id: None,
+                tool_name: call.name.clone(),
+                input: call.arguments.clone(),
+                output: json!({"ok": true}),
+                success: true,
+                error: None,
+                duration_ms: Some(1),
+                reasoning_content: None,
+                thought_signature: None,
+            })
+        }
+
+        fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
+            ToolSensitivity::Medium
+        }
+
+        fn name(&self) -> &'static str {
+            "CountingWriteExecutor"
+        }
+    }
+
+    fn authority_test_harness(
+        mode: crate::chat_v2::types::AuthorityMode,
+    ) -> (
+        tempfile::TempDir,
+        ChatV2Pipeline,
+        Arc<ChatV2EventEmitter>,
+        Arc<std::sync::atomic::AtomicUsize>,
+        String,
+    ) {
+        use crate::chat_v2::database::ChatV2Database;
+        use crate::chat_v2::types::{AuthorityMode, ChatSession};
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::database::Database;
+        use crate::file_manager::FileManager;
+        use crate::llm_manager::LLMManager;
+        use crate::tools::ToolRegistry;
+
+        let chat_dir = tempfile::TempDir::new().expect("chat temp");
+        let mut coordinator =
+            MigrationCoordinator::new(chat_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrate");
+        let chat_db = Arc::new(ChatV2Database::new(chat_dir.path()).expect("chat db"));
+
+        let main_dir = tempfile::TempDir::new().expect("main temp");
+        let mut main_coordinator =
+            MigrationCoordinator::new(main_dir.path().to_path_buf()).with_audit_db(None);
+        main_coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .expect("main migrate");
+        let main_db =
+            Arc::new(Database::new(&main_dir.path().join("mistakes.db")).expect("main db"));
+        let file_manager =
+            Arc::new(FileManager::new(main_dir.path().join("app-data")).expect("file manager"));
+        let llm_manager =
+            Arc::new(LLMManager::new(main_db.clone(), file_manager).expect("llm manager"));
+
+        let session_id = ChatSession::generate_id();
+        let mut session = ChatSession::new(session_id.clone(), "chat".to_string());
+        let authority = crate::chat_v2::types::SessionAuthorityState {
+            authority_mode: mode,
+            plan: None,
+        };
+        session.metadata = Some(authority.apply_to_metadata(None));
+        ChatV2Repo::create_session_v2(&chat_db, &session).expect("create session");
+
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let registry =
+            Arc::new(ToolExecutorRegistry::from_vec(vec![
+                Arc::new(CountingWriteExecutor {
+                    calls: calls.clone(),
+                }) as Arc<dyn crate::chat_v2::tools::ToolExecutor>,
+            ]));
+
+        let mut pipeline = ChatV2Pipeline::new(
+            chat_db,
+            Some(main_db),
+            None,
+            None,
+            llm_manager,
+            Arc::new(ToolRegistry::new()),
+            None,
+        )
+        .with_approval_manager(Arc::new(ApprovalManager::new().with_timeout(2)));
+        pipeline.executor_registry = registry;
+
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            session_id.clone(),
+        ));
+        // Keep main temp dir alive for the duration of the test.
+        std::mem::forget(main_dir);
+        (chat_dir, pipeline, emitter, calls, session_id)
+    }
+
+    #[tokio::test]
+    async fn ask_mode_blocks_medium_write_without_calling_executor() {
+        let (_dir, pipeline, emitter, calls, session_id) =
+            authority_test_harness(crate::chat_v2::types::AuthorityMode::Ask);
+
+        let tool = ToolCall {
+            id: "call_ask_1".to_string(),
+            name: "builtin-authority_probe_write".to_string(),
+            arguments: json!({"path": "/tmp/x"}),
+        };
+
+        let result = pipeline
+            .execute_single_tool(
+                &tool,
+                "blk_ask_1",
+                &emitter,
+                &session_id,
+                "msg_ask_1",
+                None,
+                None,
+                None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                None,
+                None,
+                None,
+                true,
+                true,
+                true,
+            )
+            .await
+            .expect("execute_single_tool");
+
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "executor must not run in Ask mode"
+        );
+        assert!(!result.success);
+        let err = result.error.as_deref().unwrap_or("");
+        assert!(
+            err.contains("AUTHORITY_BLOCKED") || err.contains("Ask"),
+            "rejection semantics missing: {err}"
+        );
+        assert_eq!(
+            result
+                .output
+                .get("authorityBlocked")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            result.output.get("suggestedMode").and_then(|v| v.as_str()),
+            Some("plan")
+        );
+    }
+
+    /// Behaviour-level Plan-mode test driven through the **real persisted
+    /// session authority state + AuthorityGate**.
+    ///
+    /// Note on scope: the final tool *execution* step builds an
+    /// `ExecutionContext` that requires a live Tauri `Window`, which a unit
+    /// test cannot construct (two `generate_context!()` expansions collide on
+    /// the embedded Info.plist symbol, and the mock runtime yields a
+    /// `Window<MockRuntime>` incompatible with the `Wry`-typed emitter/context).
+    /// We therefore assert the security-relevant contract — the gate suspends
+    /// writes without approval, allows them only for an approved+unexpired
+    /// plan batch, and re-blocks after expiry — against the state that is
+    /// actually round-tripped through `ChatV2Repo`. The "executor is not
+    /// invoked while blocked" half is proven end-to-end by
+    /// `ask_mode_blocks_medium_write_without_calling_executor` above.
+    #[tokio::test]
+    async fn plan_mode_suspends_then_allows_once_then_reblocks_after_expiry() {
+        use crate::chat_v2::pipeline::authority_mode::{
+            evaluate_authority_gate, AuthorityGateDecision,
+        };
+        use crate::chat_v2::types::{AuthorityMode, PlanAuthorityState, PlanStatus};
+
+        let (_dir, pipeline, _emitter, _calls, session_id) =
+            authority_test_harness(AuthorityMode::Plan);
+        let db = pipeline.db.clone();
+        let write_tool = "builtin-authority_probe_write";
+        let binding = crate::chat_v2::pipeline::authority_mode::plan_call_binding_key(
+            write_tool,
+            &json!({"path": "/tmp/probe"}),
+            Some("round-1"),
+        );
+
+        // 1) Plan mode with no plan → a write must suspend at the plan gate.
+        let state =
+            ChatV2Repo::get_session_authority_state(&db, &session_id).expect("load authority");
+        assert_eq!(state.authority_mode, AuthorityMode::Plan);
+        assert!(matches!(
+            evaluate_authority_gate(
+                &state,
+                write_tool,
+                Some(ToolSensitivity::Medium),
+                Some(&binding),
+                chrono::Utc::now()
+            ),
+            AuthorityGateDecision::WaitPlanGate { .. }
+        ));
+
+        // 2) Persist an approved, unexpired plan batch → gate allows the write.
+        let mut approved = PlanAuthorityState::new_pending("write probe batch");
+        approved.bind_to_call(binding.clone());
+        approved.mark_approved(600);
+        ChatV2Repo::set_session_plan_state(&db, &session_id, Some(approved))
+            .expect("persist approved plan");
+        let state =
+            ChatV2Repo::get_session_authority_state(&db, &session_id).expect("reload authority");
+        assert_eq!(
+            evaluate_authority_gate(
+                &state,
+                write_tool,
+                Some(ToolSensitivity::Medium),
+                Some(&binding),
+                chrono::Utc::now()
+            ),
+            AuthorityGateDecision::Allow,
+            "approved unexpired plan must allow the write batch"
+        );
+
+        // 3) Expire the plan batch → the next write must re-enter the plan gate.
+        let mut state = state;
+        if let Some(plan) = state.plan.as_mut() {
+            plan.approved_until =
+                Some((chrono::Utc::now() - chrono::Duration::seconds(5)).to_rfc3339());
+            plan.status = PlanStatus::Expired;
+        }
+        ChatV2Repo::set_session_plan_state(&db, &session_id, state.plan)
+            .expect("persist expired plan");
+        let state = ChatV2Repo::get_session_authority_state(&db, &session_id)
+            .expect("reload expired authority");
+        assert!(
+            matches!(
+                evaluate_authority_gate(
+                    &state,
+                    write_tool,
+                    Some(ToolSensitivity::Medium),
+                    Some(&binding),
+                    chrono::Utc::now()
+                ),
+                AuthorityGateDecision::WaitPlanGate { .. }
+            ),
+            "expired plan batch must re-block subsequent writes"
+        );
+    }
+
+    #[test]
+    fn plan_binding_is_consumed_exactly_once_under_concurrency() {
+        use crate::chat_v2::types::{AuthorityMode, PlanAuthorityState};
+        use std::sync::{Arc, Barrier};
+
+        let (_dir, pipeline, _emitter, _calls, session_id) =
+            authority_test_harness(AuthorityMode::Plan);
+        let binding = crate::chat_v2::pipeline::authority_mode::plan_call_binding_key(
+            "builtin-authority_probe_write",
+            &json!({"path": "/tmp/once"}),
+            Some("round-once"),
+        );
+        let mut plan = PlanAuthorityState::new_pending("once");
+        plan.bind_to_call(binding.clone());
+        plan.mark_approved(600);
+        ChatV2Repo::set_session_plan_state(&pipeline.db, &session_id, Some(plan)).unwrap();
+
+        let barrier = Arc::new(Barrier::new(2));
+        let mut workers = Vec::new();
+        for _ in 0..2 {
+            let db = pipeline.db.clone();
+            let session_id = session_id.clone();
+            let binding = binding.clone();
+            let barrier = barrier.clone();
+            workers.push(std::thread::spawn(move || {
+                barrier.wait();
+                ChatV2Repo::consume_session_plan_binding(
+                    &db,
+                    &session_id,
+                    &binding,
+                    chrono::Utc::now(),
+                )
+                .unwrap()
+            }));
+        }
+        let consumed = workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap())
+            .filter(|consumed| *consumed)
+            .count();
+        assert_eq!(consumed, 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // C4: 会话三档权限 × 一键断电 × headless 白名单 — 跨模块真实集成
+    // -------------------------------------------------------------------------
+
+    struct C4Harness {
+        _chat_dir: tempfile::TempDir,
+        pipeline: ChatV2Pipeline,
+        emitter: Arc<ChatV2EventEmitter>,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+        session_id: String,
+        chat_state: Arc<crate::chat_v2::state::ChatV2State>,
+        approval: Arc<ApprovalManager>,
+    }
+
+    /// Real ChatV2 SQLite + CountingWriteExecutor + shared KillSwitch (A8/A3 scaffolding).
+    fn c4_integration_harness(mode: crate::chat_v2::types::AuthorityMode) -> C4Harness {
+        use crate::chat_v2::database::ChatV2Database;
+        use crate::chat_v2::types::ChatSession;
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::database::Database;
+        use crate::file_manager::FileManager;
+        use crate::llm_manager::LLMManager;
+        use crate::tools::ToolRegistry;
+
+        let chat_dir = tempfile::TempDir::new().expect("chat temp");
+        let mut coordinator =
+            MigrationCoordinator::new(chat_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("chat_v2 migrate");
+        let chat_db = Arc::new(ChatV2Database::new(chat_dir.path()).expect("chat db"));
+
+        let main_dir = tempfile::TempDir::new().expect("main temp");
+        let mut main_coordinator =
+            MigrationCoordinator::new(main_dir.path().to_path_buf()).with_audit_db(None);
+        main_coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .expect("main migrate");
+        let main_db =
+            Arc::new(Database::new(&main_dir.path().join("mistakes.db")).expect("main db"));
+        let file_manager =
+            Arc::new(FileManager::new(main_dir.path().join("app-data")).expect("file manager"));
+        let llm_manager =
+            Arc::new(LLMManager::new(main_db.clone(), file_manager).expect("llm manager"));
+
+        let session_id = ChatSession::generate_id();
+        let mut session = ChatSession::new(session_id.clone(), "chat".to_string());
+        let authority = crate::chat_v2::types::SessionAuthorityState {
+            authority_mode: mode,
+            plan: None,
+        };
+        session.metadata = Some(authority.apply_to_metadata(None));
+        ChatV2Repo::create_session_v2(&chat_db, &session).expect("create session");
+
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let registry =
+            Arc::new(ToolExecutorRegistry::from_vec(vec![
+                Arc::new(CountingWriteExecutor {
+                    calls: calls.clone(),
+                }) as Arc<dyn crate::chat_v2::tools::ToolExecutor>,
+            ]));
+
+        let chat_state = Arc::new(crate::chat_v2::state::ChatV2State::new());
+        let approval = Arc::new(ApprovalManager::new().with_timeout(2));
+
+        let mut pipeline = ChatV2Pipeline::new(
+            chat_db,
+            Some(main_db),
+            None,
+            None,
+            llm_manager,
+            Arc::new(ToolRegistry::new()),
+            None,
+        )
+        .with_approval_manager(approval.clone())
+        .with_kill_switch(chat_state.kill_switch.clone());
+        pipeline.executor_registry = registry;
+
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            session_id.clone(),
+        ));
+        std::mem::forget(main_dir);
+        C4Harness {
+            _chat_dir: chat_dir,
+            pipeline,
+            emitter,
+            calls,
+            session_id,
+            chat_state,
+            approval,
+        }
+    }
+
+    async fn c4_run_probe_write(
+        pipeline: &ChatV2Pipeline,
+        emitter: &Arc<ChatV2EventEmitter>,
+        session_id: &str,
+        call_id: &str,
+        block_id: &str,
+        execution_allowed_tools: Option<Vec<String>>,
+    ) -> ToolResultInfo {
+        let tool = ToolCall {
+            id: call_id.to_string(),
+            name: "builtin-authority_probe_write".to_string(),
+            arguments: json!({"path": "/tmp/c4-probe"}),
+        };
+        pipeline
+            .execute_single_tool(
+                &tool,
+                block_id,
+                emitter,
+                session_id,
+                "msg_c4",
+                None,
+                None,
+                None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &execution_allowed_tools,
+                None,
+                None,
+                None,
+                true,
+                true,
+                true,
+            )
+            .await
+            .expect("execute_single_tool")
+    }
+
+    async fn c4_seed_remembered_allow(
+        approval: &ApprovalManager,
+        tool_name: &str,
+        args: &serde_json::Value,
+    ) {
+        let _rx = approval.register_with_scope("seed_sess", "seed_call", tool_name, args);
+        let mut resp = crate::chat_v2::approval_manager::ApprovalResponse::approved(
+            "seed_sess".to_string(),
+            "seed_call".to_string(),
+            tool_name.to_string(),
+        );
+        resp.remember = true;
+        assert!(
+            approval.respond(resp),
+            "seed remembered allow must deliver to pending waiter"
+        );
+        assert_eq!(
+            approval.check_remembered(tool_name, args),
+            Some(true),
+            "remembered allow must be visible to tool_loop"
+        );
+    }
+
+    /// C4-1: Ask 模式 + 写工具 → 执行器 0 调用 + 结构化拒绝（真实 tool_loop）。
+    #[tokio::test]
+    async fn c4_ask_mode_write_tool_zero_executor_structured_reject() {
+        let harness = c4_integration_harness(crate::chat_v2::types::AuthorityMode::Ask);
+
+        let result = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "c4_ask_1",
+            "blk_c4_ask_1",
+            None,
+        )
+        .await;
+
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "Ask mode must not invoke write executor"
+        );
+        assert!(!result.success);
+        let err = result.error.as_deref().unwrap_or("");
+        assert!(
+            err.contains("AUTHORITY_BLOCKED") || err.contains("Ask"),
+            "structured Ask rejection missing: {err}"
+        );
+        assert_eq!(
+            result
+                .output
+                .get("authorityBlocked")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            result.output.get("suggestedMode").and_then(|v| v.as_str()),
+            Some("plan")
+        );
+        // DB still Ask after rejection
+        let persisted =
+            ChatV2Repo::get_session_authority_state(&harness.pipeline.db, &harness.session_id)
+                .expect("authority from db");
+        assert_eq!(
+            persisted.authority_mode,
+            crate::chat_v2::types::AuthorityMode::Ask
+        );
+    }
+
+    /// C4-2: Craft + KillSwitch trip → 新工具执行全局拒绝（断电优先于会话档位）。
+    #[tokio::test]
+    async fn c4_craft_kill_switch_blocks_write_despite_craft_mode() {
+        use crate::chat_v2::kill_switch::KILL_SWITCH_BLOCKED_MESSAGE;
+
+        let harness = c4_integration_harness(crate::chat_v2::types::AuthorityMode::Craft);
+        let args = json!({"path": "/tmp/c4-probe"});
+        c4_seed_remembered_allow(&harness.approval, "builtin-authority_probe_write", &args).await;
+
+        // Baseline: Craft + remembered allow would execute (side-effect counter).
+        let ok = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "c4_craft_baseline",
+            "blk_c4_craft_baseline",
+            None,
+        )
+        .await;
+        assert!(
+            ok.success,
+            "baseline Craft write must succeed: {:?}",
+            ok.error
+        );
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "baseline executor must run once"
+        );
+
+        assert!(harness.chat_state.kill_switch.trip("c4_craft_trip"));
+        assert!(
+            harness
+                .chat_state
+                .try_register_stream("c4_new_stream")
+                .is_err(),
+            "stream admission must fail while tripped"
+        );
+
+        let blocked = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "c4_craft_blocked",
+            "blk_c4_craft_blocked",
+            None,
+        )
+        .await;
+
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "KillSwitch must block further executor calls (still 1 from baseline)"
+        );
+        assert!(!blocked.success);
+        assert_eq!(blocked.error.as_deref(), Some(KILL_SWITCH_BLOCKED_MESSAGE));
+        assert_eq!(
+            blocked
+                .output
+                .get("killSwitchBlocked")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        // Session authority remains Craft — rejection is kill-switch, not Ask.
+        let persisted =
+            ChatV2Repo::get_session_authority_state(&harness.pipeline.db, &harness.session_id)
+                .expect("authority");
+        assert_eq!(
+            persisted.authority_mode,
+            crate::chat_v2::types::AuthorityMode::Craft
+        );
+
+        harness.chat_state.kill_switch.reset();
+    }
+
+    /// C4-3: Plan 批准后 KillSwitch trip → 后续写操作仍被断电拦截。
+    #[tokio::test]
+    async fn c4_plan_approved_then_kill_switch_still_blocks_writes() {
+        use crate::chat_v2::kill_switch::KILL_SWITCH_BLOCKED_MESSAGE;
+        use crate::chat_v2::types::{AuthorityMode, PlanAuthorityState};
+
+        let harness = c4_integration_harness(AuthorityMode::Plan);
+        let args = json!({"path": "/tmp/c4-probe"});
+        c4_seed_remembered_allow(&harness.approval, "builtin-authority_probe_write", &args).await;
+
+        let mut approved = PlanAuthorityState::new_pending("c4 plan batch");
+        approved.bind_to_call(
+            crate::chat_v2::pipeline::authority_mode::plan_call_binding_key(
+                "builtin-authority_probe_write",
+                &args,
+                None,
+            ),
+        );
+        approved.mark_approved(600);
+        ChatV2Repo::set_session_plan_state(
+            &harness.pipeline.db,
+            &harness.session_id,
+            Some(approved),
+        )
+        .expect("persist approved plan");
+
+        let authority =
+            ChatV2Repo::get_session_authority_state(&harness.pipeline.db, &harness.session_id)
+                .expect("load plan authority");
+        assert_eq!(authority.authority_mode, AuthorityMode::Plan);
+        assert!(
+            authority
+                .plan
+                .as_ref()
+                .is_some_and(|p| p.is_batch_active(chrono::Utc::now())),
+            "plan batch must be active in DB before kill switch"
+        );
+
+        assert!(harness.chat_state.kill_switch.trip("c4_plan_trip"));
+
+        let blocked = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "c4_plan_ks",
+            "blk_c4_plan_ks",
+            None,
+        )
+        .await;
+
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "approved Plan must not execute writes while KillSwitch is tripped"
+        );
+        assert!(!blocked.success);
+        assert_eq!(blocked.error.as_deref(), Some(KILL_SWITCH_BLOCKED_MESSAGE));
+        assert_eq!(
+            blocked
+                .output
+                .get("killSwitchBlocked")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        // Plan approval still persisted — kill switch did not clear it.
+        let after =
+            ChatV2Repo::get_session_authority_state(&harness.pipeline.db, &harness.session_id)
+                .expect("reload");
+        assert!(after
+            .plan
+            .as_ref()
+            .is_some_and(|p| p.is_batch_active(chrono::Utc::now())));
+
+        harness.chat_state.kill_switch.reset();
+    }
+
+    /// C4-4: headless 路径 + Ask 档位持久化 → 写工具被拒（白名单放行也挡不住 Ask）。
+    #[tokio::test]
+    async fn c4_headless_ask_persisted_blocks_write_on_tool_loop() {
+        use crate::chat_v2::headless::{create_headless_session, headless_allowed_tools};
+        use crate::chat_v2::types::{AuthorityMode, SessionAuthorityState};
+
+        let harness = c4_integration_harness(AuthorityMode::Craft);
+        // Replace session with a real headless session that persists Ask.
+        let headless_id = create_headless_session(
+            &harness.pipeline.db,
+            "automation",
+            "c4-headless-ask",
+            json!({
+                "automation_run": true,
+                "source": "c4_integration",
+            }),
+        )
+        .expect("create headless session");
+        let ask_state = SessionAuthorityState {
+            authority_mode: AuthorityMode::Ask,
+            plan: None,
+        };
+        ChatV2Repo::set_session_authority_mode(
+            &harness.pipeline.db,
+            &headless_id,
+            AuthorityMode::Ask,
+        )
+        .expect("persist Ask on headless session");
+        // Ensure metadata round-trip keeps Ask (apply_to_metadata path).
+        if let Some(mut session) =
+            ChatV2Repo::get_session_v2(&harness.pipeline.db, &headless_id).expect("get session")
+        {
+            session.metadata = Some(ask_state.apply_to_metadata(session.metadata.take()));
+            ChatV2Repo::update_session_v2(&harness.pipeline.db, &session)
+                .expect("update headless metadata");
+        }
+
+        let loaded = ChatV2Repo::get_session_authority_state(&harness.pipeline.db, &headless_id)
+            .expect("reload headless authority");
+        assert_eq!(loaded.authority_mode, AuthorityMode::Ask);
+        let session = ChatV2Repo::get_session_v2(&harness.pipeline.db, &headless_id)
+            .expect("session")
+            .expect("exists");
+        assert_eq!(
+            session
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("headless"))
+                .and_then(|v| v.as_bool()),
+            Some(true),
+            "headless marker must persist"
+        );
+
+        // Headless execution policy allowlist, plus probe write (models can still
+        // invent out-of-schema names; Ask must refuse even if allowlisted).
+        let mut allowed = headless_allowed_tools();
+        allowed.push("builtin-authority_probe_write".to_string());
+
+        let result = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &headless_id,
+            "c4_headless_ask",
+            "blk_c4_headless_ask",
+            Some(allowed),
+        )
+        .await;
+
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "headless Ask turn must not invoke write executor"
+        );
+        assert!(!result.success);
+        assert_eq!(
+            result
+                .output
+                .get("authorityBlocked")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        let err = result.error.as_deref().unwrap_or("");
+        assert!(
+            err.contains("AUTHORITY_BLOCKED"),
+            "headless Ask must surface AUTHORITY_BLOCKED, got: {err}"
+        );
+    }
+
+    /// C4-5: KillSwitch trip → reject_all_pending 生效；resume 后可正常执行。
+    #[tokio::test]
+    async fn c4_kill_switch_reject_all_pending_then_resume_allows_write() {
+        use crate::chat_v2::kill_switch::KILL_SWITCH_BLOCKED_MESSAGE;
+        use crate::chat_v2::types::AuthorityMode;
+
+        let harness = c4_integration_harness(AuthorityMode::Craft);
+        let args = json!({"path": "/tmp/c4-probe"});
+
+        // Pending approval waiter (simulates in-flight Medium tool).
+        let pending_rx = harness.approval.register_with_scope(
+            &harness.session_id,
+            "pending_c4",
+            "builtin-authority_probe_write",
+            &args,
+        );
+        assert_eq!(harness.approval.pending_count(), 1);
+
+        assert!(harness.chat_state.kill_switch.trip("c4_emergency"));
+        // Mirror emergency_stop: drain approvals + cancel streams.
+        let rejected = harness.approval.reject_all_pending("c4_emergency");
+        assert_eq!(rejected, 1);
+        assert_eq!(harness.approval.pending_count(), 0);
+        let resp = pending_rx.await.expect("pending waiter must unblock");
+        assert!(!resp.approved);
+        assert_eq!(resp.reason.as_deref(), Some("c4_emergency"));
+
+        // While tripped, even remembered allow cannot execute.
+        c4_seed_remembered_allow(&harness.approval, "builtin-authority_probe_write", &args).await;
+        let blocked = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "c4_while_tripped",
+            "blk_c4_while_tripped",
+            None,
+        )
+        .await;
+        assert_eq!(harness.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(blocked.error.as_deref(), Some(KILL_SWITCH_BLOCKED_MESSAGE));
+
+        // resume_agents equivalent
+        harness.chat_state.kill_switch.reset();
+        assert!(harness.chat_state.kill_switch.ensure_allowed().is_ok());
+        assert!(harness
+            .chat_state
+            .try_register_stream("c4_resume_stream")
+            .is_ok());
+        harness.chat_state.remove_stream("c4_resume_stream");
+
+        let ok = c4_run_probe_write(
+            &harness.pipeline,
+            &harness.emitter,
+            &harness.session_id,
+            "c4_after_resume",
+            "blk_c4_after_resume",
+            None,
+        )
+        .await;
+        assert!(
+            ok.success,
+            "after resume Craft write must execute: {:?}",
+            ok.error
+        );
+        assert_eq!(
+            harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "executor must run exactly once after resume"
+        );
+        assert_eq!(ok.output.get("ok").and_then(|v| v.as_bool()), Some(true));
     }
 }

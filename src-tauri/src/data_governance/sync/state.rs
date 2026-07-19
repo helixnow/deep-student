@@ -23,7 +23,7 @@ impl SyncStateStore {
         let base_dir = dirs::data_local_dir()
             .or_else(dirs::data_dir)
             .or_else(dirs::config_dir)
-            .unwrap_or_else(|| std::env::temp_dir());
+            .unwrap_or_else(std::env::temp_dir);
         let dir = base_dir.join("deep-student").join("sync");
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("sync_state.db");

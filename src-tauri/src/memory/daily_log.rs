@@ -174,7 +174,7 @@ where
 
     // 条目单行化，防止破坏日志的行结构。单条也必须服从硬上限，
     // 否则一个超长条目会永久突破 Study memory 的 4000 字约束。
-    let raw_entry_single_line = entry.replace('\n', " ").replace('\r', " ");
+    let raw_entry_single_line = entry.replace(['\n', '\r'], " ");
     let time_str = chrono::Local::now().format("%H:%M").to_string();
     let prefix = format!("- [{}] ", time_str);
     let body_limit = DAILY_LOG_MAX_CHARS.saturating_sub(prefix.chars().count());

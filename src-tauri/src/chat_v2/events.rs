@@ -81,6 +81,10 @@ pub mod event_types {
     /// 工具审批响应
     pub const TOOL_APPROVAL_RESPONSE: &str = "tool_approval_response";
 
+    // ========== Plan gate（Ask/Plan/Craft 会话档）==========
+    /// Plan 模式写工具挂起：等待用户确认计划批次（区别于普通 tool_approval）
+    pub const PLAN_GATE: &str = "plan_gate";
+
     // ========== 系统提示事件 ==========
     /// 工具递归限制提示（达到最大递归次数时）
     pub const TOOL_LIMIT: &str = "tool_limit";
@@ -749,7 +753,10 @@ pub fn clear_session_sequence_counter(session_id: &str) {
 }
 
 pub struct ChatV2EventEmitter {
-    window: Window,
+    /// `None` only in unit tests that exercise pipeline logic without a real
+    /// Tauri window; production always holds `Some`. Emits become no-ops when
+    /// absent so behaviour-level tests can assert executor/gate effects.
+    window: Option<Window>,
     session_id: String,
     /// One backend registration generation shared by every lifecycle event from this emitter.
     stream_generation: Option<u64>,
@@ -770,7 +777,21 @@ impl ChatV2EventEmitter {
     /// 创建新的事件发射器
     pub fn new(window: Window, session_id: String) -> Self {
         Self {
-            window,
+            window: Some(window),
+            session_id: session_id.clone(),
+            stream_generation: None,
+            sequence_counter: get_or_create_session_counter(&session_id),
+            block_event_meta: Arc::new(DashMap::new()),
+        }
+    }
+
+    /// Test-only constructor: no Tauri window, all emits become no-ops.
+    /// Used by behaviour-level pipeline tests that assert gate/executor
+    /// effects rather than emitted events.
+    #[cfg(test)]
+    pub fn new_windowless_for_test(session_id: String) -> Self {
+        Self {
+            window: None,
             session_id: session_id.clone(),
             stream_generation: None,
             sequence_counter: get_or_create_session_counter(&session_id),
@@ -789,7 +810,17 @@ impl ChatV2EventEmitter {
     }
 
     /// 获取 Window 引用（供 LLM 调用使用）
+    ///
+    /// 生产环境始终持有 window；仅无窗口测试构造器会缺失，此时 panic 以
+    /// 暴露误用（测试路径不应调用需要真实 window 的 LLM 能力）。
     pub fn window(&self) -> Window {
+        self.window
+            .clone()
+            .expect("ChatV2EventEmitter::window() called on a windowless test emitter")
+    }
+
+    /// Optional window for tool execution (windowless integration tests return `None`).
+    pub fn try_window(&self) -> Option<Window> {
         self.window.clone()
     }
 
@@ -859,7 +890,10 @@ impl ChatV2EventEmitter {
             event.session_id = Some(self.session_id.clone());
         }
 
-        if let Err(e) = self.window.emit(&event_name, &event) {
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        if let Err(e) = window.emit(&event_name, &event) {
             log::error!(
                 "[ChatV2::events] Failed to emit block event: {} - {:?}",
                 event_name,
@@ -882,7 +916,10 @@ impl ChatV2EventEmitter {
         if event.stream_generation.is_none() {
             event.stream_generation = self.stream_generation;
         }
-        if let Err(e) = self.window.emit(&event_name, &event) {
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        if let Err(e) = window.emit(&event_name, &event) {
             log::error!(
                 "[ChatV2::events] Failed to emit session event: {} - {:?}",
                 event_name,

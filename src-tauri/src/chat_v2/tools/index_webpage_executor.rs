@@ -222,7 +222,7 @@ impl IndexWebpageToolExecutor {
             )
         })?;
 
-        let app_handle = ctx.window.app_handle().clone();
+        let app_handle = ctx.window_ref().app_handle().clone();
         let progress_resource_id = resource_id.clone();
         let progress_block_id = ctx.block_id.clone();
         let progress_app = app_handle.clone();
@@ -326,7 +326,7 @@ impl IndexWebpageToolExecutor {
                 false,
             ));
         }
-        if content.as_bytes().len() > MAX_WEBPAGE_CONTENT_BYTES {
+        if content.len() > MAX_WEBPAGE_CONTENT_BYTES {
             return Err(invalid_argument(
                 "content",
                 format!("content exceeds {MAX_WEBPAGE_CONTENT_BYTES} bytes"),
@@ -389,7 +389,7 @@ impl IndexWebpageToolExecutor {
             WebpageSaveDisposition::Restored => DstuWatchEvent::restored(node_path, Some(node)),
             WebpageSaveDisposition::Existing => DstuWatchEvent::updated(node_path, node),
         };
-        emit_watch_event(&ctx.window, event);
+        emit_watch_event(ctx.window_ref(), event);
 
         let deduplicated = disposition != WebpageSaveDisposition::Created;
 
@@ -837,7 +837,7 @@ fn derive_title(url: &str) -> String {
             parsed
                 .path_segments()
                 .and_then(|segments| segments.filter(|segment| !segment.is_empty()).next_back())
-                .map(|segment| segment.replace('-', " ").replace('_', " "))
+                .map(|segment| segment.replace(['-', '_'], " "))
         })
         .filter(|title| !title.trim().is_empty())
         .unwrap_or_else(|| {

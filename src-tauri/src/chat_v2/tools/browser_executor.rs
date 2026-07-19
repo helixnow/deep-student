@@ -164,7 +164,7 @@ impl BrowserToolExecutor {
     }
 
     fn service(ctx: &ExecutionContext) -> Result<Arc<BrowserService>, String> {
-        ctx.window
+        ctx.window_ref()
             .app_handle()
             .try_state::<Arc<BrowserService>>()
             .map(|s| s.inner().clone())
@@ -172,12 +172,12 @@ impl BrowserToolExecutor {
     }
 
     fn bridge(ctx: &ExecutionContext) -> BridgeClient {
-        BridgeClient::new(ctx.window.app_handle().clone())
+        BridgeClient::new(ctx.window_ref().app_handle().clone())
     }
 
     async fn assert_agent_gates(ctx: &ExecutionContext) -> Result<(), String> {
         let state = ctx
-            .window
+            .window_ref()
             .try_state::<AppState>()
             .ok_or_else(|| format_err("BROWSER_DISABLED", "AppState 不可用"))?;
 

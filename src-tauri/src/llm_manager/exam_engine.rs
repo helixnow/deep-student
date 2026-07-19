@@ -1373,7 +1373,7 @@ impl LLMManager {
         let cards = regions
             .iter()
             .enumerate()
-            .map(|(idx, region)| {
+            .filter_map(|(idx, region)| {
                 if region.bbox_0_1_xywh.len() != 4 {
                     return None;
                 }
@@ -1396,7 +1396,6 @@ impl LLMManager {
                     card_id: format!("ds_p{}_r{}", page_index, idx),
                 })
             })
-            .flatten()
             .collect::<Vec<_>>();
 
         self.emit_deepseek_debug(

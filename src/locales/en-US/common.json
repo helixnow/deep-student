@@ -127,7 +127,8 @@
     "scrollLeft": "Scroll Left",
     "scrollRight": "Scroll Right",
     "clear_all": "Clear All",
-    "backToHome": "Back to home"
+    "backToHome": "Back to home",
+    "dismiss": "Dismiss"
   },
   "labels": {
     "optional": "Optional",
@@ -1157,7 +1158,8 @@
       "save_failed": "Failed to save AnkiConnect settings",
       "unavailable": "AnkiConnect unavailable",
       "connection_success": "Connection successful: Retrieved {{deckCount}} decks and {{modelCount}} note types",
-      "connection_failed": "AnkiConnect connection failed. Please ensure Anki is running and plugin 2055492159 is installed"
+      "connection_failed": "AnkiConnect connection failed. Please ensure Anki is running and plugin 2055492159 is installed",
+      "test_connection_short": "Test Connection"
     },
     "error_pdf_format_incompatible": "PDF file format is incompatible",
     "console_anki_connect_connection_failed": "AnkiConnect connection failed:",
@@ -1240,6 +1242,12 @@
     "adapter_grok_desc": "Grok series, grok-3-mini supports reasoning_effort",
     "adapter_minimax": "MiniMax",
     "adapter_minimax_desc": "MiniMax series, supports reasoning_split",
+    "adapter_mimo": "Xiaomi MiMo",
+    "adapter_mimo_desc": "MiMo series, supports thinking.type and reasoning_content",
+    "adapter_ernie": "Baidu ERNIE",
+    "adapter_ernie_desc": "ERNIE 5.x / X1.1 via Qianfan v2, reasoning_content compatible",
+    "adapter_mistral": "Mistral",
+    "adapter_mistral_desc": "Mistral Large/Medium/Small, reasoning_effort support",
     "openai_o1_series": "OpenAI o1 Series",
     "claude_3_5_sonnet": "Claude 3.5 Sonnet",
     "add_config": "Add API Configuration",
@@ -3373,7 +3381,8 @@
       "viewport_transform_samples": "Viewport transform samples: {{count}}",
       "edge_dimming_samples": "Edge-dimming samples: {{count}}"
     },
-    "search_events_placeholder": "Search events or payload"
+    "search_events_placeholder": "Search events or payload",
+    "expand": "Expand"
   },
   "window_controls": {
     "drag": "Drag window",

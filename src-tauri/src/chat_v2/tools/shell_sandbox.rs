@@ -98,6 +98,12 @@ pub trait SandboxBackend: Send + Sync {
 
 pub struct PlatformSandboxBackend;
 
+impl Default for PlatformSandboxBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PlatformSandboxBackend {
     pub fn new() -> Self {
         Self

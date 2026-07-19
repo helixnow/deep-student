@@ -436,8 +436,8 @@ impl EnhancedAnkiService {
         };
         let mut running_tasks: Vec<DocumentTask> = doc_tasks
             .iter()
+            .filter(|&t| matches!(t.status, TaskStatus::Processing | TaskStatus::Streaming))
             .cloned()
-            .filter(|t| matches!(t.status, TaskStatus::Processing | TaskStatus::Streaming))
             .collect();
 
         if let Some(task_id) = current_task_id.clone() {
@@ -519,7 +519,7 @@ impl EnhancedAnkiService {
         let mut remaining: Vec<DocumentTask> = self
             .doc_processor
             .get_document_tasks(&document_id)
-            .map_err(|e| {
+            .inspect_err(|_e| {
                 if let Some(mut entry) = DOCUMENT_STATES.get_mut(&document_id) {
                     entry.running = false;
                     if !entry.paused {
@@ -527,7 +527,6 @@ impl EnhancedAnkiService {
                         DOCUMENT_STATES.remove(&document_id);
                     }
                 }
-                e
             })?
             .into_iter()
             .filter(|t| matches!(t.status, TaskStatus::Paused | TaskStatus::Pending))

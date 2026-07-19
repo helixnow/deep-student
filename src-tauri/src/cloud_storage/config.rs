@@ -8,19 +8,15 @@ use url::Url;
 /// 存储提供商类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum StorageProvider {
     /// WebDAV 存储（如坚果云、Nextcloud、自建 WebDAV）
+    #[default]
     WebDav,
     /// S3 兼容存储（AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等）
     S3,
     /// FTP/FTPS 存储（支持显式 FTPS）
     Ftp,
-}
-
-impl Default for StorageProvider {
-    fn default() -> Self {
-        StorageProvider::WebDav
-    }
 }
 
 impl std::fmt::Display for StorageProvider {

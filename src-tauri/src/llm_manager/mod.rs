@@ -1897,24 +1897,13 @@ static CONTROL_CHARS_REGEX: LazyLock<Regex> =
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 struct StoredUserPreferenceProfile {
     enabled: bool,
     background: String,
     goals: String,
     communication: String,
     notes: String,
-}
-
-impl Default for StoredUserPreferenceProfile {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            background: String::new(),
-            goals: String::new(),
-            communication: String::new(),
-            notes: String::new(),
-        }
-    }
 }
 
 fn sanitize_user_preference_field(value: &str) -> String {
@@ -3477,7 +3466,7 @@ impl LLMManager {
         let openai_codex_auth = CodexAuthManager::new(db.clone());
 
         let app_data_dir_path = file_manager.get_app_data_dir();
-        let crypto_service = CryptoService::new(&app_data_dir_path.to_path_buf())
+        let crypto_service = CryptoService::new(app_data_dir_path)
             .map_err(|e| AppError::configuration(format!("加密服务初始化失败: {e}")))?;
 
         Ok(Self {
@@ -4105,7 +4094,7 @@ impl LLMManager {
                         "reason": block_reason,
                         "details": prompt_feedback
                     });
-                    return Some(format!("Gemini安全阻断: {}", info.to_string()));
+                    return Some(format!("Gemini安全阻断: {}", info));
                 }
             }
         }
@@ -4119,7 +4108,7 @@ impl LLMManager {
                             "reason": fr,
                             "details": cand
                         });
-                        return Some(format!("Gemini安全阻断: {}", info.to_string()));
+                        return Some(format!("Gemini安全阻断: {}", info));
                     }
                 }
             }
@@ -4305,7 +4294,7 @@ impl LLMManager {
         // WebP: 52 49 46 46 ... 57 45 42 50 (RIFF...WEBP)
         else if image_data.len() >= 12
             && image_data.starts_with(&[0x52, 0x49, 0x46, 0x46])
-            && &image_data[8..12] == &[0x57, 0x45, 0x42, 0x50]
+            && image_data[8..12] == [0x57, 0x45, 0x42, 0x50]
         {
             "webp"
         }
@@ -6406,7 +6395,7 @@ impl LLMManager {
                     .filter(|x| !x.is_empty())
                     .collect()
             })
-            .unwrap_or_else(|| Vec::new());
+            .unwrap_or_default();
         let blacklist: Vec<String> = self
             .db
             .get_setting("mcp.tools.blacklist")
@@ -6418,7 +6407,7 @@ impl LLMManager {
                     .filter(|x| !x.is_empty())
                     .collect()
             })
-            .unwrap_or_else(|| Vec::new());
+            .unwrap_or_default();
         let selected: Vec<String> = self
             .db
             .get_setting("session.selected_mcp_tools")
@@ -6430,7 +6419,7 @@ impl LLMManager {
                     .filter(|x| !x.is_empty())
                     .collect()
             })
-            .unwrap_or_else(|| Vec::new());
+            .unwrap_or_default();
 
         let mcp_tools = self.get_frontend_mcp_tools_cached(window, cache_ttl).await;
         let mut included_count = 0usize;
@@ -6485,12 +6474,10 @@ impl LLMManager {
     ) -> Vec<FrontendMcpTool> {
         // 优先返回未过期缓存；若缓存为空则尝试强制刷新一次，避免"空缓存"导致长期不广告
         if let Some(cache) = self.mcp_tool_cache.read().await.as_ref() {
-            if !cache.is_expired() {
-                if !cache.tools.is_empty() {
-                    return cache.tools.clone();
-                }
-                // 缓存未过期但为空：尝试刷新一次
+            if !cache.is_expired() && !cache.tools.is_empty() {
+                return cache.tools.clone();
             }
+            // 缓存未过期但为空：尝试刷新一次
         }
         // 通过桥接请求工具
         let tools = match self
@@ -6560,7 +6547,7 @@ impl LLMManager {
         // 等待响应
         let waited = tokio_timeout(timeout, rx).await;
         // 清理监听器（不论成功失败）
-        let _ = window.unlisten(id);
+        window.unlisten(id);
         let val = match waited {
             Err(_) => return Err(anyhow::anyhow!("timeout waiting tools response")),
             Ok(Err(_)) => return Err(anyhow::anyhow!("bridge channel closed")),
@@ -6769,15 +6756,11 @@ impl LLMManager {
             match ch {
                 '{' => stack.push('{'),
                 '[' => stack.push('['),
-                '}' => {
-                    if stack.last() == Some(&'{') {
-                        stack.pop();
-                    }
+                '}' if stack.last() == Some(&'{') => {
+                    stack.pop();
                 }
-                ']' => {
-                    if stack.last() == Some(&'[') {
-                        stack.pop();
-                    }
+                ']' if stack.last() == Some(&'[') => {
+                    stack.pop();
                 }
                 _ => {}
             }

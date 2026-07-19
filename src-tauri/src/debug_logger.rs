@@ -64,13 +64,13 @@ impl DebugLogger {
         let log_dir = app_data_dir.join("logs");
 
         // 确保日志目录存在
-        if let Err(e) = std::fs::create_dir_all(&log_dir.join("frontend")) {
+        if let Err(e) = std::fs::create_dir_all(log_dir.join("frontend")) {
             error!("Failed to create frontend log directory: {}", e);
         }
-        if let Err(e) = std::fs::create_dir_all(&log_dir.join("backend")) {
+        if let Err(e) = std::fs::create_dir_all(log_dir.join("backend")) {
             error!("Failed to create backend log directory: {}", e);
         }
-        if let Err(e) = std::fs::create_dir_all(&log_dir.join("debug")) {
+        if let Err(e) = std::fs::create_dir_all(log_dir.join("debug")) {
             error!("Failed to create debug log directory: {}", e);
         }
 
@@ -285,7 +285,7 @@ impl DebugLogger {
         error: Option<&str>,
         duration_ms: Option<u64>,
     ) {
-        let level = if error.is_some() || status_code.map_or(false, |code| code >= 400) {
+        let level = if error.is_some() || status_code.is_some_and(|code| code >= 400) {
             LogLevel::ERROR
         } else {
             LogLevel::INFO
@@ -424,10 +424,7 @@ impl DebugLogger {
                 "backend".to_string()
             };
             let key = format!("{}_{}", date, module_key);
-            grouped_logs
-                .entry((target_dir, key))
-                .or_insert_with(Vec::new)
-                .push(log);
+            grouped_logs.entry((target_dir, key)).or_default().push(log);
         }
 
         for ((target_dir, key), group_logs) in grouped_logs {
@@ -663,7 +660,7 @@ pub async fn write_debug_logs(app: tauri::AppHandle, logs: Vec<LogEntry>) -> Res
             .unwrap_or("unknown")
             .to_string();
         let key = format!("{}_{}", date, log.module.to_lowercase());
-        grouped_logs.entry(key).or_insert_with(Vec::new).push(log);
+        grouped_logs.entry(key).or_default().push(log);
     }
 
     for (key, group_logs) in grouped_logs {
@@ -697,14 +694,14 @@ pub fn get_global_logger() -> Option<DebugLogger> {
 #[macro_export]
 macro_rules! debug_log {
     ($level:expr, $module:expr, $operation:expr, $data:expr) => {
-        if let Some(logger) = crate::debug_logger::get_global_logger() {
+        if let Some(logger) = $crate::debug_logger::get_global_logger() {
             tokio::spawn(async move {
                 logger.log($level, $module, $operation, $data, None).await;
             });
         }
     };
     ($level:expr, $module:expr, $operation:expr, $data:expr, $context:expr) => {
-        if let Some(logger) = crate::debug_logger::get_global_logger() {
+        if let Some(logger) = $crate::debug_logger::get_global_logger() {
             tokio::spawn(async move {
                 logger
                     .log($level, $module, $operation, $data, Some($context))

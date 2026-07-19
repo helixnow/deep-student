@@ -24,6 +24,8 @@
 // V2 组件
 export { InputBarV2 } from './InputBarV2';
 export { InputBarUI } from './InputBarUI';
+export { AuthorityModeSegment } from './AuthorityModeSegment';
+export type { AuthorityMode, AuthorityModeSegmentProps } from './AuthorityModeSegment';
 
 // V2 Hook
 export { useInputBarV2, useTogglePanelExclusive } from './useInputBarV2';

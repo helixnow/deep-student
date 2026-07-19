@@ -782,14 +782,17 @@ function App() {
     void params;
   }, []);
 
-  // ★ Workbench 实验开关：localStorage 同步预读避免冷启动闪回 legacy 壳，
-  //   再以 get_setting 为准；监听设置页 workbench:mode-changed 即时切换
+  // ★ Workbench 产品默认身份：localStorage 同步预读避免冷启动闪回 legacy 壳，
+  //   再以 resolveWorkbenchModeEnabled 为准（缺失键 → true + 迁移哨兵）；
+  //   监听设置页 workbench:mode-changed 即时切换
   const WORKBENCH_MODE_CACHE_KEY = 'desktop.workbenchMode';
   const [workbenchMode, setWorkbenchMode] = useState(() => {
     try {
-      return typeof localStorage !== 'undefined' && localStorage.getItem(WORKBENCH_MODE_CACHE_KEY) === 'true';
+      if (typeof localStorage === 'undefined') return true;
+      // 显式 false 保留经典壳；缺失 / true → 学习桌面（产品默认）
+      return localStorage.getItem(WORKBENCH_MODE_CACHE_KEY) !== 'false';
     } catch {
-      return false;
+      return true;
     }
   });
   useEffect(() => {
@@ -804,13 +807,15 @@ function App() {
     };
     (async () => {
       try {
-        const value = await invoke<string | null>('get_setting', { key: 'desktop.workbenchMode' });
+        const { resolveWorkbenchModeEnabled } = await import(
+          '@/features/settings/components/workbenchMode'
+        );
+        const { enabled } = await resolveWorkbenchModeEnabled();
         if (cancelled) return;
-        const enabled = String(value ?? '').trim() === 'true';
         setWorkbenchMode(enabled);
         cacheMode(enabled);
       } catch {
-        /* 默认关闭；保留预读缓存 */
+        /* 默认启用；保留预读缓存 */
       }
     })();
     const onModeChanged = (event: Event) => {

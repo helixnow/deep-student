@@ -349,6 +349,7 @@ pub struct SaveAnkiCardIdMapping {
 /// - `failed`：单卡更新失败明细
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct SaveAnkiCardsResponse {
     pub saved_ids: Vec<String>,
     pub task_id: String,
@@ -360,19 +361,6 @@ pub struct SaveAnkiCardsResponse {
     pub duplicated_ids: Vec<String>,
     #[serde(default)]
     pub failed: Vec<SaveAnkiCardFailure>,
-}
-
-impl Default for SaveAnkiCardsResponse {
-    fn default() -> Self {
-        Self {
-            saved_ids: Vec::new(),
-            task_id: String::new(),
-            card_id_mappings: Vec::new(),
-            skipped_ids: Vec::new(),
-            duplicated_ids: Vec::new(),
-            failed: Vec::new(),
-        }
-    }
 }
 
 fn is_temporary_anki_card_id(id: &str) -> bool {
@@ -568,7 +556,7 @@ fn save_anki_cards_in_database(
     let options_json = request
         .options
         .as_ref()
-        .map(|opts| serde_json::to_string(opts))
+        .map(serde_json::to_string)
         .transpose()
         .map_err(|e| AppError::validation(format!("无法序列化制卡配置: {}", e)))?
         .unwrap_or_else(|| "{}".to_string());
@@ -783,12 +771,7 @@ pub async fn save_anki_cards(
     let response =
         tokio::task::spawn_blocking(move || save_anki_cards_in_database(&database, request))
             .await
-            .map_err(|e| {
-                AppError::internal(format!(
-                    "save_anki_cards task join error: {}",
-                    e.to_string()
-                ))
-            })??;
+            .map_err(|e| AppError::internal(format!("save_anki_cards task join error: {}", e)))??;
 
     if let Some(payload) = build_save_anki_cards_changed_payload(&response) {
         if let Err(error) = app.emit("fsrs://changed", payload) {

@@ -79,10 +79,10 @@ pub fn estimate_tokens_with_model(text: &str, model_hint: Option<&str>) -> usize
         }
         if let Some(m) = model_hint {
             let enc = pick_encoding(m);
-            return enc.encode_with_special_tokens(text).len();
+            enc.encode_with_special_tokens(text).len()
         } else {
             let enc = cl100k_base().unwrap();
-            return enc.encode_with_special_tokens(text).len();
+            enc.encode_with_special_tokens(text).len()
         }
     }
     #[cfg(not(feature = "tokenizer_tiktoken"))]

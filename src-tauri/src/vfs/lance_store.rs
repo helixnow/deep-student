@@ -1120,6 +1120,7 @@ impl VfsLanceStore {
     ///    （删除失败仍上报成功，前端永远看不到可重试状态）；
     /// 2. indexing.rs delete_resource_index 在 mm 向量删除失败时照删
     ///    SQLite 元数据，孤儿向量无人再清。
+    ///
     /// 所有调用方都已有 Err 处理分支（warn / 传播 / `let _ =`），行为兼容。
     pub async fn delete_by_resource(&self, modality: &str, resource_id: &str) -> VfsResult<usize> {
         let conn = self.connect().await?;

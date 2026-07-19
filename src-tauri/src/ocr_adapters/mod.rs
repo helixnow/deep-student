@@ -152,6 +152,12 @@ pub trait OcrAdapter: Send + Sync {
 /// 题目集导入流程的优先 OCR 引擎。
 pub struct Glm4vOcrAdapter;
 
+impl Default for Glm4vOcrAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Glm4vOcrAdapter {
     pub fn new() -> Self {
         Self
@@ -226,6 +232,12 @@ impl OcrAdapter for Glm4vOcrAdapter {
 ///
 /// 用于不支持特殊 OCR 功能的通用多模态模型。
 pub struct GenericVlmAdapter;
+
+impl Default for GenericVlmAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl GenericVlmAdapter {
     pub fn new() -> Self {

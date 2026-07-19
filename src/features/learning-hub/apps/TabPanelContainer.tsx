@@ -208,7 +208,7 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
               </div>
               {rightTab ? renderTabPanel(rightTab, true) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  {t('noContent')}
+                  {t('learningHub:splitView.empty')}
                 </div>
               )}
             </div>

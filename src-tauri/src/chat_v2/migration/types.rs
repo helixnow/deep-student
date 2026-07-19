@@ -5,8 +5,10 @@ use serde::{Deserialize, Serialize};
 /// 迁移状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum MigrationStatus {
     /// 未开始
+    #[default]
     NotStarted,
     /// 进行中
     InProgress,
@@ -16,12 +18,6 @@ pub enum MigrationStatus {
     RolledBack,
     /// 失败
     Failed,
-}
-
-impl Default for MigrationStatus {
-    fn default() -> Self {
-        Self::NotStarted
-    }
 }
 
 /// 迁移步骤
@@ -176,6 +172,7 @@ pub enum MigrationEventType {
 /// 迁移检查结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MigrationCheckResult {
     /// 是否需要迁移
     pub needs_migration: bool,
@@ -189,17 +186,4 @@ pub struct MigrationCheckResult {
     pub can_rollback: bool,
     /// 上次迁移时间
     pub last_migration_at: Option<i64>,
-}
-
-impl Default for MigrationCheckResult {
-    fn default() -> Self {
-        Self {
-            needs_migration: false,
-            pending_messages: 0,
-            pending_sessions: 0,
-            migrated_messages: 0,
-            can_rollback: false,
-            last_migration_at: None,
-        }
-    }
 }

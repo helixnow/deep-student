@@ -12,6 +12,8 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use super::kill_switch::AgentKillSwitch;
+
 /// Chat V2 全局状态（注册到 Tauri AppState）
 ///
 /// 用于管理活跃的流式会话，支持取消正在进行的流式生成。
@@ -66,6 +68,10 @@ pub struct ChatV2State {
     /// 🆕 P1修复：任务追踪器，用于追踪所有 tokio::spawn 的任务
     /// 确保任务在应用关闭时能被正确清理
     task_tracker: TaskTracker,
+    /// 全局一键断电（Kill Switch）。
+    ///
+    /// `Arc` 以便 Pipeline 工具环与准入闸共享同一开关实例（断电优先于会话档位）。
+    pub kill_switch: Arc<AgentKillSwitch>,
 }
 
 impl ChatV2State {
@@ -75,6 +81,7 @@ impl ChatV2State {
             active_streams: Mutex::new(HashMap::new()),
             next_stream_generation: AtomicU64::new(1),
             task_tracker: TaskTracker::new(),
+            kill_switch: Arc::new(AgentKillSwitch::new()),
         }
     }
 
@@ -163,6 +170,15 @@ impl ChatV2State {
     /// # Returns
     /// 返回该会话的 CancellationToken
     pub fn register_stream(&self, session_id: &str) -> CancellationToken {
+        if self.kill_switch.is_tripped() {
+            log::warn!(
+                "[ChatV2::state] register_stream rejected (AgentKillSwitch): {}",
+                session_id
+            );
+            let token = CancellationToken::new();
+            token.cancel();
+            return token;
+        }
         let token = CancellationToken::new();
         let generation = self.allocate_stream_generation();
         // 🔧 P0修复：使用 lock().unwrap_or_else() 处理 mutex poisoning
@@ -216,6 +232,28 @@ impl ChatV2State {
             );
             false
         }
+    }
+
+    /// Cancel every active stream (session + variant keys). Returns how many were cancelled.
+    pub fn cancel_all_streams(&self) -> usize {
+        let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
+            log::error!(
+                "[ChatV2::state] Mutex poisoned during cancel_all_streams! Attempting recovery"
+            );
+            poisoned.into_inner()
+        });
+        let count = guard.len();
+        for (key, active) in guard.drain() {
+            active.token.cancel();
+            log::info!("[ChatV2::state] cancel_all_streams: cancelled {}", key);
+        }
+        if count > 0 {
+            log::warn!(
+                "[ChatV2::state] cancel_all_streams: cancelled {} active stream(s)",
+                count
+            );
+        }
+        count
     }
 
     /// 移除流式会话（完成或出错后调用）
@@ -314,6 +352,13 @@ impl ChatV2State {
         key: &str,
         token: CancellationToken,
     ) -> Result<(), ()> {
+        if self.kill_switch.is_tripped() {
+            log::warn!(
+                "[ChatV2::state] try_register_existing_token rejected (AgentKillSwitch): {}",
+                key
+            );
+            return Err(());
+        }
         let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
             log::error!(
                 "[ChatV2::state] Mutex poisoned during try_register_existing_token! Attempting recovery"
@@ -335,6 +380,13 @@ impl ChatV2State {
         &self,
         session_id: &str,
     ) -> Result<StreamRegistration, ()> {
+        if self.kill_switch.is_tripped() {
+            log::warn!(
+                "[ChatV2::state] try_register_stream_owned rejected (AgentKillSwitch): {}",
+                session_id
+            );
+            return Err(());
+        }
         let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
             log::error!(
                 "[ChatV2::state] Mutex poisoned during try_register_stream_owned! Attempting recovery"
@@ -389,6 +441,17 @@ impl ChatV2State {
         key: &str,
         token: CancellationToken,
     ) -> StreamRegistration {
+        if self.kill_switch.is_tripped() {
+            log::warn!(
+                "[ChatV2::state] register_existing_token_owned rejected (AgentKillSwitch): {}",
+                key
+            );
+            token.cancel();
+            return StreamRegistration {
+                token,
+                generation: 0,
+            };
+        }
         let generation = self.allocate_stream_generation();
         let mut guard = self.active_streams.lock().unwrap_or_else(|poisoned| {
             log::error!("[ChatV2::state] Mutex poisoned during register_existing_token! Attempting recovery");

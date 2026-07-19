@@ -67,12 +67,12 @@ pub enum AuditOperation {
     Maintenance { action: String },
 }
 
-/// 备份类型
+/// 备份类型（审计历史用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BackupType {
     /// 完整备份
     Full,
-    /// 增量备份
+    /// 历史增量备份（创建入口已下线；仅反序列化旧审计记录）
     Incremental,
     /// 自动备份
     Auto,

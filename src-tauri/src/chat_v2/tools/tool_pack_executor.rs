@@ -71,7 +71,7 @@ fn create_sub_context(
         tool_registry: parent.tool_registry.clone(),
         main_db: parent.main_db.clone(),
         anki_db: parent.anki_db.clone(),
-        window: parent.window.clone(),
+        tauri_window: parent.tauri_window.clone(),
         vfs_db: parent.vfs_db.clone(),
         vfs_lance_store: parent.vfs_lance_store.clone(),
         llm_manager: parent.llm_manager.clone(),

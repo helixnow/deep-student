@@ -726,7 +726,7 @@ impl TranslationToolExecutor {
             let deps = TranslationDeps {
                 llm: llm.clone(),
                 db: main_db.clone(),
-                emitter: TranslationEventEmitter::new(ctx.window.clone()),
+                emitter: TranslationEventEmitter::new(ctx.window_ref().clone()),
                 vfs_db: vfs_db.clone(),
             };
 
@@ -922,7 +922,10 @@ impl TranslationToolExecutor {
         translation.translated_text = None;
         let node = translation_to_dstu_node(&translation);
         let path = node.path.clone();
-        emit_watch_event(&ctx.window, DstuWatchEvent::created(path.clone(), node));
+        emit_watch_event(
+            ctx.window_ref(),
+            DstuWatchEvent::created(path.clone(), node),
+        );
 
         Ok(json!({
             "translation_id": translation.id,

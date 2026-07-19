@@ -59,6 +59,12 @@ pub struct SkillInstallExecutor {
     fetch: FetchExecutor,
 }
 
+impl Default for SkillInstallExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SkillInstallExecutor {
     pub fn new() -> Self {
         Self {
@@ -191,9 +197,9 @@ impl SkillInstallExecutor {
             .split_once(':')
             .ok_or("Invalid runtime_path source detail")?;
         let relative = normalize_runtime_relative_path(Some(rel_path))?;
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         let root = runtime_root_by_id(
-            &ctx.window.app_handle(),
+            ctx.window_ref().app_handle(),
             &state.database,
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),

@@ -280,7 +280,10 @@ impl QuestionBankService {
             match self.get_question(id) {
                 Ok(Some(q)) => {
                     exam_ids.insert(q.exam_id.clone());
-                    match VfsQuestionRepo::batch_delete_questions(&self.vfs_db, &[id.clone()]) {
+                    match VfsQuestionRepo::batch_delete_questions(
+                        &self.vfs_db,
+                        std::slice::from_ref(id),
+                    ) {
                         Ok(1) => {
                             success_count += 1;
                         }
@@ -502,6 +505,24 @@ impl QuestionBankService {
         let updated_stats = VfsQuestionRepo::refresh_stats_with_conn(&tx, &question.exam_id)
             .map_err(|e| AppError::database(e.to_string()))?;
 
+        // Keep the objective-answer fact and its mastery event/aggregate in the
+        // same VFS transaction. A repeated client_request_id can now safely
+        // short-circuit without leaving a permanently missing mastery signal.
+        let mastery_state = if let Some(correct) = is_correct {
+            Some(
+                crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db))
+                    .record_qbank_answer_with_conn(
+                        &tx,
+                        &submission_id,
+                        question_id,
+                        &question.tags,
+                        correct,
+                    )?,
+            )
+        } else {
+            None
+        };
+
         tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
         // ★ I1 修复：答错时自动创建（或复用）SM-2 复习计划，接通间隔重复学习闭环。
@@ -522,6 +543,18 @@ impl QuestionBankService {
                         question_id, e
                     );
                 }
+            }
+        }
+
+        // Profile storage is a separate note-level CAS. The authoritative event
+        // is already committed; a later signal can safely retry this reflux.
+        if let Some(state) = mastery_state.as_ref() {
+            let mastery = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db));
+            if let Err(e) = mastery.sync_learner_profile(state) {
+                warn!(
+                    "[QuestionBankService] mastery profile reflux failed for question_id={}: {}",
+                    question_id, e
+                );
             }
         }
 
@@ -859,21 +892,21 @@ impl QuestionBankService {
     fn parse_question_type(&self, card: &serde_json::Value) -> Option<QuestionType> {
         card.get("question_type")
             .and_then(|v| v.as_str())
-            .map(|s| QuestionType::from_str(s))
+            .map(QuestionType::from_str)
     }
 
     /// 解析难度
     fn parse_difficulty(&self, card: &serde_json::Value) -> Option<Difficulty> {
         card.get("difficulty")
             .and_then(|v| v.as_str())
-            .map(|s| Difficulty::from_str(s))
+            .map(Difficulty::from_str)
     }
 
     /// 解析状态
     fn parse_status(&self, card: &serde_json::Value) -> QuestionStatus {
         card.get("status")
             .and_then(|v| v.as_str())
-            .map(|s| QuestionStatus::from_str(s))
+            .map(QuestionStatus::from_str)
             .unwrap_or(QuestionStatus::New)
     }
 
@@ -942,7 +975,7 @@ impl QuestionBankService {
             });
         }
 
-        let mut conn = self
+        let conn = self
             .vfs_db
             .get_conn_safe()
             .map_err(|e| AppError::database(e.to_string()))?;
@@ -2157,8 +2190,10 @@ pub struct KnowledgeStatsComparison {
 /// 练习模式类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PracticeMode {
     /// 顺序练习
+    #[default]
     Sequential,
     /// 随机练习
     Random,
@@ -2174,12 +2209,6 @@ pub enum PracticeMode {
     Daily,
     /// 组卷模式
     Paper,
-}
-
-impl Default for PracticeMode {
-    fn default() -> Self {
-        PracticeMode::Sequential
-    }
 }
 
 /// 限时练习会话
@@ -2393,8 +2422,10 @@ impl Default for PaperConfig {
 /// 试卷导出格式
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PaperExportFormat {
     /// 预览（不导出文件）
+    #[default]
     Preview,
     /// PDF 格式
     Pdf,
@@ -2402,12 +2433,6 @@ pub enum PaperExportFormat {
     Word,
     /// Markdown 格式
     Markdown,
-}
-
-impl Default for PaperExportFormat {
-    fn default() -> Self {
-        PaperExportFormat::Preview
-    }
 }
 
 /// 生成的试卷
@@ -2470,9 +2495,145 @@ pub struct CheckInCalendar {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mastery::service::{
+        set_now_override_ms, MasteryService, MIN_TOTAL_FOR_WEAK, WEAK_SCORE_THRESHOLD,
+    };
+    use crate::memory::learner_profile::{load_profile_from_db, WEAK_POINT_SOURCE_MASTERY};
+    use chrono::Utc;
+    use rusqlite::params;
 
     fn check(user: &str, correct: Option<&str>, qtype: QuestionType) -> (bool, bool) {
         QuestionBankService::check_answer_correctness(user, correct, &qtype)
+    }
+
+    fn setup_qbank() -> (tempfile::TempDir, Arc<VfsDatabase>, QuestionBankService) {
+        let (temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let vfs_db = Arc::new(db);
+        let svc = QuestionBankService::new(vfs_db.clone());
+        (temp_dir, vfs_db, svc)
+    }
+
+    fn seed_tagged_question(vfs_db: &VfsDatabase, tag: &str, label: &str) -> String {
+        let exam_id = format!("exam_{}", nanoid::nanoid!(6));
+        let conn = vfs_db.get_conn_safe().expect("conn");
+        conn.execute(
+            "INSERT INTO exam_sheets (
+                id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at
+             ) VALUES (?1, 'qbank mastery e2e', 'completed', ?2, '{}', '{}', ?3, ?3)",
+            params![exam_id, format!("temp_{exam_id}"), "2020-01-01T00:00:00Z"],
+        )
+        .expect("exam");
+        drop(conn);
+        VfsQuestionRepo::create_question(
+            vfs_db,
+            &CreateQuestionParams {
+                exam_id,
+                card_id: None,
+                question_label: Some(label.into()),
+                content: format!("{label}?"),
+                options: None,
+                answer: Some("2".into()),
+                explanation: None,
+                question_type: Some(QuestionType::FillBlank),
+                difficulty: None,
+                tags: Some(vec![tag.to_string()]),
+                source_type: None,
+                source_ref: None,
+                images: None,
+                parent_id: None,
+            },
+        )
+        .expect("create question")
+        .id
+    }
+
+    /// C5：submit_answer 连错 3 次 → mastery_events/states + learner_profile.weak_points
+    #[test]
+    fn submit_answer_wrong_thrice_writes_mastery_and_weak_point() {
+        let (_tmp, vfs_db, qbank) = setup_qbank();
+        let concept = "qbank_闭环概念";
+        let qid = seed_tagged_question(&vfs_db, concept, "Q1");
+        let mut t0 = Utc::now().timestamp_millis();
+        set_now_override_ms(Some(t0));
+        for i in 0..3 {
+            t0 += 120_000;
+            set_now_override_ms(Some(t0));
+            let r = qbank
+                .submit_answer(&qid, "x", Some(false), Some(&format!("qw{i}")))
+                .expect("submit");
+            assert_eq!(r.is_correct, Some(false));
+        }
+        set_now_override_ms(None);
+
+        let conn = vfs_db.get_conn_safe().unwrap();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM mastery_events
+                 WHERE concept_key = ?1 AND source = 'qbank' AND outcome = 'wrong'",
+                params![concept],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 3);
+        let (score, total): (f64, i32) = conn
+            .query_row(
+                "SELECT score, total FROM mastery_states WHERE concept_key = ?1",
+                params![concept],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(score < WEAK_SCORE_THRESHOLD);
+        assert!(total >= MIN_TOTAL_FOR_WEAK);
+
+        let profile = load_profile_from_db(&vfs_db).unwrap().expect("profile");
+        assert!(profile.weak_points.iter().any(|w| {
+            w.knowledge_point == concept && w.source.as_deref() == Some(WEAK_POINT_SOURCE_MASTERY)
+        }));
+    }
+
+    /// C5-3：同题 1 分钟内连对 5 次，增幅显著小于 5 道独立题
+    #[test]
+    fn submit_answer_anti_farm_same_question_gains_less() {
+        let (_tmp, vfs_db, qbank) = setup_qbank();
+        let mastery = MasteryService::new(vfs_db.clone());
+        let concept_ind = "qb_ind";
+        let concept_farm = "qb_farm";
+        let mut ind = Vec::new();
+        for i in 0..5 {
+            ind.push(seed_tagged_question(&vfs_db, concept_ind, &format!("I{i}")));
+        }
+        let farm = seed_tagged_question(&vfs_db, concept_farm, "F");
+        let t0 = Utc::now().timestamp_millis();
+        set_now_override_ms(Some(t0));
+        for (i, qid) in ind.iter().enumerate() {
+            set_now_override_ms(Some(t0 + i as i64 * 1_000));
+            qbank
+                .submit_answer(qid, "2", Some(true), Some(&format!("qi{i}")))
+                .unwrap();
+        }
+        let gain_ind = mastery.get_state(concept_ind).unwrap().unwrap().score - 0.5;
+        for i in 0..5 {
+            set_now_override_ms(Some(t0 + 1_000_000 + i * 5_000));
+            qbank
+                .submit_answer(&farm, "2", Some(true), Some(&format!("qf{i}")))
+                .unwrap();
+        }
+        set_now_override_ms(None);
+        let gain_farm = mastery.get_state(concept_farm).unwrap().unwrap().score - 0.5;
+        assert!(
+            gain_farm < gain_ind * 0.55,
+            "farm {gain_farm:.4} << ind {gain_ind:.4}"
+        );
+        let min_w: f64 = vfs_db
+            .get_conn_safe()
+            .unwrap()
+            .query_row(
+                "SELECT MIN(weight) FROM mastery_events WHERE concept_key = ?1",
+                params![concept_farm],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(min_w < 0.3, "decayed weight expected, got {min_w}");
     }
 
     #[test]

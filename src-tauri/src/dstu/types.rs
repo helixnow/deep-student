@@ -796,6 +796,7 @@ pub struct BatchMoveResult {
 /// C5: Subject 迁移状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct SubjectMigrationStatus {
     /// 总资源数
     pub total_resources: usize,
@@ -805,17 +806,6 @@ pub struct SubjectMigrationStatus {
     pub pending_count: usize,
     /// 自动创建的科目文件夹
     pub auto_created_folders: Vec<String>,
-}
-
-impl Default for SubjectMigrationStatus {
-    fn default() -> Self {
-        Self {
-            total_resources: 0,
-            migrated_count: 0,
-            pending_count: 0,
-            auto_created_folders: Vec::new(),
-        }
-    }
 }
 
 // ============================================================================

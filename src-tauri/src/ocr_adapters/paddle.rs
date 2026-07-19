@@ -343,7 +343,7 @@ fn parse_bbox_value(
             let values: Vec<f64> = arr.iter().take(4).filter_map(|v| v.as_f64()).collect();
 
             if values.len() == 4 {
-                let is_normalized = values.iter().all(|&v| v >= 0.0 && v <= 1.0);
+                let is_normalized = values.iter().all(|&v| (0.0..=1.0).contains(&v));
                 if is_normalized {
                     if let Some((x, y, w, h)) = resolve_xywh(&values, 1.0, 1.0) {
                         let bbox_pixels = vec![

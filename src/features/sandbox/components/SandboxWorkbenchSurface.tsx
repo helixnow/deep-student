@@ -45,7 +45,7 @@ export function SandboxWorkbenchSurface({
   ownerKey,
   hideToolbar = false,
 }: SandboxWorkbenchSurfaceProps) {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation('workbench');
   const { isSmallScreen } = useBreakpoint();
   const activeSession = useSandboxWorkbenchStore((state) => ownerKey
     ? selectSandboxWorkbenchOwnerState(state, ownerKey).activeSession

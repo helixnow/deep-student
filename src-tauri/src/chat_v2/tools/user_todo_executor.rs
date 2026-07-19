@@ -266,7 +266,7 @@ fn emit_todo_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String]
         "entityIds": entity_ids,
         "runId": ctx.run_id(),
     });
-    if let Err(e) = ctx.window.emit("todo://changed", payload) {
+    if let Err(e) = ctx.window_ref().emit("todo://changed", payload) {
         log::debug!("[UserTodoExecutor] Failed to emit todo://changed: {}", e);
     }
 }
@@ -1173,7 +1173,7 @@ impl UserTodoExecutor {
             },
         )
         .map_err(|e| e.to_string())?;
-        emit_todo_changed(ctx, "create_list", &[list.id.clone()]);
+        emit_todo_changed(ctx, "create_list", std::slice::from_ref(&list.id));
         Ok(with_undo_contract(
             json!({
                 "success": true,
@@ -1225,7 +1225,7 @@ impl UserTodoExecutor {
                 message
             }
         })?;
-        emit_todo_changed(ctx, "update_list", &[current.id.clone()]);
+        emit_todo_changed(ctx, "update_list", std::slice::from_ref(&current.id));
         Ok(with_undo_contract(
             json!({
                 "success": true,
@@ -1252,7 +1252,7 @@ impl UserTodoExecutor {
                     message
                 }
             })?;
-        emit_todo_changed(ctx, "delete_list", &[previous.id.clone()]);
+        emit_todo_changed(ctx, "delete_list", std::slice::from_ref(&previous.id));
         Ok(json!({
             "success": true,
             "listId": previous.id,
@@ -1413,7 +1413,7 @@ impl UserTodoExecutor {
         let current_list = VfsTodoRepo::get_todo_list(vfs_db, &list_id)
             .map_err(|error| error.to_string())?
             .ok_or_else(|| format!("待办清单 {list_id} 不存在"))?;
-        emit_todo_changed(ctx, "reorder", &[list_id.clone()]);
+        emit_todo_changed(ctx, "reorder", std::slice::from_ref(&list_id));
         Ok(json!({
             "success": true,
             "listId": list_id,

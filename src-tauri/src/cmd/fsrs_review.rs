@@ -157,6 +157,33 @@ pub async fn fsrs_get_due(
     state: State<'_, AppState>,
 ) -> Result<Vec<FsrsDueCard>> {
     let service = FsrsReviewService::new(state.anki_database.clone());
+    if let Some(vfs) = state.vfs_db.as_ref() {
+        let mastery = crate::mastery::MasteryService::new(vfs.clone());
+        for pending in service.pending_mastery_reviews(100)? {
+            let reconciled = if pending.revert {
+                matches!(
+                    mastery.revert_fsrs_rating_for_log(&pending.log_id),
+                    Ok(Some(_))
+                )
+            } else {
+                let tags = service
+                    .get_card_tags(&pending.anki_card_id)
+                    .unwrap_or_default();
+                tags.is_empty()
+                    || mastery
+                        .record_fsrs_rating_for_log(
+                            &pending.log_id,
+                            &pending.anki_card_id,
+                            &tags,
+                            pending.rating,
+                        )
+                        .is_ok()
+            };
+            if reconciled {
+                service.mark_mastery_review_synced(&pending.log_id)?;
+            }
+        }
+    }
     service.get_due(limit)
 }
 
@@ -171,12 +198,124 @@ pub async fn fsrs_rate(
     state: State<'_, AppState>,
 ) -> Result<FsrsRateResult> {
     let service = FsrsReviewService::new(state.anki_database.clone());
-    let result = service.rate(&cardStateId, rating, durationMs)?;
+
+    // A-P1：评分前读取 concept 掌握度，用于 due 有界偏置（不影响 rs-fsrs 核心）
+    let (pre_tags, mastery_score) = if let Some(vfs) = state.vfs_db.as_ref() {
+        // 需先拿到 anki_card_id；从即将评分的 state 读 tags
+        let anki_card_id = service
+            .get_card_state(&cardStateId)
+            .ok()
+            .flatten()
+            .map(|s| s.anki_card_id);
+        match anki_card_id {
+            Some(anki_id) => match service.get_card_tags(&anki_id) {
+                Ok(tags) if !tags.is_empty() => {
+                    let concept = tags
+                        .iter()
+                        .map(|t| t.trim())
+                        .find(|t| !t.is_empty())
+                        .map(|t| t.to_string());
+                    let score = concept.and_then(|c| {
+                        crate::mastery::MasteryService::new(vfs.clone())
+                            .get_state(&c)
+                            .ok()
+                            .flatten()
+                            .map(|s| s.score)
+                    });
+                    (tags, score)
+                }
+                Ok(tags) => (tags, None),
+                Err(e) => {
+                    log::warn!(
+                        "[fsrs_rate] failed to load card tags for mastery bias: {}",
+                        e
+                    );
+                    (Vec::new(), None)
+                }
+            },
+            None => (Vec::new(), None),
+        }
+    } else {
+        (Vec::new(), None)
+    };
+
+    let result = service.rate_with_mastery_bias(&cardStateId, rating, durationMs, mastery_score)?;
     let cards = [(
         result.card_state.id.as_str(),
         result.card_state.anki_card_id.as_str(),
     )];
     emit_fsrs_changed(&app, true, "user", "rate", &cards, &[]);
+
+    // A-P0/A-P1：若卡片有 tags/concept 且 VFS 可用，则 emit mastery event（含 signal）
+    if let Some(vfs) = state.vfs_db.as_ref() {
+        let mastery = crate::mastery::MasteryService::new(vfs.clone());
+        // Every committed review is a durable outbox row until this loop marks
+        // it synced. Thus a crash after rate() is repaired by the next rating.
+        for pending in service.pending_mastery_reviews(100)? {
+            if pending.revert {
+                match mastery.revert_fsrs_rating_for_log(&pending.log_id) {
+                    Ok(Some(_)) => service.mark_mastery_review_synced(&pending.log_id)?,
+                    Ok(None) => {
+                        log::debug!(
+                            "[fsrs_rate] mastery revert stays pending; event not present for {}",
+                            pending.log_id
+                        );
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "[fsrs_rate] mastery revert compensation failed for review log {}: {}",
+                            pending.log_id,
+                            error
+                        );
+                    }
+                }
+                continue;
+            }
+            let tags = if pending.log_id == result.log_id && !pre_tags.is_empty() {
+                pre_tags.clone()
+            } else {
+                service
+                    .get_card_tags(&pending.anki_card_id)
+                    .unwrap_or_default()
+            };
+            if tags.is_empty() {
+                service.mark_mastery_review_synced(&pending.log_id)?;
+                continue;
+            }
+            let mut last_error = None;
+            for attempt in 0..3 {
+                match mastery.record_fsrs_rating_for_log(
+                    &pending.log_id,
+                    &pending.anki_card_id,
+                    &tags,
+                    pending.rating,
+                ) {
+                    Ok(_) => {
+                        service.mark_mastery_review_synced(&pending.log_id)?;
+                        last_error = None;
+                        break;
+                    }
+                    Err(error) => {
+                        last_error = Some(error);
+                        if attempt < 2 {
+                            tokio::time::sleep(std::time::Duration::from_millis(
+                                20 * (attempt + 1),
+                            ))
+                            .await;
+                        }
+                    }
+                }
+            }
+            if let Some(error) = last_error {
+                log::warn!(
+                    "[fsrs_rate] mastery compensation failed for review log {}: {}",
+                    pending.log_id,
+                    error
+                );
+            }
+        }
+    }
+
     Ok(result)
 }
 
@@ -191,6 +330,21 @@ pub async fn fsrs_undo_last_review(
 ) -> Result<FsrsUndoResult> {
     let service = FsrsReviewService::new(state.anki_database.clone());
     let result = service.undo_last_review(&expectedLogId, &cardStateId)?;
+    if let Some(vfs) = state.vfs_db.as_ref() {
+        let mastery = crate::mastery::MasteryService::new(vfs.clone());
+        match mastery.revert_fsrs_rating_for_log(&expectedLogId) {
+            Ok(Some(_)) => service.mark_mastery_review_synced(&expectedLogId)?,
+            Ok(None) => log::debug!(
+                "[fsrs_undo] mastery revert remains pending until event {} is observed",
+                expectedLogId
+            ),
+            Err(error) => log::warn!(
+                "[fsrs_undo] durable mastery revert remains pending for {}: {}",
+                expectedLogId,
+                error
+            ),
+        }
+    }
     let cards = [(result.state.id.as_str(), result.state.anki_card_id.as_str())];
     emit_fsrs_changed(&app, result.changed, "user", "undo", &cards, &[]);
     Ok(result)

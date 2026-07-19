@@ -93,9 +93,10 @@ describe('phase 1 declared tool contracts', () => {
     expect(operation.description).toContain(risk);
     expect(operation.inputSchema).toMatchObject({
       additionalProperties: false,
-      required: ['plan_id'],
+      required: ['plan_id', 'expected_updated_at'],
       properties: {
         plan_id: { type: 'string', minLength: 1 },
+        expected_updated_at: { type: 'string', minLength: 1 },
       },
     });
   });
@@ -108,9 +109,11 @@ describe('phase 1 declared tool contracts', () => {
     expect(reviewPlanningSkill.content).not.toContain('说明可在复习界面暂停');
   });
 
-  it('gives truthful browser guidance for non-Windows workbench users', () => {
-    expect(workbenchToolsSkill.content).toMatch(/browser 领域工具[^\n]*只在 Windows 暴露/);
-    expect(workbenchToolsSkill.content).toContain('macOS/Linux');
-    expect(workbenchToolsSkill.content).toMatch(/macOS\/Linux[^\n]*workbench[^\n]*请用户接管/);
+  it('gives truthful browser guidance for Linux workbench users', () => {
+    expect(workbenchToolsSkill.content).toMatch(
+      /browser 领域工具[^\n]*在 Windows\/macOS 暴露/,
+    );
+    expect(workbenchToolsSkill.content).toContain('Linux');
+    expect(workbenchToolsSkill.content).toMatch(/Linux[^\n]*workbench[^\n]*请用户接管/);
   });
 });

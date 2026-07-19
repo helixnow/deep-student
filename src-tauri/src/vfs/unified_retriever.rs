@@ -1861,8 +1861,7 @@ fn active_segment_row_ids(
     let mut active = HashSet::new();
     // Leave room under SQLite's conservative parameter limit for route metadata.
     for chunk in unique_ids.chunks(400) {
-        let placeholders = std::iter::repeat("?")
-            .take(chunk.len())
+        let placeholders = std::iter::repeat_n("?", chunk.len())
             .collect::<Vec<_>>()
             .join(",");
         let sql = format!(

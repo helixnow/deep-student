@@ -182,6 +182,16 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
         },
         TableClassification {
             database: "vfs",
+            table_name: "mastery_events",
+            primary_key: "id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Append-only evidence events; deterministic FSRS event ids deduplicate retries",
+        },
+        TableClassification {
+            database: "vfs",
             table_name: "todo_lists",
             primary_key: "id",
             category: SyncCategory::RowSync,
@@ -251,6 +261,16 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             business_unique_keys: "",
             has_json_blobs: false,
             merge_notes: "Computed from synced review_plans; review_history is local audit/runtime data and is not part of incremental sync",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "mastery_states",
+            primary_key: "concept_key",
+            category: SyncCategory::DerivedRebuild,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Recomputed deterministically from synced mastery_events",
         },
         TableClassification {
             database: "vfs",

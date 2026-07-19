@@ -980,7 +980,7 @@ impl VlmGroundingService {
                                             }
                                         }
 
-                                        if chunk_count % 50 == 0 {
+                                        if chunk_count.is_multiple_of(50) {
                                             info!(
                                                 "[VLM-Grounding] DOCX 流式进度: {} chunks, {} 字符, {} 题",
                                                 chunk_count,

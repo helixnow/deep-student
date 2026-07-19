@@ -23,7 +23,7 @@
 
 use tauri::{
     menu::{AboutMetadataBuilder, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
-    AppHandle, Emitter, Manager, Runtime,
+    AppHandle, Emitter, Runtime,
 };
 
 /// Frontend event ids. Keep in sync with `src/menu/menuEvents.ts`.

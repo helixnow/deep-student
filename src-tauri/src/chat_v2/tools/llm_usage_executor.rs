@@ -704,7 +704,7 @@ impl ToolExecutor for LlmUsageToolExecutor {
         let started = Instant::now();
         ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
-        let result = match ctx.window.try_state::<Arc<LlmUsageDatabase>>() {
+        let result = match ctx.window_ref().try_state::<Arc<LlmUsageDatabase>>() {
             Some(database) => match database.get_conn_safe() {
                 Ok(conn) => self.execute_query(&conn, &call.arguments),
                 Err(error) => {

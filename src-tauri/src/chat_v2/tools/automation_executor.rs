@@ -111,7 +111,7 @@ impl AutomationExecutor {
         if let Some(db) = ctx.main_db.as_ref() {
             return f(db.as_ref());
         }
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         f(&state.database)
     }
 
@@ -119,7 +119,7 @@ impl AutomationExecutor {
         if let Some(db) = ctx.main_db.as_ref() {
             return db.clone();
         }
-        ctx.window.state::<AppState>().database.clone()
+        ctx.window_ref().state::<AppState>().database.clone()
     }
 
     fn reject_unknown_fields(args: &Value, allowed: &[&str]) -> Result<(), String> {
@@ -467,7 +467,7 @@ impl AutomationExecutor {
             .map_err(|error| error.to_string())?;
             let id = definition.id;
             let version = definition.version;
-            emit_automations_changed(&ctx.window.app_handle(), "create", &id);
+            emit_automations_changed(ctx.window_ref().app_handle(), "create", &id);
 
             let now_local = Local::now();
             let next_trigger = compute_next_trigger(&schedule, now_local)
@@ -528,7 +528,7 @@ impl AutomationExecutor {
         Self::with_database(ctx, |db| {
             let (previous, current) = set_automation_enabled(db, &id, expected_version, enabled)
                 .map_err(|error| serialize_automation_update_error(error, true))?;
-            emit_automations_changed(&ctx.window.app_handle(), "set_enabled", &id);
+            emit_automations_changed(ctx.window_ref().app_handle(), "set_enabled", &id);
 
             let now = Local::now();
             let next_trigger = compute_next_trigger(&current.schedule, now)
@@ -607,7 +607,7 @@ impl AutomationExecutor {
             let next_trigger = compute_next_trigger(&current.schedule, Local::now())
                 .map(|value| value.to_rfc3339())
                 .map_err(|error| error.to_string())?;
-            emit_automations_changed(&ctx.window.app_handle(), "update", &id);
+            emit_automations_changed(ctx.window_ref().app_handle(), "update", &id);
             let previous_prompt = crate::chat_v2::automations::effective_agent_prompt(&previous);
             let directly_reversible = previous_prompt.chars().count() <= 2_000;
             Ok(json!({
@@ -647,7 +647,7 @@ impl AutomationExecutor {
         Self::with_database(ctx, |db| {
             let deleted = delete_automation(db, &id, expected_version)
                 .map_err(|error| serialize_automation_update_error(error, true))?;
-            emit_automations_changed(&ctx.window.app_handle(), "delete", &id);
+            emit_automations_changed(ctx.window_ref().app_handle(), "delete", &id);
             Ok(json!({
                 "success": true,
                 "automationId": id,
@@ -666,7 +666,7 @@ impl AutomationExecutor {
         let output = run_automation_now_core(
             &id,
             expected_version,
-            ctx.window.app_handle().clone(),
+            ctx.window_ref().app_handle().clone(),
             Self::database_arc(ctx),
             true,
         )?;
@@ -704,7 +704,7 @@ impl AutomationExecutor {
         let id = Self::parse_required_string(args, "id")?;
         Self::with_database(ctx, |db| {
             retry_automation_run(db, &id).map_err(|error| error.to_string())?;
-            emit_automations_changed(&ctx.window.app_handle(), "retry", "");
+            emit_automations_changed(ctx.window_ref().app_handle(), "retry", "");
             Ok(json!({ "success": true, "runId": id, "reversible": false }))
         })
     }
@@ -714,7 +714,7 @@ impl AutomationExecutor {
         let id = Self::parse_required_string(args, "id")?;
         Self::with_database(ctx, |db| {
             cancel_automation_run(db, &id).map_err(|error| error.to_string())?;
-            emit_automations_changed(&ctx.window.app_handle(), "cancel_run", "");
+            emit_automations_changed(ctx.window_ref().app_handle(), "cancel_run", "");
             Ok(json!({ "success": true, "runId": id, "reversible": false }))
         })
     }
@@ -755,7 +755,7 @@ impl ToolExecutor for AutomationExecutor {
         let result = match tool_name {
             tool_names::AUTOMATION_PROPOSE => Self::execute_propose(&call.arguments, ctx),
             tool_names::AUTOMATION_LIST => {
-                if call.arguments.as_object().map_or(false, |o| !o.is_empty()) {
+                if call.arguments.as_object().is_some_and(|o| !o.is_empty()) {
                     Err("automation_list accepts no arguments".to_string())
                 } else {
                     Self::execute_list(ctx)

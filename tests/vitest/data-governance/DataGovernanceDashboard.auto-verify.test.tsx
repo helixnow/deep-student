@@ -46,6 +46,11 @@ vi.mock('@/api/dataGovernance', () => ({
   setBackupConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockShowGlobalNotification = vi.hoisted(() => vi.fn());
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: (...args: unknown[]) => mockShowGlobalNotification(...args),
+}));
+
 import { OverviewTab } from '@/features/settings';
 import { BackupTab } from '@/features/settings';
 import type { AutoVerifyResponse, BackupInfoResponse } from '@/types/dataGovernance';
@@ -450,5 +455,45 @@ describe('BackupTab verification status indicators', () => {
     expect(
       screen.getByText(/验证失败|data:governance\.verification_failed/i),
     ).toBeInTheDocument();
+  });
+});
+
+// ============================================================================
+// 测试组 6：legacy incremental 拒恢复（创建入口已下线）
+// ============================================================================
+
+describe('BackupTab legacy incremental restore rejection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('labels incremental packages and blocks restore without calling onRestoreBackup', () => {
+    const onRestoreBackup = vi.fn();
+
+    render(
+      <BackupTab
+        {...defaultBackupTabProps}
+        onRestoreBackup={onRestoreBackup}
+      />,
+    );
+
+    expect(
+      screen.getByText('data:governance.incremental_legacy_unsupported'),
+    ).toBeInTheDocument();
+
+    const restoreButtons = screen.getAllByTitle('data:governance.restore');
+    expect(restoreButtons.length).toBeGreaterThanOrEqual(2);
+
+    // sampleBackups[1] is incremental
+    fireEvent.click(restoreButtons[1]!);
+
+    expect(mockShowGlobalNotification).toHaveBeenCalledWith(
+      'warning',
+      'data:governance.restore_incremental_not_supported',
+    );
+    expect(onRestoreBackup).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(/data:governance\.confirm_restore/i),
+    ).not.toBeInTheDocument();
   });
 });

@@ -445,7 +445,7 @@ impl VfsEmbeddingService {
                     unit_id: unit_id.to_string(),
                     resource_type: resource_type.to_string(),
                     folder_id: folder_id.map(|s| s.to_string()),
-                    chunk_index: c.chunk.index as i32,
+                    chunk_index: c.chunk.index,
                     text: c.chunk.text.clone(),
                     metadata_json,
                     created_at: now.clone(),
@@ -516,9 +516,9 @@ impl VfsEmbeddingPipeline {
 
         // VFS 只支持文本模态
         if modality != MODALITY_TEXT {
-            return Err(VfsError::Other(format!(
-                "VFS 只支持文本模态，多模态内容请使用 crate::multimodal 模块"
-            )));
+            return Err(VfsError::Other(
+                "VFS 只支持文本模态，多模态内容请使用 crate::multimodal 模块".to_string(),
+            ));
         }
 
         // 1. 生成嵌入

@@ -53,7 +53,6 @@ use super::handler_utils::{
     list_unassigned_translations,
     mindmap_to_dstu_node,
     note_to_dstu_node,
-    parse_timestamp,
     purge_resource_by_type_if_trashed,
     restore_resource_by_type,
     restore_resource_by_type_with_conn,
@@ -91,7 +90,7 @@ fn is_memory_system_hidden_name(name: &str) -> bool {
 // ============================================================================
 
 /// 最大内容大小: 1MB (用于防止内存耗尽攻击) - HIGH-004修复：从10MB降低到1MB
-const MAX_CONTENT_SIZE: usize = 1 * 1024 * 1024; // 1MB
+const MAX_CONTENT_SIZE: usize = 1024 * 1024; // 1MB
 
 /// 最大元数据大小: 64KB (序列化后的JSON大小)
 const MAX_METADATA_SIZE: usize = 64 * 1024; // 64KB
@@ -133,7 +132,7 @@ async fn dstu_list_folder_first(
     let mut results = Vec::new();
 
     // 🔧 P0-07 修复: 统一 root 约定，支持 null、""、"root" 作为根目录
-    let folder_id = options.folder_id.as_ref().map(|s| s.as_str());
+    let folder_id = options.folder_id.as_deref();
     let is_root = folder_id.is_none()
         || folder_id == Some("")
         || folder_id == Some("root")
@@ -1061,7 +1060,7 @@ pub async fn dstu_create(
             } else {
                 MAX_FILE_SIZE
             };
-            let max_base64_len = ((max_file_size + 2) / 3) * 4 + 16; // 4/3 编码开销 + 少量余量
+            let max_base64_len = max_file_size.div_ceil(3) * 4 + 16; // 4/3 编码开销 + 少量余量
             if file_base64.len() > max_base64_len {
                 log::error!(
                     "[DSTU::handlers] dstu_create: FAILED - base64 payload too large: {} bytes",
@@ -1147,7 +1146,7 @@ pub async fn dstu_create(
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
                     "pptx"
                 }
-                _ => mime_type.split('/').last().unwrap_or("bin"),
+                _ => mime_type.split('/').next_back().unwrap_or("bin"),
             };
 
             // 存储文件到 Blob
@@ -1314,7 +1313,7 @@ pub async fn dstu_update(
                 None
             };
 
-            let mut updated_note = match VfsNoteRepo::update_note(
+            let updated_note = match VfsNoteRepo::update_note(
                 &vfs_db,
                 &id,
                 VfsUpdateNoteParams {
@@ -1667,7 +1666,7 @@ pub async fn dstu_rename(
     let node = match resource_type.as_str() {
         "notes" => {
             // 更新笔记标题
-            let mut updated_note = match VfsNoteRepo::update_note(
+            let updated_note = match VfsNoteRepo::update_note(
                 &vfs_db,
                 &id,
                 VfsUpdateNoteParams {
@@ -5488,7 +5487,7 @@ pub async fn dstu_search_in_folder(
         }
 
         // 按更新时间排序
-        results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
         // 限制结果数量
         if let Some(limit) = options.limit {
@@ -5547,8 +5546,7 @@ pub async fn dstu_parse_path(path: String) -> Result<DstuParsedPath, String> {
     let normalized = normalized.trim_end_matches('/');
 
     // 检查虚拟路径
-    if normalized.starts_with("/@") {
-        let virtual_name = &normalized[2..];
+    if let Some(virtual_name) = normalized.strip_prefix("/@") {
         return Ok(DstuParsedPath::virtual_path(virtual_name));
     }
 
@@ -5739,7 +5737,7 @@ pub async fn dstu_get_resource_by_path(
     if parsed.is_virtual {
         let name = parsed.full_path.trim_start_matches("/@");
         return Ok(Some(DstuNode::folder(
-            &format!("@{}", name),
+            format!("@{}", name),
             &parsed.full_path,
             name,
         )));

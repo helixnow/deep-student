@@ -149,7 +149,7 @@ fn extract_pdf_text(pdf_bytes: &[u8]) -> Option<String> {
         }
     };
 
-    match crate::pdfium_utils::extract_text_from_pdf_bytes(&pdfium, pdf_bytes) {
+    match crate::pdfium_utils::extract_text_from_pdf_bytes(pdfium, pdf_bytes) {
         Ok(text) => {
             let trimmed = text.trim().to_string();
             if trimmed.is_empty() {
@@ -360,7 +360,7 @@ fn render_single_page(
 /// ★ P0 修复：优先尝试应用捆绑库，然后回退到系统库
 /// 确保移动端和桌面端使用一致的渲染引擎
 fn load_pdfium() -> VfsResult<&'static pdfium_render::prelude::Pdfium> {
-    crate::pdfium_utils::load_pdfium().map_err(|e| VfsError::Other(e))
+    crate::pdfium_utils::load_pdfium().map_err(VfsError::Other)
 }
 
 #[cfg(test)]

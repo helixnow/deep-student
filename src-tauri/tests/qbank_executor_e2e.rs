@@ -215,7 +215,7 @@ fn execution_context(harness: &ExecutorHarness, block_id: &str) -> ExecutionCont
         block_id.to_string(),
         emitter,
         Arc::new(ToolRegistry::new()),
-        harness.window.clone(),
+        Some(harness.window.clone()),
     )
     .with_main_db(Some(harness.main_db.clone()))
     .with_vfs_db(Some(harness.vfs_db.clone()))

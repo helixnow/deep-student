@@ -26,46 +26,36 @@ pub enum ReasoningEffort {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "mode")]
+#[derive(Default)]
 pub enum ContextInheritance {
     None,
+    #[default]
     Summary,
-    LastNTurns { turns: u32 },
+    LastNTurns {
+        turns: u32,
+    },
     Full,
-}
-
-impl Default for ContextInheritance {
-    fn default() -> Self {
-        Self::Summary
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SandboxMode {
+    #[default]
     Inherit,
     ReadOnly,
     WorkspaceWrite,
     DangerFullAccess,
 }
 
-impl Default for SandboxMode {
-    fn default() -> Self {
-        Self::Inherit
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ApprovalPolicy {
+    #[default]
     Inherit,
     Never,
     OnRequest,
-}
-
-impl Default for ApprovalPolicy {
-    fn default() -> Self {
-        Self::Inherit
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

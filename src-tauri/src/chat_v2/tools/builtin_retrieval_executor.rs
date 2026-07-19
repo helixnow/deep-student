@@ -1519,9 +1519,7 @@ impl BuiltinRetrievalExecutor {
                 if !source_id.is_empty() && memory_note_ids.contains(source_id) {
                     return false;
                 }
-                !s.title
-                    .as_ref()
-                    .map_or(false, |t| memory_titles.contains(t))
+                !s.title.as_ref().is_some_and(|t| memory_titles.contains(t))
             });
             let deduped = before_dedup - kb_sources.len();
             if deduped > 0 {

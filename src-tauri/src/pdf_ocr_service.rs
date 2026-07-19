@@ -27,14 +27,14 @@ use crate::models::{
 
 type Result<T> = std::result::Result<T, AppError>;
 
-const PDF_OCR_CACHE_MAX_BYTES: u64 = 1 * 1024 * 1024 * 1024; // 1 GiB
+const PDF_OCR_CACHE_MAX_BYTES: u64 = 1024 * 1024 * 1024; // 1 GiB
 const PDF_OCR_CACHE_TARGET_BYTES: u64 = 800 * 1024 * 1024; // 0.8 GiB
 
 // ★ 2026-06-12（代理 3 审阅 X3 落地）：pdf_ocr_images/{session_id} 渲染产物此前无任何清理,
 // 每次 PDF OCR 都把全部页面 JPEG 永久留在磁盘(300DPI 下 500 页 ≈ 数百 MB/次)。
 // 复用缓存预算机制:新会话启动时按 LRU 清理旧会话目录。
 const PDF_OCR_IMAGES_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GiB
-const PDF_OCR_IMAGES_TARGET_BYTES: u64 = 1 * 1024 * 1024 * 1024; // 1 GiB
+const PDF_OCR_IMAGES_TARGET_BYTES: u64 = 1024 * 1024 * 1024; // 1 GiB
 
 /// 默认渲染 DPI（150 DPI 对应 A4 纸约 1275x1650 像素）
 const DEFAULT_RENDER_DPI: u32 = 150;
@@ -1272,7 +1272,7 @@ impl PdfOcrService {
                 return Ok(());
             }
 
-            entries.sort_by(|a, b| a.2.cmp(&b.2));
+            entries.sort_by_key(|a| a.2);
 
             for (path, size, _) in entries {
                 if total_bytes <= target_bytes {

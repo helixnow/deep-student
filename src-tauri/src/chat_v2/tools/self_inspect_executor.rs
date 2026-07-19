@@ -117,8 +117,8 @@ impl SelfInspectExecutor {
     fn collect_runtime_roots(ctx: &ExecutionContext, limitations: &mut Vec<String>) -> Value {
         let mut entries: Vec<Value> = Vec::new();
 
-        let state = ctx.window.state::<AppState>();
-        let app = ctx.window.app_handle();
+        let state = ctx.window_ref().state::<AppState>();
+        let app = ctx.window_ref().app_handle();
         match runtime_roots_for_session(app, &state.database, &ctx.session_id, false) {
             Ok(roots) => {
                 entries.extend(roots.iter().map(Self::root_json));

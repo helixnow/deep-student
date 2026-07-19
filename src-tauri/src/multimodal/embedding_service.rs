@@ -143,7 +143,7 @@ impl MultimodalEmbeddingService {
 
     /// 为单个多模态输入生成嵌入向量
     pub async fn embed_single(&self, input: &MultimodalInput) -> Result<Vec<f32>> {
-        let embeddings = self.embed_batch(&[input.clone()]).await?;
+        let embeddings = self.embed_batch(std::slice::from_ref(input)).await?;
         embeddings
             .into_iter()
             .next()
@@ -853,7 +853,7 @@ impl MultimodalEmbeddingService {
                             round + 2, current_max_tokens, error_str
                         );
                         // 减半 token 限制，进行更激进的分块
-                        current_max_tokens = current_max_tokens / 2;
+                        current_max_tokens /= 2;
                         // 确保不会太小
                         if current_max_tokens < 256 {
                             current_max_tokens = 256;

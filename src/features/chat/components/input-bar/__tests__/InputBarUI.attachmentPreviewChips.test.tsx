@@ -76,7 +76,8 @@ describe('InputBarUI attachment preview chips', () => {
       code: 'Enter',
     });
 
-    expect(showGlobalNotificationMock).toHaveBeenCalledWith('warning', 'common:messages.error.empty_input');
+    // 测试环境的 i18n 已同步加载 common 命名空间，断言用户可见的翻译文案而非原始 key
+    expect(showGlobalNotificationMock).toHaveBeenCalledWith('warning', '请输入内容');
   });
 
   it('opens a compact attachment launcher from the plus button', () => {
@@ -85,7 +86,8 @@ describe('InputBarUI attachment preview chips', () => {
     fireEvent.click(screen.getByTestId('btn-toggle-attachments'));
 
     expect(screen.getByRole('menuitem', { name: 'analysis:input_bar.attachments.add' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: 'chatV2:inputBar.resourceLibrary' })).toBeInTheDocument();
+    // chatV2 命名空间在测试环境已同步加载，断言用户可见的翻译文案而非原始 key
+    expect(screen.getByRole('menuitem', { name: '资源库' })).toBeInTheDocument();
   });
 
   it('renders pending attachments as compact preview chips above the textarea', () => {

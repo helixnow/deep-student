@@ -69,6 +69,10 @@ import type {
   BackupVerifyResponse,
   AutoVerifyResponse,
 } from '@/types/dataGovernance';
+import {
+  INCREMENTAL_BACKUP_REMOVED_MESSAGE,
+  INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
+} from '@/types/dataGovernance';
 
 import type {
   BackupJobStartResponse,
@@ -112,11 +116,10 @@ describe('DataGovernanceApi.runBackup() contract', () => {
 
   it('calls invoke with correct command name and camelCase params (Tauri v2 auto-maps to snake_case)', async () => {
     mockInvoke.mockResolvedValue(mockResponse);
-    await runBackup('full', undefined, true, ['images', 'documents']);
+    await runBackup('full', true, ['images', 'documents']);
 
     expectSingleInvoke('data_governance_run_backup', {
       backupType: 'full',
-      baseVersion: undefined,
       includeAssets: true,
       assetTypes: ['images', 'documents'],
     });
@@ -128,7 +131,6 @@ describe('DataGovernanceApi.runBackup() contract', () => {
 
     expectSingleInvoke('data_governance_run_backup', {
       backupType: undefined,
-      baseVersion: undefined,
       includeAssets: undefined,
       assetTypes: undefined,
     });
@@ -146,16 +148,34 @@ describe('DataGovernanceApi.runBackup() contract', () => {
     expect(typeof result.kind).toBe('string');
   });
 
-  it('passes incremental backup params correctly', async () => {
+  // Incremental backup was removed (round-1 A2 / S0); the API no longer
+  // accepts an "incremental" type or a baseVersion param. Historical
+  // incremental packages are still recognized in listings but rejected on
+  // restore. This test now asserts the full-only contract with assets.
+  it('supports full backup with assets and no baseVersion param', async () => {
     mockInvoke.mockResolvedValue(mockResponse);
-    await runBackup('incremental', 'v1.0.0');
+    await runBackup('full', true);
 
     expectSingleInvoke('data_governance_run_backup', {
-      backupType: 'incremental',
-      baseVersion: 'v1.0.0',
-      includeAssets: undefined,
+      backupType: 'full',
+      includeAssets: true,
       assetTypes: undefined,
     });
+    const invokeArgs = mockInvoke.mock.calls[0]![1] as Record<string, unknown>;
+    expect(invokeArgs).not.toHaveProperty('baseVersion');
+    expect(invokeArgs.backupType).not.toBe('incremental');
+  });
+
+  it('exposes English create/restore rejection messages aligned with Rust constants', () => {
+    expect(INCREMENTAL_BACKUP_REMOVED_MESSAGE).toBe(
+      'Incremental backup has been removed; use full backup or cloud sync',
+    );
+    expect(INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE).toBe(
+      'Legacy incremental backup cannot be restored; use a full backup or cloud sync',
+    );
+    expect(INCREMENTAL_BACKUP_REMOVED_MESSAGE).not.toEqual(
+      INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
+    );
   });
 });
 
@@ -249,7 +269,9 @@ describe('DataGovernanceApi.getBackupList() contract', () => {
       expect(typeof backup.path).toBe('string');
       expect(typeof backup.size).toBe('number');
       expect(Array.isArray(backup.databases)).toBe(true);
-      expect(['full', 'incremental']).toContain(backup.backup_type);
+      expect(['full', 'incremental', 'partial_overlay', 'legacy_unknown']).toContain(
+        backup.backup_type,
+      );
     }
   });
 

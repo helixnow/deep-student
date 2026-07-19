@@ -871,7 +871,7 @@ impl AttachmentStageExecutor {
         let start_time = Instant::now();
         let main_db = ctx.main_db.clone().ok_or("Main database not available")?;
         let vfs_db = ctx.vfs_db.clone();
-        let app_handle = ctx.window.app_handle().clone();
+        let app_handle = ctx.window_ref().app_handle().clone();
         let session_id = ctx.session_id.clone();
         let blocking_message_id = message_id.clone();
         let blocking_attachment_id = attachment_id.clone();

@@ -1,0 +1,14 @@
+/* MCP 预置货架权限 Drawer + OAuth 控件 */
+
+.mcp-preset-selector {
+  overscroll-behavior: contain;
+}
+
+.mcp-preset-permission-drawer {
+  display: flex;
+  flex-direction: column;
+}
+
+.mcp-oauth-controls {
+  margin-top: 0.25rem;
+}

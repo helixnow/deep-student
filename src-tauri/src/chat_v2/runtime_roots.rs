@@ -541,10 +541,10 @@ fn runtime_root_identity(path: &Path) -> Result<RuntimeRootIdentity, String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        return Ok(RuntimeRootIdentity::Unix {
+        Ok(RuntimeRootIdentity::Unix {
             device: metadata.dev(),
             inode: metadata.ino(),
-        });
+        })
     }
 
     #[cfg(windows)]
@@ -1453,7 +1453,8 @@ pub fn resolve_effective_runtime_root_id_for_session(
         return id.to_string();
     }
 
-    let preferred = chat_v2_db.and_then(|db| resolve_group_preferred_runtime_root_id(db, session_id));
+    let preferred =
+        chat_v2_db.and_then(|db| resolve_group_preferred_runtime_root_id(db, session_id));
     if let Some(ref preferred_id) = preferred {
         if is_runtime_root_id_resolvable(
             app,
@@ -1486,11 +1487,7 @@ pub fn redact_path_for_display(path: &str) -> String {
             if trimmed == home_s.as_ref() {
                 return "~".to_string();
             }
-            let prefix = format!(
-                "{}{}",
-                home_s,
-                std::path::MAIN_SEPARATOR
-            );
+            let prefix = format!("{}{}", home_s, std::path::MAIN_SEPARATOR);
             if let Some(rest) = trimmed.strip_prefix(&prefix) {
                 return format!("~/{}", rest.replace('\\', "/"));
             }
@@ -1792,7 +1789,7 @@ fn metadata_matches_opened_file(before: &fs::Metadata, opened: &fs::Metadata) ->
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        return before.dev() == opened.dev() && before.ino() == opened.ino();
+        before.dev() == opened.dev() && before.ino() == opened.ino()
     }
 
     #[cfg(not(any(unix, windows)))]
@@ -2098,7 +2095,7 @@ fn verify_regular_artifact_hash(
     let target_canon = target
         .canonicalize()
         .map_err(|e| format!("Artifact does not exist: {}", e))?;
-    if !target_canon.starts_with(&root_canon) {
+    if !target_canon.starts_with(root_canon) {
         return Err("Path escapes the artifacts root".to_string());
     }
     let (actual, _) = sha256_file(&target_canon)?;

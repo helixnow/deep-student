@@ -1,9 +1,9 @@
 /**
- * StatusBar / StatusBarItems（SB1 壳 + SB2 信号项 + SB3 学习中心）
+ * StatusBar / StatusBarItems（SB1 壳 + SB2 信号项 + SB3 今日节律）
  * ---------------------------------------------------------------------------
  * 紧凑玻璃顶条：左侧品牌，右侧状态与工具。根 pointer-events:none，子项 auto。
  * Windows：右侧为窗控胶囊让位（data-chrome-inset=windows）。
- * 学习中心：2×2 瓷砖，非整页堆叠列表。
+ * 今日节律：纵向节律行（闪卡 / 番茄 / 自动化 / 任务）。
  */
 
 .wb-menubar {
@@ -177,7 +177,7 @@
 
 /* svg 基线对齐：消除 inline 基线带来的 1px 垂直偏移 */
 .wb-menubar-item-icon svg,
-.wb-menubar-tile-icon svg {
+.wb-menubar-rhythm-icon svg {
   display: block;
 }
 
@@ -210,7 +210,7 @@
   white-space: nowrap;
 }
 
-/* ==== 学习中心弹层（紧凑 2×2） ======================================== */
+/* ==== 今日节律弹层 ======================================== */
 
 .wb-menubar-flyout-backdrop {
   position: fixed;
@@ -225,7 +225,7 @@
   top: calc(100% + 6px);
   right: 0;
   z-index: calc(var(--wb-z-menubar-flyout, 9150) + 1);
-  width: min(280px, calc(100vw - 24px));
+  width: min(300px, calc(100vw - 24px));
   padding: 12px;
   border-radius: var(--wb-overlay-radius, 18px);
   color: var(--wb-titlebar-fg, hsl(var(--foreground)));
@@ -255,18 +255,17 @@
   opacity: 0.88;
 }
 
-.wb-menubar-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.wb-menubar-tile {
+.wb-menubar-rhythm {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.wb-menubar-rhythm-row {
+  display: flex;
   align-items: flex-start;
-  gap: 4px;
-  min-height: 84px;
+  gap: 10px;
+  width: 100%;
   margin: 0;
   padding: 10px;
   border: 1px solid
@@ -282,112 +281,70 @@
     transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
 }
 
-.wb-menubar-tile:hover {
+.wb-menubar-rhythm-row:hover {
   background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08)));
 }
 
-/* split 桌面格本体不可点，按压反馈只给真按钮 */
-.wb-menubar-tile:not(.wb-menubar-tile-split):active {
-  transform: scale(0.98);
+.wb-menubar-rhythm-row:active {
+  transform: scale(0.99);
 }
 
-.wb-menubar-tile:focus-visible {
+.wb-menubar-rhythm-row:focus-visible {
   outline: var(--wb-focus-ring-width, 2px) solid
     var(--wb-focus-ring-color, hsl(var(--primary) / 0.85));
   outline-offset: 1px;
 }
 
-.wb-menubar-tile[data-primary='true'] {
+.wb-menubar-rhythm-row[data-primary='true'] {
   border-color: color-mix(in hsl, hsl(var(--primary)) 38%, hsl(var(--border)) 62%);
   background: color-mix(in hsl, hsl(var(--primary)) 12%, transparent 88%);
 }
 
-.wb-menubar-tile[data-primary='true']:hover {
+.wb-menubar-rhythm-row[data-primary='true']:hover {
   background: color-mix(in hsl, hsl(var(--primary)) 18%, transparent 82%);
 }
 
-.wb-menubar-tile-icon {
+.wb-menubar-rhythm-row[data-status='running'] {
+  border-color: color-mix(in hsl, hsl(var(--primary)) 28%, hsl(var(--border)) 72%);
+}
+
+.wb-menubar-rhythm-row[data-status='error'] {
+  border-color: color-mix(in hsl, hsl(var(--destructive)) 32%, hsl(var(--border)) 68%);
+}
+
+.wb-menubar-rhythm-icon {
   display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 1px;
   color: var(--wb-menubar-fg-strong, hsl(var(--foreground)));
   opacity: 0.92;
 }
 
-.wb-menubar-tile-label {
+.wb-menubar-rhythm-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wb-menubar-rhythm-label {
   font-size: 12px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
-.wb-menubar-tile-detail {
+.wb-menubar-rhythm-detail {
   font-size: 11px;
-  line-height: 1.3;
+  line-height: 1.35;
   color: var(--wb-menubar-fg, hsl(var(--muted-foreground)));
-  /* 数字详情走等宽数字，避免番茄倒计时跳动 */
   font-variant-numeric: tabular-nums;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* 桌面格：外层非按钮，内嵌两个动作 */
-.wb-menubar-tile-split {
-  cursor: default;
-}
-
-.wb-menubar-tile-split:hover {
-  background: color-mix(in hsl, hsl(var(--card)) 42%, transparent 58%);
-}
-
-.wb-menubar-tile-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  margin-top: auto;
-}
-
-.wb-menubar-tile-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-height: 24px;
-  width: 100%;
-  padding: 0 6px;
-  border: 1px solid color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
-  border-radius: 7px;
-  background: color-mix(in hsl, hsl(var(--card)) 55%, transparent 45%);
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  font-size: 10px;
-  font-weight: 500;
-  transition:
-    background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
-    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
-}
-
-.wb-menubar-tile-action:hover {
-  background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08)));
-}
-
-.wb-menubar-tile-action:active {
-  transform: scale(0.97);
-}
-
-.wb-menubar-tile-action:focus-visible {
-  outline: var(--wb-focus-ring-width, 2px) solid
-    var(--wb-focus-ring-color, hsl(var(--primary) / 0.85));
-  outline-offset: 1px;
 }
 
 :root[data-wb-material='minimal'] .wb-menubar-item,
 :root[data-wb-material='reduced'] .wb-menubar-item,
-:root[data-wb-material='minimal'] .wb-menubar-tile,
-:root[data-wb-material='reduced'] .wb-menubar-tile,
-:root[data-wb-material='minimal'] .wb-menubar-tile-action,
-:root[data-wb-material='reduced'] .wb-menubar-tile-action {
+:root[data-wb-material='minimal'] .wb-menubar-rhythm-row,
+:root[data-wb-material='reduced'] .wb-menubar-rhythm-row {
   transition: none;
 }
 
@@ -398,8 +355,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .wb-menubar-item,
-  .wb-menubar-tile,
-  .wb-menubar-tile-action {
+  .wb-menubar-rhythm-row {
     transition: none;
   }
   /* RM 下 wb-kf-overshoot-in 已被 motion.css 重定义为纯淡入，无需额外处理 */

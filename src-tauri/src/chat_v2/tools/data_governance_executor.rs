@@ -75,7 +75,7 @@ impl DataGovernanceToolExecutor {
         ensure_allowed_keys(arguments, &["page", "page_size"])?;
         let (page, page_size, offset) = pagination(arguments)?;
 
-        let app = ctx.window.app_handle().clone();
+        let app = ctx.window_ref().app_handle().clone();
         let mut backups =
             crate::data_governance::commands_backup::data_governance_get_backup_list(app)
                 .await
@@ -132,7 +132,7 @@ impl DataGovernanceToolExecutor {
         let include_assets = optional_bool(arguments, "include_assets")?.unwrap_or(false);
         let asset_types = parse_asset_types(arguments, include_assets)?;
 
-        let app = ctx.window.app_handle().clone();
+        let app = ctx.window_ref().app_handle().clone();
         let backup_job_state = app.try_state::<BackupJobManagerState>().ok_or_else(|| {
             governance_error(
                 "BACKUP_SERVICE_UNAVAILABLE",
@@ -179,7 +179,7 @@ impl DataGovernanceToolExecutor {
         ensure_allowed_keys(arguments, &["job_id"])?;
         let job_id = required_job_id(arguments)?;
 
-        let app = ctx.window.app_handle().clone();
+        let app = ctx.window_ref().app_handle().clone();
         let manager = app.try_state::<BackupJobManagerState>().ok_or_else(|| {
             governance_error(
                 "BACKUP_SERVICE_UNAVAILABLE",
@@ -219,7 +219,7 @@ impl DataGovernanceToolExecutor {
         ensure_allowed_keys(arguments, &[])?;
 
         let status = crate::data_governance::commands_sync::data_governance_get_sync_status(
-            ctx.window.app_handle().clone(),
+            ctx.window_ref().app_handle().clone(),
         )
         .await
         .map_err(|error| {
@@ -319,7 +319,7 @@ impl DataGovernanceToolExecutor {
                 true,
             )
         })?;
-        let app = ctx.window.app_handle().clone();
+        let app = ctx.window_ref().app_handle().clone();
         let config =
             crate::data_governance::commands_sync::load_hydrated_cloud_config_ssot(&app, database)
                 .map_err(cloud_config_tool_error)?;

@@ -37,11 +37,21 @@ const KNOWN_FRONTMATTER_KEYS = new Set([
   'description',
   'version',
   'author',
+  'license',
+  'homepage',
+  'tags',
+  'compatibility',
   'priority',
   'allowed-tools',
   'allowedTools',
   'tools',
   'disableAutoInvoke',
+  'disable-model-invocation',
+  'disableModelInvocation',
+  'user-invocable',
+  'userInvocable',
+  'argument-hint',
+  'argumentHint',
   'embedded-tools',
   'embeddedTools',
   'skill-type',
@@ -149,6 +159,31 @@ function coerceStringField(value: unknown): string | undefined {
 }
 
 /**
+ * 将布尔字段安全转换
+ *
+ * 支持 YAML bool 与字符串 `"true"` / `"false"`。
+ */
+function coerceBooleanField(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
+/**
+ * 解析 disableAutoInvoke，并合并 Anthropic `disable-model-invocation`
+ *
+ * 两者同时存在时取更保守值（任一为 true → true）。
+ */
+function parseDisableAutoInvoke(rawMetadata: Record<string, unknown>): boolean {
+  const native = coerceBooleanField(rawMetadata.disableAutoInvoke);
+  const anthropic = coerceBooleanField(
+    rawMetadata['disable-model-invocation'] ?? rawMetadata.disableModelInvocation
+  );
+  return native === true || anthropic === true;
+}
+
+/**
  * 将数组字段安全转换为字符串数组
  *
  * 支持两种输入格式：
@@ -156,10 +191,13 @@ function coerceStringField(value: unknown): string | undefined {
  * - 逗号分隔字符串：`"a, b, c"` → `['a', 'b', 'c']`
  */
 function coerceStringArrayField(value: unknown): string[] | undefined {
-  // 支持逗号分隔的字符串（如 YAML 中写 `allowedTools: "Read, Write"`）
+  // 支持：
+  // - YAML 数组：`[a, b]`
+  // - 逗号分隔：`"Read, Write"`
+  // - Agent Skills 空格分隔：`allowed-tools: Read Bash`
   if (typeof value === 'string') {
     const parts = value
-      .split(',')
+      .split(/[,\s]+/)
       .map((s) => s.trim())
       .filter(Boolean);
     return parts.length > 0 ? parts : undefined;
@@ -413,16 +451,28 @@ export function parseSkillFile(
   const metadataRaw = rawMetadata.metadata;
   const manifestVersionRaw = rawMetadata['manifest-version'] ?? rawMetadata.manifestVersion;
 
+  const userInvocableRaw = coerceBooleanField(
+    rawMetadata['user-invocable'] ?? rawMetadata.userInvocable
+  );
+  const argumentHintRaw =
+    rawMetadata['argument-hint'] ?? rawMetadata.argumentHint;
+
   const metadata: Partial<SkillMetadata> = {
     id: skillId,
     name: coerceStringField(rawMetadata.name),
     description: coerceStringField(rawMetadata.description),
     version: coerceStringField(rawMetadata.version),
     author: coerceStringField(rawMetadata.author),
+    license: coerceStringField(rawMetadata.license),
+    homepage: coerceStringField(rawMetadata.homepage),
+    tags: coerceStringArrayField(rawMetadata.tags),
+    compatibility: coerceStringField(rawMetadata.compatibility),
     priority: typeof rawMetadata.priority === 'number' ? rawMetadata.priority : undefined,
     allowedTools: coerceStringArrayField(allowedToolsRaw),
     tools: coerceStringArrayField(toolsRaw), // 向后兼容
-    disableAutoInvoke: rawMetadata.disableAutoInvoke === true || rawMetadata.disableAutoInvoke === 'true',
+    disableAutoInvoke: parseDisableAutoInvoke(rawMetadata),
+    userInvocable: userInvocableRaw,
+    argumentHint: coerceStringField(argumentHintRaw),
     embeddedTools: parseEmbeddedTools(embeddedToolsRaw, warnings),
     skillType: parseSkillType(skillTypeRaw),
     relatedSkills: coerceStringArrayField(relatedSkillsRaw),
@@ -457,10 +507,16 @@ export function parseSkillFile(
     description: metadata.description!,
     version: metadata.version,
     author: metadata.author,
+    license: metadata.license,
+    homepage: metadata.homepage,
+    tags: metadata.tags,
+    compatibility: metadata.compatibility,
     priority: metadata.priority ?? SKILL_DEFAULT_PRIORITY,
     allowedTools: metadata.allowedTools,
     tools: metadata.tools, // 向后兼容
     disableAutoInvoke: metadata.disableAutoInvoke ?? false,
+    userInvocable: metadata.userInvocable,
+    argumentHint: metadata.argumentHint,
     embeddedTools: metadata.embeddedTools, // 渐进披露架构核心字段
     skillType: metadata.skillType ?? 'standalone', // 默认独立型
     relatedSkills: metadata.relatedSkills,
@@ -549,10 +605,16 @@ export function extractSkillMetadata(
       description: raw.description,
       version: coerceStringField(raw.version),
       author: coerceStringField(raw.author),
+      license: coerceStringField(raw.license),
+      homepage: coerceStringField(raw.homepage),
+      tags: coerceStringArrayField(raw.tags),
+      compatibility: coerceStringField(raw.compatibility),
       priority: (typeof raw.priority === 'number' ? raw.priority : undefined) ?? SKILL_DEFAULT_PRIORITY,
       allowedTools,
       tools: coerceStringArrayField(raw.tools), // 向后兼容
-      disableAutoInvoke: raw.disableAutoInvoke === true,
+      disableAutoInvoke: parseDisableAutoInvoke(raw),
+      userInvocable: coerceBooleanField(raw['user-invocable'] ?? raw.userInvocable),
+      argumentHint: coerceStringField(raw['argument-hint'] ?? raw.argumentHint),
       embeddedTools,
       skillType: parseSkillType(skillTypeRaw),
       relatedSkills: coerceStringArrayField(relatedSkillsRaw),
@@ -622,6 +684,16 @@ export function serializeSkillToMarkdown(
   frontmatter.description = metadata.description;
   setIfDefined(frontmatter, 'version', metadata.version);
   setIfDefined(frontmatter, 'author', metadata.author);
+  setIfDefined(frontmatter, 'license', metadata.license);
+  setIfDefined(frontmatter, 'homepage', metadata.homepage);
+  setIfDefined(frontmatter, 'compatibility', metadata.compatibility);
+
+  if (metadata.tags && metadata.tags.length > 0) {
+    frontmatter.tags = metadata.tags;
+  } else {
+    delete frontmatter.tags;
+  }
+
   if (metadata.priority !== undefined && metadata.priority !== SKILL_DEFAULT_PRIORITY) {
     frontmatter.priority = metadata.priority;
   } else {
@@ -637,11 +709,31 @@ export function serializeSkillToMarkdown(
     delete frontmatter.tools;
   }
 
+  // disableAutoInvoke 为 Deep Student 一等字段；Anthropic 的 disable-model-invocation
+  // 在解析期已合并进来，序列化时写回原生字段并清理 kebab/camel 别名，避免重复。
   if (metadata.disableAutoInvoke) {
     frontmatter.disableAutoInvoke = true;
   } else {
     delete frontmatter.disableAutoInvoke;
   }
+  delete frontmatter['disable-model-invocation'];
+  delete frontmatter.disableModelInvocation;
+
+  if (metadata.userInvocable === false) {
+    frontmatter['user-invocable'] = false;
+  } else if (metadata.userInvocable === true) {
+    frontmatter['user-invocable'] = true;
+  } else {
+    delete frontmatter['user-invocable'];
+  }
+  delete frontmatter.userInvocable;
+
+  if (metadata.argumentHint) {
+    frontmatter['argument-hint'] = metadata.argumentHint;
+  } else {
+    delete frontmatter['argument-hint'];
+  }
+  delete frontmatter.argumentHint;
 
   if (metadata.skillType && metadata.skillType !== 'standalone') {
     frontmatter['skill-type'] = metadata.skillType;

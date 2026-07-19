@@ -562,13 +562,7 @@ pub fn build_gemini_request_with_version(
             // - Gemini 3 Pro: 仅支持 "low", "high"
             // - Gemini 3 Flash: 支持 "minimal", "low", "medium", "high"
             let level = match effort.to_ascii_lowercase().as_str() {
-                "minimal" | "none" | "unset" => {
-                    if is_gemini_3_flash {
-                        "minimal"
-                    } else {
-                        "low"
-                    } // Pro 不支持 minimal
-                }
+                "minimal" | "none" | "unset" if is_gemini_3_flash => "minimal", // Pro 不支持 minimal
                 "low" => "low",
                 "medium" => {
                     if is_gemini_3_flash {
@@ -678,7 +672,7 @@ pub fn build_gemini_request_with_version(
 
     let final_version = resolved_version
         .as_deref()
-        .or_else(|| version_in_base.as_deref())
+        .or(version_in_base.as_deref())
         .unwrap_or("v1");
 
     let base_root_trimmed = base_root.trim_end_matches('/');
@@ -1589,7 +1583,7 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
 
                         // 🔧 Gemini 要求角色交替：多个 functionResponse 必须合并到同一个 user content 块
                         // 官方文档示例：并行工具调用的结果在一个 user 消息中包含多个 functionResponse parts
-                        let should_merge = contents.last().map_or(false, |last: &GeminiContent| {
+                        let should_merge = contents.last().is_some_and(|last: &GeminiContent| {
                             last.role == "user"
                                 && last.parts.iter().all(|p| p.function_response.is_some())
                         });
@@ -1619,7 +1613,7 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
         for content in contents.drain(..) {
             let should_merge = merged_contents
                 .last()
-                .map_or(false, |last| last.role == content.role);
+                .is_some_and(|last| last.role == content.role);
             if should_merge {
                 let last = merged_contents.last_mut().unwrap();
                 let merged_count = content.parts.len();
@@ -1775,10 +1769,10 @@ fn convert_openai_to_gemini(openai_req: &OpenAIRequest) -> Result<GeminiRequest,
         match value {
             Value::Object(map) => {
                 // 如果 type=array 但缺少 items，补充默认 items
-                if map.get("type").and_then(|v| v.as_str()) == Some("array") {
-                    if !map.contains_key("items") {
-                        map.insert("items".to_string(), json!({"type": "string"}));
-                    }
+                if map.get("type").and_then(|v| v.as_str()) == Some("array")
+                    && !map.contains_key("items")
+                {
+                    map.insert("items".to_string(), json!({"type": "string"}));
                 }
                 // 如果有 items 但 items 缺少 type，补充默认 type
                 if let Some(items) = map.get_mut("items") {

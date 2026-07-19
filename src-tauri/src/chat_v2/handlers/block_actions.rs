@@ -711,17 +711,17 @@ fn upsert_block_in_db(
     let tool_input_json = block
         .tool_input
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()?;
     let tool_output_json = block
         .tool_output
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()?;
     let citations_json = block
         .citations
         .as_ref()
-        .map(|v| serde_json::to_string(v))
+        .map(serde_json::to_string)
         .transpose()?;
 
     conn.execute(

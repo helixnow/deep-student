@@ -7,8 +7,11 @@
 //! 1. **原子性**：使用 SQLite Backup API，确保数据一致性
 //! 2. **可验证**：每个文件都有 SHA256 校验和
 //! 3. **可回滚**：恢复前自动备份当前数据，失败时可回滚
-//! 4. **增量支持**：基于变更日志的增量备份
-//! 5. **资产支持**：支持备份图片、文档、音视频等资产文件
+//! 4. **资产支持**：支持备份图片、文档、音视频等资产文件
+//!
+//! 增量备份（`backup_type=incremental`）创建入口已下线：旧实现只导出
+//! `__change_log` 元信息、无行 payload，恢复路径亦拒绝。历史增量包仍会
+//! 以 `IncrementalRestoreNotSupported` 诚实拒绝，不会静默转全量。
 //!
 //! ## SQLite Backup API
 //!
@@ -26,7 +29,6 @@
 //! ## 组件
 //!
 //! - `manager`: 备份管理器
-//! - `incremental`: 增量备份（基于变更日志）
 //! - `assets`: 资产文件备份
 
 pub mod assets;
@@ -46,16 +48,13 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-/// 记录并跳过迭代中的错误，避免静默丢弃
-fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> {
-    match result {
-        Ok(v) => Some(v),
-        Err(e) => {
-            warn!("[Backup] Row parse error (skipped): {}", e);
-            None
-        }
-    }
-}
+/// 增量备份创建已下线时的统一错误文案（命令层与 BackupManager 共用）
+pub const INCREMENTAL_BACKUP_REMOVED_MESSAGE: &str =
+    "Incremental backup has been removed; use full backup or cloud sync";
+
+/// 历史增量包恢复拒绝文案（list 识别为 legacy / restore 诚实拒绝）
+pub const INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE: &str =
+    "Legacy incremental backup cannot be restored; use a full backup or cloud sync";
 
 #[cfg(feature = "data_governance")]
 use crate::data_governance::schema_registry::DatabaseId;
@@ -529,7 +528,7 @@ impl BackupManifest {
         self.validate_untrusted()?;
         if self.is_incremental {
             return Err(BackupError::IncrementalRestoreNotSupported(
-                "增量备份不能直接替换完整数据槽".to_string(),
+                INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE.to_string(),
             ));
         }
         if self.snapshot_kind != SnapshotKind::Full {
@@ -912,6 +911,10 @@ pub enum BackupError {
     #[error("Incremental restore not supported: {0}")]
     IncrementalRestoreNotSupported(String),
 
+    /// 增量备份创建入口已下线（空壳实现，无行 payload）
+    #[error("{0}")]
+    IncrementalBackupRemoved(String),
+
     #[error("Not implemented: {0}")]
     NotImplemented(String),
 }
@@ -1260,7 +1263,7 @@ pub struct SkippedFile {
     pub reason: String,
 }
 
-/// 变更日志表 SQL（用于增量备份）
+/// 变更日志表 SQL（历史增量备份 / 云同步共用元数据）
 pub const CHANGE_LOG_TABLE_SQL: &str = r#"
     CREATE TABLE IF NOT EXISTS __change_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1277,7 +1280,7 @@ pub const CHANGE_LOG_TABLE_SQL: &str = r#"
 
 /// 备份管理器
 ///
-/// 负责执行数据库的完整备份、增量备份、恢复和验证操作。
+/// 负责执行数据库的完整备份、恢复和验证操作（增量创建已下线）。
 /// 使用 SQLite Backup API 确保备份的原子性和一致性。
 pub struct BackupManager {
     /// 备份目录
@@ -2817,7 +2820,7 @@ impl BackupManager {
                     }
                     StepResult::Busy | StepResult::Locked => {
                         busy_retries = busy_retries.saturating_add(1);
-                        if busy_retries % 200 == 0 {
+                        if busy_retries.is_multiple_of(200) {
                             let p = backup.progress();
                             warn!(
                                 "[Backup] 备份数据库等待锁释放: db={:?}, retry={}/{}, remaining_pages={}/{}",
@@ -2889,133 +2892,15 @@ impl BackupManager {
         Ok(version.unwrap_or(0) as u32)
     }
 
-    /// 执行增量备份
+    /// 增量备份创建入口（已下线）
     ///
-    /// 基于变更日志表 `__change_log` 导出自上次备份以来的变更。
-    ///
-    /// ## 参数
-    ///
-    /// * `base_version` - 基础备份的版本标识（backup_id）
-    ///
-    /// ## 注意
-    ///
-    /// 需要应用层在数据变更时维护 `__change_log` 表
-    pub fn backup_incremental(&self, base_version: &str) -> Result<BackupManifest, BackupError> {
-        info!("开始执行增量备份，基础版本: {}", base_version);
-
-        // 验证基础备份存在
-        let base_backup_dir = self.backup_dir.join(base_version);
-        if !base_backup_dir.exists() {
-            return Err(BackupError::Manifest(format!(
-                "基础备份不存在: {}",
-                base_version
-            )));
-        }
-
-        // 创建增量备份目录
-        let (backup_id, backup_subdir) = self.create_unique_backup_subdir(Some("incr"))?;
-
-        let mut manifest = BackupManifest::new(&self.app_version);
-        manifest.backup_id = backup_id;
-        manifest.is_incremental = true;
-        manifest.incremental_base = Some(base_version.to_string());
-
-        // 对每个数据库导出变更
-        for db_id in DatabaseId::all_ordered() {
-            let db_path = self.get_database_path(&db_id);
-
-            if !db_path.exists() {
-                continue;
-            }
-
-            // 导出变更日志
-            if let Some(backup_file) =
-                self.export_changes(&db_id, &db_path, &backup_subdir, base_version)?
-            {
-                manifest.add_file(backup_file);
-            }
-        }
-
-        // 保存清单
-        let manifest_path = backup_subdir.join(MANIFEST_FILENAME);
-        manifest.save_to_file(&manifest_path)?;
-
-        info!("增量备份完成，共 {} 个变更文件", manifest.files.len());
-
-        Ok(manifest)
-    }
-
-    /// 导出数据库的变更日志
-    fn export_changes(
-        &self,
-        db_id: &DatabaseId,
-        db_path: &Path,
-        backup_dir: &Path,
-        _base_version: &str,
-    ) -> Result<Option<BackupFile>, BackupError> {
-        let conn = Connection::open(db_path)?;
-
-        // 检查变更日志表是否存在
-        let table_exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__change_log')",
-            [],
-            |row| row.get(0),
-        )?;
-
-        if !table_exists {
-            debug!("数据库 {:?} 无变更日志表，跳过增量备份", db_id);
-            return Ok(None);
-        }
-
-        // 查询未同步的变更
-        let mut stmt = conn.prepare(
-            "SELECT id, table_name, record_id, operation, changed_at, sync_version
-             FROM __change_log
-             WHERE sync_version = 0
-             ORDER BY id ASC",
-        )?;
-
-        let changes: Vec<ChangeLogEntry> = stmt
-            .query_map([], |row| {
-                Ok(ChangeLogEntry {
-                    id: row.get(0)?,
-                    table_name: row.get(1)?,
-                    record_id: row.get(2)?,
-                    operation: row.get(3)?,
-                    changed_at: row.get(4)?,
-                    sync_version: row.get(5)?,
-                })
-            })?
-            .filter_map(log_and_skip_err)
-            .collect();
-
-        if changes.is_empty() {
-            debug!("数据库 {:?} 无新变更", db_id);
-            return Ok(None);
-        }
-
-        // 序列化变更日志
-        let changes_json = serde_json::to_string_pretty(&changes)
-            .map_err(|e| BackupError::Manifest(format!("序列化变更日志失败: {}", e)))?;
-
-        // 保存到文件
-        let changes_path = backup_dir.join(format!("{}_changes.json", db_id.as_str()));
-        let mut file = File::create(&changes_path)?;
-        file.write_all(changes_json.as_bytes())?;
-        file.sync_all()?;
-
-        // 计算校验和
-        let sha256 = calculate_file_sha256(&changes_path)?;
-        let size = fs::metadata(&changes_path)?.len();
-
-        info!("导出数据库 {:?} 的 {} 条变更记录", db_id, changes.len());
-
-        Ok(Some(BackupFile {
-            path: format!("{}_changes.json", db_id.as_str()),
-            size,
-            sha256,
-            database_id: Some(db_id.as_str().to_string()),
-        }))
+    /// 旧实现仅导出 `__change_log` 元信息、无行 payload，且恢复路径拒绝增量包。
+    /// 为避免产生不可恢复的空壳备份，此方法始终返回
+    /// [`BackupError::IncrementalBackupRemoved`]。
+    pub fn backup_incremental(&self, _base_version: &str) -> Result<BackupManifest, BackupError> {
+        Err(BackupError::IncrementalBackupRemoved(
+            INCREMENTAL_BACKUP_REMOVED_MESSAGE.to_string(),
+        ))
     }
 
     /// 验证备份清单的版本兼容性
@@ -3052,8 +2937,7 @@ impl BackupManager {
         // 2. 增量备份不支持直接恢复
         if manifest.is_incremental {
             return Err(BackupError::IncrementalRestoreNotSupported(
-                "增量备份不支持直接恢复。请使用完整备份进行恢复，或等待后续版本支持增量恢复合并。"
-                    .to_string(),
+                INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE.to_string(),
             ));
         }
 
@@ -3389,7 +3273,7 @@ impl BackupManager {
 
         // 如果目标数据库存在，先关闭 WAL
         if target_path.exists() {
-            let existing_conn = Connection::open(&target_path)?;
+            let existing_conn = Connection::open(target_path)?;
             existing_conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
             drop(existing_conn);
 
@@ -3406,7 +3290,7 @@ impl BackupManager {
 
         // 使用 Backup API 恢复
         let src_conn = Connection::open(&backup_path)?;
-        let mut dest_conn = Connection::open(&target_path)?;
+        let mut dest_conn = Connection::open(target_path)?;
 
         // 显式设置 busy_timeout，避免 Windows 文件锁场景下无界等待
         src_conn.pragma_update(None, "busy_timeout", 5000i64)?;
@@ -3435,7 +3319,7 @@ impl BackupManager {
                     }
                     StepResult::Busy | StepResult::Locked => {
                         busy_retries = busy_retries.saturating_add(1);
-                        if busy_retries % 50 == 0 {
+                        if busy_retries.is_multiple_of(50) {
                             let p = backup.progress();
                             warn!(
                                 "[data_governance] 恢复数据库等待锁释放: db={:?}, retry={}/{}, remaining_pages={}/{}",
@@ -4324,17 +4208,6 @@ impl BackupManager {
     }
 }
 
-/// 变更日志条目
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ChangeLogEntry {
-    id: i64,
-    table_name: String,
-    record_id: String,
-    operation: String,
-    changed_at: String,
-    sync_version: i64,
-}
-
 /// 计算文件的 SHA256 校验和
 pub(crate) fn calculate_file_sha256(path: &Path) -> Result<String, BackupError> {
     let file = File::open(path)?;
@@ -4419,6 +4292,181 @@ mod tests {
              INSERT INTO test_table (name) VALUES ('test1'), ('test2');",
         )?;
         Ok(())
+    }
+
+    /// S0: 创建增量备份必须立即失败，且不得写入任何备份产物
+    #[test]
+    fn backup_incremental_create_returns_removed_error() {
+        let (manager, backup_dir, _app_data) = setup_test_env();
+        // 即使提供一个“存在的”基础备份目录，也不应创建增量包
+        let base_id = "20260101_000000";
+        fs::create_dir_all(backup_dir.path().join(base_id)).unwrap();
+
+        let before: Vec<_> = fs::read_dir(backup_dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name())
+            .collect();
+
+        let err = manager
+            .backup_incremental(base_id)
+            .expect_err("incremental create must fail");
+
+        match &err {
+            BackupError::IncrementalBackupRemoved(msg) => {
+                assert!(
+                    msg.contains("Incremental backup has been removed"),
+                    "error must state incremental create was removed, got: {}",
+                    msg
+                );
+                assert!(
+                    msg.contains("full backup") || msg.contains("cloud sync"),
+                    "error must point users to full backup or cloud sync, got: {}",
+                    msg
+                );
+            }
+            other => panic!("expected IncrementalBackupRemoved, got: {}", other),
+        }
+
+        let after: Vec<_> = fs::read_dir(backup_dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(
+            before, after,
+            "incremental create must not write any backup artifacts"
+        );
+    }
+
+    /// S0: 旧版增量 manifest 恢复必须诚实拒绝（不得静默成功/转全量）
+    #[test]
+    fn restore_rejects_legacy_incremental_manifest() {
+        let backup_dir = TempDir::new().unwrap();
+        let app_data_dir = TempDir::new().unwrap();
+        let mut manager = BackupManager::new(backup_dir.path().to_path_buf());
+        manager.set_app_data_dir(app_data_dir.path().to_path_buf());
+        manager.set_app_version("1.0.0".to_string());
+
+        let mut manifest = BackupManifest::new("1.0.0");
+        manifest.backup_id = "incr_legacy".to_string();
+        manifest.is_incremental = true;
+        manifest.incremental_base = Some("20260101_000000".to_string());
+        manifest.add_file(BackupFile {
+            path: "vfs_changes.json".to_string(),
+            size: 0,
+            sha256: String::new(),
+            database_id: Some("vfs".to_string()),
+        });
+
+        let sub = backup_dir.path().join("incr_legacy");
+        fs::create_dir_all(&sub).unwrap();
+        let payload = br#"[{"id":1,"table_name":"resources","record_id":"r1","operation":"INSERT","changed_at":"2026-01-01T00:00:00Z","sync_version":0}]"#;
+        fs::write(sub.join("vfs_changes.json"), payload).unwrap();
+        let real_sha = calculate_file_sha256(&sub.join("vfs_changes.json")).unwrap();
+        manifest.files[0].sha256 = real_sha;
+        manifest.files[0].size = payload.len() as u64;
+        manifest.save_to_file(&sub.join(MANIFEST_FILENAME)).unwrap();
+
+        let result = manager.restore(&manifest);
+        assert!(
+            result.is_err(),
+            "legacy incremental restore must be rejected"
+        );
+        let err = result.unwrap_err();
+        match &err {
+            BackupError::IncrementalRestoreNotSupported(msg) => {
+                assert_eq!(
+                    msg.as_str(),
+                    INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
+                    "restore error must use the shared English ban message, got: {}",
+                    msg
+                );
+            }
+            other => panic!(
+                "expected IncrementalRestoreNotSupported (honest reject), got: {}",
+                other
+            ),
+        }
+    }
+
+    /// 行为级：真实临时目录构造历史 incremental 包 → list 识别为 legacy，restore 被拒
+    #[test]
+    fn legacy_incremental_listed_as_incremental_and_restore_rejected() {
+        let backup_dir = TempDir::new().unwrap();
+        let app_data_dir = TempDir::new().unwrap();
+        let mut manager = BackupManager::new(backup_dir.path().to_path_buf());
+        manager.set_app_data_dir(app_data_dir.path().to_path_buf());
+        manager.set_app_version("1.0.0".to_string());
+
+        // 旁路：一个可识别的 full 快照，确保 list 不会误滤 incremental
+        let mut full = BackupManifest::new("1.0.0");
+        full.backup_id = "20260701_full".to_string();
+        full.is_incremental = false;
+        full.snapshot_kind = SnapshotKind::Full;
+        let full_dir = backup_dir.path().join("20260701_full");
+        fs::create_dir_all(&full_dir).unwrap();
+        full.save_to_file(&full_dir.join(MANIFEST_FILENAME))
+            .unwrap();
+
+        let mut incr = BackupManifest::new("1.0.0");
+        incr.backup_id = "20260702_incremental".to_string();
+        incr.is_incremental = true;
+        incr.incremental_base = Some("20260701_full".to_string());
+        incr.add_file(BackupFile {
+            path: "vfs_changes.json".to_string(),
+            size: 0,
+            sha256: String::new(),
+            database_id: Some("vfs".to_string()),
+        });
+        let incr_dir = backup_dir.path().join("20260702_incremental");
+        fs::create_dir_all(&incr_dir).unwrap();
+        let payload = br#"[{"id":1,"table_name":"resources","record_id":"r1","operation":"INSERT","changed_at":"2026-07-02T00:00:00Z","sync_version":0}]"#;
+        fs::write(incr_dir.join("vfs_changes.json"), payload).unwrap();
+        let real_sha = calculate_file_sha256(&incr_dir.join("vfs_changes.json")).unwrap();
+        incr.files[0].sha256 = real_sha;
+        incr.files[0].size = payload.len() as u64;
+        incr.save_to_file(&incr_dir.join(MANIFEST_FILENAME))
+            .unwrap();
+
+        let listed = manager
+            .list_backups()
+            .expect("list_backups must succeed on real temp dirs");
+        assert!(
+            listed.len() >= 2,
+            "list must include both full and incremental packages, got {}",
+            listed.len()
+        );
+        let listed_incr = listed
+            .iter()
+            .find(|m| m.backup_id == "20260702_incremental")
+            .expect("historical incremental package must appear in backup list");
+        assert!(
+            listed_incr.is_incremental,
+            "list must mark historical package as incremental (legacy)"
+        );
+        assert_eq!(
+            listed_incr.incremental_base.as_deref(),
+            Some("20260701_full")
+        );
+
+        // 与命令层 list 映射一致：is_incremental → backup_type "incremental"
+        let command_layer_type = if listed_incr.is_incremental {
+            "incremental"
+        } else {
+            "full"
+        };
+        assert_eq!(command_layer_type, "incremental");
+
+        let restore_err = manager
+            .restore(listed_incr)
+            .expect_err("restore of listed incremental must be rejected");
+        match restore_err {
+            BackupError::IncrementalRestoreNotSupported(msg) => {
+                assert_eq!(msg.as_str(), INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE);
+            }
+            other => panic!("expected IncrementalRestoreNotSupported, got: {}", other),
+        }
     }
 
     #[test]

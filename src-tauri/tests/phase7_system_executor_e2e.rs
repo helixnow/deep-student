@@ -121,7 +121,7 @@ fn execution_context(harness: &Phase7Harness, call_id: &str) -> ExecutionContext
         format!("block-{call_id}"),
         emitter,
         Arc::new(ToolRegistry::new()),
-        harness.window.clone(),
+        Some(harness.window.clone()),
     )
     .with_main_db(Some(harness.main_db.clone()))
     .with_llm_manager(Some(harness.llm_manager.clone()))

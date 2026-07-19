@@ -167,7 +167,7 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
                   borderRadius: 999
                 }}
               >
-                {variant === 'info' ? t('source_preview.info') : variant === 'success' ? t('source_preview.kb_search') : variant === 'warning' ? t('source_preview.external_search') : t('source_preview.other')}
+                {variant === 'info' ? t('source_preview.graph_rag') : variant === 'success' ? t('source_preview.kb_search') : variant === 'warning' ? t('source_preview.external_search') : t('source_preview.other')}
               </span>
               <span className="text-sm text-[hsl(var(--muted-foreground))]">
                 {t('source_preview.confidence', { score: Math.round(source.score * 100) })}

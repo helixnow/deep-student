@@ -520,7 +520,7 @@ fn render_messages_for_prompt(
 
         // 按 token 预算截断（粗略：若超预算 → 只保留前 80% + 标记）
         let token_est = crate::utils::token_budget::estimate_tokens_with_model(&combined, model_id);
-        let preview = if token_est > per_msg_token_cap && combined.len() > 0 {
+        let preview = if token_est > per_msg_token_cap && !combined.is_empty() {
             // 估算保留字符比例
             let keep_ratio = per_msg_token_cap as f64 / token_est as f64;
             let keep_chars = ((combined.chars().count() as f64) * keep_ratio).max(200.0) as usize;
@@ -1933,8 +1933,8 @@ impl ChatV2Pipeline {
                 table = MEMORY_FLUSH_LEDGER_TABLE,
             ))?;
             let rows = stmt.query_map(params![session_id, now_ms], |row| row.get(0))?;
-            let skipped = rows.collect::<rusqlite::Result<Vec<String>>>()?;
-            skipped
+
+            rows.collect::<rusqlite::Result<Vec<String>>>()?
         };
         tx.execute(
             &format!(

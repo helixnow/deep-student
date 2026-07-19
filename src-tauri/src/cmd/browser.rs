@@ -71,7 +71,7 @@ fn ensure_bridge_supported() -> CmdResult<()> {
         Ok(())
     } else {
         Err(
-            "BRIDGE_UNSUPPORTED: browser automation result bridge is available on Windows only"
+            "BRIDGE_UNSUPPORTED: browser automation result bridge is available on Windows and macOS only"
                 .into(),
         )
     }
@@ -483,7 +483,7 @@ mod tests {
         assert_eq!(json["history"][0]["url"], "https://example.com/");
         assert_eq!(
             json["agentAutomationSupported"],
-            cfg!(target_os = "windows")
+            cfg!(any(target_os = "windows", target_os = "macos"))
         );
     }
 

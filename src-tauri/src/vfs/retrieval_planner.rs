@@ -283,7 +283,7 @@ pub fn plan_generation(
     let ocr = snapshot.is_available(CapabilityKind::Ocr);
     let has_image = query.has_image();
 
-    let selected = requested_active.or_else(|| {
+    let selected = requested_active.or({
         if has_image && mm {
             Some(ActiveGenerationModel::Multimodal)
         } else if tm {

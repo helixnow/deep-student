@@ -306,13 +306,11 @@ pub(crate) fn extract_json_object(text: &str) -> Option<String> {
                 }
                 depth += 1;
             }
-            '}' => {
-                if depth > 0 {
-                    depth -= 1;
-                    if depth == 0 {
-                        if let Some(s) = start {
-                            return Some(text[s..=i + ch.len_utf8() - 1].to_string());
-                        }
+            '}' if depth > 0 => {
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(s) = start {
+                        return Some(text[s..=i + ch.len_utf8() - 1].to_string());
                     }
                 }
             }

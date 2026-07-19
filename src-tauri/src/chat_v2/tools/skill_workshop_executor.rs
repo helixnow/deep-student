@@ -123,6 +123,12 @@ struct SkillWorkshopProvenance {
 
 pub struct SkillWorkshopExecutor;
 
+impl Default for SkillWorkshopExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SkillWorkshopExecutor {
     pub fn new() -> Self {
         Self
@@ -422,7 +428,7 @@ impl SkillWorkshopExecutor {
 
     fn proposals_root(ctx: &ExecutionContext) -> Result<PathBuf, String> {
         let app_data = ctx
-            .window
+            .window_ref()
             .app_handle()
             .path()
             .app_data_dir()

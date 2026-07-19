@@ -1,26 +1,32 @@
 /**
  * StatusBar — 学习状态菜单栏（docs/research/macos-2026/07）
  *
- * OS 桌面的应用级顶栏：左侧品牌，右侧命令、学习信号、设置与学习中心。
+ * OS 桌面的应用级顶栏：左侧品牌，右侧命令、学习信号、设置与今日节律。
  * macOS 原生 File/Edit/View/Window/Help 仍由 Tauri 菜单栏提供，避免在这里重复。
- * 学习中心入口打开紧凑 2×2 瓷砖。Windows 右侧为窗控胶囊让位。
+ * 「今日节律」flyout：到期闪卡 / 番茄 / 自动化健康 / 任务入口。
+ * Windows 右侧为窗控胶囊让位。
  */
 import React, { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useTranslation } from 'react-i18next';
 import {
   Cards,
-  CirclesFour,
   GearSix,
   Lightning,
   MagnifyingGlass,
+  Robot,
   SquaresFour,
   Timer,
 } from '@phosphor-icons/react';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
 import { toggleAppsPanel } from './appsPanelStore';
 import { StatusBarBrandMenu } from './StatusBarBrandMenu';
-import { persistWorkbenchModeEnabled } from '@/features/settings/components/workbenchMode';
+import {
+  getAutomationSummary,
+  type AutomationSummary,
+} from '@/features/settings/components/automationSettingsApi';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { isMacOS, isWindows } from '@/utils/platform';
 import {
@@ -35,7 +41,6 @@ import { workbenchBus } from '../core/workbenchBus';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
 import { useLiquidGlassLens } from '../core/liquidGlassLens';
-import { openAppsPanel } from './appsPanelStore';
 import { StatusBarItems, formatStatusBarTime } from './StatusBarItems';
 import './StatusBar.css';
 
@@ -85,6 +90,19 @@ function launchFlashcardsDue(): void {
   });
 }
 
+function launchAutomations(): void {
+  void workbenchBus.activate({
+    typeId: 'todo',
+    instanceKey: '',
+    action: 'showAutomations',
+    fallbackLaunch: {
+      typeId: 'todo',
+      reason: 'api',
+      payload: { todoView: 'automations' },
+    },
+  });
+}
+
 function getFocusable(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FLYOUT_FOCUSABLE)).filter((el) => {
     if (el.closest('[inert]')) return false;
@@ -105,6 +123,7 @@ const StatusBarComponent: React.FC = () => {
   const backdropRef = useRef<HTMLDivElement | null>(null);
   const brandButtonRef = useRef<HTMLButtonElement | null>(null);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
+  const [automation, setAutomation] = useState<AutomationSummary | null>(null);
   const titleId = useId();
   const winChromeInset = isWindows();
   const macChrome = isMacOS();
@@ -138,13 +157,29 @@ const StatusBarComponent: React.FC = () => {
   const openUnifiedSearch = useCallback(() => toggleAppsPanel(), []);
   const closeBrandMenu = useCallback(() => setBrandMenuOpen(false), []);
 
-  // 品牌菜单（macOS 苹果菜单语义）：全部应用 / 系统设置 / 退出学习桌面
-  const launchSettingsApp = useCallback(() => {
-    workbenchBus.launch({ typeId: 'settings', reason: 'api' });
-  }, []);
-  const exitWorkbenchMode = useCallback(() => {
-    // 失败由 helper 统一通知；成功后 App 监听 workbench:mode-changed 切回 legacy 壳
-    void persistWorkbenchModeEnabled(false);
+  useEffect(() => {
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const value = await getAutomationSummary((command, args) => invoke(command, args));
+        if (!disposed) setAutomation(value);
+      } catch {
+        // The status item stays as a quiet entry even when summary loading fails.
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    let unlisten: (() => void) | undefined;
+    void listen('chat_v2://automations_changed', refresh).then((value) => {
+      if (disposed) value(); else unlisten = value;
+    }).catch(() => {
+      // The 30-second poll remains available when the desktop event bridge fails.
+    });
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -235,6 +270,10 @@ const StatusBarComponent: React.FC = () => {
     void getCurrentWindow().startDragging();
   }, [macChrome]);
 
+  const automationRunning = automation?.runningCount ?? 0;
+  const automationFailed = automation?.failedCount ?? 0;
+  const automationEnabled = automation?.enabledCount ?? 0;
+
   return (
     <div
       className="wb-menubar"
@@ -288,7 +327,11 @@ const StatusBarComponent: React.FC = () => {
           <MagnifyingGlass size={15} weight="bold" className="wb-menubar-item-icon" aria-hidden />
         </button>
         <div className="wb-menubar-status-slot" data-testid="wb-menubar-status-slot">
-          <StatusBarItems dueCount={dueCount} taskCount={taskCount} />
+          <StatusBarItems
+            dueCount={dueCount}
+            taskCount={taskCount}
+            automation={automation}
+          />
         </div>
 
         <button
@@ -340,87 +383,106 @@ const StatusBarComponent: React.FC = () => {
                 {t('menubar.centerTitle')}
               </h2>
 
-              <div className="wb-menubar-grid" role="group" aria-label={t('menubar.centerTitle')}>
+              <div
+                className="wb-menubar-rhythm"
+                role="group"
+                aria-label={t('menubar.centerTitle')}
+                data-testid="wb-menubar-rhythm"
+              >
                 <button
                   type="button"
-                  className="wb-menubar-tile"
+                  className="wb-menubar-rhythm-row"
                   data-testid="wb-menubar-module-flashcards"
                   data-primary={dueCount > 0 ? 'true' : undefined}
+                  aria-label={`${t('menubar.rhythmFlashcards')}: ${t('menubar.flashcardsDueShort', { count: dueCount })}`}
                   onClick={runAndClose(launchFlashcardsDue)}
                 >
-                  <span className="wb-menubar-tile-icon" aria-hidden="true">
+                  <span className="wb-menubar-rhythm-icon" aria-hidden="true">
                     <Cards size={18} weight="duotone" />
                   </span>
-                  <span className="wb-menubar-tile-label">
-                    {t('menubar.moduleFlashcards')}
-                  </span>
-                  <span className="wb-menubar-tile-detail">
-                    {t('menubar.flashcardsDueShort', { count: dueCount })}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  className="wb-menubar-tile"
-                  data-testid="wb-menubar-module-tasks"
-                  onClick={runAndClose(() => launchApp('taskDashboard'))}
-                >
-                  <span className="wb-menubar-tile-icon" aria-hidden="true">
-                    <Lightning size={18} weight="duotone" />
-                  </span>
-                  <span className="wb-menubar-tile-label">
-                    {t('menubar.moduleTasks')}
-                  </span>
-                  <span className="wb-menubar-tile-detail">
-                    {t('menubar.tasksRunningShort', { count: taskCount })}
+                  <span className="wb-menubar-rhythm-text" aria-hidden="true">
+                    <span className="wb-menubar-rhythm-label">
+                      {t('menubar.rhythmFlashcards')}
+                    </span>
+                    <span className="wb-menubar-rhythm-detail">
+                      {t('menubar.flashcardsDueShort', { count: dueCount })}
+                    </span>
                   </span>
                 </button>
 
                 <button
                   type="button"
-                  className="wb-menubar-tile"
+                  className="wb-menubar-rhythm-row"
                   data-testid="wb-menubar-module-pomodoro"
                   onClick={runAndClose(() => launchApp('pomodoro'))}
                 >
-                  <span className="wb-menubar-tile-icon" aria-hidden="true">
+                  <span className="wb-menubar-rhythm-icon" aria-hidden="true">
                     <Timer size={18} weight="duotone" />
                   </span>
-                  <span className="wb-menubar-tile-label">
-                    {t('menubar.moduleFocus')}
-                  </span>
-                  <span className="wb-menubar-tile-detail">
-                    <PomodoroFlyoutDetail />
+                  <span className="wb-menubar-rhythm-text">
+                    <span className="wb-menubar-rhythm-label">
+                      {t('menubar.rhythmPomodoro')}
+                    </span>
+                    <span className="wb-menubar-rhythm-detail">
+                      <PomodoroFlyoutDetail />
+                    </span>
                   </span>
                 </button>
 
-                <div
-                  className="wb-menubar-tile wb-menubar-tile-split"
-                  data-testid="wb-menubar-module-desktop"
+                <button
+                  type="button"
+                  className="wb-menubar-rhythm-row"
+                  data-testid="wb-menubar-module-automations"
+                  data-status={
+                    automationRunning
+                      ? 'running'
+                      : automationFailed
+                        ? 'error'
+                        : 'idle'
+                  }
+                  aria-label={`${t('menubar.rhythmAutomation')}: ${t('menubar.rhythmAutomationDetail', {
+                    running: automationRunning,
+                    failed: automationFailed,
+                    enabled: automationEnabled,
+                  })}`}
+                  onClick={runAndClose(launchAutomations)}
                 >
-                  <span className="wb-menubar-tile-icon" aria-hidden="true">
-                    <SquaresFour size={18} weight="duotone" />
+                  <span className="wb-menubar-rhythm-icon" aria-hidden="true">
+                    <Robot size={18} weight="duotone" />
                   </span>
-                  <span className="wb-menubar-tile-label">
-                    {t('menubar.moduleDesktop')}
+                  <span className="wb-menubar-rhythm-text" aria-hidden="true">
+                    <span className="wb-menubar-rhythm-label">
+                      {t('menubar.rhythmAutomation')}
+                    </span>
+                    <span className="wb-menubar-rhythm-detail">
+                      {t('menubar.rhythmAutomationDetail', {
+                        running: automationRunning,
+                        failed: automationFailed,
+                        enabled: automationEnabled,
+                      })}
+                    </span>
                   </span>
-                  <div className="wb-menubar-tile-actions">
-                    <button
-                      type="button"
-                      className="wb-menubar-tile-action"
-                      onClick={runAndClose(() => openAppsPanel())}
-                    >
-                      <CirclesFour size={12} weight="bold" aria-hidden="true" />
-                      {t('menubar.allApps')}
-                    </button>
-                    <button
-                      type="button"
-                      className="wb-menubar-tile-action"
-                      onClick={runAndClose(() => useWorkbenchOverlay.getState().openExpose())}
-                    >
-                      {t('menubar.expose')}
-                    </button>
-                  </div>
-                </div>
+                </button>
+
+                <button
+                  type="button"
+                  className="wb-menubar-rhythm-row"
+                  data-testid="wb-menubar-module-tasks"
+                  aria-label={`${t('menubar.rhythmTasks')}: ${t('menubar.rhythmTasksDetail', { count: taskCount })}`}
+                  onClick={runAndClose(() => launchApp('taskDashboard'))}
+                >
+                  <span className="wb-menubar-rhythm-icon" aria-hidden="true">
+                    <Lightning size={18} weight="duotone" />
+                  </span>
+                  <span className="wb-menubar-rhythm-text" aria-hidden="true">
+                    <span className="wb-menubar-rhythm-label">
+                      {t('menubar.rhythmTasks')}
+                    </span>
+                    <span className="wb-menubar-rhythm-detail">
+                      {t('menubar.rhythmTasksDetail', { count: taskCount })}
+                    </span>
+                  </span>
+                </button>
               </div>
             </div>
           </>

@@ -788,11 +788,25 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     {formatTimestamp(backup.created_at)}
                   </TableCell>
                   <TableCell className="py-3">
-                    <Badge variant={backup.backup_type === 'full' ? 'default' : 'secondary'} className="rounded-sm font-normal whitespace-nowrap">
+                    <Badge
+                      variant={
+                        backup.backup_type === 'full'
+                          ? 'default'
+                          : backup.backup_type === 'incremental'
+                            ? 'destructive'
+                            : 'secondary'
+                      }
+                      className="rounded-sm font-normal whitespace-nowrap"
+                      title={
+                        backup.backup_type === 'incremental'
+                          ? t('data:governance.incremental_legacy_unsupported')
+                          : undefined
+                      }
+                    >
                       {backup.backup_type === 'full'
                         ? t('data:governance.full')
                         : backup.backup_type === 'incremental'
-                        ? t('data:governance.incremental')
+                        ? t('data:governance.incremental_legacy_unsupported')
                         : backup.backup_type === 'partial_overlay'
                         ? t('data:governance.partial_overlay')
                         : t('data:governance.legacy_unknown')}
@@ -872,6 +886,13 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         size="sm"
                         className="h-7 w-7 p-0"
                         onClick={() => {
+                          if (backup.backup_type === 'incremental') {
+                            showGlobalNotification(
+                              'warning',
+                              t('data:governance.restore_incremental_not_supported')
+                            );
+                            return;
+                          }
                           if (backup.backup_type !== 'full') {
                             showGlobalNotification(
                               'warning',

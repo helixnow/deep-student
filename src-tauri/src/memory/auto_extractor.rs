@@ -443,13 +443,11 @@ impl MemoryAutoExtractor {
                     }
                     depth += 1;
                 }
-                ']' => {
-                    if depth > 0 {
-                        depth -= 1;
-                        if depth == 0 {
-                            if let Some(s) = start {
-                                return Some(text[s..=i].to_string());
-                            }
+                ']' if depth > 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        if let Some(s) = start {
+                            return Some(text[s..=i].to_string());
                         }
                     }
                 }

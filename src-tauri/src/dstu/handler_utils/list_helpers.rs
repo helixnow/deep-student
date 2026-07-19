@@ -192,12 +192,7 @@ pub async fn list_resources_by_type_with_folder_path(
             }
         }
         DstuNodeType::Image => {
-            let files = match VfsFileRepo::list_files_by_type(
-                vfs_db,
-                "image",
-                limit as u32,
-                offset as u32,
-            ) {
+            let files = match VfsFileRepo::list_files_by_type(vfs_db, "image", limit, offset) {
                 Ok(a) => a,
                 Err(e) => {
                     log::error!("[DSTU::list_helpers] list_resources_by_type_with_folder_path: FAILED - list images error={}", e);
@@ -212,12 +207,7 @@ pub async fn list_resources_by_type_with_folder_path(
             }
         }
         DstuNodeType::File => {
-            let files = match VfsFileRepo::list_files_by_type(
-                vfs_db,
-                "document",
-                limit as u32,
-                offset as u32,
-            ) {
+            let files = match VfsFileRepo::list_files_by_type(vfs_db, "document", limit, offset) {
                 Ok(a) => a,
                 Err(e) => {
                     log::error!("[DSTU::list_helpers] list_resources_by_type_with_folder_path: FAILED - list files error={}", e);

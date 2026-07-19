@@ -33,11 +33,6 @@ use super::commands_types::{
 };
 use super::migration::{get_migration_set, MigrationCoordinator};
 use super::schema_registry::{DatabaseId, DatabaseStatus, SchemaRegistry};
-use crate::backup_common::{log_and_skip_entry_err, BACKUP_GLOBAL_LIMITER};
-use crate::backup_job_manager::{
-    BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
-    BackupJobResultPayload, BackupJobStatus, BackupJobSummary, PersistedJob,
-};
 use crate::utils::text::safe_truncate_chars;
 
 fn resolve_target_and_pending(

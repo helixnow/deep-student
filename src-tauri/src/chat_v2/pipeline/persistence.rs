@@ -183,8 +183,8 @@ impl ChatV2Pipeline {
             let user_msg_result = build_user_message(user_msg_params);
 
             // 使用 INSERT OR REPLACE 保存用户消息（与 save_results 兼容）
-            ChatV2Repo::create_message_with_conn(&conn, &user_msg_result.message)?;
-            ChatV2Repo::create_block_with_conn(&conn, &user_msg_result.block)?;
+            ChatV2Repo::create_message_with_conn(conn, &user_msg_result.message)?;
+            ChatV2Repo::create_block_with_conn(conn, &user_msg_result.block)?;
         }
 
         // 1. 保存助手消息（如果不存在则创建）
@@ -194,7 +194,7 @@ impl ChatV2Pipeline {
         // 是原地更新而非 DELETE+INSERT，不会触发 CASCADE 删除。
         // 但仍保留 anki_cards 块的保存逻辑以防 block_ids 列表覆盖。
         let preserved_anki_cards_blocks: Vec<MessageBlock> =
-            ChatV2Repo::get_message_blocks_with_conn(&conn, &ctx.assistant_message_id)?
+            ChatV2Repo::get_message_blocks_with_conn(conn, &ctx.assistant_message_id)?
                 .into_iter()
                 .filter(|b| b.block_type == block_types::ANKI_CARDS)
                 .collect();
@@ -262,13 +262,13 @@ impl ChatV2Pipeline {
             variants: None,
             shared_context: None,
         };
-        ChatV2Repo::create_message_with_conn(&conn, &assistant_msg)?;
+        ChatV2Repo::create_message_with_conn(conn, &assistant_msg)?;
 
         // 2. 保存所有已生成的块
         for (index, block) in ctx.interleaved_blocks.iter().enumerate() {
             let mut block_to_save = block.clone();
             block_to_save.block_index = index as u32;
-            ChatV2Repo::create_block_with_conn(&conn, &block_to_save)?;
+            ChatV2Repo::create_block_with_conn(conn, &block_to_save)?;
         }
 
         // 3. Re-insert preserved `anki_cards` blocks deleted by the assistant message REPLACE.
@@ -289,7 +289,7 @@ impl ChatV2Pipeline {
                 // 保持原始 block_index 不变，这样刷新后位置不会跳到末尾
                 let block_to_save = preserved;
 
-                if let Err(e) = ChatV2Repo::create_block_with_conn(&conn, &block_to_save) {
+                if let Err(e) = ChatV2Repo::create_block_with_conn(conn, &block_to_save) {
                     log::error!(
                         "[ChatV2::pipeline] Failed to re-insert preserved anki_cards block: message_id={}, block_id={}, err={:?}",
                         ctx.assistant_message_id,
@@ -404,8 +404,8 @@ impl ChatV2Pipeline {
             let user_msg_result = build_user_message(user_msg_params);
 
             // 保存用户消息和块
-            ChatV2Repo::create_message_with_conn(&conn, &user_msg_result.message)?;
-            ChatV2Repo::create_block_with_conn(&conn, &user_msg_result.block)?;
+            ChatV2Repo::create_message_with_conn(conn, &user_msg_result.message)?;
+            ChatV2Repo::create_block_with_conn(conn, &user_msg_result.block)?;
 
             log::debug!(
                 "[ChatV2::pipeline] Saved user message: id={}, content_len={}",
@@ -584,10 +584,7 @@ impl ChatV2Pipeline {
             // 🔧 修复：只要有 thinking 或 content 内容，都应该保存（取消时可能只有 thinking）
             // ============================================================
             else if !ctx.final_content.is_empty()
-                || ctx
-                    .final_reasoning
-                    .as_ref()
-                    .map_or(false, |r| !r.is_empty())
+                || ctx.final_reasoning.as_ref().is_some_and(|r| !r.is_empty())
             {
                 log::info!(
                     "[ChatV2::pipeline] save_results priority 3: final_content_len={}, final_reasoning={:?}",
@@ -600,7 +597,7 @@ impl ChatV2Pipeline {
                         let thinking_block_id = ctx
                             .streaming_thinking_block_id
                             .clone()
-                            .unwrap_or_else(|| MessageBlock::generate_id());
+                            .unwrap_or_else(MessageBlock::generate_id);
                         let started_at = assistant_now_ms - elapsed_ms;
                         let block = MessageBlock {
                             id: thinking_block_id,
@@ -654,7 +651,7 @@ impl ChatV2Pipeline {
                     let content_block_id = ctx
                         .streaming_content_block_id
                         .clone()
-                        .unwrap_or_else(|| MessageBlock::generate_id());
+                        .unwrap_or_else(MessageBlock::generate_id);
                     let started_at = assistant_now_ms - elapsed_ms;
                     let block = MessageBlock {
                         id: content_block_id,
@@ -684,7 +681,7 @@ impl ChatV2Pipeline {
                 let tool_block_id = tool_result
                     .block_id
                     .clone()
-                    .unwrap_or_else(|| MessageBlock::generate_id());
+                    .unwrap_or_else(MessageBlock::generate_id);
                 let started_at = assistant_now_ms - tool_result.duration_ms.unwrap_or(0) as i64;
 
                 // 🔧 修复：根据工具名称判断正确的 block_type
@@ -728,7 +725,7 @@ impl ChatV2Pipeline {
         // With `chat_v2_blocks.message_id ON DELETE CASCADE`, replacing the assistant message row
         // can delete existing blocks (including ChatAnki-generated `anki_cards` blocks).
         let preserved_anki_cards_blocks: Vec<MessageBlock> =
-            ChatV2Repo::get_message_blocks_with_conn(&conn, &ctx.assistant_message_id)?
+            ChatV2Repo::get_message_blocks_with_conn(conn, &ctx.assistant_message_id)?
                 .into_iter()
                 .filter(|b| b.block_type == block_types::ANKI_CARDS)
                 .collect();
@@ -893,14 +890,14 @@ impl ChatV2Pipeline {
 
         if !skip_assistant_message {
             // 正常场景：创建新的助手消息
-            ChatV2Repo::create_message_with_conn(&conn, &assistant_message)?;
+            ChatV2Repo::create_message_with_conn(conn, &assistant_message)?;
         } else {
             // 重试场景：更新已有的助手消息（只更新块列表和元数据）
             log::debug!(
                 "[ChatV2::pipeline] Updating existing assistant message for retry: id={}",
                 ctx.assistant_message_id
             );
-            ChatV2Repo::update_message_with_conn(&conn, &assistant_message)?;
+            ChatV2Repo::update_message_with_conn(conn, &assistant_message)?;
         }
 
         // 保存所有助手消息块（无论是创建还是更新消息，块都需要保存）
@@ -911,7 +908,7 @@ impl ChatV2Pipeline {
                 .unwrap_or(block.block_index);
             // 确保 message_id 正确
             block.message_id = ctx.assistant_message_id.clone();
-            ChatV2Repo::create_block_with_conn(&conn, &block)?;
+            ChatV2Repo::create_block_with_conn(conn, &block)?;
         }
 
         // Re-insert preserved `anki_cards` blocks deleted by the assistant message REPLACE.
@@ -930,7 +927,7 @@ impl ChatV2Pipeline {
                     .copied()
                     .unwrap_or(block_to_save.block_index);
 
-                if let Err(e) = ChatV2Repo::create_block_with_conn(&conn, &block_to_save) {
+                if let Err(e) = ChatV2Repo::create_block_with_conn(conn, &block_to_save) {
                     log::error!(
                         "[ChatV2::pipeline] Failed to re-insert preserved anki_cards block: message_id={}, block_id={}, err={:?}",
                         ctx.assistant_message_id,

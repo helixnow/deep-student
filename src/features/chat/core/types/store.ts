@@ -274,10 +274,25 @@ export interface ToolLimitBlockingInteraction {
   onContinue: (() => Promise<void>) | null;
 }
 
+/** Plan mode batch confirmation (distinct from tool_approval). */
+export interface PlanGateBlockingInteraction {
+  kind: 'plan_gate';
+  planId: string;
+  toolCallId: string;
+  toolName: string;
+  summary: string;
+  timeoutSeconds: number;
+  arguments?: Record<string, unknown>;
+  resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
+}
+
 export type BlockingInteraction =
   | ToolApprovalBlockingInteraction
   | AskUserBlockingInteraction
-  | ToolLimitBlockingInteraction;
+  | ToolLimitBlockingInteraction
+  | PlanGateBlockingInteraction;
+
+export type AuthorityMode = 'ask' | 'plan' | 'craft';
 
 // ============================================================================
 // ChatStore 类型定义
@@ -307,6 +322,15 @@ export interface ChatStore {
 
   /** 会话元数据 */
   sessionMetadata: Record<string, unknown> | null;
+
+  /**
+   * Ask / Plan / Craft session authority mode (SSOT from backend metadata).
+   * Defaults to craft for legacy sessions.
+   */
+  authorityMode: AuthorityMode;
+
+  /** Hint: last Ask-mode write was blocked — show switch-to-Plan CTA */
+  authorityAskBlockedHint: boolean;
 
   /** 会话状态 */
   sessionStatus: SessionStatus;
@@ -646,6 +670,25 @@ export interface ChatStore {
 
   /** 清除阻塞交互 */
   clearBlockingInteraction(): void;
+
+  /** Persist Ask/Plan/Craft mode via backend */
+  setAuthorityMode(mode: AuthorityMode): Promise<void>;
+
+  /** Apply plan_gate start payload from backend events */
+  handlePlanGateRequest(payload: {
+    planId: string;
+    toolCallId: string;
+    toolName: string;
+    summary: string;
+    timeoutSeconds: number;
+    arguments?: Record<string, unknown>;
+  }): void;
+
+  /** Clear / resolve plan_gate blocking interaction */
+  clearPlanGate(): void;
+
+  /** Mark Ask-mode write refusal for UI CTA */
+  setAuthorityAskBlockedHint(show: boolean): void;
 
   // ========== 🆕 上下文引用 Actions ==========
 

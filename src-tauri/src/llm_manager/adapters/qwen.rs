@@ -50,7 +50,7 @@ impl QwenAdapter {
         }
         model.contains("qwen3")
             && model
-                .split(|character: char| matches!(character, '-' | '_' | '/'))
+                .split(['-', '_', '/'])
                 .any(|token| token == "thinking")
     }
 

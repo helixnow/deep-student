@@ -734,7 +734,7 @@ impl PipelineContext {
         let block_id = tool_result
             .block_id
             .clone()
-            .unwrap_or_else(|| MessageBlock::generate_id());
+            .unwrap_or_else(MessageBlock::generate_id);
 
         // 🔧 P0 修复：检索工具使用正确的块类型，而非通用的 mcp_tool
         // 这样前端 sourceAdapter 能正确从 toolOutput.sources 中提取来源

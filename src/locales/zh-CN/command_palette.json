@@ -54,6 +54,7 @@
   "search_tip": "输入 > 可按分类筛选",
   "resource_files": "文件",
   "resource_sessions": "会话",
+  "resource_searching": "正在搜索资源与会话…",
   "resource_not_openable_in_workbench": "此资源无法在桌面模式中打开。",
 
   "categories": {

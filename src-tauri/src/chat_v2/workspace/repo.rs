@@ -50,7 +50,7 @@ impl WorkspaceRepo {
             "SELECT id, name, status, creator_session_id, created_at, updated_at, metadata_json FROM workspace LIMIT 1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([], |row| Self::row_to_workspace(row));
+        let result = stmt.query_row([], Self::row_to_workspace);
         match result {
             Ok(ws) => Ok(Some(ws)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -96,7 +96,7 @@ impl WorkspaceRepo {
             "SELECT session_id, workspace_id, role, skill_id, status, joined_at, last_active_at, metadata_json FROM agent WHERE session_id = ?1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([session_id], |row| Self::row_to_agent(row));
+        let result = stmt.query_row([session_id], Self::row_to_agent);
         match result {
             Ok(agent) => Ok(Some(agent)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -111,7 +111,7 @@ impl WorkspaceRepo {
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let agents = stmt
-            .query_map([], |row| Self::row_to_agent(row))
+            .query_map([], Self::row_to_agent)
             .map_err(|e| format!("Failed to query agents: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();
@@ -185,7 +185,7 @@ impl WorkspaceRepo {
             "SELECT id, workspace_id, sender_session_id, target_session_id, message_type, content, status, created_at, metadata_json FROM message WHERE id = ?1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([message_id], |row| Self::row_to_message(row));
+        let result = stmt.query_row([message_id], Self::row_to_message);
         match result {
             Ok(msg) => Ok(Some(msg)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -201,7 +201,7 @@ impl WorkspaceRepo {
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let messages = stmt
-            .query_map([limit], |row| Self::row_to_message(row))
+            .query_map([limit], Self::row_to_message)
             .map_err(|e| format!("Failed to query messages: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();
@@ -348,7 +348,7 @@ impl WorkspaceRepo {
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let messages = stmt
-            .query_map([session_id], |row| Self::row_to_message(row))
+            .query_map([session_id], Self::row_to_message)
             .map_err(|e| format!("Failed to query unread inbox messages: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();
@@ -367,7 +367,7 @@ impl WorkspaceRepo {
             .map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let items = stmt
-            .query_map([], |row| Self::row_to_inbox_item(row))
+            .query_map([], Self::row_to_inbox_item)
             .map_err(|e| format!("Failed to query all unread inbox: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();
@@ -400,7 +400,7 @@ impl WorkspaceRepo {
             "SELECT id, workspace_id, doc_type, title, content, version, updated_by, updated_at FROM document WHERE id = ?1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([doc_id], |row| Self::row_to_document(row));
+        let result = stmt.query_row([doc_id], Self::row_to_document);
         match result {
             Ok(doc) => Ok(Some(doc)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -415,7 +415,7 @@ impl WorkspaceRepo {
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let docs = stmt
-            .query_map([], |row| Self::row_to_document(row))
+            .query_map([], Self::row_to_document)
             .map_err(|e| format!("Failed to query documents: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();
@@ -446,7 +446,7 @@ impl WorkspaceRepo {
             "SELECT workspace_id, key, value_json, updated_by, updated_at FROM context WHERE key = ?1"
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
-        let result = stmt.query_row([key], |row| Self::row_to_context(row));
+        let result = stmt.query_row([key], Self::row_to_context);
         match result {
             Ok(ctx) => Ok(Some(ctx)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -461,7 +461,7 @@ impl WorkspaceRepo {
         ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
         let contexts = stmt
-            .query_map([], |row| Self::row_to_context(row))
+            .query_map([], Self::row_to_context)
             .map_err(|e| format!("Failed to query contexts: {}", e))?
             .filter_map(log_and_skip_err)
             .collect();

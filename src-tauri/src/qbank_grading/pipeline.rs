@@ -356,7 +356,7 @@ fn build_prompts(
         for opt in options {
             user_prompt.push_str(&format!("{}. {}\n", opt.key, opt.content));
         }
-        user_prompt.push_str("\n");
+        user_prompt.push('\n');
     }
 
     // 参考答案
@@ -383,7 +383,7 @@ fn build_prompts(
         },
     };
     user_prompt.push_str(label);
-    user_prompt.push_str("\n");
+    user_prompt.push('\n');
     user_prompt.push_str(&current_submission.user_answer);
     user_prompt.push_str("\n\n");
 
@@ -405,7 +405,7 @@ fn build_prompts(
                 sub.submitted_at,
             ));
         }
-        user_prompt.push_str("\n");
+        user_prompt.push('\n');
     }
 
     Ok((system_prompt, user_prompt))

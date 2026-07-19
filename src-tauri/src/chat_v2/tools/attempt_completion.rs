@@ -148,7 +148,6 @@ use async_trait::async_trait;
 use std::time::Instant;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
 /// AttemptCompletion 工具执行器

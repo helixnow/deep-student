@@ -6,11 +6,9 @@ use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
-use super::schema_registry::DatabaseId;
-use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
-    BackupJobResultPayload, BackupJobStatus, BackupJobSummary,
+    BackupJobResultPayload,
 };
 
 #[cfg(feature = "data_governance")]
@@ -1091,6 +1089,13 @@ pub(super) async fn execute_backup_with_progress_resumable(
             None => return,
         };
 
+    // 防御：在 set_params 之前拒绝历史 incremental 包恢复；文案与
+    // BackupManager::restore / INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE 对齐（UI 侧可 i18n 映射）。
+    if backup_type == "incremental" {
+        job_ctx.fail(super::backup::INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE.to_string());
+        return;
+    }
+
     // 设置任务参数（用于持久化和恢复）
     job_ctx.set_params(BackupJobParams {
         backup_type: Some(backup_type.clone()),
@@ -1167,67 +1172,44 @@ pub(super) async fn execute_backup_with_progress_resumable(
         return;
     }
 
-    // 执行备份（原子操作：一次性备份所有数据库）
-    let result = match backup_type.as_str() {
-        "incremental" => {
-            let base = match base_version {
-                Some(v) => v,
-                None => {
-                    job_ctx.fail("增量备份需要指定 base_version 参数".to_string());
-                    return;
-                }
-            };
-
-            job_ctx.mark_running(
-                BackupJobPhase::Compress,
-                30.0,
-                Some("正在执行增量备份...".to_string()),
-                0,
-                4,
-            );
-
-            manager.backup_incremental(&base)
-        }
-        _ => {
-            if include_assets {
-                let asset_config = if let Some(types) = asset_types {
-                    let parsed_types: Vec<AssetType> = types
-                        .iter()
-                        .filter_map(|s| AssetType::from_str(s))
-                        .collect();
-                    if parsed_types.is_empty() {
-                        AssetBackupConfig::default()
-                    } else {
-                        AssetBackupConfig {
-                            asset_types: parsed_types,
-                            ..Default::default()
-                        }
-                    }
-                } else {
-                    AssetBackupConfig::default()
-                };
-
-                job_ctx.mark_running(
-                    BackupJobPhase::Compress,
-                    30.0,
-                    Some("正在备份数据库和资产文件...".to_string()),
-                    0,
-                    4,
-                );
-
-                manager.backup_with_assets(Some(asset_config))
+    // 执行完整备份（原子操作：一次性备份所有数据库）
+    let result = if include_assets {
+        let asset_config = if let Some(types) = asset_types {
+            let parsed_types: Vec<AssetType> = types
+                .iter()
+                .filter_map(|s| AssetType::from_str(s))
+                .collect();
+            if parsed_types.is_empty() {
+                AssetBackupConfig::default()
             } else {
-                job_ctx.mark_running(
-                    BackupJobPhase::Compress,
-                    30.0,
-                    Some("正在备份数据库...".to_string()),
-                    0,
-                    4,
-                );
-
-                manager.backup_full()
+                AssetBackupConfig {
+                    asset_types: parsed_types,
+                    ..Default::default()
+                }
             }
-        }
+        } else {
+            AssetBackupConfig::default()
+        };
+
+        job_ctx.mark_running(
+            BackupJobPhase::Compress,
+            30.0,
+            Some("正在备份数据库和资产文件...".to_string()),
+            0,
+            4,
+        );
+
+        manager.backup_with_assets(Some(asset_config))
+    } else {
+        job_ctx.mark_running(
+            BackupJobPhase::Compress,
+            30.0,
+            Some("正在备份数据库...".to_string()),
+            0,
+            4,
+        );
+
+        manager.backup_full()
     };
 
     if job_ctx.is_cancelled() {

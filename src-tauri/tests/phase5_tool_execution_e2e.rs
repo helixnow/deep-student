@@ -87,7 +87,7 @@ fn execution_context(harness: &Phase5Harness, call_id: &str) -> ExecutionContext
         format!("block-{call_id}"),
         emitter,
         Arc::new(ToolRegistry::new()),
-        harness.window.clone(),
+        Some(harness.window.clone()),
     )
     .with_main_db(Some(harness.main_db.clone()))
     .with_vfs_db(Some(harness.vfs_db.clone()))

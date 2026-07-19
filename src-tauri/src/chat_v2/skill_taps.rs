@@ -197,7 +197,9 @@ fn scan_repo_zip_for_catalog(zip_bytes: &[u8]) -> Result<Vec<TapCatalogEntry>, S
 
     let mut entry_names = Vec::with_capacity(archive.len());
     for i in 0..archive.len() {
-        let file = archive.by_index(i).map_err(|e| format!("Zip read error: {}", e))?;
+        let file = archive
+            .by_index(i)
+            .map_err(|e| format!("Zip read error: {}", e))?;
         entry_names.push(file.name().to_string());
     }
     let prefix = repo_zip_top_prefix(&entry_names).unwrap_or_default();
@@ -249,7 +251,9 @@ fn scan_repo_zip_for_catalog(zip_bytes: &[u8]) -> Result<Vec<TapCatalogEntry>, S
 
         let mut content = String::new();
         {
-            let file = archive.by_index(index).map_err(|e| format!("Zip read error: {}", e))?;
+            let file = archive
+                .by_index(index)
+                .map_err(|e| format!("Zip read error: {}", e))?;
             if file.size() <= MAX_SKILL_MD_PREVIEW_BYTES {
                 let mut reader = file.take(MAX_SKILL_MD_PREVIEW_BYTES);
                 let mut buf = Vec::new();
@@ -284,9 +288,7 @@ fn scan_repo_zip_for_catalog(zip_bytes: &[u8]) -> Result<Vec<TapCatalogEntry>, S
     }
 
     // 子目录技能优先、按路径排序，根目录技能放最后
-    entries.sort_by(|a, b| {
-        (a.subdir.is_empty(), &a.subdir).cmp(&(b.subdir.is_empty(), &b.subdir))
-    });
+    entries.sort_by(|a, b| (a.subdir.is_empty(), &a.subdir).cmp(&(b.subdir.is_empty(), &b.subdir)));
     Ok(entries)
 }
 
@@ -309,7 +311,9 @@ pub(crate) fn repack_skill_subdir(
 
     let mut entry_names = Vec::with_capacity(archive.len());
     for i in 0..archive.len() {
-        let file = archive.by_index(i).map_err(|e| format!("Zip read error: {}", e))?;
+        let file = archive
+            .by_index(i)
+            .map_err(|e| format!("Zip read error: {}", e))?;
         entry_names.push(file.name().to_string());
     }
     let prefix = repo_zip_top_prefix(&entry_names).unwrap_or_default();
@@ -408,7 +412,13 @@ pub(crate) fn repo_name_from_zip_url(zip_url: &str) -> String {
     let repo = parts.next().unwrap_or("");
     let sanitized: String = repo
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     if sanitized.is_empty() {
         "imported-skill".to_string()
@@ -446,8 +456,7 @@ pub(crate) fn decode_tap_source_detail(detail: &str) -> Result<(String, String),
 /// 浏览 tap 技能源：下载仓库 zip 并列出全部技能条目（只读，不落盘）。
 #[tauri::command]
 pub async fn skill_tap_catalog(repo_url: String) -> ChatV2Result<TapCatalog> {
-    let candidates =
-        resolve_codeload_candidates(&repo_url).map_err(ChatV2Error::InvalidInput)?;
+    let candidates = resolve_codeload_candidates(&repo_url).map_err(ChatV2Error::InvalidInput)?;
     let fetch = FetchExecutor::new();
     let (bytes, resolved_zip_url) = fetch_repo_zip(&fetch, &candidates)
         .await
@@ -475,6 +484,7 @@ pub async fn skill_tap_install(
     subdir: String,
     overwrite: bool,
     dry_run: Option<bool>,
+    expected_package_sha256: Option<String>,
 ) -> ChatV2Result<SkillImportZipResult> {
     let dry_run = dry_run.unwrap_or(false);
     if !zip_url.starts_with("https://codeload.github.com/") {
@@ -485,7 +495,7 @@ pub async fn skill_tap_install(
     }
 
     let fetch = FetchExecutor::new();
-    let (repo_bytes, resolved_url) = fetch_repo_zip(&fetch, &[zip_url.clone()])
+    let (repo_bytes, resolved_url) = fetch_repo_zip(&fetch, std::slice::from_ref(&zip_url))
         .await
         .map_err(ChatV2Error::IoError)?;
 
@@ -511,6 +521,35 @@ pub async fn skill_tap_install(
     let prepared =
         prepare_skill_package_from_zip_bytes(package_bytes, DEFAULT_AGENT_SKILLS_BASE, overwrite)
             .await?;
+    let expected = expected_package_sha256
+        .as_deref()
+        .ok_or_else(|| {
+            ChatV2Error::InvalidInput(
+                "expectedPackageSha256 is required when installing a tap skill".to_string(),
+            )
+        })?
+        .trim()
+        .to_ascii_lowercase();
+    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(ChatV2Error::InvalidInput(
+            "expectedPackageSha256 must be a 64-character SHA-256 digest".to_string(),
+        ));
+    }
+    let actual = prepared.result().package_sha256.to_ascii_lowercase();
+    let digest_matches = actual
+        .as_bytes()
+        .iter()
+        .zip(expected.as_bytes())
+        .fold(0_u8, |difference, (left, right)| {
+            difference | (left ^ right)
+        })
+        == 0;
+    if !digest_matches {
+        return Err(ChatV2Error::InvalidInput(format!(
+            "Tap package changed after confirmation: expected {}, got {}",
+            expected, actual
+        )));
+    }
 
     let skill_id = prepared.result().skill_id.clone();
     let provenance = json!({
@@ -586,11 +625,16 @@ pub async fn skill_export_tap(
         return Err(ChatV2Error::InvalidInput("No skills selected".to_string()));
     }
     if skill_ids.len() > 64 {
-        return Err(ChatV2Error::InvalidInput("Too many skills (max 64)".to_string()));
+        return Err(ChatV2Error::InvalidInput(
+            "Too many skills (max 64)".to_string(),
+        ));
     }
     for id in &skill_ids {
         if !is_valid_skill_dir_name(id) {
-            return Err(ChatV2Error::InvalidInput(format!("Invalid skill id: {}", id)));
+            return Err(ChatV2Error::InvalidInput(format!(
+                "Invalid skill id: {}",
+                id
+            )));
         }
     }
     let dest = std::path::PathBuf::from(&dest_path);
@@ -609,7 +653,8 @@ pub async fn skill_export_tap(
             "# Skills Tap".to_string(),
             String::new(),
             "Exported from Deep Student. Push this directory to a GitHub repository,".to_string(),
-            "then anyone can browse & install these skills via a skill source (tap) URL.".to_string(),
+            "then anyone can browse & install these skills via a skill source (tap) URL."
+                .to_string(),
             String::new(),
             "## Skills".to_string(),
             String::new(),
@@ -677,9 +722,20 @@ pub async fn skill_export_tap(
                 }
 
                 let (name, description, version) = summary;
-                let display = if name.is_empty() { skill_id.clone() } else { name };
-                let ver = if version.is_empty() { String::new() } else { format!(" (v{})", version) };
-                readme_lines.push(format!("- **{}**{} — `{}/`：{}", display, ver, skill_id, description));
+                let display = if name.is_empty() {
+                    skill_id.clone()
+                } else {
+                    name
+                };
+                let ver = if version.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (v{})", version)
+                };
+                readme_lines.push(format!(
+                    "- **{}**{} — `{}/`：{}",
+                    display, ver, skill_id, description
+                ));
                 skill_count += 1;
             }
 
@@ -763,15 +819,16 @@ mod tests {
 
     #[test]
     fn resolves_repo_url_to_codeload_candidates() {
-        let candidates =
-            resolve_codeload_candidates("https://github.com/foo/bar").unwrap();
+        let candidates = resolve_codeload_candidates("https://github.com/foo/bar").unwrap();
         assert_eq!(candidates.len(), 2);
         assert!(candidates[0].contains("/foo/bar/zip/refs/heads/main"));
         assert!(candidates[1].contains("/foo/bar/zip/refs/heads/master"));
 
-        let with_ref =
-            resolve_codeload_candidates("https://github.com/foo/bar/tree/dev").unwrap();
-        assert_eq!(with_ref, vec!["https://codeload.github.com/foo/bar/zip/dev"]);
+        let with_ref = resolve_codeload_candidates("https://github.com/foo/bar/tree/dev").unwrap();
+        assert_eq!(
+            with_ref,
+            vec!["https://codeload.github.com/foo/bar/zip/dev"]
+        );
 
         assert!(resolve_codeload_candidates("https://gitlab.com/foo/bar").is_err());
         assert!(resolve_codeload_candidates("https://github.com/foo").is_err());
@@ -824,7 +881,10 @@ mod tests {
             "skills/pdf-tools",
         );
         let (url, subdir) = decode_tap_source_detail(&detail).unwrap();
-        assert_eq!(url, "https://codeload.github.com/foo/bar/zip/refs/heads/main");
+        assert_eq!(
+            url,
+            "https://codeload.github.com/foo/bar/zip/refs/heads/main"
+        );
         assert_eq!(subdir, "skills/pdf-tools");
     }
 }

@@ -88,7 +88,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       showGlobalNotification(
         'success',
-        t('common:multimodal.indexSuccess', {
+        t('common:chat.multimodal.indexSuccess', {
           pages: result.indexedPages,
         })
       );
@@ -103,7 +103,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       showGlobalNotification(
         'error',
-        t('common:multimodal.indexError')
+        t('common:chat.multimodal.indexError')
       );
 
       // 3秒后恢复 idle 状态
@@ -130,7 +130,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       showGlobalNotification(
         'success',
-        t('common:multimodal.rebuildSuccess', {
+        t('common:chat.multimodal.rebuildSuccess', {
           pages: result.indexedPages,
         })
       );
@@ -144,7 +144,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       showGlobalNotification(
         'error',
-        t('common:multimodal.rebuildError')
+        t('common:chat.multimodal.rebuildError')
       );
 
       setTimeout(() => setStatus('idle'), 3000);
@@ -169,25 +169,25 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
   const getLabel = () => {
     switch (status) {
       case 'indexing':
-        return t('common:multimodal.indexing');
+        return t('common:chat.multimodal.indexing');
       case 'success':
-        return t('common:multimodal.indexed');
+        return t('common:chat.multimodal.indexed');
       case 'error':
-        return t('common:multimodal.indexFailed');
+        return t('common:chat.multimodal.indexFailed');
       default:
-        return t('common:multimodal.index');
+        return t('common:chat.multimodal.index');
     }
   };
 
   // 获取 tooltip 内容
   const getTooltip = () => {
     if (lastResult && status === 'success') {
-      return t('common:multimodal.indexResultTooltip', {
+      return t('common:chat.multimodal.indexResultTooltip', {
         pages: lastResult.indexedPages,
         failed: lastResult.failedPages.length,
       });
     }
-    return t('common:multimodal.indexTooltip');
+    return t('common:chat.multimodal.indexTooltip');
   };
 
   // 构建不包含该能力时隐藏入口（early return 放在 hooks 之后）。
@@ -215,7 +215,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
 
       {/* 重建按钮（仅在成功后显示） */}
       {status === 'success' && (
-        <CommonTooltip content={<p className="text-xs">{t('common:multimodal.rebuild')}</p>} position="bottom">
+        <CommonTooltip content={<p className="text-xs">{t('common:chat.multimodal.rebuild')}</p>} position="bottom">
           <NotionButton
             variant="ghost"
             size="icon"

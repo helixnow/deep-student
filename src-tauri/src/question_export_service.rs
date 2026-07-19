@@ -296,7 +296,7 @@ impl CsvExportService {
             "difficulty" => question
                 .difficulty
                 .as_ref()
-                .map(|d| Self::format_difficulty(d))
+                .map(Self::format_difficulty)
                 .unwrap_or_default(),
             "tags" => question.tags.join(","),
             "question_label" => question.question_label.clone().unwrap_or_default(),

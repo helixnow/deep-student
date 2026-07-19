@@ -257,7 +257,7 @@ fn emit_note_updated_watch(ctx: &ExecutionContext, note_id: &str) {
         Ok(Some(note)) => {
             let node = note_to_dstu_node(&note);
             emit_watch_event(
-                &ctx.window,
+                ctx.window_ref(),
                 DstuWatchEvent::updated(&node.path, node.clone()),
             );
             log::debug!(
@@ -1065,7 +1065,7 @@ impl CanvasToolExecutor {
                 log::warn!("[CanvasToolExecutor] note multimodal cleanup failed: {error}");
             }
         }
-        emit_watch_event(&ctx.window, DstuWatchEvent::deleted(&node.path));
+        emit_watch_event(ctx.window_ref(), DstuWatchEvent::deleted(&node.path));
 
         Ok(json!({
             "success": true,
@@ -1677,12 +1677,12 @@ impl CanvasToolExecutor {
         // 2.1 验证必需参数
         match request.operation {
             CanvasEditOperation::Append | CanvasEditOperation::Set => {
-                if request.content.as_ref().map_or(true, |c| c.is_empty()) {
+                if request.content.as_ref().is_none_or(|c| c.is_empty()) {
                     return Err("缺少必需参数: content（内容不能为空）".to_string());
                 }
             }
             CanvasEditOperation::Replace => {
-                if request.search.as_ref().map_or(true, |s| s.is_empty()) {
+                if request.search.as_ref().is_none_or(|s| s.is_empty()) {
                     return Err("缺少必需参数: search（搜索模式不能为空）".to_string());
                 }
                 // replace 可以为空字符串（删除匹配内容）
@@ -1705,7 +1705,7 @@ impl CanvasToolExecutor {
             request.operation
         );
 
-        if let Err(e) = ctx.window.emit("canvas:ai-edit-request", &request) {
+        if let Err(e) = ctx.window_ref().emit("canvas:ai-edit-request", &request) {
             remove_pending(&request_id);
             return Err(format!("发送编辑请求失败: {}", e));
         }
@@ -2073,7 +2073,7 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("note_append"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("note_list"),

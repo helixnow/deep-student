@@ -290,6 +290,7 @@
     "auth_failed": "认证失败，请检查 API 密钥配置。({{error}})",
     "auth_failed_for_server": "服务器 {{serverId}} 认证失败，请检查 API 密钥配置。({{error}})",
     "auth_failed_check_key": "认证失败，请检查 API 密钥。",
+    "oauth_reauth_required": "此 MCP 服务器需要重新进行 OAuth 授权",
     "server_not_found": "未找到服务器: {{id}}",
     "tool_not_found": "未找到 MCP 工具: {{toolName}}",
     "resource_not_found": "未找到资源: {{uri}}",

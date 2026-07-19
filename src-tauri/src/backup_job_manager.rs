@@ -782,8 +782,10 @@ impl BackupJobContext {
 ///
 /// 增量备份导出仅含变更日志元信息、无行数据、不可恢复，为避免用户误以为
 /// "已有备份"而实际数据不可挽回，在实现完整增量链之前统一拒绝该类型。
+///
+/// 文案与 `data_governance::backup::INCREMENTAL_BACKUP_REMOVED_MESSAGE` 对齐。
 pub const INCREMENTAL_BACKUP_DISABLED_MESSAGE: &str =
-    "增量备份功能当前不可用：现有实现不包含实际数据、无法用于恢复，已被安全禁用。请使用完整备份（full）或分层备份。";
+    "Incremental backup has been removed; use full backup or cloud sync";
 
 /// 备份任务持久化目录名
 const BACKUP_JOBS_DIR: &str = "backup_jobs";
@@ -797,7 +799,8 @@ const DEFAULT_JOB_MAX_DURATION_SECS: u64 = 4 * 60 * 60;
 
 #[derive(Clone)]
 pub struct BackupJobManager {
-    app_handle: Arc<AppHandle>,
+    /// 生产路径必有；`new_for_tests` 可为 None（跳过事件广播，避免 macOS EventLoop 主线程约束）
+    app_handle: Option<Arc<AppHandle>>,
     jobs: Arc<DashMap<String, Arc<JobState>>>,
     /// 持久化目录路径
     persist_dir: Arc<RwLock<Option<PathBuf>>>,
@@ -837,14 +840,28 @@ impl BackupJobManager {
             .map(|dir| dir.join(BACKUP_JOBS_DIR));
 
         Self {
-            app_handle: Arc::new(app_handle),
+            app_handle: Some(Arc::new(app_handle)),
             jobs: Arc::new(DashMap::new()),
             persist_dir: Arc::new(RwLock::new(persist_dir)),
         }
     }
 
+    /// 测试用：无 Tauri AppHandle / EventLoop，事件与持久化均跳过。
+    /// 仍使用真实 `JobState` + `set_params` / `fail` / cancel 路径。
+    pub fn new_for_tests() -> Self {
+        Self {
+            app_handle: None,
+            jobs: Arc::new(DashMap::new()),
+            persist_dir: Arc::new(RwLock::new(None)),
+        }
+    }
+
     pub fn app_handle(&self) -> AppHandle {
-        self.app_handle.as_ref().clone()
+        self.app_handle
+            .as_ref()
+            .expect("BackupJobManager::app_handle called without AppHandle (test manager?)")
+            .as_ref()
+            .clone()
     }
 
     pub fn create_job(&self, kind: BackupJobKind) -> BackupJobContext {
@@ -936,12 +953,12 @@ impl BackupJobManager {
     }
 
     fn emit(&self, job_id: &str) {
+        let Some(app_handle) = self.app_handle.as_ref() else {
+            return;
+        };
         if let Some(state) = self.jobs.get(job_id) {
             let snapshot = state.snapshot();
-            if let Err(err) = self
-                .app_handle
-                .emit("backup-job-progress", snapshot.clone())
-            {
+            if let Err(err) = app_handle.emit("backup-job-progress", snapshot.clone()) {
                 warn!("[BackupJob] 任务事件广播失败: {}", err);
             }
             drop(state);
@@ -949,7 +966,10 @@ impl BackupJobManager {
     }
 
     pub fn emit_legacy_progress(&self, progress: &ImportProgress) {
-        if let Err(err) = self.app_handle.emit("backup-import-progress", progress) {
+        let Some(app_handle) = self.app_handle.as_ref() else {
+            return;
+        };
+        if let Err(err) = app_handle.emit("backup-import-progress", progress) {
             warn!("[BackupJob] legacy progress emit failed: {}", err);
         }
     }
@@ -1327,5 +1347,84 @@ impl BackupJobManager {
         let _ = self.delete_persisted_job(job_id);
         // 延迟从内存中移除（给前端时间获取最终状态）
         self.schedule_job_removal(job_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Note: BackupJobManager::new requires AppHandle<Wry>; tauri::test MockRuntime
+    // cannot construct it in unit tests. Behavioral set_params coverage lives in
+    // data_governance / integration tests; here we lock the ban message contract.
+
+    #[test]
+    fn incremental_disabled_message_is_english_and_aligned() {
+        assert_eq!(
+            INCREMENTAL_BACKUP_DISABLED_MESSAGE,
+            "Incremental backup has been removed; use full backup or cloud sync"
+        );
+        assert!(
+            INCREMENTAL_BACKUP_DISABLED_MESSAGE.is_ascii(),
+            "ban message must be English/ASCII"
+        );
+        #[cfg(feature = "data_governance")]
+        assert_eq!(
+            INCREMENTAL_BACKUP_DISABLED_MESSAGE,
+            crate::data_governance::backup::INCREMENTAL_BACKUP_REMOVED_MESSAGE
+        );
+    }
+
+    /// 真实 BackupJobManager（`new_for_tests`）+ set_params：incremental 立即失败。
+    #[test]
+    fn set_params_rejects_incremental_job_with_english_removed_message() {
+        let manager = BackupJobManager::new_for_tests();
+        let ctx = manager.create_job(BackupJobKind::Export);
+
+        ctx.set_params(BackupJobParams {
+            backup_type: Some("incremental".into()),
+            ..Default::default()
+        });
+
+        let summary = manager
+            .get_job(&ctx.job_id)
+            .expect("job must remain queryable after rejection");
+        assert_eq!(summary.status, BackupJobStatus::Failed);
+        assert_eq!(summary.phase, BackupJobPhase::Failed);
+
+        let message = summary.message.as_deref().expect("failed job has message");
+        assert_eq!(message, INCREMENTAL_BACKUP_DISABLED_MESSAGE);
+        assert!(
+            message.contains("Incremental backup has been removed"),
+            "message must state incremental was removed, got: {message}"
+        );
+        assert!(
+            message.contains("full backup") || message.contains("cloud sync"),
+            "message must point users to a supported path, got: {message}"
+        );
+
+        let result_error = summary
+            .result
+            .as_ref()
+            .and_then(|r| r.error.as_deref())
+            .expect("failed job result.error");
+        assert_eq!(result_error, INCREMENTAL_BACKUP_DISABLED_MESSAGE);
+        assert!(
+            ctx.is_cancelled(),
+            "incremental rejection must set cancel flag so executors exit at checkpoints"
+        );
+    }
+
+    #[test]
+    fn set_params_allows_full_backup_type() {
+        let manager = BackupJobManager::new_for_tests();
+        let ctx = manager.create_job(BackupJobKind::Export);
+        ctx.set_params(BackupJobParams {
+            backup_type: Some("full".into()),
+            ..Default::default()
+        });
+        let summary = manager.get_job(&ctx.job_id).expect("job");
+        assert_eq!(summary.status, BackupJobStatus::Queued);
+        assert!(!ctx.is_cancelled());
     }
 }

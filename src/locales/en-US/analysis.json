@@ -84,7 +84,8 @@
       "cached_badge": "Cached",
       "server": "Server",
       "no_tools": "No tools available",
-      "builtin_hint": "Manage in Settings → MCP"
+      "builtin_hint": "Manage in Settings → MCP",
+      "no_matches": "No matching servers or tools"
     },
     "search_engine": {
       "title": "Web Search",

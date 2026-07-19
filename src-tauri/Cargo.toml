@@ -238,6 +238,28 @@ harness = false
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25"
 objc = "0.2"
+# 与 wry 0.54 对齐；仅用于 browser::bridge eval_with_result（WKWebView evaluateJavaScript）
+objc2 = "0.6.3"
+block2 = "0.6.2"
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSString",
+    "NSData",
+    "NSError",
+    "NSJSONSerialization",
+    "NSObject",
+] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "WKWebView",
+] }
+
+# Linux 特定依赖（browser bridge WebKitGTK evaluate_javascript）
+[target.'cfg(target_os = "linux")'.dependencies]
+# 与 wry 0.54 / tauri-runtime-wry linux-body 对齐；仅用于 browser::bridge eval_with_result
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+javascriptcore-rs = "1.1"
 
 # Windows 特定依赖（系统 OCR + browser bridge WebView2 ExecuteScript）
 [target.'cfg(windows)'.dependencies]
@@ -314,6 +336,38 @@ data_governance = ["refinery"]
 # DevTools：仅在开发构建中启用，release 构建不应包含
 # 使用方式：cargo tauri dev --features devtools
 devtools = ["tauri/devtools"]
+
+# =============================================================================
+# Clippy / rustc lint gate (code-quality plan W0–W1 / C3)
+# =============================================================================
+# correctness: deny (must stay clean).
+# style: warn for now — remaining style debt below is allow-listed until later
+# waves (should_implement_trait / if_same_then_else / doc noise / ptr_arg leftovers).
+# Large-refactor complexity lints are allow (signature / type alias churn).
+[lints.rust]
+# objc macros probe cfg(feature = "cargo-clippy"); register so check-cfg is quiet.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy", "examples"))'] }
+
+[lints.clippy]
+# Groups at lower priority so per-lint allow/deny overrides win.
+correctness = { level = "deny", priority = -1 }
+# Prefer deny; kept at warn until remaining style items below are cleared.
+style = { level = "warn", priority = -1 }
+# --- deferred: large refactors / API surface ---
+too_many_arguments = "allow"
+type_complexity = "allow"
+should_implement_trait = "allow"
+manual_clamp = "allow"
+large_enum_variant = "allow"
+result_large_err = "allow"
+new_ret_no_self = "allow"
+inherent_to_string = "allow"
+# --- remaining style debt after W1 mechanical batch (style stays warn) ---
+if_same_then_else = "allow"
+doc_lazy_continuation = "allow"
+empty_line_after_doc_comments = "allow"
+empty_line_after_outer_attr = "allow"
+field_reassign_with_default = "allow"
 
 # Workaround for chrono/arrow trait method conflict (force a compatible chrono)
 

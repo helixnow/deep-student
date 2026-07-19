@@ -241,7 +241,7 @@ fn parse_archive<R: Read + Seek>(
             format!("Invalid APKG zip archive: {error}"),
         )
     })?;
-    if archive.len() == 0 {
+    if archive.is_empty() {
         return Err(validation_error(
             APKG_ERROR_INVALID_ARCHIVE,
             "APKG archive is empty",
@@ -295,13 +295,11 @@ fn parse_archive<R: Read + Seek>(
             "collection.anki21" => set_unique_entry(&mut collection_anki21, index, &name)?,
             "collection.anki2" => set_unique_entry(&mut collection_anki2, index, &name)?,
             "media" => set_unique_entry(&mut media_manifest, index, &name)?,
-            _ if is_numeric_media_name(&name) => {
-                if !numeric_media.insert(name.clone()) {
-                    return Err(validation_error(
-                        APKG_ERROR_INVALID_ARCHIVE,
-                        format!("APKG contains duplicate media entry {name}"),
-                    ));
-                }
+            _ if is_numeric_media_name(&name) && !numeric_media.insert(name.clone()) => {
+                return Err(validation_error(
+                    APKG_ERROR_INVALID_ARCHIVE,
+                    format!("APKG contains duplicate media entry {name}"),
+                ));
             }
             _ => {}
         }
@@ -601,7 +599,7 @@ fn parse_collection_database(
 fn install_collection_progress_handler(conn: &Connection) {
     let started = Instant::now();
     let mut callbacks = 0usize;
-    conn.progress_handler(
+    let _ = conn.progress_handler(
         SQLITE_PROGRESS_OP_INTERVAL,
         Some(move || {
             callbacks = callbacks.saturating_add(1);

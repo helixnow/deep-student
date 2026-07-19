@@ -7,7 +7,6 @@ use tauri::Emitter;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace::{
     AgentRole, AgentStatus, DocumentType, MessageType, SubagentTaskData, WorkspaceCoordinator,
@@ -296,7 +295,7 @@ impl WorkspaceToolExecutor {
                 "skill_id": skill_id,
             });
             if let Err(e) = ctx
-                .window
+                .window_ref()
                 .emit(WORKSPACE_WORKER_READY_EVENT, &event_payload)
             {
                 log::warn!(

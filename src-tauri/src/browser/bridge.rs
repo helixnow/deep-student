@@ -6,7 +6,8 @@
 //! 本模块通过 [`eval_with_result`]：
 //!
 //! - **Windows**：`with_webview` → WebView2 `ExecuteScript` 完成回调（oneshot + timeout）
-//! - **macOS / Linux**：返回 [`BridgeError::Unsupported`]（仍可注入脚本；宿主可后续补 WK/GTK 回调）
+//! - **macOS**：`with_webview` → WKWebView `evaluateJavaScript:completionHandler:`（oneshot + timeout）
+//! - **Linux**：`with_webview` → webkit2gtk `WebView::evaluate_javascript`（oneshot + timeout；需 WebKitGTK 2.40+）
 //!
 //! # 嵌入方式
 //!
@@ -37,6 +38,8 @@ pub const BRIDGE_GLOBAL: &str = "__dsBrowserBridge";
 pub const DEFAULT_READY_TIMEOUT: Duration = Duration::from_secs(2);
 pub const DEFAULT_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const DEFAULT_ACTION_TIMEOUT: Duration = Duration::from_secs(3);
+/// `eval_with_result` 默认超时（调用方可传入自定义 Duration）
+pub const DEFAULT_EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// 一期固定 content label（与 `window::BROWSER_CONTENT_LABEL` 对齐）
 pub const DEFAULT_CONTENT_LABEL: &str = "browser-content";
@@ -227,17 +230,47 @@ fn call_script_no_args(method: &str) -> String {
 /// | 平台 | 行为 |
 /// |------|------|
 /// | Windows | `with_webview` → `ICoreWebView2::ExecuteScript` 回调 |
-/// | macOS / Linux | [`BridgeError::Unsupported`]（桥脚本仍可注入） |
+/// | macOS | `with_webview` → WKWebView `evaluateJavaScript:completionHandler:` |
+/// | Linux | `with_webview` → webkit2gtk `evaluate_javascript`（JSC `to_json`） |
 ///
 /// # 禁止
 ///
 /// 不得用二次 `eval` 轮询页面全局变量取结果。
+///
+/// # Timeout
+///
+/// 默认建议 [`DEFAULT_EVAL_TIMEOUT`]（10s）；调用方传入的 `timeout` 优先生效。
 pub async fn eval_with_result<R: Runtime>(
     webview: &Webview<R>,
     script: impl Into<String>,
     timeout: Duration,
 ) -> BridgeResult<Value> {
     eval_with_result_inner(webview, script.into(), timeout).await
+}
+
+/// 将平台回调的原始 JSON 文本（或错误）解析为桥信封结果。
+///
+/// Windows ExecuteScript / macOS NSJSONSerialization / Linux JSC `to_json`
+/// 对字符串结果都会再 JSON 编码一层；[`parse_bridge_json`] 负责解套。
+fn finish_script_result(raw: Result<String, String>) -> BridgeResult<Value> {
+    match raw {
+        Ok(raw) => {
+            let envelope = parse_bridge_json(&raw)?;
+            envelope.into_result()
+        }
+        Err(e) => Err(BridgeError::Eval(e)),
+    }
+}
+
+async fn await_script_channel(
+    rx: tokio::sync::oneshot::Receiver<Result<String, String>>,
+    timeout: Duration,
+) -> BridgeResult<Value> {
+    match tokio::time::timeout(timeout, rx).await {
+        Ok(Ok(raw)) => finish_script_result(raw),
+        Ok(Err(_)) => Err(BridgeError::ChannelClosed),
+        Err(_) => Err(BridgeError::Timeout(timeout)),
+    }
 }
 
 #[cfg(windows)]
@@ -299,30 +332,184 @@ async fn eval_with_result_inner<R: Runtime>(
         })
         .map_err(|e| BridgeError::Eval(e.to_string()))?;
 
-    match tokio::time::timeout(timeout, rx).await {
-        Ok(Ok(Ok(raw))) => {
-            // ExecuteScript 返回 JSON 编码的表达式结果；
-            // 脚本 return 的是 JSON 字符串 → 外层再包一层引号。
-            let envelope = parse_bridge_json(&raw)?;
-            envelope.into_result()
-        }
-        Ok(Ok(Err(e))) => Err(BridgeError::Eval(e)),
-        Ok(Err(_)) => Err(BridgeError::ChannelClosed),
-        Err(_) => Err(BridgeError::Timeout(timeout)),
-    }
+    await_script_channel(rx, timeout).await
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+async fn eval_with_result_inner<R: Runtime>(
+    webview: &Webview<R>,
+    script: String,
+    timeout: Duration,
+) -> BridgeResult<Value> {
+    use std::sync::{Arc, Mutex};
+
+    use block2::RcBlock;
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSError, NSString};
+    use objc2_web_kit::WKWebView;
+    use tokio::sync::oneshot;
+
+    let (tx, rx) = oneshot::channel::<Result<String, String>>();
+    // Arc+Option：completion handler 可能晚于 with_webview 返回，或在超时后才回调
+    let tx = Arc::new(Mutex::new(Some(tx)));
+
+    webview
+        .with_webview(move |platform| {
+            let send = {
+                let tx = tx.clone();
+                move |r: Result<String, String>| {
+                    if let Ok(mut guard) = tx.lock() {
+                        if let Some(sender) = guard.take() {
+                            let _ = sender.send(r);
+                        }
+                    }
+                }
+            };
+
+            let ptr = platform.inner();
+            if ptr.is_null() {
+                send(Err("WKWebView handle was null".into()));
+                return;
+            }
+
+            // SAFETY: Tauri/wry `with_webview` 在主线程回调，且保证 inner 在闭包期间为有效 WKWebView*。
+            // 不额外 retain：completion 由 WKWebView 持有；若 webview 先释放则依赖超时兜底。
+            let wk = unsafe { &*(ptr as *const WKWebView) };
+            let js = NSString::from_str(&script);
+
+            let tx_handler = tx.clone();
+            let handler = RcBlock::new(move |val: *mut AnyObject, err: *mut NSError| {
+                let send_inner = |r: Result<String, String>| {
+                    if let Ok(mut guard) = tx_handler.lock() {
+                        if let Some(sender) = guard.take() {
+                            let _ = sender.send(r);
+                        }
+                    }
+                };
+
+                if !err.is_null() {
+                    // SAFETY: WebKit 传入的 NSError* 在 block 调用期间有效
+                    let ns_err = unsafe { &*err };
+                    let message = ns_err.localizedDescription().to_string();
+                    send_inner(Err(format!("evaluateJavaScript error: {message}")));
+                    return;
+                }
+
+                match macos_js_value_to_json_string(val) {
+                    Ok(raw) => send_inner(Ok(raw)),
+                    Err(e) => send_inner(Err(e)),
+                }
+            });
+
+            // SAFETY: evaluateJavaScript 要求主线程；with_webview 已保证
+            unsafe {
+                wk.evaluateJavaScript_completionHandler(&js, Some(&handler));
+            }
+        })
+        .map_err(|e| BridgeError::Eval(e.to_string()))?;
+
+    await_script_channel(rx, timeout).await
+}
+
+/// 将 WK `evaluateJavaScript` 结果序列化为与 WebView2 ExecuteScript 一致的 JSON 文本。
+///
+/// - `null` / `undefined` → `"null"`
+/// - 其它值经 `NSJSONSerialization`（FragmentsAllowed）编码；字符串结果会带一层引号
+#[cfg(target_os = "macos")]
+fn macos_js_value_to_json_string(val: *mut objc2::runtime::AnyObject) -> Result<String, String> {
+    use objc2::AnyThread;
+    use objc2_foundation::{
+        NSJSONSerialization, NSJSONWritingOptions, NSString, NSUTF8StringEncoding,
+    };
+
+    if val.is_null() {
+        return Ok("null".into());
+    }
+
+    // SAFETY: WebKit completion 保证 val 在回调期间有效；obj 须为 JSON 可序列化类型
+    let obj = unsafe { &*val };
+    let json_ns_data = unsafe {
+        NSJSONSerialization::dataWithJSONObject_options_error(
+            obj,
+            NSJSONWritingOptions::FragmentsAllowed,
+        )
+    }
+    .map_err(|e| format!("NSJSONSerialization failed: {}", e.localizedDescription()))?;
+
+    let json_string = NSString::alloc();
+    let json_string =
+        NSString::initWithData_encoding(json_string, &json_ns_data, NSUTF8StringEncoding)
+            .ok_or_else(|| "NSJSONSerialization produced non-UTF8 data".to_string())?;
+
+    Ok(json_string.to_string())
+}
+
+#[cfg(target_os = "linux")]
+async fn eval_with_result_inner<R: Runtime>(
+    webview: &Webview<R>,
+    script: String,
+    timeout: Duration,
+) -> BridgeResult<Value> {
+    use std::sync::{Arc, Mutex};
+
+    use javascriptcore::ValueExt;
+    use tokio::sync::oneshot;
+    use webkit2gtk::gio::Cancellable;
+    use webkit2gtk::WebViewExt;
+
+    let (tx, rx) = oneshot::channel::<Result<String, String>>();
+    // Arc+Option：async finish 可能晚于 with_webview 返回，或在超时后才回调
+    let tx = Arc::new(Mutex::new(Some(tx)));
+
+    webview
+        .with_webview(move |platform| {
+            // PlatformWebview::inner() → webkit2gtk::WebView（与 wry 同实例）
+            let wv = platform.inner();
+            let cancellable: Option<&Cancellable> = None;
+            let tx_handler = tx.clone();
+
+            // evaluate_javascript（WebKitGTK 2.40+ / webkit2gtk feature v2_40）
+            // 要求 GTK MainContext；with_webview 在 UI 线程回调，与 wry::eval 同前提。
+            wv.evaluate_javascript(&script, None, None, cancellable, move |result| {
+                let send_inner = |r: Result<String, String>| {
+                    if let Ok(mut guard) = tx_handler.lock() {
+                        if let Some(sender) = guard.take() {
+                            let _ = sender.send(r);
+                        }
+                    }
+                };
+
+                match result {
+                    Ok(value) => {
+                        // 与 wry eval 回调一致：JSC Value → JSON 文本；字符串结果带一层引号
+                        let raw = value
+                            .to_json(0)
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "null".into());
+                        send_inner(Ok(raw));
+                    }
+                    Err(e) => {
+                        send_inner(Err(format!("evaluate_javascript error: {e}")));
+                    }
+                }
+            });
+        })
+        .map_err(|e| BridgeError::Eval(e.to_string()))?;
+
+    await_script_channel(rx, timeout).await
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 async fn eval_with_result_inner<R: Runtime>(
     _webview: &Webview<R>,
     _script: String,
     _timeout: Duration,
 ) -> BridgeResult<Value> {
+    // 非 Win/macOS/Linux：无 with_webview 平台回调实现；INIT_SCRIPT 仍可注入。
     Err(BridgeError::Unsupported(
         "eval_with_result requires with_webview platform callback; \
-         Windows WebView2 ExecuteScript is implemented; \
-         macOS WKWebView / Linux WebKitGTK callbacks are not yet wired \
-         (bridge INIT_SCRIPT can still be injected)"
+         Windows WebView2, macOS WKWebView, and Linux WebKitGTK are implemented; \
+         this platform is not wired (bridge INIT_SCRIPT can still be injected)"
             .into(),
     ))
 }
@@ -597,20 +784,90 @@ mod tests {
 
     #[test]
     fn unsupported_message_mentions_platforms() {
-        let msg = BridgeError::Unsupported("macOS WKWebView / Linux WebKitGTK".into()).to_string();
+        let msg = BridgeError::Unsupported("Linux WebKitGTK".into()).to_string();
         assert!(
-            msg.contains("Unsupported") || msg.contains("unsupported") || msg.contains("macOS")
+            msg.contains("Unsupported") || msg.contains("unsupported") || msg.contains("Linux")
         );
     }
 
-    #[cfg(not(windows))]
+    #[test]
+    fn finish_script_result_maps_eval_error() {
+        match finish_script_result(Err("evaluateJavaScript error: boom".into())) {
+            Err(BridgeError::Eval(msg)) => assert!(msg.contains("boom")),
+            other => panic!("expected Eval, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn finish_script_result_maps_invalid_json() {
+        match finish_script_result(Ok("not-json".into())) {
+            Err(BridgeError::InvalidJson(_)) => {}
+            other => panic!("expected InvalidJson, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn finish_script_result_parses_double_encoded_ok() {
+        let inner = r#"{"ok":true,"v":1,"epoch":1,"data":{"status":"ready"}}"#;
+        let raw = serde_json::to_string(inner).unwrap();
+        let data = finish_script_result(Ok(raw)).expect("ok");
+        assert_eq!(data["status"], "ready");
+    }
+
+    #[test]
+    fn finish_script_result_maps_bridge_error_envelope() {
+        let raw = r#"{"ok":false,"v":1,"epoch":0,"error":{"code":"EVAL_THROW","message":"x"}}"#;
+        match finish_script_result(Ok(raw.into())) {
+            Err(BridgeError::Bridge { code, .. }) => assert_eq!(code, "EVAL_THROW"),
+            other => panic!("expected Bridge EVAL_THROW, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn timeout_error_is_explicit() {
+        let d = Duration::from_secs(10);
+        let err = BridgeError::Timeout(d);
+        let msg = err.to_string();
+        assert!(msg.contains("timed out") || msg.contains("timeout") || msg.contains("10s"));
+        assert!(matches!(err, BridgeError::Timeout(_)));
+    }
+
+    #[test]
+    fn default_eval_timeout_is_ten_seconds() {
+        assert_eq!(DEFAULT_EVAL_TIMEOUT, Duration::from_secs(10));
+    }
+
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     #[tokio::test]
-    async fn eval_with_result_is_unsupported_off_windows() {
-        // 无真实 webview 时 with_webview 路径不会走到；非 Win 直接 Unsupported。
-        // 这里只验证错误文案契约（不构造 Webview）。
+    async fn eval_with_result_is_unsupported_off_win_mac_linux() {
+        // 无真实 webview 时 with_webview 路径不会走到；非 Win/macOS/Linux 直接 Unsupported。
         let err = BridgeError::Unsupported(
             "eval_with_result requires with_webview platform callback".into(),
         );
         assert!(err.to_string().contains("unsupported") || err.to_string().contains("Unsupported"));
+    }
+
+    /// 真实 WKWebView roundtrip：需在运行中的 Tauri content webview 上执行。
+    /// 手动验收见 B5 汇报清单（dev → open → navigate → snapshot → click）。
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    #[ignore = "requires live WKWebView; run via tauri dev manual acceptance"]
+    async fn macos_eval_with_result_roundtrip() {
+        // 单元测试无法构造 WKWebView；保留 ignore 标记作为验收锚点。
+        // 手动步骤：对本地测试页 eval `JSON.stringify({ok:true,v:1,epoch:0,data:{ping:1}})`
+        // 并断言 finish_script_result 协议一致。
+        assert_eq!(DEFAULT_EVAL_TIMEOUT, Duration::from_secs(10));
+    }
+
+    /// 真实 WebKitGTK roundtrip：需在运行中的 Tauri content webview 上执行。
+    /// 手动验收见 B5 汇报清单（dev → open → navigate → snapshot → click）。
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    #[ignore = "requires live WebKitGTK; run via tauri dev manual acceptance"]
+    async fn linux_eval_with_result_roundtrip() {
+        // 单元测试无法构造 GTK WebView；保留 ignore 标记作为验收锚点。
+        // 手动步骤：对本地测试页 eval `JSON.stringify({ok:true,v:1,epoch:0,data:{ping:1}})`
+        // 并断言 finish_script_result 协议一致（JSC to_json 双编码与 Win/macOS 相同）。
+        assert_eq!(DEFAULT_EVAL_TIMEOUT, Duration::from_secs(10));
     }
 }

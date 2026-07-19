@@ -41,6 +41,12 @@ const MEMORY_FOLDER_PATH_CHARS: usize = 1_000;
 
 pub struct MemoryToolExecutor;
 
+impl Default for MemoryToolExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryToolExecutor {
     pub fn new() -> Self {
         Self
@@ -426,7 +432,7 @@ impl MemoryToolExecutor {
             "entityIds": note_ids,
             "runId": ctx.run_id(),
         });
-        if let Err(error) = ctx.window.emit("memory://changed", payload) {
+        if let Err(error) = ctx.window_ref().emit("memory://changed", payload) {
             log::debug!(
                 "[MemoryToolExecutor] Failed to emit memory://changed: {}",
                 error

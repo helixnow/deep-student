@@ -329,6 +329,21 @@
         "reasoning_split_hint": "将思维内容分离到 reasoning_details 字段",
         "no_enable_thinking": "MiniMax API 不支持 enable_thinking 参数"
       },
+      "mimo": {
+        "title": "小米 MiMo",
+        "description": "使用 thinking.type，并在思维模式下返回 reasoning_content。",
+        "enable_thinking": "思维模式",
+        "enable_thinking_hint": "映射为 thinking.type 的 enabled / disabled。",
+        "preserve_reasoning": "保留推理内容",
+        "preserve_reasoning_hint": "在多轮工具对话中保留返回的 reasoning_content。"
+      },
+      "mistral": {
+        "title": "Mistral"
+      },
+      "ernie": {
+        "title": "文心一言 ERNIE"
+      },
+      "model_adapter": "模型适配器",
       "capabilities": {
         "title": "模型能力",
         "description": "勾选下方选项以标记模型的能力与适用场景",
@@ -1508,7 +1523,25 @@
     "backend_disabled_hint": "后端 MCP 功能未启用，请在 Cargo.toml 中开启 mcp 特性后重试。",
     "load_config_failed": "加载配置失败: {{error}}",
     "save_model_assignment_failed": "保存模型分配失败: {{error}}",
-    "vendor_not_found": "未找到供应商"
+    "vendor_not_found": "未找到供应商",
+    "oauth": {
+      "title": "OAuth 授权",
+      "login": "使用 OAuth 登录",
+      "reauth": "重新授权",
+      "logout": "注销",
+      "cancel": "取消授权",
+      "status_authorized": "已授权（令牌已安全存储）",
+      "status_none": "未授权",
+      "login_success": "OAuth 授权完成",
+      "login_failed": "OAuth 授权失败",
+      "logout_success": "已注销 OAuth 会话",
+      "logout_failed": "注销 OAuth 会话失败",
+      "cancelled": "已取消授权",
+      "desktop_only": "OAuth 浏览器登录仅在桌面端可用",
+      "missing_url": "请先填写 MCP 端点 URL 再授权",
+      "clear_api_key_first": "请先清空 API Key —— API Key 优先于 OAuth",
+      "api_key_priority_hint": "若已填写 API Key，将优先于 OAuth Bearer 令牌使用。"
+    }
   },
   "notifications": {
     "config_save_success": "配置保存成功",
@@ -2508,9 +2541,59 @@
     "already_exists": "该服务器已存在",
     "free_label": "免费",
     "requires_api_key": "需要 API Key",
+    "api_key_required": "该预置需要 API Key（或启用 OAuth）",
     "community": "社区",
+    "official": "官方",
     "category_documentation": "文档",
-    "context7_desc": "获取任意库的最新文档和代码示例，支持 1000+ 主流框架，无需 API Key"
+    "category_search": "搜索",
+    "category_knowledge": "知识",
+    "category_scraping": "抓取 / Fetch",
+    "category_devops": "开发运维",
+    "risk_label": "风险等级",
+    "risk_low": "低",
+    "risk_medium": "中",
+    "risk_high": "高",
+    "data_scope_label": "数据范围",
+    "network_egress_label": "是否出网",
+    "network_egress_yes": "是 — 会访问远程服务",
+    "network_egress_no": "否",
+    "get_api_key": "获取 API Key / Token",
+    "permission_title": "权限说明 — {{name}}",
+    "confirm_install": "确认安装",
+    "enable_oauth_install": "以 OAuth 方式安装（安装后浏览器授权；与 API Key 互斥）",
+    "context7_desc": "获取任意库的最新文档和代码示例，支持 1000+ 主流框架，无需 API Key",
+    "exa_desc": "Exa 神经搜索 / 代码搜索（托管 MCP；免费额度，可选 API Key 提升限额）",
+    "wikipedia_desc": "通过 Pipeworx 网关访问维基百科 / Wikimedia（无需鉴权）",
+    "firecrawl_desc": "抓取、爬取与搜索实时网页（无 Key 免费档；API Key 或 OAuth 解锁完整工具）",
+    "cloudflare_docs_desc": "检索 Cloudflare 开发者文档（连接时可 OAuth）",
+    "tavily_desc": "Tavily 实时搜索、抽取、地图与爬取（API Key 或 OAuth）",
+    "huggingface_desc": "Hugging Face Hub 模型、数据集、论文与 Spaces（Token 或 OAuth）",
+    "github_desc": "GitHub 官方远程 MCP — 仓库、Issue、PR（当前建议 PAT；可 OAuth）",
+    "hints": {
+      "exa_key": "可选 Exa API Key",
+      "firecrawl_key": "可选 Firecrawl API Key（fc-…）",
+      "tavily_key": "Tavily API Key",
+      "huggingface_token": "Hugging Face Access Token（hf_…）",
+      "github_pat": "GitHub Personal Access Token"
+    },
+    "permissions": {
+      "context7_scope": "读取 Context7 上的公开库文档；不访问你的本地文件。",
+      "context7_notes": "查询会发往 mcp.context7.com。",
+      "exa_scope": "通过 Exa 执行网页/代码搜索；搜索词会发送给 Exa。",
+      "exa_notes": "可选 API Key 可提高限额。基础使用无需 OAuth。",
+      "wikipedia_scope": "经第三方网关获取维基百科 / Wikimedia 内容。",
+      "wikipedia_notes": "社区托管远程端点，可能有速率限制。",
+      "firecrawl_scope": "按你的请求抓取任意公开 URL。",
+      "firecrawl_notes": "无 Key 档有速率限制。生产环境建议 API Key 或 OAuth。",
+      "cloudflare_docs_scope": "仅读取 Cloudflare 公开文档（不含你的账户 API）。",
+      "cloudflare_docs_notes": "首次连接时远程服务可能提示 OAuth。",
+      "tavily_scope": "经 Tavily 云进行网页搜索与 URL 抽取/地图/爬取。",
+      "tavily_notes": "支持 Header/URL 中的 API Key，或兼容客户端的 OAuth。",
+      "huggingface_scope": "搜索 Hub 模型/数据集/论文，并可能调用你启用的 Gradio Spaces。",
+      "huggingface_notes": "私有资源需要 Token 或 OAuth（?login）；公开搜索可能无需鉴权。",
+      "github_scope": "访问你的 PAT/OAuth 范围所允许的 GitHub 数据（仓库、Issue、PR 等）。",
+      "github_notes": "高风险：请妥善保管令牌。宿主 OAuth 支持因客户端而异；当前推荐 PAT。"
+    }
   },
   "gradingMode": {
     "backToSettings": "返回设置",
@@ -2640,5 +2723,30 @@
     "edit": "编辑",
     "delete": "删除",
     "save": "保存"
+  },
+  "quick_assistant": {
+    "title": "快速学习",
+    "description": "在其他应用中捕获内容、快速处理并沉淀到学习系统。",
+    "enabled": "启用系统快捷小窗",
+    "enabled_description": "使用 {{shortcut}} 随时呼出快速学习。",
+    "clipboard": "呼出时读取剪贴板",
+    "clipboard_description": "仅在本机读取，用于识别当前复制的题目、段落或公式。",
+    "background": "关闭主窗口后继续运行",
+    "background_description": "主窗口关闭时隐藏到后台，使系统快捷键仍可呼出小窗。",
+    "preview": "预览快速学习",
+    "preview_description": "打开小窗，检查剪贴板捕获、搜索、复习和学习状态。",
+    "open": "打开小窗"
+  },
+  "search_engine": {
+    "title": "搜索引擎"
+  },
+  "statistics": {
+    "learning_time": "学习时长",
+    "chat_stats": "对话统计",
+    "heatmap": "活跃热力图"
+  },
+  "params": {
+    "temperature": "温度",
+    "top_p": "Top P"
   }
 }

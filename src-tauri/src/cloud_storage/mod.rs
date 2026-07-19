@@ -80,7 +80,7 @@ fn emit_sync_progress(app: &AppHandle, event: CloudSyncProgressEvent) {
 /// 实现了 CloudStorage trait 的存储实例
 pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn CloudStorage>> {
     // 验证配置
-    config.validate().map_err(|e| AppError::validation(e))?;
+    config.validate().map_err(AppError::validation)?;
 
     let root = config.root();
 

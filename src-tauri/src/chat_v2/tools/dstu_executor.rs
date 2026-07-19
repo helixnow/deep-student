@@ -126,10 +126,7 @@ fn reject_unknown_args(args: &Value, allowed: &[&str]) -> Result<(), String> {
             "Send named arguments matching the tool schema.",
         )
     })?;
-    if let Some(unknown) = object
-        .keys()
-        .find(|key| !allowed.iter().any(|allowed| key.as_str() == *allowed))
-    {
+    if let Some(unknown) = object.keys().find(|key| !allowed.contains(&key.as_str())) {
         return Err(invalid_args(
             format!("unknown argument: {}", unknown),
             "Use only the fields declared by the DSTU tool schema.",
@@ -177,7 +174,7 @@ fn vfs_db(ctx: &ExecutionContext) -> Result<Arc<VfsDatabase>, String> {
     ctx.vfs_db
         .clone()
         .or_else(|| {
-            ctx.window
+            ctx.window_ref()
                 .try_state::<Arc<VfsDatabase>>()
                 .map(|state| state.inner().clone())
         })
@@ -303,7 +300,7 @@ fn resolve_runtime_upload_path(
         ));
     }
     let root = runtime_root_by_id(
-        &ctx.window.app_handle(),
+        ctx.window_ref().app_handle(),
         database,
         &ctx.session_id,
         ctx.skill_package_roots.as_ref(),
@@ -446,7 +443,7 @@ impl DstuToolExecutor {
         .map_err(|error| backend_error("create folder", error))?;
         let node = folder_node(&db, &folder)?;
         emit_watch_event(
-            &ctx.window,
+            ctx.window_ref(),
             DstuWatchEvent::created(&node.path, node.clone()),
         );
         Ok(json!({
@@ -468,7 +465,7 @@ impl DstuToolExecutor {
         let folder_id = required_string(args, "folder_id")?;
         let title = required_string(args, "title")?;
         let state = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<VfsDatabase>>()
             .ok_or_else(|| managed_state_error("VFS database"))?;
         crate::dstu::folder_handlers::dstu_folder_rename(state, folder_id.clone(), title)
@@ -487,7 +484,7 @@ impl DstuToolExecutor {
             })?;
         let node = folder_node(&db, &folder)?;
         emit_watch_event(
-            &ctx.window,
+            ctx.window_ref(),
             DstuWatchEvent::updated(&node.path, node.clone()),
         );
         Ok(json!({
@@ -505,13 +502,17 @@ impl DstuToolExecutor {
         let path = required_string(args, "path")?;
         let new_name = required_string(args, "new_name")?;
         let state = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<VfsDatabase>>()
             .ok_or_else(|| managed_state_error("VFS database"))?;
-        let node =
-            crate::dstu::handlers::dstu_rename(path.clone(), new_name, ctx.window.clone(), state)
-                .await
-                .map_err(|error| backend_error("rename resource", error))?;
+        let node = crate::dstu::handlers::dstu_rename(
+            path.clone(),
+            new_name,
+            ctx.window_ref().clone(),
+            state,
+        )
+        .await
+        .map_err(|error| backend_error("rename resource", error))?;
         Ok(json!({
             "success": true,
             "action": "rename",
@@ -527,13 +528,17 @@ impl DstuToolExecutor {
         let src = required_string(args, "src")?;
         let dst = required_string(args, "dst")?;
         let state = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<VfsDatabase>>()
             .ok_or_else(|| managed_state_error("VFS database"))?;
-        let node =
-            crate::dstu::handlers::dstu_move(src.clone(), dst.clone(), ctx.window.clone(), state)
-                .await
-                .map_err(|error| backend_error("move resource", error))?;
+        let node = crate::dstu::handlers::dstu_move(
+            src.clone(),
+            dst.clone(),
+            ctx.window_ref().clone(),
+            state,
+        )
+        .await
+        .map_err(|error| backend_error("move resource", error))?;
         Ok(json!({
             "success": true,
             "action": "move",
@@ -549,14 +554,14 @@ impl DstuToolExecutor {
         reject_unknown_args(args, &["path"])?;
         let path = required_string(args, "path")?;
         let db = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<VfsDatabase>>()
             .ok_or_else(|| managed_state_error("VFS database"))?;
         let lance = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<crate::vfs::lance_store::VfsLanceStore>>()
             .ok_or_else(|| managed_state_error("VFS vector store"))?;
-        crate::dstu::handlers::dstu_delete(path.clone(), ctx.window.clone(), db, lance)
+        crate::dstu::handlers::dstu_delete(path.clone(), ctx.window_ref().clone(), db, lance)
             .await
             .map_err(|error| backend_error("delete resource", error))?;
         Ok(json!({
@@ -570,12 +575,13 @@ impl DstuToolExecutor {
         reject_unknown_args(args, &["path"])?;
         let path = required_string(args, "path")?;
         let state = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<VfsDatabase>>()
             .ok_or_else(|| managed_state_error("VFS database"))?;
-        let node = crate::dstu::handlers::dstu_restore(path.clone(), ctx.window.clone(), state)
-            .await
-            .map_err(|error| backend_error("restore resource", error))?;
+        let node =
+            crate::dstu::handlers::dstu_restore(path.clone(), ctx.window_ref().clone(), state)
+                .await
+                .map_err(|error| backend_error("restore resource", error))?;
         Ok(json!({
             "success": true,
             "action": "restore",
@@ -623,12 +629,17 @@ impl DstuToolExecutor {
         let path = required_string(args, "path")?;
         let favorite = required_bool(args, "favorite")?;
         let state = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<VfsDatabase>>()
             .ok_or_else(|| managed_state_error("VFS database"))?;
-        crate::dstu::handlers::dstu_set_favorite(path.clone(), favorite, ctx.window.clone(), state)
-            .await
-            .map_err(|error| backend_error("set favorite", error))?;
+        crate::dstu::handlers::dstu_set_favorite(
+            path.clone(),
+            favorite,
+            ctx.window_ref().clone(),
+            state,
+        )
+        .await
+        .map_err(|error| backend_error("set favorite", error))?;
         Ok(json!({
             "success": true,
             "action": "set_favorite",
@@ -641,14 +652,14 @@ impl DstuToolExecutor {
         reject_unknown_args(args, &["path"])?;
         let path = required_string(args, "path")?;
         let db = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<VfsDatabase>>()
             .ok_or_else(|| managed_state_error("VFS database"))?;
         let lance = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<crate::vfs::lance_store::VfsLanceStore>>()
             .ok_or_else(|| managed_state_error("VFS vector store"))?;
-        crate::dstu::handlers::dstu_purge(path.clone(), ctx.window.clone(), db, lance)
+        crate::dstu::handlers::dstu_purge(path.clone(), ctx.window_ref().clone(), db, lance)
             .await
             .map_err(|error| backend_error("purge resource", error))?;
         Ok(json!({
@@ -718,19 +729,19 @@ impl DstuToolExecutor {
         }
 
         let vfs_state = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<VfsDatabase>>()
             .ok_or_else(|| managed_state_error("VFS database"))?;
         let llm_state = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<crate::llm_manager::LLMManager>>()
             .ok_or_else(|| managed_state_error("LLM manager"))?;
         let database_state = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<crate::database::Database>>()
             .ok_or_else(|| managed_state_error("main database"))?;
         let pdf_state = ctx
-            .window
+            .window_ref()
             .try_state::<Arc<crate::vfs::pdf_processing_service::PdfProcessingService>>()
             .ok_or_else(|| managed_state_error("PDF processing service"))?;
         let upload = crate::vfs::handlers::vfs_upload_file(
@@ -755,7 +766,7 @@ impl DstuToolExecutor {
         } else {
             DstuWatchEvent::updated(&node.path, node.clone())
         };
-        emit_watch_event(&ctx.window, event);
+        emit_watch_event(ctx.window_ref(), event);
         Ok(json!({
             "success": true,
             "action": "upload_file",

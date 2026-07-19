@@ -77,7 +77,9 @@ pub async fn debug_get_database_stats(
 
     // 总错题数
     let total_mistakes = conn
-        .query_row("SELECT COUNT(*) FROM mistakes", [], |row| row.get::<_, i64>(0))
+        .query_row("SELECT COUNT(*) FROM mistakes", [], |row| {
+            row.get::<_, i64>(0)
+        })
         .unwrap_or(0) as usize;
 
     // 有聊天记录的错题数
@@ -106,34 +108,30 @@ pub async fn debug_get_database_stats(
         .query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| AppError::database(format!("查询失败: {}", e)))?;
 
-    for row_result in rows {
-        if let Ok(chat_history_str) = row_result {
-            if let Ok(messages) =
-                serde_json::from_str::<Vec<DebugRawChatMessage>>(&chat_history_str)
-            {
-                total_messages += messages.len();
+    for chat_history_str in rows.flatten() {
+        if let Ok(messages) = serde_json::from_str::<Vec<DebugRawChatMessage>>(&chat_history_str) {
+            total_messages += messages.len();
 
-                for msg in messages {
-                    if msg.image_base64.as_ref().map_or(false, |v| !v.is_empty())
-                        || msg.image_paths.as_ref().map_or(false, |v| !v.is_empty())
-                    {
-                        messages_with_images += 1;
-                    }
-                    if msg.thinking_content.is_some() {
-                        messages_with_thinking += 1;
-                    }
-                    if msg.rag_sources.is_some() {
-                        messages_with_rag_sources += 1;
-                    }
-                    if msg.memory_sources.is_some() {
-                        messages_with_memory_sources += 1;
-                    }
-                    if msg.web_search_sources.is_some() {
-                        messages_with_web_sources += 1;
-                    }
-                    if msg.persistent_stable_id.is_some() {
-                        messages_with_persistent_id += 1;
-                    }
+            for msg in messages {
+                if msg.image_base64.as_ref().is_some_and(|v| !v.is_empty())
+                    || msg.image_paths.as_ref().is_some_and(|v| !v.is_empty())
+                {
+                    messages_with_images += 1;
+                }
+                if msg.thinking_content.is_some() {
+                    messages_with_thinking += 1;
+                }
+                if msg.rag_sources.is_some() {
+                    messages_with_rag_sources += 1;
+                }
+                if msg.memory_sources.is_some() {
+                    messages_with_memory_sources += 1;
+                }
+                if msg.web_search_sources.is_some() {
+                    messages_with_web_sources += 1;
+                }
+                if msg.persistent_stable_id.is_some() {
+                    messages_with_persistent_id += 1;
                 }
             }
         }
@@ -292,7 +290,7 @@ pub async fn debug_vfs_migration_status(
         .collect();
 
     // 4. 检查索引状态相关列
-    let index_columns = vec![
+    let index_columns = [
         "index_state",
         "index_hash",
         "index_error",

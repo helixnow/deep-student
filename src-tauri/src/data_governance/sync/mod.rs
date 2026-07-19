@@ -1261,7 +1261,7 @@ impl SyncManager {
                 };
                 any_found = true;
                 if let Some(dt) = Self::parse_flexible_timestamp(&manifest.created_at) {
-                    if latest_created_at.map_or(true, |prev| dt > prev) {
+                    if latest_created_at.is_none_or(|prev| dt > prev) {
                         latest_created_at = Some(dt);
                         latest_created_at_raw = manifest.created_at.clone();
                     }
@@ -2576,7 +2576,7 @@ impl SyncManager {
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let store = SyncStateStore::open_default()?;
         for (device, seq) in &downloaded.cursor_advancements {
-            store.set_cursor(&instance_id, &device, *seq)?;
+            store.set_cursor(&instance_id, device, *seq)?;
         }
         for key in &downloaded.legacy_processed_keys {
             store.mark_legacy_processed(&instance_id, key)?;
@@ -3582,7 +3582,7 @@ impl SyncManager {
     /// - **`deleted_at` 的显式 null**：表示"复活一条软删除记录"的明确意图，
     ///   在 UPSERT 之后再执行一条独立 `UPDATE SET deleted_at = NULL` 兜底。
     ///   这对应 scenarios_tests 中"Delete 后又 Insert 同 id" 的幂等性需求。
-
+    ///
     /// 返回某表需要字段级合并的列清单（在 UPSERT 之前抓取原始本地值用）。
     /// 仅在本地行原先就存在时调用（INSERT 新行没有"原始本地值"这一说）。
     fn field_merge_column_picklist(table_name: &str) -> Vec<&'static str> {
@@ -4151,7 +4151,7 @@ impl SyncManager {
             .any(|entry| {
                 entry.table_name == t
                     && entry.category == SyncCategory::RowSync
-                    && database_name.map_or(true, |db| entry.database == db)
+                    && database_name.is_none_or(|db| entry.database == db)
             });
 
         if !is_row_sync {
@@ -4948,9 +4948,7 @@ impl SyncManager {
         }
     }
 
-    fn ordered_changes_for_apply<'a>(
-        changes: &'a [SyncChangeWithData],
-    ) -> Vec<&'a SyncChangeWithData> {
+    fn ordered_changes_for_apply(changes: &[SyncChangeWithData]) -> Vec<&SyncChangeWithData> {
         let mut todo_index_by_id = HashMap::new();
         for (index, change) in changes.iter().enumerate() {
             if change.table_name == "todo_items"

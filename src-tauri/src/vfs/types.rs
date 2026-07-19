@@ -45,17 +45,13 @@ where
 /// - `External`: 内容存储在外部文件，通过 blobs 表索引
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum StorageMode {
     /// 内嵌存储
+    #[default]
     Inline,
     /// 外部存储（大文件）
     External,
-}
-
-impl Default for StorageMode {
-    fn default() -> Self {
-        StorageMode::Inline
-    }
 }
 
 impl std::fmt::Display for StorageMode {
@@ -2011,6 +2007,7 @@ pub struct VfsUploadAttachmentResult {
 /// 与前端 `ResourceListItem['previewType']` 保持一致
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum PreviewType {
     /// Markdown 预览
     Markdown,
@@ -2035,13 +2032,8 @@ pub enum PreviewType {
     /// 视频预览（mp4/webm/mov/avi/mkv）
     Video,
     /// 无预览
+    #[default]
     None,
-}
-
-impl Default for PreviewType {
-    fn default() -> Self {
-        PreviewType::None
-    }
 }
 
 impl std::fmt::Display for PreviewType {
@@ -2101,7 +2093,7 @@ impl PreviewType {
         filename
             .rsplit('.')
             .next()
-            .map(|ext| Self::from_extension(ext))
+            .map(Self::from_extension)
             .unwrap_or(PreviewType::None)
     }
 }
@@ -2482,6 +2474,7 @@ pub struct VfsResourceRef {
 /// 用于前端发送多个资源引用到后端。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct VfsContextRefData {
     /// 资源引用列表
     pub refs: Vec<VfsResourceRef>,
@@ -2493,16 +2486,6 @@ pub struct VfsContextRefData {
     /// 原始请求的资源数量
     #[serde(default)]
     pub total_count: usize,
-}
-
-impl Default for VfsContextRefData {
-    fn default() -> Self {
-        Self {
-            refs: Vec::new(),
-            truncated: false,
-            total_count: 0,
-        }
-    }
 }
 
 /// 解析后的资源（发送时动态获取）

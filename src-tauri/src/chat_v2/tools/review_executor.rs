@@ -221,7 +221,7 @@ impl ReviewToolExecutor {
     }
 
     fn emit_review_changed(ctx: &ExecutionContext, payload: Value) {
-        if let Err(error) = ctx.window.emit("review://changed", payload) {
+        if let Err(error) = ctx.window_ref().emit("review://changed", payload) {
             log::debug!(
                 "[ReviewToolExecutor] Failed to emit review://changed: {}",
                 error
@@ -882,7 +882,7 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("review_submit"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("review_stats"),

@@ -13,6 +13,22 @@ vi.mock('@/features/browser/contentWindow', () => ({
   BROWSER_CONTENT_LABEL: 'browser-content',
 }));
 
+// Gate behavior has dedicated coverage in features/browser/__tests__/gates.test.ts.
+// These store tests exercise navigation/state mirroring with both product gates open.
+vi.mock('@/features/browser/gates', async () => {
+  const actual = await vi.importActual<typeof import('@/features/browser/gates')>(
+    '@/features/browser/gates',
+  );
+  return {
+    ...actual,
+    assertBrowserGatesOpen: vi.fn(async () => ({
+      workbenchModeEnabled: true,
+      browserEnabled: true,
+      open: true,
+    })),
+  };
+});
+
 import { invoke } from '@tauri-apps/api/core';
 import {
   BrowserApiError,

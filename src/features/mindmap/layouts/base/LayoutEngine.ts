@@ -4,29 +4,12 @@
 
 import type { MindMapNode, LayoutConfig, LayoutResult } from '../../types';
 import type { ILayoutEngine, LayoutCategory, LayoutDirection } from '../../registry/types';
+import {
+  MAX_TREE_DEPTH,
+  countAllDescendants as countAllDescendantsCached,
+} from '../../utils/layout/countDescendants';
 
-/**
- * 最大树深度限制，防止栈溢出
- * ★ P0 修复：添加递归深度限制
- */
-export const MAX_TREE_DEPTH = 500;
-
-/**
- * ★ 2026-07-08（审计 27-P1-1）：子树后代数缓存。
- *
- * 布局递归到每个节点时都会调用 countAllDescendants 重新递归整棵子树，
- * 整体复杂度 O(n²)；千级节点导图每次键入触发的全量布局可达数百万次节点访问。
- *
- * 文档树由 immer 管理（结构共享 + freeze）：任何编辑只会替换被改路径上的节点对象，
- * 未变化的子树保持对象身份。以节点对象为键的 WeakMap 缓存因此天然正确失效——
- * 子树变化 → 新对象 → 缓存未命中；子树未变 → 命中，单次布局降为 O(n)，
- * 跨布局运行（键入、测高 flush）还能复用未变子树的计数。
- *
- * 注意：缓存使 MAX_TREE_DEPTH 截断变为"相对各子树根"的深度上限
- * （命中缓存的子树按其自身为根计的深度截断）。该上限仅为栈溢出保护，
- * 对深度 ≤ 500 的正常导图结果完全一致。
- */
-const descendantCountCache = new WeakMap<MindMapNode, number>();
+export { MAX_TREE_DEPTH };
 
 /**
  * 布局引擎抽象基类
@@ -75,22 +58,13 @@ export abstract class BaseLayoutEngine implements ILayoutEngine {
   ): LayoutResult;
 
   /**
-   * 计算所有后代数量
-   * ★ P0 修复：添加深度限制，防止栈溢出
+   * 计算所有后代数量（委托共享 WeakMap 缓存实现，O(n)）
    * @param node 节点
    * @param depth 当前深度（用于限制递归）
    * @returns 后代数量
    */
   protected countAllDescendants(node: MindMapNode, depth: number = 0): number {
-    if (!node.children || depth > MAX_TREE_DEPTH) return 0;
-    const cached = descendantCountCache.get(node);
-    if (cached !== undefined) return cached;
-    let sum = 0;
-    for (const child of node.children) {
-      sum += 1 + this.countAllDescendants(child, depth + 1);
-    }
-    descendantCountCache.set(node, sum);
-    return sum;
+    return countAllDescendantsCached(node, depth);
   }
 
   /**

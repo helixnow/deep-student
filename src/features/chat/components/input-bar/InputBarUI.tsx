@@ -75,6 +75,7 @@ import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
+import { AuthorityModeSegment } from './AuthorityModeSegment';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerPanel } from './ComposerPanel';
@@ -160,12 +161,13 @@ const HEAVY_UI_DELAY_MS = INPUT_BAR_CONFIG.delays.heavyUI;
  * 调度 idle 回调的工具函数
  * 使用 requestIdleCallback（如不支持则降级到 setTimeout）
  */
-function scheduleIdle(callback: () => void, timeout = IDLE_DELAY_MS): void {
+function scheduleIdle(callback: () => void, timeout = IDLE_DELAY_MS): () => void {
   if (typeof requestIdleCallback === 'function') {
-    requestIdleCallback(callback, { timeout });
-  } else {
-    setTimeout(callback, timeout);
+    const id = requestIdleCallback(callback, { timeout });
+    return () => cancelIdleCallback(id);
   }
+  const id = setTimeout(callback, timeout);
+  return () => clearTimeout(id);
 }
 
 function getFileExtension(fileName: string): string {
@@ -558,6 +560,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 🆕 工具审批请求
   pendingApprovalRequest,
   sessionId,
+  authorityMode = 'craft',
+  onAuthorityModeChange,
+  authorityAskBlockedHint = false,
   // ★ PDF 页码引用
   pdfPageRefs,
   onRemovePdfPageRef,
@@ -1129,18 +1134,18 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const resolvedThinkingTriggerLabel = selectedThinkingDepthOption
     ? selectedThinkingDepthOption.defaultLabel
     : compactThinkingStateLabel;
-  const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle');
-  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel');
-  const runtimeModelSearchPlaceholder = t('chatV2:modelPicker.searchPlaceholder');
-  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode');
-  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider');
+  const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle', '模型');
+  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel', '选择模型');
+  const runtimeModelSearchPlaceholder = t('chatV2:modelPicker.searchPlaceholder', '搜索名称或模型 ID...');
+  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode', '进入多选模式...');
+  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider', '其他');
   const runtimeModelAccessibleCurrent = runtimeModelLabel
     ? runtimeModelProviderLabel
       ? `${runtimeModelProviderLabel} / ${runtimeModelLabel}`
       : runtimeModelLabel
     : undefined;
   const runtimeModelSwitchLabel = runtimeModelAccessibleCurrent
-    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', {
+    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', '{{label}}，当前：{{current}}', {
         label: chooseRuntimeModelLabel,
         current: runtimeModelAccessibleCurrent,
       })
@@ -1714,13 +1719,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       setIsReady(false);
     }
 
-    // idle 后再延迟挂载重 UI/计算
+    // idle 后再延迟挂载重 UI/计算（取消时必须同时清 idle + delay，避免 teardown 后 setState）
     let delayTimer: ReturnType<typeof setTimeout> | null = null;
-    scheduleIdle(() => {
-      delayTimer = setTimeout(() => setIsReady(true), HEAVY_UI_DELAY_MS);
+    let cancelled = false;
+    const cancelIdle = scheduleIdle(() => {
+      if (cancelled) return;
+      delayTimer = setTimeout(() => {
+        if (!cancelled) setIsReady(true);
+      }, HEAVY_UI_DELAY_MS);
     });
 
     return () => {
+      cancelled = true;
+      cancelIdle();
       if (delayTimer) clearTimeout(delayTimer);
     };
   }, [sessionSwitchKey]);
@@ -2199,6 +2210,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           <BlockingInteractionBar
             interaction={pendingApprovalRequest}
             sessionId={sessionId || ''}
+            restoreFocusRef={textareaRef}
           />
         ) : (
           <>
@@ -2570,6 +2582,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
           {/* 右侧按钮 - 固定不滚动 */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {sessionId && onAuthorityModeChange && (
+              <AuthorityModeSegment
+                sessionId={sessionId}
+                mode={authorityMode}
+                onModeChange={onAuthorityModeChange}
+                showSwitchToPlanHint={authorityAskBlockedHint}
+              />
+            )}
             {extraButtonsRight}
 
             {contextWindowUsage && (
@@ -2603,10 +2623,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         title={thinkingRuntimeTitle}
                         aria-label={
                           thinkingUnsupported
-                            ? t('chatV2:inputBar.thinkingUnsupported')
+                            ? t('chatV2:inputBar.thinkingUnsupported', '不支持推理')
                             : hasThinkingDepthMenu
-                            ? t('chatV2:inputBar.thinkingDepthMenu')
-                            : t('chatV2:inputBar.thinking')
+                            ? t('chatV2:inputBar.thinkingDepthMenu', '选择推理深度')
+                            : t('chatV2:inputBar.thinking', '推理模式')
                         }
                       >
                         {runtimeModelIconId ? (
@@ -2628,13 +2648,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     </AppMenuTrigger>
                     <AppMenuContent align="start" width={hasRuntimeModelMenu ? 232 : 176}>
                       {hasThinkingUnsupportedMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
                           <AppMenuItem disabled>
-                            {t('chatV2:inputBar.thinkingUnsupportedDescription')}
+                            {t('chatV2:inputBar.thinkingUnsupportedDescription', '该模型不支持推理')}
                           </AppMenuItem>
                         </AppMenuGroup>
                       ) : hasThinkingDepthMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
                           {thinkingDepthOptions.map((option) => (
                             <AppMenuItem
                               key={option.value}
@@ -2648,19 +2668,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                             <>
                               <AppMenuSeparator />
                               <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
-                                {t('chatV2:inputBar.thinkingOff')}
+                                {t('chatV2:inputBar.thinkingOff', '关闭')}
                               </AppMenuItem>
                             </>
                           )}
                         </AppMenuGroup>
                       ) : hasThinkingToggleMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
                           <AppMenuItem checked={!!enableThinking} onClick={handleTurnThinkingOn}>
-                            {t('chatV2:inputBar.thinkingOn')}
+                            {t('chatV2:inputBar.thinkingOn', '开启')}
                           </AppMenuItem>
                           {thinkingCanDisable && (
                             <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
-                              {t('chatV2:inputBar.thinkingOff')}
+                              {t('chatV2:inputBar.thinkingOff', '关闭')}
                             </AppMenuItem>
                           )}
                         </AppMenuGroup>
@@ -2744,7 +2764,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                     ))
                                   ) : (
                                     <AppMenuItem disabled>
-                                      {t('chatV2:inputBar.runtimeModelNoResults')}
+                                      {t('chatV2:inputBar.runtimeModelNoResults', '未找到匹配模型')}
                                     </AppMenuItem>
                                   )}
                                 </div>
@@ -2798,8 +2818,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         'inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
                         thinkingUnsupported ? 'opacity-55' : enableThinking ? 'opacity-90' : 'opacity-65 hover:opacity-90'
                       )}
-                      title={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
-                      aria-label={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
+                      title={thinkingStateLabel ?? t('chatV2:inputBar.thinking', '推理模式')}
+                      aria-label={thinkingStateLabel ?? t('chatV2:inputBar.thinking', '推理模式')}
                       aria-pressed={enableThinking && !thinkingUnsupported}
                     >
                       <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0" />

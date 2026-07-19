@@ -24,6 +24,7 @@ pub async fn test_rmcp_streamable_http(
         url: url.to_string(),
         api_key: _api_key.clone(),
         oauth: None,
+        auth_provider: None,
         headers: HeaderMap::new(),
         timeout: std::time::Duration::from_secs(30),
     };

@@ -331,6 +331,11 @@ export interface InputBarUIProps {
   /** 会话 ID（用于审批响应） */
   sessionId?: string;
 
+  /** Ask / Plan / Craft */
+  authorityMode?: 'ask' | 'plan' | 'craft';
+  onAuthorityModeChange?: (mode: 'ask' | 'plan' | 'craft') => void | Promise<void>;
+  authorityAskBlockedHint?: boolean;
+
   // ========== PDF 页码引用（精准提问） ==========
 
   /** 当前选中的 PDF 页码引用 */

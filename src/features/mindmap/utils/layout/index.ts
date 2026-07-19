@@ -12,6 +12,8 @@ export {
   calculateBounds,
 } from './helpers';
 
+export { countAllDescendants, MAX_TREE_DEPTH } from './countDescendants';
+
 // 树形布局
 export { calculateTreeLayout } from './treeLayout';
 

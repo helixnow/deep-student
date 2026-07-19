@@ -2,16 +2,14 @@
  * StatusBarItems — 学习状态菜单栏右侧信号项
  *
  * 无信号不占位：番茄 / 闪卡 due / 制卡任务。
- * due / tasks 由父 StatusBar 单侧订阅后 props 下传，避免双订阅。
+ * due / tasks / automation 由父 StatusBar 单侧订阅后 props 下传，避免双订阅。
  */
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { ChartBar, Robot, Stack, Timer } from '@phosphor-icons/react';
 import { workbenchBus } from '../core/workbenchBus';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
-import { getAutomationSummary, type AutomationSummary } from '@/features/settings/components/automationSettingsApi';
+import type { AutomationSummary } from '@/features/settings/components/automationSettingsApi';
 
 /** 规格 m:ss（分不强制两位，秒两位） */
 export function formatStatusBarTime(totalSeconds: number): string {
@@ -51,9 +49,14 @@ function launchAutomations(): void {
 export interface StatusBarItemsProps {
   dueCount: number;
   taskCount: number;
+  automation: AutomationSummary | null;
 }
 
-export const StatusBarItems: React.FC<StatusBarItemsProps> = ({ dueCount, taskCount }) => {
+export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
+  dueCount,
+  taskCount,
+  automation,
+}) => {
   const { t } = useTranslation('workbench');
 
   const mode = usePomodoroStore((s) => s.mode);
@@ -61,37 +64,11 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({ dueCount, taskCo
 
   const showPomodoro = mode !== 'idle';
   const pomodoroTime = formatStatusBarTime(timeLeft);
-  const [automation, setAutomation] = useState<AutomationSummary | null>(null);
 
   // 悬停 tooltip 与 aria-label 同文案，保持读屏与鼠标一致
   const pomodoroLabel = t('menubar.pomodoroFocus', { time: pomodoroTime });
   const flashcardsLabel = t('menubar.flashcardsDue', { count: dueCount });
   const tasksLabel = t('menubar.tasksRunning', { count: taskCount });
-
-  useEffect(() => {
-    let disposed = false;
-    const refresh = async () => {
-      try {
-        const value = await getAutomationSummary((command, args) => invoke(command, args));
-        if (!disposed) setAutomation(value);
-      } catch {
-        // The status item stays as a quiet entry even when summary loading fails.
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(refresh, 30_000);
-    let unlisten: (() => void) | undefined;
-    void listen('chat_v2://automations_changed', refresh).then((value) => {
-      if (disposed) value(); else unlisten = value;
-    }).catch(() => {
-      // The 30-second poll remains available when the desktop event bridge fails.
-    });
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-      unlisten?.();
-    };
-  }, []);
 
   const automationCount = automation?.runningCount
     ? automation.runningCount
@@ -152,9 +129,11 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({ dueCount, taskCo
         data-testid="wb-menubar-automations"
         data-wb-status-item="automations"
         data-status={automation?.runningCount ? 'running' : automation?.failedCount ? 'error' : 'idle'}
-        aria-label={t('menubar.automations', { enabled: automation?.enabledCount ?? 0,
+        aria-label={t('menubar.automations', {
+          enabled: automation?.enabledCount ?? 0,
           running: automation?.runningCount ?? 0,
-          failed: automation?.failedCount ?? 0 })}
+          failed: automation?.failedCount ?? 0,
+        })}
         title={t('menubar.automationsTitle')}
         onClick={launchAutomations}
       >

@@ -12,7 +12,8 @@
   "splitView": {
     "title": "分屏视图",
     "openRight": "在右侧打开",
-    "close": "关闭分屏"
+    "close": "关闭分屏",
+    "empty": "暂无内容"
   },
   "contextMenu": {
     "open": "打开",
@@ -614,7 +615,8 @@
       "adding": "添加中...",
       "exitMultiSelect": "退出多选",
       "selectHint": "点击选择文件",
-      "selected": "已选 {{count}} 项"
+      "selected": "已选 {{count}} 项",
+      "multiSelect": "多选"
     }
   },
   "quickCreate": {

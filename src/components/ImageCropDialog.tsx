@@ -56,7 +56,7 @@ export function ImageCropDialog({
   questionId,
   onImageAdded,
 }: ImageCropDialogProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('common');
 
   const [sourceImages, setSourceImages] = useState<SourceImageInfo[]>([]);
   const [loading, setLoading] = useState(false);

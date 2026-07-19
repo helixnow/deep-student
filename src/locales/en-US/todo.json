@@ -402,5 +402,8 @@
       "hintSpacePrefix": "",
       "hintSpaceSuffix": " to pause/resume"
     }
+  },
+  "sidebar": {
+    "title": "Todo navigation"
   }
 }

@@ -131,7 +131,8 @@
     "scrollLeft": "向左滚动",
     "scrollRight": "向右滚动",
     "clear_all": "清空全部",
-    "backToHome": "返回主页"
+    "backToHome": "返回主页",
+    "dismiss": "忽略"
   },
   "labels": {
     "optional": "选填",
@@ -1512,6 +1513,12 @@
     "adapter_grok_desc": "Grok 系列，grok-3-mini 支持 reasoning_effort",
     "adapter_minimax": "MiniMax",
     "adapter_minimax_desc": "MiniMax 系列，支持 reasoning_split 参数",
+    "adapter_mimo": "小米 MiMo",
+    "adapter_mimo_desc": "MiMo 系列，支持 thinking.type 与 reasoning_content",
+    "adapter_ernie": "百度文心 ERNIE",
+    "adapter_ernie_desc": "ERNIE 5.x / X1.1（千帆 v2），兼容 reasoning_content",
+    "adapter_mistral": "Mistral",
+    "adapter_mistral_desc": "Mistral Large/Medium/Small，支持 reasoning_effort",
     "openai_o1_series": "OpenAI o1 系列",
     "claude_3_5_sonnet": "Claude 3.5 Sonnet",
     "add_config": "新增 API 配置",
@@ -2355,7 +2362,8 @@
       "save_failed": "保存AnkiConnect设置失败",
       "unavailable": "AnkiConnect 不可用",
       "connection_success": "连接正常：已获取 {{deckCount}} 个牌组，{{modelCount}} 个笔记类型",
-      "connection_failed": "AnkiConnect 连接失败，请确认已启动 Anki 且安装插件 2055492159"
+      "connection_failed": "AnkiConnect 连接失败，请确认已启动 Anki 且安装插件 2055492159",
+      "test_connection_short": "测试连接"
     },
     "error_pdf_format_incompatible": "PDF file format is incompatible",
     "console_anki_connect_connection_failed": "AnkiConnect connection failed:",
@@ -3316,7 +3324,8 @@
       "viewport_transform_samples": "存在 viewport transform 样本：{{count}}",
       "edge_dimming_samples": "存在边透明度降低样本：{{count}}"
     },
-    "search_events_placeholder": "搜索事件/内容"
+    "search_events_placeholder": "搜索事件/内容",
+    "expand": "展开"
   },
   "window_controls": {
     "drag": "拖动窗口",

@@ -33,6 +33,7 @@ import {
   type BrowserNetworkMode,
 } from './browserNetworkModePersistence';
 import { importCustomWallpaper } from './customWallpaperImport';
+import { resolveWorkbenchModeEnabled } from './workbenchMode';
 
 export type PerformanceProfile = 'quality' | 'balanced' | 'performance' | 'custom';
 
@@ -160,7 +161,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const { t } = useTranslation(['workbench', 'settings']);
 
   const [loaded, setLoaded] = useState(false);
-  const [mode, setMode] = useState(false);
+  const [mode, setMode] = useState(true);
   const [performanceProfile, setPerformanceProfile] = useState<PerformanceProfile>('custom');
   const [materialTier, setMaterialTierState] = useState<MaterialTierSetting>('auto');
   const [dockMagnification, setDockMagnification] = useState(true);
@@ -187,7 +188,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       const read = (key: string) =>
         (tauriInvoke('get_setting', { key }) as Promise<string | null>).catch(() => null);
       const [
-        modeVal,
+        modeResult,
         profileVal,
         tierVal,
         wallpaperVal,
@@ -203,7 +204,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         agentControlVal,
         agentPacingVal,
       ] = await Promise.all([
-        read(WORKBENCH_SETTING_KEYS.mode),
+        resolveWorkbenchModeEnabled(),
         read(WORKBENCH_SETTING_KEYS.performanceProfile),
         read(WORKBENCH_SETTING_KEYS.materialTier),
         read(WORKBENCH_SETTING_KEYS.wallpaper),
@@ -220,7 +221,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         read(WORKBENCH_SETTING_KEYS.agentPacing),
       ]);
       if (cancelled) return;
-      setMode(String(modeVal ?? '') === 'true');
+      setMode(modeResult.enabled);
       setPerformanceProfile(parseProfile(profileVal));
       setMaterialTierState(parseMaterialTier(tierVal));
       // 未设置 → 保留 Dock 放大（与 quality 默认手感一致）；显式 'false' 才关

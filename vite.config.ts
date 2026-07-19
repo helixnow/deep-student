@@ -284,6 +284,8 @@ export default defineConfig(({ command, mode }) => ({
       external: [],
       output: {
         // 🚀 P1-4 性能优化：手动分包策略，将 vendor 依赖分离为独立的长期缓存 chunk
+        // 大库（mermaid / exceljs / echarts / recharts / xyflow）多为路由级 lazy 或按需动态 import；
+        // 独立 chunk 避免打进主包并利于长期缓存。
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return;
           // i18n
@@ -295,6 +297,34 @@ export default defineConfig(({ command, mode }) => ({
           }
           if (id.includes('mermaid')) {
             return 'vendor-mermaid';
+          }
+          // Excel 预览（RichDocumentPreview → lazy XlsxPreview）
+          if (id.includes('node_modules/exceljs') || id.includes('/exceljs/')) {
+            return 'vendor-exceljs';
+          }
+          // PPTX 预览及其依赖 echarts（pptx-preview → echarts）
+          if (
+            id.includes('pptx-preview') ||
+            id.includes('node_modules/echarts') ||
+            id.includes('/echarts/')
+          ) {
+            return 'vendor-pptx';
+          }
+          // DOCX 预览
+          if (id.includes('docx-preview')) {
+            return 'vendor-docx';
+          }
+          // 图表（仪表盘 / LLM usage / stats）
+          if (id.includes('node_modules/recharts') || id.includes('/recharts/')) {
+            return 'vendor-recharts';
+          }
+          // 导图画布（mindmap 路由 lazy 加载）
+          if (id.includes('@xyflow/')) {
+            return 'vendor-xyflow';
+          }
+          // Provider 品牌图标（@lobehub/icons，传递依赖 lucide-react）
+          if (id.includes('@lobehub/icons') || id.includes('lucide-react')) {
+            return 'vendor-lobehub-icons';
           }
           // KaTeX（chat markdown / mindmap LaTeX 渲染共用，~270KB）
           if (id.includes('node_modules/katex') || id.includes('rehype-katex')) {

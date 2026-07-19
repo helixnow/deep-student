@@ -72,6 +72,12 @@ pub struct ToolRegistry {
     mcp_namespace_prefix: Option<String>,
 }
 
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolRegistry {
     pub fn new_with(tools: Vec<Arc<dyn Tool>>) -> Self {
         let mut map = HashMap::new();
@@ -866,7 +872,7 @@ impl Tool for WebSearchTool {
                         title: c.file_name.clone(),
                         url: c.document_id.clone(),
                         snippet: c.chunk_text.lines().take(2).collect::<Vec<_>>().join(" "),
-                        rank: (c.chunk_index as usize) + 1,
+                        rank: c.chunk_index + 1,
                         score_hint: Some(c.score),
                     })
                     .collect();
@@ -928,7 +934,7 @@ impl Tool for WebSearchTool {
                             }
                         }
                         // 拼接剩余项，并截断至 top_k
-                        reordered.extend(remainder_items.into_iter());
+                        reordered.extend(remainder_items);
                         reordered.truncate(original_input.top_k);
 
                         // 生成新的 citations
@@ -1026,13 +1032,12 @@ impl Tool for WebSearchTool {
             .map(|vec_cite| {
                 vec_cite
                     .iter()
-                    .enumerate()
-                    .map(|(_i, c)| RagSourceInfo {
+                    .map(|c| RagSourceInfo {
                         document_id: c.document_id.clone(),
                         file_name: c.file_name.clone(),
                         chunk_text: c.chunk_text.clone(),
                         score: c.score,
-                        chunk_index: c.chunk_index as usize,
+                        chunk_index: c.chunk_index,
                     })
                     .collect::<Vec<_>>()
             })

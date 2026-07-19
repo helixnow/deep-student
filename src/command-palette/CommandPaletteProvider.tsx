@@ -98,7 +98,7 @@ export function CommandPaletteProvider({
 
   // OS 模式（workbench）：独立命令面板退役，所有「打开命令面板」的入口
   // （⌘K、顶栏搜索钮、命令内 openCommandPalette）统一改道到全部应用面板
-  // （它已融合应用 + 命令的统一搜索）。legacy 壳行为不变。
+  // （Spotlight：应用 / 命令 / 学习资源 / 聊天）。legacy 壳行为不变。
   const open = useCallback(() => {
     if (workbenchActive) {
       openAppsPanel();
@@ -149,7 +149,7 @@ export function CommandPaletteProvider({
       showGlobalNotification(
         'error',
         t('command_palette:error.execute_failed'),
-        t('common:error')
+        t('common:status.error')
       );
     }
   }, [deps, close, t]);

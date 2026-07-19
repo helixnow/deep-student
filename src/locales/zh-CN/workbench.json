@@ -108,6 +108,21 @@
         "name": "浏览器",
         "actions": "导航网址、前进后退、刷新、聚焦地址栏和显示页面窗口"
       }
+    },
+    "killSwitch": {
+      "emergencyStop": "紧急断电",
+      "emergencyStopConfirm": "立即停止全部 Agent 并暂停自动化？",
+      "confirmStop": "立即停止",
+      "cancelConfirm": "取消",
+      "trippedBanner": "Agent 已断电",
+      "trippedReason": "原因：{{reason}}",
+      "automationsStillPaused": "自动化仍处于暂停状态",
+      "resumeAgents": "恢复 Agent",
+      "resumeAutomations": "恢复自动化",
+      "resumeAutomationsConfirm": "恢复定时自动化？它们可能会再次开始运行。",
+      "confirmResumeAutomations": "确认恢复自动化",
+      "stopFailed": "断电失败，请重试。",
+      "resumeFailed": "恢复失败，请重试。"
     }
   },
   "menubar": {
@@ -128,9 +143,9 @@
     "openCommandPalette": "打开命令面板",
     "openAppsPanel": "搜索应用与命令",
     "openSettings": "打开设置",
-    "openCenter": "打开学习中心",
-    "centerShort": "中心",
-    "centerTitle": "学习中心",
+    "openCenter": "打开今日节律",
+    "centerShort": "节律",
+    "centerTitle": "今日节律",
     "moduleFlashcards": "今日复习",
     "moduleTasks": "制卡任务",
     "moduleFocus": "专注",
@@ -138,6 +153,12 @@
     "desktopHint": "全部应用与窗口俯瞰",
     "flashcardsDueShort": "{{count}} 张到期",
     "tasksRunningShort": "{{count}} 进行中",
+    "rhythmFlashcards": "今日到期闪卡",
+    "rhythmPomodoro": "番茄状态",
+    "rhythmAutomation": "自动化健康",
+    "rhythmAutomationDetail": "运行 {{running}} · 失败 {{failed}} · 启用 {{enabled}}",
+    "rhythmTasks": "任务入口",
+    "rhythmTasksDetail": "{{count}} 个制卡任务",
     "startReview": "开始复习",
     "openTasks": "打开",
     "openPomodoro": "打开番茄钟",
@@ -237,8 +258,8 @@
   },
   "appsPanel": {
     "title": "全部应用",
-    "searchPlaceholder": "搜索应用与命令",
-    "empty": "没有匹配的应用或命令",
+    "searchPlaceholder": "搜索应用、命令、资源与聊天",
+    "empty": "没有匹配的结果",
     "close": "关闭",
     "view": "视图",
     "gridView": "网格",
@@ -249,7 +270,11 @@
     "hintOpen": "打开",
     "hintClose": "关闭",
     "sectionApps": "应用",
-    "sectionCommands": "命令"
+    "sectionCommands": "命令",
+    "sectionResources": "资源",
+    "sectionChat": "聊天",
+    "searching": "正在搜索…",
+    "resultCount": "{{count}} 个结果"
   },
   "window": {
     "close": "关闭",
@@ -316,7 +341,31 @@
     "tipsDismiss": "知道了",
     "tipTile": "把窗口拖到屏幕边缘，松手即可平铺",
     "tipSwitch": "在窗口间快速切换",
-    "tipExpose": "俯瞰所有打开的窗口"
+    "tipExpose": "俯瞰所有打开的窗口",
+    "tourTitle": "快速上手",
+    "tourSkip": "跳过",
+    "tourDontShow": "不再显示",
+    "tourNext": "下一步",
+    "tourDone": "完成",
+    "tourStep": "{{current}} / {{total}}",
+    "tourSteps": {
+      "dock": {
+        "title": "Dock 应用",
+        "body": "从底部 Dock 打开常用学习应用，窗口可自由摆放、平铺与并排对比。"
+      },
+      "search": {
+        "title": "快速搜索",
+        "body": "按 {{shortcut}} 搜索应用与命令，不必离开当前桌面。"
+      },
+      "statusBar": {
+        "title": "状态栏节律",
+        "body": "顶部状态栏汇集到期闪卡、番茄与自动化健康；点开即可查看今日节律。"
+      },
+      "agent": {
+        "title": "Agent 控制",
+        "body": "需要时让 AI 在已授权的学习应用中定位内容并执行操作。"
+      }
+    }
   },
   "agenda": {
     "label": "日历与学习日程",
@@ -460,11 +509,12 @@
     "cheatsheet": "快捷键速查表"
   },
   "settings": {
-    "sectionTitle": "学习桌面（实验）",
-    "sectionDesc": "把主内容区变为可自由开窗、平铺的学习桌面（Workbench）。实验功能，可随时关闭回到现有布局。",
+    "sectionTitle": "学习桌面",
+    "sectionDesc": "学习桌面是产品默认身份：主内容区为可自由开窗、平铺的窗口化桌面。也可随时关闭，回到经典布局（兼容模式）。",
     "mode": {
-      "title": "启用学习桌面",
-      "desc": "开启后主内容区切换为窗口化桌面模式；关闭后恢复现有视图，桌面布局快照会保留。"
+      "title": "学习桌面（默认）",
+      "desc": "开启后使用窗口化学习桌面；关闭后切回经典布局作为兼容模式，桌面布局快照会保留。",
+      "migratedNotice": "已启用学习桌面，可在设置切回经典模式"
     },
     "performanceProfile": {
       "title": "性能档位",
@@ -733,6 +783,7 @@
       "pin": "固定 {{title}}",
       "unpin": "取消固定 {{title}}",
       "pinned": "已固定",
+      "showAll": "显示全部打开的文件",
       "openInRightSplit": "在右侧分屏打开 {{title}}",
       "closeRightSplit": "从右侧分屏关闭 {{title}}"
     },

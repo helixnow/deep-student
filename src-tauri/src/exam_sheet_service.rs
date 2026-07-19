@@ -405,7 +405,7 @@ impl ExamSheetService {
                     }
                 }
 
-                let bbox_clone = bbox_candidate.clone();
+                let bbox_clone = bbox_candidate;
                 tokio::task::spawn_blocking(move || -> Result<(), AppError> {
                     let img = image::open(&page_abs)
                         .map_err(|e| AppError::file_system(format!("加载试卷图片失败: {}", e)))?;
@@ -582,10 +582,10 @@ impl ExamSheetService {
                 if img_width > 0 && img_height > 0 {
                     let new_pixels = if let Some(resolved) = update.resolved_bbox.as_ref() {
                         Some(resolved_bbox_to_pixels(resolved, img_width, img_height))
-                    } else if let Some(normalized) = update.bbox.as_ref() {
-                        Some(normalized_bbox_to_pixels(normalized, img_width, img_height))
                     } else {
-                        None
+                        update.bbox.as_ref().map(|normalized| {
+                            normalized_bbox_to_pixels(normalized, img_width, img_height)
+                        })
                     };
 
                     if let Some(pixels) = new_pixels {
@@ -606,7 +606,7 @@ impl ExamSheetService {
                             };
 
                             let existing_resolved =
-                                card.resolved_bbox.clone().unwrap_or_else(|| ExamCardBBox {
+                                card.resolved_bbox.clone().unwrap_or(ExamCardBBox {
                                     x: 0.0,
                                     y: 0.0,
                                     width: 0.0,
@@ -996,7 +996,7 @@ fn clamp_bbox(bbox: &ExamCardBBox, width: u32, height: u32) -> BBoxPixels {
 
 fn values_look_normalized(bbox: &ExamCardBBox) -> bool {
     fn is_norm(v: f32) -> bool {
-        v.is_finite() && v >= -0.05 && v <= 1.05
+        v.is_finite() && (-0.05..=1.05).contains(&v)
     }
     is_norm(bbox.x) && is_norm(bbox.y) && is_norm(bbox.width) && is_norm(bbox.height)
 }

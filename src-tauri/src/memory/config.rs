@@ -64,7 +64,7 @@ impl AutoExtractFrequency {
     pub fn should_refresh_categories(&self, total_memories: usize) -> bool {
         match self {
             Self::Off => false,
-            Self::Balanced => total_memories <= 5 || total_memories % 5 == 0,
+            Self::Balanced => total_memories <= 5 || total_memories.is_multiple_of(5),
             Self::Aggressive => true,
         }
     }

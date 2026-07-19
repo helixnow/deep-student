@@ -89,7 +89,9 @@ export function filterBuiltinToolSkillsForPlatform(
   skills: readonly SkillDefinition[],
   platform: string,
 ): SkillDefinition[] {
-  if (platform.toLowerCase() === 'windows') return [...skills];
+  const p = platform.toLowerCase();
+  // Result-returning browser bridge: Windows WebView2 + macOS WKWebView.
+  if (p === 'windows' || p === 'macos') return [...skills];
   return skills.filter((skill) => skill.id !== browserToolsSkill.id);
 }
 
@@ -139,9 +141,9 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   indexWebpageToolsSkill,
 ];
 
-// The result-returning browser bridge is currently implemented only for
-// Windows WebView2. Unknown/non-Windows runtimes fail closed and do not
-// advertise tools that can only return BRIDGE_UNSUPPORTED.
+// The result-returning browser bridge is implemented for Windows WebView2 and
+// macOS WKWebView. Other runtimes fail closed and do not advertise tools that
+// can only return BRIDGE_UNSUPPORTED.
 const runtimePlatform =
   typeof window === 'undefined' || typeof navigator === 'undefined' ? 'unknown' : getPlatform();
 export const builtinToolSkills: SkillDefinition[] = filterBuiltinToolSkillsForPlatform(

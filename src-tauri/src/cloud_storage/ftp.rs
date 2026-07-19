@@ -137,7 +137,7 @@ impl FtpStorage {
 
             tracing::debug!("[FtpStorage] 正在升级到 TLS...");
             let root_store = RootCertStore {
-                roots: webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect(),
+                roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
             };
             let config = ClientConfig::builder()
                 .with_root_certificates(root_store)
@@ -718,7 +718,7 @@ impl CloudStorage for FtpStorage {
                 .map_err(|e| AppError::file_system(format!("创建临时文件失败: {}", e)))?;
             let temp_path = temp_file.path().to_path_buf();
 
-            let checksum = client
+            let _checksum = client
                 .retr_to_file(filename, &temp_path, size, None)
                 .await?;
 
@@ -791,7 +791,7 @@ impl CloudStorage for FtpStorage {
             client.quit().await?;
 
             // 按修改时间降序排列
-            files.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+            files.sort_by_key(|b| std::cmp::Reverse(b.last_modified));
             Ok(files)
         })
         .await

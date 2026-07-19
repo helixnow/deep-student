@@ -25,7 +25,6 @@ use std::sync::LazyLock;
 
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
 // ============================================================================
@@ -308,7 +307,7 @@ fn try_extract_main_content(html: &str) -> Option<String> {
     for cap in RE_ARTICLE.captures_iter(html) {
         if let Some(content) = cap.get(1) {
             let text = content.as_str();
-            if best.as_ref().map_or(true, |b| text.len() > b.len()) {
+            if best.as_ref().is_none_or(|b| text.len() > b.len()) {
                 best = Some(text.to_string());
             }
         }
@@ -319,7 +318,7 @@ fn try_extract_main_content(html: &str) -> Option<String> {
         for cap in RE_MAIN.captures_iter(html) {
             if let Some(content) = cap.get(1) {
                 let text = content.as_str();
-                if best.as_ref().map_or(true, |b| text.len() > b.len()) {
+                if best.as_ref().is_none_or(|b| text.len() > b.len()) {
                     best = Some(text.to_string());
                 }
             }

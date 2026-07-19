@@ -41,19 +41,15 @@ use crate::vfs::pdf_processing_service::PdfProcessingService;
 /// 用于审批机制判断是否需要用户确认。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ToolSensitivity {
     /// 低敏感 - 直接执行
+    #[default]
     Low,
     /// 中敏感 - 根据用户配置决定
     Medium,
     /// 高敏感 - 必须审批
     High,
-}
-
-impl Default for ToolSensitivity {
-    fn default() -> Self {
-        Self::Low
-    }
 }
 
 // ============================================================================
@@ -73,19 +69,15 @@ impl Default for ToolSensitivity {
 /// - `Serial`: 默认值。顺序执行，绝不自动重试。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ToolConcurrency {
     /// 只读工具 - 可并行 + 瞬时错误可自动重试
     ReadOnly,
     /// 并行安全（有隔离副作用）- 可并行，不自动重试
     SafeParallel,
     /// 串行（默认，保守）
+    #[default]
     Serial,
-}
-
-impl Default for ToolConcurrency {
-    fn default() -> Self {
-        Self::Serial
-    }
 }
 
 // ============================================================================
@@ -129,8 +121,11 @@ pub struct ExecutionContext {
     pub main_db: Option<Arc<Database>>,
     /// Anki 数据库（用于 Anki 制卡进度查询）
     pub anki_db: Option<Arc<Database>>,
-    /// Tauri 窗口（用于 MCP 工具桥接）
-    pub window: Window,
+    /// Tauri 窗口（用于 MCP 工具桥接）。
+    ///
+    /// Windowless integration tests may leave this `None`; tools that need a
+    /// real window must call [`Self::window_ref`].
+    pub tauri_window: Option<Window>,
     /// VFS 数据库（用于学习资源工具访问 DSTU 数据）
     pub vfs_db: Option<Arc<VfsDatabase>>,
     /// VFS Lance 向量存储（用于 Memory-as-VFS 搜索）
@@ -175,7 +170,7 @@ impl ExecutionContext {
         block_id: String,
         emitter: Arc<ChatV2EventEmitter>,
         tool_registry: Arc<ToolRegistry>,
-        window: Window,
+        window: Option<Window>,
     ) -> Self {
         Self {
             session_id,
@@ -192,7 +187,7 @@ impl ExecutionContext {
             main_db: None,
             anki_db: None,
             // rag_manager 已移除
-            window,
+            tauri_window: window,
             vfs_db: None,
             vfs_lance_store: None,
             llm_manager: None,
@@ -210,6 +205,13 @@ impl ExecutionContext {
             rag_enabled: true,
             web_search_enabled: true,
         }
+    }
+
+    /// Borrow the Tauri window (panics if constructed windowless).
+    pub fn window_ref(&self) -> &Window {
+        self.tauri_window
+            .as_ref()
+            .expect("ExecutionContext.window_ref() called without a Tauri window")
     }
 
     pub fn with_variant_id(mut self, variant_id: Option<String>) -> Self {
@@ -426,13 +428,13 @@ impl ExecutionContext {
         let tool_input_json = block
             .tool_input
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()
             .map_err(|e| e.to_string())?;
         let tool_output_json = block
             .tool_output
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()
             .map_err(|e| e.to_string())?;
 

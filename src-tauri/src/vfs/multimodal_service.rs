@@ -521,7 +521,7 @@ impl VfsMultimodalService {
             pages.iter().map(|page| (page.page_index, page)).collect();
         let folder_id = folder_id.map(String::from);
 
-        for ((page_index, _), embedding) in inputs.iter().zip(embeddings.into_iter()) {
+        for ((page_index, _), embedding) in inputs.iter().zip(embeddings) {
             let page = page_map
                 .get(page_index)
                 .ok_or_else(|| VfsError::Other(format!("页面索引不存在: {}", page_index)))?;

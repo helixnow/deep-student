@@ -238,7 +238,7 @@ export const workbenchToolsSkill: SkillDefinition = {
 - 只需后台改笔记正文、用户不要求看见操作 → canvas-note
 - 只需改导图节点 → mindmap-tools
 - 只需改用户待办 → user-todo-tools
-- 静态网页只读 → web-fetch。browser 领域工具当前只在 Windows 暴露；macOS/Linux 上如需交互浏览，只能用 workbench 打开/导航到浏览器窗口后请用户接管，不要调用不存在的 browser 工具
+- 静态网页只读 → web-fetch。browser 领域工具当前在 Windows/macOS 暴露；Linux 上如需交互浏览，只能用 workbench 打开/导航到浏览器窗口后请用户接管，不要调用不存在的 browser 工具
 `,
   allowedTools: [
     'builtin-workbench_get_capabilities',

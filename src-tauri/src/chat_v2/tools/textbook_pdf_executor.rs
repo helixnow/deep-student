@@ -581,10 +581,7 @@ fn arguments_object<'a>(
     let object = args
         .as_object()
         .ok_or_else(|| invalid_argument("arguments", "expected a JSON object"))?;
-    if let Some(unknown) = object
-        .keys()
-        .find(|key| !allowed.iter().any(|allowed| key.as_str() == *allowed))
-    {
+    if let Some(unknown) = object.keys().find(|key| !allowed.contains(&key.as_str())) {
         return Err(invalid_argument(
             unknown,
             "unknown field; use only fields declared by the tool schema",
@@ -1033,7 +1030,7 @@ fn emit_annotations_changed(
     kind: &str,
     action: &str,
 ) {
-    if let Err(error) = ctx.window.app_handle().emit(
+    if let Err(error) = ctx.window_ref().app_handle().emit(
         PDF_ANNOTATIONS_CHANGED_EVENT,
         json!({
             "textbook_id": textbook.id,

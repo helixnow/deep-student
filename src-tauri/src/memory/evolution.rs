@@ -329,7 +329,7 @@ impl MemoryEvolution {
                     .push(mem);
             }
 
-            for (_key, group) in &title_groups {
+            for group in title_groups.values() {
                 if group.len() < 2 {
                     continue;
                 }
@@ -812,6 +812,7 @@ mod tests {
             error_pattern: "时态搭配错误".to_string(),
             evidence_count: 2,
             last_seen: None,
+            source: None,
         });
 
         let prompt = build_promotion_prompt(&logs, &profile);

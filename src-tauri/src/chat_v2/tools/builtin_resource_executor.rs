@@ -1061,7 +1061,7 @@ impl BuiltinResourceExecutor {
                 }
 
                 // 按更新时间排序
-                all_results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                all_results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
                 all_results.truncate(limit as usize);
                 (all_results, errors)
             }
@@ -1970,14 +1970,14 @@ impl BuiltinResourceExecutor {
                 }
 
                 // 确保有 version 字段
-                if !doc.get("version").is_some() {
+                if doc.get("version").is_none() {
                     if let Some(obj) = doc.as_object_mut() {
                         obj.insert("version".to_string(), json!("1.0"));
                     }
                 }
 
                 // 确保有 meta 字段
-                if !doc.get("meta").is_some() {
+                if doc.get("meta").is_none() {
                     if let Some(obj) = doc.as_object_mut() {
                         obj.insert("meta".to_string(), json!({"createdAt": ""}));
                     }
@@ -2107,7 +2107,7 @@ impl BuiltinResourceExecutor {
         {
             let node = mindmap_to_dstu_node(&mindmap);
             emit_watch_event(
-                &ctx.window,
+                ctx.window_ref(),
                 DstuWatchEvent::created(&node.path, node.clone()),
             );
         }
@@ -2338,7 +2338,7 @@ impl BuiltinResourceExecutor {
         {
             let node = mindmap_to_dstu_node(&mindmap);
             emit_watch_event(
-                &ctx.window,
+                ctx.window_ref(),
                 DstuWatchEvent::updated(&node.path, node.clone()),
             );
         }
@@ -2359,33 +2359,30 @@ impl BuiltinResourceExecutor {
 
         // ★ 2026-02-13：为更新后的新内容创建版本快照，返回 versionId 供 LLM 在引用中使用
         // 这样 [思维导图:mv_xxx:标题] 是不可变引用，指向本次更新后的具体内容
-        match VfsMindMapRepo::get_mindmap_content(vfs_db, mindmap_id) {
-            Ok(Some(new_content)) => {
-                match VfsMindMapRepo::create_version(
-                    vfs_db,
-                    mindmap_id,
-                    &new_content,
-                    &mindmap.title,
-                    None,
-                    Some("chat_update"),
-                ) {
-                    Ok(version) => {
-                        result["versionId"] = json!(version.version_id);
-                        result["citation"] = json!(format!(
-                            "[思维导图:{}:{}]",
-                            version.version_id, mindmap.title
-                        ));
-                        result["hint"] = json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看更新后的导图。");
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "[BuiltinResourceExecutor] Failed to create post-update version for mindmap {}: {}",
-                            mindmap_id, e
-                        );
-                    }
+        if let Ok(Some(new_content)) = VfsMindMapRepo::get_mindmap_content(vfs_db, mindmap_id) {
+            match VfsMindMapRepo::create_version(
+                vfs_db,
+                mindmap_id,
+                &new_content,
+                &mindmap.title,
+                None,
+                Some("chat_update"),
+            ) {
+                Ok(version) => {
+                    result["versionId"] = json!(version.version_id);
+                    result["citation"] = json!(format!(
+                        "[思维导图:{}:{}]",
+                        version.version_id, mindmap.title
+                    ));
+                    result["hint"] = json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看更新后的导图。");
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[BuiltinResourceExecutor] Failed to create post-update version for mindmap {}: {}",
+                        mindmap_id, e
+                    );
                 }
             }
-            _ => {}
         }
 
         Ok(result)
@@ -2468,7 +2465,7 @@ impl BuiltinResourceExecutor {
         // ★ 2026-02 修复：发射 DSTU watch 事件，通知 Learning Hub 自动刷新列表
         {
             let path = format!("/mindmaps/{}", mindmap_id);
-            emit_watch_event(&ctx.window, DstuWatchEvent::deleted(&path));
+            emit_watch_event(ctx.window_ref(), DstuWatchEvent::deleted(&path));
         }
 
         let mut result = json!({
@@ -2607,7 +2604,7 @@ impl BuiltinResourceExecutor {
             {
                 let node = mindmap_to_dstu_node(&updated_mindmap);
                 emit_watch_event(
-                    &ctx.window,
+                    ctx.window_ref(),
                     DstuWatchEvent::updated(&node.path, node.clone()),
                 );
             }
@@ -2641,38 +2638,35 @@ impl BuiltinResourceExecutor {
 
         // ★ 2026-02-13：为编辑后的新内容创建版本快照，返回 versionId 供 LLM 在引用中使用
         if applied > 0 {
-            match VfsMindMapRepo::get_mindmap_content(vfs_db, mindmap_id) {
-                Ok(Some(new_content)) => {
-                    // 获取当前标题
-                    let title = VfsMindMapRepo::get_mindmap(vfs_db, mindmap_id)
-                        .ok()
-                        .flatten()
-                        .map(|m| m.title)
-                        .unwrap_or_else(|| "思维导图".to_string());
+            if let Ok(Some(new_content)) = VfsMindMapRepo::get_mindmap_content(vfs_db, mindmap_id) {
+                // 获取当前标题
+                let title = VfsMindMapRepo::get_mindmap(vfs_db, mindmap_id)
+                    .ok()
+                    .flatten()
+                    .map(|m| m.title)
+                    .unwrap_or_else(|| "思维导图".to_string());
 
-                    match VfsMindMapRepo::create_version(
-                        vfs_db,
-                        mindmap_id,
-                        &new_content,
-                        &title,
-                        None,
-                        Some("chat_edit_nodes"),
-                    ) {
-                        Ok(version) => {
-                            result["versionId"] = json!(version.version_id);
-                            result["citation"] =
-                                json!(format!("[思维导图:{}:{}]", version.version_id, title));
-                            result["hint"] = json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看编辑后的导图。");
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "[BuiltinResourceExecutor] Failed to create post-edit version for mindmap {}: {}",
-                                mindmap_id, e
-                            );
-                        }
+                match VfsMindMapRepo::create_version(
+                    vfs_db,
+                    mindmap_id,
+                    &new_content,
+                    &title,
+                    None,
+                    Some("chat_edit_nodes"),
+                ) {
+                    Ok(version) => {
+                        result["versionId"] = json!(version.version_id);
+                        result["citation"] =
+                            json!(format!("[思维导图:{}:{}]", version.version_id, title));
+                        result["hint"] = json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看编辑后的导图。");
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[BuiltinResourceExecutor] Failed to create post-edit version for mindmap {}: {}",
+                            mindmap_id, e
+                        );
                     }
                 }
-                _ => {}
             }
         }
 

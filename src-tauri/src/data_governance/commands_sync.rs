@@ -438,8 +438,7 @@ fn rollback_marked_sync_versions(
         // [P0-9/C7] 分批回滚，避免超过 SQLite 变量上限导致整体失败。
         const ROLLBACK_BATCH_SIZE: usize = 500;
         for chunk in change_ids.chunks(ROLLBACK_BATCH_SIZE) {
-            let placeholders = std::iter::repeat("?")
-                .take(chunk.len())
+            let placeholders = std::iter::repeat_n("?", chunk.len())
                 .collect::<Vec<_>>()
                 .join(",");
             let sql = format!(
@@ -1346,6 +1345,14 @@ pub async fn data_governance_get_sync_status(
 
     let has_pending_changes = total_pending_changes > 0;
 
+    // 全局 last_sync_at：取各库 __change_log 已同步时间戳的最大值。
+    // 无独立全局元数据表；ISO-8601 / SQLite datetime 字符串可按字典序取 max。
+    let last_sync_at = databases_status
+        .iter()
+        .filter_map(|db| db.last_sync_at.as_ref())
+        .max()
+        .cloned();
+
     info!(
         "[data_governance] 同步状态: pending={}, synced={}, databases={}",
         total_pending_changes,
@@ -1358,7 +1365,7 @@ pub async fn data_governance_get_sync_status(
         total_pending_changes,
         total_synced_changes,
         databases: databases_status,
-        last_sync_at: None, // TODO: 从全局元数据获取
+        last_sync_at,
         device_id: get_device_id(&app),
     })
 }
@@ -1784,15 +1791,29 @@ pub async fn data_governance_run_sync(
         }
     };
 
-    // 获取云存储配置
+    // 获取云存储配置：显式入参优先；否则回落 SSOT（settings + secure_store 凭据）
     let mut config = match cloud_config {
         Some(cfg) => cfg,
         None => {
-            // TODO: 从应用配置或状态中获取默认云存储配置
-            return Err("未提供云存储配置。请在调用前配置云存储。".to_string());
+            let Some(state) = app.try_state::<crate::commands::AppState>() else {
+                return Err(
+                    "Cloud storage is not configured. Save a cloud config in Settings first."
+                        .to_string(),
+                );
+            };
+            match load_hydrated_cloud_config_ssot(&app, &state.database) {
+                Ok(cfg) => cfg,
+                Err(CloudConfigSsotError::NotConfigured) => {
+                    return Err(
+                        "Cloud storage is not configured. Save a cloud config in Settings first."
+                            .to_string(),
+                    );
+                }
+                Err(e) => return Err(e.to_string()),
+            }
         }
     };
-    // [P0-3A] 空白凭据由后端从安全存储补全
+    // [P0-3A] 空白凭据由后端从安全存储补全（显式入参路径；SSOT 路径已 hydrate）
     crate::secure_store::hydrate_cloud_config(&app, &mut config);
 
     // 获取设备 ID（用于审计与同步清单）
@@ -2455,7 +2476,7 @@ pub struct SyncExecutionResponse {
 
 fn cleanup_temp_sync_file(path: Option<&PathBuf>, context: &str) {
     if let Some(temp_path) = path {
-        if let Err(err) = std::fs::remove_file(&temp_path) {
+        if let Err(err) = std::fs::remove_file(temp_path) {
             warn!(
                 "[data_governance] {}: 清理临时文件失败 ({}): {}",
                 context,

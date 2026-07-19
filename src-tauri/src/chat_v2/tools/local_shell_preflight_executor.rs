@@ -24,6 +24,12 @@ pub mod tool_names {
 
 pub struct LocalShellPreflightExecutor;
 
+impl Default for LocalShellPreflightExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LocalShellPreflightExecutor {
     pub fn new() -> Self {
         Self
@@ -192,9 +198,9 @@ impl LocalShellPreflightExecutor {
                 platform
             ));
         }
-        let state = ctx.window.state::<AppState>();
+        let state = ctx.window_ref().state::<AppState>();
         let effective_root_id = resolve_effective_runtime_root_id_for_session(
-            &ctx.window.app_handle(),
+            ctx.window_ref().app_handle(),
             &state.database,
             ctx.chat_v2_db.as_deref(),
             &ctx.session_id,
@@ -203,7 +209,7 @@ impl LocalShellPreflightExecutor {
         );
         let root_id_input = Some(effective_root_id.as_str());
         let root_result = runtime_root_by_id(
-            &ctx.window.app_handle(),
+            ctx.window_ref().app_handle(),
             &state.database,
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
@@ -324,7 +330,7 @@ impl LocalShellPreflightExecutor {
             None => None,
             Some(skill_root_id) => {
                 let resolved = runtime_root_by_id(
-                    &ctx.window.app_handle(),
+                    ctx.window_ref().app_handle(),
                     &state.database,
                     &ctx.session_id,
                     ctx.skill_package_roots.as_ref(),

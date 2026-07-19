@@ -22,7 +22,7 @@
 //! # 注入桥（B1d）
 //!
 //! - 脚本：[`bridge::INIT_SCRIPT`]（`include_str!("browser_bridge.js")`）
-//! - 结果取回：[`bridge::eval_with_result`]（Win `with_webview` + ExecuteScript；非 Win → Unsupported）
+//! - 结果取回：[`bridge::eval_with_result`]（Win WebView2 / macOS WKWebView / Linux WebKitGTK）
 //! - Service API：[`bridge::BridgeClient`]
 //!
 //! # 接线（B1e）
@@ -71,7 +71,7 @@ pub use policy::{
 };
 pub use repository::BrowserRepository;
 pub use service::{
-    BrowserService, FLAG_UI_WORKBENCH_BROWSER, SETTING_BROWSER_ENABLED,
+    assert_settings_gates_open, BrowserService, FLAG_UI_WORKBENCH_BROWSER, SETTING_BROWSER_ENABLED,
     SETTING_BROWSER_NETWORK_MODE, SETTING_WORKBENCH_MODE,
 };
 pub use session::{

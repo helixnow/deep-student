@@ -414,7 +414,7 @@ pub fn file_to_dstu_node(file: &VfsFile) -> DstuNode {
     let created_at = parse_timestamp(&file.created_at);
     let updated_at = parse_timestamp(&file.updated_at);
 
-    let is_pdf = file.mime_type.as_ref().map_or(false, |m| m.contains("pdf"))
+    let is_pdf = file.mime_type.as_ref().is_some_and(|m| m.contains("pdf"))
         || file.file_name.to_lowercase().ends_with(".pdf");
 
     let node_type = if is_pdf {

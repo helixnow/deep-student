@@ -12,7 +12,8 @@
   "splitView": {
     "title": "Split View",
     "openRight": "Open on the Right",
-    "close": "Close Split View"
+    "close": "Close Split View",
+    "empty": "No content"
   },
   "contextMenu": {
     "open": "Open",
@@ -614,7 +615,8 @@
       "adding": "Adding",
       "exitMultiSelect": "Exit Multi Select",
       "selectHint": "Select Hint",
-      "selected": "Selected {{count}}"
+      "selected": "Selected {{count}}",
+      "multiSelect": "Multi-select"
     }
   },
   "quickCreate": {

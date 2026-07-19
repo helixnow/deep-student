@@ -76,7 +76,7 @@ enum GateMode {
 
 /// 解析双闸。flag 关 → FlagOff；设置 off → Off；否则 Enabled。
 async fn resolve_workbench_gates(ctx: &ExecutionContext) -> Result<GateMode, String> {
-    let state = ctx.window.try_state::<AppState>().ok_or_else(|| {
+    let state = ctx.window_ref().try_state::<AppState>().ok_or_else(|| {
         structured_error(
             "WORKBENCH_UNAVAILABLE",
             "AppState 不可用",

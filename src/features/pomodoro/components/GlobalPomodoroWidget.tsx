@@ -173,8 +173,8 @@ export const GlobalPomodoroWidget: React.FC = () => {
         <button
           onClick={() => setCollapsed((v) => !v)}
           className="-mx-2 flex h-11 w-8 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground"
-          title={collapsed ? t('pomodoro.widget.expand', '展开') : t('pomodoro.widget.collapse', '收起')}
-          aria-label={collapsed ? t('pomodoro.widget.expand', '展开') : t('pomodoro.widget.collapse', '收起')}
+          title={collapsed ? t('common:actions.expand') : t('common:actions.collapse')}
+          aria-label={collapsed ? t('common:actions.expand') : t('common:actions.collapse')}
           aria-expanded={!collapsed}
         >
           {collapsed ? <CaretLeft size={14} /> : <CaretRight size={14} />}

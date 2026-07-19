@@ -324,7 +324,7 @@ pub async fn acr_bridge_call(
     let (tx, mut rx) = oneshot::channel::<Value>();
     let tx_arc = Arc::new(Mutex::new(Some(tx)));
 
-    let window = ctx.window.clone();
+    let window = ctx.window_ref().clone();
     let tx_for_response = tx_arc.clone();
     let response_corr = corr.clone();
     let response_token = bridge_token.clone();
@@ -398,7 +398,7 @@ pub async fn acr_bridge_call(
         session_id,
     };
 
-    if let Err(e) = ctx.window.emit(ACR_BRIDGE_REQUEST, &request) {
+    if let Err(e) = ctx.window_ref().emit(ACR_BRIDGE_REQUEST, &request) {
         log::warn!(
             "[workbench_bridge] emit {} failed: {}",
             ACR_BRIDGE_REQUEST,
@@ -407,7 +407,7 @@ pub async fn acr_bridge_call(
         return Err(format!("bridge emit failed: {}", e));
     }
 
-    let cancel_window = ctx.window.clone();
+    let cancel_window = ctx.window_ref().clone();
     let cancel_on_drop_payload = cancel_payload.clone();
     let mut cancel_on_drop = CancelOnDrop::armed(move || {
         log::warn!(
@@ -460,7 +460,7 @@ pub async fn acr_bridge_call(
                 timeout_ms,
                 corr
             );
-            emit_bridge_cancel(&ctx.window, &cancel_payload, "timeout");
+            emit_bridge_cancel(ctx.window_ref(), &cancel_payload, "timeout");
             let drained = drain_terminal_response(&mut rx).await;
             cancel_on_drop.disarm();
             match drained {
@@ -476,7 +476,7 @@ pub async fn acr_bridge_call(
         WaitOutcome::ChannelClosed => {
             cancel_on_drop.disarm();
             log::warn!("[workbench_bridge] response channel closed (corr={})", corr);
-            emit_bridge_cancel(&ctx.window, &cancel_payload, "response channel closed");
+            emit_bridge_cancel(ctx.window_ref(), &cancel_payload, "response channel closed");
             Err(format!(
                 "RESULT_UNKNOWN: ACR bridge response channel closed after request submission (corr={})",
                 corr
@@ -484,7 +484,7 @@ pub async fn acr_bridge_call(
         }
         WaitOutcome::Cancelled => {
             log::info!("[workbench_bridge] cancelled (corr={})", corr);
-            emit_bridge_cancel(&ctx.window, &cancel_payload, "execution cancelled");
+            emit_bridge_cancel(ctx.window_ref(), &cancel_payload, "execution cancelled");
             let drained = drain_terminal_response(&mut rx).await;
             cancel_on_drop.disarm();
             match drained {

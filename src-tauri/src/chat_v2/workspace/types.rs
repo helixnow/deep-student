@@ -9,16 +9,12 @@ pub type DocumentId = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum WorkspaceStatus {
+    #[default]
     Active,
     Completed,
     Archived,
-}
-
-impl Default for WorkspaceStatus {
-    fn default() -> Self {
-        Self::Active
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,20 +51,18 @@ impl Workspace {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AgentRole {
     Coordinator,
+    #[default]
     Worker,
-}
-
-impl Default for AgentRole {
-    fn default() -> Self {
-        Self::Worker
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AgentStatus {
+    #[default]
     Idle,
     Queued,
     Running,
@@ -77,12 +71,6 @@ pub enum AgentStatus {
     Cancelled,
     Interrupted,
     Closed,
-}
-
-impl Default for AgentStatus {
-    fn default() -> Self {
-        Self::Idle
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,16 +116,12 @@ pub enum MessageType {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum MessageStatus {
+    #[default]
     Pending,
     Delivered,
     Processed,
-}
-
-impl Default for MessageStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,16 +171,12 @@ impl WorkspaceMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum InboxStatus {
+    #[default]
     Unread,
     Read,
     Processed,
-}
-
-impl Default for InboxStatus {
-    fn default() -> Self {
-        Self::Unread
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

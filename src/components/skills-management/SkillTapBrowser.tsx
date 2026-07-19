@@ -1,16 +1,24 @@
 /**
  * SkillTapBrowser - Tap 技能源浏览面板（页面内嵌，非模态）
  *
- * 输入 GitHub 仓库链接（tap 技能源），列出仓库内全部技能，
- * 单个技能走「装前扫描 → 条目内联风险确认 → 安装」的治理流程。
- * 已安装技能可通过管理页「检查更新」按 tap 来源复查上游漂移。
+ * 两个标签：
+ * 1. GitHub：仓库链接 → catalog → 装前扫描 → 确认安装
+ * 2. ClawHub：搜索/trending → verify → download+scan → 确认 → install
  *
  * ★ 设计约束：本面板及装前确认均为页面内联展开，不使用模态框/遮罩。
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GithubLogo, MagnifyingGlass, Package, CheckCircle, DownloadSimple, X } from '@phosphor-icons/react';
+import {
+  GithubLogo,
+  MagnifyingGlass,
+  Package,
+  CheckCircle,
+  DownloadSimple,
+  X,
+  Storefront,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -19,20 +27,30 @@ import { skillRegistry, reloadSkills } from '@/features/chat/skills';
 import {
   fetchTapCatalog,
   installTapSkill,
+  clawhubSearch,
+  clawhubVerify,
+  clawhubDownloadAndScan,
   type TapCatalog,
   type TapCatalogEntry,
   type SkillPackageScanResult,
+  type ClawHubSkillCard,
+  type ClawHubDownloadScanResult,
+  type ClawHubVerifyResult,
 } from '@/features/chat/skills/api';
+import {
+  classifyClawHubSearchError,
+  resolveClawHubSearchSuccess,
+  type ClawHubListUiStatus,
+} from '@/features/chat/skills/clawhubUi';
+import './SkillTapBrowser.css';
 
 // ============================================================================
 // 常量
 // ============================================================================
 
-/** 最近使用的技能源（localStorage） */
 const RECENT_TAPS_KEY = 'skills.tap.recent_sources';
 const MAX_RECENT_TAPS = 8;
 
-/** 预置技能源（社区常用 AgentSkills 目录仓库） */
 const PRESET_TAPS: Array<{ label: string; url: string }> = [
   { label: 'anthropics/skills', url: 'https://github.com/anthropics/skills' },
 ];
@@ -42,6 +60,8 @@ const RISK_BADGE_CLASSES: Record<string, string> = {
   medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
+
+type SourceTab = 'github' | 'clawhub';
 
 function loadRecentTaps(): string[] {
   try {
@@ -62,6 +82,21 @@ function saveRecentTap(url: string): void {
   }
 }
 
+function verifyBadgeKind(verify?: ClawHubVerifyResult | null): 'ok' | 'fail' | 'pending' | 'unknown' {
+  if (!verify) return 'unknown';
+  if (verify.ok && (verify.decision === 'pass' || verify.securityPassed)) return 'ok';
+  if (verify.decision === 'fail' || verify.securityStatus === 'malicious') return 'fail';
+  if (
+    verify.decision === 'pending'
+    || verify.securityStatus === 'pending'
+    || verify.securityStatus === 'suspicious'
+  ) {
+    return 'pending';
+  }
+  if (verify.ok) return 'ok';
+  return 'unknown';
+}
+
 // ============================================================================
 // 组件
 // ============================================================================
@@ -73,13 +108,14 @@ export interface SkillTapBrowserProps {
 
 export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, className }) => {
   const { t } = useTranslation(['skills', 'common']);
+  const [tab, setTab] = useState<SourceTab>('github');
 
+  // —— GitHub tap state ——
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [catalog, setCatalog] = useState<TapCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recentTaps, setRecentTaps] = useState<string[]>(() => loadRecentTaps());
-  // 装前确认（dry-run 扫描结果），内联展开在对应条目下方
   const [pendingInstall, setPendingInstall] = useState<{
     entry: TapCatalogEntry;
     scan: SkillPackageScanResult;
@@ -87,8 +123,28 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
   } | null>(null);
   const [installing, setInstalling] = useState(false);
   const [scanningSubdir, setScanningSubdir] = useState<string | null>(null);
-  // 本次会话内已安装的 subdir（用于按钮态即时更新）
   const [installedSubdirs, setInstalledSubdirs] = useState<Set<string>>(new Set());
+
+  // —— ClawHub state（empty / rate_limited / network_error / success 分通道）——
+  const [clawQuery, setClawQuery] = useState('');
+  const [clawStatus, setClawStatus] = useState<ClawHubListUiStatus>('idle');
+  const [clawErrorMessage, setClawErrorMessage] = useState<string | null>(null);
+  const [clawItems, setClawItems] = useState<ClawHubSkillCard[]>([]);
+  const [nonSuspiciousOnly, setNonSuspiciousOnly] = useState(true);
+  const clawLoading = clawStatus === 'loading';
+  const [clawPending, setClawPending] = useState<{
+    card: ClawHubSkillCard;
+    result: ClawHubDownloadScanResult;
+    overwrite: boolean;
+  } | null>(null);
+  const [clawBusySlug, setClawBusySlug] = useState<string | null>(null);
+  const [clawInstalling, setClawInstalling] = useState(false);
+  const [clawInstalled, setClawInstalled] = useState<Set<string>>(new Set());
+  const clawRequestSeq = useRef(0);
+
+  useEffect(() => () => {
+    clawRequestSeq.current += 1;
+  }, []);
 
   const handleBrowse = useCallback(async (targetUrl?: string) => {
     const repoUrl = (targetUrl ?? url).trim();
@@ -113,7 +169,6 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
     }
   }, [url, t]);
 
-  // 装前扫描（dry-run），成功后在条目下方内联展开确认区
   const handleInstallClick = useCallback(async (entry: TapCatalogEntry) => {
     if (!catalog) return;
     const effectiveId = entry.skillId || entry.name;
@@ -148,6 +203,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         subdir: pendingInstall.entry.subdir,
         overwrite: pendingInstall.overwrite,
         dryRun: false,
+        expectedPackageSha256: pendingInstall.scan.package_sha256,
       });
       await reloadSkills();
       setInstalledSubdirs((prev) => new Set(prev).add(pendingInstall.entry.subdir));
@@ -177,20 +233,149 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
     return [...preset, ...recents];
   }, [recentTaps]);
 
-  // 条目下方内联展开的装前确认区（替代原 AlertDialog）
-  const renderInlineConfirm = () => {
-    if (!pendingInstall) return null;
-    const { scan, overwrite } = pendingInstall;
+  // —— ClawHub ——
+  const loadClawHub = useCallback(async (query?: string) => {
+    const requestSeq = ++clawRequestSeq.current;
+    const q = (query ?? clawQuery).trim();
+    setClawStatus('loading');
+    setClawErrorMessage(null);
+    setClawPending(null);
+    try {
+      const result = await clawhubSearch({
+        q: q || undefined,
+        limit: 24,
+        nonSuspiciousOnly,
+        sort: 'trending',
+      });
+      if (requestSeq !== clawRequestSeq.current) return;
+      setClawItems(result.items);
+      setClawStatus(resolveClawHubSearchSuccess(result.items));
+    } catch (e) {
+      if (requestSeq !== clawRequestSeq.current) return;
+      setClawItems([]);
+      const kind = classifyClawHubSearchError(e);
+      setClawStatus(kind);
+      setClawErrorMessage(
+        kind === 'rate_limited'
+          ? t('skills:tap.clawhub.rate_limited')
+          : t('skills:tap.clawhub.network_error'),
+      );
+    }
+  }, [clawQuery, nonSuspiciousOnly, t]);
+
+  useEffect(() => {
+    // 仅 idle 时自动拉取，避免 empty/error 被当成「未加载」反复请求
+    if (tab === 'clawhub' && clawStatus === 'idle') {
+      void loadClawHub('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'clawhub') return;
+    // 切换 nonSuspiciousOnly 后刷新当前查询
+    void loadClawHub(clawQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonSuspiciousOnly]);
+
+  const handleClawInstallClick = useCallback(async (card: ClawHubSkillCard) => {
+    setClawBusySlug(card.slug);
+    setClawPending(null);
+    try {
+      // 1) verify
+      const verify = await clawhubVerify(card.slug, card.version || null);
+      if (!verify.ok && verify.decision === 'fail') {
+        showGlobalNotification(
+          'error',
+          verify.reasons.join('; ') || verify.securityStatus,
+          t('skills:tap.clawhub.verify_fail'),
+        );
+        // 仍允许用户看到失败徽章后自行决定；不自动中断扫描，但提示风险
+      }
+      // 2) download + scan
+      const result = await clawhubDownloadAndScan({
+        slug: card.slug,
+        version: card.version || verify.version || null,
+        install: false,
+        overwrite: true,
+      });
+      const overwrite = Boolean(skillRegistry.get(result.scan.skill_id));
+      setClawPending({
+        card: {
+          ...card,
+          version: result.version || card.version,
+          verify,
+          ownerHandle: card.ownerHandle || verify.publisherHandle,
+        },
+        result,
+        overwrite,
+      });
+    } catch (e) {
+      const kind = classifyClawHubSearchError(e);
+      showGlobalNotification(
+        'error',
+        kind === 'rate_limited'
+          ? t('skills:tap.clawhub.rate_limited')
+          : t('skills:tap.clawhub.network_error'),
+        t('skills:tap.clawhub.scan_failed'),
+      );
+    } finally {
+      setClawBusySlug(null);
+    }
+  }, [t]);
+
+  const handleClawConfirmInstall = useCallback(async () => {
+    if (!clawPending) return;
+    setClawInstalling(true);
+    try {
+      const tempZipPath = clawPending.result.tempZipPath;
+      if (!tempZipPath) {
+        throw new Error('Confirmed ClawHub scan artifact is missing; scan again');
+      }
+      const result = await clawhubDownloadAndScan({
+        slug: clawPending.card.slug,
+        version: clawPending.result.version || clawPending.card.version || null,
+        install: true,
+        overwrite: clawPending.overwrite,
+        expectedPackageSha256: clawPending.result.scan.package_sha256,
+        tempZipPath,
+      });
+      await reloadSkills();
+      setClawInstalled((prev) => new Set(prev).add(clawPending.card.slug));
+      // 市场 verify≠本地 trust：安装成功后明确提示默认未信任
+      showGlobalNotification(
+        'success',
+        t('skills:tap.install_untrusted_hint'),
+        t('skills:tap.clawhub.install_success', { name: result.scan.skill_id }),
+      );
+      setClawPending(null);
+    } catch (e) {
+      const kind = classifyClawHubSearchError(e);
+      showGlobalNotification(
+        'error',
+        kind === 'rate_limited'
+          ? t('skills:tap.clawhub.rate_limited')
+          : t('skills:tap.clawhub.network_error'),
+        t('skills:tap.clawhub.install_failed'),
+      );
+    } finally {
+      setClawInstalling(false);
+    }
+  }, [clawPending, t]);
+
+  const renderRiskConfirm = (
+    scan: SkillPackageScanResult,
+    sourceLabel: string,
+    onCancel: () => void,
+    onConfirm: () => void,
+    busy: boolean,
+    overwrite: boolean,
+  ) => {
     const riskLevel = RISK_BADGE_CLASSES[scan.risk_level] ? scan.risk_level : 'low';
     const isHighRisk = riskLevel === 'high';
     return (
       <div className="mt-2 space-y-2.5 rounded-md border border-border/60 bg-[color:var(--surface-muted)] p-3">
-        <p className="text-xs leading-relaxed text-foreground">
-          {t('skills:tap.install_confirm_source', {
-            name: scan.skill_id,
-            repo: catalog?.repoUrl ?? '',
-          })}
-        </p>
+        <p className="text-xs leading-relaxed text-foreground">{sourceLabel}</p>
 
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
@@ -243,8 +428,8 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           <NotionButton
             variant="ghost"
             size="sm"
-            onClick={() => setPendingInstall(null)}
-            disabled={installing}
+            onClick={onCancel}
+            disabled={busy}
             className="h-7 px-2.5 text-xs"
           >
             {t('common:actions.cancel')}
@@ -252,11 +437,11 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           <NotionButton
             variant={isHighRisk ? 'danger' : 'primary'}
             size="sm"
-            onClick={() => void handleConfirmInstall()}
-            disabled={installing}
+            onClick={onConfirm}
+            disabled={busy}
             className="h-7 px-2.5 text-xs"
           >
-            {installing
+            {busy
               ? t('skills:tap.installing')
               : overwrite
                 ? t('skills:management.import_confirm_overwrite_install')
@@ -267,6 +452,351 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
     );
   };
 
+  const renderVerifyBadge = (verify?: ClawHubVerifyResult | null) => {
+    const kind = verifyBadgeKind(verify);
+    const label =
+      kind === 'ok'
+        ? t('skills:tap.clawhub.verify_ok')
+        : kind === 'fail'
+          ? t('skills:tap.clawhub.verify_fail')
+          : kind === 'pending'
+            ? t('skills:tap.clawhub.verify_pending')
+            : t('skills:tap.clawhub.verify_unknown');
+    const security = verify?.securityStatus;
+    const securityHint =
+      security === 'clean'
+        ? t('skills:tap.clawhub.security_clean')
+        : security === 'suspicious'
+          ? t('skills:tap.clawhub.security_suspicious')
+          : security === 'malicious'
+            ? t('skills:tap.clawhub.security_malicious')
+            : undefined;
+    // 市场审核徽章 ≠ 本地 trust；title 明确二者正交，避免「已通过」被读成「已信任」
+    const title = [securityHint, t('skills:tap.clawhub.verify_not_trust_hint')]
+      .filter(Boolean)
+      .join(' · ');
+    return (
+      <span
+        className={cn('clawhub-verify-badge', `clawhub-verify-badge--${kind}`)}
+        title={title}
+        aria-label={`${label}. ${t('skills:tap.clawhub.verify_not_trust_hint')}`}
+        data-testid="clawhub-verify-badge"
+        data-verify-kind={kind}
+      >
+        {label}
+        {security && security !== 'unknown' ? ` · ${security}` : ''}
+      </span>
+    );
+  };
+
+  const renderGithubPanel = () => (
+    <div className="space-y-3 p-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+          <Input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void handleBrowse();
+            }}
+            placeholder={t('skills:tap.url_placeholder')}
+            className="h-8 pl-8 pr-3 text-xs"
+          />
+        </div>
+        <NotionButton
+          variant="primary"
+          size="sm"
+          onClick={() => void handleBrowse()}
+          disabled={loading || !url.trim()}
+          className="h-8 px-3 text-xs"
+        >
+          {loading ? t('skills:tap.browsing') : t('skills:tap.browse')}
+        </NotionButton>
+      </div>
+
+      {!catalog && quickSources.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {quickSources.map((source) => (
+            // eslint-disable-next-line ds-components/no-native-button -- badge 形态快捷源 chip
+            <button
+              key={source.url}
+              type="button"
+              onClick={() => void handleBrowse(source.url)}
+              disabled={loading}
+              className="study-shell-badge inline-flex cursor-pointer items-center gap-1 px-2 py-1 text-[11px] transition-colors hover:bg-[var(--interactive-hover)]"
+            >
+              <GithubLogo size={11} />
+              {source.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <p className="break-all text-xs leading-relaxed text-red-600 dark:text-red-400">{error}</p>
+      )}
+
+      {catalog && catalog.skills.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            {t('skills:tap.catalog_count', { count: catalog.skills.length })}
+          </div>
+          <div className="space-y-1">
+            {catalog.skills.map((entry) => {
+              const installed = isEntryInstalled(entry);
+              const displayName = entry.name || entry.skillId || catalog.repoUrl;
+              const isConfirming = pendingInstall?.entry.subdir === entry.subdir;
+              return (
+                <div
+                  key={entry.subdir || '__root__'}
+                  className="rounded-md border border-border/40 px-3 py-2"
+                >
+                  <div className="flex items-start gap-3">
+                    <Package size={16} className="mt-0.5 flex-shrink-0 text-muted-foreground/60" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-[13px] font-medium text-foreground">{displayName}</span>
+                        {entry.version && (
+                          <span className="flex-shrink-0 text-[10px] text-muted-foreground/70">v{entry.version}</span>
+                        )}
+                      </div>
+                      {entry.description && (
+                        <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                          {entry.description}
+                        </p>
+                      )}
+                      <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/60">
+                        {entry.subdir && <span className="truncate font-mono">{entry.subdir}</span>}
+                        <span className="flex-shrink-0">{t('skills:tap.file_count', { count: entry.fileCount })}</span>
+                      </div>
+                    </div>
+                    <NotionButton
+                      variant={installed ? 'ghost' : 'shell'}
+                      size="sm"
+                      onClick={() => {
+                        if (isConfirming) {
+                          setPendingInstall(null);
+                        } else {
+                          void handleInstallClick(entry);
+                        }
+                      }}
+                      disabled={scanningSubdir !== null || installing}
+                      className="h-7 flex-shrink-0 px-2.5 text-xs"
+                    >
+                      {scanningSubdir === entry.subdir ? (
+                        t('skills:tap.scanning')
+                      ) : installed ? (
+                        <>
+                          <CheckCircle size={13} className="mr-1 text-green-600 dark:text-green-400" />
+                          {t('skills:tap.reinstall')}
+                        </>
+                      ) : (
+                        <>
+                          <DownloadSimple size={13} className="mr-1" />
+                          {t('skills:tap.install')}
+                        </>
+                      )}
+                    </NotionButton>
+                  </div>
+                  {isConfirming && pendingInstall && renderRiskConfirm(
+                    pendingInstall.scan,
+                    t('skills:tap.install_confirm_source', {
+                      name: pendingInstall.scan.skill_id,
+                      repo: catalog?.repoUrl ?? '',
+                    }),
+                    () => setPendingInstall(null),
+                    () => void handleConfirmInstall(),
+                    installing,
+                    pendingInstall.overwrite,
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <p className="text-[10px] leading-relaxed text-muted-foreground/70">
+        {t('skills:tap.footer_hint')}
+      </p>
+    </div>
+  );
+
+  const renderClawHubPanel = () => (
+    <div className="space-y-3 p-3" data-testid="clawhub-panel">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <MagnifyingGlass
+            size={14}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50"
+            aria-hidden="true"
+          />
+          <Input
+            value={clawQuery}
+            onChange={(e) => setClawQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void loadClawHub();
+            }}
+            placeholder={t('skills:tap.clawhub.search_placeholder')}
+            aria-label={t('skills:tap.clawhub.search_placeholder')}
+            className="h-8 pl-8 pr-3 text-xs"
+            data-testid="clawhub-search-input"
+          />
+        </div>
+        <NotionButton
+          variant="primary"
+          size="sm"
+          onClick={() => void loadClawHub()}
+          disabled={clawLoading}
+          className="h-8 px-3 text-xs"
+          data-testid="clawhub-search-btn"
+          aria-busy={clawLoading || undefined}
+        >
+          {clawLoading ? t('skills:tap.clawhub.searching') : t('skills:tap.clawhub.search')}
+        </NotionButton>
+      </div>
+
+      <div className="clawhub-filter-row">
+        <label>
+          <input
+            type="checkbox"
+            checked={nonSuspiciousOnly}
+            onChange={(e) => setNonSuspiciousOnly(e.target.checked)}
+            data-testid="clawhub-non-suspicious"
+          />
+          {t('skills:tap.clawhub.non_suspicious_only')}
+        </label>
+        <span className="text-[10px] text-muted-foreground/60">
+          {t('skills:tap.clawhub.trending')}
+        </span>
+      </div>
+
+      {clawStatus === 'loading' && clawItems.length === 0 && (
+        <div
+          className="py-6 text-center text-xs text-muted-foreground"
+          role="status"
+          aria-live="polite"
+          data-testid="clawhub-loading"
+        >
+          {t('skills:tap.clawhub.searching')}
+        </div>
+      )}
+
+      {clawStatus === 'empty' && (
+        <div
+          className="py-6 text-center text-xs text-muted-foreground"
+          role="status"
+          aria-live="polite"
+          data-testid="clawhub-empty"
+        >
+          {t('skills:tap.clawhub.empty')}
+        </div>
+      )}
+
+      {(clawStatus === 'rate_limited' || clawStatus === 'network_error') && clawErrorMessage && (
+        <p
+          className="break-all text-xs leading-relaxed text-red-600 dark:text-red-400"
+          role="alert"
+          aria-live="assertive"
+          data-testid={clawStatus === 'rate_limited' ? 'clawhub-rate-limited' : 'clawhub-network-error'}
+          data-clawhub-status={clawStatus}
+        >
+          {clawErrorMessage}
+        </p>
+      )}
+
+      {clawStatus === 'success' && clawItems.length > 0 && (
+        <div className="space-y-1" role="list" data-testid="clawhub-results" aria-live="polite">
+          {clawItems.map((card) => {
+            const installed = clawInstalled.has(card.slug) || Boolean(skillRegistry.get(card.slug));
+            const isConfirming = clawPending?.card.slug === card.slug;
+            const busy = clawBusySlug === card.slug;
+            return (
+              <div
+                key={card.slug}
+                role="listitem"
+                className="rounded-md border border-border/40 px-3 py-2"
+                data-testid={`clawhub-card-${card.slug}`}
+              >
+                <div className="flex items-start gap-3">
+                  <Package size={16} className="mt-0.5 flex-shrink-0 text-muted-foreground/60" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="truncate text-[13px] font-medium text-foreground">
+                        {card.displayName || card.slug}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted-foreground/70">{card.slug}</span>
+                      {card.version && (
+                        <span className="flex-shrink-0 text-[10px] text-muted-foreground/70">v{card.version}</span>
+                      )}
+                      {renderVerifyBadge(card.verify)}
+                    </div>
+                    {card.summary && (
+                      <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                        {card.summary}
+                      </p>
+                    )}
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground/60">
+                      {card.ownerHandle && (
+                        <span>{t('skills:tap.clawhub.owner', { handle: card.ownerHandle })}</span>
+                      )}
+                      <span>{t('skills:tap.clawhub.downloads', { count: card.downloads })}</span>
+                    </div>
+                  </div>
+                  <NotionButton
+                    variant={installed ? 'ghost' : 'shell'}
+                    size="sm"
+                    onClick={() => {
+                      if (isConfirming) {
+                        setClawPending(null);
+                      } else {
+                        void handleClawInstallClick(card);
+                      }
+                    }}
+                    disabled={clawBusySlug !== null || clawInstalling}
+                    className="h-7 flex-shrink-0 px-2.5 text-xs"
+                    data-testid={`clawhub-install-${card.slug}`}
+                  >
+                    {busy ? (
+                      t('skills:tap.clawhub.scanning')
+                    ) : installed ? (
+                      <>
+                        <CheckCircle size={13} className="mr-1 text-green-600 dark:text-green-400" />
+                        {t('skills:tap.clawhub.reinstall')}
+                      </>
+                    ) : (
+                      <>
+                        <DownloadSimple size={13} className="mr-1" />
+                        {t('skills:tap.clawhub.install')}
+                      </>
+                    )}
+                  </NotionButton>
+                </div>
+                {isConfirming && clawPending && renderRiskConfirm(
+                  clawPending.result.scan,
+                  t('skills:tap.clawhub.install_confirm_source', {
+                    name: clawPending.result.scan.skill_id,
+                    slug: clawPending.card.slug,
+                    version: clawPending.result.version,
+                  }),
+                  () => setClawPending(null),
+                  () => void handleClawConfirmInstall(),
+                  clawInstalling,
+                  clawPending.overwrite,
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-[10px] leading-relaxed text-muted-foreground/70">
+        {t('skills:tap.clawhub.footer_hint')}
+      </p>
+    </div>
+  );
+
   return (
     <section
       aria-label={t('skills:tap.title')}
@@ -274,13 +804,21 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         'mb-4 rounded-lg border border-border/60 bg-[color:var(--surface-raised,transparent)]',
         className,
       )}
+      data-testid="skill-tap-browser"
     >
-      {/* 头部：标题 + 关闭（内联面板，不遮挡页面其他操作） */}
       <div className="flex items-center gap-2 border-b border-border/40 px-3 py-2.5">
-        <GithubLogo size={16} className="flex-shrink-0 text-muted-foreground" />
+        {tab === 'clawhub' ? (
+          <Storefront size={16} className="flex-shrink-0 text-muted-foreground" />
+        ) : (
+          <GithubLogo size={16} className="flex-shrink-0 text-muted-foreground" />
+        )}
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium text-foreground">{t('skills:tap.title')}</div>
-          <p className="truncate text-[11px] text-muted-foreground">{t('skills:tap.description')}</p>
+          <div className="text-[13px] font-medium text-foreground">
+            {tab === 'clawhub' ? t('skills:tap.clawhub.title') : t('skills:tap.title')}
+          </div>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {tab === 'clawhub' ? t('skills:tap.clawhub.description') : t('skills:tap.description')}
+          </p>
         </div>
         <NotionButton
           variant="ghost"
@@ -294,127 +832,34 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         </NotionButton>
       </div>
 
-      <div className="space-y-3 p-3">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-            <Input
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void handleBrowse();
-              }}
-              placeholder={t('skills:tap.url_placeholder')}
-              className="h-8 pl-8 pr-3 text-xs"
-            />
-          </div>
-          <NotionButton
-            variant="primary"
-            size="sm"
-            onClick={() => void handleBrowse()}
-            disabled={loading || !url.trim()}
-            className="h-8 px-3 text-xs"
-          >
-            {loading ? t('skills:tap.browsing') : t('skills:tap.browse')}
-          </NotionButton>
-        </div>
-
-        {!catalog && quickSources.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            {quickSources.map((source) => (
-              // eslint-disable-next-line ds-components/no-native-button -- badge 形态快捷源 chip，NotionButton 尺寸体系不适配
-              <button
-                key={source.url}
-                type="button"
-                onClick={() => void handleBrowse(source.url)}
-                disabled={loading}
-                className="study-shell-badge inline-flex cursor-pointer items-center gap-1 px-2 py-1 text-[11px] transition-colors hover:bg-[var(--interactive-hover)]"
-              >
-                <GithubLogo size={11} />
-                {source.label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {error && (
-          <p className="break-all text-xs leading-relaxed text-red-600 dark:text-red-400">{error}</p>
-        )}
-
-        {catalog && catalog.skills.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-              {t('skills:tap.catalog_count', { count: catalog.skills.length })}
-            </div>
-            <div className="space-y-1">
-              {catalog.skills.map((entry) => {
-                const installed = isEntryInstalled(entry);
-                const displayName = entry.name || entry.skillId || catalog.repoUrl;
-                const isConfirming = pendingInstall?.entry.subdir === entry.subdir;
-                return (
-                  <div
-                    key={entry.subdir || '__root__'}
-                    className="rounded-md border border-border/40 px-3 py-2"
-                  >
-                    <div className="flex items-start gap-3">
-                      <Package size={16} className="mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-[13px] font-medium text-foreground">{displayName}</span>
-                          {entry.version && (
-                            <span className="flex-shrink-0 text-[10px] text-muted-foreground/70">v{entry.version}</span>
-                          )}
-                        </div>
-                        {entry.description && (
-                          <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
-                            {entry.description}
-                          </p>
-                        )}
-                        <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/60">
-                          {entry.subdir && <span className="truncate font-mono">{entry.subdir}</span>}
-                          <span className="flex-shrink-0">{t('skills:tap.file_count', { count: entry.fileCount })}</span>
-                        </div>
-                      </div>
-                      <NotionButton
-                        variant={installed ? 'ghost' : 'shell'}
-                        size="sm"
-                        onClick={() => {
-                          if (isConfirming) {
-                            setPendingInstall(null);
-                          } else {
-                            void handleInstallClick(entry);
-                          }
-                        }}
-                        disabled={scanningSubdir !== null || installing}
-                        className="h-7 flex-shrink-0 px-2.5 text-xs"
-                      >
-                        {scanningSubdir === entry.subdir ? (
-                          t('skills:tap.scanning')
-                        ) : installed ? (
-                          <>
-                            <CheckCircle size={13} className="mr-1 text-green-600 dark:text-green-400" />
-                            {t('skills:tap.reinstall')}
-                          </>
-                        ) : (
-                          <>
-                            <DownloadSimple size={13} className="mr-1" />
-                            {t('skills:tap.install')}
-                          </>
-                        )}
-                      </NotionButton>
-                    </div>
-                    {isConfirming && renderInlineConfirm()}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <p className="text-[10px] leading-relaxed text-muted-foreground/70">
-          {t('skills:tap.footer_hint')}
-        </p>
+      <div className="skill-tap-tabs" role="tablist" aria-label={t('skills:tap.title')}>
+        {/* eslint-disable-next-line ds-components/no-native-button -- tab strip */}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'github'}
+          className="skill-tap-tab"
+          onClick={() => setTab('github')}
+          data-testid="skill-tap-tab-github"
+        >
+          <GithubLogo size={13} />
+          {t('skills:tap.tab_github')}
+        </button>
+        {/* eslint-disable-next-line ds-components/no-native-button -- tab strip */}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'clawhub'}
+          className="skill-tap-tab"
+          onClick={() => setTab('clawhub')}
+          data-testid="skill-tap-tab-clawhub"
+        >
+          <Storefront size={13} />
+          {t('skills:tap.tab_clawhub')}
+        </button>
       </div>
+
+      {tab === 'github' ? renderGithubPanel() : renderClawHubPanel()}
     </section>
   );
 };

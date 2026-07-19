@@ -73,7 +73,6 @@ use lancedb::{Connection, Table};
 #[cfg(feature = "lance")]
 use std::time::{Duration, Instant};
 #[cfg(feature = "lance")]
-
 type Result<T> = std::result::Result<T, AppError>;
 
 #[cfg(feature = "lance")]
@@ -495,7 +494,7 @@ impl LanceVectorStore {
                     .downcast_ref::<StringArray>()
                     .ok_or_else(|| AppError::database("text 列类型错误".to_string()))?;
                 for i in 0..text_arr.len() {
-                    text_bytes += text_arr.value(i).as_bytes().len();
+                    text_bytes += text_arr.value(i).len();
                 }
 
                 let idx_emb = schema
@@ -2838,7 +2837,7 @@ impl VectorStore for LanceVectorStore {
                 .vector_search_rows(
                     &query_embedding,
                     top_k,
-                    sub_library_ids.as_ref().map(|v| v.as_slice()),
+                    sub_library_ids.as_deref(),
                     vec_mul,
                     max_cands,
                 )
@@ -2899,7 +2898,7 @@ impl VectorStore for LanceVectorStore {
             let (_, _, _, fts_mul, vec_mul, max_cands, per_doc_cap, fetch_mul) =
                 self.load_rrf_config();
             let effective_mul = std::cmp::max(vec_mul, std::cmp::max(fts_mul, fetch_mul));
-            let sub_slice = sub_library_ids.as_ref().map(|v| v.as_slice());
+            let sub_slice = sub_library_ids.as_deref();
 
             let rows = match self
                 .hybrid_search_rows(
@@ -3078,7 +3077,7 @@ impl VectorStore for LanceVectorStore {
                 return Ok(Vec::new());
             }
 
-            chunk_rows.sort_by(|a, b| a.chunk_index.cmp(&b.chunk_index));
+            chunk_rows.sort_by_key(|a| a.chunk_index);
 
             let mut chunks: Vec<DocumentChunk> = Vec::with_capacity(chunk_rows.len());
             for row in chunk_rows.into_iter() {
@@ -3107,12 +3106,11 @@ impl VectorStore for LanceVectorStore {
                 .database
                 .get_conn_safe()
                 .map_err(|e| AppError::database(e.to_string()))?;
-            let count = conn
-                .query_row("SELECT COUNT(*) FROM rag_documents", [], |row| {
-                    row.get::<_, i64>(0)
-                })
-                .unwrap_or(0) as usize;
-            count
+
+            conn.query_row("SELECT COUNT(*) FROM rag_documents", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap_or(0) as usize
         };
 
         let summary = self.summarize_library(None).await?;
@@ -4123,7 +4121,7 @@ impl MigrationCoordinator {
 
         let mut builder = tbl.query().with_row_id();
         if let Some(cursor) = last_cursor {
-            builder = builder.only_if(&format!("_rowid > {}", cursor));
+            builder = builder.only_if(format!("_rowid > {}", cursor));
         }
         let mut stream = builder
             .limit(limit)
@@ -4224,7 +4222,7 @@ impl MigrationCoordinator {
 
         let mut builder = tbl.query().with_row_id();
         if let Some(cursor) = last_cursor {
-            builder = builder.only_if(&format!("_rowid > {}", cursor));
+            builder = builder.only_if(format!("_rowid > {}", cursor));
         }
         let mut stream = builder
             .limit(limit)
@@ -4470,7 +4468,7 @@ impl MigrationCoordinator {
     }
 
     fn blob_to_vec(blob: &[u8]) -> Option<Vec<f32>> {
-        if blob.len() % 4 != 0 {
+        if !blob.len().is_multiple_of(4) {
             return None;
         }
         let mut out = Vec::with_capacity(blob.len() / 4);

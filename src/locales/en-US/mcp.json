@@ -290,6 +290,7 @@
     "auth_failed": "Authentication failed. Please check your API key configuration. ({{error}})",
     "auth_failed_for_server": "Authentication failed for {{serverId}}. Please check your API key configuration. ({{error}})",
     "auth_failed_check_key": "Authentication failed. Please check API key.",
+    "oauth_reauth_required": "OAuth re-authorization required for this MCP server",
     "server_not_found": "Server not found: {{id}}",
     "tool_not_found": "MCP tool not found: {{toolName}}",
     "resource_not_found": "Resource not found: {{uri}}",
