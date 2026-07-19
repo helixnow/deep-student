@@ -15,10 +15,9 @@
  * - 使用 UnifiedPreviewToolbar 显示控制项
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { File as FileIcon, FileText, FileZip, FileXls, CircleNotch, ArrowClockwise, Download } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { CircleNotch } from '@phosphor-icons/react';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { invoke } from '@tauri-apps/api/core';
 import { PreviewProvider, usePreviewContext, type PreviewType } from './PreviewContext';
@@ -37,7 +36,11 @@ import { fileManager } from '@/utils/fileManager';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // PDF 预览组件
-import { TextbookPdfViewer } from '@/features/pdf/components/TextbookPdfViewer';
+import {
+  TextbookPdfViewer,
+  type Bookmark,
+  type ReadingProgress,
+} from '@/features/pdf/components/TextbookPdfViewer';
 import { resolveFilePreviewMode } from './filePreviewResolver';
 import { formatFileSize } from './previewUtils';
 import { RichDocumentPreview } from './RichDocumentPreview';
@@ -49,16 +52,8 @@ import {
   resolveAudioMimeType,
   resolveVideoMimeType,
 } from './mediaPreviewUtils';
-
-/**
- * 根据 MIME 类型获取对应图标
- */
-const getFileIconComponent = (mimeType: string) => {
-  if (mimeType.includes('pdf')) return FileText;
-  if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return FileXls;
-  if (mimeType.includes('zip') || mimeType.includes('archive')) return FileZip;
-  return FileIcon;
-};
+import { PreviewStatus } from './PreviewStatus';
+import { createPreviewPersistController } from './previewPersistence';
 
 /**
  * 将文件预览模式映射到 PreviewContext 类型
@@ -117,9 +112,6 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const mimeType = (metadata?.mimeType as string) || 'application/octet-stream';
   const contentHash = (metadata?.contentHash as string) || '';
 
-  // 获取图标
-  const FileIconComponent = getFileIconComponent(mimeType);
-
   // 解析文件预览模式
   const previewMode = resolveFilePreviewMode(mimeType, node.name, node.previewType);
   const isDocx = previewMode === 'docx';
@@ -150,6 +142,26 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   
   // PDF 页面选择状态
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+
+  // ★ File PDF persist：仅 dstu.setMetadata（见 previewPersistence NOTE(backend)）
+  const nodePathRef = useRef(node.path);
+  const nodeIdRef = useRef(node.id);
+  const nodeMetadataRef = useRef(node.metadata as Record<string, unknown> | undefined);
+  useEffect(() => {
+    nodePathRef.current = node.path;
+    nodeIdRef.current = node.id;
+    nodeMetadataRef.current = node.metadata as Record<string, unknown> | undefined;
+  }, [node.path, node.id, node.metadata]);
+
+  const persistControllerRef = useRef(
+    createPreviewPersistController({
+      kind: 'file',
+      nodeId: node.id,
+      nodePath: node.path,
+      getMetadata: () => nodeMetadataRef.current,
+    }),
+  );
 
   // ★ R2：切换资源时在 render 阶段同步重置内容状态（组件实例跨节点复用）。
   // 仅靠 effect 重置会让"新节点 + 旧内容"先渲染一帧（如 md 内容被当作新文件名的 csv 解析）；
@@ -164,7 +176,51 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     setIsPreviewTooLarge(false);
     setMediaRenderFailed(false);
     setSelectedPages(new Set());
+    const nextBookmarks = (node.metadata as Record<string, unknown> | undefined)?.bookmarks as Bookmark[] | undefined;
+    setBookmarks(Array.isArray(nextBookmarks) ? nextBookmarks : []);
   }
+
+  const readingProgress = useMemo<ReadingProgress | undefined>(() => {
+    const progress = (node.metadata as Record<string, unknown> | undefined)?.readingProgress as
+      | { page?: number; lastReadAt?: number }
+      | undefined;
+    if (progress && typeof progress.page === 'number' && progress.page > 0) {
+      return { page: progress.page, lastReadAt: progress.lastReadAt };
+    }
+    return undefined;
+  }, [node.metadata]);
+
+  useEffect(() => {
+    const saved = (node.metadata as Record<string, unknown> | undefined)?.bookmarks as Bookmark[] | undefined;
+    if (saved && Array.isArray(saved)) {
+      setBookmarks(saved);
+    } else {
+      setBookmarks([]);
+    }
+  }, [node.metadata]);
+
+  // node 切换时 flush 旧控制器再换新；unmount 时 dispose
+  useEffect(() => {
+    persistControllerRef.current.dispose();
+    persistControllerRef.current = createPreviewPersistController({
+      kind: 'file',
+      nodeId: nodeIdRef.current,
+      nodePath: nodePathRef.current,
+      getMetadata: () => nodeMetadataRef.current,
+    });
+    return () => {
+      persistControllerRef.current.dispose();
+    };
+  }, [node.id]);
+
+  const handleProgressChange = useCallback((progress: ReadingProgress) => {
+    persistControllerRef.current.scheduleProgress(progress);
+  }, []);
+
+  const handleBookmarksChange = useCallback((newBookmarks: Bookmark[]) => {
+    setBookmarks(newBookmarks);
+    persistControllerRef.current.scheduleBookmarks(newBookmarks);
+  }, []);
 
   // ★ 使用共享 Hook 监听 PDF 页码跳转事件
   const [focusRequest, handleFocusHandled] = usePdfFocusListener({
@@ -479,34 +535,40 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const renderContent = () => {
     if (error) {
       return (
-        <div className="flex flex-col items-center justify-center h-full gap-4" role="alert">
-          <FileText className="w-16 h-16 text-destructive opacity-50" />
-          <p className="text-center text-destructive">{error}</p>
-          {isPreviewTooLarge && typeof node.size === 'number' && node.size > 0 && (
-            <p className="text-xs text-center text-muted-foreground max-w-md break-all">
-              {node.name} · {formatFileSize(node.size)}
-            </p>
-          )}
-          <div className="flex items-center gap-2">
-            {isPreviewTooLarge && (
-              <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
-                {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                {t('learningHub:file.saveToDevice')}
-              </NotionButton>
-            )}
-            <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
-              <ArrowClockwise className="h-3.5 w-3.5" />
-              {t('common:retry')}
-            </NotionButton>
-          </div>
-        </div>
+        <PreviewStatus
+          tone="error"
+          title={error}
+          meta={
+            isPreviewTooLarge && typeof node.size === 'number' && node.size > 0
+              ? `${node.name} · ${formatFileSize(node.size)}`
+              : undefined
+          }
+          actions={[
+            ...(isPreviewTooLarge
+              ? [{
+                  id: 'save',
+                  label: t('learningHub:file.saveToDevice'),
+                  onClick: () => { void handleSaveFile(); },
+                  variant: 'primary' as const,
+                  loading: isSaving,
+                }]
+              : []),
+            {
+              id: 'retry',
+              label: t('common:retry'),
+              onClick: handleRetry,
+              variant: 'ghost' as const,
+            },
+          ]}
+        />
       );
     }
     if (isLoading) {
       return (
-        <div className="flex items-center justify-center h-full" role="status" aria-label={t('learningHub:loading.content')}>
-          <CircleNotch className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <PreviewStatus
+          tone="loading"
+          title={t('learningHub:loading.content')}
+        />
       );
     }
 
@@ -514,26 +576,27 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     if (isPdf) {
       if (pdfLoading) {
         return (
-          <div className="flex flex-col items-center justify-center h-full gap-4" role="status" aria-label={t('learningHub:loading.content')}>
-            <CircleNotch className="h-8 w-8 animate-spin text-primary" />
-            {isPdfLargeFile && (
-              <p className="text-sm text-muted-foreground">
-                {t('learningHub:file.loadingLargeFile')}
-              </p>
-            )}
-          </div>
+          <PreviewStatus
+            tone="loading"
+            title={t('learningHub:loading.content')}
+            description={isPdfLargeFile ? t('learningHub:file.loadingLargeFile') : undefined}
+          />
         );
       }
       if (pdfError) {
         return (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-destructive" role="alert">
-            <FileText className="w-16 h-16 opacity-50" />
-            <p className="text-center">{pdfError}</p>
-            <NotionButton variant="ghost" size="sm" onClick={retryPdfLoad} className="gap-1.5">
-              <ArrowClockwise className="h-3.5 w-3.5" />
-              {t('common:retry')}
-            </NotionButton>
-          </div>
+          <PreviewStatus
+            tone="error"
+            title={pdfError}
+            actions={[
+              {
+                id: 'retry',
+                label: t('common:retry'),
+                onClick: retryPdfLoad,
+                variant: 'ghost',
+              },
+            ]}
+          />
         );
       }
       if (pdfFile || pdfFilePath) {
@@ -549,14 +612,19 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             focusRequest={focusRequest}
             onFocusHandled={handleFocusHandled}
             resourcePath={node.path}
+            readingProgress={readingProgress}
+            onProgressChange={handleProgressChange}
+            bookmarks={bookmarks}
+            onBookmarksChange={handleBookmarksChange}
           />
         );
       }
       // 正在等待加载
       return (
-        <div className="flex items-center justify-center h-full" role="status" aria-label={t('learningHub:loading.content')}>
-          <CircleNotch className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <PreviewStatus
+          tone="loading"
+          title={t('learningHub:loading.content')}
+        />
       );
     }
 
@@ -578,25 +646,25 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     if (isAudio && mediaObjectUrl) {
       if (mediaRenderFailed) {
         return (
-          <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
-            <FileText className="w-12 h-12 text-muted-foreground opacity-50" />
-            <p className="text-sm font-medium">{t('learningHub:file.mediaRenderFailed')}</p>
-            <p className="text-xs text-muted-foreground max-w-md">
-              {isLikelyUnsupportedMedia(node.name, 'audio')
+          <PreviewStatus
+            tone="error"
+            title={t('learningHub:file.mediaRenderFailed')}
+            description={
+              isLikelyUnsupportedMedia(node.name, 'audio')
                 ? t('learningHub:file.mediaUnsupportedHint')
-                : t('learningHub:file.mediaRenderFailedHint')}
-            </p>
-            <div className="flex gap-2">
-              <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
-                <ArrowClockwise className="h-3.5 w-3.5" />
-                {t('common:retry')}
-              </NotionButton>
-              <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
-                {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                {t('learningHub:file.saveToDevice')}
-              </NotionButton>
-            </div>
-          </div>
+                : t('learningHub:file.mediaRenderFailedHint')
+            }
+            actions={[
+              { id: 'retry', label: t('common:retry'), onClick: handleRetry, variant: 'ghost' },
+              {
+                id: 'save',
+                label: t('learningHub:file.saveToDevice'),
+                onClick: () => { void handleSaveFile(); },
+                variant: 'primary',
+                loading: isSaving,
+              },
+            ]}
+          />
         );
       }
       return (
@@ -623,25 +691,25 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     if (isVideo && mediaObjectUrl) {
       if (mediaRenderFailed) {
         return (
-          <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
-            <FileText className="w-12 h-12 text-muted-foreground opacity-50" />
-            <p className="text-sm font-medium">{t('learningHub:file.mediaRenderFailed')}</p>
-            <p className="text-xs text-muted-foreground max-w-md">
-              {isLikelyUnsupportedMedia(node.name, 'video')
+          <PreviewStatus
+            tone="error"
+            title={t('learningHub:file.mediaRenderFailed')}
+            description={
+              isLikelyUnsupportedMedia(node.name, 'video')
                 ? t('learningHub:file.mediaUnsupportedHint')
-                : t('learningHub:file.mediaRenderFailedHint')}
-            </p>
-            <div className="flex gap-2">
-              <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
-                <ArrowClockwise className="h-3.5 w-3.5" />
-                {t('common:retry')}
-              </NotionButton>
-              <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
-                {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                {t('learningHub:file.saveToDevice')}
-              </NotionButton>
-            </div>
-          </div>
+                : t('learningHub:file.mediaRenderFailedHint')
+            }
+            actions={[
+              { id: 'retry', label: t('common:retry'), onClick: handleRetry, variant: 'ghost' },
+              {
+                id: 'save',
+                label: t('learningHub:file.saveToDevice'),
+                onClick: () => { void handleSaveFile(); },
+                variant: 'primary',
+                loading: isSaving,
+              },
+            ]}
+          />
         );
       }
       return (
@@ -678,29 +746,30 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
 
     // 无法预览 — 显示文件信息以帮助排查
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-        <FileIconComponent className="w-16 h-16 opacity-50" />
-        <p className="text-center">
-          {t('learningHub:file.noPreview')}
-        </p>
-        <p className="text-xs text-center opacity-70 max-w-md break-all">
-          {node.name} · {mimeType}
-          {typeof node.size === 'number' && node.size > 0 ? ` · ${formatFileSize(node.size)}` : ''} · {node.id}
-        </p>
-        <p className="text-sm text-center">
-          {t('learningHub:file.downloadHint')}
-        </p>
-        <div className="flex items-center gap-2">
-          <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
-            {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            {t('learningHub:file.saveToDevice')}
-          </NotionButton>
-          <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
-            <ArrowClockwise className="h-3.5 w-3.5" />
-            {t('common:retry')}
-          </NotionButton>
-        </div>
-      </div>
+      <PreviewStatus
+        tone="empty"
+        icon="file"
+        title={t('learningHub:file.noPreview')}
+        description={t('learningHub:file.downloadHint')}
+        meta={`${node.name} · ${mimeType}${
+          typeof node.size === 'number' && node.size > 0 ? ` · ${formatFileSize(node.size)}` : ''
+        } · ${node.id}`}
+        actions={[
+          {
+            id: 'save',
+            label: t('learningHub:file.saveToDevice'),
+            onClick: () => { void handleSaveFile(); },
+            variant: 'primary',
+            loading: isSaving,
+          },
+          {
+            id: 'retry',
+            label: t('common:retry'),
+            onClick: handleRetry,
+            variant: 'ghost',
+          },
+        ]}
+      />
     );
   };
 

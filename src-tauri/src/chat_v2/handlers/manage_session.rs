@@ -1616,6 +1616,27 @@ pub async fn chat_v2_set_authority_mode(
     ChatV2Repo::set_session_authority_mode(&db, &session_id, parsed).map_err(|e| e.to_string())
 }
 
+/// Set the session-only approval behavior preset.
+#[tauri::command]
+pub async fn chat_v2_set_permission_preset(
+    session_id: String,
+    preset: String,
+    db: State<'_, Arc<ChatV2Database>>,
+    approval_manager: State<'_, Arc<crate::chat_v2::approval_manager::ApprovalManager>>,
+) -> Result<ChatSession, String> {
+    let parsed = crate::chat_v2::types::PermissionPreset::parse(&preset).ok_or_else(|| {
+        format!(
+            "Invalid permission preset '{}'. Valid presets: cautious, relaxed",
+            preset
+        )
+    })?;
+    // Switching policy invalidates prior session-memory so a relaxed approval
+    // cannot survive a transition back to cautious.
+    approval_manager.clear_session_remembered(&session_id);
+    ChatV2Repo::set_session_permission_preset(&db, &session_id, parsed)
+        .map_err(|error| error.to_string())
+}
+
 /// Respond to a Plan-mode plan_gate wait.
 ///
 /// Approving binds write tools to the planId batch only — never remember/global_bypass.

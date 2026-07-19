@@ -12,19 +12,31 @@
 //! - 截断时提供明确的继续获取提示（与官方一致）
 //! - 清理干扰元素（script/style/nav/footer/aside/header 等）
 
+use std::fs::{self, OpenOptions};
+use std::io::{Cursor, Write};
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use encoding_rs::Encoding;
 use futures_util::{pin_mut, Stream, StreamExt};
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, USER_AGENT};
+use reqwest::header::{
+    HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, CONTENT_DISPOSITION, USER_AGENT,
+};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::sync::LazyLock;
+use tauri::Manager;
 
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
+use crate::chat_v2::runtime_roots::artifact_root;
+use crate::chat_v2::task_objects::{
+    ManagedLocator, ObjectCapabilities, ObjectProvenance, ProviderObjectRef, TaskObjectHandle,
+    TaskObjectKind,
+};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
 // ============================================================================
@@ -39,11 +51,176 @@ const DEFAULT_START_INDEX: usize = 0;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 /// 最大内容长度（防止 OOM，官方 lt=1000000）
 const MAX_CONTENT_LENGTH: usize = 1024 * 1024; // 1MB
+/// URL binary files are materialized rather than decoded into model-visible text.
+const MAX_BINARY_LENGTH: u64 = 64 * 1024 * 1024;
 /// 默认 User-Agent（模仿官方格式）
 const DEFAULT_USER_AGENT: &str =
     "DeepStudent/1.0 (Autonomous; +https://github.com/modelcontextprotocol/servers)";
 /// 最大重定向跳数（SSRF 安全跟随）
 const MAX_REDIRECTS: usize = 10;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BinaryKind {
+    mime: &'static str,
+    extension: &'static str,
+}
+
+fn normalized_mime(content_type: &str) -> &str {
+    content_type.split(';').next().unwrap_or("").trim()
+}
+
+fn docx_magic_matches(bytes: &[u8]) -> bool {
+    if !bytes.starts_with(b"PK\x03\x04") {
+        return false;
+    }
+    let Ok(mut archive) = zip::ZipArchive::new(Cursor::new(bytes)) else {
+        return false;
+    };
+    let has_content_types = archive.by_name("[Content_Types].xml").is_ok();
+    has_content_types
+        && (0..archive.len()).any(|index| {
+            archive.by_index(index).ok().is_some_and(|entry| {
+                entry.name().starts_with("word/") && !entry.name().ends_with('/')
+            })
+        })
+}
+
+fn sniff_binary_kind(bytes: &[u8]) -> Option<BinaryKind> {
+    let kind = if bytes.starts_with(b"%PDF-") {
+        BinaryKind {
+            mime: "application/pdf",
+            extension: "pdf",
+        }
+    } else if docx_magic_matches(bytes) {
+        BinaryKind {
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            extension: "docx",
+        }
+    } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        BinaryKind {
+            mime: "image/png",
+            extension: "png",
+        }
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        BinaryKind {
+            mime: "image/jpeg",
+            extension: "jpg",
+        }
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        BinaryKind {
+            mime: "image/gif",
+            extension: "gif",
+        }
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        BinaryKind {
+            mime: "image/webp",
+            extension: "webp",
+        }
+    } else if bytes.starts_with(b"ID3")
+        || bytes.starts_with(b"\xff\xfb")
+        || bytes.starts_with(b"\xff\xf3")
+        || bytes.starts_with(b"\xff\xf2")
+    {
+        BinaryKind {
+            mime: "audio/mpeg",
+            extension: "mp3",
+        }
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        BinaryKind {
+            mime: "audio/wav",
+            extension: "wav",
+        }
+    } else if bytes.starts_with(b"OggS") {
+        BinaryKind {
+            mime: "audio/ogg",
+            extension: "ogg",
+        }
+    } else if bytes.starts_with(b"fLaC") {
+        BinaryKind {
+            mime: "audio/flac",
+            extension: "flac",
+        }
+    } else if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
+        BinaryKind {
+            mime: "video/webm",
+            extension: "webm",
+        }
+    } else if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+        BinaryKind {
+            mime: "video/mp4",
+            extension: "mp4",
+        }
+    } else {
+        return None;
+    };
+    Some(kind)
+}
+
+fn binary_header_family_matches(header: &str, kind: BinaryKind) -> bool {
+    let header = normalized_mime(header).to_ascii_lowercase();
+    header.is_empty()
+        || header == "unknown"
+        || header == "application/octet-stream"
+        || header == "binary/octet-stream"
+        || header == kind.mime
+        || (kind.extension == "docx" && header == "application/zip")
+        || (header.starts_with("image/") && kind.mime.starts_with("image/"))
+        || (header.starts_with("audio/") && kind.mime.starts_with("audio/"))
+        || (header.starts_with("video/") && kind.mime.starts_with("video/"))
+        || (kind.extension == "mp4"
+            && (header.starts_with("audio/") || header.starts_with("video/")))
+}
+
+fn sanitize_download_name(raw: &str, kind: BinaryKind) -> String {
+    let leaf = Path::new(raw)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("download");
+    let mut stem: String = Path::new(leaf)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("download")
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .take(80)
+        .collect();
+    if stem.is_empty() || stem == "." || stem == ".." {
+        stem = "download".into();
+    }
+    format!("{stem}.{}", kind.extension)
+}
+
+fn filename_from_headers_or_url(
+    headers: &HeaderMap,
+    url: &reqwest::Url,
+    kind: BinaryKind,
+) -> String {
+    let from_header = headers
+        .get(CONTENT_DISPOSITION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| {
+            value.split(';').find_map(|part| {
+                let (key, value) = part.trim().split_once('=')?;
+                key.eq_ignore_ascii_case("filename")
+                    .then(|| value.trim_matches(['\'', '"']).to_string())
+            })
+        });
+    let raw = from_header
+        .or_else(|| {
+            url.path_segments()
+                .and_then(|mut parts| parts.next_back())
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "download".into());
+    sanitize_download_name(&raw, kind)
+}
 
 // ============================================================================
 // 预编译正则表达式（性能优化）
@@ -183,6 +360,24 @@ fn is_internal_ip(ip: &IpAddr) -> bool {
             }).unwrap_or(false)
         }
     }
+}
+
+fn validate_public_url_target(url: &reqwest::Url) -> Result<(), String> {
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(format!("Unsupported final URL scheme: {}", url.scheme()));
+    }
+    let host = url.host_str().ok_or("Final URL has no host")?;
+    let port = url
+        .port()
+        .unwrap_or(if url.scheme() == "https" { 443 } else { 80 });
+    let addrs: Vec<_> = (host, port)
+        .to_socket_addrs()
+        .map_err(|error| format!("Final URL DNS resolution failed for '{host}': {error}"))?
+        .collect();
+    if addrs.is_empty() || addrs.iter().any(|addr| is_internal_ip(&addr.ip())) {
+        return Err("Blocked: final URL resolves to an internal IP address".to_string());
+    }
+    Ok(())
 }
 
 /// 从 Content-Type header 解析 charset 标签
@@ -365,6 +560,10 @@ impl FetchExecutor {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .default_headers(headers)
+            // Redirect and destination checks resolve every target locally.
+            // A system proxy could resolve a different address and bypass that
+            // SSRF boundary, so this executor intentionally uses direct HTTP.
+            .no_proxy()
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
                 // 限制最大重定向次数
                 if attempt.previous().len() >= MAX_REDIRECTS {
@@ -468,6 +667,150 @@ impl FetchExecutor {
             .unwrap_or(0)
             .min(usize::MAX as u64) as usize;
         collect_download_stream_limited(response.bytes_stream(), max_bytes, initial_capacity).await
+    }
+
+    fn materialize_binary(
+        &self,
+        ctx: &ExecutionContext,
+        original_url: &str,
+        final_url: &reqwest::Url,
+        headers: &HeaderMap,
+        bytes: &[u8],
+        kind: BinaryKind,
+    ) -> Result<Value, String> {
+        let app = ctx.window_ref().app_handle();
+        let root = artifact_root(app, &ctx.session_id, true)?;
+        let directory = root.path.join("web-fetch");
+        fs::create_dir_all(&directory)
+            .map_err(|error| format!("Failed to create web-fetch artifact directory: {error}"))?;
+        let root_canon = root
+            .path
+            .canonicalize()
+            .map_err(|error| format!("Failed to canonicalize session artifact root: {error}"))?;
+        let directory_canon = directory.canonicalize().map_err(|error| {
+            format!("Failed to canonicalize web-fetch artifact directory: {error}")
+        })?;
+        if !directory_canon.starts_with(&root_canon) {
+            return Err("Web fetch artifact directory escapes session root".into());
+        }
+
+        let requested_name = filename_from_headers_or_url(headers, final_url, kind);
+        let sha256 = hex::encode(Sha256::digest(bytes));
+        let requested_path = Path::new(&requested_name);
+        let stem = requested_path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("download");
+        let display_name = format!("{}-{}.{}", stem, &sha256[..12], kind.extension);
+        let target = directory_canon.join(&display_name);
+        let mut file = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let existing = fs::read(&target).map_err(|read_error| {
+                    format!("Failed to read existing web-fetch artifact: {read_error}")
+                })?;
+                if Sha256::digest(&existing).as_slice() != Sha256::digest(bytes).as_slice() {
+                    return Err("Web fetch artifact hash collision".into());
+                }
+                let relative_path = format!("web-fetch/{display_name}");
+                return self.binary_artifact_result(
+                    original_url,
+                    final_url,
+                    requested_name,
+                    relative_path,
+                    display_name,
+                    sha256,
+                    bytes.len() as u64,
+                    kind,
+                );
+            }
+            Err(error) => return Err(format!("Failed to create web-fetch artifact: {error}")),
+        };
+        file.write_all(bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(|error| format!("Failed to write web-fetch artifact: {error}"))?;
+        let relative_path = format!("web-fetch/{display_name}");
+        self.binary_artifact_result(
+            original_url,
+            final_url,
+            requested_name,
+            relative_path,
+            display_name,
+            sha256,
+            bytes.len() as u64,
+            kind,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn binary_artifact_result(
+        &self,
+        original_url: &str,
+        final_url: &reqwest::Url,
+        original_name: String,
+        relative_path: String,
+        display_name: String,
+        sha256: String,
+        size_bytes: u64,
+        kind: BinaryKind,
+    ) -> Result<Value, String> {
+        let mut handle = TaskObjectHandle::new(
+            format!("web-fetch:{sha256}"),
+            TaskObjectKind::File,
+            display_name.clone(),
+            ObjectProvenance {
+                source: "url_download".into(),
+                source_uri: Some(final_url.to_string()),
+                server: final_url.host_str().map(str::to_string),
+                tool: Some("web_fetch".into()),
+                derived_from: vec![original_url.to_string()],
+                observed_at: chrono::Utc::now().to_rfc3339(),
+            },
+        );
+        handle.media_type = Some(kind.mime.into());
+        handle.size_bytes = Some(size_bytes);
+        handle.sha256 = Some(sha256.clone());
+        handle.locator = Some(ManagedLocator::new("artifacts", &relative_path)?);
+        handle.provider_ref = Some(ProviderObjectRef {
+            provider: "web".into(),
+            external_id: final_url.to_string(),
+            container_id: final_url.host_str().map(str::to_string),
+            thread_id: None,
+            version: None,
+            etag: None,
+        });
+        handle.capabilities = ObjectCapabilities {
+            readable: true,
+            materializable: true,
+            writable: false,
+            shareable: false,
+            sendable: true,
+            deletable: true,
+        };
+        handle.validate()?;
+        Ok(json!({
+            "success": true,
+            "kind": "external_file",
+            "url": original_url,
+            "finalUrl": final_url,
+            "redirected": original_url != final_url.as_str(),
+            "finalDomain": final_url.host_str(),
+            "content": Value::Null,
+            "contentType": kind.mime,
+            "originalName": original_name,
+            "rootId": "artifacts",
+            "relativePath": relative_path,
+            "locator": format!("runtime://artifacts/{relative_path}"),
+            "sha256": sha256,
+            "sizeBytes": size_bytes,
+            "objectHandle": handle,
+            "hasMore": false,
+            "nextStartIndex": Value::Null,
+        }))
     }
 
     /// 执行 fetch 操作
@@ -629,9 +972,16 @@ impl FetchExecutor {
         };
 
         let status = response.status();
+        let response_url = response.url().clone();
+        let final_url = if response_url.as_str() == request_url {
+            parsed_url.clone()
+        } else {
+            response_url
+        };
+        validate_public_url_target(&final_url)?;
+        let response_headers = response.headers().clone();
 
-        let content_type = response
-            .headers()
+        let content_type = response_headers
             .get("content-type")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("unknown")
@@ -650,12 +1000,24 @@ impl FetchExecutor {
             return Err("Fetch cancelled before reading response".to_string());
         }
 
-        // 读取响应内容（限制大小）
+        if let Some(length) = response.content_length() {
+            if length > MAX_BINARY_LENGTH {
+                return Err(format!(
+                    "Response too large: {length} bytes (max {MAX_BINARY_LENGTH} bytes)"
+                ));
+            }
+        }
+
+        // 读取响应内容（流式限制大小，避免 Content-Length 缺失时无界缓冲）
         // 🆕 取消支持：使用 tokio::select! 监听取消信号
+        let initial_capacity = response
+            .content_length()
+            .unwrap_or(0)
+            .min(MAX_BINARY_LENGTH) as usize;
         let bytes = if let Some(cancel_token) = ctx.cancellation_token() {
             tokio::select! {
-                result = response.bytes() => {
-                    result.map_err(|e| format!("Failed to read response body: {}", e))?
+                result = collect_download_stream_limited(response.bytes_stream(), MAX_BINARY_LENGTH, initial_capacity) => {
+                    result?
                 }
                 _ = cancel_token.cancelled() => {
                     log::info!("[FetchExecutor] Response body read cancelled for URL: {}", url);
@@ -663,11 +1025,51 @@ impl FetchExecutor {
                 }
             }
         } else {
-            response
-                .bytes()
-                .await
-                .map_err(|e| format!("Failed to read response body: {}", e))?
+            collect_download_stream_limited(
+                response.bytes_stream(),
+                MAX_BINARY_LENGTH,
+                initial_capacity,
+            )
+            .await?
         };
+
+        let sniffed_binary = sniff_binary_kind(&bytes);
+        let declared_mime = normalized_mime(&content_type).to_ascii_lowercase();
+        let declares_binary = declared_mime == "application/octet-stream"
+            || declared_mime == "binary/octet-stream"
+            || declared_mime == "application/pdf"
+            || declared_mime
+                == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            || declared_mime.starts_with("image/")
+            || declared_mime.starts_with("audio/")
+            || declared_mime.starts_with("video/");
+
+        if let Some(mut kind) = sniffed_binary {
+            if kind.extension == "mp4" && declared_mime.starts_with("audio/") {
+                kind = BinaryKind {
+                    mime: "audio/mp4",
+                    extension: "m4a",
+                };
+            } else if kind.extension == "webm" && declared_mime.starts_with("audio/") {
+                kind = BinaryKind {
+                    mime: "audio/webm",
+                    extension: "webm",
+                };
+            }
+            if !binary_header_family_matches(&content_type, kind) {
+                return Err(format!(
+                    "Binary MIME/magic mismatch: header '{}' does not match detected '{}'",
+                    content_type, kind.mime
+                ));
+            }
+            return self.materialize_binary(ctx, url, &final_url, &response_headers, &bytes, kind);
+        }
+        if declares_binary {
+            return Err(format!(
+                "Unsupported or invalid binary response: declared MIME '{}' did not match a supported file signature",
+                content_type
+            ));
+        }
 
         if bytes.len() > MAX_CONTENT_LENGTH {
             return Err(format!(
@@ -739,6 +1141,9 @@ impl FetchExecutor {
         Ok(json!({
             "success": true,
             "url": url,
+            "finalUrl": final_url,
+            "redirected": url != final_url.as_str(),
+            "finalDomain": final_url.host_str(),
             "content": paginated_content,
             "contentType": content_type,
             "totalLength": total_length,
@@ -972,6 +1377,58 @@ impl ToolExecutor for FetchExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn web_04_binary_magic_and_mime_contract() {
+        let pdf = sniff_binary_kind(b"%PDF-1.7\n").expect("PDF magic");
+        assert_eq!(pdf.mime, "application/pdf");
+        assert!(binary_header_family_matches("application/pdf", pdf));
+        assert!(binary_header_family_matches(
+            "application/octet-stream",
+            pdf
+        ));
+        assert!(!binary_header_family_matches("image/png", pdf));
+
+        let png = sniff_binary_kind(b"\x89PNG\r\n\x1a\nrest").expect("PNG magic");
+        assert_eq!(png.mime, "image/png");
+        assert!(!binary_header_family_matches("application/pdf", png));
+    }
+
+    #[test]
+    fn web_04_docx_requires_ooxml_structure() {
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let mut archive = zip::ZipWriter::new(&mut cursor);
+            let options = zip::write::FileOptions::default();
+            archive.start_file("[Content_Types].xml", options).unwrap();
+            archive.write_all(b"<Types/>").unwrap();
+            archive.start_file("word/document.xml", options).unwrap();
+            archive.write_all(b"<document/>").unwrap();
+            archive.finish().unwrap();
+        }
+        let docx = sniff_binary_kind(cursor.get_ref()).expect("DOCX structure");
+        assert_eq!(docx.extension, "docx");
+        assert!(binary_header_family_matches("application/zip", docx));
+        assert!(sniff_binary_kind(b"PK\x03\x04not-a-complete-zip").is_none());
+    }
+
+    #[test]
+    fn web_05_redirect_metadata_filename_is_safe_and_typed() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_DISPOSITION,
+            HeaderValue::from_static("attachment; filename=../../quarterly.exe"),
+        );
+        let final_url = reqwest::Url::parse("https://cdn.example.test/files/fallback").unwrap();
+        let pdf = BinaryKind {
+            mime: "application/pdf",
+            extension: "pdf",
+        };
+        assert_eq!(
+            filename_from_headers_or_url(&headers, &final_url, pdf),
+            "quarterly.pdf"
+        );
+    }
 
     #[tokio::test]
     async fn chunked_download_is_rejected_before_retaining_over_limit_body() {

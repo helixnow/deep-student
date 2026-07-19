@@ -23,6 +23,14 @@ export type FsrsRating = 1 | 2 | 3 | 4;
 
 const FSRS_DIAGNOSTIC_CARD_NOT_REVIEWABLE = 'fsrs_diagnostic_card_not_reviewable';
 
+export type RatingPreview = {
+  dueMs: number;
+  scheduledDays: number;
+  intervalMs: number;
+};
+
+export type RatingPreviews = Partial<Record<FsrsRating, RatingPreview>>;
+
 export interface ReviewCard {
   /** fsrs_card_states.id — 传给 fsrs_rate 的 cardStateId */
   id: string;
@@ -40,6 +48,8 @@ export interface ReviewCard {
   errorContent?: string | null;
   /** 当前调度状态是否暂停；活动 session 会跳过暂停卡。 */
   suspended?: boolean;
+  /** 评分 CAS：进入队列时的 last_review_ms（null=从未评过） */
+  lastReviewMs?: number | null;
 }
 
 export type FsrsAgentReviewAction = 'undo_last_review' | 'set_suspended';
@@ -55,6 +65,9 @@ export interface ReviewReceipt {
   logId: string;
   cardStateId: string;
   queueIndex: number;
+  /** 评分前队列快照，供 Again 回插后 undo 还原顺序 */
+  queueSnapshot?: ReviewCard[];
+  rating?: FsrsRating;
 }
 
 export interface SuspendedReviewReceipt {
@@ -87,6 +100,8 @@ export interface BatchReviewRequest {
 interface FsrsReviewState {
   screen: FlashcardsScreen;
   dueCards: ReviewCard[];
+  /** 后端统计的真实到期总数（可能大于本轮 dueCards.length） */
+  dueTotal: number;
   queue: ReviewCard[];
   queueIndex: number;
   flipped: boolean;
@@ -98,6 +113,17 @@ interface FsrsReviewState {
   lastReview: ReviewReceipt | null;
   lastSuspended: SuspendedReviewReceipt | null;
   retryBatchRequest: BatchReviewRequest | null;
+  sessionRatedCount: number;
+  sessionAgainCount: number;
+  remainingDueAfterSession: number | null;
+  ratingPreviews: RatingPreviews | null;
+  lastSchedule: { dueMs: number; scheduledDays: number } | null;
+  /** 本窗近期成功评分的 logId，用于忽略域事件回声（含延迟回声） */
+  recentLocalLogIds: string[];
+  /** ratingBusy 期间暂存的外部已评卡，rate 结束后再 reconcile */
+  pendingExternalRateIds: string[];
+  /** 完成态 stats 拉取代数，防止乱序覆盖 */
+  statsFetchGen: number;
 
   setScreen: (screen: FlashcardsScreen) => void;
   applyLaunchPayload: (payload: unknown) => void;
@@ -119,7 +145,19 @@ interface FsrsReviewState {
   ) => void;
   /** Merge Agent card-content mutations without replacing FSRS state IDs. */
   reconcileAgentCardContent: (cards: ReviewCard[]) => void;
+  /**
+   * 多窗 / 他端已评分：从本会话队列移除对应卡，避免重复评分。
+   * 本窗 logId 回声与 lastReview 匹配的卡不会被移除。
+   */
+  reconcileExternalRate: (
+    cardStateIds: string[],
+    options?: {
+      logIds?: string[];
+      cardLogPairs?: Array<{ cardStateId: string; logId: string }>;
+    },
+  ) => void;
   flip: () => void;
+  loadRatingPreviews: () => Promise<void>;
   rate: (rating: FsrsRating) => Promise<void>;
   undoLastReview: () => Promise<boolean>;
   updateCurrentCard: (
@@ -131,6 +169,33 @@ interface FsrsReviewState {
   resumeLastSuspended: () => Promise<boolean>;
   endSession: () => void;
   resetFlip: () => void;
+}
+
+/** 完成态：队列非空且下标已越过末尾 */
+export function isReviewSessionDone(state: Pick<FsrsReviewState, 'queue' | 'queueIndex' | 'loading'>): boolean {
+  return !state.loading && state.queue.length > 0 && state.queueIndex >= state.queue.length;
+}
+
+/** 空队列：无卡可练（非完成态） */
+export function isReviewSessionEmpty(state: Pick<FsrsReviewState, 'queue' | 'loading'>): boolean {
+  return !state.loading && state.queue.length === 0;
+}
+
+/** 将间隔毫秒格式化为短文案：`<1m` / `10m` / `3d` / `1.2mo` */
+export function formatInterval(intervalMs: number): string {
+  if (!Number.isFinite(intervalMs) || intervalMs < 60_000) return '<1m';
+  const minutes = intervalMs / 60_000;
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const hours = minutes / 60;
+  if (hours < 24) return `${Math.round(hours)}h`;
+  const days = hours / 24;
+  if (days < 30) return `${Math.round(days)}d`;
+  const months = days / 30;
+  if (months < 10) {
+    const rounded = Math.round(months * 10) / 10;
+    return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}mo`;
+  }
+  return `${Math.round(months)}mo`;
 }
 
 function parseLaunchPayload(payload: unknown): FlashcardsLaunchPayload | null {
@@ -214,6 +279,15 @@ export function mapFsrsRow(row: Record<string, unknown>): ReviewCard | null {
       : undefined;
   const rawIsErrorCard = readAliasedValue(row, 'isErrorCard', 'is_error_card');
   const rawSuspended = row.suspended;
+  const rawLastReviewMs = readAliasedValue(row, 'lastReviewMs', 'last_review_ms');
+  let lastReviewMs: number | null | undefined;
+  if (rawLastReviewMs === null) lastReviewMs = null;
+  else if (typeof rawLastReviewMs === 'number' && Number.isFinite(rawLastReviewMs)) {
+    lastReviewMs = rawLastReviewMs;
+  } else if (typeof rawLastReviewMs === 'string' && rawLastReviewMs.trim()) {
+    const parsed = Number(rawLastReviewMs);
+    if (Number.isFinite(parsed)) lastReviewMs = parsed;
+  }
   return {
     id,
     ankiCardId,
@@ -227,7 +301,23 @@ export function mapFsrsRow(row: Record<string, unknown>): ReviewCard | null {
     ...(typeof rawIsErrorCard === 'boolean' ? { isErrorCard: rawIsErrorCard } : {}),
     errorContent,
     ...(typeof rawSuspended === 'boolean' ? { suspended: rawSuspended } : {}),
+    ...(lastReviewMs !== undefined ? { lastReviewMs } : {}),
   };
+}
+
+function isDiagnosticReviewCard(card: ReviewCard): boolean {
+  return card.isErrorCard === true;
+}
+
+const RECENT_LOCAL_LOG_LIMIT = 32;
+
+function pushRecentLocalLogId(ids: string[], logId: string): string[] {
+  const next = ids.filter((id) => id !== logId);
+  next.push(logId);
+  if (next.length > RECENT_LOCAL_LOG_LIMIT) {
+    return next.slice(next.length - RECENT_LOCAL_LOG_LIMIT);
+  }
+  return next;
 }
 
 function mergeReviewContent(mapped: ReviewCard, content: ReviewCard | undefined): ReviewCard {
@@ -277,6 +367,79 @@ async function fetchDueFromBackend(): Promise<ReviewCard[]> {
     if (mapped) cards.push(mapped);
   }
   return cards;
+}
+
+function parseDueTotalFromStats(result: unknown): number | null {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
+  const row = result as Record<string, unknown>;
+  const raw = row.due !== undefined ? row.due : row.due_count;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) {
+    return Math.floor(raw);
+  }
+  return null;
+}
+
+async function fetchDueTotalFromStats(): Promise<number | null> {
+  try {
+    const result = await invoke<unknown>('fsrs_get_stats');
+    return parseDueTotalFromStats(result);
+  } catch {
+    return null;
+  }
+}
+
+function readFiniteNumber(row: Record<string, unknown>, camelKey: string, snakeKey: string): number | null {
+  const raw = readAliasedValue(row, camelKey, snakeKey);
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function parseRatingPreviews(result: unknown): RatingPreviews | null {
+  if (!result || typeof result !== 'object') return null;
+  const root = result as Record<string, unknown>;
+  const source =
+    (root.previews && typeof root.previews === 'object' ? root.previews : null)
+    ?? (root.intervals && typeof root.intervals === 'object' ? root.intervals : null)
+    ?? root;
+
+  const previews: RatingPreviews = {};
+  const ingest = (rating: FsrsRating, row: Record<string, unknown>) => {
+    const dueMs = readFiniteNumber(row, 'dueMs', 'due_ms');
+    const scheduledDays = readFiniteNumber(row, 'scheduledDays', 'scheduled_days');
+    let intervalMs = readFiniteNumber(row, 'intervalMs', 'interval_ms');
+    if (intervalMs == null && dueMs != null) {
+      intervalMs = Math.max(0, dueMs - Date.now());
+    }
+    if (dueMs == null || scheduledDays == null || intervalMs == null) return;
+    previews[rating] = { dueMs, scheduledDays, intervalMs };
+  };
+
+  if (Array.isArray(source)) {
+    for (const item of source) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      const ratingRaw = readAliasedValue(row, 'rating', 'rating');
+      const rating = typeof ratingRaw === 'number' ? ratingRaw : Number(ratingRaw);
+      if (rating === 1 || rating === 2 || rating === 3 || rating === 4) {
+        ingest(rating, row);
+      }
+    }
+  } else if (source && typeof source === 'object') {
+    for (const key of ['1', '2', '3', '4'] as const) {
+      const rating = Number(key) as FsrsRating;
+      const entry = (source as Record<string, unknown>)[key]
+        ?? (source as Record<string, unknown>)[rating];
+      if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+        ingest(rating, entry as Record<string, unknown>);
+      }
+    }
+  }
+
+  return Object.keys(previews).length > 0 ? previews : null;
 }
 
 /**
@@ -390,6 +553,7 @@ function errorMessage(error: unknown, fallback: string): string {
 export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   screen: 'today',
   dueCards: [],
+  dueTotal: 0,
   queue: [],
   queueIndex: 0,
   flipped: false,
@@ -401,6 +565,14 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   lastReview: null,
   lastSuspended: null,
   retryBatchRequest: null,
+  sessionRatedCount: 0,
+  sessionAgainCount: 0,
+  remainingDueAfterSession: null,
+  ratingPreviews: null,
+  lastSchedule: null,
+  recentLocalLogIds: [],
+  pendingExternalRateIds: [],
+  statsFetchGen: 0,
 
   setScreen: (screen) => set({ screen }),
 
@@ -428,14 +600,32 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   },
 
   loadDue: async () => {
+    const previousDueTotal = get().dueTotal;
     set({ loading: true, error: null, errorKind: null });
     try {
-      const fromBackend = await fetchDueFromBackend();
-      set({ dueCards: fromBackend, loading: false });
+      const [fromBackend, dueTotal] = await Promise.all([
+        fetchDueFromBackend(),
+        fetchDueTotalFromStats(),
+      ]);
+      // stats 失败时：若本批打满上限，保留上次诚实总数，避免把 50 当成「刚好 50」。
+      let resolvedTotal = dueTotal ?? fromBackend.length;
+      if (
+        dueTotal == null
+        && fromBackend.length >= 50
+        && previousDueTotal > fromBackend.length
+      ) {
+        resolvedTotal = previousDueTotal;
+      }
+      set({
+        dueCards: fromBackend,
+        dueTotal: resolvedTotal,
+        loading: false,
+      });
       return true;
     } catch (error) {
       set({
         dueCards: [],
+        dueTotal: 0,
         loading: false,
         error: errorMessage(error, i18n.t('flashcards:today.loadFailed')),
         errorKind: 'prepare',
@@ -447,13 +637,41 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   startDueSession: () => {
     const { dueCards, error } = get();
     if (error) return;
+    if (dueCards.length === 0) {
+      // 无到期卡时不要进入假完成会话
+      set({
+        screen: 'today',
+        queue: [],
+        queueIndex: 0,
+        flipped: false,
+        lastRated: null,
+        lastReview: null,
+        lastSuspended: null,
+        sessionRatedCount: 0,
+        sessionAgainCount: 0,
+        remainingDueAfterSession: null,
+        ratingPreviews: null,
+        lastSchedule: null,
+        pendingExternalRateIds: [],
+        error: null,
+        errorKind: null,
+        retryBatchRequest: null,
+      });
+      return;
+    }
     set({
       queue: dueCards,
-      queueIndex: 0,
+      queueIndex: nextReviewableIndex(dueCards, 0),
       flipped: false,
       lastRated: null,
       lastReview: null,
       lastSuspended: null,
+      sessionRatedCount: 0,
+      sessionAgainCount: 0,
+      remainingDueAfterSession: null,
+      ratingPreviews: null,
+      lastSchedule: null,
+      pendingExternalRateIds: [],
       screen: 'session',
       error: null,
       errorKind: null,
@@ -483,6 +701,12 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       flipped: false,
       lastReview: null,
       lastSuspended: null,
+      sessionRatedCount: 0,
+      sessionAgainCount: 0,
+      remainingDueAfterSession: null,
+      ratingPreviews: null,
+      lastSchedule: null,
+      pendingExternalRateIds: [],
       retryBatchRequest: request,
     });
 
@@ -508,6 +732,11 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         lastRated: null,
         lastReview: null,
         lastSuspended: null,
+        sessionRatedCount: 0,
+        sessionAgainCount: 0,
+        remainingDueAfterSession: null,
+        ratingPreviews: null,
+        lastSchedule: null,
         loading: false,
         error: null,
         errorKind: null,
@@ -547,6 +776,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     const toAdd: ReviewCard[] = [];
     for (const card of cards) {
       if (!card || typeof card.id !== 'string' || !card.id) continue;
+      if (isDiagnosticReviewCard(card)) continue;
       if (existing.has(card.id)) continue;
       existing.add(card.id);
       toAdd.push(card);
@@ -672,34 +902,177 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     });
   },
 
-  flip: () => set((s) => ({ flipped: !s.flipped })),
+  reconcileExternalRate: (cardStateIds, options) => {
+    const idSet = new Set(
+      cardStateIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        .map((id) => id.trim()),
+    );
+    if (idSet.size === 0) return;
+
+    const localLogIds = new Set(get().recentLocalLogIds);
+    // 本窗 log 回声：按 logId↔card 配对忽略（含 lastReview 已切换后的延迟回声）。
+    for (const pair of options?.cardLogPairs ?? []) {
+      if (
+        typeof pair?.cardStateId === 'string'
+        && typeof pair?.logId === 'string'
+        && localLogIds.has(pair.logId)
+      ) {
+        idSet.delete(pair.cardStateId.trim());
+      }
+    }
+    const last = get().lastReview;
+    if (last && idSet.has(last.cardStateId) && localLogIds.has(last.logId)) {
+      idSet.delete(last.cardStateId);
+    }
+    if (idSet.size === 0) return;
+
+    const busy = get().ratingBusy;
+    if (busy) {
+      const current = get().queue[get().queueIndex];
+      const deferred: string[] = [];
+      for (const id of idSet) {
+        if (current && id === current.id) {
+          deferred.push(id);
+          idSet.delete(id);
+        }
+      }
+      if (deferred.length > 0) {
+        set((state) => ({
+          pendingExternalRateIds: Array.from(
+            new Set([...state.pendingExternalRateIds, ...deferred]),
+          ),
+        }));
+      }
+      if (idSet.size === 0) return;
+    }
+
+    set((state) => {
+      if (state.screen !== 'session') return state;
+
+      let removedBefore = 0;
+      let removedCurrent = false;
+      const queue = state.queue.filter((card, index) => {
+        if (!idSet.has(card.id)) return true;
+        if (index < state.queueIndex) removedBefore += 1;
+        if (index === state.queueIndex) removedCurrent = true;
+        return false;
+      });
+      if (queue.length === state.queue.length) return state;
+
+      let queueIndex = Math.max(0, state.queueIndex - removedBefore);
+      let flipped = state.flipped;
+      let lastRated = state.lastRated;
+      let lastReview = state.lastReview;
+      let ratingPreviews = state.ratingPreviews;
+      if (removedCurrent) {
+        flipped = false;
+        lastRated = null;
+        ratingPreviews = null;
+        if (lastReview && idSet.has(lastReview.cardStateId)) {
+          lastReview = null;
+        }
+      }
+      queueIndex = nextReviewableIndex(queue, queueIndex);
+      const sessionDone = queue.length > 0 && queueIndex >= queue.length;
+      return {
+        queue,
+        queueIndex,
+        flipped,
+        lastRated,
+        lastReview,
+        ratingPreviews,
+        remainingDueAfterSession: sessionDone
+          ? Math.max(0, state.dueTotal - state.sessionRatedCount)
+          : state.remainingDueAfterSession,
+      };
+    });
+
+    const latest = get();
+    if (
+      latest.screen === 'session'
+      && latest.queue.length > 0
+      && latest.queueIndex >= latest.queue.length
+    ) {
+      const gen = latest.statsFetchGen + 1;
+      set({ statsFetchGen: gen });
+      void fetchDueTotalFromStats().then((total) => {
+        if (total == null) return;
+        const live = get();
+        if (
+          live.statsFetchGen !== gen
+          || live.screen !== 'session'
+          || live.queue.length === 0
+          || live.queueIndex < live.queue.length
+        ) {
+          return;
+        }
+        set({ remainingDueAfterSession: total, dueTotal: total });
+      });
+    }
+  },
+
+  flip: () => {
+    const nextFlipped = !get().flipped;
+    if (!nextFlipped) {
+      set({ flipped: false, ratingPreviews: null });
+      return;
+    }
+    set({ flipped: true });
+    void get().loadRatingPreviews();
+  },
+
+  loadRatingPreviews: async () => {
+    const { queue, queueIndex } = get();
+    const current = queue[queueIndex];
+    if (!current) {
+      set({ ratingPreviews: null });
+      return;
+    }
+    try {
+      const result = await invoke<unknown>('fsrs_preview_intervals', {
+        cardStateId: current.id,
+      });
+      const previews = parseRatingPreviews(result);
+      // 若已翻回正面或切到其他卡，丢弃过期结果
+      const latest = get();
+      if (!latest.flipped || latest.queue[latest.queueIndex]?.id !== current.id) return;
+      set({ ratingPreviews: previews });
+    } catch {
+      const latest = get();
+      if (!latest.flipped || latest.queue[latest.queueIndex]?.id !== current.id) return;
+      set({ ratingPreviews: null });
+    }
+  },
 
   rate: async (rating) => {
-    const { queue, queueIndex, ratingBusy } = get();
-    if (ratingBusy) return;
+    const { queue, queueIndex, ratingBusy, flipped } = get();
+    if (ratingBusy || !flipped) return;
     const current = queue[queueIndex];
     if (!current) return;
 
+    const queueSnapshot = queue.map((card) => ({ ...card }));
     set({ ratingBusy: true, lastRated: rating, error: null, errorKind: null });
 
-    const advance = (lastReview: ReviewReceipt | null) => {
-      // 队列耗尽时保持 screen=session，让 ReviewSessionScreen 展示完成态；
-      // 不直接跳回 today（由用户点「返回今日」/退出）。
-      // 不在此处 loadDue：其 loading 会盖住完成态；返回今日时 TodayScreen 会自行刷新。
-      set((state) => ({
-        ratingBusy: false,
-        flipped: false,
-        queueIndex: nextReviewableIndex(state.queue, queueIndex + 1),
-        lastReview,
-        lastSuspended: null,
-      }));
-      requestFlashcardsDueRefresh();
-    };
-
     try {
+      const clientOpId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : (() => {
+              // 无 randomUUID 时仍生成合规 UUID，保证后端幂等生效
+              const bytes = new Uint8Array(16);
+              for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+              bytes[6] = (bytes[6] & 0x0f) | 0x40;
+              bytes[8] = (bytes[8] & 0x3f) | 0x80;
+              const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+              return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+            })();
       const result = await invoke<unknown>('fsrs_rate', {
         cardStateId: current.id,
         rating,
+        clientOpId,
+        enforceExpectedLastReview: current.lastReviewMs !== undefined,
+        expectedLastReviewMs:
+          current.lastReviewMs === undefined ? null : current.lastReviewMs,
       });
       if (!result || typeof result !== 'object') {
         throw new Error(i18n.t('flashcards:session.errors.invalidRateResponse'));
@@ -710,13 +1083,119 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       if (!logId) {
         throw new Error(i18n.t('flashcards:session.errors.invalidRateLogId'));
       }
-      advance({ logId, cardStateId: current.id, queueIndex });
+      const dueMs = readFiniteNumber(row, 'dueMs', 'due_ms');
+      const scheduledDays = readFiniteNumber(row, 'scheduledDays', 'scheduled_days');
+      const cardState = row.cardState ?? row.card_state;
+      const ratedLastReviewMs = cardState && typeof cardState === 'object'
+        ? readFiniteNumber(cardState as Record<string, unknown>, 'lastReviewMs', 'last_review_ms')
+        : null;
+      const now = Date.now();
+      // Never show a learning card before the interval presented to the user.
+      // Cards scheduled in the future return through the next due refresh.
+      const shouldRequeue = dueMs != null && dueMs <= now;
+
+      // 队列耗尽时保持 screen=session，让 ReviewSessionScreen 展示完成态；
+      // 不直接跳回 today（由用户点「返回今日」/退出）。
+      // 不在此处 loadDue：其 loading 会盖住完成态；返回今日时 TodayScreen 会自行刷新。
+      set((state) => {
+        const liveIndex = state.queue.findIndex((card) => card.id === current.id);
+        const baseIndex = liveIndex >= 0 ? liveIndex : state.queueIndex;
+        let nextQueue = state.queue;
+        let nextIndex: number;
+
+        if (shouldRequeue && liveIndex >= 0) {
+          nextQueue = [...state.queue];
+          const [moved] = nextQueue.splice(liveIndex, 1);
+          if (moved) {
+            nextQueue.push({
+              ...moved,
+              lastReviewMs: ratedLastReviewMs ?? moved.lastReviewMs ?? null,
+            });
+          }
+          nextIndex = nextReviewableIndex(nextQueue, liveIndex);
+        } else {
+          nextQueue = state.queue.map((card, index) => (
+            index === liveIndex && ratedLastReviewMs != null
+              ? { ...card, lastReviewMs: ratedLastReviewMs }
+              : card
+          ));
+          nextIndex = nextReviewableIndex(nextQueue, baseIndex + 1);
+        }
+
+        const sessionRatedCount = state.sessionRatedCount + 1;
+        const sessionAgainCount =
+          rating === 1 ? state.sessionAgainCount + 1 : state.sessionAgainCount;
+        const sessionDone = nextIndex >= nextQueue.length && nextQueue.length > 0;
+        // 先用粗估；下方再以 fsrs_get_stats.due 校正，避免学习回插导致虚高剩余。
+        const remainingDueAfterSession = sessionDone
+          ? Math.max(0, state.dueTotal - sessionRatedCount)
+          : state.remainingDueAfterSession;
+
+        return {
+          queue: nextQueue,
+          queueIndex: nextIndex,
+          ratingBusy: false,
+          flipped: false,
+          ratingPreviews: null,
+          lastRated: null,
+          lastReview: {
+            logId,
+            cardStateId: current.id,
+            queueIndex: baseIndex,
+            queueSnapshot,
+            rating,
+          },
+          lastSuspended: null,
+          lastSchedule:
+            dueMs != null && scheduledDays != null
+              ? { dueMs, scheduledDays }
+              : null,
+          sessionRatedCount,
+          sessionAgainCount,
+          remainingDueAfterSession,
+          recentLocalLogIds: pushRecentLocalLogId(state.recentLocalLogIds, logId),
+        };
+      });
+      requestFlashcardsDueRefresh();
+
+      const pending = get().pendingExternalRateIds;
+      if (pending.length > 0) {
+        set({ pendingExternalRateIds: [] });
+        get().reconcileExternalRate(pending);
+      }
+
+      const afterRate = get();
+      if (
+        afterRate.queue.length > 0
+        && afterRate.queueIndex >= afterRate.queue.length
+      ) {
+        const gen = afterRate.statsFetchGen + 1;
+        set({ statsFetchGen: gen });
+        void fetchDueTotalFromStats().then((total) => {
+          if (total == null) return;
+          const live = get();
+          if (
+            live.statsFetchGen !== gen
+            || live.screen !== 'session'
+            || live.queue.length === 0
+            || live.queueIndex < live.queue.length
+          ) {
+            return;
+          }
+          set({ remainingDueAfterSession: total, dueTotal: total });
+        });
+      }
     } catch (err) {
       set({
         ratingBusy: false,
         error: errorMessage(err, i18n.t('flashcards:session.errors.rateFailed')),
         errorKind: 'rate',
       });
+      const pending = get().pendingExternalRateIds;
+      if (pending.length > 0) {
+        set({ pendingExternalRateIds: [] });
+        get().reconcileExternalRate(pending);
+      }
     }
   },
 
@@ -746,14 +1225,48 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       ) {
         throw new Error(i18n.t('flashcards:session.errors.mismatchedUndoResponse'));
       }
-      set({
-        queueIndex: lastReview.queueIndex,
-        flipped: false,
-        ratingBusy: false,
-        lastRated: null,
-        lastReview: null,
-        error: null,
-        errorKind: null,
+      const restoredState = state && typeof state === 'object'
+        ? state as Record<string, unknown>
+        : null;
+      const restoredLastReviewMs = restoredState
+        ? (() => {
+            const raw = readAliasedValue(restoredState, 'lastReviewMs', 'last_review_ms');
+            if (raw === null) return null;
+            if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+            return undefined;
+          })()
+        : undefined;
+      set((s) => {
+        const snapshot = Array.isArray(lastReview.queueSnapshot)
+          && lastReview.queueSnapshot.length > 0
+          ? lastReview.queueSnapshot.map((card) => (
+              card.id === lastReview.cardStateId && restoredLastReviewMs !== undefined
+                ? { ...card, lastReviewMs: restoredLastReviewMs }
+                : { ...card }
+            ))
+          : s.queue;
+        const queueIndex = Math.min(
+          Math.max(0, lastReview.queueIndex),
+          Math.max(0, snapshot.length - 1),
+        );
+        return {
+          queue: snapshot,
+          queueIndex,
+          flipped: false,
+          ratingBusy: false,
+          lastRated: null,
+          lastReview: null,
+          lastSchedule: null,
+          remainingDueAfterSession: null,
+          ratingPreviews: null,
+          sessionRatedCount: Math.max(0, s.sessionRatedCount - 1),
+          sessionAgainCount:
+            lastReview.rating === 1
+              ? Math.max(0, s.sessionAgainCount - 1)
+              : s.sessionAgainCount,
+          error: null,
+          errorKind: null,
+        };
       });
       requestFlashcardsDueRefresh();
       return true;
@@ -944,9 +1457,14 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       lastReview: null,
       lastSuspended: null,
       retryBatchRequest: null,
+      sessionRatedCount: 0,
+      sessionAgainCount: 0,
+      remainingDueAfterSession: null,
+      ratingPreviews: null,
+      lastSchedule: null,
     });
     requestFlashcardsDueRefresh();
   },
 
-  resetFlip: () => set({ flipped: false }),
+  resetFlip: () => set({ flipped: false, ratingPreviews: null }),
 }));

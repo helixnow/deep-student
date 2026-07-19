@@ -14,6 +14,10 @@ import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { ChatSession } from '../types/session';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import type { TFunction } from 'i18next';
+import {
+  shouldChatHandleOpenNote,
+  type DstuOpenNoteDetail,
+} from '@/features/notes/openNoteEvent';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -53,9 +57,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
   } = deps;
 
   useEffect(() => {
-    const handleOpenNote = (event: CustomEvent<{ noteId: string; source?: string }>) => {
+    const handleOpenNote = (event: CustomEvent<DstuOpenNoteDetail>) => {
+      if (!shouldChatHandleOpenNote(event.detail)) return;
       const { noteId, source } = event.detail;
-      if (!noteId) return;
       
       // 方案1: 使用 openCanvasWithNote 打开笔记并显示侧边栏
       if (notesContext?.openCanvasWithNote) {

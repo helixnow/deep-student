@@ -494,6 +494,11 @@
     "search": {
       "title": "Search",
       "placeholder": "Search resources...",
+      "placeholderRecent": "Search recent names…",
+      "placeholderTrash": "Filter loaded trash items…",
+      "placeholderFavorites": "Search favorites…",
+      "placeholderSmartFolder": "Matches titles/file names…",
+      "truncatedHint": "Only searched the first {{limit}} items; results may be incomplete",
       "noResults": "No matching resources found"
     },
     "loading": {
@@ -501,13 +506,25 @@
     },
     "empty": {
       "folder": "This folder is empty",
+      "favorites": "No favorites yet",
+      "recent": "No recent items yet",
+      "recentHint": "Open a resource and it will show up here",
+      "trash": "Trash is empty",
       "noNotes": "No notes yet",
       "noTextbooks": "No textbooks yet",
       "dropHint": "Use toolbar buttons or right-click to create",
       "dropHintTouch": "Use the toolbar buttons above to create",
+      "noCreateHint": "You can’t create items here. Create them in a folder first.",
+      "noCreateHintTouch": "You can’t create items here",
+      "trashHint": "Deleted items stay here until restored or permanently deleted",
       "rightClick": "Right-click",
       "contextMenuHint": "Create new file"
     },
+    "undo": "Undo",
+    "movedToTrash": "Moved to Trash",
+    "movedToTrashWithRefs": "Moved to Trash (referenced by {{count}} chat(s))",
+    "batchMovedToTrash": "Moved {{count}} item(s) to Trash",
+    "restored": "Restored",
     "error": {
       "title": "Failed to load",
       "retry": "Reload"
@@ -581,6 +598,7 @@
       "emptyConfirm": "Are you sure you want to permanently delete all items in the trash? This action cannot be undone.",
       "emptySuccess": "Trash emptied",
       "restoreSuccess": "Restored",
+      "restoreSuccessWithReindex": "Restored; content search may lag while reindexing",
       "deleteSuccess": "Permanently deleted",
       "confirmPermanentDelete": "Are you sure you want to permanently delete this item? This action cannot be undone.",
       "confirmBatchPermanentDelete": "Are you sure you want to permanently delete {{count}} selected items? This action cannot be undone.",

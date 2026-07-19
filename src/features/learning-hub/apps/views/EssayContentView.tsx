@@ -204,7 +204,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
       <Suspense
         fallback={
           <div className="flex items-center justify-center h-full" role="status">

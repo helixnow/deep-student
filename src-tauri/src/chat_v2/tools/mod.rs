@@ -49,6 +49,7 @@ pub mod builtin_retrieval_executor; // 🆕 内置检索工具执行器（MCP �
 pub mod canvas_executor;
 pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
+pub mod connector_executor; // First-class connector registry and draft/confirm/commit bridge
 pub mod data_governance_executor; // Agent-safe backup and sync tools
 pub mod document_processing_executor; // 🆕 文档解析/OCR 主动触发执行器（document_parse/status）
 pub mod docx_executor; // 🆕 DOCX 文档读写工具执行器（docx-rs 完整能力）
@@ -57,6 +58,7 @@ pub mod essay_grading_executor; // 🆕 作文批改工具执行器（essay_grad
 pub mod executor;
 pub mod executor_registry;
 pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthropic/mcp-fetch）
+pub mod file_manager_executor;
 pub mod general_executor;
 pub mod image_generation_executor; // 🆕 内置图片生成工具执行器
 pub mod index_webpage_executor; // VFS index inspection/rebuild and webpage archive tools
@@ -66,14 +68,19 @@ pub mod learning_overview_executor; // Read-only learning overview and Pomodoro 
 pub mod llm_usage_executor; // Agent-safe local LLM usage reporting
 pub mod local_shell_execute_executor;
 pub mod local_shell_preflight_executor;
+pub mod mcp_content_materializer; // External MCP image/blob content -> session task files
 pub mod mcp_propose_executor; // 🆕 MCP server 提案执行器（High 敏感度，secure store 写入）
 pub mod mcp_settings_store; // MCP tools.list secure 读写 helper
+pub mod media_executor; // Managed attachment audio transcription
 pub mod memory_executor;
+pub mod office_fidelity_executor; // Read-only OOXML/PDF fidelity inventory and completion gate
+pub mod office_output; // Shared VFS/workspace delivery for generated OOXML files
 pub mod paper_save_executor; // 🆕 论文保存+引用格式化工具执行器
 pub mod pptx_executor; // 🆕 PPTX 演示文稿读写工具执行器（ppt-rs）
 pub mod qbank_executor; // 🆕 智能题目集工具执行器
 pub mod registry;
 pub mod review_executor; // 🆕 间隔重复复习计划工具执行器（review_* 工具组，SM-2）
+pub mod role_pack_executor; // Versioned professional role pack registry (read-only)
 pub mod runtime_root_request_executor; // 🆕 runtime_root_request 授权请求执行器（High，never-remember）
 pub mod self_inspect_executor; // 🆕 self_inspect 只读自查工具执行器（脱敏状态概览）
 pub mod session_executor; // 🆕 会话管理工具执行器（AI 自主管理会话/分组/标签）
@@ -84,6 +91,7 @@ pub mod skill_workshop_executor; // 🆕 skill_workshop_propose / skill_workshop
 pub mod skills_executor; // 🆕 Skills 工具执行器（渐进披露架构）
 pub mod sleep_executor;
 pub mod subagent_executor;
+pub mod task_audit_executor; // Audit manifest export and lineage forget governance
 pub mod template_executor; // 🆕 模板设计师工具执行器
 pub mod textbook_pdf_executor; // Agent-safe textbook annotations and PDF page images
 pub mod todo_executor;
@@ -128,6 +136,7 @@ pub use builtin_resource_executor::BuiltinResourceExecutor; // 🆕 内置学习
 pub use builtin_retrieval_executor::BuiltinRetrievalExecutor; // 🆕 内置检索工具执行器
 pub use canvas_executor::CanvasToolExecutor;
 pub use chatanki_executor::ChatAnkiToolExecutor; // 🆕 ChatAnki 工具执行器
+pub use connector_executor::ConnectorToolExecutor;
 pub use data_governance_executor::DataGovernanceToolExecutor;
 pub use document_processing_executor::DocumentProcessingExecutor; // 🆕 文档解析/OCR 主动触发执行器
 pub use docx_executor::DocxToolExecutor; // 🆕 DOCX 文档读写工具执行器
@@ -136,6 +145,7 @@ pub use essay_grading_executor::EssayGradingExecutor; // 🆕 作文批改工具
 pub use executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 pub use executor_registry::ToolExecutorRegistry;
 pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
+pub use file_manager_executor::FileManagerExecutor;
 pub use general_executor::GeneralToolExecutor;
 pub use image_generation_executor::ImageGenerationExecutor; // 🆕 内置图片生成工具执行器
 pub use index_webpage_executor::IndexWebpageToolExecutor;
@@ -145,7 +155,9 @@ pub use llm_usage_executor::LlmUsageToolExecutor;
 pub use local_shell_execute_executor::LocalShellExecuteExecutor;
 pub use local_shell_preflight_executor::LocalShellPreflightExecutor;
 pub use mcp_propose_executor::McpProposeExecutor; // 🆕 MCP server 提案执行器
+pub use media_executor::MediaToolExecutor;
 pub use memory_executor::MemoryToolExecutor;
+pub use office_fidelity_executor::OfficeFidelityExecutor;
 pub use paper_save_executor::PaperSaveExecutor; // 🆕 论文保存+引用格式化工具执行器
 pub use pptx_executor::PptxToolExecutor; // 🆕 PPTX 演示文稿读写工具执行器
 pub use review_executor::ReviewToolExecutor; // 🆕 间隔重复复习计划工具执行器
@@ -154,6 +166,7 @@ pub use settings_models_executor::SettingsModelsToolExecutor;
 pub use skills_executor::SkillsExecutor; // 🆕 Skills 工具执行器
 pub use sleep_executor::CoordinatorSleepExecutor;
 pub use subagent_executor::{SubagentExecutor, SUBAGENT_TOOL_NAME};
+pub use task_audit_executor::TaskAuditExecutor;
 pub use template_executor::TemplateDesignerExecutor; // 🆕 模板设计师工具执行器
 pub use textbook_pdf_executor::TextbookPdfToolExecutor;
 pub use todo_executor::TodoListExecutor;

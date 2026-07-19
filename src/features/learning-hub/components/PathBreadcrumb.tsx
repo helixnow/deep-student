@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { CaretRight, House, FolderOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import type { RealPathBreadcrumbItem } from '../hooks/useFolderNavigation';
+import type { RealPathBreadcrumbItem } from '../types/navigation';
 
 // ============================================================================
 // 类型定义

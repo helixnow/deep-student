@@ -19,6 +19,9 @@ export { qbankToolsSkill } from './qbank-tools';
 export { workspaceToolsSkill } from './workspace-tools';
 export { webFetchSkill } from './web-fetch';
 export { browserToolsSkill } from './browser-tools';
+export { mediaToolsSkill } from './media-tools';
+export { officeFidelityToolsSkill } from './office-fidelity-tools';
+export { rolePacksSkill } from './role-packs';
 export { subagentWorkerSkill, SUBAGENT_WORKER_SYSTEM_PROMPT } from './subagent-worker';
 export { templateDesignerSkill } from './template-designer';
 export { askUserSkill } from './ask-user';
@@ -44,6 +47,9 @@ export { dataGovernanceToolsSkill } from './data-governance-tools';
 export { textbookPdfToolsSkill } from './textbook-pdf-tools';
 export { learningOverviewToolsSkill } from './learning-overview-tools';
 export { indexWebpageToolsSkill } from './index-webpage-tools';
+export { connectorToolsSkill } from './connector-tools';
+export { fileManagerToolsSkill } from './file-manager-tools';
+export { taskGovernanceToolsSkill } from './task-governance-tools';
 
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
@@ -57,6 +63,9 @@ import { qbankToolsSkill } from './qbank-tools';
 import { workspaceToolsSkill } from './workspace-tools';
 import { webFetchSkill } from './web-fetch';
 import { browserToolsSkill } from './browser-tools';
+import { mediaToolsSkill } from './media-tools';
+import { officeFidelityToolsSkill } from './office-fidelity-tools';
+import { rolePacksSkill } from './role-packs';
 import { subagentWorkerSkill } from './subagent-worker';
 import { templateDesignerSkill } from './template-designer';
 import { askUserSkill } from './ask-user';
@@ -82,6 +91,9 @@ import { dataGovernanceToolsSkill } from './data-governance-tools';
 import { textbookPdfToolsSkill } from './textbook-pdf-tools';
 import { learningOverviewToolsSkill } from './learning-overview-tools';
 import { indexWebpageToolsSkill } from './index-webpage-tools';
+import { connectorToolsSkill } from './connector-tools';
+import { fileManagerToolsSkill } from './file-manager-tools';
+import { taskGovernanceToolsSkill } from './task-governance-tools';
 import type { SkillDefinition } from '../types';
 import { getPlatform } from '@/utils/platform';
 
@@ -114,6 +126,9 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   workspaceToolsSkill,
   webFetchSkill,
   browserToolsSkill,
+  mediaToolsSkill,
+  officeFidelityToolsSkill,
+  rolePacksSkill,
   subagentWorkerSkill,
   templateDesignerSkill,
   askUserSkill,
@@ -139,6 +154,9 @@ const allBuiltinToolSkills: SkillDefinition[] = [
   textbookPdfToolsSkill,
   learningOverviewToolsSkill,
   indexWebpageToolsSkill,
+  connectorToolsSkill,
+  fileManagerToolsSkill,
+  taskGovernanceToolsSkill,
 ];
 
 // The result-returning browser bridge is implemented for Windows WebView2 and

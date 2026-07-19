@@ -294,6 +294,7 @@
     "no_insight": "No insights yet"
   },
   "toolbar": {
+    "ask_agent": "Ask Agent",
     "new_note": "New note",
     "new_folder": "New folder",
     "refresh": "Refresh",
@@ -342,7 +343,28 @@
     "reading_mode_on": "Entered reading mode",
     "reading_mode_off": "Entered editing mode",
     "find_replace": "Find & Replace",
+    "note_templates": "Note templates",
+    "focus_mode": "Focus mode",
+    "exit_focus_mode": "Exit focus mode",
     "label": "Formatting"
+  },
+  "templates": {
+    "lecture": "Lecture notes",
+    "mistake": "Mistake review",
+    "exam": "Exam review"
+  },
+  "blockMenu": {
+    "label": "Block actions",
+    "turnInto": "Turn into",
+    "paragraph": "Text",
+    "heading1": "Heading 1",
+    "heading2": "Heading 2",
+    "heading3": "Heading 3",
+    "bulletList": "Bulleted list",
+    "orderedList": "Numbered list",
+    "quote": "Quote",
+    "duplicate": "Duplicate",
+    "delete": "Delete"
   },
   "search": {
     "placeholder": "Search notes...",
@@ -478,6 +500,7 @@
     },
     "conflict_refreshed": "This note was modified elsewhere and has been refreshed to the latest version",
     "conflict_restore_mine": "Restore my version",
+    "conflict_keep_remote": "Keep remote version",
     "save_status": {
       "saved": "Saved",
       "saving": "Saving...",

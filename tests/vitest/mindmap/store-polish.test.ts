@@ -129,6 +129,116 @@ describe('mindmap store polish APIs', () => {
     expect(useMindMapStore.getState().history.past).toHaveLength(0);
   });
 
+  it('mergeNextIntoCurrent joins the next visible node in one history step', () => {
+    seedStore(createDocument());
+    const result = useMindMapStore.getState().mergeNextIntoCurrent('node_a', 'Draft');
+
+    expect(result).toEqual({ mergedIntoId: 'node_a', cursorOffset: 5 });
+    const state = useMindMapStore.getState();
+    const nodeA = findNodeById(state.document.root, 'node_a')!;
+    expect(nodeA.text).toBe('DraftA1');
+    expect(nodeA.children).toHaveLength(0);
+    expect(state.document.root.children.map((node) => node.id)).toEqual(['node_a', 'node_b']);
+    expect(state.history.past).toHaveLength(1);
+  });
+
+  it('mergeNextIntoCurrent preserves source metadata and subtree', () => {
+    const document = createDocument();
+    const nodeA = document.root.children[0];
+    const nodeB = document.root.children[1];
+    nodeA.collapsed = true;
+    nodeB.note = 'source note';
+    nodeB.completed = true;
+    nodeB.refs = [{ sourceId: 'resource-1', type: 'note', name: 'Resource' }];
+    document.associations = [{ id: 'association-1', source: 'node_a', target: 'node_b' }];
+    seedStore(document);
+
+    const result = useMindMapStore.getState().mergeNextIntoCurrent('node_a');
+
+    expect(result?.mergedIntoId).toBe('node_a');
+    const merged = findNodeById(useMindMapStore.getState().document.root, 'node_a')!;
+    expect(merged.text).toBe('HelloWorldBeta');
+    expect(merged.note).toBe('source note');
+    expect(merged.completed).toBe(true);
+    expect(merged.refs).toEqual([{ sourceId: 'resource-1', type: 'note', name: 'Resource' }]);
+    expect(merged.children.map((node) => node.id)).toEqual(['node_a1', 'node_b1']);
+    expect(useMindMapStore.getState().document.associations).toBeUndefined();
+    expect(useMindMapStore.getState().history.past).toHaveLength(1);
+  });
+
+  it('mergeNextIntoCurrent can merge the first child into the root', () => {
+    seedStore(createDocument());
+
+    const result = useMindMapStore.getState().mergeNextIntoCurrent('root_test');
+
+    expect(result).toEqual({ mergedIntoId: 'root_test', cursorOffset: 4 });
+    const root = useMindMapStore.getState().document.root;
+    expect(root.text).toBe('RootHelloWorld');
+    expect(root.children.map((node) => node.id)).toEqual(['node_a1', 'node_b']);
+  });
+
+  it('mergeNextIntoCurrent accepts the next node from the filtered outline', () => {
+    seedStore(createDocument());
+
+    useMindMapStore.getState().mergeNextIntoCurrent('node_a', 'HelloWorld', 'node_b');
+
+    const nodeA = findNodeById(useMindMapStore.getState().document.root, 'node_a')!;
+    expect(nodeA.text).toBe('HelloWorldBeta');
+    expect(nodeA.children.map((node) => node.id)).toEqual(['node_a1', 'node_b1']);
+    expect(useMindMapStore.getState().history.past).toHaveLength(1);
+  });
+
+  it('mergeNextIntoCurrent does not fall through past the final filtered row', () => {
+    seedStore(createDocument());
+
+    expect(useMindMapStore.getState().mergeNextIntoCurrent('node_a', 'Draft', null)).toBeNull();
+    expect(useMindMapStore.getState().document.root.children.map((node) => node.id)).toEqual([
+      'node_a',
+      'node_b',
+    ]);
+    expect(useMindMapStore.getState().history.past).toHaveLength(0);
+  });
+
+  it('pastes an editing draft and Markdown subtree in one undo step', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().pasteMarkdownChildren(
+      'node_a',
+      '- Parent\n  - Child',
+      { currentText: 'Draft with trailing spaces  ' },
+    );
+
+    const pasted = useMindMapStore.getState();
+    const target = findNodeById(pasted.document.root, 'node_a')!;
+    expect(target.text).toBe('Draft with trailing spaces  ');
+    expect(target.children.at(-1)?.text).toBe('Parent');
+    expect(target.children.at(-1)?.children[0].text).toBe('Child');
+    expect(pasted.history.past).toHaveLength(1);
+
+    pasted.undo();
+    const restored = findNodeById(useMindMapStore.getState().document.root, 'node_a')!;
+    expect(restored.text).toBe('HelloWorld');
+    expect(restored.children.map((node) => node.id)).toEqual(['node_a1']);
+  });
+
+  it('preserves blank ranges when structured paste does not change the title', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().addBlankRange('node_a', { start: 0, end: 5 });
+    useMindMapStore.getState().setReciteMode(true);
+    useMindMapStore.getState().revealBlank('node_a', 0);
+
+    useMindMapStore.getState().pasteMarkdownChildren(
+      'node_a',
+      '- Added child',
+      { currentText: 'HelloWorld' },
+    );
+
+    const state = useMindMapStore.getState();
+    expect(findNodeById(state.document.root, 'node_a')?.blankedRanges).toEqual([
+      { start: 0, end: 5 },
+    ]);
+    expect(state.revealedBlanks.node_a?.[0]).toBe(true);
+  });
+
   it('mergeWithPrevious into parent splices children at original slot', () => {
     seedStore(createDocument());
     // node_a is first child of root → merge into root

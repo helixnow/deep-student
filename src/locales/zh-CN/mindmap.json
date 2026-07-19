@@ -45,11 +45,19 @@
     "shortcutList": "快捷键列表",
     "closeShortcuts": "关闭快捷键面板",
     "hideCompleted": "隐藏已完成",
+    "learning": "学习",
     "fold": "折叠",
     "foldMenu": "展开 / 折叠到层级",
     "expandAll": "展开全部",
     "collapseAll": "折叠全部",
     "collapseToLevel": "折叠到 {{level}} 层"
+  },
+  "preferences": {
+    "mubuKeymap": "幕布兼容键位",
+    "spatialNavigation": "画布方向键按空间邻接",
+    "descriptionFirstLine": "描述只预览首行",
+    "mubuKeymapActive": "幕布兼容档：⌘Enter 完成，Shift+Enter 描述，⌘[/] 聚焦；Alt+[/] 折叠。",
+    "deepStudentKeymapActive": "Deep Student 默认档（非幕布键位）：⌘Enter 加子节点，Shift+Enter 换行；Alt+[/] 折叠。"
   },
   "export": {
     "title": "导出",
@@ -86,7 +94,13 @@
     "emptyMap": "空导图",
     "unsavedWarning": "当前导图有未保存的修改，导入将覆盖这些修改。是否继续？",
     "unsavedTitle": "导入将覆盖未保存修改",
-    "unsavedConfirm": "继续导入"
+    "unsavedConfirm": "继续导入",
+    "unnamedTopic": "未命名主题"
+  },
+  "presentation": {
+    "enter": "演示模式",
+    "exit": "退出演示模式",
+    "exitHint": "退出演示模式 (Esc)"
   },
   "loading": "正在加载思维导图...",
   "loadFailed": "思维导图加载失败",
@@ -112,6 +126,7 @@
     "editNote": "编辑备注",
     "moveNode": "上移 / 下移节点",
     "collapseExpand": "折叠 / 展开节点",
+    "zoomInOut": "聚焦进入 / 返回上级",
     "bold": "加粗",
     "fitView": "适应视图",
     "clipboard": "复制 / 剪切 / 粘贴",
@@ -277,6 +292,7 @@
   },
   "association": {
     "add": "添加关联线",
+    "selectSource": "请先选中一个源节点",
     "pickTarget": "点击目标节点",
     "editLabel": "编辑标签",
     "delete": "删除关联线",
@@ -323,6 +339,7 @@
     "markBlank": "标记挖空",
     "clearBlanks": "清除所有挖空",
     "emptyHint": "选择文字后点击「挖空」创建填空题",
+    "createBlankCta": "退出背诵并创建挖空",
     "progress": "{{revealed}}/{{total}} 已揭示"
   },
   "errors": {

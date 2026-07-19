@@ -81,6 +81,7 @@ describe('FilesAppWindow', () => {
     expect(sidebarProps.length).toBeGreaterThan(0);
     const latestSidebarProps = sidebarProps.at(-1)!;
     expect(latestSidebarProps.mode).toBe('fullscreen');
+    expect(latestSidebarProps.commandsEnabled).toBe(true);
     expect(latestSidebarProps.onOpenApp).toBeTypeOf('function');
     expect(props.onTitleChange).toHaveBeenCalledWith(expect.any(String));
   });

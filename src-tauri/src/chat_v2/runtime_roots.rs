@@ -98,6 +98,26 @@ pub struct RuntimeRoot {
     pub configured: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeDirectoryEntry {
+    pub name: String,
+    pub relative_path: String,
+    pub kind: String,
+    pub size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeDirectoryPage {
+    pub root_id: String,
+    pub relative_path: String,
+    pub entries: Vec<RuntimeDirectoryEntry>,
+    pub next_cursor: Option<String>,
+    pub truncated: bool,
+    pub scanned: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RuntimeRootApprovalBinding {
     pub root_id: String,
@@ -1588,6 +1608,139 @@ pub async fn chat_v2_list_runtime_roots(
     runtime_roots_for_session(&app, &state.database, session_id, false)
 }
 
+const MAX_RUNTIME_DIRECTORY_PAGE: usize = 100;
+const MAX_RUNTIME_DIRECTORY_SCAN: usize = 1_000;
+
+fn is_private_runtime_entry(name: &str) -> bool {
+    name.starts_with('.')
+        || matches!(
+            name.to_ascii_lowercase().as_str(),
+            "node_modules" | "target" | "__pycache__" | ".git" | ".env"
+        )
+}
+
+fn list_runtime_directory_page(
+    root_id: &str,
+    root_canon: &Path,
+    relative: &Path,
+    cursor: usize,
+    limit: usize,
+) -> Result<RuntimeDirectoryPage, String> {
+    let target = root_canon.join(relative);
+    let target_canon = target
+        .canonicalize()
+        .map_err(|error| format!("Runtime directory does not exist: {error}"))?;
+    if !target_canon.starts_with(root_canon) || !target_canon.is_dir() {
+        return Err("Runtime directory is outside the selected root or is not a directory".into());
+    }
+
+    let limit = limit.clamp(1, MAX_RUNTIME_DIRECTORY_PAGE);
+    let mut directory = fs::read_dir(&target_canon)
+        .map_err(|error| format!("Failed to list runtime directory: {error}"))?;
+    for _ in 0..cursor {
+        if directory.next().is_none() {
+            return Ok(RuntimeDirectoryPage {
+                root_id: root_id.to_string(),
+                relative_path: relative.to_string_lossy().replace('\\', "/"),
+                entries: Vec::new(),
+                next_cursor: None,
+                truncated: false,
+                scanned: 0,
+            });
+        }
+    }
+
+    let mut entries = Vec::new();
+    let mut scanned = 0usize;
+    while scanned < MAX_RUNTIME_DIRECTORY_SCAN && entries.len() < limit {
+        let Some(entry) = directory.next() else {
+            break;
+        };
+        scanned += 1;
+        let entry = entry.map_err(|error| format!("Failed to read runtime entry: {error}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if is_private_runtime_entry(&name) {
+            continue;
+        }
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("Failed to inspect runtime entry: {error}"))?;
+        if file_type.is_symlink() || (!file_type.is_dir() && !file_type.is_file()) {
+            continue;
+        }
+        let entry_relative = relative.join(&name);
+        let relative_path = entry_relative.to_string_lossy().replace('\\', "/");
+        let size_bytes = if file_type.is_file() {
+            entry.metadata().ok().map(|metadata| metadata.len())
+        } else {
+            None
+        };
+        entries.push(RuntimeDirectoryEntry {
+            name,
+            relative_path,
+            kind: if file_type.is_dir() {
+                "directory"
+            } else {
+                "file"
+            }
+            .into(),
+            size_bytes,
+        });
+    }
+    entries.sort_by(|left, right| {
+        let kind_order = left.kind.cmp(&right.kind);
+        kind_order.then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+
+    let next_offset = cursor.saturating_add(scanned);
+    // A full page or scan budget may be followed by more raw directory entries.
+    // A false-positive continuation is harmless: the next page terminates empty.
+    let has_more = entries.len() == limit || scanned == MAX_RUNTIME_DIRECTORY_SCAN;
+    Ok(RuntimeDirectoryPage {
+        root_id: root_id.to_string(),
+        relative_path: relative.to_string_lossy().replace('\\', "/"),
+        entries,
+        next_cursor: has_more.then(|| next_offset.to_string()),
+        truncated: has_more,
+        scanned,
+    })
+}
+
+#[tauri::command]
+pub async fn chat_v2_list_runtime_directory(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    root_id: Option<String>,
+    relative_path: Option<String>,
+    cursor: Option<String>,
+    limit: Option<usize>,
+) -> Result<RuntimeDirectoryPage, String> {
+    let root_id = root_id.as_deref().unwrap_or("workspace");
+    let relative = normalize_runtime_relative_path(relative_path.as_deref())?;
+    let cursor = cursor
+        .as_deref()
+        .unwrap_or("0")
+        .parse::<usize>()
+        .map_err(|_| "Invalid runtime directory cursor".to_string())?;
+    let root = runtime_root_by_id(
+        &app,
+        &state.database,
+        &session_id,
+        None,
+        Some(root_id),
+        false,
+    )?;
+    let root_canon = revalidate_runtime_root(&state.database, &root)?;
+    list_runtime_directory_page(
+        &root.id,
+        &root_canon,
+        &relative,
+        cursor,
+        limit.unwrap_or(40),
+    )
+}
+
 #[tauri::command]
 pub async fn chat_v2_set_workspace_root(
     app: AppHandle,
@@ -2209,6 +2362,23 @@ fn remove_artifact_file(
     fs::remove_file(&target).map_err(|e| format!("Failed to delete artifact: {}", e))
 }
 
+/// Irreversibly delete one hash-bound regular file below a session runtime
+/// root. This intentionally creates no checkpoint or backup: callers use it
+/// only for an explicitly approved forget operation.
+pub(crate) fn remove_session_file_irreversible(
+    root_path: &Path,
+    relative_path: &str,
+    expected_sha256: &str,
+) -> Result<(), String> {
+    let _mutation_guard = artifact_mutation_guard();
+    let relative = normalize_runtime_relative_path(Some(relative_path))?;
+    if relative.as_os_str().is_empty() {
+        return Err("A relative session file path is required".to_string());
+    }
+    let expected = normalize_expected_sha256(expected_sha256)?;
+    remove_artifact_file(root_path, &relative, Some(&expected))
+}
+
 /// 真实撤销一次 `workspace_artifact_write`：
 /// 有 backup_ref（当次为覆盖写）→ 从 temp 根备份区恢复旧内容；
 /// 无 backup_ref（当次为新建）→ 删除该文件，等价于 `chat_v2_delete_artifact`。
@@ -2264,6 +2434,41 @@ pub async fn chat_v2_revert_artifact_write(
             }))
         }
     }
+}
+
+/// Revert one structured workspace mutation from the task Results panel.
+/// The receipt is hash-bound, so a later user/editor change is never overwritten.
+#[tauri::command]
+pub async fn chat_v2_revert_workspace_change(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    receipt: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let receipt: crate::chat_v2::workspace_change_set::MutationReceipt =
+        serde_json::from_value(receipt)
+            .map_err(|error| format!("Invalid workspace mutation receipt: {}", error))?;
+    if receipt.root_id != "workspace" {
+        return Err("Mutation receipt does not belong to the workspace root".to_string());
+    }
+
+    let root = workspace_root(&state.database)?;
+    if !root.configured {
+        return Err("Workspace root is not configured".to_string());
+    }
+    if root.access != RuntimeRootAccess::ReadWrite {
+        return Err("Workspace root is read-only".to_string());
+    }
+    let root_canon = revalidate_runtime_root(&state.database, &root)?;
+    let temp = temp_root(&app, &session_id, false)?;
+    crate::chat_v2::workspace_change_set::rollback(&root_canon, &temp.path, &receipt)?;
+
+    Ok(serde_json::json!({
+        "reverted": true,
+        "root_id": root.id,
+        "change_id": receipt.change_id,
+        "receipt": receipt,
+    }))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3029,6 +3234,23 @@ mod tests {
     }
 
     #[test]
+    fn irreversible_session_delete_leaves_no_backup_copy() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let root = temp_dir.path().join("session-root");
+        fs::create_dir_all(root.join("stage")).expect("create root");
+        let target = root.join("stage/input.txt");
+        fs::write(&target, "forget-me").expect("write target");
+        let expected = hex::encode(Sha256::digest(b"forget-me"));
+
+        remove_session_file_irreversible(&root, "stage/input.txt", &expected)
+            .expect("irreversible delete");
+
+        assert!(!target.exists());
+        assert!(!root.join(".workspace_changes").exists());
+        assert!(!root.join(WRITE_BACKUP_DIR).exists());
+    }
+
+    #[test]
     fn stale_undo_rejects_restore_and_delete() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let artifacts = temp_dir.path().join("artifacts");
@@ -3279,6 +3501,82 @@ mod tests {
             explicit_runtime_root_id_from_args(&serde_json::json!({"cwd": "."})),
             None
         );
+    }
+
+    #[test]
+    fn runtime_directory_page_exposes_folders_and_visible_truncation() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        fs::create_dir(temp_dir.path().join("context-folder")).expect("create folder");
+        fs::write(temp_dir.path().join("a.txt"), b"a").expect("write a");
+        fs::write(temp_dir.path().join("b.txt"), b"bb").expect("write b");
+        fs::write(temp_dir.path().join(".env"), b"secret").expect("write hidden");
+        let root = temp_dir.path().canonicalize().expect("canonical root");
+
+        let first = list_runtime_directory_page("workspace", &root, Path::new(""), 0, 2)
+            .expect("first page");
+        assert_eq!(first.entries.len(), 2);
+        assert_eq!(first.entries[0].kind, "directory");
+        assert_eq!(first.entries[0].relative_path, "context-folder");
+        assert!(first.truncated);
+        assert_eq!(first.next_cursor.as_deref(), Some("2"));
+        assert!(first.entries.iter().all(|entry| entry.name != ".env"));
+
+        let second = list_runtime_directory_page("workspace", &root, Path::new(""), 2, 2)
+            .expect("second page");
+        assert_eq!(second.entries.len(), 1);
+        assert!(!second.truncated);
+    }
+
+    #[test]
+    fn runtime_directory_page_rejects_paths_outside_bound_root() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let root_dir = temp_dir.path().join("root");
+        fs::create_dir(&root_dir).expect("create root");
+        let root = root_dir.canonicalize().expect("canonical root");
+        let error = list_runtime_directory_page("workspace", &root, Path::new(".."), 0, 10)
+            .expect_err("parent traversal must be rejected");
+        assert!(error.contains("outside"));
+    }
+
+    #[test]
+    fn runtime_directory_pagination_crosses_scan_cap_and_terminates() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        for index in 0..1_025 {
+            fs::write(temp_dir.path().join(format!("file-{index:04}.txt")), b"x")
+                .expect("write fixture");
+        }
+        let root = temp_dir.path().canonicalize().expect("canonical root");
+        let mut cursor = 0usize;
+        let mut names = std::collections::HashSet::new();
+        let mut page_count = 0usize;
+        loop {
+            let page = list_runtime_directory_page("workspace", &root, Path::new(""), cursor, 100)
+                .expect("directory page");
+            for entry in page.entries {
+                assert!(names.insert(entry.name), "pagination returned a duplicate");
+            }
+            page_count += 1;
+            let Some(next) = page.next_cursor else {
+                break;
+            };
+            let next = next.parse::<usize>().expect("numeric cursor");
+            assert!(next > cursor, "cursor must always make progress");
+            cursor = next;
+            assert!(page_count < 20, "pagination must terminate");
+        }
+        assert_eq!(names.len(), 1_025);
+    }
+
+    #[test]
+    fn runtime_directory_cursor_past_end_terminates_empty() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        fs::write(temp_dir.path().join("only.txt"), b"x").unwrap();
+        let root = temp_dir.path().canonicalize().unwrap();
+        let page = list_runtime_directory_page("workspace", &root, Path::new(""), 10, 40)
+            .expect("past-end page");
+        assert!(page.entries.is_empty());
+        assert!(page.next_cursor.is_none());
+        assert!(!page.truncated);
     }
 
     #[test]

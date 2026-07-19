@@ -2,6 +2,7 @@ import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { pLimit } from '@/utils/concurrency';
 import { Input } from '@/components/ui/shad/Input';
+import IndexDiagnosticPanel from './IndexDiagnosticPanel';
 /**
  * 向量化状态视图
  *
@@ -85,7 +86,7 @@ import {
 } from '@/api/vfsRagApi';
 import multimodalRagService, { type SourceType as MMSourceType, MULTIMODAL_INDEX_SUPPORTED } from '@/services/multimodalRagService';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { useDialogFocusManagement } from '../components/FolderSelectorDialog';
+import { useDialogFocusManagement } from '../hooks/useDialogFocusManagement';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Progress } from '@/components/ui/shad/Progress';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -120,6 +121,14 @@ const RESOURCE_TYPE_CONFIG: Record<string, { icon: React.ElementType; labelKey: 
 
 /** 不支持任何索引的资源类型（技能卡等系统资源） */
 const UNSUPPORTED_INDEX_TYPES = new Set(['retrieval']);
+
+/**
+ * 头部概览区切换紧凑布局的容器宽度阈值（px）。
+ * 桌面宽布局需要约 880px：进度环组 ~250 + 按钮簇 ~150 + 间距/内边距 ~80，
+ * 剩余给 4 列统计卡每张至少 ~100px；低于该宽度时卡片标签会被截断。
+ * 注意按「容器」而非「视口」判断——侧边栏会压缩内容区宽度。
+ */
+const COMPACT_HEADER_BREAKPOINT = 880;
 
 // ============================================================================
 // 环形进度图组件
@@ -903,6 +912,26 @@ export const IndexStatusView: React.FC = () => {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const mobileMoreRef = useRef<HTMLDivElement>(null);
 
+  // ========== 窄容器检测（头部紧凑布局） ==========
+  // useIsMobile 基于视口宽度，但学习中心侧边栏会压缩内容区，
+  // 视口未达移动端断点时容器仍可能很窄（如小窗口），故按容器宽度切换。
+  const [isNarrowContainer, setIsNarrowContainer] = useState(false);
+  const containerObserverRef = useRef<ResizeObserver | null>(null);
+  const rootContainerRef = useCallback((node: HTMLDivElement | null) => {
+    containerObserverRef.current?.disconnect();
+    containerObserverRef.current = null;
+    if (!node) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      setIsNarrowContainer(width > 0 && width < COMPACT_HEADER_BREAKPOINT);
+    });
+    observer.observe(node);
+    containerObserverRef.current = observer;
+  }, []);
+  useEffect(() => () => containerObserverRef.current?.disconnect(), []);
+  /** 头部概览区是否使用紧凑布局：移动端 或 窄容器桌面窗口 */
+  const useCompactHeader = isMobile || isNarrowContainer;
+
   useEffect(() => {
     if (!mobileMoreOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -1592,10 +1621,10 @@ export const IndexStatusView: React.FC = () => {
   const needsActionCount = summary.pendingCount + summary.failedCount + summary.staleCount;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-background">
+    <div ref={rootContainerRef} className="flex flex-col flex-1 min-h-0 bg-background">
       {/* 顶部概览区 */}
-      {isMobile ? (
-        /* ==================== 移动端紧凑布局 ==================== */
+      {useCompactHeader ? (
+        /* ============ 紧凑布局（移动端 / 窄容器桌面窗口） ============ */
         <div className="relative z-20 flex flex-col gap-2 px-3 py-2.5 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
           {/* 第一行：进度环 + 关键数字 + 操作按钮 */}
           <div className="flex items-center gap-3">
@@ -2072,7 +2101,7 @@ export const IndexStatusView: React.FC = () => {
             })}
           </div>
         </div>
-        {!isMobile && (
+        {!useCompactHeader && (
           <div className="text-[11px] tabular-nums text-muted-foreground shrink-0 pl-3 border-l border-black/[0.06] dark:border-white/[0.08] whitespace-nowrap">
             <span className="font-semibold text-foreground/90">{summary.resources.length}</span>
             <span className="mx-1 text-muted-foreground/40">/</span>
@@ -2300,6 +2329,11 @@ export const IndexStatusView: React.FC = () => {
             </CustomScrollArea>
           </div>
         </div>
+      )}
+
+      {/* DEV：折叠诊断面板（危险操作不宜默认进正式用户面） */}
+      {import.meta.env.DEV && (
+        <IndexDiagnosticPanel onRefresh={loadData} />
       )}
     </div>
   );

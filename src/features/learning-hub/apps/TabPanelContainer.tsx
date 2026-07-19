@@ -81,8 +81,10 @@ const TabPanelItem = React.memo<TabPanelItemProps>(({
 
   return (
     <div
-      className="absolute inset-0"
-      style={{ display: visible ? 'flex' : 'none' }}
+      className={cn(
+        'absolute inset-0 min-h-0 flex-col',
+        visible ? 'flex' : 'hidden',
+      )}
     >
       <Suspense fallback={<PanelLoading label={loadingLabel} />}>
         <UnifiedAppPanel
@@ -94,7 +96,7 @@ const TabPanelItem = React.memo<TabPanelItemProps>(({
           isActive={visible}
           focusOnActive={visible}
           reloadNonce={reloadNonce}
-          className="h-full w-full"
+          className="h-full w-full min-h-0 flex-1"
         />
       </Suspense>
     </div>

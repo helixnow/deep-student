@@ -80,6 +80,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../../types/group';
+import { configureTaskWorkspace } from '../../api/taskWorkspaceApi';
 
 interface GroupEditorPanelProps {
   mode: 'create' | 'edit';
@@ -315,14 +316,10 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
       if (typeof selected !== 'string' || !selected.trim()) return;
 
       setIsAuthorizingRoot(true);
-      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_authorize_runtime_root', {
-        path: selected.trim(),
-      });
+      const roots = await configureTaskWorkspace(selected.trim());
       const nextRoots = (roots ?? []).filter((root) => !root.session_scoped);
       setRuntimeRoots(nextRoots);
-      const matched =
-        nextRoots.find((root) => root.path === selected.trim())
-        ?? nextRoots.find((root) => root.kind !== 'workspace' && selected.trim().startsWith(root.path));
+      const matched = nextRoots.find((root) => root.id === 'workspace' && root.access === 'read_write');
       if (matched) {
         bindRuntimeRoot(matched);
       }
@@ -712,6 +709,9 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
             <div className="flex-1 overflow-hidden">
               <LearningHubSidebar
                 mode="canvas"
+                hostId="group-picker"
+                sessionActive={pickerOpen}
+                commandsEnabled={false}
                 onClose={() => setPickerOpen(false)}
                 onOpenApp={(item: ResourceListItem) => {
                   togglePinnedResource(item.id);

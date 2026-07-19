@@ -435,6 +435,36 @@ impl AuthorityMode {
     }
 }
 
+/// Session-only approval behavior preset. Neither preset grants filesystem
+/// access; runtime roots remain the sole authority boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionPreset {
+    /// Prompt for every Medium/High operation and never remember approvals.
+    #[default]
+    Cautious,
+    /// Medium approvals may be remembered for this session only. High and
+    /// irreversible operations still require confirmation every time.
+    Relaxed,
+}
+
+impl PermissionPreset {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cautious => "cautious",
+            Self::Relaxed => "relaxed",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "cautious" => Some(Self::Cautious),
+            "relaxed" => Some(Self::Relaxed),
+            _ => None,
+        }
+    }
+}
+
 /// Plan approval lifecycle status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -525,6 +555,8 @@ impl PlanAuthorityState {
 pub struct SessionAuthorityState {
     #[serde(default, alias = "authority_mode")]
     pub authority_mode: AuthorityMode,
+    #[serde(default, alias = "permission_preset")]
+    pub permission_preset: PermissionPreset,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<PlanAuthorityState>,
 }
@@ -533,6 +565,7 @@ impl SessionAuthorityState {
     pub fn craft_default() -> Self {
         Self {
             authority_mode: AuthorityMode::Craft,
+            permission_preset: PermissionPreset::Cautious,
             plan: None,
         }
     }
@@ -554,8 +587,16 @@ impl SessionAuthorityState {
             .cloned()
             .and_then(|v| serde_json::from_value::<PlanAuthorityState>(v).ok());
 
+        let permission_preset = meta
+            .get("permissionPreset")
+            .or_else(|| meta.get("permission_preset"))
+            .and_then(Value::as_str)
+            .and_then(PermissionPreset::parse)
+            .unwrap_or_default();
+
         Self {
             authority_mode: mode,
+            permission_preset,
             plan,
         }
     }
@@ -572,6 +613,14 @@ impl SessionAuthorityState {
         obj.insert(
             "authority_mode".to_string(),
             Value::String(self.authority_mode.as_str().to_string()),
+        );
+        obj.insert(
+            "permissionPreset".to_string(),
+            Value::String(self.permission_preset.as_str().to_string()),
+        );
+        obj.insert(
+            "permission_preset".to_string(),
+            Value::String(self.permission_preset.as_str().to_string()),
         );
         match &self.plan {
             Some(plan) => {
@@ -1092,6 +1141,8 @@ pub enum CanonicalContentPart {
     },
     ImageRef {
         image_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         resource_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -4015,5 +4066,47 @@ mod tests {
             .unwrap()
             .skill_contents
             .is_empty());
+    }
+
+    #[test]
+    fn canonical_multiple_images_preserve_distinct_identity_and_names() {
+        let parts = vec![
+            CanonicalContentPart::ImageRef {
+                image_id: "container:file-a".to_string(),
+                name: Some("front.png".to_string()),
+                resource_id: Some("container".to_string()),
+                source_id: Some("file-a".to_string()),
+                blob_hash: Some("blob-a".to_string()),
+                content_hash: Some("hash-a".to_string()),
+                mime_type: "image/png".to_string(),
+                pinned: false,
+                retrieval_hit: false,
+            },
+            CanonicalContentPart::ImageRef {
+                image_id: "container:file-b".to_string(),
+                name: Some("back.jpg".to_string()),
+                resource_id: Some("container".to_string()),
+                source_id: Some("file-b".to_string()),
+                blob_hash: Some("blob-b".to_string()),
+                content_hash: Some("hash-b".to_string()),
+                mime_type: "image/jpeg".to_string(),
+                pinned: false,
+                retrieval_hit: false,
+            },
+        ];
+
+        let encoded = serde_json::to_value(&parts).unwrap();
+        let decoded: Vec<CanonicalContentPart> = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, parts);
+        assert!(matches!(
+            &decoded[0],
+            CanonicalContentPart::ImageRef { name: Some(name), source_id: Some(source), .. }
+                if name == "front.png" && source == "file-a"
+        ));
+        assert!(matches!(
+            &decoded[1],
+            CanonicalContentPart::ImageRef { name: Some(name), source_id: Some(source), .. }
+                if name == "back.jpg" && source == "file-b"
+        ));
     }
 }

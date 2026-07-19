@@ -48,6 +48,8 @@ vi.mock('react-i18next', () => ({
       'session.hard': '困难',
       'session.progress': '复习进度',
       'session.saveEdit': '保存',
+      'session.showBack': '显示背面',
+      'session.showFront': '显示正面',
       'session.suspend': '暂停卡片',
       'session.undo': '撤销评分',
     }[key] ?? key),
@@ -62,6 +64,7 @@ function seedCard(card: ReviewCard): void {
   useFsrsReviewStore.setState({
     screen: 'session',
     dueCards: [card],
+    dueTotal: 1,
     queue: [card],
     queueIndex: 0,
     flipped: false,
@@ -73,6 +76,11 @@ function seedCard(card: ReviewCard): void {
     lastReview: null,
     lastSuspended: null,
     retryBatchRequest: null,
+    sessionRatedCount: 0,
+    sessionAgainCount: 0,
+    remainingDueAfterSession: null,
+    ratingPreviews: null,
+    lastSchedule: null,
   });
 }
 

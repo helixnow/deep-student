@@ -15,7 +15,6 @@ import {
   StackSimple,
   SlidersHorizontal,
   GraduationCap,
-  Wrench,
   BookOpen,
   CheckCircle,
   Warning,
@@ -23,7 +22,6 @@ import {
   XCircle,
   UploadSimple,
   Network,
-  Plus,
   Camera,
   Lightning,
   Sparkle,
@@ -75,10 +73,10 @@ import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
-import { AuthorityModeSegment } from './AuthorityModeSegment';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerPanel } from './ComposerPanel';
+import { ComposerPlusMenu } from './ComposerPlusMenu';
 import { ComposerToolButton } from './ComposerToolButton';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
 import type { AttachmentInjectModes } from '../../core/types/common';
@@ -100,12 +98,15 @@ import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import {
   ATTACHMENT_MAX_SIZE,
   ATTACHMENT_MAX_COUNT,
-  ATTACHMENT_IMAGE_TYPES,
   ATTACHMENT_IMAGE_EXTENSIONS,
-  ATTACHMENT_DOCUMENT_TYPES,
-  ATTACHMENT_DOCUMENT_EXTENSIONS,
   ATTACHMENT_ALLOWED_TYPES,
   ATTACHMENT_ALLOWED_EXTENSIONS,
+  ATTACHMENT_AUDIO_TYPES,
+  ATTACHMENT_AUDIO_EXTENSIONS,
+  ATTACHMENT_VIDEO_TYPES,
+  ATTACHMENT_VIDEO_EXTENSIONS,
+  ATTACHMENT_ARCHIVE_TYPES,
+  ATTACHMENT_ARCHIVE_EXTENSIONS,
   formatFileSize,
 } from '../../core/constants';
 
@@ -562,6 +563,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   sessionId,
   authorityMode = 'craft',
   onAuthorityModeChange,
+  permissionPreset = 'cautious',
+  onPermissionPresetChange,
   authorityAskBlockedHint = false,
   // ★ PDF 页码引用
   pdfPageRefs,
@@ -684,6 +687,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     filesToProcess.forEach((file) => {
       const fileExt = getFileExtension(file.name);
       const isImage = file.type.startsWith('image/') || ATTACHMENT_IMAGE_EXTENSIONS.includes(fileExt);
+      const isAudio = file.type.startsWith('audio/') || ATTACHMENT_AUDIO_TYPES.includes(file.type) || ATTACHMENT_AUDIO_EXTENSIONS.includes(fileExt);
+      const isVideo = file.type.startsWith('video/') || ATTACHMENT_VIDEO_TYPES.includes(file.type) || ATTACHMENT_VIDEO_EXTENSIONS.includes(fileExt);
+      const isArchive = ATTACHMENT_ARCHIVE_TYPES.includes(file.type) || ATTACHMENT_ARCHIVE_EXTENSIONS.includes(fileExt);
+      const attachmentType: AttachmentMeta['type'] = isImage ? 'image' : isAudio ? 'audio' : isVideo ? 'video' : isArchive ? 'other' : 'document';
       const attachmentId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       // 🔧 P2优化：文件大小验证 (P1-08: 使用统一常量)
@@ -692,7 +699,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         const errorAttachment: AttachmentMeta = {
           id: attachmentId,
           name: file.name,
-          type: isImage ? 'image' : 'document',
+          type: attachmentType,
           resourceType: isImage ? 'image' : 'file',
           mimeType: file.type,
           size: file.size,
@@ -704,15 +711,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       }
 
       // 🔧 P2优化：文件类型验证 (P1-08: 使用统一常量)
-      const isAllowedType = isImage
-        ? ATTACHMENT_IMAGE_TYPES.includes(file.type) || ATTACHMENT_IMAGE_EXTENSIONS.includes(fileExt)
-        : ATTACHMENT_DOCUMENT_TYPES.includes(file.type) || ATTACHMENT_DOCUMENT_EXTENSIONS.includes(fileExt);
+      const isAllowedType = ATTACHMENT_ALLOWED_TYPES.includes(file.type)
+        || ATTACHMENT_ALLOWED_EXTENSIONS.includes(fileExt);
       if (!isAllowedType) {
         console.warn(`[InputBarUI] Unsupported file type: ${file.name} (${file.type || fileExt})`);
         const errorAttachment: AttachmentMeta = {
           id: attachmentId,
           name: file.name,
-          type: isImage ? 'image' : 'document',
+          type: attachmentType,
           resourceType: isImage ? 'image' : 'file',
           mimeType: file.type || 'application/octet-stream',
           size: file.size,
@@ -730,7 +736,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const pendingAttachment: AttachmentMeta = {
         id: attachmentId,
         name: file.name,
-        type: isImage ? 'image' : 'document',
+        type: attachmentType,
         resourceType: isImage ? 'image' : 'file',
         mimeType: file.type || 'application/octet-stream',
         size: file.size,
@@ -846,6 +852,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             resourceId: result.resourceId,
             hash: result.hash,
             typeId,
+            displayName: file.name,
           };
 
           logAttachment('store', 'add_context_ref_event', {
@@ -1677,18 +1684,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         }
         return;
       }
-      // ⌘⇧S / Ctrl+Shift+S: 切换技能面板
+      // ⌘⇧S / Ctrl+Shift+S: 打开加号菜单（技能已收入次级菜单）
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         e.stopPropagation();
         if (renderSkillPanel) {
-          if (panelStates.skill) {
-            togglePanel('skill');
-          } else if (activeSkillIds && activeSkillIds.length > 0) {
-            onClearAllSkills?.();
-          } else {
-            togglePanel('skill');
-          }
+          setIsAttachmentMenuOpen(true);
         }
         return;
       }
@@ -1696,7 +1697,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [onToggleThinking, renderRagPanel, renderMcpPanel, renderSkillPanel, panelStates.skill, activeSkillIds, onClearAllSkills, togglePanel]);
+  }, [onToggleThinking, renderRagPanel, renderMcpPanel, renderSkillPanel]);
 
   // ★ Bug2 修复：监听资源库注入事件，自动打开附件面板
   useEffect(() => {
@@ -2450,122 +2451,38 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         <div className="flex items-center justify-between gap-2">
           {/* 左侧按钮 - 窄屏时可横向滚动 */}
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pr-2 scrollbar-none">
-            {/* 附件按钮 - 左侧首位，方便先添加上下文 */}
-            <AppMenu open={isAttachmentMenuOpen} onOpenChange={handleAttachmentMenuOpenChange}>
-              <AppMenuTrigger asChild>
-                <span className="inline-flex rounded-[var(--radius-shell-control)]">
-                  <CommonTooltip
-                    content={
-                      attachmentCount > 0
-                        ? `${t('analysis:input_bar.attachments.title')} (${attachmentCount})`
-                        : t('analysis:input_bar.attachments.title')
-                    }
-                    position={tooltipPosition}
-                    disabled={tooltipDisabled || isAttachmentMenuOpen}
-                  >
-                    <NotionButton
-                      data-testid="btn-toggle-attachments"
-                      variant="ghost"
-                      size="icon"
-                      iconOnly
-                      className={cn(
-                        iconButtonClass,
-                        'relative transition-colors disabled:opacity-60'
-                      )}
-                      aria-label={t('analysis:input_bar.attachments.title')}
-                    >
-                      <Plus size={18} weight="bold" />
-                    </NotionButton>
-                  </CommonTooltip>
-                </span>
-              </AppMenuTrigger>
-              <AppMenuContent
-                align="start"
-                width={180}
-                style={{ zIndex: 320 }}
-              >
-                <AppMenuGroup>
-                  <AppMenuItem
-                    icon={<Paperclip className="w-4 h-4" weight="bold" />}
-                    onClick={handleAddAttachmentAction}
-                  >
-                    {t('analysis:input_bar.attachments.add')}
-                  </AppMenuItem>
-                  <AppMenuItem
-                    icon={<FolderOpen className="w-4 h-4" weight="bold" />}
-                    onClick={handleOpenResourceLibrary}
-                  >
-                    {t('chatV2:inputBar.resourceLibrary')}
-                  </AppMenuItem>
-                  {isMobileEnv && (
-                    <AppMenuItem
-                      icon={<Camera className="w-4 h-4" weight="bold" />}
-                      onClick={handleOpenCameraAction}
-                    >
-                      {t('chatV2:inputBar.camera')}
-                    </AppMenuItem>
-                  )}
-                </AppMenuGroup>
-              </AppMenuContent>
-            </AppMenu>
+            {/* 加号菜单：附件 / 模式 / 技能 / 连接器（AppMenu 次级飞出） */}
+            <ComposerPlusMenu
+              open={isAttachmentMenuOpen}
+              onOpenChange={handleAttachmentMenuOpenChange}
+              attachmentCount={attachmentCount}
+              iconButtonClass={iconButtonClass}
+              tooltipPosition={tooltipPosition}
+              tooltipDisabled={tooltipDisabled}
+              isMobileEnv={isMobileEnv}
+              onAddAttachment={handleAddAttachmentAction}
+              onOpenResourceLibrary={handleOpenResourceLibrary}
+              onOpenCamera={handleOpenCameraAction}
+              sessionId={sessionId}
+              authorityMode={authorityMode}
+              onAuthorityModeChange={onAuthorityModeChange}
+              permissionPreset={permissionPreset}
+              onPermissionPresetChange={onPermissionPresetChange}
+              authorityAskBlockedHint={authorityAskBlockedHint}
+              renderSkillPanel={
+                renderSkillPanel
+                  ? () => renderSkillPanel({ variant: 'menu' })
+                  : undefined
+              }
+              activeSkillCount={activeSkillIds?.length ?? 0}
+              hasLoadedSkills={!!hasLoadedSkills}
+              renderMcpPanel={renderMcpPanel}
+              onOpenMcpPanel={renderMcpPanel ? () => togglePanel('mcp') : undefined}
+              mcpEnabled={mcpEnabled}
+              selectedMcpServerCount={selectedMcpServerCount}
+            />
 
             {leftAccessory}
-
-            {/* ★ 加号菜单已移除，统一桌面端和移动端样式 */}
-
-            {/* 🔧 P0: 技能选择独立按钮 */}
-            {renderSkillPanel && (
-              <ComposerToolButton
-                data-testid="btn-toggle-skill"
-                icon={Lightning}
-                label={t('skills:title')}
-                tooltipContent={
-                  activeSkillIds && activeSkillIds.length > 0
-                    ? t('skills:active')
-                    : hasLoadedSkills
-                      ? t('skills:toolLoaded')
-                      : t('skills:title')
-                }
-                active={panelStates.skill || !!(activeSkillIds && activeSkillIds.length > 0)}
-                ariaPressed={panelStates.skill || !!(activeSkillIds && activeSkillIds.length > 0) || !!hasLoadedSkills}
-                onClick={() => {
-                  if (panelStates.skill) {
-                    togglePanel('skill');
-                  } else if (activeSkillIds && activeSkillIds.length > 0) {
-                    onClearAllSkills?.();
-                  } else {
-                    togglePanel('skill');
-                  }
-                }}
-                tooltipDisabled={tooltipDisabled}
-                indicator={
-                  activeSkillIds && activeSkillIds.length > 0
-                    ? 'active'
-                    : hasLoadedSkills
-                      ? 'loaded'
-                      : null
-                }
-              />
-            )}
-
-            {/* 🔧 P0: MCP 工具独立按钮 */}
-            {renderMcpPanel && (
-              <ComposerToolButton
-                data-testid="btn-toggle-mcp"
-                icon={Wrench}
-                label={t('analysis:input_bar.mcp.title')}
-                tooltipContent={
-                  <span className="flex items-center gap-2">
-                    <span>{t('analysis:input_bar.mcp.title')}</span>
-                    <kbd className={cn('px-1 py-0.5', composerPanelShortcutClassName)}>⌘⇧M</kbd>
-                  </span>
-                }
-                active={panelStates.mcp || mcpEnabled}
-                onClick={() => togglePanel('mcp')}
-                tooltipDisabled={tooltipDisabled}
-                badge={selectedMcpServerCount}
-              />
-            )}
 
             {/* 对话控制按钮 */}
             {renderAdvancedPanel && (
@@ -2582,14 +2499,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
           {/* 右侧按钮 - 固定不滚动 */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            {sessionId && onAuthorityModeChange && (
-              <AuthorityModeSegment
-                sessionId={sessionId}
-                mode={authorityMode}
-                onModeChange={onAuthorityModeChange}
-                showSwitchToPlanHint={authorityAskBlockedHint}
-              />
-            )}
             {extraButtonsRight}
 
             {contextWindowUsage && (

@@ -61,6 +61,22 @@ function sanitizeToolResultContent(content: any): any {
   return result;
 }
 
+export function buildMcpToolUsage(
+  serverId: string,
+  toolName: string,
+  traceId: string,
+  elapsedMs: number,
+) {
+  return {
+    elapsed_ms: elapsedMs,
+    provider: 'mcp',
+    server_id: serverId,
+    tool_name: toolName,
+    source: 'mcp-frontend',
+    trace_id: traceId,
+  };
+}
+
 function clampJsonDepth(obj: any, maxDepth: number, currentDepth = 0): any {
   if (currentDepth >= maxDepth) return typeof obj === 'string' ? obj : '[depth limit]';
   if (obj === null || obj === undefined) return obj;
@@ -1369,6 +1385,8 @@ class McpServiceImpl {
 
     const rawName = rt.cfg.namespace ? toolName.slice(rt.cfg.namespace.length) : toolName;
     const callId = uuidv4();
+    const buildUsage = (elapsed: number) =>
+      buildMcpToolUsage(rt.cfg.id, toolName, callId, elapsed);
     
     // 触发工具调用开始事件
     emitMcpDebugEvent('mcp-tool-call-start', {
@@ -1422,7 +1440,7 @@ class McpServiceImpl {
             ok: false,
             data: sanitizedData,
             error: errorMsg,
-            usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId }
+            usage: buildUsage(elapsed)
           };
         } else {
           emitMcpDebugEvent('mcp-tool-call-success', {
@@ -1432,7 +1450,7 @@ class McpServiceImpl {
             ok: true,
             data: sanitizedData,
             error: undefined,
-            usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId }
+            usage: buildUsage(elapsed)
           };
         }
       } catch (e: any) {
@@ -1456,7 +1474,7 @@ class McpServiceImpl {
         });
         rt.error = i18next.t('mcp:service.auth_failed_check_key');
         this.emitStatus();
-        return { ok: false, error: finalError, usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId } };
+        return { ok: false, error: finalError, usage: buildUsage(elapsed) };
       }
 
       // 连接断开错误：自动重连并重试一次
@@ -1484,7 +1502,7 @@ class McpServiceImpl {
             emitMcpDebugEvent('mcp-tool-call-error', {
               serverId: rt.cfg.id, toolName, error: retryMsg, duration: retryElapsed, callId, isRetry: true,
             });
-            return { ok: false, error: retryMsg, usage: { elapsed_ms: retryElapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId } };
+            return { ok: false, error: retryMsg, usage: buildUsage(retryElapsed) };
           }
         }
       }
@@ -1494,7 +1512,7 @@ class McpServiceImpl {
       emitMcpDebugEvent('mcp-tool-call-error', {
         serverId: rt.cfg.id, toolName, error: errorMsg, duration: elapsed, callId,
       });
-      return { ok: false, error: errorMsg, usage: { elapsed_ms: elapsed, tool_name: toolName, source: 'mcp-frontend', trace_id: callId } };
+      return { ok: false, error: errorMsg, usage: buildUsage(elapsed) };
     }
   }
 

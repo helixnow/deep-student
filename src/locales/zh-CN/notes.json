@@ -267,6 +267,7 @@
     "irec_prefix": "@灵感"
   },
   "toolbar": {
+    "ask_agent": "询问 Agent",
     "new_note": "新建笔记",
     "new_folder": "新建文件夹",
     "refresh": "刷新",
@@ -315,7 +316,28 @@
     "reading_mode_on": "已进入阅读模式",
     "reading_mode_off": "已进入编辑模式",
     "find_replace": "查找替换",
+    "note_templates": "笔记模板",
+    "focus_mode": "专注模式",
+    "exit_focus_mode": "退出专注模式",
     "label": "格式化"
+  },
+  "templates": {
+    "lecture": "听课笔记",
+    "mistake": "错题复盘",
+    "exam": "应试整理"
+  },
+  "blockMenu": {
+    "label": "块操作",
+    "turnInto": "转换为",
+    "paragraph": "正文",
+    "heading1": "一级标题",
+    "heading2": "二级标题",
+    "heading3": "三级标题",
+    "bulletList": "无序列表",
+    "orderedList": "有序列表",
+    "quote": "引用",
+    "duplicate": "复制块",
+    "delete": "删除块"
   },
   "search": {
     "placeholder": "搜索笔记...",
@@ -405,6 +427,7 @@
     },
     "conflict_refreshed": "笔记已在其他位置被修改，已刷新为最新版本",
     "conflict_restore_mine": "恢复我的版本",
+    "conflict_keep_remote": "保留远端版本",
     "save_status": {
       "saved": "已保存",
       "saving": "保存中...",

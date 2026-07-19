@@ -875,7 +875,9 @@ pub fn check_migration_status(
     } else {
         // 所有消息都未迁移
         result.pending_messages = data_conn
-            .query_row("SELECT COUNT(*) FROM chat_messages", [], |row| row.get::<_, i64>(0))
+            .query_row("SELECT COUNT(*) FROM chat_messages", [], |row| {
+                row.get::<_, i64>(0)
+            })
             .unwrap_or(0) as usize;
 
         result.pending_sessions = data_conn

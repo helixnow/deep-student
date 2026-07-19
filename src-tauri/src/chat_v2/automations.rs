@@ -19,6 +19,7 @@ use rand::Rng;
 use rusqlite::{params, OptionalExtension, Row, TransactionBehavior};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio::time::{sleep, Duration};
@@ -245,6 +246,236 @@ pub enum AutomationActionType {
     AgentTurn,
 }
 
+pub const TRUSTED_AUTOMATION_PROFILE_SCHEMA_VERSION: u16 = 1;
+pub const TRUSTED_AUTOMATION_MAX_OUTPUT_BYTES: u64 = 4 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationRootAccess {
+    ReadOnly,
+    ReadWrite,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutomationRuntimeRoot {
+    pub root_id: String,
+    pub access: AutomationRootAccess,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrustedAutomationProfile {
+    pub schema_version: u16,
+    pub profile_hash: String,
+    pub allowed_tools: Vec<String>,
+    pub runtime_roots: Vec<AutomationRuntimeRoot>,
+    pub shell_command_prefixes: Vec<String>,
+    pub network_domains: Vec<String>,
+    pub max_tool_rounds: u32,
+    pub timeout_seconds: u64,
+    pub max_output_bytes: u64,
+    pub rollback_required: bool,
+}
+
+impl TrustedAutomationProfile {
+    pub fn computed_hash(&self) -> Result<String> {
+        let mut canonical = self.clone();
+        canonical.profile_hash.clear();
+        let bytes = serde_json::to_vec(&canonical).map_err(|error| {
+            AppError::internal(format!("Failed to hash automation profile: {error}"))
+        })?;
+        Ok(hex::encode(Sha256::digest(bytes)))
+    }
+
+    pub fn seal(mut self) -> Result<Self> {
+        if self.profile_hash.trim().is_empty() {
+            self.profile_hash = self.computed_hash()?;
+        }
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.schema_version != TRUSTED_AUTOMATION_PROFILE_SCHEMA_VERSION {
+            return Err(AppError::validation(
+                "Unsupported trusted automation profile schema version".to_string(),
+            ));
+        }
+        if self.profile_hash.len() != 64
+            || !self
+                .profile_hash
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+            || self.computed_hash()? != self.profile_hash.to_ascii_lowercase()
+        {
+            return Err(AppError::validation(
+                "Trusted automation profile hash does not match its contents".to_string(),
+            ));
+        }
+        validate_sorted_unique_nonempty(&self.allowed_tools, "allowed_tools")?;
+        validate_sorted_unique(&self.shell_command_prefixes, "shell_command_prefixes")?;
+        validate_sorted_unique(&self.network_domains, "network_domains")?;
+        if self.runtime_roots.is_empty() {
+            return Err(AppError::validation(
+                "runtime_roots must not be empty".to_string(),
+            ));
+        }
+        let supported_tools = trusted_profile_supported_extra_tools();
+        if let Some(tool) = self
+            .allowed_tools
+            .iter()
+            .find(|tool| !supported_tools.contains(tool.as_str()))
+        {
+            return Err(AppError::validation(format!(
+                "Tool '{tool}' is not eligible for trusted automation"
+            )));
+        }
+        if self.allowed_tools.iter().any(|tool| {
+            matches!(
+                tool.as_str(),
+                "builtin-local_shell_execute" | "builtin-local_shell_preflight"
+            )
+        }) && self.shell_command_prefixes.is_empty()
+        {
+            return Err(AppError::validation(
+                "Trusted automation shell tools require shell_command_prefixes".to_string(),
+            ));
+        }
+        let mut previous_root = None;
+        for root in &self.runtime_roots {
+            let id = root.root_id.trim();
+            if id != root.root_id || id.is_empty() || id.contains('/') || id.contains('\\') {
+                return Err(AppError::validation(
+                    "runtime root ids must be normalized identifiers".to_string(),
+                ));
+            }
+            if previous_root.is_some_and(|previous: &str| previous >= id) {
+                return Err(AppError::validation(
+                    "runtime_roots must be sorted and unique".to_string(),
+                ));
+            }
+            if id.starts_with("authorized_") && root.access == AutomationRootAccess::ReadWrite {
+                return Err(AppError::validation(
+                    "authorized runtime roots are always read-only".to_string(),
+                ));
+            }
+            if !matches!(id, "workspace" | "artifacts" | "temp") && !id.starts_with("authorized_") {
+                return Err(AppError::validation(format!(
+                    "Unsupported automation runtime root '{id}'"
+                )));
+            }
+            previous_root = Some(id);
+        }
+        for prefix in &self.shell_command_prefixes {
+            if prefix.trim() != prefix
+                || prefix.is_empty()
+                || prefix
+                    .chars()
+                    .any(|ch| matches!(ch, ';' | '|' | '&' | '>' | '<' | '\n' | '\r' | '`'))
+                || prefix.contains("$(")
+            {
+                return Err(AppError::validation(format!(
+                    "Unsafe shell command prefix '{prefix}'"
+                )));
+            }
+        }
+        for domain in &self.network_domains {
+            let bare = domain.strip_prefix("*.").unwrap_or(domain);
+            if domain != &domain.to_ascii_lowercase()
+                || bare.is_empty()
+                || bare.starts_with('.')
+                || bare.ends_with('.')
+                || !bare
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '.')
+            {
+                return Err(AppError::validation(format!(
+                    "Invalid network domain '{domain}'"
+                )));
+            }
+        }
+        if !(1..=30).contains(&self.max_tool_rounds) {
+            return Err(AppError::validation(
+                "max_tool_rounds must be between 1 and 30".to_string(),
+            ));
+        }
+        if !(30..=3_600).contains(&self.timeout_seconds) {
+            return Err(AppError::validation(
+                "profile timeout_seconds must be between 30 and 3600".to_string(),
+            ));
+        }
+        if self.max_output_bytes == 0 || self.max_output_bytes > TRUSTED_AUTOMATION_MAX_OUTPUT_BYTES
+        {
+            return Err(AppError::validation(
+                "max_output_bytes is outside the trusted automation limit".to_string(),
+            ));
+        }
+        let has_write = self
+            .allowed_tools
+            .iter()
+            .any(|tool| trusted_profile_write_tool(tool))
+            || self
+                .runtime_roots
+                .iter()
+                .any(|root| root.access == AutomationRootAccess::ReadWrite);
+        if has_write && !self.rollback_required {
+            return Err(AppError::validation(
+                "Trusted automation write access requires rollback_required=true".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn validate_sorted_unique(values: &[String], field: &str) -> Result<()> {
+    if values
+        .iter()
+        .any(|value| value.trim() != value || value.is_empty())
+        || values.windows(2).any(|pair| pair[0] >= pair[1])
+    {
+        return Err(AppError::validation(format!(
+            "{field} must be normalized, sorted, and unique"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_sorted_unique_nonempty(values: &[String], field: &str) -> Result<()> {
+    if values.is_empty() {
+        return Err(AppError::validation(format!("{field} must not be empty")));
+    }
+    validate_sorted_unique(values, field)
+}
+
+pub fn trusted_profile_supported_extra_tools() -> HashSet<&'static str> {
+    HashSet::from([
+        "builtin-attachment_stage",
+        "builtin-local_shell_execute",
+        "builtin-local_shell_preflight",
+        "builtin-workspace_artifact_write",
+        "builtin-workspace_change_revert",
+        "builtin-workspace_file_delete",
+        "builtin-workspace_file_list",
+        "builtin-workspace_file_move",
+        "builtin-workspace_file_read",
+        "builtin-workspace_file_write",
+    ])
+}
+
+pub fn trusted_profile_write_tool(tool: &str) -> bool {
+    matches!(
+        tool.strip_prefix("builtin-").unwrap_or(tool),
+        "attachment_stage"
+            | "local_shell_execute"
+            | "workspace_artifact_write"
+            | "workspace_change_revert"
+            | "workspace_file_delete"
+            | "workspace_file_move"
+            | "workspace_file_write"
+    )
+}
+
 impl AutomationActionType {
     pub fn parse(raw: &str) -> Result<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
@@ -298,6 +529,8 @@ pub struct AutomationDefinition {
     pub retry_backoff_seconds: u64,
     #[serde(default = "default_timeout_seconds")]
     pub timeout_seconds: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trusted_profile: Option<TrustedAutomationProfile>,
     /// Optimistic-lock revision for user-editable configuration. Runtime
     /// bookkeeping such as last/next run timestamps must not bump this value.
     #[serde(default = "default_version")]
@@ -566,6 +799,24 @@ fn row_to_automation(row: &Row<'_>) -> rusqlite::Result<AutomationDefinition> {
         "catch_up_all" => CatchUpPolicy::CatchUpAll,
         _ => CatchUpPolicy::RunOnce,
     };
+    // Older live connections can still expose the pre-profile table shape
+    // during a rolling upgrade. Treat that row as an untrusted legacy
+    // automation instead of making the entire scheduler unavailable.
+    let trusted_profile_json: Option<String> = row
+        .get::<_, Option<String>>("trusted_profile_json")
+        .unwrap_or(None);
+    let trusted_profile = trusted_profile_json
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| {
+            serde_json::from_str(&value).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    value.len(),
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })
+        })
+        .transpose()?;
 
     Ok(AutomationDefinition {
         id: row.get("id")?,
@@ -587,6 +838,7 @@ fn row_to_automation(row: &Row<'_>) -> rusqlite::Result<AutomationDefinition> {
         max_retries: row.get::<_, i64>("max_retries")?.clamp(0, 10) as u8,
         retry_backoff_seconds: row.get::<_, i64>("retry_backoff_seconds")?.max(5) as u64,
         timeout_seconds: row.get::<_, i64>("timeout_seconds")?.max(30) as u64,
+        trusted_profile,
         version: row.get::<_, i64>("version")?.max(1) as u64,
     })
 }
@@ -598,15 +850,23 @@ fn insert_automation_with_conn(
     let schedule_json = serde_json::to_string(&automation.schedule)
         .map_err(|error| AppError::internal(format!("Failed to serialize schedule: {}", error)))?;
     let updated_at = Utc::now().to_rfc3339();
+    let trusted_profile_json = automation
+        .trusted_profile
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| {
+            AppError::internal(format!("Failed to serialize trusted profile: {error}"))
+        })?;
     conn.execute(
         "INSERT INTO automation_definitions (
             id, name, schedule_json, prompt, enabled, created_at, updated_at,
             source_session_id, last_run_at, next_run_at, action_type, heartbeat,
             agent_prompt, session_mode, model_id, agent_session_id, catch_up_policy,
-            max_retries, retry_backoff_seconds, timeout_seconds, version
+            max_retries, retry_backoff_seconds, timeout_seconds, trusted_profile_json, version
          ) VALUES (
             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-            ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+            ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
          )",
         params![
             automation.id,
@@ -632,6 +892,7 @@ fn insert_automation_with_conn(
             automation.max_retries as i64,
             automation.retry_backoff_seconds as i64,
             automation.timeout_seconds as i64,
+            trusted_profile_json,
             automation.version as i64,
         ],
     )
@@ -661,6 +922,7 @@ pub struct AutomationCreateFields {
     pub max_retries: u8,
     pub retry_backoff_seconds: u64,
     pub timeout_seconds: u64,
+    pub trusted_profile: Option<TrustedAutomationProfile>,
     pub source_session_id: String,
 }
 
@@ -684,6 +946,17 @@ pub fn create_automation(
         return Err(AppError::validation(
             "timeout_seconds must be between 30 and 3600".to_string(),
         ));
+    }
+    let trusted_profile = fields
+        .trusted_profile
+        .map(TrustedAutomationProfile::seal)
+        .transpose()?;
+    if trusted_profile.is_some() {
+        if fields.action_type != AutomationActionType::AgentTurn {
+            return Err(AppError::validation(
+                "trusted_profile requires action_type=agent_turn".to_string(),
+            ));
+        }
     }
     if fields.action_type == AutomationActionType::Notify
         && (fields.agent_prompt.is_some()
@@ -733,6 +1006,7 @@ pub fn create_automation(
         max_retries: fields.max_retries,
         retry_backoff_seconds: fields.retry_backoff_seconds,
         timeout_seconds: fields.timeout_seconds,
+        trusted_profile,
         version: 1,
     };
 
@@ -813,14 +1087,7 @@ pub fn load_automations(db: &Database) -> Result<Vec<AutomationDefinition>> {
         .get_conn_safe()
         .map_err(|error| db_error("Failed to open automation database", error))?;
     let mut stmt = conn
-        .prepare(
-            "SELECT id, name, schedule_json, prompt, enabled, created_at, updated_at,
-                    source_session_id, last_run_at, next_run_at, action_type, heartbeat,
-                    agent_prompt, session_mode, model_id, agent_session_id, catch_up_policy,
-                    max_retries, retry_backoff_seconds, timeout_seconds, version
-             FROM automation_definitions
-             ORDER BY created_at ASC, id ASC",
-        )
+        .prepare("SELECT * FROM automation_definitions ORDER BY created_at ASC, id ASC")
         .map_err(|error| db_error("Failed to prepare automation list", error))?;
     let rows = stmt
         .query_map([], row_to_automation)
@@ -952,13 +1219,14 @@ pub struct AutomationUpdateFields {
     pub max_retries: Option<u8>,
     pub retry_backoff_seconds: Option<u64>,
     pub timeout_seconds: Option<u64>,
+    pub trusted_profile: Option<Option<TrustedAutomationProfile>>,
 }
 
 pub fn update_automation_full(
     db: &Database,
     automation_id: &str,
     expected_version: u64,
-    fields: AutomationUpdateFields,
+    mut fields: AutomationUpdateFields,
 ) -> Result<(AutomationDefinition, AutomationDefinition)> {
     let expected_version_db = i64::try_from(expected_version).map_err(|_| {
         AppError::validation("expected_version must be a positive 64-bit integer".to_string())
@@ -979,6 +1247,7 @@ pub fn update_automation_full(
         && fields.max_retries.is_none()
         && fields.retry_backoff_seconds.is_none()
         && fields.timeout_seconds.is_none()
+        && fields.trusted_profile.is_none()
     {
         return Err(AppError::validation(
             "At least one editable field is required".to_string(),
@@ -1042,6 +1311,11 @@ pub fn update_automation_full(
             "timeout_seconds must be between 30 and 3600".to_string(),
         ));
     }
+    fields.trusted_profile = match fields.trusted_profile.take() {
+        Some(Some(profile)) => Some(Some(profile.seal()?)),
+        Some(None) => Some(None),
+        None => None,
+    };
 
     let mut conn = db
         .get_conn_safe()
@@ -1089,6 +1363,7 @@ pub fn update_automation_full(
             current.session_mode = None;
             current.model_id = None;
             current.agent_session_id = None;
+            current.trusted_profile = None;
         }
     }
     if let Some(agent_prompt) = fields.agent_prompt {
@@ -1119,10 +1394,14 @@ pub fn update_automation_full(
     if let Some(timeout_seconds) = fields.timeout_seconds {
         current.timeout_seconds = timeout_seconds;
     }
+    if let Some(trusted_profile) = fields.trusted_profile {
+        current.trusted_profile = trusted_profile;
+    }
     if current.action_type == AutomationActionType::Notify
         && (current.agent_prompt.is_some()
             || current.session_mode.is_some()
-            || current.model_id.is_some())
+            || current.model_id.is_some()
+            || current.trusted_profile.is_some())
     {
         return Err(AppError::validation(
             "agent fields require action_type=agent_turn".to_string(),
@@ -1130,6 +1409,14 @@ pub fn update_automation_full(
     }
     let schedule_json = serde_json::to_string(&current.schedule)
         .map_err(|error| AppError::internal(format!("Failed to serialize schedule: {}", error)))?;
+    let trusted_profile_json = current
+        .trusted_profile
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| {
+            AppError::internal(format!("Failed to serialize trusted profile: {error}"))
+        })?;
     let affected = tx
         .execute(
             "UPDATE automation_definitions
@@ -1137,8 +1424,8 @@ pub fn update_automation_full(
              agent_prompt = ?6, session_mode = ?7, model_id = ?8,
              agent_session_id = ?9, catch_up_policy = ?10, max_retries = ?11,
              retry_backoff_seconds = ?12, timeout_seconds = ?13,
-             next_run_at = ?14, updated_at = ?15, version = version + 1
-         WHERE id = ?1 AND version = ?16",
+             next_run_at = ?14, trusted_profile_json = ?15, updated_at = ?16, version = version + 1
+         WHERE id = ?1 AND version = ?17",
             params![
                 automation_id,
                 &current.name,
@@ -1157,6 +1444,7 @@ pub fn update_automation_full(
                 current.retry_backoff_seconds as i64,
                 current.timeout_seconds as i64,
                 current.next_run_at.as_deref(),
+                trusted_profile_json,
                 Utc::now().to_rfc3339(),
                 expected_version_db,
             ],
@@ -1779,6 +2067,7 @@ pub fn automation_to_list_item(automation: &AutomationDefinition, now: DateTime<
         "max_retries": automation.max_retries,
         "retry_backoff_seconds": automation.retry_backoff_seconds,
         "timeout_seconds": automation.timeout_seconds,
+        "trusted_profile": automation.trusted_profile,
         "version": automation.version,
     })
 }
@@ -2920,7 +3209,11 @@ async fn execute_agent_turn_automation(
         source: format!("automation:{}:{}", automation.id, claimed.trigger_type),
         title: Some(format!("自动化：{}", automation.name)),
         hard_timeout_secs: Some(automation.timeout_seconds),
-        max_tool_rounds: None,
+        max_tool_rounds: automation
+            .trusted_profile
+            .as_ref()
+            .map(|profile| profile.max_tool_rounds),
+        trusted_profile: automation.trusted_profile.clone(),
         cancellation_token: Some(cancellation_token.clone()),
     };
     let result = run_headless_turn(app_handle.clone(), request).await;
@@ -3162,6 +3455,7 @@ pub fn default_heartbeat_definition(now: DateTime<Utc>) -> AutomationDefinition 
         max_retries: DEFAULT_MAX_RETRIES,
         retry_backoff_seconds: DEFAULT_RETRY_BACKOFF_SECS,
         timeout_seconds: DEFAULT_TIMEOUT_SECS,
+        trusted_profile: None,
         version: 1,
     }
 }
@@ -3266,6 +3560,8 @@ pub struct AutomationUpdateCommandRequest {
     pub retry_backoff_seconds: Option<u64>,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub trusted_profile: Option<Option<TrustedAutomationProfile>>,
 }
 
 fn deserialize_optional_nullable<'de, D, T>(
@@ -3302,6 +3598,8 @@ pub struct AutomationCreateCommandRequest {
     pub retry_backoff_seconds: u64,
     #[serde(default = "default_timeout_seconds")]
     pub timeout_seconds: u64,
+    #[serde(default)]
+    pub trusted_profile: Option<TrustedAutomationProfile>,
 }
 
 const fn default_true() -> bool {
@@ -3353,6 +3651,7 @@ pub async fn chat_v2_automation_create(
                 max_retries: request.max_retries,
                 retry_backoff_seconds: request.retry_backoff_seconds,
                 timeout_seconds: request.timeout_seconds,
+                trusted_profile: request.trusted_profile,
                 source_session_id: "ui".to_string(),
             },
         )
@@ -3419,6 +3718,7 @@ pub async fn chat_v2_automation_update(
                 max_retries: request.max_retries,
                 retry_backoff_seconds: request.retry_backoff_seconds,
                 timeout_seconds: request.timeout_seconds,
+                trusted_profile: request.trusted_profile,
             },
         )
         .map_err(|error| serialize_automation_update_error(error, false))?;
@@ -4260,6 +4560,10 @@ mod tests {
             "../../migrations/mistakes/V20260715__harden_automation_runtime.sql"
         ))
         .expect("harden automation runtime");
+        conn.execute_batch(include_str!(
+            "../../migrations/mistakes/V20260721__trusted_automation_profile.sql"
+        ))
+        .expect("add trusted automation profile");
         drop(conn);
         (temp_dir, db)
     }
@@ -4324,6 +4628,7 @@ mod tests {
             max_retries: DEFAULT_MAX_RETRIES,
             retry_backoff_seconds: DEFAULT_RETRY_BACKOFF_SECS,
             timeout_seconds: DEFAULT_TIMEOUT_SECS,
+            trusted_profile: None,
             version: 1,
         }
     }
@@ -4356,6 +4661,7 @@ mod tests {
             max_retries: DEFAULT_MAX_RETRIES,
             retry_backoff_seconds: DEFAULT_RETRY_BACKOFF_SECS,
             timeout_seconds: DEFAULT_TIMEOUT_SECS,
+            trusted_profile: None,
             version: 1,
         }
     }
@@ -5406,5 +5712,85 @@ mod tests {
 
         cancel_automation_run(&db, &run.run_id).unwrap();
         assert!(token.is_cancelled());
+    }
+
+    fn trusted_profile_for_test() -> TrustedAutomationProfile {
+        let mut profile = TrustedAutomationProfile {
+            schema_version: TRUSTED_AUTOMATION_PROFILE_SCHEMA_VERSION,
+            profile_hash: String::new(),
+            allowed_tools: vec!["builtin-local_shell_execute".to_string()],
+            runtime_roots: vec![AutomationRuntimeRoot {
+                root_id: "workspace".to_string(),
+                access: AutomationRootAccess::ReadWrite,
+            }],
+            shell_command_prefixes: vec!["unzip".to_string()],
+            network_domains: vec!["example.com".to_string()],
+            max_tool_rounds: 8,
+            timeout_seconds: 300,
+            max_output_bytes: 64 * 1024,
+            rollback_required: true,
+        };
+        profile.profile_hash = profile.computed_hash().unwrap();
+        profile
+    }
+
+    #[test]
+    fn aut_01_legacy_definition_defaults_to_no_trusted_profile() {
+        let raw = serde_json::to_value(sample_daily("09:00")).unwrap();
+        let mut legacy = raw.as_object().unwrap().clone();
+        legacy.remove("trusted_profile");
+        let parsed: AutomationDefinition = serde_json::from_value(Value::Object(legacy)).unwrap();
+        assert!(parsed.trusted_profile.is_none());
+    }
+
+    #[test]
+    fn aut_02_profile_hash_is_content_locked() {
+        let mut unsealed = trusted_profile_for_test();
+        unsealed.profile_hash.clear();
+        let sealed = unsealed.seal().unwrap();
+        assert_eq!(sealed.profile_hash, sealed.computed_hash().unwrap());
+
+        let mut profile = trusted_profile_for_test();
+        assert!(profile.validate().is_ok());
+        profile.max_tool_rounds += 1;
+        assert!(profile.validate().is_err());
+    }
+
+    #[test]
+    fn aut_03_profile_rejects_untrusted_tools_and_unsafe_prefixes() {
+        let mut profile = trusted_profile_for_test();
+        profile.allowed_tools = vec!["builtin-tool_pack".to_string()];
+        profile.profile_hash = profile.computed_hash().unwrap();
+        assert!(profile.validate().is_err());
+
+        let mut profile = trusted_profile_for_test();
+        profile.shell_command_prefixes = vec!["unzip; rm".to_string()];
+        profile.profile_hash = profile.computed_hash().unwrap();
+        assert!(profile.validate().is_err());
+    }
+
+    #[test]
+    fn aut_04_profile_rejects_rw_authorized_root_and_missing_rollback() {
+        let mut profile = trusted_profile_for_test();
+        profile.runtime_roots[0] = AutomationRuntimeRoot {
+            root_id: "authorized_abc".to_string(),
+            access: AutomationRootAccess::ReadWrite,
+        };
+        profile.profile_hash = profile.computed_hash().unwrap();
+        assert!(profile.validate().is_err());
+
+        let mut profile = trusted_profile_for_test();
+        profile.rollback_required = false;
+        profile.profile_hash = profile.computed_hash().unwrap();
+        assert!(profile.validate().is_err());
+    }
+
+    #[test]
+    fn aut_05_profile_enforces_budget_caps() {
+        let mut profile = trusted_profile_for_test();
+        profile.max_tool_rounds = 31;
+        profile.max_output_bytes = TRUSTED_AUTOMATION_MAX_OUTPUT_BYTES + 1;
+        profile.profile_hash = profile.computed_hash().unwrap();
+        assert!(profile.validate().is_err());
     }
 }

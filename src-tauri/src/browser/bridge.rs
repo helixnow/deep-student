@@ -38,6 +38,7 @@ pub const BRIDGE_GLOBAL: &str = "__dsBrowserBridge";
 pub const DEFAULT_READY_TIMEOUT: Duration = Duration::from_secs(2);
 pub const DEFAULT_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const DEFAULT_ACTION_TIMEOUT: Duration = Duration::from_secs(3);
+pub const DEFAULT_FILE_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
 /// `eval_with_result` 默认超时（调用方可传入自定义 Duration）
 pub const DEFAULT_EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -630,6 +631,37 @@ impl<R: Runtime> BridgeClient<R> {
             args = args
         );
         eval_with_result(&wv, script, DEFAULT_ACTION_TIMEOUT).await
+    }
+
+    /// Set a file input from byte payloads prepared by the trusted Rust
+    /// executor. The page receives File objects, never host filesystem paths.
+    pub async fn set_input_files(&self, ref_id: &str, files: Value) -> BridgeResult<Value> {
+        let args = serde_json::to_string(&json!([ref_id, files]))
+            .map_err(|e| BridgeError::Other(e.to_string()))?;
+        let wv = self.webview()?;
+        let script = format!(
+            r#"(function(){{
+  try {{
+    var b = window.{global};
+    if (!b || typeof b.setInputFiles !== 'function') {{
+      return JSON.stringify({{
+        ok:false, v:1, epoch:0,
+        error:{{code:'NOT_READY', message:'bridge setInputFiles missing'}}
+      }});
+    }}
+    var args = {args};
+    return JSON.stringify(b.setInputFiles(args[0], args[1]));
+  }} catch (e) {{
+    return JSON.stringify({{
+      ok:false, v:1, epoch:0,
+      error:{{code:'EVAL_THROW', message: String(e && e.message || e)}}
+    }});
+  }}
+}})()"#,
+            global = BRIDGE_GLOBAL,
+            args = args
+        );
+        eval_with_result(&wv, script, DEFAULT_FILE_ACTION_TIMEOUT).await
     }
 
     pub async fn scroll(&self, opts: Value) -> BridgeResult<Value> {

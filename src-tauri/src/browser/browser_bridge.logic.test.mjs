@@ -16,7 +16,15 @@ const src = readFileSync(join(__dirname, 'browser_bridge.js'), 'utf8');
 
 describe('browser_bridge.js source contracts', () => {
   it('exposes required API surface', () => {
-    for (const name of ['ready', 'snapshot', 'click', 'type', 'scroll', 'highlight']) {
+    for (const name of [
+      'ready',
+      'snapshot',
+      'click',
+      'type',
+      'setInputFiles',
+      'scroll',
+      'highlight',
+    ]) {
       assert.match(src, new RegExp(`\\b${name}\\b`));
     }
     assert.match(src, /__dsBrowserBridge/);
@@ -39,6 +47,17 @@ describe('browser_bridge.js source contracts', () => {
     assert.match(src, /ok:\s*true/);
     assert.match(src, /ok:\s*false/);
     assert.match(src, /error:\s*\{\s*code:/);
+  });
+
+  it('sets file inputs without submitting forms or accepting host paths', () => {
+    const setFiles = src.match(/function setInputFiles\([\s\S]*?\n  }\n\n  function scroll/)?.[0];
+    assert.ok(setFiles, 'setInputFiles source should be present');
+    assert.match(setFiles, /input\[type=file\]|el\.type/);
+    assert.match(setFiles, /new File\(/);
+    assert.match(setFiles, /new DataTransfer\(\)/);
+    assert.match(setFiles, /submitted:\s*false/);
+    assert.doesNotMatch(setFiles, /\.submit\(|requestSubmit\(/);
+    assert.doesNotMatch(setFiles, /\bpath\b/);
   });
 
   it('activates click targets exactly once', () => {

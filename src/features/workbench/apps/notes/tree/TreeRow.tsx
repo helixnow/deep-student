@@ -5,6 +5,8 @@ import {
   CaretDown,
   FileText,
   FolderSimple,
+  LinkSimple,
+  DotsThree,
   Star,
   TreeStructure,
 } from '@phosphor-icons/react';
@@ -20,6 +22,8 @@ import {
   type NotesWorkspaceTreeItem,
 } from './types';
 import { isFolderItem } from './flatten';
+import { setWorkbenchDragData } from '@/features/workbench/hooks/useDesktopDrop';
+import { formatWikiLink } from '@/components/crepe/plugins/wikilink';
 
 export interface TreeRowProps {
   item: NotesWorkspaceTreeItem;
@@ -259,6 +263,51 @@ export function TreeRow({
         <span className="nwt-row-label">{item.name}</span>
       )}
       {item.favorite ? <Star className="nwt-favorite" size={12} weight="fill" aria-hidden /> : null}
+      {!renaming ? (
+        <button
+          type="button"
+          className="nwt-row-more"
+          tabIndex={-1}
+          title={t('workbench:notesWorkspace.tree.moreActions', 'More actions')}
+          aria-label={t('workbench:notesWorkspace.tree.moreActions', 'More actions')}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            handleContextMenu({
+              clientX: rect.right,
+              clientY: rect.bottom,
+              preventDefault: () => {},
+              stopPropagation: () => {},
+            } as React.MouseEvent);
+          }}
+        >
+          <DotsThree size={15} weight="bold" aria-hidden />
+        </button>
+      ) : null}
+      {!folder && item.kind === 'note' && !renaming ? (
+        <span
+          className="nwt-link-drag"
+          draggable
+          role="button"
+          tabIndex={-1}
+          title={t('workbench:notesWorkspace.tree.dragLink', 'Drag link into note')}
+          aria-label={t('workbench:notesWorkspace.tree.dragLink', 'Drag link into note')}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onDragStart={(event) => {
+            event.stopPropagation();
+            setWorkbenchDragData(event.dataTransfer, {
+              resourceId: item.id,
+              resourceType: item.kind,
+              title: item.name,
+            });
+            event.dataTransfer.setData('text/plain', formatWikiLink(item.name));
+          }}
+        >
+          <LinkSimple size={12} aria-hidden />
+        </span>
+      ) : null}
     </div>
   );
 }

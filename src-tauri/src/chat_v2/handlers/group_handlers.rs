@@ -125,21 +125,14 @@ fn resolve_group_preferred_runtime_root(
         .to_string());
     }
 
-    let root = runtime_root_by_id(
-        app,
-        database,
-        "session-preview",
-        None,
-        Some(trimmed),
-        false,
-    )
-    .map_err(|e| {
-        ChatV2Error::Validation(format!(
-            "defaultRuntimeRootId '{}' is not resolvable on this device: {}",
-            trimmed, e
-        ))
-        .to_string()
-    })?;
+    let root = runtime_root_by_id(app, database, "session-preview", None, Some(trimmed), false)
+        .map_err(|e| {
+            ChatV2Error::Validation(format!(
+                "defaultRuntimeRootId '{}' is not resolvable on this device: {}",
+                trimmed, e
+            ))
+            .to_string()
+        })?;
 
     Ok((
         Some(trimmed.to_string()),

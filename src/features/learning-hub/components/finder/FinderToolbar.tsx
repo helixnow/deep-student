@@ -39,6 +39,8 @@ interface FinderToolbarProps {
   onSortChange?: (sortBy: SortBy, sortOrder: SortOrder) => void;
   searchQuery?: string;
   onSearchChange?: (value: string) => void;
+  /** View-honest placeholder (recent/trash/favorites/smart folder) */
+  searchPlaceholder?: string;
   searchDisabled?: boolean;
   onNewFolder?: () => void;
   onRefresh?: () => void;
@@ -52,10 +54,133 @@ const SORT_OPTIONS: { value: SortBy; labelKey: string }[] = [
   { value: 'type', labelKey: 'finder.sort.type' },
 ];
 
+/** 可点击压缩面包屑：根 / 中间可点，末级文本；深度大时 Home › … › current */
+function CompressedBreadcrumbs({
+  breadcrumbs,
+  onBreadcrumbClick,
+  onNavigateHome,
+  currentTitle,
+  rootLabel,
+}: {
+  breadcrumbs: { id: string; name: string }[];
+  onBreadcrumbClick: (index: number) => void;
+  onNavigateHome?: () => void;
+  currentTitle?: string;
+  rootLabel: string;
+}) {
+  const lastCrumb = breadcrumbs[breadcrumbs.length - 1];
+  const title = currentTitle || lastCrumb?.name || rootLabel;
+  const deep = breadcrumbs.length > 2;
+
+  const sep = (
+    <span className="shrink-0 px-0.5 text-foreground/35" aria-hidden>
+      ›
+    </span>
+  );
+
+  const homeButton = (
+    <NotionButton
+      variant="ghost"
+      size="sm"
+      onClick={() => (onNavigateHome ? onNavigateHome() : onBreadcrumbClick(-1))}
+      className={cn(
+        '!h-auto !min-w-0 !px-1 !py-0 text-[13px] font-medium tracking-tight',
+        breadcrumbs.length === 0
+          ? 'text-foreground/85 cursor-default'
+          : 'text-foreground/55 hover:text-foreground'
+      )}
+      title={rootLabel}
+      aria-label={rootLabel}
+      disabled={breadcrumbs.length === 0}
+    >
+      <span className="truncate max-w-[72px]">{rootLabel}</span>
+    </NotionButton>
+  );
+
+  if (breadcrumbs.length === 0) {
+    return (
+      <nav className="pointer-events-auto flex min-w-0 items-center justify-center gap-0.5" aria-label={rootLabel}>
+        <span className="block w-full truncate text-center text-[13px] font-medium tracking-tight text-foreground/85">
+          {title}
+        </span>
+      </nav>
+    );
+  }
+
+  if (deep) {
+    // 深度路径：Home › … › parent › current；省略号跳到第一个被折叠的祖先。
+    const parentIndex = breadcrumbs.length - 2;
+    const parentCrumb = breadcrumbs[parentIndex];
+    return (
+      <nav className="pointer-events-auto flex min-w-0 max-w-full items-center justify-center gap-0.5" aria-label={title}>
+        {homeButton}
+        {sep}
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={() => onBreadcrumbClick(0)}
+          className="!h-auto !min-w-0 !px-1 !py-0 text-[13px] font-medium tracking-tight text-foreground/55 hover:text-foreground"
+          title={parentCrumb?.name}
+          aria-label={parentCrumb?.name || '…'}
+        >
+          …
+        </NotionButton>
+        {sep}
+        {parentCrumb ? (
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => onBreadcrumbClick(parentIndex)}
+            className="!h-auto !min-w-0 !px-1 !py-0 text-[13px] font-medium tracking-tight text-foreground/55 hover:text-foreground"
+            title={parentCrumb.name}
+          >
+            <span className="truncate max-w-[72px]">{parentCrumb.name}</span>
+          </NotionButton>
+        ) : null}
+        {parentCrumb ? sep : null}
+        <span className="min-w-0 truncate text-[13px] font-medium tracking-tight text-foreground/85">
+          {lastCrumb?.name || title}
+        </span>
+      </nav>
+    );
+  }
+
+  return (
+    <nav className="pointer-events-auto flex min-w-0 max-w-full items-center justify-center gap-0.5" aria-label={title}>
+      {homeButton}
+      {breadcrumbs.map((crumb, index) => {
+        const isLast = index === breadcrumbs.length - 1;
+        return (
+          <React.Fragment key={crumb.id}>
+            {sep}
+            {isLast ? (
+              <span className="min-w-0 truncate text-[13px] font-medium tracking-tight text-foreground/85">
+                {crumb.name}
+              </span>
+            ) : (
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={() => onBreadcrumbClick(index)}
+                className="!h-auto !min-w-0 !px-1 !py-0 text-[13px] font-medium tracking-tight text-foreground/55 hover:text-foreground"
+                title={crumb.name}
+              >
+                <span className="truncate max-w-[88px]">{crumb.name}</span>
+              </NotionButton>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </nav>
+  );
+}
+
 /** Tahoe Finder-style chrome. Content controls stay in the top toolbar; the bottom bar is status-only. */
 export const FinderToolbar = React.memo(function FinderToolbar({
   breadcrumbs,
+  onBreadcrumbClick,
   currentTitle,
+  onNavigateHome,
   canGoBack = false,
   canGoForward = false,
   onBack,
@@ -67,6 +192,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
   onSortChange,
   searchQuery = '',
   onSearchChange,
+  searchPlaceholder,
   searchDisabled = false,
   onNewFolder,
   onRefresh,
@@ -74,7 +200,8 @@ export const FinderToolbar = React.memo(function FinderToolbar({
 }: FinderToolbarProps) {
   const { t } = useTranslation('learningHub');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const title = currentTitle || breadcrumbs[breadcrumbs.length - 1]?.name || t('title');
+  const rootLabel = t('folder.root');
+  const resolvedSearchPlaceholder = searchPlaceholder || t('finder.search.placeholder');
 
   const navButtons = (
     <div className="finder-toolbar-control-group flex shrink-0 items-center gap-0.5 rounded-xl bg-[color:var(--interactive-hover)]/70 p-0.5">
@@ -209,14 +336,24 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         value={searchQuery}
         onChange={(event) => onSearchChange(event.target.value)}
         disabled={searchDisabled}
-        placeholder={t('finder.search.placeholder')}
-        aria-label={t('finder.search.placeholder')}
+        placeholder={resolvedSearchPlaceholder}
+        aria-label={resolvedSearchPlaceholder}
         className="h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-[13px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden"
       />
     </div>
   ) : null;
 
-  // 标题栏模式：左侧 = 导航 + 功能；中间标题相对整窗居中；右侧 = 搜索
+  const breadcrumbCenter = (
+    <CompressedBreadcrumbs
+      breadcrumbs={breadcrumbs}
+      onBreadcrumbClick={onBreadcrumbClick}
+      onNavigateHome={onNavigateHome}
+      currentTitle={currentTitle}
+      rootLabel={rootLabel}
+    />
+  );
+
+  // 标题栏模式：左侧 = 导航 + 功能；中间可点面包屑相对整窗居中；右侧 = 搜索
   if (titlebarMode) {
     return (
       <div className="finder-toolbar pointer-events-none relative h-full shrink-0 bg-transparent py-0 pl-1 pr-2">
@@ -231,9 +368,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
             transform: 'translateX(-50%)',
           }}
         >
-          <span className="block w-full truncate text-center text-[13px] font-medium tracking-tight text-foreground/85">
-            {title}
-          </span>
+          {breadcrumbCenter}
         </div>
 
         <div className="relative z-10 flex h-full min-w-0 items-center gap-1.5">
@@ -251,13 +386,13 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     );
   }
 
-  // 非标题栏（内嵌顶栏）：导航 + 标题居中 + 右侧工具
+  // 非标题栏（内嵌顶栏）：导航 + 面包屑居中 + 右侧工具
   return (
     <div className="finder-toolbar shrink-0 border-b border-[color:var(--shell-chrome-border)] bg-[color:var(--shell-titlebar-surface)] px-2 py-1.5">
       <div className="flex h-full min-w-0 items-center gap-1.5">
         {navButtons}
-        <div className="min-w-0 flex-1 px-2 text-center pointer-events-none">
-          <span className="block truncate text-[13px] font-medium text-foreground/85">{title}</span>
+        <div className="min-w-0 flex-1 px-2 text-center">
+          {breadcrumbCenter}
         </div>
         {utilityButtons}
         {searchField}

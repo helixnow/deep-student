@@ -11,11 +11,14 @@ import {
   SidebarSimple,
   List,
   FileArrowDown,
+  FileArchive,
+  Package,
   Calculator,
   Table,
   Code,
   Link,
   Image,
+  GitBranch,
 } from '@phosphor-icons/react';
 import { getWorkspaceActiveResource } from '@/features/workbench/apps/notes/workspaceRegistry';
 import type { Command, CommandView, DependencyResolver } from '../registry/types';
@@ -33,6 +36,8 @@ export type NotesWorkspaceCommandAction =
   | 'toggle-backlinks'
   | 'toggle-outline'
   | 'export-current'
+  | 'export-library'
+  | 'import-library'
   | 'insert-math'
   | 'insert-table'
   | 'insert-codeblock'
@@ -55,6 +60,15 @@ function isNotesCommandEnabled(deps: DependencyResolver): boolean {
     || (view === 'workbench' && deps.getFocusedWorkbenchAppTypeId() === 'notes');
 }
 
+/** Finder shell commands: new-folder / search also work in workbench files. */
+function isFinderShellCommandEnabled(deps: DependencyResolver): boolean {
+  const view = deps.getCurrentView();
+  if (view === 'learning-hub') return true;
+  if (view !== 'workbench') return false;
+  const app = deps.getFocusedWorkbenchAppTypeId();
+  return app === 'files' || app === 'notes';
+}
+
 /** Commands that operate on the Markdown editor must not appear actionable for a mind map tab. */
 function isNoteEditorCommandEnabled(deps: DependencyResolver): boolean {
   if (!isNotesCommandEnabled(deps)) return false;
@@ -67,6 +81,13 @@ function isWorkbenchNotesCommandEnabled(deps: DependencyResolver): boolean {
     && deps.getFocusedWorkbenchAppTypeId() === 'notes';
 }
 
+function isMindMapCommandEnabled(deps: DependencyResolver): boolean {
+  if (deps.getCurrentView() !== 'workbench') return false;
+  const appType = deps.getFocusedWorkbenchAppTypeId();
+  return appType === 'mindmap'
+    || (appType === 'notes' && getWorkspaceActiveResource()?.type === 'mindmap');
+}
+
 function dispatchNotesCommand(
   deps: DependencyResolver,
   legacyEvent: string,
@@ -74,12 +95,24 @@ function dispatchNotesCommand(
 ): void {
   const view = deps.getCurrentView();
   if (view === 'workbench') {
-    if (deps.getFocusedWorkbenchAppTypeId() !== 'notes') return;
-    window.dispatchEvent(
-      new CustomEvent<NotesWorkspaceCommandDetail>(NOTES_WORKSPACE_COMMAND_EVENT, {
-        detail: { action },
-      }),
-    );
+    const app = deps.getFocusedWorkbenchAppTypeId();
+    if (app === 'notes') {
+      window.dispatchEvent(
+        new CustomEvent<NotesWorkspaceCommandDetail>(NOTES_WORKSPACE_COMMAND_EVENT, {
+          detail: { action },
+        }),
+      );
+      return;
+    }
+    if (app === 'files') {
+      // Files reuses LearningHubSidebar; dispatch learningHub:* directly (not NOTES_*).
+      if (action === 'create-folder') {
+        window.dispatchEvent(new CustomEvent('learningHub:create-folder'));
+      } else if (action === 'search-content' || action === 'focus-search') {
+        window.dispatchEvent(new CustomEvent('learningHub:focus-search'));
+      }
+      return;
+    }
     return;
   }
 
@@ -91,6 +124,11 @@ function dispatchNotesCommand(
 const notesCommandScope = {
   visibleInViews: NOTES_COMMAND_VIEWS,
   isEnabled: isNotesCommandEnabled,
+};
+
+const finderShellCommandScope = {
+  visibleInViews: NOTES_COMMAND_VIEWS,
+  isEnabled: isFinderShellCommandEnabled,
 };
 
 const noteEditorCommandScope = {
@@ -125,7 +163,7 @@ export const notesCommands: Command[] = [
     icon: FolderPlus,
     get keywords() { return kw('notes.new-folder'); },
     priority: 99,
-    ...notesCommandScope,
+    ...finderShellCommandScope,
     execute: (deps) => dispatchNotesCommand(deps, 'NOTES_CREATE_FOLDER', 'create-folder'),
   },
   {
@@ -149,7 +187,7 @@ export const notesCommands: Command[] = [
     icon: MagnifyingGlass,
     get keywords() { return kw('notes.search'); },
     priority: 98,
-    ...notesCommandScope,
+    ...finderShellCommandScope,
     execute: (deps) => dispatchNotesCommand(deps, 'NOTES_FOCUS_SEARCH', 'search-content'),
   },
   {
@@ -200,6 +238,21 @@ export const notesCommands: Command[] = [
     execute: (deps) => dispatchNotesCommand(deps, 'NOTES_TOGGLE_OUTLINE', 'toggle-outline'),
   },
   {
+    id: 'mindmap.toggle-view',
+    get name() { return i18next.t('command_palette:commands.mindmap.toggle-view', 'Mind map: switch outline / canvas'); },
+    get description() { return i18next.t('command_palette:descriptions.mindmap.toggle-view', 'Switch the active mind map between outline and canvas'); },
+    category: 'notes',
+    shortcut: 'mod+alt+shift+m',
+    icon: GitBranch,
+    get keywords() { return kw('mindmap.toggle-view'); },
+    priority: 88,
+    visibleInViews: ['workbench'],
+    isEnabled: isMindMapCommandEnabled,
+    execute: () => {
+      window.dispatchEvent(new CustomEvent('mindmap:toggle-view'));
+    },
+  },
+  {
     id: 'notes.export-current',
     get name() { return i18next.t('command_palette:commands.notes.export-current', 'Export Current Note'); },
     get description() { return i18next.t('command_palette:descriptions.notes.export-current', 'Export current note as file'); },
@@ -210,7 +263,26 @@ export const notesCommands: Command[] = [
     ...notesCommandScope,
     execute: (deps) => dispatchNotesCommand(deps, 'NOTES_EXPORT_CURRENT', 'export-current'),
   },
-  // notes.export-all is not implemented; do not register an actionable command.
+  {
+    id: 'notes.export-all',
+    get name() { return i18next.t('command_palette:commands.notes.export-all', 'Export notes library'); },
+    get description() { return i18next.t('command_palette:descriptions.notes.export-all', 'Export all notes as a Markdown ZIP'); },
+    category: 'notes',
+    icon: FileArchive,
+    priority: 79,
+    ...workbenchNotesCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, '', 'export-library'),
+  },
+  {
+    id: 'notes.import-library',
+    get name() { return i18next.t('command_palette:commands.notes.import-library', 'Import notes library'); },
+    get description() { return i18next.t('command_palette:descriptions.notes.import-library', 'Import a Markdown ZIP into notes'); },
+    category: 'notes',
+    icon: Package,
+    priority: 78,
+    ...workbenchNotesCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, '', 'import-library'),
+  },
   {
     id: 'notes.insert-math',
     get name() { return i18next.t('command_palette:commands.notes.insert-math', 'Insert Math Formula'); },

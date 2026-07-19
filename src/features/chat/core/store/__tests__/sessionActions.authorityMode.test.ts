@@ -104,4 +104,20 @@ describe('sessionActions authority mode', () => {
       }),
     );
   });
+
+  it('persists permission preset only on the current session metadata', async () => {
+    let state = createInitialState('sess_1') as ChatStoreState;
+    const set = (partial: Partial<ChatStoreState> | ((s: ChatStoreState) => Partial<ChatStoreState>)) => {
+      state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) };
+    };
+    const actions = createSessionActions(set as never, () => state as never, () => {});
+    await actions.setPermissionPreset('relaxed');
+    expect(invokeMock).toHaveBeenCalledWith('chat_v2_set_permission_preset', {
+      sessionId: 'sess_1', preset: 'relaxed',
+    });
+    expect(state.permissionPreset).toBe('relaxed');
+    expect(state.sessionMetadata).toMatchObject({
+      permissionPreset: 'relaxed', permission_preset: 'relaxed',
+    });
+  });
 });

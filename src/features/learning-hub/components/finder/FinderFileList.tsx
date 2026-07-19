@@ -23,17 +23,21 @@ import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useSelectionBox, getSelectionBoxStyle, SelectionBoxRect } from './useSelectionBox';
+import {
+  LIST_ITEM_HEIGHT,
+  LIST_PADDING_TOP,
+  GRID_ITEM_WIDTH,
+  GRID_GAP,
+  GRID_ROW_HEIGHT,
+  hitTestListSelection,
+  hitTestGridSelection,
+  indicesToIds,
+} from './selectionHitTest';
 import { debugLog, debugMasterSwitch } from '@/debug-panel/debugMasterSwitch';
 import './finder-animations.css';
 
-// 紧凑列表项高度
-const LIST_ITEM_HEIGHT = 40;
-
-// 网格模式虚拟滚动常量
+// 网格模式虚拟滚动常量（与 selectionHitTest 共享，避免双份漂移）
 // 列宽与 FinderFileItem 网格卡片同宽；用固定 px 轨道，避免 1fr 把列压窄后卡片溢出重叠
-const GRID_ITEM_WIDTH = 88;
-const GRID_GAP = 8;              // gap-2 = 0.5rem = 8px
-const GRID_ROW_HEIGHT = 120;     // 网格行高度（包含内容）
 const GRID_PADDING = 12;         // p-3 = 0.75rem = 12px
 
 // Type-ahead 缓冲超时（与 Windows Explorer 一致约 1s）
@@ -276,6 +280,10 @@ interface FinderFileListProps {
   isLoading: boolean;
   error: string | null;
   emptyMessage?: string;
+  /** canCreate=false 时的副文案（覆盖默认 noCreateHint） */
+  emptyHint?: string;
+  /** 当前视图是否允许新建；false 时隐藏空态新建按钮与 dropHint */
+  canCreate?: boolean;
   enableDragDrop?: boolean;
   /** 正在编辑的项 ID */
   editingId?: string | null;
@@ -331,6 +339,8 @@ export function FinderFileList({
   isLoading,
   error,
   emptyMessage,
+  emptyHint,
+  canCreate = true,
   enableDragDrop = true,
   editingId,
   onEditConfirm,
@@ -403,37 +413,66 @@ export function FinderFileList({
     return () => observer.disconnect();
   }, [gridDomReady]);
 
-  // ★ 框选功能：获取所有文件项的边界信息
-  const getItemRects = useCallback(() => {
-    const rects = new Map<string, DOMRect>();
-    if (!containerRef.current) return rects;
-    
-    const itemElements = containerRef.current.querySelectorAll('[data-finder-item]');
-    itemElements.forEach((el) => {
-      const id = el.getAttribute('data-item-id');
-      if (id) {
-        rects.set(id, el.getBoundingClientRect());
-      }
-    });
-    return rects;
-  }, []);
+  // ★ 框选：几何命中（虚拟列表屏外项也可选；不扫描 DOM）
+  const hitTest = useCallback((box: SelectionBoxRect) => {
+    const viewport = viewportRef.current;
+    if (!viewport || items.length === 0) return new Set<string>();
 
-  // ★ 框选功能：处理选中变化
-  const handleBoxSelectionChange = useCallback((ids: Set<string>, mode: 'replace' | 'add') => {
-    if (mode === 'add') {
-      // Shift 键追加选择
-      const newSelection = new Set(selectedIds);
-      ids.forEach(id => newSelection.add(id));
-      onSelectionChange?.(newSelection);
-    } else {
-      onSelectionChange?.(ids);
+    const viewportRect = viewport.getBoundingClientRect();
+    const clientBox = {
+      left: Math.min(box.startX, box.endX),
+      top: Math.min(box.startY, box.endY),
+      right: Math.max(box.startX, box.endX),
+      bottom: Math.max(box.startY, box.endY),
+    };
+
+    if (viewMode === 'list') {
+      const indices = hitTestListSelection(clientBox, {
+        itemCount: items.length,
+        itemHeight: LIST_ITEM_HEIGHT,
+        paddingTop: LIST_PADDING_TOP,
+        scrollTop: viewport.scrollTop,
+        viewportTop: viewportRect.top,
+        viewportLeft: viewportRect.left,
+      });
+      return indicesToIds(indices, items);
     }
-  }, [selectedIds, onSelectionChange]);
+
+    // 宽度未就绪时不要按 cols=1 误命中
+    if (gridContainerWidth <= 0 || gridColumns <= 0) return new Set<string>();
+
+    const styles = window.getComputedStyle(viewport);
+    const padLeft = Number.parseFloat(styles.paddingLeft) || GRID_PADDING;
+    const padTop = Number.parseFloat(styles.paddingTop) || GRID_PADDING;
+
+    const indices = hitTestGridSelection(clientBox, {
+      itemCount: items.length,
+      columns: gridColumns,
+      itemWidth: GRID_ITEM_WIDTH,
+      rowHeight: GRID_ROW_HEIGHT,
+      gap: GRID_GAP,
+      padLeft,
+      padTop,
+      scrollTop: viewport.scrollTop,
+      scrollLeft: viewport.scrollLeft,
+      viewportTop: viewportRect.top,
+      viewportLeft: viewportRect.left,
+    });
+    return indicesToIds(indices, items);
+  }, [items, viewMode, gridColumns, gridContainerWidth]);
+
+  // ★ 框选：hook 在 Shift 时已合并 baseline，此处不再二次 union selectedIds
+  const handleBoxSelectionChange = useCallback((ids: Set<string>) => {
+    onSelectionChange?.(ids);
+  }, [onSelectionChange]);
+
+  const getBaselineSelection = useCallback(() => selectedIds, [selectedIds]);
 
   // ★ 框选 Hook
   const { isSelecting, selectionRect, handleMouseDown } = useSelectionBox({
     containerRef,
-    getItemRects,
+    hitTest,
+    getBaselineSelection,
     onSelectionChange: handleBoxSelectionChange,
     enabled: enableBoxSelect && !activeId, // 拖拽时禁用框选
     minDistance: 10,
@@ -1011,12 +1050,16 @@ export function FinderFileList({
         <p className="text-[15px] font-medium text-foreground/80 mb-1">
           {emptyMessage || t('finder.empty.folder')}
         </p>
-        <p className="text-[13px] text-muted-foreground/60 text-center max-w-[240px]">
-          {t(isSmallScreen ? 'finder.empty.dropHintTouch' : 'finder.empty.dropHint')}
-        </p>
+        {(canCreate || emptyHint) && (
+          <p className="text-[13px] text-muted-foreground/60 text-center max-w-[240px]">
+            {canCreate
+              ? t(isSmallScreen ? 'finder.empty.dropHintTouch' : 'finder.empty.dropHint')
+              : emptyHint || t(isSmallScreen ? 'finder.empty.noCreateHintTouch' : 'finder.empty.noCreateHint')}
+          </p>
+        )}
 
         {/* ★ 可操作的新建入口：直接在点击位置打开与右键相同的新建菜单 */}
-        {onContainerContextMenu && (
+        {canCreate && onContainerContextMenu && (
           <NotionButton
             variant="default"
             size="sm"
@@ -1032,7 +1075,7 @@ export function FinderFileList({
         )}
 
         {/* 快捷操作提示（桌面端） */}
-        {!isSmallScreen && (
+        {canCreate && !isSmallScreen && (
         <div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground/40">
           <kbd className="px-1.5 py-0.5 rounded bg-muted/60 font-mono">{t('finder.empty.rightClick')}</kbd>
           <span>{t('finder.empty.contextMenuHint')}</span>

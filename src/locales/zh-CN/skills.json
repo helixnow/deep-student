@@ -351,6 +351,9 @@
     "anki-tools": "Anki 制卡",
     "qbank-tools": "智能题库",
     "workspace-tools": "协作工作区",
+    "connector-tools": "连接器与对象桥",
+    "task-governance-tools": "任务治理",
+    "file-manager-tools": "文件管理",
     "web-fetch": "网页抓取",
     "subagent-worker": "子代理",
     "tutor-mode": "导师模式",
@@ -372,6 +375,8 @@
     "workbench-tools": "学习桌面",
     "automation-tools": "自动化管理",
     "browser-tools": "浏览器操作",
+    "media-tools": "媒体转写",
+    "office-fidelity-tools": "Office 保真检查",
     "data-governance-tools": "数据治理",
     "document-processing": "文档处理",
     "dstu-tools": "学习资料管理",
@@ -389,9 +394,11 @@
     "textbook-pdf-tools": "教材 PDF",
     "tool-pack": "工具包",
     "translation-tools": "翻译工具",
-    "user-todo-tools": "个人待办"
+    "user-todo-tools": "个人待办",
+    "role-packs": "精选岗位专家"
   },
   "builtinDescriptions": {
+    "role-packs": "版本锁定、可审计的财务、法务、人力、运营、行政、研究、教学与内容工作流，只产出草稿和异常队列，高风险事项必须人工终审。",
     "knowledge-retrieval": "从资料库与外部来源检索并引用相关知识。",
     "canvas-note": "将想法整理为结构化笔记、摘要与可复用片段。",
     "vfs-memory": "存储、召回并更新长期记忆片段与引用。",
@@ -400,6 +407,7 @@
     "anki-tools": "从学习材料生成、管理并导出 Anki 卡片。",
     "qbank-tools": "创建与管理题库，支持标签与练习。",
     "workspace-tools": "多代理协作工作区，以及授权目录内的本地文件读取、产物写入与经审批的本地命令执行。",
+    "file-manager-tools": "在读写工作区内按预览计划批量重命名、移动、可恢复删除、恢复及显式文本格式转换，并逐项检查并发冲突。",
     "web-fetch": "在需要时抓取并总结网页内容。",
     "subagent-worker": "将子任务分派给子代理并汇总结果。",
     "tutor-mode": "苏格拉底式导师，通过提问与提示引导学习。",
@@ -418,7 +426,9 @@
     "ask-user": "向用户提问以确认操作或获取额外信息。",
     "academic-search": "搜索学术论文、文献和研究资源。",
     "template-designer": "设计和管理可复用的文档模板。",
-    "workbench-tools": "学习桌面窗口操控：列出窗口、打开/聚焦应用、发送窗口指令、关闭窗口与查询状态。数据修改请用领域工具。"
+    "workbench-tools": "学习桌面窗口操控：列出窗口、打开/聚焦应用、发送窗口指令、关闭窗口与查询状态。数据修改请用领域工具。",
+    "media-tools": "通过已配置的外部 ASR 提供商转写受管音频，并写入可审计的转写产物。",
+    "office-fidelity-tools": "只读检查受管 DOCX、XLSX、PPTX 与 PDF 的保真风险，不执行宏、不解密，也不声称保留未支持特性。"
   },
 
   "favorite": {

@@ -279,7 +279,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     return (
       <div
         ref={containerRef}
-        className="relative h-full overflow-hidden bg-background select-none"
+        className="relative h-full min-h-0 flex-1 overflow-hidden bg-background select-none"
         style={{ touchAction: 'pan-y pinch-zoom' }}
         // 自带横向滑动手势（滑出设置面板），豁免三屏布局手势避免冲突
         data-no-screen-swipe
@@ -397,11 +397,11 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   // ========== 中等屏幕（768px-1024px）：上下布局 + 设置抽屉 ==========
   if (isMediumScreen) {
     return (
-      <div className="relative h-full overflow-hidden bg-background">
+      <div className="relative h-full min-h-0 flex-1 overflow-hidden bg-background">
         {/* 主内容区 */}
         <div 
           className={cn(
-            "h-full transition-all duration-300 ease-out",
+            "h-full min-h-0 transition-all duration-300 ease-out",
             showSettingsDrawer ? "mr-[320px]" : "mr-0"
           )}
         >
@@ -512,11 +512,11 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   const settingsDrawerWidth = 320;
   
   return (
-    <div className="relative h-full overflow-hidden bg-background flex">
+    <div className="relative h-full min-h-0 flex-1 overflow-hidden bg-background flex">
       {/* 主内容区：左右分栏 */}
       <div 
         className={cn(
-          "flex-1 min-w-0 h-full transition-all duration-300 ease-out"
+          "flex-1 min-w-0 min-h-0 h-full transition-all duration-300 ease-out"
         )}
         style={{
           marginRight: showSettingsDrawer ? settingsDrawerWidth : 0

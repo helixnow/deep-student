@@ -28,6 +28,8 @@
   /* 主色调 */
   --mm-primary: hsl(var(--primary));
   --mm-primary-soft: hsl(var(--primary) / 0.1);
+  --mm-selection: color-mix(in hsl, var(--mm-text) 9%, var(--mm-bg));
+  --mm-selection-hover: color-mix(in hsl, var(--mm-text) 13%, var(--mm-bg));
   --mm-warning: hsl(var(--warning));
   --mm-warning-soft: hsl(var(--warning) / 0.12);
   --mm-popover-shadow: 0 4px 14px hsl(var(--shadow-base) / 0.16);
@@ -75,7 +77,7 @@
   padding: 0;
   border-radius: 4px;
   position: relative;
-  transition: background-color 0.1s ease;
+  transition: background-color 120ms ease;
 }
 
 /* 悬停整行效果 - 类似 Notion */
@@ -88,15 +90,15 @@
 }
 
 .outline-node-row.selected {
-  background-color: var(--mm-primary-soft);
+  background-color: var(--mm-selection);
 }
 
 .outline-node-row.selected:hover {
-  background-color: hsl(var(--primary) / 0.16);
+  background-color: var(--mm-selection-hover);
 }
 
 .outline-node-row.selected.focused {
-  background-color: hsl(var(--primary) / 0.18);
+  background-color: var(--mm-selection-hover);
 }
 
 .outline-node-row.is-dragging {
@@ -202,7 +204,7 @@
   border-radius: 4px;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s, background-color 0.15s;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
   color: var(--mm-text-muted);
 }
 
@@ -249,12 +251,12 @@
 }
 
 .outline-collapse-count:hover {
-  color: hsl(var(--primary-foreground));
-  background-color: var(--mm-primary);
+  color: var(--mm-text);
+  background-color: var(--mm-selection-hover);
 }
 
 .collapse-toggle svg {
-  transition: transform 0.15s;
+  transition: transform 150ms ease;
 }
 
 .collapse-toggle.is-collapsed svg {
@@ -320,7 +322,7 @@
 
 /* 折叠状态 - 幕布风格 */
 .node-bullet.collapsed {
-  background-color: var(--mm-primary); /* 核心蓝色 */
+  background-color: var(--mm-text-secondary);
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -719,6 +721,33 @@
 .mm-toolbar-button.is-active {
   color: var(--mm-primary);
   background: var(--mm-primary-soft);
+}
+
+.mm-learning-group {
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 6px;
+  border-left: 1px solid var(--mm-border);
+}
+
+.mm-learning-label {
+  margin-right: 2px;
+  color: var(--mm-text-muted);
+  font-size: 11px;
+}
+
+.mm-learning-button {
+  height: 28px;
+  padding: 0 7px;
+  gap: 4px;
+  border-radius: 4px;
+  color: var(--mm-text-secondary);
+  font-size: 11px;
+}
+
+.mm-learning-button.is-active {
+  color: var(--mm-text);
+  background: var(--mm-bg-hover);
 }
 
 .mm-view-switcher {
@@ -1598,7 +1627,22 @@
 }
 
 .outline-content-enter {
-  animation: contentFadeIn 0.25s ease-out both;
+  animation: contentFadeIn 150ms ease-out both;
+}
+
+.mindmap-container .react-flow {
+  animation: contentFadeIn 150ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outline-node-row,
+  .collapse-toggle,
+  .collapse-toggle svg,
+  .outline-collapse-count,
+  .mindmap-container .react-flow {
+    transition: none;
+    animation: none;
+  }
 }
 
 /* --- 触屏（粗指针）适配 --- */
@@ -1655,4 +1699,30 @@
     position: absolute;
     inset: -6px;
   }
+}
+.mm-note-first-line {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.mindmap-container.is-presentation > .mm-toolbar {
+  display: none;
+}
+
+.mm-presentation-exit {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 30;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+  border: 1px solid var(--mm-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mm-bg-elevated) 88%, transparent);
+  color: var(--mm-text-secondary);
+  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 0.12);
 }

@@ -52,7 +52,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   const { t } = useTranslation(['essay_grading', 'common']);
 
   return (
-    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 group/target">
+    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 group/target">
       {/* Toolbar - 简洁风格 */}
       <div className="flex h-[41px] items-center justify-between px-4 border-b border-border/30">
         <div className="flex items-center gap-3">

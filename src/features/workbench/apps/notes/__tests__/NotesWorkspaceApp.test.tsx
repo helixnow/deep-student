@@ -101,6 +101,10 @@ import {
   type NotesWorkspaceCommandAction,
   type NotesWorkspaceCommandDetail,
 } from '@/command-palette/modules/notes.commands';
+import {
+  clearPendingNotesFindQueriesForTests,
+  consumeNotesFindQuery,
+} from '@/features/notes/findQueryBridge';
 
 function props(overrides: Partial<AppWindowProps> = {}): AppWindowProps {
   return {
@@ -152,6 +156,7 @@ describe('NotesWorkspaceApp', () => {
     resetWorkspaceRegistryForTests();
     __resetContentDirtyRegistry();
     window.localStorage.clear();
+    clearPendingNotesFindQueriesForTests();
     vi.mocked(dstu.list).mockReset();
     vi.mocked(dstu.list).mockImplementation((_path, options) => {
       if (options && typeof options === 'object' && 'isFavorite' in options && options.isFavorite) {
@@ -707,6 +712,29 @@ describe('NotesWorkspaceApp', () => {
     await waitFor(() => expect(createEmpty).toHaveBeenCalledWith({ type: 'note', folderId: undefined }));
   });
 
+  it('creates a note in the active note parent folder', async () => {
+    const folder = {
+      id: 'fld_course', parentId: null, title: 'Course', isExpanded: true,
+      sortOrder: 0, createdAt: 1, updatedAt: 1,
+    };
+    vi.mocked(folderApi.listFolders).mockResolvedValue({ ok: true, value: [folder] });
+    vi.mocked(folderApi.getFolderTree).mockResolvedValue({
+      ok: true,
+      value: [{ folder, items: [nodes[0]], children: [] }],
+    });
+    const { createEmpty } = await import('@/dstu');
+    vi.mocked(createEmpty).mockResolvedValueOnce({ ok: true, value: nodes[0] } as never);
+
+    render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
+    await screen.findByTestId('note-editor-note_1');
+    dispatchWorkspaceCommand('create-note');
+
+    await waitFor(() => expect(createEmpty).toHaveBeenCalledWith({
+      type: 'note',
+      folderId: 'fld_course',
+    }));
+  });
+
   it('opens the quick switcher from a workspace command and opens its selected resource', async () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
@@ -721,6 +749,17 @@ describe('NotesWorkspaceApp', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: /Search notes|搜索笔记/ })).toBeNull();
     });
+  });
+
+  it('opens quick switch from Cmd+P while the workspace is active', async () => {
+    render(<NotesWorkspaceApp {...props()} />);
+    await screen.findByText('课堂笔记');
+
+    fireEvent.keyDown(window, { key: 'p', metaKey: true });
+
+    const dialog = await screen.findByRole('dialog', { name: /Search notes|搜索笔记/ });
+    expect(within(dialog).getByRole('button', { name: /Quick open|快速切换/ }))
+      .toHaveAttribute('aria-pressed', 'true');
   });
 
   it('opens full-text search from a workspace command and queries DSTU content', async () => {
@@ -743,6 +782,22 @@ describe('NotesWorkspaceApp', () => {
     expect(await within(dialog).findByRole('option', { name: /匹配笔记/ })).toBeInTheDocument();
   });
 
+  it('retains the full-text query until the opened note editor consumes it', async () => {
+    search.mockResolvedValue({
+      ok: true,
+      value: [{ ...nodes[0], name: '匹配笔记', metadata: { snippet: '命中 <b>内容</b>' } }],
+    });
+    render(<NotesWorkspaceApp {...props()} />);
+    await screen.findByText('课堂笔记');
+    dispatchWorkspaceCommand('search-content');
+    const dialog = await screen.findByRole('dialog', { name: /Search notes|搜索笔记/ });
+    fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: '内容' } });
+    fireEvent.click(await within(dialog).findByRole('option', { name: /匹配笔记/ }));
+
+    await screen.findByTestId('note-editor-note_1');
+    expect(consumeNotesFindQuery('note_1')).toBe('内容');
+  });
+
   it('toggles the backlinks panel from a workspace command', async () => {
     render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
     await screen.findByTestId('note-editor-note_1');
@@ -754,6 +809,17 @@ describe('NotesWorkspaceApp', () => {
 
     dispatchWorkspaceCommand('toggle-backlinks');
     expect(screen.queryByRole('complementary', { name: /Linked notes|Links|关联笔记/ })).toBeNull();
+  });
+
+  it('opens the visible properties outline from toggle-outline', async () => {
+    render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
+    await screen.findByTestId('note-editor-note_1');
+
+    dispatchWorkspaceCommand('toggle-outline');
+
+    const panel = await screen.findByRole('complementary', { name: /Linked notes|Links|关联笔记/ });
+    expect(within(panel).getByRole('tab', { name: /Properties|属性/ }))
+      .toHaveAttribute('aria-selected', 'true');
   });
 
   it('opens full-text search through the ribbon search control', async () => {

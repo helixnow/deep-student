@@ -27,6 +27,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { resourceStoreApi } from '@/features/chat/resources';
 import type { ContextRef, ResourceType as StoreResourceType } from '@/features/chat/resources/types';
+import type { AttachmentMeta } from '@/features/chat/core/types/common';
 import { vfsRefApi, type VfsContextRefData } from '@/features/chat/context';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { VfsErrorCode } from '@/shared/result';
@@ -206,8 +207,8 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
    * 检查是否可以引用到对话
    */
   const canReferenceToChat = useCallback((): boolean => {
-    const sessionIds = sessionManager.getAllSessionIds();
-    return sessionIds.length > 0;
+    const currentId = sessionManager.getCurrentSessionId();
+    return Boolean(currentId && sessionManager.has(currentId));
   }, []);
 
   /**
@@ -223,19 +224,12 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
 
       console.log(LOG_PREFIX, 'referenceToChat (ref mode):', { sourceType, sourceId });
 
-      // 1. 检查是否有活跃会话
-      // ★ D4 修复（对齐 useVfsContextInject 的 P1-26）：优先当前活跃会话，
-      // 回退任意会话——否则多会话场景引用会进最旧的会话
-      let activeSessionId = sessionManager.getCurrentSessionId();
+      // 1. 仅允许注入当前活跃会话，避免落到不可见的后台会话
+      const activeSessionId = sessionManager.getCurrentSessionId();
       if (!activeSessionId || !sessionManager.has(activeSessionId)) {
-        const sessionIds = sessionManager.getAllSessionIds();
-        if (sessionIds.length === 0) {
-          const errorMsg = t('notes:reference.no_active_session');
-          showGlobalNotification('warning', errorMsg);
-          return { success: false, error: errorMsg };
-        }
-        activeSessionId = sessionIds[0];
-        console.log(LOG_PREFIX, 'No current session, falling back to:', activeSessionId);
+        const errorMsg = t('notes:reference.no_active_session');
+        showGlobalNotification('warning', errorMsg);
+        return { success: false, error: errorMsg };
       }
 
       const store = sessionManager.get(activeSessionId);
@@ -300,14 +294,39 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
 
         console.log(LOG_PREFIX, 'Resource created/reused (ref mode):', createResult);
 
-        // 4. 构建 ContextRef 并添加到 chatStore
+        // 4. 构建 ContextRef 并添加到 chatStore（对齐 useVfsContextInject：displayName + attachment + 开面板）
+        const displayName = (typeof metadata?.title === 'string' && metadata.title) || sourceId;
         const contextRef: ContextRef = {
           resourceId: createResult.resourceId,
           hash: createResult.hash,
           typeId,
+          displayName,
         };
 
         store.getState().addContextRef(contextRef);
+
+        const vfsMimeTypes: Record<string, string> = {
+          note: 'text/markdown',
+          textbook: 'application/pdf',
+          exam: 'application/json',
+          translation: 'text/markdown',
+          essay: 'text/markdown',
+          image: 'image/*',
+          file: 'application/octet-stream',
+          mindmap: 'application/json',
+        };
+
+        const attachmentMeta: AttachmentMeta = {
+          id: `vfs-${sourceId}-${Date.now()}`,
+          name: displayName,
+          type: 'document',
+          mimeType: vfsMimeTypes[sourceType] || 'application/octet-stream',
+          size: 0,
+          status: 'ready',
+          resourceId: createResult.resourceId,
+        };
+        store.getState().addAttachment(attachmentMeta);
+        window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
 
         // 5. 通知用户
         const message = createResult.isNew

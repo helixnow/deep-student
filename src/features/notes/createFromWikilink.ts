@@ -4,6 +4,7 @@
  */
 
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
+import { createEmpty } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CrepeEditorApi } from '@/components/crepe';
 import { upsertWikilinkNoteCache } from './wikilinkNotesCache';
@@ -14,6 +15,21 @@ type CreateFromWikilinkDetail = { title: string };
 
 let inflight: Promise<string | null> | null = null;
 let inflightTitle: string | null = null;
+
+interface WikilinkCreateContext {
+  folderId: string | null;
+  onCreated?: (noteId: string, title: string) => void | Promise<void>;
+}
+
+let activeCreateContext: WikilinkCreateContext | null = null;
+
+/** Bind ghost-link creation to the currently focused Notes workspace. */
+export function setWikilinkCreateContext(context: WikilinkCreateContext | null): () => void {
+  activeCreateContext = context;
+  return () => {
+    if (activeCreateContext === context) activeCreateContext = null;
+  };
+}
 
 /**
  * 按标题创建空笔记；同 title 并发请求合并为一次 create。
@@ -30,7 +46,10 @@ export async function createNoteFromWikilinkTitle(title: string): Promise<string
   inflightTitle = trimmed;
   inflight = (async () => {
     try {
-      const result = await notesDstuAdapter.createNote(trimmed, '');
+      const context = activeCreateContext;
+      const result = context?.folderId
+        ? await createEmpty({ type: 'note', name: trimmed, folderId: context.folderId })
+        : await notesDstuAdapter.createNote(trimmed, '');
       if (!result.ok) {
         showGlobalNotification('error', result.error.toUserMessage());
         return null;
@@ -44,6 +63,7 @@ export async function createNoteFromWikilinkTitle(title: string): Promise<string
           detail: { noteId, title: trimmed, source: 'wikilink' },
         }),
       );
+      await context?.onCreated?.(noteId, trimmed);
       window.dispatchEvent(
         new CustomEvent('DSTU_OPEN_NOTE', {
           detail: { noteId, source: 'wikilink', target: trimmed },
@@ -64,9 +84,8 @@ export async function createNoteFromWikilinkTitle(title: string): Promise<string
 }
 
 /**
- * 尝试把当前文档中的未解析 wikilink 刷成已解析样式。
- * 插件未暴露 refresh API：仅当 markdown 含 `[[title` 时 setMarkdown 同文触发 NodeView update；
- * 若 W1 resolve 未读 live 索引，视觉仍会保持 unresolved（见 W4 交付文档遗留）。
+ * Notify live NodeViews that the resolver index changed. This avoids replacing
+ * the whole Markdown document (which reset selection and polluted undo history).
  */
 export function refreshWikilinksAfterCreate(
   editor: CrepeEditorApi | null | undefined,
@@ -75,13 +94,9 @@ export function refreshWikilinksAfterCreate(
   if (!editor) return;
   const trimmed = title.trim();
   if (!trimmed) return;
-  try {
-    const md = editor.getMarkdown();
-    if (!md.includes(`[[${trimmed}`)) return;
-    editor.setMarkdown(md);
-  } catch (error: unknown) {
-    console.warn('[refreshWikilinksAfterCreate] skipped:', error);
-  }
+  window.dispatchEvent(new CustomEvent('notes:wikilink-index-updated', {
+    detail: { target: trimmed },
+  }));
 }
 
 export function parseCreateFromWikilinkEvent(event: Event): string | null {

@@ -21,6 +21,7 @@ interface FindReplacePanelProps {
   className?: string;
   /** 只读 / 阅读模式：保留查找，禁用替换 */
   readOnly?: boolean;
+  initialQuery?: string;
 }
 
 export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
@@ -28,9 +29,10 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   onClose,
   className,
   readOnly = false,
+  initialQuery = '',
 }) => {
   const { t } = useTranslation(['notes', 'common']);
-  const [findText, setFindText] = useState('');
+  const [findText, setFindText] = useState(initialQuery);
   const [replaceText, setReplaceText] = useState('');
   const [isReplaceMode, setIsReplaceMode] = useState(false);
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -44,6 +46,10 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   useEffect(() => {
     findInputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    setFindText(initialQuery);
+  }, [initialQuery]);
 
   // 进入只读时收起替换区
   useEffect(() => {

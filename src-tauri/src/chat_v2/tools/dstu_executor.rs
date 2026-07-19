@@ -326,47 +326,26 @@ fn resolve_runtime_upload_path(
     Ok(canonical)
 }
 
-fn resolve_upload_path(args: &Value, ctx: &ExecutionContext) -> Result<PathBuf, String> {
-    let local_path = optional_string(args, "local_path")?;
+fn required_upload_locator(args: &Value) -> Result<(String, String), String> {
     let root_id = optional_string(args, "root_id")?;
     let relative_path = optional_string(args, "relative_path")?;
 
-    match (local_path, root_id, relative_path) {
-        (Some(path), None, None) => {
-            let raw = PathBuf::from(path);
-            if !raw.is_absolute() {
-                return Err(dstu_error(
-                    "INVALID_UPLOAD_PATH",
-                    "local_path must be absolute",
-                    "Use an absolute picker-provided path, or root_id + relative_path.",
-                    false,
-                ));
-            }
-            let metadata = std::fs::symlink_metadata(&raw)
-                .map_err(|error| backend_error("inspect local upload source", error))?;
-            if metadata.file_type().is_symlink() {
-                return Err(dstu_error(
-                    "UNSAFE_UPLOAD_PATH",
-                    "local_path must not be a symbolic link",
-                    "Select the canonical file instead.",
-                    false,
-                ));
-            }
-            raw.canonicalize()
-                .map_err(|error| backend_error("resolve local upload source", error))
-        }
-        (None, Some(root_id), Some(relative_path)) => {
-            resolve_runtime_upload_path(&root_id, &relative_path, ctx)
-        }
-        (None, None, None) => Err(invalid_args(
+    match (root_id, relative_path) {
+        (Some(root_id), Some(relative_path)) => Ok((root_id, relative_path)),
+        (None, None) => Err(invalid_args(
             "an upload source is required",
-            "Provide exactly one source: local_path, or root_id + relative_path.",
+            "Provide root_id and relative_path from an authorized runtime source.",
         )),
         _ => Err(invalid_args(
-            "upload source is ambiguous or incomplete",
-            "Provide exactly local_path alone, or both root_id and relative_path.",
+            "upload source is incomplete",
+            "Provide both root_id and relative_path.",
         )),
     }
+}
+
+fn resolve_upload_path(args: &Value, ctx: &ExecutionContext) -> Result<PathBuf, String> {
+    let (root_id, relative_path) = required_upload_locator(args)?;
+    resolve_runtime_upload_path(&root_id, &relative_path, ctx)
 }
 
 async fn read_upload_bytes(path: &Path, mime_type: &str) -> Result<Vec<u8>, String> {
@@ -676,14 +655,7 @@ impl DstuToolExecutor {
     ) -> Result<Value, String> {
         reject_unknown_args(
             args,
-            &[
-                "local_path",
-                "root_id",
-                "relative_path",
-                "folder_id",
-                "name",
-                "mime_type",
-            ],
+            &["root_id", "relative_path", "folder_id", "name", "mime_type"],
         )?;
         let source_path = resolve_upload_path(args, ctx)?;
         let source_name = source_path
@@ -966,27 +938,25 @@ mod tests {
     }
 
     #[test]
-    fn upload_source_requires_exactly_one_form() {
-        let no_ctx_needed = |args: Value| {
-            let local_path = optional_string(&args, "local_path").unwrap();
-            let root_id = optional_string(&args, "root_id").unwrap();
-            let relative_path = optional_string(&args, "relative_path").unwrap();
-            matches!(
-                (local_path, root_id, relative_path),
-                (Some(_), None, None) | (None, Some(_), Some(_))
-            )
-        };
-        assert!(no_ctx_needed(json!({"local_path": "/tmp/a.pdf"})));
-        assert!(no_ctx_needed(json!({
-            "root_id": "temp",
-            "relative_path": "attachments/a.pdf"
-        })));
-        assert!(!no_ctx_needed(json!({})));
-        assert!(!no_ctx_needed(json!({
-            "local_path": "/tmp/a.pdf",
-            "root_id": "temp",
-            "relative_path": "a.pdf"
-        })));
+    fn secx_08_upload_source_requires_managed_runtime_locator() {
+        assert_eq!(
+            required_upload_locator(&json!({
+                "root_id": "temp",
+                "relative_path": "attachments/a.pdf"
+            }))
+            .unwrap(),
+            ("temp".to_string(), "attachments/a.pdf".to_string())
+        );
+        assert!(required_upload_locator(&json!({})).is_err());
+        assert!(required_upload_locator(&json!({"root_id": "temp"})).is_err());
+        assert!(required_upload_locator(&json!({"relative_path": "a.pdf"})).is_err());
+        assert!(normalize_runtime_relative_path(Some("/tmp/a.pdf")).is_err());
+        assert!(normalize_runtime_relative_path(Some("../a.pdf")).is_err());
+        assert!(reject_unknown_args(
+            &json!({"local_path": "/tmp/a.pdf"}),
+            &["root_id", "relative_path", "folder_id", "name", "mime_type"]
+        )
+        .is_err());
     }
 
     #[test]

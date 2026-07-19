@@ -40,10 +40,17 @@ vi.mock('@tauri-apps/api/window', () => ({
   }),
 }));
 
-const FLASHCARDS_DUE_LAUNCH = {
+const FLASHCARDS_DUE_PAYLOAD = { screen: 'session', mode: 'due' } as const;
+const FLASHCARDS_DUE_ACTIVATE = {
   typeId: 'flashcards',
-  reason: 'api',
-  payload: { screen: 'session', mode: 'due' },
+  instanceKey: '',
+  action: 'startReview',
+  payload: FLASHCARDS_DUE_PAYLOAD,
+  fallbackLaunch: {
+    typeId: 'flashcards',
+    reason: 'api',
+    payload: FLASHCARDS_DUE_PAYLOAD,
+  },
 } as const;
 
 let launchSpy: ReturnType<typeof vi.spyOn>;
@@ -60,7 +67,7 @@ beforeEach(async () => {
   stopFlashcardsDueWatcher();
   stopAnkiTaskWatcher();
   invokeMock.mockReset();
-  invokeMock.mockResolvedValue([]);
+  invokeMock.mockResolvedValue({ due: 0 });
   startDraggingMock.mockReset();
   toggleMaximizeMock.mockReset();
   await refreshFlashcardsDueCount();
@@ -218,10 +225,10 @@ describe('StatusBar 信号项可见性', () => {
     expect(launchSpy).toHaveBeenCalledWith({ typeId: 'pomodoro', reason: 'api' });
   });
 
-  it('due>0 显示闪卡数字，点击 launch flashcards due session', async () => {
+  it('due>0 显示闪卡数字，点击 activate flashcards due session', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'fsrs_get_due') return [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
-      return [];
+      if (cmd === 'fsrs_get_stats') return { due: 3 };
+      return { due: 0 };
     });
     await act(async () => {
       await refreshFlashcardsDueCount();
@@ -233,7 +240,7 @@ describe('StatusBar 信号项可见性', () => {
     expect(btn.textContent).toContain('3');
     expect(btn.getAttribute('aria-label')).toMatch(/3/);
     fireEvent.click(btn);
-    expect(launchSpy).toHaveBeenCalledWith(FLASHCARDS_DUE_LAUNCH);
+    expect(activateSpy).toHaveBeenCalledWith(FLASHCARDS_DUE_ACTIVATE);
   });
 
   it('制卡任务>0 显示数字，点击 launch taskDashboard', async () => {
@@ -263,8 +270,8 @@ describe('StatusBar 订阅复用', () => {
     expect(screen.queryByTestId('wb-menubar-flashcards')).toBeNull();
 
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'fsrs_get_due') return [{ id: 'x' }, { id: 'y' }];
-      return [];
+      if (cmd === 'fsrs_get_stats') return { due: 2 };
+      return { due: 0 };
     });
     await act(async () => {
       await refreshFlashcardsDueCount();
@@ -310,7 +317,7 @@ describe('StatusBar 学习中心 SB3', () => {
     render(<StatusBar />);
     fireEvent.click(screen.getByTestId('wb-menubar-center'));
     fireEvent.click(screen.getByTestId('wb-menubar-module-flashcards'));
-    expect(launchSpy).toHaveBeenCalledWith(FLASHCARDS_DUE_LAUNCH);
+    expect(activateSpy).toHaveBeenCalledWith(FLASHCARDS_DUE_ACTIVATE);
     await waitFor(() => {
       expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
     });

@@ -11,7 +11,9 @@ import { useCallback, useSyncExternalStore } from 'react';
 export type CanvasDragMode = 'select' | 'pan';
 
 const STORAGE_KEY = 'mindmap:canvas-drag-mode';
-const DEFAULT_MODE: CanvasDragMode = 'select';
+// Direct manipulation is the friendliest default for trackpads and mice.
+// Marquee selection remains available with Shift + drag.
+const DEFAULT_MODE: CanvasDragMode = 'pan';
 
 let currentMode: CanvasDragMode = readInitialMode();
 const listeners = new Set<() => void>();

@@ -977,10 +977,10 @@ mod tests {
         let low_score = state.score;
         // 先无偏置对照，再低掌握偏置（两卡同 Review seed）
         let baseline = fsrs
-            .rate_with_mastery_bias(&state_hi, 3, Some(10), None)
+            .rate_with_mastery_bias(&state_hi, 3, Some(10), None, None)
             .expect("baseline rate");
         let rate_lo = fsrs
-            .rate_with_mastery_bias(&state_lo, 3, Some(10), Some(low_score))
+            .rate_with_mastery_bias(&state_lo, 3, Some(10), Some(low_score), None)
             .expect("rate low mastery");
         let now_ms = Utc::now().timestamp_millis();
         let fsrs_interval = baseline.due_ms.saturating_sub(now_ms);

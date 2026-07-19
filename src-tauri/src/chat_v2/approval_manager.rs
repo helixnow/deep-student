@@ -39,6 +39,7 @@ pub struct ApprovalRequest {
     pub arguments: Value,
     /// 敏感等级
     pub sensitivity: String,
+    pub permission_preset: crate::chat_v2::types::PermissionPreset,
     /// 人类可读描述
     pub description: String,
     /// 超时时间（秒）
@@ -139,6 +140,8 @@ pub struct ApprovalManager {
     pending_tool_names: Arc<Mutex<HashMap<String, String>>>,
     /// 请求参数决定的 fail-closed remember policy（例如任意脚本/路径 executable）。
     pending_remember_disabled: Arc<Mutex<HashMap<String, bool>>>,
+    /// Production preset may constrain remember to the current session only.
+    pending_session_only: Arc<Mutex<HashMap<String, bool>>>,
     /// 默认超时时间（秒）
     default_timeout: u32,
     /// 记住的审批选择 Map<scope_key, approved>
@@ -158,6 +161,7 @@ impl ApprovalManager {
             pending_setting_keys: Arc::new(Mutex::new(HashMap::new())),
             pending_tool_names: Arc::new(Mutex::new(HashMap::new())),
             pending_remember_disabled: Arc::new(Mutex::new(HashMap::new())),
+            pending_session_only: Arc::new(Mutex::new(HashMap::new())),
             default_timeout: 60,
             remembered: Arc::new(Mutex::new(HashMap::new())),
             session_remembered: Arc::new(Mutex::new(HashMap::new())),
@@ -216,6 +220,46 @@ impl ApprovalManager {
         tool_call_id: &str,
         tool_name: &str,
         arguments: &Value,
+    ) -> oneshot::Receiver<ApprovalResponse> {
+        self.register_with_remember_policy(
+            session_id,
+            tool_call_id,
+            tool_name,
+            arguments,
+            false,
+            false,
+        )
+    }
+
+    pub fn register_with_permission_preset(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+        arguments: &Value,
+        preset: crate::chat_v2::types::PermissionPreset,
+        sensitivity: crate::chat_v2::tools::ToolSensitivity,
+    ) -> oneshot::Receiver<ApprovalResponse> {
+        let remember_disabled = preset == crate::chat_v2::types::PermissionPreset::Cautious
+            || sensitivity == crate::chat_v2::tools::ToolSensitivity::High;
+        self.register_with_remember_policy(
+            session_id,
+            tool_call_id,
+            tool_name,
+            arguments,
+            remember_disabled,
+            true,
+        )
+    }
+
+    fn register_with_remember_policy(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+        arguments: &Value,
+        preset_remember_disabled: bool,
+        session_only: bool,
     ) -> oneshot::Receiver<ApprovalResponse> {
         let (tx, rx) = oneshot::channel();
         let pending_key = Self::make_pending_key(session_id, tool_call_id);
@@ -277,7 +321,15 @@ impl ApprovalManager {
             })
             .insert(
                 pending_key,
-                approval_scope::never_remember_approval_for_args(tool_name, arguments),
+                preset_remember_disabled
+                    || approval_scope::never_remember_approval_for_args(tool_name, arguments),
+            );
+        self.pending_session_only
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(
+                Self::make_pending_key(session_id, tool_call_id),
+                session_only,
             );
 
         rx
@@ -343,6 +395,10 @@ impl ApprovalManager {
                     poisoned.into_inner()
                 })
                 .remove(&pending_key);
+            self.pending_session_only
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(&pending_key);
             return ApprovalRespondResult {
                 delivered: false,
                 setting_key: None,
@@ -383,6 +439,12 @@ impl ApprovalManager {
             })
             .remove(&pending_key)
             .unwrap_or(true);
+        let session_only = self
+            .pending_session_only
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&pending_key)
+            .unwrap_or(true);
 
         if let Some(original_tool_name) = original_tool_name_opt {
             if original_tool_name != response.tool_name {
@@ -410,6 +472,9 @@ impl ApprovalManager {
                 );
             response.remember = false;
             response.remember_session = false;
+        }
+        if session_only && response.remember {
+            response.remember = false;
         }
 
         if response.remember {
@@ -483,12 +548,14 @@ impl ApprovalManager {
 
         // ADR-B2：权限类工具不返回 setting_key，从源头阻断「始终允许」的 DB 持久化，
         // 即使 handler 层的 tool_name 判断被伪造的前端响应绕过也 fail-closed。
-        let setting_key_for_persistence =
-            if remember_disabled || approval_scope::never_remember_approval(&response.tool_name) {
-                None
-            } else {
-                setting_key_opt
-            };
+        let setting_key_for_persistence = if remember_disabled
+            || session_only
+            || approval_scope::never_remember_approval(&response.tool_name)
+        {
+            None
+        } else {
+            setting_key_opt
+        };
 
         // 送达等待方
         ApprovalRespondResult {
@@ -534,6 +601,10 @@ impl ApprovalManager {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                 poisoned.into_inner()
             })
+            .remove(&pending_key);
+        self.pending_session_only
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(&pending_key);
     }
 
@@ -595,6 +666,15 @@ impl ApprovalManager {
                     log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                     poisoned.into_inner()
                 });
+            for key in &keys {
+                guard.remove(key);
+            }
+        }
+        {
+            let mut guard = self
+                .pending_session_only
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             for key in &keys {
                 guard.remove(key);
             }
@@ -682,6 +762,10 @@ impl ApprovalManager {
                     );
                     poisoned.into_inner()
                 });
+        let mut session_only = self
+            .pending_session_only
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         for key in pending_keys {
             pending.remove(&key);
@@ -689,6 +773,7 @@ impl ApprovalManager {
             setting.remove(&key);
             tool_names.remove(&key);
             remember_disabled.remove(&key);
+            session_only.remove(&key);
         }
     }
 
@@ -854,6 +939,25 @@ impl ApprovalManager {
                     .unwrap_or("未知路径");
                 format!("将写入会话产物文件: {}", path)
             }
+            "file_manager_commit" | "builtin-file_manager_commit" => {
+                let root = arguments
+                    .get("root_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("workspace");
+                let plan = arguments
+                    .get("plan_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("未知计划");
+                format!("将在 {} 中执行已预览的文件批处理计划 {}", root, plan)
+            }
+            "file_manager_restore" | "builtin-file_manager_restore" => {
+                let path = arguments
+                    .get("receipt")
+                    .and_then(|v| v.get("originalPath").or_else(|| v.get("original_path")))
+                    .and_then(Value::as_str)
+                    .unwrap_or("未知路径");
+                format!("将从工作区回收区恢复文件: {}", path)
+            }
             "file_delete" => {
                 let path = arguments
                     .get("path")
@@ -882,6 +986,36 @@ impl ApprovalManager {
                     .unwrap_or("页面元素");
                 let r#ref = arguments.get("ref").and_then(|v| v.as_str()).unwrap_or("?");
                 format!("将点击网页元素: {} (ref={})", element, r#ref)
+            }
+            "browser_file_upload" | "builtin-browser_file_upload" => {
+                let element = arguments
+                    .get("element")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("文件输入框");
+                let count = arguments
+                    .get("files")
+                    .and_then(|v| v.as_array())
+                    .map(|files| files.len())
+                    .unwrap_or(0);
+                format!("将向网页上传 {} 个已授权文件: {}", count, element)
+            }
+            "media_transcribe" | "builtin-media_transcribe" => {
+                let source = arguments.get("source").unwrap_or(arguments);
+                let handle = source
+                    .get("object_handle")
+                    .or_else(|| source.get("objectHandle"))
+                    .unwrap_or(source);
+                let file = handle
+                    .get("displayName")
+                    .or_else(|| handle.get("display_name"))
+                    .or_else(|| handle.get("relativePath"))
+                    .or_else(|| handle.get("relative_path"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("未知音频文件");
+                format!(
+                    "将把已授权音频文件 {} 发送至外部 ASR 提供商 SiliconFlow，并将转写结果写入任务 artifact",
+                    file
+                )
             }
             "browser_type" | "builtin-browser_type" => {
                 let element = arguments
@@ -923,6 +1057,25 @@ impl Default for ApprovalManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_v2::tools::ToolSensitivity;
+    use crate::chat_v2::types::PermissionPreset;
+
+    #[test]
+    fn media_transcription_approval_names_external_provider_and_file() {
+        let description = ApprovalManager::generate_description(
+            "builtin-media_transcribe",
+            &serde_json::json!({
+                "source": {
+                    "objectHandle": {
+                        "displayName": "lecture-01.mp3"
+                    }
+                }
+            }),
+        );
+        assert!(description.contains("lecture-01.mp3"));
+        assert!(description.contains("SiliconFlow"));
+        assert!(description.contains("artifact"));
+    }
 
     #[tokio::test]
     async fn test_approval_flow() {
@@ -1431,5 +1584,92 @@ mod tests {
                 .is_none(),
             "spoofed response tool_name must not create a broad regular-tool session approval"
         );
+    }
+
+    #[test]
+    fn file_manager_approval_descriptions_name_the_reviewed_action() {
+        let commit = ApprovalManager::generate_description(
+            "builtin-file_manager_commit",
+            &serde_json::json!({
+                "plan_id": "fileplan_123",
+                "root_id": "workspace",
+                "preview_sha256": "a".repeat(64),
+            }),
+        );
+        assert!(commit.contains("workspace"));
+        assert!(commit.contains("fileplan_123"));
+
+        let restore = ApprovalManager::generate_description(
+            "builtin-file_manager_restore",
+            &serde_json::json!({"receipt": {"originalPath": "reports/a.json"}}),
+        );
+        assert!(restore.contains("reports/a.json"));
+    }
+    #[test]
+    fn permission_presets_only_remember_relaxed_medium_for_current_session() {
+        let manager = ApprovalManager::new();
+        let args = serde_json::json!({"root_id":"workspace","path":"report.md"});
+        let _rx = manager.register_with_permission_preset(
+            "sess-1",
+            "call-1",
+            "workspace_file_write",
+            &args,
+            PermissionPreset::Relaxed,
+            ToolSensitivity::Medium,
+        );
+        let result = manager.respond_with_result(ApprovalResponse {
+            session_id: "sess-1".into(),
+            tool_call_id: "call-1".into(),
+            tool_name: "workspace_file_write".into(),
+            approved: true,
+            remember: true,
+            remember_session: true,
+            reason: None,
+        });
+        assert!(
+            result.setting_key.is_none(),
+            "preset must never persist globally"
+        );
+        assert_eq!(
+            manager.check_session_remembered("sess-1", "workspace_file_write", &args,),
+            Some(true)
+        );
+        assert_eq!(
+            manager.check_session_remembered("sess-2", "workspace_file_write", &args,),
+            None
+        );
+    }
+
+    #[test]
+    fn high_and_cautious_approvals_cannot_be_remembered() {
+        for (preset, sensitivity) in [
+            (PermissionPreset::Relaxed, ToolSensitivity::High),
+            (PermissionPreset::Cautious, ToolSensitivity::Medium),
+        ] {
+            let manager = ApprovalManager::new();
+            let args = serde_json::json!({"path":"/safe/item"});
+            let _rx = manager.register_with_permission_preset(
+                "sess-1",
+                "call-1",
+                "test_tool",
+                &args,
+                preset,
+                sensitivity,
+            );
+            manager.respond(ApprovalResponse {
+                session_id: "sess-1".into(),
+                tool_call_id: "call-1".into(),
+                tool_name: "test_tool".into(),
+                approved: true,
+                remember: true,
+                remember_session: true,
+                reason: None,
+            });
+            assert_eq!(
+                manager.check_session_remembered("sess-1", "test_tool", &args),
+                None,
+                "{preset:?}/{sensitivity:?} must require confirmation again"
+            );
+        }
     }
 }

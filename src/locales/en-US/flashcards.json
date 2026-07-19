@@ -20,6 +20,8 @@
     "demoBanner": "Showing a sample review queue so you can preview the flow.",
     "startReview": "Start review",
     "empty": "Nothing due today",
+    "batchCapHint": "This round covers the first {{n}} cards",
+    "goLibrary": "Open library",
     "errors": {
       "invalidResponse": "fsrs_get_due returned an invalid response"
     }
@@ -68,6 +70,11 @@
     "rateFailed": "Rating failed",
     "retry": "Retry",
     "done": "Session complete",
+    "emptyQueue": "No cards available to review",
+    "batchDoneRemaining": "Batch finished — {{count}} still due",
+    "summaryRated": "Rated {{count}} this round",
+    "stillDue": "{{count}} still due",
+    "intervalHint": "{{interval}}",
     "backToday": "Back to Today",
     "exit": "Exit",
     "progress": "{{current}} / {{total}}",

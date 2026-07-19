@@ -17,6 +17,7 @@ import {
   BACKLINK_CANDIDATE_LIMIT,
   extractContextSnippet,
   NotesBacklinksPanel,
+  useRequestedPanelTab,
 } from '../NotesBacklinksPanel';
 
 const notes: DstuNode[] = [
@@ -95,6 +96,29 @@ describe('NotesBacklinksPanel', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('re-applies the same requested tab when its requestId changes', async () => {
+    const Harness: React.FC<{ requestId: number }> = ({ requestId }) => {
+      const [tab, switchTab] = useRequestedPanelTab(true, { tab: 'properties', requestId });
+      return (
+        <div>
+          <output aria-label="active tab">{tab}</output>
+          <button type="button" onClick={() => switchTab('links')}>Links</button>
+        </div>
+      );
+    };
+    const { rerender } = render(
+      <Harness requestId={1} />,
+    );
+
+    expect(screen.getByLabelText('active tab')).toHaveTextContent('properties');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Links' }));
+    expect(screen.getByLabelText('active tab')).toHaveTextContent('links');
+
+    rerender(<Harness requestId={2} />);
+    await waitFor(() => expect(screen.getByLabelText('active tab')).toHaveTextContent('properties'));
   });
 
   it('loads only the active note and narrow backlink candidates', async () => {

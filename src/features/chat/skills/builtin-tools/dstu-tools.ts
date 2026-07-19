@@ -26,7 +26,7 @@ export const dstuToolsSkill: SkillDefinition = {
   id: 'dstu-tools',
   name: 'dstu-tools',
   description:
-    'DSTU/VFS 学习资源组织写入能力组：创建和重命名文件夹、重命名或移动资源、软删除与回收站恢复、收藏、永久删除，以及把本地文件或 staged 对话附件上传到资源库。浏览、筛选和读取资源时配合 learning-resource 技能使用。',
+    'DSTU/VFS 学习资源组织写入能力组：创建和重命名文件夹、重命名或移动资源、软删除与回收站恢复、收藏、永久删除，以及把授权 runtime root 中的文件上传到资源库。浏览、筛选和读取资源时配合 learning-resource 技能使用。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 3,
@@ -63,7 +63,7 @@ export const dstuToolsSkill: SkillDefinition = {
 - \`builtin-dstu_list_trash\`：Low，只读列出回收站。
 - \`builtin-dstu_set_favorite\`：Low，收藏或取消收藏。
 - \`builtin-dstu_purge\`：High，永久删除且不可恢复。
-- \`builtin-dstu_upload_file\`：Medium，从本地路径或 staged runtime 文件上传。
+- \`builtin-dstu_upload_file\`：Medium，从会话授权的 runtime root 上传。
 
 ## 确认规则（必须遵守）
 
@@ -76,9 +76,9 @@ export const dstuToolsSkill: SkillDefinition = {
 
 ## 上传来源
 
-- 普通本地文件：传 \`local_path\`。
 - 对话附件：先加载 \`attachment-tools\`，调用 \`builtin-attachment_stage\`，再把其
   返回的 \`root_id\` 与 \`relative_path\` 原样传给 \`builtin-dstu_upload_file\`。
+- 其他本地文件必须先经安全后端映射为当前会话授权的 runtime root；不得传绝对路径。
 - \`folder_id\` 省略时上传到资源库默认文件夹；\`name\` / \`mime_type\` 省略时由
   源文件推断。成功返回资源 ID、DSTU path、名称、大小、MIME、目标文件夹和去重状态。
 `,
@@ -211,22 +211,18 @@ export const dstuToolsSkill: SkillDefinition = {
     {
       name: 'builtin-dstu_upload_file',
       description:
-        '把本地文件或 staged runtime 文件上传到资源库（Medium）。来源严格二选一：local_path，或 attachment_stage/workspace 返回的 root_id + relative_path；两种来源同时传或都不传会被拒绝。可指定 folder_id、name、mime_type。成功返回 success、action、node、source_id、resource_id、path、name、mime_type、size、folder_id、is_new 与 resource_hash。',
+        '把当前会话授权 runtime root 中的文件上传到资源库（Medium）。必须传 attachment_stage/workspace 或安全后端映射返回的 root_id + relative_path；不接受绝对本地路径。可指定 folder_id、name、mime_type。成功返回 success、action、node、source_id、resource_id、path、name、mime_type、size、folder_id、is_new 与 resource_hash。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          local_path: { type: 'string', minLength: 1, description: '本地文件绝对路径；与 root_id + relative_path 二选一' },
-          root_id: { type: 'string', minLength: 1, description: 'staged/workspace runtime root ID；必须与 relative_path 同时传入' },
+          root_id: { type: 'string', minLength: 1, description: '当前会话授权的 runtime root ID；必须与 relative_path 同时传入' },
           relative_path: { type: 'string', minLength: 1, description: 'root 内相对文件路径；必须与 root_id 同时传入，禁止绝对路径和 ..' },
           folder_id: { type: 'string', minLength: 1, description: '可选：资源库目标文件夹 ID；省略使用默认文件夹' },
           name: { type: 'string', minLength: 1, maxLength: 255, description: '可选：资源显示名称；省略时取源文件名' },
           mime_type: { type: 'string', minLength: 1, maxLength: 255, description: '可选：MIME 类型；省略时按扩展名推断' },
         },
-        oneOf: [
-          { type: 'object', required: ['local_path'] },
-          { type: 'object', required: ['root_id', 'relative_path'] },
-        ],
+        required: ['root_id', 'relative_path'],
       },
     },
   ],

@@ -27,7 +27,7 @@ import { getMemoryConfig } from '@/api/memoryApi';
 import { LearningHubSidebar } from './LearningHubSidebar';
 import type { ResourceListItem, ResourceType } from './types';
 import { cn } from '@/lib/utils';
-import { DotsSixVertical, SquaresFour, Gear, ArrowClockwise } from '@phosphor-icons/react';
+import { DotsSixVertical, SquaresFour, Gear, ArrowClockwise, ChatCircle } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useDesktopShellHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
@@ -56,7 +56,6 @@ import { DstuAppLauncher } from './components/DstuAppLauncher';
 import { type OpenTab, type SplitViewState, MAX_TABS, createTab } from './types/tabs';
 import { TabBar } from './components/TabBar';
 import { TabPanelContainer } from './apps/TabPanelContainer';
-import { setActiveTabForExternal } from './activeTabAccessor';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import { getCreatableFolderId } from './viewGuards';
 import {
@@ -391,6 +390,25 @@ export const LearningHubPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isLearningHubViewActive, switchTab]);
 
+  // Cmd/Ctrl+W：关闭当前 activeTab（仅 learning-hub 视图活跃时）
+  useEffect(() => {
+    if (!isLearningHubViewActive) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey)
+        || event.altKey
+        || event.shiftKey
+        || event.key.toLocaleLowerCase() !== 'w'
+      ) return;
+      event.preventDefault();
+      const currentId = activeTabIdRef.current;
+      if (!currentId) return;
+      closeTab(currentId);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isLearningHubViewActive, closeTab]);
+
   // ★ 关闭 tab 时自动清理分屏状态
   const closeTabWithSplit = useCallback((tabId: string) => {
     // 如果关闭的是右侧分屏 tab，先退出分屏
@@ -612,8 +630,25 @@ export const LearningHubPage: React.FC = () => {
       </NotionButton>
     ) : null;
 
+    const injectableTypes = ['note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap'];
+    const canShowInject = injectableTypes.includes(activeTab.type) && canInject();
+    const injectButton = canShowInject ? (
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        onClick={() => handleInjectToChatRef.current()}
+        disabled={isInjecting}
+        className="h-9 w-9"
+        aria-label={t('learningHub:contextMenu.referenceToChat')}
+        title={t('learningHub:contextMenu.referenceToChat')}
+      >
+        <ChatCircle size={20} />
+      </NotionButton>
+    ) : null;
+
     return (
       <>
+        {injectButton}
         <NotionButton
           variant="ghost"
           size="icon"
@@ -627,7 +662,7 @@ export const LearningHubPage: React.FC = () => {
         {settingsButton}
       </>
     );
-  }, [screenPosition, activeTab, isFinderRefreshing, refreshFinder, reloadActiveTab, t]);
+  }, [screenPosition, activeTab, isFinderRefreshing, refreshFinder, reloadActiveTab, canInject, isInjecting, t]);
 
   // 移动端统一顶栏配置 - 抽屉打开时保持顶栏可见，便于一次点击关闭（避免 hidden 后点击穿透叠层）
   useMobileHeader('learning-hub', {
@@ -1006,12 +1041,6 @@ export const LearningHubPage: React.FC = () => {
     true
   );
 
-  // ========== ★ 同步活跃标签页到全局访问器（供 CommandPalette 等使用） ==========
-  useEffect(() => {
-    setActiveTabForExternal(activeTab);
-    return () => setActiveTabForExternal(null);
-  }, [activeTab]);
-
   // ========== 添加到对话（引用模式） ==========
   const handleInjectToChat = useCallback(async () => {
     if (!activeTab) return;
@@ -1154,7 +1183,7 @@ export const LearningHubPage: React.FC = () => {
                     onCloseOthers={closeOtherTabs}
                     onCloseRight={closeTabsToRight}
                   />
-                  <div className="flex-1 overflow-hidden">
+                  <div className="flex-1 min-h-0 overflow-hidden">
                     <TabPanelContainer
                       tabs={tabs}
                       activeTabId={activeTabId}
@@ -1185,6 +1214,9 @@ export const LearningHubPage: React.FC = () => {
           >
             <LearningHubSidebar
               mode="fullscreen"
+              hostId="page-mobile"
+              sessionActive={isLearningHubViewActive && screenPosition === 'center'}
+              commandsEnabled={isLearningHubViewActive && screenPosition === 'center'}
               onOpenPreview={handleOpenApp}
               onOpenApp={handleOpenApp}
               className="h-full overflow-hidden"
@@ -1218,6 +1250,9 @@ export const LearningHubPage: React.FC = () => {
           <div className={cn("study-shell-pane h-full", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
+              hostId="page"
+              sessionActive={isLearningHubViewActive}
+              commandsEnabled={isLearningHubViewActive}
               onOpenPreview={handleOpenApp}
               onOpenApp={handleOpenApp}
               className="w-full h-full"
@@ -1267,7 +1302,7 @@ export const LearningHubPage: React.FC = () => {
                 onCloseOthers={closeOtherTabs}
                 onCloseRight={closeTabsToRight}
               />
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <TabPanelContainer
                   tabs={tabs}
                   activeTabId={activeTabId}

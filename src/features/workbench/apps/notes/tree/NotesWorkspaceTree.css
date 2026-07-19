@@ -51,7 +51,7 @@
   align-items: center;
   gap: 5px;
   border: 0;
-  border-radius: var(--shell-nav-row-radius, 14px);
+  border-radius: var(--notes-radius-row, 6px);
   color: hsl(var(--foreground));
   background: transparent;
   font: inherit;
@@ -62,6 +62,30 @@
   user-select: none;
   box-sizing: border-box;
   transition: background-color var(--notes-hover-transition);
+}
+
+.nwt-link-drag {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--notes-radius-row, 6px);
+  color: hsl(var(--muted-foreground));
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--notes-motion-hover, 120ms) ease, background-color var(--notes-motion-hover, 120ms) ease;
+}
+
+.nwt-row:hover .nwt-link-drag,
+.nwt-row:focus-within .nwt-link-drag {
+  opacity: 1;
+}
+
+.nwt-link-drag:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
 }
 
 .nwt-row:hover {
@@ -294,4 +318,34 @@
   .nwt-context-menu {
     animation: none;
   }
+}
+.nwt-row-more,
+.nwt-link-drag {
+  opacity: 0;
+  flex: 0 0 auto;
+}
+
+.nwt-row:hover .nwt-row-more,
+.nwt-row:hover .nwt-link-drag,
+.nwt-row:focus-within .nwt-row-more,
+.nwt-row:focus-within .nwt-link-drag {
+  opacity: 1;
+}
+
+.nwt-row-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--notes-radius-row, 5px);
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.nwt-row-more:hover {
+  background: var(--interactive-hover);
+  color: var(--foreground);
 }

@@ -27,6 +27,9 @@ import {
   toRenderableReviewCard,
 } from '../reviewCardEditFields';
 import {
+  formatInterval,
+  isReviewSessionDone,
+  isReviewSessionEmpty,
   useFsrsReviewStore,
   type FsrsRating,
   type ReviewCard,
@@ -71,6 +74,7 @@ const ReviewCardSurface: React.FC<{
   onFlip: () => void;
   frontLabel: string;
   backLabel: string;
+  flipAriaLabel: string;
   noFrontText: string;
   noBackText: string;
 }> = ({
@@ -82,6 +86,7 @@ const ReviewCardSurface: React.FC<{
   onFlip,
   frontLabel,
   backLabel,
+  flipAriaLabel,
   noFrontText,
   noBackText,
 }) => {
@@ -100,7 +105,7 @@ const ReviewCardSurface: React.FC<{
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled}
       aria-busy={templateLoading}
-      aria-label={flipped ? frontLabel : backLabel}
+      aria-label={flipAriaLabel}
       onClick={disabled ? undefined : onFlip}
       className={cn(
         'relative flex min-h-[16rem] min-w-0 flex-1 cursor-pointer flex-col overflow-auto rounded-lg border border-border/70',
@@ -162,6 +167,10 @@ export const ReviewSessionScreen: React.FC = () => {
   const lastReview = useFsrsReviewStore((state) => state.lastReview);
   const lastSuspended = useFsrsReviewStore((state) => state.lastSuspended);
   const retryBatchRequest = useFsrsReviewStore((state) => state.retryBatchRequest);
+  const sessionRatedCount = useFsrsReviewStore((state) => state.sessionRatedCount);
+  const sessionAgainCount = useFsrsReviewStore((state) => state.sessionAgainCount);
+  const remainingDueAfterSession = useFsrsReviewStore((state) => state.remainingDueAfterSession);
+  const ratingPreviews = useFsrsReviewStore((state) => state.ratingPreviews);
   const current = queue[queueIndex];
   const { template, loading: templateLoading } = useAnkiTemplateLoader(current?.templateId);
   const flip = useFsrsReviewStore((state) => state.flip);
@@ -178,13 +187,17 @@ export const ReviewSessionScreen: React.FC = () => {
   const editedCardIdentityRef = React.useRef<string | null>(null);
 
   const progress = queue.length > 0 ? Math.min(queueIndex + 1, queue.length) : 0;
-  const sessionDone = !loading && queue.length > 0 && queueIndex >= queue.length;
+  const sessionDone = isReviewSessionDone({ queue, queueIndex, loading });
+  const sessionEmpty = isReviewSessionEmpty({ queue, loading });
   const draftIsCloze = Boolean(current && isClozeReviewCard(current, template));
   const draftIsValid = Boolean(
     current
     && draftFront.trim()
     && (draftIsCloze ? hasValidCloze(draftFront) : draftBack.trim()),
   );
+  const flipAriaLabel = flipped
+    ? t('session.showFront')
+    : t('session.showBack');
 
   React.useEffect(() => {
     const cardIdentity = current ? `${current.id}:${current.ankiCardId ?? ''}` : null;
@@ -207,22 +220,32 @@ export const ReviewSessionScreen: React.FC = () => {
     if (event.isComposing || event.keyCode === 229 || event.repeat) return;
     if (isEditableTarget(event.target)) return;
     if (event.metaKey || event.ctrlKey || event.altKey || ratingBusy) return;
+    if (editing) return;
 
     if ((event.key.toLowerCase() === 'z' || event.code === 'KeyZ') && lastReview) {
       event.preventDefault();
       void undoLastReview();
       return;
     }
-    if (loading || !current || sessionDone || editing) return;
+    if (loading || !current || sessionDone) return;
 
     if (event.code === 'Space' || event.key === ' ') {
       event.preventDefault();
-      flip();
+      if (!flipped) {
+        flip();
+      } else {
+        void rate(3);
+      }
       return;
     }
     if (!flipped && event.key === 'Enter') {
       event.preventDefault();
       flip();
+      return;
+    }
+    if (flipped && event.key === 'Enter') {
+      event.preventDefault();
+      void rate(3);
       return;
     }
     if (flipped) {
@@ -293,10 +316,28 @@ export const ReviewSessionScreen: React.FC = () => {
     );
   }
 
-  if (!current || sessionDone) {
+  if (sessionEmpty || !current || sessionDone) {
+    const stillDue = (remainingDueAfterSession ?? 0) > 0;
+    const headline = sessionEmpty
+      ? t('session.emptyQueue')
+      : stillDue
+        ? t('session.batchDoneRemaining', { count: remainingDueAfterSession })
+        : t('session.done');
+
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <p className="text-sm text-muted-foreground">{t('session.done')}</p>
+        <p className="text-sm text-muted-foreground">{headline}</p>
+        {!sessionEmpty && sessionRatedCount > 0 ? (
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>{t('session.summaryRated', { count: sessionRatedCount })}</p>
+            {sessionAgainCount > 0 ? (
+              <p>{t('session.again')}: {sessionAgainCount}</p>
+            ) : null}
+            {stillDue ? (
+              <p>{t('session.stillDue', { count: remainingDueAfterSession })}</p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex items-center gap-2">
           {lastReview ? (
             <NotionButton
@@ -451,25 +492,37 @@ export const ReviewSessionScreen: React.FC = () => {
           onFlip={flip}
           frontLabel={t('session.front')}
           backLabel={t('session.back')}
+          flipAriaLabel={flipAriaLabel}
           noFrontText={t('card.untitled')}
           noBackText={t('card.noBack')}
         />
       )}
 
       <div className="grid grid-cols-4 gap-2">
-        {RATINGS.map((rating) => (
-          <NotionButton
-            key={rating.value}
-            type="button"
-            variant="default"
-            disabled={!flipped || ratingBusy || editing}
-            onClick={() => void rate(rating.value)}
-            className={cn('h-11 min-w-0 px-1 text-xs', rating.tone)}
-            title={`${rating.value}`}
-          >
-            {t(rating.labelKey)}
-          </NotionButton>
-        ))}
+        {RATINGS.map((rating) => {
+          const preview = ratingPreviews?.[rating.value];
+          const intervalLabel = preview
+            ? formatInterval(preview.intervalMs)
+            : null;
+          return (
+            <NotionButton
+              key={rating.value}
+              type="button"
+              variant="default"
+              disabled={!flipped || ratingBusy || editing}
+              onClick={() => void rate(rating.value)}
+              className={cn('h-auto min-h-11 min-w-0 flex-col gap-0.5 px-1 py-1.5 text-xs', rating.tone)}
+              title={`${rating.value}${intervalLabel ? ` · ${intervalLabel}` : ''}`}
+            >
+              <span>{t(rating.labelKey)}</span>
+              {intervalLabel ? (
+                <span className="text-[10px] font-normal opacity-70">
+                  {t('session.intervalHint', { interval: intervalLabel })}
+                </span>
+              ) : null}
+            </NotionButton>
+          );
+        })}
       </div>
       {error ? (
         <div role="alert" className="flex items-start justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">

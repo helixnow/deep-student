@@ -11,6 +11,8 @@ export interface WikiLink {
   raw: string;
   /** The trimmed note ID or note title used as the link target. */
   target: string;
+  /** Optional in-note heading from a `Note#Heading` destination. */
+  heading?: string;
   /** The optional, trimmed display label after the first `|`. */
   label: string | undefined;
   /** Zero-based, inclusive character offset in the source markdown. */
@@ -86,6 +88,7 @@ interface OpenFence {
 }
 
 const WIKI_LINK_PATTERN = /\[\[([^\]\r\n]+?)\]\]/g;
+const NOTE_MENTION_PATTERN = /\[([^\]\r\n]+)\]\(note:\/\/([^\s)]+)(?:[?#][^\s)]*)?\)/g;
 
 const compareIds = (left: string, right: string): number => {
   if (left < right) return -1;
@@ -176,12 +179,16 @@ export function parseWikiLinks(markdown: string): WikiLink[] {
 
     const source = match[1];
     const separator = source.indexOf('|');
-    const target = (separator === -1 ? source : source.slice(0, separator)).trim();
+    const destination = (separator === -1 ? source : source.slice(0, separator)).trim();
+    const headingSeparator = destination.indexOf('#');
+    const target = (headingSeparator < 0 ? destination : destination.slice(0, headingSeparator)).trim();
+    const heading = headingSeparator < 0 ? '' : destination.slice(headingSeparator + 1).trim();
     if (!target) continue;
 
     links.push({
       raw: match[0],
       target,
+      ...(heading ? { heading } : {}),
       label: separator === -1 ? undefined : source.slice(separator + 1).trim(),
       start,
       end: start + match[0].length,
@@ -189,6 +196,46 @@ export function parseWikiLinks(markdown: string): WikiLink[] {
   }
 
   return links;
+}
+
+/**
+ * Parse the Markdown representation produced by the `@` note mention menu.
+ * Returning the same shape as wiki links keeps backlinks and snippets on one
+ * product-level link index even though the editor uses a regular link mark.
+ */
+export function parseNoteMentions(markdown: string): WikiLink[] {
+  const links: WikiLink[] = [];
+  const fencedRanges = fencedCodeRanges(markdown);
+  let rangeIndex = 0;
+
+  NOTE_MENTION_PATTERN.lastIndex = 0;
+  for (let match = NOTE_MENTION_PATTERN.exec(markdown); match; match = NOTE_MENTION_PATTERN.exec(markdown)) {
+    const start = match.index;
+    while (rangeIndex < fencedRanges.length && fencedRanges[rangeIndex].end <= start) rangeIndex += 1;
+    if (
+      isEscaped(markdown, start)
+      || (rangeIndex < fencedRanges.length
+        && start >= fencedRanges[rangeIndex].start
+        && start < fencedRanges[rangeIndex].end)
+    ) continue;
+
+    const target = match[2]?.trim();
+    if (!target) continue;
+    links.push({
+      raw: match[0],
+      target,
+      label: match[1]?.trim() || undefined,
+      start,
+      end: start + match[0].length,
+    });
+  }
+  return links;
+}
+
+/** All first-class note references, ordered by their source position. */
+export function parseNoteLinks(markdown: string): WikiLink[] {
+  return [...parseWikiLinks(markdown), ...parseNoteMentions(markdown)]
+    .sort((left, right) => left.start - right.start);
 }
 
 /**
@@ -252,7 +299,7 @@ export function resolveWikiLinks(
   notes: Iterable<WikiLinkNoteReference>
 ): ResolvedWikiLink[] {
   const index = createWikiLinkIndex(notes);
-  return parseWikiLinks(markdown).map((link) => ({
+  return parseNoteLinks(markdown).map((link) => ({
     ...link,
     resolution: index.resolve(link.target),
   }));
@@ -294,7 +341,7 @@ export function getWikiLinkRelationships(noteContents: WikiLinkNoteContentMap): 
   }
 
   for (const note of notes) {
-    for (const link of parseWikiLinks(note.content)) {
+    for (const link of parseNoteLinks(note.content)) {
       const resolution = index.resolve(link.target);
       if (!resolution.noteId) {
         unresolved.push({ sourceId: note.id, link, resolution });

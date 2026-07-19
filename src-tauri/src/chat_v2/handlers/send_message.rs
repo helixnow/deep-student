@@ -1482,7 +1482,14 @@ fn filter_path_map_for_send_refs(
     let mut filtered = path_map.clone();
     let keep: std::collections::HashSet<&str> =
         refs.iter().map(|r| r.resource_id.as_str()).collect();
-    filtered.retain(|resource_id, _| keep.contains(resource_id.as_str()));
+    const STAGED_PREFIX: &str = "__staged_attachment__:";
+    filtered.retain(|key, _| {
+        keep.contains(key.as_str())
+            || key.strip_prefix(STAGED_PREFIX).is_some_and(|suffix| {
+                keep.iter()
+                    .any(|resource_id| suffix.starts_with(&format!("{}:", resource_id)))
+            })
+    });
 
     if filtered.is_empty() {
         None
@@ -1574,7 +1581,7 @@ fn restore_context_refs_from_snapshot(
             // ★ 2025-12-10：使用统一的 vfs_resolver 模块
             use crate::chat_v2::vfs_resolver::resolve_context_ref_data_to_blocks;
 
-            let formatted_blocks = if let Ok(mut ref_data) =
+            let mut formatted_blocks = if let Ok(mut ref_data) =
                 serde_json::from_str::<VfsContextRefData>(&data_str)
             {
                 // ★ 2026-02 修复：从 ContextRef 恢复用户选择的 inject_modes
@@ -1622,6 +1629,23 @@ fn restore_context_refs_from_snapshot(
                     text: format!("[旧版上下文引用已忽略: {}]", display_name),
                 }]
             };
+
+            let staged_prefix = format!("__staged_attachment__:{}:", context_ref.resource_id);
+            let staged_metadata: Vec<serde_json::Value> = context_snapshot
+                .path_map
+                .iter()
+                .filter(|(key, _)| key.starts_with(&staged_prefix))
+                .filter_map(|(_, value)| serde_json::from_str(value).ok())
+                .collect();
+            if !staged_metadata.is_empty() {
+                formatted_blocks.push(ContentBlock::Text {
+                    text: format!(
+                        "<attachment_metadata>{}</attachment_metadata>",
+                        serde_json::to_string(&staged_metadata)
+                            .unwrap_or_else(|_| "[]".to_string())
+                    ),
+                });
+            }
 
             // ★ 2026-02 修复：在 SendContextRef 中保留 inject_modes
             result.push(SendContextRef {

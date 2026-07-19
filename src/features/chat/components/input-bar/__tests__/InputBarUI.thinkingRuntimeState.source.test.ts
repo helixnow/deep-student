@@ -77,11 +77,11 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(leftStart).toBeGreaterThan(-1);
     expect(rightStart).toBeGreaterThan(leftStart);
     expect(panelStart).toBeGreaterThan(rightStart);
-    expect(leftToolbar).toContain('data-testid="btn-toggle-attachments"');
+    expect(leftToolbar).toContain('<ComposerPlusMenu');
     expect(leftToolbar).not.toContain('data-testid="btn-toggle-model"');
     expect(leftToolbar).not.toContain('data-testid="thinking-runtime-control"');
     expect(rightToolbar).toContain('data-testid="thinking-runtime-control"');
-    expect(rightToolbar).not.toContain('data-testid="btn-toggle-attachments"');
+    expect(rightToolbar).not.toContain('<ComposerPlusMenu');
     expect(rightToolbar.indexOf('data-testid="thinking-runtime-control"')).toBeLessThan(
       rightToolbar.indexOf('data-testid="btn-send"')
     );
@@ -184,13 +184,17 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('uses a plus icon for the attachment toggle button', () => {
-    const buttonStart = inputBarSource.indexOf('data-testid="btn-toggle-attachments"');
-    const buttonEnd = inputBarSource.indexOf('</NotionButton>', buttonStart);
-    const attachmentButton = inputBarSource.slice(buttonStart, buttonEnd);
+    const plusMenuSource = readFileSync(
+      resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPlusMenu.tsx'),
+      'utf-8'
+    );
+    const buttonStart = plusMenuSource.indexOf('data-testid="btn-toggle-attachments"');
+    const buttonEnd = plusMenuSource.indexOf('</NotionButton>', buttonStart);
+    const attachmentButton = plusMenuSource.slice(buttonStart, buttonEnd);
 
     expect(buttonStart).toBeGreaterThan(-1);
     expect(buttonEnd).toBeGreaterThan(buttonStart);
-    expect(attachmentButton).toContain('<Plus size={18} weight="bold" />');
+    expect(attachmentButton).toContain('<Plus size={18} weight="bold"');
     expect(attachmentButton).not.toContain('<Paperclip size={18} />');
     expect(attachmentButton).not.toContain('attachmentBadgeLabel');
     expect(attachmentButton).not.toContain('rounded-full border bg-primary');

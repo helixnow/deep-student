@@ -14,8 +14,9 @@ import { MindMapErrorBoundary } from './MindMapErrorBoundary';
 import { dstu } from '@/dstu';
 import { StyleRegistry } from './registry';
 import { exportToOpml, exportToMarkdown, exportToJson, exportToImage } from './utils/exporters';
-import { importMindMap } from './utils/importers';
+import { importFromXMind, importMindMap } from './utils/importers';
 import { fileManager } from '@/utils/fileManager';
+import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -40,8 +41,11 @@ import {
   ArrowClockwise as RefreshIcon,
   Gear,
   BookOpen,
+  EyeSlash,
   ArrowsInLineVertical,
   ArrowsOutLineVertical,
+  Presentation,
+  ShareNetwork,
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import { useTranslation } from 'react-i18next';
@@ -61,6 +65,16 @@ import { ReciteStatusBar } from './components/shared/ReciteStatusBar';
 import { Progress } from '@/components/ui/shad/Progress';
 import { useMindMapClipboard } from './hooks/useMindMapClipboard';
 import { useCanvasDragMode } from './hooks/useCanvasDragMode';
+import {
+  captureOutlineResumePoint,
+  prepareOutlineResume,
+  type OutlineResumePoint,
+} from './utils/viewContinuity';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import {
+  setMindMapPreferences,
+  useMindMapPreferences,
+} from './utils/mindmapPreferences';
 import './styles/mindmap.css';
 
 /** 挂在 ActiveContext Provider 内，使大纲/画布共用剪贴板快捷键且受 isActive 门控 */
@@ -97,6 +111,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
 }) => {
   const { t } = useTranslation(['mindmap', 'common']);
   const storeApi = useMindMapStoreApi();
+  const mindMapPreferences = useMindMapPreferences();
   
   // 从新 store 获取状态
   const currentView = useMindMapStore(state => state.currentView);
@@ -159,6 +174,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
   // A6-16: 导入未保存确认改为声明式 NotionAlertDialog（替换 window.confirm）
   const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [presentationMode, setPresentationMode] = useState(false);
+  const [associationModeRequest, setAssociationModeRequest] = useState(0);
 
   useEffect(() => {
     if (!isActive || !focusOnActive) return;
@@ -185,6 +202,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   const setViewViewport = useMindMapStore(state => state.setViewViewport);
   const outlineScrollRestore = useMindMapStore(state => state.viewports.outline?.scrollTop ?? null);
   const mindMapViewportRestore = useMindMapStore(state => state.viewports.mindmap ?? null);
+  const outlineResumeRef = useRef<OutlineResumePoint | null>(null);
 
   const switchView = useCallback(
     (next: 'outline' | 'mindmap') => {
@@ -194,6 +212,9 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
       // 切换前显式提交正在编辑的文本：卸载 textarea 不会触发 React onBlur，
       // 依赖 blur 同步派发 commit，避免快速切换丢失未提交字符。
       const active = window.document.activeElement;
+      if (prev === 'outline') {
+        outlineResumeRef.current = captureOutlineResumePoint(active);
+      }
       if (
         active instanceof HTMLElement &&
         (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || active.isContentEditable)
@@ -217,8 +238,28 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
       }
 
       setCurrentView(next);
+      if (next === 'outline') {
+        const resume = outlineResumeRef.current;
+        const targetId = prepareOutlineResume(state.focusedNodeId, resume);
+        if (targetId) {
+          window.requestAnimationFrame(() => {
+            storeApi.getState().setFocusedNodeId(targetId);
+            outlineViewRef.current?.scrollFocusedIntoView();
+          });
+        }
+      }
     },
     [setCurrentView, setViewViewport, storeApi],
+  );
+
+  const handleToggleViewCommand = useCallback(() => {
+    if (isActive === false) return;
+    const next = storeApi.getState().currentView === 'outline' ? 'mindmap' : 'outline';
+    switchView(next);
+  }, [isActive, storeApi, switchView]);
+  useEventRegistry(
+    [{ target: 'window', type: 'mindmap:toggle-view', listener: handleToggleViewCommand }],
+    [handleToggleViewCommand],
   );
 
   // 移动端浮层/子屏打开时注册 Android 返回键：返回 = 关闭当前层
@@ -466,14 +507,15 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
       const filePath = await fileManager.pickSingleFile({
         title: t('mindmap:import.dialogTitle'),
         filters: [
-          { name: t('mindmap:import.filterName'), extensions: ['opml', 'md', 'markdown', 'json'] },
+          { name: t('mindmap:import.filterName'), extensions: ['xmind', 'opml', 'md', 'markdown', 'json'] },
         ],
       });
 
       if (!filePath) return;
 
-      const content = await fileManager.readTextFile(filePath);
-      const imported = importMindMap(content, 'auto');
+      const imported = filePath.toLowerCase().endsWith('.xmind')
+        ? await importFromXMind(await TauriAPI.readFileAsBytes(filePath))
+        : importMindMap(await fileManager.readTextFile(filePath), 'auto');
       setDocument(imported);
       setFocusedNodeId(imported.root.id);
       showGlobalNotification('success', t('mindmap:import.success'));
@@ -501,12 +543,36 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     save();
   }, [save]);
 
+  const handleStartAssociation = useCallback(() => {
+    const state = storeApi.getState();
+    if (!state.focusedNodeId && state.selection.length === 0) {
+      showGlobalNotification('warning', t('mindmap:association.selectSource'));
+      return;
+    }
+    switchView('mindmap');
+    setAssociationModeRequest((request) => request + 1);
+  }, [storeApi, switchView, t]);
+
+  const handleEnterPresentation = useCallback(() => {
+    switchView('mindmap');
+    setShowSearch(false);
+    setActivePanel(null);
+    setPresentationMode(true);
+  }, [switchView]);
+
   // 键盘快捷键
   // ★ 标签页：仅活跃标签页响应快捷键，防止多个 MindMap 标签页同时处理同一按键
   // ★ capture：Esc 关搜索须在 document 冒泡的 useMindMapKeyboard 之前执行，否则会被 stopPropagation 吞掉
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isActive === false) return;
+
+      if (e.key === 'Escape' && presentationMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPresentationMode(false);
+        return;
+      }
 
       const isMod = e.ctrlKey || e.metaKey;
       const target = e.target as HTMLElement;
@@ -523,7 +589,15 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
         return;
       }
 
-      // 画布视图下 undo/redo/save 由 useMindMapKeyboard hook 处理，避免重复触发
+      // Save belongs to the shared document layer, including while an outline
+      // textarea owns focus. Always suppress the browser Save Page shortcut.
+      if (currentView !== 'mindmap' && isMod && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (isDirty && !isSaving) save();
+        return;
+      }
+
+      // 画布视图下 undo/redo 由 useMindMapKeyboard hook 处理，避免重复触发
       if (currentView !== 'mindmap' && !isTextInputContext) {
         if (isMod && e.key === 'z' && !e.shiftKey) {
           e.preventDefault();
@@ -532,10 +606,6 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
         if (isMod && (e.key === 'Z' || e.key === 'y')) {
           e.preventDefault();
           if (canRedo()) redo();
-        }
-        if (isMod && e.key === 's') {
-          e.preventDefault();
-          if (isDirty && !isSaving) save();
         }
       }
 
@@ -547,7 +617,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive]);
+  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive, presentationMode]);
 
   // M-069: 组件卸载时同步保存草稿到 localStorage，防止异步 save 未完成导致数据丢失
   // loadMindMap 时会自动检查并恢复本地草稿
@@ -608,7 +678,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     {/* isActive 下发到画布内的全局键盘/剪贴板监听器，非活跃保活实例忽略按键 */}
     <MindMapActiveContext.Provider value={activeContextValue}>
     <MindMapClipboardEffects />
-    <div ref={containerRef} tabIndex={-1} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", className)}>
+    <div ref={containerRef} tabIndex={-1} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", presentationMode && "is-presentation", className)}>
       {/* Compact workbench toolbar: primary commands stay visible, secondary commands live in More. */}
       <div className="mm-toolbar">
         {/* Left: View Switcher & Undo/Redo */}
@@ -690,16 +760,28 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
             }
           />
 
-          {/* Desktop: Recite Mode Toggle */}
-          <NotionButton variant="ghost"
-            className={cn("mm-toolbar-button hidden sm:flex", reciteMode && "is-active")}
-            onClick={() => setReciteMode(!reciteMode)}
-            title={t('mindmap:recite.enter')}
-            aria-label={t('mindmap:recite.enter')}
-            aria-pressed={reciteMode}
-          >
-            <BookOpen size={16} />
-          </NotionButton>
+          {/* Learning controls stay visible: they are a first-class mind-map workflow. */}
+          <div className="mm-learning-group hidden sm:flex" role="group" aria-label={t('mindmap:toolbar.learning')}>
+            <span className="mm-learning-label">{t('mindmap:toolbar.learning')}</span>
+            <NotionButton variant="ghost"
+              className={cn("mm-learning-button", reciteMode && "is-active")}
+              onClick={() => setReciteMode(!reciteMode)}
+              title={reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.enter')}
+              aria-pressed={reciteMode}
+            >
+              <BookOpen size={15} />
+              {reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.title')}
+            </NotionButton>
+            <NotionButton variant="ghost"
+              className={cn("mm-learning-button", hideCompleted && "is-active")}
+              onClick={() => setHideCompleted(!hideCompleted)}
+              title={t('mindmap:toolbar.hideCompleted')}
+              aria-pressed={hideCompleted}
+            >
+              <EyeSlash size={15} />
+              {t('mindmap:toolbar.hideCompleted')}
+            </NotionButton>
+          </div>
 
           {/* Desktop: Search Toggle */}
           <NotionButton variant="ghost" 
@@ -735,6 +817,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               <AppMenuItem onClick={() => collapseToDepth(1)}>{t('mindmap:toolbar.collapseToLevel', { level: 1 })}</AppMenuItem>
               <AppMenuItem onClick={() => collapseToDepth(2)}>{t('mindmap:toolbar.collapseToLevel', { level: 2 })}</AppMenuItem>
               <AppMenuSeparator />
+              <AppMenuItem icon={<Presentation size={16} />} onClick={handleEnterPresentation}>
+                {t('mindmap:presentation.enter')}
+              </AppMenuItem>
+              <AppMenuItem icon={<ShareNetwork size={16} />} onClick={handleStartAssociation}>
+                {t('mindmap:association.add')}
+              </AppMenuItem>
+              <AppMenuSeparator />
               <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>{t('mindmap:import.title')}</AppMenuItem>
               <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('markdown')}>{t('mindmap:export.exportMarkdown')}</AppMenuItem>
               <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('opml')}>{t('mindmap:export.exportOpml')}</AppMenuItem>
@@ -747,6 +836,24 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
                 onCheckedChange={setHideCompleted}
               >
                 {t('mindmap:toolbar.hideCompleted')}
+              </AppMenuCheckboxItem>
+              <AppMenuCheckboxItem
+                checked={mindMapPreferences.keymap === 'mubu'}
+                onCheckedChange={(checked) => setMindMapPreferences({ keymap: checked ? 'mubu' : 'deep-student' })}
+              >
+                {t('mindmap:preferences.mubuKeymap')}
+              </AppMenuCheckboxItem>
+              <AppMenuCheckboxItem
+                checked={mindMapPreferences.canvasNavigation === 'spatial'}
+                onCheckedChange={(checked) => setMindMapPreferences({ canvasNavigation: checked ? 'spatial' : 'document' })}
+              >
+                {t('mindmap:preferences.spatialNavigation')}
+              </AppMenuCheckboxItem>
+              <AppMenuCheckboxItem
+                checked={mindMapPreferences.descriptionPreview === 'first-line'}
+                onCheckedChange={(checked) => setMindMapPreferences({ descriptionPreview: checked ? 'first-line' : 'full' })}
+              >
+                {t('mindmap:preferences.descriptionFirstLine')}
               </AppMenuCheckboxItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<Keyboard size={16} />} onClick={() => setShowShortcutHelp(true)}>
@@ -797,6 +904,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               </AppMenuItem>
               <AppMenuItem onClick={() => collapseToDepth(3)}>
                 {t('mindmap:toolbar.collapseToLevel', { level: 3 })}
+              </AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuItem icon={<Presentation size={16} />} onClick={handleEnterPresentation}>
+                {t('mindmap:presentation.enter')}
+              </AppMenuItem>
+              <AppMenuItem icon={<ShareNetwork size={16} />} onClick={handleStartAssociation}>
+                {t('mindmap:association.add')}
               </AppMenuItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>
@@ -977,12 +1091,27 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
           <OutlineView
             ref={outlineViewRef}
             initialScrollTop={outlineScrollRestore}
+            keymap={mindMapPreferences.keymap}
+            descriptionPreview={mindMapPreferences.descriptionPreview}
           />
         ) : (
           <MindMapView
             ref={mindMapViewRef}
             initialViewport={mindMapViewportRestore}
+            associationModeRequest={associationModeRequest}
           />
+        )}
+
+        {presentationMode && (
+          <NotionButton
+            variant="ghost"
+            className="mm-presentation-exit"
+            onClick={() => setPresentationMode(false)}
+            aria-label={t('mindmap:presentation.exit')}
+            title={t('mindmap:presentation.exitHint')}
+          >
+            <X size={18} />
+          </NotionButton>
         )}
 
         {showShortcutHelp && (() => {
@@ -1018,6 +1147,11 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
                 </NotionButton>
               </div>
               <div className="p-4 text-sm text-[var(--mm-text-secondary)] space-y-4 overflow-y-auto">
+                <div className="rounded border border-[var(--mm-border)] bg-[var(--mm-bg-hover)] px-3 py-2 text-xs">
+                  {mindMapPreferences.keymap === 'mubu'
+                    ? t('mindmap:preferences.mubuKeymapActive')
+                    : t('mindmap:preferences.deepStudentKeymapActive')}
+                </div>
                 <Group title={t('mindmap:shortcuts.groupGeneral')}>
                   <Row keys={['⌘/Ctrl + Z']} label={t('mindmap:shortcuts.undo')} />
                   <Row keys={['⌘/Ctrl + ⇧ + Z', '⌘/Ctrl + Y']} label={t('mindmap:shortcuts.redo')} />
@@ -1026,16 +1160,17 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
                   <Row keys={['Esc']} label={t('mindmap:shortcuts.escape')} />
                 </Group>
                 <Group title={t('mindmap:shortcuts.groupCanvas')}>
-                  <Row keys={['Tab', '⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
+                  <Row keys={mindMapPreferences.keymap === 'mubu' ? ['Tab', '⌘/Ctrl + ⇧ + Enter'] : ['Tab', '⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
                   <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
                   <Row keys={['Enter (edit)']} label={t('mindmap:shortcuts.continuousCreate')} />
                   <Row keys={['F2', 'Space']} label={t('mindmap:shortcuts.editNode')} />
                   <Row keys={['⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
                   <Row keys={['↑ ↓ ← →']} label={t('mindmap:shortcuts.navigate')} />
                   <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
-                  <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  <Row keys={['Alt + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  {mindMapPreferences.keymap === 'mubu' && <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.zoomInOut')} />}
                   <Row
-                    keys={['⌘/Ctrl + ⇧ + [/]']}
+                    keys={[mindMapPreferences.keymap === 'mubu' ? 'Alt + ⇧ + [/]' : '⌘/Ctrl + ⇧ + [/]']}
                     label={t('mindmap:shortcuts.collapseExpandAll', { defaultValue: '全部折叠 / 全部展开' })}
                   />
                   <Row
@@ -1066,18 +1201,19 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
                 <Group title={t('mindmap:shortcuts.groupOutline')}>
                   <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
                   <Row keys={['Enter / ⌫']} label={t('mindmap:shortcuts.splitMerge')} />
-                  <Row keys={['⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
+                  <Row keys={mindMapPreferences.keymap === 'mubu' ? ['⌘/Ctrl + ⇧ + Enter'] : ['⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
                   <Row keys={['Tab / ⇧ + Tab']} label={t('mindmap:shortcuts.indentOutdent')} />
                   <Row keys={['⇧ + Click', '⌘/Ctrl + Click']} label={t('mindmap:shortcuts.multiSelect')} />
                   <Row keys={['Tab / Del (multi)']} label={t('mindmap:shortcuts.batchOps')} />
                   <Row keys={['↑ ↓']} label={t('mindmap:shortcuts.navigate')} />
                   <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
-                  <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  <Row keys={['Alt + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  {mindMapPreferences.keymap === 'mubu' && <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.zoomInOut')} />}
                   <Row
-                    keys={['⌘/Ctrl + ⇧ + [/]']}
+                    keys={[mindMapPreferences.keymap === 'mubu' ? 'Alt + ⇧ + [/]' : '⌘/Ctrl + ⇧ + [/]']}
                     label={t('mindmap:shortcuts.collapseExpandAll', { defaultValue: '全部折叠 / 全部展开' })}
                   />
-                  <Row keys={['⌘/Ctrl + ⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
+                  <Row keys={mindMapPreferences.keymap === 'mubu' ? ['⇧ + Enter'] : ['⌘/Ctrl + ⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
                   <Row keys={['⌘/Ctrl + C/X/V']} label={t('mindmap:shortcuts.clipboard')} />
                 </Group>
               </div>

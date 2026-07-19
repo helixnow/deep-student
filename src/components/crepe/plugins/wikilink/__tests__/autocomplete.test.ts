@@ -4,7 +4,7 @@ import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { getMarkdown } from '@milkdown/kit/utils';
 import type { EditorView } from '@milkdown/prose/view';
 
-import { detectWikilinkTrigger, buildAutocompleteItems } from '../autocomplete';
+import { detectWikilinkTrigger, buildAutocompleteItems, insertWikilink } from '../autocomplete';
 import { fuzzyMatchNotes } from '../fuzzy';
 import { wikilinkPlugin } from '../index';
 import { WIKILINK_NODE_NAME } from '../schema';
@@ -86,6 +86,37 @@ async function typeInEmptyEditor(text: string): Promise<string> {
 }
 
 describe('wikilink InputRule via handleTextInput', () => {
+  it('inserts a schema wikilink atom for drag-and-drop callers', async () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const editor = await Editor.make()
+      .config((ctx) => {
+        ctx.set(rootCtx, root);
+        ctx.set(defaultValueCtx, '');
+      })
+      .use(commonmark)
+      .use(wikilinkPlugin())
+      .create();
+
+    try {
+      const found = editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        insertWikilink(view, view.state.selection.from, view.state.selection.to, 'Dragged Note');
+        let wikilinkFound = false;
+        view.state.doc.descendants((node) => {
+          if (node.type.name === WIKILINK_NODE_NAME && node.attrs.target === 'Dragged Note') {
+            wikilinkFound = true;
+          }
+        });
+        return wikilinkFound;
+      });
+      expect(found).toBe(true);
+    } finally {
+      await editor.destroy();
+      root.remove();
+    }
+  });
+
   it('turns [[InputRuleNote]] into a wikilink atom', async () => {
     const markdown = await typeInEmptyEditor('[[InputRuleNote]]');
     expect(markdown.trim()).toContain('[[InputRuleNote]]');

@@ -2,6 +2,10 @@ import React from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
+import {
+  ATTACHMENT_ALLOWED_EXTENSIONS,
+  ATTACHMENT_ALLOWED_TYPES,
+} from '@/features/chat/core/constants';
 
 let nativeDragDropHandler: ((event: { payload: { type: string; paths?: string[] } }) => void) | null = null;
 
@@ -98,5 +102,52 @@ describe('useTauriDragAndDrop', () => {
     });
 
     expect(result.current.isDragging).toBe(false);
+  });
+
+  it('keeps picker validation aligned for audio, video, and archives', () => {
+    expect(ATTACHMENT_ALLOWED_EXTENSIONS).toEqual(
+      expect.arrayContaining(['mp3', 'mp4', 'zip', 'rar', '7z'])
+    );
+    expect(ATTACHMENT_ALLOWED_TYPES).toEqual(
+      expect.arrayContaining([
+        'audio/mpeg',
+        'video/mp4',
+        'application/zip',
+        'application/vnd.rar',
+        'application/x-7z-compressed',
+      ])
+    );
+  });
+
+  it('accepts audio, video, and archive files in the web fallback', async () => {
+    const onDropFiles = vi.fn();
+    const { result } = renderHook(() =>
+      useTauriDragAndDrop({
+        dropZoneRef: { current: null } as React.RefObject<HTMLElement>,
+        onDropFiles,
+      })
+    );
+    const files = [
+      new File(['audio'], 'lecture.mp3', { type: 'audio/mpeg' }),
+      new File(['video'], 'lesson.mp4', { type: 'video/mp4' }),
+      new File(['PK'], 'materials.zip', { type: 'application/zip' }),
+      new File(['bad'], 'program.exe', { type: 'application/octet-stream' }),
+    ];
+
+    await act(async () => {
+      await result.current.dropZoneProps.onDrop({
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        currentTarget: document.createElement('div'),
+        dataTransfer: { files, types: ['Files'], items: [] },
+      } as unknown as React.DragEvent);
+    });
+
+    expect(onDropFiles).toHaveBeenCalledTimes(1);
+    expect(onDropFiles.mock.calls[0][0].map((file: File) => file.name)).toEqual([
+      'lecture.mp3',
+      'lesson.mp4',
+      'materials.zip',
+    ]);
   });
 });

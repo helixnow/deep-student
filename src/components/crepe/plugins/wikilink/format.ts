@@ -10,6 +10,13 @@ export interface WikiLinkParts {
   label: string;
 }
 
+export interface WikiLinkTargetParts {
+  /** Note ID or title used by the resolver. */
+  noteTarget: string;
+  /** Optional in-note heading after the first `#`. */
+  heading: string | undefined;
+}
+
 const WIKI_LINK_INNER = /\[\[([^\]\r\n]+?)\]\]/g;
 
 /** 将 target(+可选 label) 格式化为 Obsidian 式双链文本 */
@@ -34,6 +41,17 @@ export function parseWikiLinkText(raw: string): WikiLinkParts | null {
   const trimmed = raw.trim();
   if (!trimmed.startsWith('[[') || !trimmed.endsWith(']]')) return null;
   return parseWikiLinkInner(trimmed.slice(2, -2));
+}
+
+/** Split an Obsidian-style `Note#Heading` destination without changing its source form. */
+export function splitWikiLinkTarget(target: string): WikiLinkTargetParts {
+  const separator = target.indexOf('#');
+  if (separator < 0) {
+    return { noteTarget: target.trim(), heading: undefined };
+  }
+  const noteTarget = target.slice(0, separator).trim();
+  const heading = target.slice(separator + 1).trim();
+  return { noteTarget, heading: heading || undefined };
 }
 
 /**

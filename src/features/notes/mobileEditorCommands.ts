@@ -102,6 +102,7 @@ export function buildMobileEditorCommands(
   return {
     toggleBold: () => editor?.toggleBold(),
     toggleItalic: () => editor?.toggleItalic(),
+    toggleStrikethrough: () => editor?.toggleStrikethrough(),
     insertHeading: (level) => editor?.setHeading(level),
     toggleBulletList: () => editor?.toggleBulletList(),
     toggleTaskList: () => editor?.toggleTaskList(),

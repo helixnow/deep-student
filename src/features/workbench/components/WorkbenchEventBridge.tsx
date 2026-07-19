@@ -31,6 +31,11 @@ import { CHAT_APP_TYPE_ID } from '../apps/chat/register';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
 import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
+import { publishNotesHeadingTarget } from '@/features/notes/headingTargetBridge';
+import {
+  shouldWorkbenchHandleOpenNote,
+  type DstuOpenNoteDetail,
+} from '@/features/notes/openNoteEvent';
 
 /** 失败路径：assertive 公告（勿仅 console.warn） */
 function announceBridgeFailure(message: string): void {
@@ -203,6 +208,15 @@ export const WorkbenchEventBridge: React.FC = () => {
       const noteId = (e as CustomEvent<{ noteId?: string }>).detail?.noteId;
       if (noteId) launchResourceWindow(noteId, 'note');
     };
+    const onDstuOpenNote = (e: Event) => {
+      const detail = (e as CustomEvent<DstuOpenNoteDetail>).detail;
+      if (!shouldWorkbenchHandleOpenNote(detail)) return;
+      const noteId = detail?.noteId;
+      if (noteId && detail?.heading) {
+        publishNotesHeadingTarget({ noteId, heading: detail.heading });
+      }
+      if (noteId) launchResourceWindow(noteId, 'note');
+    };
     const onNavigateToTranslation = (e: Event) => {
       const translationId = (e as CustomEvent<{ translationId?: string }>).detail?.translationId;
       if (translationId) launchResourceWindow(translationId, 'translation');
@@ -219,6 +233,7 @@ export const WorkbenchEventBridge: React.FC = () => {
     document.addEventListener('context-ref:preview', onContextRefPreview);
     document.addEventListener('pdf-ref:open', onPdfRefOpen);
     window.addEventListener('navigateToNote', onNavigateToNote);
+    window.addEventListener('DSTU_OPEN_NOTE', onDstuOpenNote);
     window.addEventListener('navigateToTranslation', onNavigateToTranslation);
     window.addEventListener('navigateToEssay', onNavigateToEssay);
     return () => {
@@ -229,6 +244,7 @@ export const WorkbenchEventBridge: React.FC = () => {
       document.removeEventListener('context-ref:preview', onContextRefPreview);
       document.removeEventListener('pdf-ref:open', onPdfRefOpen);
       window.removeEventListener('navigateToNote', onNavigateToNote);
+      window.removeEventListener('DSTU_OPEN_NOTE', onDstuOpenNote);
       window.removeEventListener('navigateToTranslation', onNavigateToTranslation);
       window.removeEventListener('navigateToEssay', onNavigateToEssay);
     };

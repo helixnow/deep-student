@@ -8,6 +8,7 @@ import type { EditorView, NodeView } from '@milkdown/prose/view';
 import { $view } from '@milkdown/utils';
 
 import { wikilinkSchema, WIKILINK_NODE_NAME } from './schema';
+import { splitWikiLinkTarget } from './format';
 import {
   dispatchCreateFromWikilink,
   dispatchOpenNote,
@@ -36,9 +37,12 @@ function createWikilinkView(
     const apply = (n: ProseNode) => {
       const target = (n.attrs.target as string) || '';
       const label = (n.attrs.label as string) || '';
-      const { resolved } = normalizeResolve(resolve, target);
+      const { noteTarget, heading } = splitWikiLinkTarget(target);
+      const { resolved } = normalizeResolve(resolve, noteTarget);
       dom.setAttribute('data-target', target);
       dom.setAttribute('data-label', label);
+      if (heading) dom.setAttribute('data-heading', heading);
+      else dom.removeAttribute('data-heading');
       dom.setAttribute('data-resolved', resolved ? 'true' : 'false');
       dom.classList.toggle('crepe-wikilink--unresolved', !resolved);
       dom.textContent = displayText(n);
@@ -52,15 +56,24 @@ function createWikilinkView(
       event.stopPropagation();
       const target = (node.attrs.target as string) || '';
       if (!target) return;
-      const { resolved, noteId } = normalizeResolve(resolve, target);
+      const { noteTarget, heading } = splitWikiLinkTarget(target);
+      if (!noteTarget) return;
+      const { resolved, noteId } = normalizeResolve(resolve, noteTarget);
       if (resolved) {
-        dispatchOpenNote(target, noteId || target);
+        dispatchOpenNote(noteTarget, noteId || noteTarget, heading);
       } else {
-        dispatchCreateFromWikilink(target);
+        dispatchCreateFromWikilink(noteTarget);
       }
     };
 
+    const onIndexUpdated = (event: Event) => {
+      const changedTarget = (event as CustomEvent<{ target?: string }>).detail?.target?.trim();
+      const nodeTarget = splitWikiLinkTarget((node.attrs.target as string) || '').noteTarget;
+      if (!changedTarget || changedTarget === nodeTarget) apply(node);
+    };
+
     dom.addEventListener('click', onClick);
+    window.addEventListener('notes:wikilink-index-updated', onIndexUpdated);
     dom.addEventListener('mousedown', (event) => {
       // 避免只读/编辑态下 mousedown 抢焦点导致选区跳动
       if (event.button === 0) event.preventDefault();
@@ -84,6 +97,7 @@ function createWikilinkView(
       ignoreMutation: () => true,
       destroy() {
         dom.removeEventListener('click', onClick);
+        window.removeEventListener('notes:wikilink-index-updated', onIndexUpdated);
       },
     };
   };

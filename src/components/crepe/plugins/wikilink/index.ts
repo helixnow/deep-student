@@ -30,6 +30,7 @@ export {
   formatWikiLink,
   parseWikiLinkInner,
   parseWikiLinkText,
+  splitWikiLinkTarget,
   findWikiLinksInText,
 } from './format';
 export { fuzzyMatchNotes } from './fuzzy';

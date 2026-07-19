@@ -74,6 +74,8 @@ import {
   getOutlineGoalColumn,
   clearOutlineGoalColumn,
   resolveGoalColumnOffset,
+  shouldNavigateAcrossOutlineNode,
+  isOutlineCompositionActive,
   countDescendants,
   collectSubtreeCollapseTargets,
 } from '../utils/outlineCaret';
@@ -95,6 +97,11 @@ import { useMindMapIsActive } from '../MindMapActiveContext';
 import TextareaAutosize from 'react-textarea-autosize';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import '../styles/outline-enhancements.css';
+import {
+  htmlOutlineToMarkdown,
+  looksLikeMarkdownList,
+} from '../utils/pasteMarkdown';
+import type { MindMapDescriptionPreview, MindMapKeymap } from '../utils/mindmapPreferences';
 
 const LEVEL_INDENT = 28; // Increased indent for better hierarchy
 const BASE_PADDING = 12;
@@ -179,13 +186,17 @@ const SortableOutlineNode: React.FC<{
     caretHint?: number,
   ) => void;
   onZoomIn?: (nodeId: string) => void;
+  onZoomOut?: () => void;
   onOpenResourcePicker?: (nodeId: string) => void;
   onBatchIndent?: () => void;
   onBatchOutdent?: () => void;
   onBatchDelete?: () => void;
+  nextVisibleNodeId: string | null;
   searchResultIds: ReadonlySet<string>;
   currentSearchResultId: string | null;
   searchQuery: string;
+  keymap: MindMapKeymap;
+  descriptionPreview: MindMapDescriptionPreview;
 }> = ({
   flatNode,
   isRoot,
@@ -199,13 +210,17 @@ const SortableOutlineNode: React.FC<{
   onRowSelect,
   onNavigate,
   onZoomIn,
+  onZoomOut,
   onOpenResourcePicker,
   onBatchIndent,
   onBatchOutdent,
   onBatchDelete,
+  nextVisibleNodeId,
   searchResultIds,
   currentSearchResultId,
   searchQuery,
+  keymap,
+  descriptionPreview,
 }) => {
   const { t } = useTranslation('mindmap');
   const { node, level, parentId, indexInParent } = flatNode;
@@ -225,6 +240,7 @@ const SortableOutlineNode: React.FC<{
   const outdentNode = useMindMapStore(state => state.outdentNode);
   const splitNode = useMindMapStore(state => state.splitNode);
   const mergeWithPrevious = useMindMapStore(state => state.mergeWithPrevious);
+  const mergeNextIntoCurrent = useMindMapStore(state => state.mergeNextIntoCurrent);
   const copyNodes = useMindMapStore(state => state.copyNodes);
   const cutNodes = useMindMapStore(state => state.cutNodes);
   const pasteNodes = useMindMapStore(state => state.pasteNodes);
@@ -235,6 +251,8 @@ const SortableOutlineNode: React.FC<{
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
   const removeBlankRange = useMindMapStore(state => state.removeBlankRange);
   const removeNodeRef = useMindMapStore(state => state.removeNodeRef);
+  const pasteMarkdownChildren = useMindMapStore(state => state.pasteMarkdownChildren);
+  const storeApi = useMindMapStoreApi();
 
   const toggleBold = useCallback(() => {
     updateNode(node.id, {
@@ -364,11 +382,12 @@ const SortableOutlineNode: React.FC<{
     }
   }, [node.note, isEditingNote, localNote]);
 
-  const commitText = useCallback((nextText?: string) => {
+  const commitText = useCallback((nextText?: string, trim = true) => {
     // 用 ref：拆分后 blur 时闭包里的 localText 可能仍是拆分前全文
-    const trimmed = (nextText ?? localTextRef.current ?? '').trim();
-    if (trimmed !== (node.text || '')) {
-      updateNode(node.id, { text: trimmed });
+    const value = nextText ?? localTextRef.current ?? '';
+    const committed = trim ? value.trim() : value;
+    if (committed !== (node.text || '')) {
+      updateNode(node.id, { text: committed });
     }
   }, [node.id, node.text, updateNode]);
 
@@ -413,6 +432,35 @@ const SortableOutlineNode: React.FC<{
   }, [node.id, onRowSelect]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // IME 组字期间 Enter/Backspace/方向键等必须完全交给输入法。
+    if (isOutlineCompositionActive(e.nativeEvent)) return;
+
+    const isMod = e.metaKey || e.ctrlKey;
+    const undoKey = e.key.toLowerCase() === 'z';
+    const redoKey = (undoKey && e.shiftKey) || e.key.toLowerCase() === 'y';
+    if (isMod && (undoKey || redoKey)) {
+      e.preventDefault();
+      e.stopPropagation();
+      clearOutlineGoalColumn();
+      const caret = e.currentTarget.selectionStart ?? localText.length;
+      // A pending draft is a new document mutation. Commit it before history
+      // navigation so redo cannot silently replace uncommitted text.
+      const hasUncommittedText = localText !== (node.text || '');
+      if (hasUncommittedText) {
+        commitText(localText, false);
+      }
+      skipNextBlurCommitRef.current = true;
+      setIsEditing(false);
+      if (redoKey && !hasUncommittedText) {
+        if (storeApi.getState().canRedo()) storeApi.getState().redo();
+      } else if (!redoKey && storeApi.getState().canUndo()) {
+        storeApi.getState().undo();
+      }
+      requestOutlineCaret(node.id, caret);
+      setTimeout(() => setFocusedNodeId(node.id), 0);
+      return;
+    }
+
     // 多选时：批量删 / 缩进 / 反缩进
     if (multiSelectBlocksEdit) {
       if (e.key === 'Tab' && !e.shiftKey) {
@@ -432,26 +480,40 @@ const SortableOutlineNode: React.FC<{
       }
     }
 
-    // Add/Edit Note: Shift + Mod + Enter（须先于 Mod+Enter）
-    if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    // DS: Mod+Shift+Enter opens description. Mubu: it creates a child.
+    if (e.shiftKey && isMod && e.key === 'Enter') {
       e.preventDefault();
       clearOutlineGoalColumn();
-      setIsEditingNote(true);
+      if (keymap === 'mubu') {
+        commitText(undefined, false);
+        const newId = addNode(node.id, 0);
+        if (node.collapsed) toggleCollapse(node.id);
+        setTimeout(() => setFocusedNodeId(newId), 0);
+      } else {
+        setIsEditingNote(true);
+      }
       return;
     }
 
-    // Internal Newline: Shift + Enter
+    // Mubu: Shift+Enter opens description. DS: insert an internal newline.
     if (e.shiftKey && e.key === 'Enter') {
-      // 允许 react-textarea-autosize 默认行为（换行）
       clearOutlineGoalColumn();
+      if (keymap === 'mubu') {
+        e.preventDefault();
+        setIsEditingNote(true);
+      }
       return;
     }
 
-    // Add Child: Mod + Enter
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    // Mubu: Mod+Enter toggles completion. DS: add child.
+    if (isMod && e.key === 'Enter') {
       e.preventDefault();
       clearOutlineGoalColumn();
-      commitText();
+      if (keymap === 'mubu') {
+        updateNode(node.id, { completed: !node.completed });
+        return;
+      }
+      commitText(undefined, false);
       const newId = addNode(node.id, 0);
       if (node.collapsed) toggleCollapse(node.id);
       setTimeout(() => setFocusedNodeId(newId), 0);
@@ -470,7 +532,7 @@ const SortableOutlineNode: React.FC<{
 
       // 末尾（或有选区）：保持现有「新建同级」
       if (offset >= textLen) {
-        commitText();
+        commitText(undefined, false);
         if (isRoot) {
           const newId = addNode(node.id, 0);
           setTimeout(() => setFocusedNodeId(newId), 0);
@@ -513,7 +575,7 @@ const SortableOutlineNode: React.FC<{
     if (e.key === 'Tab' && !e.shiftKey) {
       e.preventDefault();
       clearOutlineGoalColumn();
-      commitText();
+      commitText(undefined, false);
       if (!isRoot) indentNode(node.id);
       return;
     }
@@ -522,23 +584,23 @@ const SortableOutlineNode: React.FC<{
     if (e.key === 'Tab' && e.shiftKey) {
       e.preventDefault();
       clearOutlineGoalColumn();
-      commitText();
+      commitText(undefined, false);
       if (!isRoot) outdentNode(node.id);
       return;
     }
     
-    // Delete: Backspace（空文本删节点；非空且光标在 0 则合并上一节点）
-    if (e.key === 'Backspace' && !isRoot) {
+    // Delete: empty non-root nodes are removed; line boundaries merge nodes.
+    if (e.key === 'Backspace' || e.key === 'Delete') {
       const target = e.currentTarget;
       const start = target.selectionStart ?? 0;
       const end = target.selectionEnd ?? start;
-      if (localText === '') {
+      if (!isRoot && localText === '') {
         e.preventDefault();
         clearOutlineGoalColumn();
         deleteNode(node.id);
         return;
       }
-      if (start === 0 && end === 0) {
+      if (!isRoot && e.key === 'Backspace' && start === 0 && end === 0) {
         e.preventDefault();
         clearOutlineGoalColumn();
         skipNextBlurCommitRef.current = true;
@@ -547,6 +609,22 @@ const SortableOutlineNode: React.FC<{
         if (!result) return;
         requestOutlineCaret(result.mergedIntoId, result.cursorOffset);
         setTimeout(() => setFocusedNodeId(result.mergedIntoId), 0);
+        return;
+      }
+      if (e.key === 'Delete' && start === localText.length && end === start) {
+        e.preventDefault();
+        clearOutlineGoalColumn();
+        const result = mergeNextIntoCurrent(node.id, localText, nextVisibleNodeId);
+        if (!result) return;
+        const mergedText = findNodeById(storeApi.getState().document.root, node.id)?.text ?? localText;
+        localTextRef.current = mergedText;
+        setLocalText(mergedText);
+        requestOutlineCaret(result.mergedIntoId, result.cursorOffset);
+        setFocusedNodeId(result.mergedIntoId);
+        requestAnimationFrame(() => {
+          inputRef.current?.setSelectionRange(result.cursorOffset, result.cursorOffset);
+          takeOutlineCaret(result.mergedIntoId);
+        });
         return;
       }
     }
@@ -571,8 +649,20 @@ const SortableOutlineNode: React.FC<{
       return;
     }
 
-    // Collapse all / single: Mod+[  （Shift = 全折叠当前 viewRoot 子树）
-    if ((e.metaKey || e.ctrlKey) && e.key === '[') {
+    // Mubu reserves Mod+[/] for zoom. Alt+[/] is the independent fold shortcut.
+    if (keymap === 'mubu' && isMod && e.key === '[') {
+      e.preventDefault();
+      onZoomOut?.();
+      return;
+    }
+    if (keymap === 'mubu' && isMod && e.key === ']') {
+      e.preventDefault();
+      onZoomIn?.(node.id);
+      return;
+    }
+
+    // Collapse all / single. DS retains Mod+[/]; both modes support Alt+[/].
+    if (((keymap === 'deep-student' && isMod) || e.altKey) && e.key === '[') {
       e.preventDefault();
       if (e.shiftKey) {
         const displayRoot =
@@ -595,7 +685,7 @@ const SortableOutlineNode: React.FC<{
     }
 
     // Expand all / single: Mod+]
-    if ((e.metaKey || e.ctrlKey) && e.key === ']') {
+    if (((keymap === 'deep-student' && isMod) || e.altKey) && e.key === ']') {
       e.preventDefault();
       if (e.shiftKey) {
         const displayRoot =
@@ -652,29 +742,42 @@ const SortableOutlineNode: React.FC<{
 
     // Navigate Up（保持 goal column）
     if (e.key === 'ArrowUp' && !(e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      commitText();
       const start = e.currentTarget.selectionStart ?? 0;
-      let goal = getOutlineGoalColumn();
-      if (goal === null) {
-        goal = start;
-        setOutlineGoalColumn(goal);
-      }
-      onNavigate?.('up', goal);
+      if (!shouldNavigateAcrossOutlineNode(localText, start, 'up')) return;
+      const target = e.currentTarget;
+      // The first logical line can still contain several visual lines due to
+      // textarea wrapping. Let the browser move first; cross nodes only when
+      // it reports no caret movement (the true visual boundary).
+      requestAnimationFrame(() => {
+        if (!target.isConnected || document.activeElement !== target) return;
+        if ((target.selectionStart ?? 0) !== start) return;
+        commitText();
+        let goal = getOutlineGoalColumn();
+        if (goal === null) {
+          goal = start;
+          setOutlineGoalColumn(goal);
+        }
+        onNavigate?.('up', goal);
+      });
       return;
     }
 
     // Navigate Down
     if (e.key === 'ArrowDown' && !(e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      commitText();
       const start = e.currentTarget.selectionStart ?? 0;
-      let goal = getOutlineGoalColumn();
-      if (goal === null) {
-        goal = start;
-        setOutlineGoalColumn(goal);
-      }
-      onNavigate?.('down', goal);
+      if (!shouldNavigateAcrossOutlineNode(localText, start, 'down')) return;
+      const target = e.currentTarget;
+      requestAnimationFrame(() => {
+        if (!target.isConnected || document.activeElement !== target) return;
+        if ((target.selectionStart ?? 0) !== start) return;
+        commitText();
+        let goal = getOutlineGoalColumn();
+        if (goal === null) {
+          goal = start;
+          setOutlineGoalColumn(goal);
+        }
+        onNavigate?.('down', goal);
+      });
       return;
     }
 
@@ -705,7 +808,22 @@ const SortableOutlineNode: React.FC<{
     if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
       clearOutlineGoalColumn();
     }
-  }, [isRoot, parentId, indexInParent, node.id, node.text, node.collapsed, hasChildren, localText, addNode, setFocusedNodeId, indentNode, outdentNode, deleteNode, commitText, moveNode, toggleCollapse, collapseAll, expandAll, documentRoot, viewRootId, onNavigate, multiSelectBlocksEdit, onBatchIndent, onBatchOutdent, onBatchDelete, splitNode, mergeWithPrevious]);
+  }, [isRoot, parentId, indexInParent, node.id, node.text, node.completed, node.collapsed, hasChildren, localText, addNode, setFocusedNodeId, indentNode, outdentNode, deleteNode, commitText, moveNode, toggleCollapse, collapseAll, expandAll, documentRoot, viewRootId, onNavigate, onZoomIn, onZoomOut, multiSelectBlocksEdit, onBatchIndent, onBatchOutdent, onBatchDelete, nextVisibleNodeId, splitNode, mergeWithPrevious, mergeNextIntoCurrent, storeApi, keymap, updateNode]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const plainText = e.clipboardData.getData('text/plain');
+    const htmlText = e.clipboardData.getData('text/html');
+    const structuredText = looksLikeMarkdownList(plainText)
+      ? plainText
+      : htmlOutlineToMarkdown(htmlText);
+    if (!structuredText) return;
+
+    e.preventDefault();
+    clearOutlineGoalColumn();
+    skipNextBlurCommitRef.current = true;
+    setIsEditing(false);
+    pasteMarkdownChildren(node.id, structuredText, { currentText: localText });
+  }, [localText, node.id, pasteMarkdownChildren]);
 
   const handleNoteKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
@@ -939,6 +1057,7 @@ const SortableOutlineNode: React.FC<{
           }}
           placeholder={isRoot ? t('placeholder.root') : t('placeholder.node')}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           onFocus={() => setIsEditing(true)}
           onMouseDown={() => {
             // 鼠标改光标后不应继续沿用旧 goal column
@@ -1037,7 +1156,14 @@ const SortableOutlineNode: React.FC<{
           </div>
         )}
         {node.note && !isEditingNote && (
-          <div className="node-note px-[6px] pb-1 text-[13px] text-[var(--mm-text-secondary)] whitespace-pre-wrap cursor-text" onClick={() => !reciteMode && setIsEditingNote(true)}>
+          <div
+            className={cn(
+              "node-note px-[6px] pb-1 text-[13px] text-[var(--mm-text-secondary)] whitespace-pre-wrap cursor-text",
+              descriptionPreview === 'first-line' && 'node-note-first-line',
+            )}
+            onClick={() => !reciteMode && setIsEditingNote(true)}
+            title={descriptionPreview === 'first-line' ? node.note : undefined}
+          >
             {containsLatex(node.note) || !showTextHighlight ? (
               <InlineLatex text={node.note} />
             ) : (
@@ -1452,10 +1578,12 @@ export interface OutlineViewHandle {
 export interface OutlineViewProps {
   /** 切回大纲时恢复的 scrollTop；随后再把焦点行滚到中部 */
   initialScrollTop?: number | null;
+  keymap?: MindMapKeymap;
+  descriptionPreview?: MindMapDescriptionPreview;
 }
 
 export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>(
-  function OutlineView({ initialScrollTop = null }, ref) {
+  function OutlineView({ initialScrollTop = null, keymap = 'deep-student', descriptionPreview = 'full' }, ref) {
   const { t } = useTranslation('mindmap');
   const storeApi = useMindMapStoreApi();
   const document = useMindMapStore(state => state.document);
@@ -1470,6 +1598,8 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   const addNodeRef = useMindMapStore(state => state.addNodeRef);
   const selection = useMindMapStore(state => state.selection);
   const setSelection = useMindMapStore(state => state.setSelection);
+  const selectionAnchorId = useMindMapStore(state => state.selectionAnchorId);
+  const setSelectionAnchorId = useMindMapStore(state => state.setSelectionAnchorId);
   const deleteNodes = useMindMapStore(state => state.deleteNodes);
   const indentNodes = useMindMapStore(state => state.indentNodes);
   const outdentNodes = useMindMapStore(state => state.outdentNodes);
@@ -1483,7 +1613,6 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
 
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [dragGroupIds, setDragGroupIds] = useState<string[]>([]);
-  const selectionAnchorRef = useRef<string | null>(null);
   const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
   const [dropPosition, setDropPosition] = useState<DropPosition>('inside');
   const [resourcePickerNodeId, setResourcePickerNodeId] = useState<string | null>(null);
@@ -1724,7 +1853,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     const isRootRow = allFlatNodeById.get(nodeId)?.level === 0;
 
     if (e.shiftKey) {
-      const anchor = selectionAnchorRef.current || focusedNodeId || nodeId;
+      const anchor = selectionAnchorId || focusedNodeId || nodeId;
       const rangeIds = getVisibleRangeIds(flat, anchor, nodeId, {
         excludeRoot: true,
         indexById: allFlatNodeIndexById,
@@ -1743,16 +1872,16 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
         ? selection.filter((id) => id !== nodeId)
         : [...selection.filter((id) => id !== document.root.id), nodeId];
       setSelection(next);
-      selectionAnchorRef.current = nodeId;
+      setSelectionAnchorId(nodeId);
       setFocusedNodeId(nodeId);
       return;
     }
 
     // 单击：单选并聚焦（保持可编辑）
     setSelection(isRootRow ? [] : [nodeId]);
-    selectionAnchorRef.current = nodeId;
+    setSelectionAnchorId(nodeId);
     setFocusedNodeId(nodeId);
-  }, [allFlatNodes, allFlatNodeById, allFlatNodeIndexById, focusedNodeId, selection, selectionSet, setFocusedNodeId, setSelection, document.root.id]);
+  }, [allFlatNodes, allFlatNodeById, allFlatNodeIndexById, focusedNodeId, selection, selectionAnchorId, selectionSet, setFocusedNodeId, setSelection, setSelectionAnchorId, document.root.id]);
 
   const handleBatchDelete = useCallback(() => {
     if (topLevelSelectedIds.length === 0) return;
@@ -2081,6 +2210,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                   onBatchIndent={handleBatchIndent}
                   onBatchOutdent={handleBatchOutdent}
                   onBatchDelete={handleBatchDelete}
+                  nextVisibleNodeId={flatNodes[index + 1]?.id ?? null}
                   searchResultIds={searchResultSet}
                   currentSearchResultId={currentSearchResultId}
                   searchQuery={searchQuery}
@@ -2120,6 +2250,13 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                     setFocusedNodeId(next.id);
                   }}
                   onZoomIn={(nodeId) => setViewRootId(nodeId)}
+                  onZoomOut={() => {
+                    if (!viewRootId) return;
+                    const parent = getAncestors(document.root, viewRootId).at(-1);
+                    setViewRootId(parent && parent.id !== document.root.id ? parent.id : null);
+                  }}
+                  keymap={keymap}
+                  descriptionPreview={descriptionPreview}
                   onOpenResourcePicker={(nodeId) => setResourcePickerNodeId(nodeId)}
                 />
               ))}

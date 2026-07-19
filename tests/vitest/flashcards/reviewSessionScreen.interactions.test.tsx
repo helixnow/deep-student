@@ -24,6 +24,7 @@ vi.mock('react-i18next', () => ({
       'session.backToday': '返回今日',
       'session.cancelEdit': '取消',
       'session.done': '本轮复习已完成',
+      'session.emptyQueue': '当前没有可复习的卡片',
       'session.easy': '简单',
       'session.edit': '编辑卡片',
       'session.exit': '退出',
@@ -34,7 +35,10 @@ vi.mock('react-i18next', () => ({
       'session.resume': '恢复卡片',
       'session.retry': '重试',
       'session.saveEdit': '保存',
+      'session.showBack': '显示背面',
+      'session.showFront': '显示正面',
       'session.suspend': '暂停卡片',
+      'session.tapToFlip': '点击翻面',
       'session.undo': '撤销评分',
     }[key] ?? key),
   }),
@@ -81,18 +85,23 @@ describe('ReviewSessionScreen interactions', () => {
     useFsrsReviewStore.setState({
       screen: 'session',
       dueCards: [],
+      dueTotal: 0,
       queue: [],
       queueIndex: 0,
       flipped: false,
       loading: false,
       ratingBusy: false,
-      usingMock: false,
       error: null,
       errorKind: null,
       lastRated: null,
       lastReview: null,
       lastSuspended: null,
       retryBatchRequest: null,
+      sessionRatedCount: 0,
+      sessionAgainCount: 0,
+      remainingDueAfterSession: null,
+      ratingPreviews: null,
+      lastSchedule: null,
     });
   });
 
@@ -118,7 +127,7 @@ describe('ReviewSessionScreen interactions', () => {
     render(<ReviewSessionScreen />);
 
     expect(templateLoaderMock).toHaveBeenCalledWith('design-redaction');
-    const surface = screen.getByRole('button', { name: '背面' });
+    const surface = screen.getByRole('button', { name: '显示背面' });
     expect(within(surface).queryByRole('button')).toBeNull();
     expect(screen.getByTestId('anki-card-face')).toHaveAttribute('data-side', 'front');
     expect(screen.getByTestId('anki-card-face')).toHaveAttribute(
@@ -129,6 +138,7 @@ describe('ReviewSessionScreen interactions', () => {
 
     fireEvent.click(surface);
 
+    expect(screen.getByRole('button', { name: '显示正面' })).toBeTruthy();
     expect(screen.getByTestId('anki-card-face')).toHaveAttribute('data-side', 'back');
     expect(screen.getByTestId('anki-card-face')).toHaveTextContent('Capital: Paris');
   });
@@ -148,8 +158,59 @@ describe('ReviewSessionScreen interactions', () => {
     render(<ReviewSessionScreen />);
 
     expect(screen.getByTestId('anki-card-face')).toHaveTextContent('[...] and [...]');
-    fireEvent.click(screen.getByRole('button', { name: '背面' }));
+    fireEvent.click(screen.getByRole('button', { name: '显示背面' }));
     expect(screen.getByTestId('anki-card-face')).toHaveTextContent('Alpha and Beta');
+  });
+
+  it('Space flips first, then rates Good when already flipped', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'fsrs_preview_intervals') {
+        return {
+          previews: {
+            3: { dueMs: Date.now() + 86_400_000, scheduledDays: 1, intervalMs: 86_400_000 },
+          },
+        };
+      }
+      if (command === 'fsrs_rate') {
+        return {
+          logId: 'log-good',
+          dueMs: Date.now() + 3 * 24 * 60 * 60 * 1000,
+          scheduledDays: 3,
+        };
+      }
+      return null;
+    });
+    useFsrsReviewStore.setState({
+      queue: [
+        { id: 'state-1', ankiCardId: 'anki-1', front: 'Q1', back: 'A1' },
+        { id: 'state-2', ankiCardId: 'anki-2', front: 'Q2', back: 'A2' },
+      ],
+      queueIndex: 0,
+      flipped: false,
+    });
+
+    render(<ReviewSessionScreen />);
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' });
+    expect(useFsrsReviewStore.getState().flipped).toBe(true);
+
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' });
+    await waitFor(() => expect(useFsrsReviewStore.getState().queueIndex).toBe(1));
+    expect(invokeMock).toHaveBeenCalledWith('fsrs_rate', expect.objectContaining({
+      cardStateId: 'state-1',
+      rating: 3,
+      clientOpId: expect.any(String),
+    }));
+  });
+
+  it('shows emptyQueue copy when the session has no cards', () => {
+    useFsrsReviewStore.setState({
+      queue: [],
+      queueIndex: 0,
+      loading: false,
+    });
+
+    render(<ReviewSessionScreen />);
+    expect(screen.getByText('当前没有可复习的卡片')).toBeTruthy();
   });
 
   it('supports undo from the completion page with Z', async () => {

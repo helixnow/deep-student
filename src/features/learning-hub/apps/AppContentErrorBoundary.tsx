@@ -1,11 +1,10 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { NotionButton } from '@/components/ui/NotionButton';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import type { ResourceType } from '../types';
+import { PreviewStatus } from './views/PreviewStatus';
 
 interface AppContentErrorBoundaryProps {
   resourceType: ResourceType;
@@ -85,30 +84,31 @@ export const AppContentErrorBoundary: React.FC<AppContentErrorBoundaryProps> = (
       name={`learning-hub-${resourceType}`}
       onError={handleError}
       fallback={
-        <div className="flex flex-col items-center justify-center h-full gap-3 px-4 text-center" role="alert">
-          <WarningCircle size={40} className="text-destructive" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground max-w-md">
-            {t('learningHub:error.appContentCrashed', { resource: resourceLabel })}
-          </p>
-          {caughtError && (
-            <p className="text-xs text-destructive/80 max-w-lg break-all font-mono">
-              {caughtError}
-              {crashCount > 1 && ` (×${crashCount})`}
-            </p>
-          )}
-          <div className="flex items-center gap-2">
-            <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
-              <ArrowClockwise size={14} aria-hidden="true" />
-              {t('common:actions.retry')}
-            </NotionButton>
-            {/* 移动端：重试之外提供明确的返回出路（桌面端可通过标签栏关闭，保持原样） */}
-            {isMobile && onClose && (
-              <NotionButton variant="ghost" size="sm" onClick={onClose}>
-                {t('common:close')}
-              </NotionButton>
-            )}
-          </div>
-        </div>
+        <PreviewStatus
+          tone="error"
+          title={t('learningHub:error.appContentCrashed', { resource: resourceLabel })}
+          meta={
+            caughtError
+              ? `${caughtError}${crashCount > 1 ? ` (×${crashCount})` : ''}`
+              : undefined
+          }
+          actions={[
+            {
+              id: 'retry',
+              label: t('common:actions.retry'),
+              onClick: handleRetry,
+              variant: 'ghost',
+            },
+            ...(isMobile && onClose
+              ? [{
+                  id: 'close',
+                  label: t('common:close'),
+                  onClick: onClose,
+                  variant: 'ghost' as const,
+                }]
+              : []),
+          ]}
+        />
       }
     >
       {children}

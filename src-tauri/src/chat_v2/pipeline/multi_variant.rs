@@ -3370,6 +3370,7 @@ mod canonical_retry_tests {
             },
             CanonicalContentPart::ImageRef {
                 image_id: "img-1".to_string(),
+                name: Some("photo.jpg".to_string()),
                 resource_id: Some("res-1".to_string()),
                 source_id: Some("source-1".to_string()),
                 blob_hash: Some("stable-original-blob".to_string()),

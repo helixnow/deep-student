@@ -28,6 +28,7 @@ export interface ApprovalRequestData {
   toolName: string;
   arguments: Record<string, unknown>;
   sensitivity: 'low' | 'medium' | 'high';
+  permissionPreset?: 'cautious' | 'relaxed';
   description: string;
   timeoutSeconds: number;
   resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
@@ -391,27 +392,6 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
           </div>
         ) : (
           <>
-            {/* 低频档：始终允许/始终拒绝（持久化白名单，设置页可管理） */}
-            <NotionButton
-              variant="outline"
-              size="sm"
-              onClick={() => handleResponse(true, undefined, true)}
-              disabled={isResponding}
-              className="text-success hover:text-success/80"
-            >
-              {t('approval.alwaysAllow')}
-            </NotionButton>
-
-            <NotionButton
-              variant="outline"
-              size="sm"
-              onClick={() => handleResponse(false, 'user_rejected', true)}
-              disabled={isResponding}
-              className="text-red-600 hover:text-red-700 dark:text-red-400"
-            >
-              {t('approval.alwaysDeny')}
-            </NotionButton>
-
             <div className="flex-1" />
 
             {/* 拒绝按钮：首次点击展开理由输入行，不立即发送 */}
@@ -427,15 +407,17 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
             </NotionButton>
 
             {/* 🆕 三档分级中间档：本会话允许该工具（重复任务不再反复弹卡） */}
-            <NotionButton
-              variant="outline"
-              size="sm"
-              onClick={() => handleResponse(true, undefined, false, true)}
-              disabled={isResponding}
-              className="text-success hover:text-success/80"
-            >
-              {t('approval.allowSession')}
-            </NotionButton>
+            {request.permissionPreset === 'relaxed' && request.sensitivity === 'medium' && (
+              <NotionButton
+                variant="outline"
+                size="sm"
+                onClick={() => handleResponse(true, undefined, false, true)}
+                disabled={isResponding}
+                className="text-success hover:text-success/80"
+              >
+                {t('approval.allowSession')}
+              </NotionButton>
+            )}
 
             {/* 批准按钮（仅此次） */}
             <NotionButton

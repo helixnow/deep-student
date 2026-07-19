@@ -10,10 +10,15 @@ import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 export const TodayScreen: React.FC = () => {
   const { t } = useTranslation('flashcards');
   const dueCards = useFsrsReviewStore((s) => s.dueCards);
+  const dueTotal = useFsrsReviewStore((s) => s.dueTotal);
   const loading = useFsrsReviewStore((s) => s.loading);
   const error = useFsrsReviewStore((s) => s.error);
   const loadDue = useFsrsReviewStore((s) => s.loadDue);
   const startDueSession = useFsrsReviewStore((s) => s.startDueSession);
+  const setScreen = useFsrsReviewStore((s) => s.setScreen);
+
+  const displayDueCount = dueTotal > 0 ? dueTotal : dueCards.length;
+  const batchCapped = dueTotal > dueCards.length && dueCards.length > 0;
 
   useEffect(() => {
     void loadDue();
@@ -31,8 +36,13 @@ export const TodayScreen: React.FC = () => {
               ? t('today.loading')
               : error
                 ? t('today.loadFailed')
-              : t('today.dueCount', { count: dueCards.length })}
+              : t('today.dueCount', { count: displayDueCount })}
           </p>
+          {!loading && !error && batchCapped ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('today.batchCapHint', { n: dueCards.length })}
+            </p>
+          ) : null}
         </div>
         <NotionButton
           type="button"
@@ -71,11 +81,19 @@ export const TodayScreen: React.FC = () => {
             </NotionButton>
           </div>
         ) : dueCards.length === 0 ? (
-          <div className="wb-fc-empty">
+          <div className="wb-fc-empty gap-3">
             <Lightning size={28} className="text-muted-foreground/50" weight="duotone" />
             <p>
               {t('today.empty')}
             </p>
+            <NotionButton
+              type="button"
+              variant="default"
+              onClick={() => setScreen('library')}
+              className="text-sm"
+            >
+              {t('today.goLibrary')}
+            </NotionButton>
           </div>
         ) : (
           <ul className="wb-fc-list-ul">
@@ -87,9 +105,6 @@ export const TodayScreen: React.FC = () => {
               >
                 <div className="wb-fc-row-front">
                   {card.front || t('card.untitled')}
-                </div>
-                <div className="wb-fc-row-back">
-                  {card.back || t('card.noBack')}
                 </div>
               </li>
             ))}

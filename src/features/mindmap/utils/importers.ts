@@ -9,6 +9,7 @@
 
 import { nanoid } from 'nanoid';
 import i18n from 'i18next';
+import JSZip from 'jszip';
 import type { MindMapDocument, MindMapNode } from '../types';
 
 /**
@@ -21,6 +22,249 @@ const MAX_IMPORT_DEPTH = 100;
  * 最大导入节点数量限制
  */
 const MAX_IMPORT_NODES = 10000;
+
+const XMIND_CONTENT_JSON = 'content.json';
+const XMIND_CONTENT_XML = 'content.xml';
+
+export const MAX_XMIND_ARCHIVE_BYTES = 16 * 1024 * 1024;
+export const MAX_XMIND_CONTENT_BYTES = 32 * 1024 * 1024;
+
+interface XMindTopicJson {
+  id?: string;
+  title?: string;
+  notes?: {
+    plain?: { content?: string };
+    html?: { content?: string };
+  };
+  children?: {
+    attached?: XMindTopicJson[];
+  };
+}
+
+function createImportStats() {
+  return { nodeCount: 0 };
+}
+
+function claimImportedNode(stats: { nodeCount: number }, depth: number, format: string): void {
+  if (depth > MAX_IMPORT_DEPTH) {
+    throw new Error(`${format} depth exceeds maximum limit (${MAX_IMPORT_DEPTH})`);
+  }
+  stats.nodeCount += 1;
+  if (stats.nodeCount > MAX_IMPORT_NODES) {
+    throw new Error(`Node count exceeds maximum limit (${MAX_IMPORT_NODES})`);
+  }
+}
+
+function stripHtml(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const parsed = new DOMParser().parseFromString(value, 'text/html');
+  return parsed.body.textContent?.trim() || undefined;
+}
+
+function allocateXMindNodeId(
+  requestedId: string | undefined,
+  usedIds: Set<string>,
+  forceRoot: boolean,
+): string {
+  if (forceRoot) {
+    usedIds.add('root');
+    return 'root';
+  }
+  if (requestedId && !usedIds.has(requestedId)) {
+    usedIds.add(requestedId);
+    return requestedId;
+  }
+  let generated = nanoid(10);
+  while (usedIds.has(generated)) generated = nanoid(10);
+  usedIds.add(generated);
+  return generated;
+}
+
+function xmindJsonTopicToNode(
+  topic: XMindTopicJson,
+  depth: number,
+  stats: { nodeCount: number },
+  usedIds: Set<string>,
+  forceRoot = false,
+): MindMapNode {
+  claimImportedNode(stats, depth, 'XMind');
+  const plainNote = topic.notes?.plain?.content?.trim();
+  const htmlNote = stripHtml(topic.notes?.html?.content);
+  return {
+    id: allocateXMindNodeId(topic.id, usedIds, forceRoot),
+    text: topic.title?.trim() || i18n.t('mindmap:import.unnamedTopic'),
+    note: plainNote || htmlNote,
+    children: (topic.children?.attached || []).map((child) =>
+      xmindJsonTopicToNode(child, depth + 1, stats, usedIds)),
+  };
+}
+
+function directChildrenByLocalName(element: Element, localName: string): Element[] {
+  return Array.from(element.children).filter(
+    (child) => child.localName.toLowerCase() === localName.toLowerCase(),
+  );
+}
+
+function firstDescendantByLocalName(element: Element, localName: string): Element | null {
+  return Array.from(element.getElementsByTagName('*')).find(
+    (child) => child.localName.toLowerCase() === localName.toLowerCase(),
+  ) || null;
+}
+
+function xmindXmlTopicToNode(
+  topic: Element,
+  depth: number,
+  stats: { nodeCount: number },
+  usedIds: Set<string>,
+  forceRoot = false,
+): MindMapNode {
+  claimImportedNode(stats, depth, 'XMind');
+  const title = directChildrenByLocalName(topic, 'title')[0]?.textContent?.trim();
+  const notes = directChildrenByLocalName(topic, 'notes')[0];
+  const note = notes
+    ? firstDescendantByLocalName(notes, 'plain')?.textContent?.trim()
+      || firstDescendantByLocalName(notes, 'html')?.textContent?.trim()
+      || undefined
+    : undefined;
+  const childrenContainer = directChildrenByLocalName(topic, 'children')[0];
+  const topicsGroups = childrenContainer
+    ? directChildrenByLocalName(childrenContainer, 'topics').filter(
+      (group) => !group.getAttribute('type') || group.getAttribute('type') === 'attached',
+    )
+    : [];
+  const childTopics = topicsGroups.flatMap((group) => directChildrenByLocalName(group, 'topic'));
+  return {
+    id: allocateXMindNodeId(topic.getAttribute('id') || undefined, usedIds, forceRoot),
+    text: title || i18n.t('mindmap:import.unnamedTopic'),
+    note,
+    children: childTopics.map((child) => xmindXmlTopicToNode(child, depth + 1, stats, usedIds)),
+  };
+}
+
+function createXMindDocument(root: MindMapNode): MindMapDocument {
+  return {
+    version: '1.0',
+    root,
+    meta: { createdAt: new Date().toISOString() },
+  };
+}
+
+function createMultiSheetRoot(children: MindMapNode[]): MindMapNode {
+  return {
+    id: 'root',
+    text: i18n.t('mindmap:import.importedMap'),
+    children,
+  };
+}
+
+interface XMindStreamHelper {
+  on(event: 'data', callback: (chunk: Uint8Array) => void): XMindStreamHelper;
+  on(event: 'end', callback: () => void): XMindStreamHelper;
+  on(event: 'error', callback: (error: Error) => void): XMindStreamHelper;
+  pause(): XMindStreamHelper;
+  resume(): XMindStreamHelper;
+}
+
+async function readXMindContent(entry: JSZip.JSZipObject): Promise<string> {
+  const advertisedSize = (entry as unknown as {
+    _data?: { uncompressedSize?: number };
+  })._data?.uncompressedSize;
+  if (typeof advertisedSize === 'number' && advertisedSize > MAX_XMIND_CONTENT_BYTES) {
+    throw new Error(`XMind content exceeds maximum size (${MAX_XMIND_CONTENT_BYTES} bytes)`);
+  }
+
+  const stream = (entry as unknown as {
+    internalStream(type: 'uint8array'): XMindStreamHelper;
+  }).internalStream('uint8array');
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  const bytes = await new Promise<Uint8Array>((resolve, reject) => {
+    let settled = false;
+    stream
+      .on('data', (chunk) => {
+        if (settled) return;
+        totalBytes += chunk.byteLength;
+        if (totalBytes > MAX_XMIND_CONTENT_BYTES) {
+          settled = true;
+          stream.pause();
+          reject(new Error(`XMind content exceeds maximum size (${MAX_XMIND_CONTENT_BYTES} bytes)`));
+          return;
+        }
+        chunks.push(chunk);
+      })
+      .on('error', (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      })
+      .on('end', () => {
+        if (settled) return;
+        settled = true;
+        const combined = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const chunk of chunks) {
+          combined.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        resolve(combined);
+      })
+      .resume();
+  });
+  return new TextDecoder().decode(bytes);
+}
+
+/** Import XMind Zen (content.json) and XMind 8 (content.xml) as the existing tree model. */
+export async function importFromXMind(data: Uint8Array | ArrayBuffer): Promise<MindMapDocument> {
+  if (data.byteLength > MAX_XMIND_ARCHIVE_BYTES) {
+    throw new Error(`XMind archive exceeds maximum size (${MAX_XMIND_ARCHIVE_BYTES} bytes)`);
+  }
+  const zip = await JSZip.loadAsync(data);
+  const jsonEntry = zip.file(XMIND_CONTENT_JSON);
+  if (jsonEntry) {
+    const raw = JSON.parse(await readXMindContent(jsonEntry)) as unknown;
+    const candidates = Array.isArray(raw) ? raw : [raw];
+    const sheets = candidates.filter((candidate): candidate is { rootTopic: XMindTopicJson } => {
+      if (!candidate || typeof candidate !== 'object' || !('rootTopic' in candidate)) return false;
+      const rootTopic = (candidate as { rootTopic?: unknown }).rootTopic;
+      return !!rootTopic && typeof rootTopic === 'object';
+    });
+    if (sheets.length === 0) throw new Error('Invalid XMind: missing root topic');
+    const stats = createImportStats();
+    const usedIds = new Set<string>();
+    if (sheets.length === 1) {
+      return createXMindDocument(xmindJsonTopicToNode(sheets[0].rootTopic, 0, stats, usedIds, true));
+    }
+    claimImportedNode(stats, 0, 'XMind');
+    usedIds.add('root');
+    const children = sheets.map((sheet) =>
+      xmindJsonTopicToNode(sheet.rootTopic, 1, stats, usedIds));
+    return createXMindDocument(createMultiSheetRoot(children));
+  }
+
+  const xmlEntry = zip.file(XMIND_CONTENT_XML);
+  if (xmlEntry) {
+    const xml = new DOMParser().parseFromString(await readXMindContent(xmlEntry), 'text/xml');
+    const parserError = xml.querySelector('parsererror');
+    if (parserError) throw new Error(`Invalid XMind XML: ${parserError.textContent}`);
+    const rootTopics = Array.from(xml.getElementsByTagName('*'))
+      .filter((element) => element.localName === 'sheet')
+      .map((sheet) => directChildrenByLocalName(sheet, 'topic')[0])
+      .filter((topic): topic is Element => !!topic);
+    if (rootTopics.length === 0) throw new Error('Invalid XMind: missing root topic');
+    const stats = createImportStats();
+    const usedIds = new Set<string>();
+    if (rootTopics.length === 1) {
+      return createXMindDocument(xmindXmlTopicToNode(rootTopics[0], 0, stats, usedIds, true));
+    }
+    claimImportedNode(stats, 0, 'XMind');
+    usedIds.add('root');
+    const children = rootTopics.map((topic) => xmindXmlTopicToNode(topic, 1, stats, usedIds));
+    return createXMindDocument(createMultiSheetRoot(children));
+  }
+
+  throw new Error('Invalid XMind: content.json or content.xml not found');
+}
 
 // ============================================================================
 // OPML 导入

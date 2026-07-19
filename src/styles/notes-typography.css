@@ -7,7 +7,7 @@
 
 :root {
   /* Body */
-  --notes-body-size: 16px;
+  --notes-body-size: calc(16px * var(--font-size-scale, 1));
   --notes-body-lh: 1.5;
 
   /* Content column (Notion-like reading width) */
@@ -67,6 +67,7 @@
   --notes-hover-transition: 120ms ease;
   --notes-popup-enter-duration: 150ms;
   --notes-popup-enter-easing: cubic-bezier(0.16, 1, 0.3, 1);
+  --notes-tab-transition-duration: 150ms;
 
   /* ──────────────────────────────────────────────────────────
    * Editor body polish（V4）— Notion 级正文微样式 token
@@ -77,9 +78,25 @@
   --notes-inline-code-size: 0.875em;
   --notes-inline-code-radius: 4px;
   --notes-inline-code-pad-x: 0.2em;
+  --notes-inline-code-color: hsl(var(--foreground) / 0.86);
   --notes-selection-bg: hsl(var(--primary) / 0.14);
   --notes-block-selected-bg: hsl(var(--primary) / 0.14);
   --notes-table-header-bg: hsl(var(--muted) / 0.5);
   --notes-popup-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15);
   --notes-popup-item-radius: 4px;
+}
+.notes-conflict-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 12px;
+  border-bottom: 1px solid hsl(var(--warning, 38 92% 50%) / 0.35);
+  background: hsl(var(--warning, 38 92% 50%) / 0.1);
+  color: hsl(var(--foreground));
+  font-size: 12px;
+}
+
+.notes-conflict-banner > span {
+  flex: 1;
 }

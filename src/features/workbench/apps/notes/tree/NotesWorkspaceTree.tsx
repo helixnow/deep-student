@@ -82,6 +82,7 @@ export function NotesWorkspaceTree({
   onOpen,
   onMove,
   onRename,
+  onDelete,
   onRenameStart,
   onRenameEnd,
   getMenuItems,
@@ -330,6 +331,16 @@ export function NotesWorkspaceTree({
     if (!target) return;
     const currentId = target.dataset.nwtId;
     if (!currentId) return;
+
+    if ((event.key === 'Delete' || event.key === 'Backspace') && currentId !== NOTES_WORKSPACE_TREE_ROOT_ID) {
+      const item = findItemById(items, currentId);
+      if (item && onDelete) {
+        event.preventDefault();
+        event.stopPropagation();
+        onDelete(item);
+      }
+      return;
+    }
 
     const result = resolveTreeKeyboardNav({
       key: event.key,

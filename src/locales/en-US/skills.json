@@ -351,6 +351,9 @@
     "anki-tools": "Anki Cards",
     "qbank-tools": "Question Bank",
     "workspace-tools": "Workspace Collaboration",
+    "connector-tools": "Connectors and Object Bridge",
+    "task-governance-tools": "Task Governance",
+    "file-manager-tools": "File Manager",
     "web-fetch": "Web Fetch",
     "subagent-worker": "Subagent Worker",
     "tutor-mode": "Tutor Mode",
@@ -372,6 +375,8 @@
     "workbench-tools": "Learning Desktop",
     "automation-tools": "Automation Management",
     "browser-tools": "Browser Controls",
+    "media-tools": "Media Transcription",
+    "office-fidelity-tools": "Office Fidelity Inspection",
     "data-governance-tools": "Data Governance",
     "document-processing": "Document Processing",
     "dstu-tools": "Learning Material Management",
@@ -389,9 +394,11 @@
     "textbook-pdf-tools": "Textbook PDF",
     "tool-pack": "Tool Pack",
     "translation-tools": "Translation Tools",
-    "user-todo-tools": "Personal Todos"
+    "user-todo-tools": "Personal Todos",
+    "role-packs": "Featured Role Experts"
   },
   "builtinDescriptions": {
+    "role-packs": "Version-locked, auditable finance, legal, HR, operations, admin, research, teaching, and content workflows. High-risk outputs always require human final review.",
     "knowledge-retrieval": "Find and cite relevant knowledge from your library and external sources.",
     "canvas-note": "Turn ideas into structured notes, summaries, and reusable snippets.",
     "vfs-memory": "Store, recall, and update long-term memory snippets and references.",
@@ -400,6 +407,7 @@
     "anki-tools": "Generate, manage, and export Anki cards from learning materials.",
     "qbank-tools": "Create and manage question banks with tagging and practice modes.",
     "workspace-tools": "Multi-agent workspace collaboration, plus local file reads, artifact writes, and approved shell command execution within authorized folders.",
+    "file-manager-tools": "Preview-bound batch rename, move, reversible delete, restore, and explicit text format conversion inside the read-write workspace with item-level conflict checks.",
     "web-fetch": "Fetch and summarize web content when up-to-date info is needed.",
     "subagent-worker": "Delegate sub-tasks to specialized subagents and merge results.",
     "tutor-mode": "Socratic tutor that guides learning through questions and hints.",
@@ -418,7 +426,9 @@
     "ask-user": "Ask the user for confirmation or additional information.",
     "academic-search": "Search academic papers, literature, and research resources.",
     "template-designer": "Design and manage reusable document templates.",
-    "workbench-tools": "Workbench window control: list windows, open/focus apps, send window commands, close windows, and query state. Use domain tools for data edits."
+    "workbench-tools": "Workbench window control: list windows, open/focus apps, send window commands, close windows, and query state. Use domain tools for data edits.",
+    "media-tools": "Transcribe managed audio through the configured external ASR provider and write an auditable transcript artifact.",
+    "office-fidelity-tools": "Inspect managed DOCX, XLSX, PPTX, and PDF files for fidelity risks without executing macros, decrypting files, or claiming unsupported preservation."
   },
 
   "favorite": {

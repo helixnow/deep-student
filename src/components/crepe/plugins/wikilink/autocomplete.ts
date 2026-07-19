@@ -97,7 +97,7 @@ export function buildAutocompleteItems(
   return items;
 }
 
-function insertWikilink(
+export function insertWikilink(
   view: EditorView,
   from: number,
   to: number,

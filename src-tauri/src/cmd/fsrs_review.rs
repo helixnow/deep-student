@@ -6,8 +6,8 @@
 
 use crate::commands::AppState;
 use crate::fsrs_review_service::{
-    FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard, FsrsRateResult, FsrsReviewService, FsrsStats,
-    FsrsSuspendResult, FsrsUndoResult,
+    FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard, FsrsPreviewResult, FsrsRateResult,
+    FsrsReviewService, FsrsStats, FsrsSuspendResult, FsrsUndoResult,
 };
 use crate::models::AppError;
 use serde_json::{json, Value};
@@ -21,6 +21,24 @@ fn build_fsrs_changed_payload_after_write(
     source: &str,
     action: &str,
     cards: &[(&str, &str)],
+    fallback_entity_ids: &[String],
+) -> Option<Value> {
+    build_fsrs_changed_payload_after_write_with_logs(
+        did_write,
+        source,
+        action,
+        cards,
+        &[],
+        fallback_entity_ids,
+    )
+}
+
+fn build_fsrs_changed_payload_after_write_with_logs(
+    did_write: bool,
+    source: &str,
+    action: &str,
+    cards: &[(&str, &str)],
+    log_ids: &[Option<&str>],
     fallback_entity_ids: &[String],
 ) -> Option<Value> {
     if !did_write {
@@ -38,11 +56,16 @@ fn build_fsrs_changed_payload_after_write(
     let card_state_ids: Vec<&str> = cards.iter().map(|(state_id, _)| *state_id).collect();
     let cards: Vec<Value> = cards
         .iter()
-        .map(|(state_id, anki_card_id)| {
-            json!({
+        .enumerate()
+        .map(|(index, (state_id, anki_card_id))| {
+            let mut obj = json!({
                 "id": state_id,
                 "ankiCardId": anki_card_id,
-            })
+            });
+            if let Some(Some(log_id)) = log_ids.get(index) {
+                obj["logId"] = json!(log_id);
+            }
+            obj
         })
         .collect();
 
@@ -187,6 +210,63 @@ pub async fn fsrs_get_due(
     service.get_due(limit)
 }
 
+/// 预取卡片 tags 与 concept 掌握度（供 rate / preview 共用）。
+fn prefetch_mastery_for_card(
+    service: &FsrsReviewService,
+    card_state_id: &str,
+    vfs: Option<&std::sync::Arc<crate::vfs::database::VfsDatabase>>,
+) -> (Vec<String>, Option<f64>) {
+    let Some(vfs) = vfs else {
+        return (Vec::new(), None);
+    };
+    let anki_card_id = service
+        .get_card_state(card_state_id)
+        .ok()
+        .flatten()
+        .map(|s| s.anki_card_id);
+    match anki_card_id {
+        Some(anki_id) => match service.get_card_tags(&anki_id) {
+            Ok(tags) if !tags.is_empty() => {
+                let concept = tags
+                    .iter()
+                    .map(|t| t.trim())
+                    .find(|t| !t.is_empty())
+                    .map(|t| t.to_string());
+                let score = concept.and_then(|c| {
+                    crate::mastery::MasteryService::new(vfs.clone())
+                        .get_state(&c)
+                        .ok()
+                        .flatten()
+                        .map(|s| s.score)
+                });
+                (tags, score)
+            }
+            Ok(tags) => (tags, None),
+            Err(e) => {
+                log::warn!(
+                    "[fsrs_rate] failed to load card tags for mastery bias: {}",
+                    e
+                );
+                (Vec::new(), None)
+            }
+        },
+        None => (Vec::new(), None),
+    }
+}
+
+/// 只读预览四档评分间隔
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn fsrs_preview_intervals(
+    cardStateId: String,
+    state: State<'_, AppState>,
+) -> Result<FsrsPreviewResult> {
+    let service = FsrsReviewService::new(state.anki_database.clone());
+    let (_pre_tags, mastery_score) =
+        prefetch_mastery_for_card(&service, &cardStateId, state.vfs_db.as_ref());
+    service.preview_intervals(&cardStateId, mastery_score)
+}
+
 /// 对卡片评分（写 state + log 事务）
 #[tauri::command]
 #[allow(non_snake_case)]
@@ -195,56 +275,46 @@ pub async fn fsrs_rate(
     cardStateId: String,
     rating: u8,
     durationMs: Option<i64>,
+    clientOpId: Option<String>,
+    #[allow(non_snake_case)]
+    enforceExpectedLastReview: Option<bool>,
+    #[allow(non_snake_case)]
+    expectedLastReviewMs: Option<i64>,
     state: State<'_, AppState>,
 ) -> Result<FsrsRateResult> {
     let service = FsrsReviewService::new(state.anki_database.clone());
 
     // A-P1：评分前读取 concept 掌握度，用于 due 有界偏置（不影响 rs-fsrs 核心）
-    let (pre_tags, mastery_score) = if let Some(vfs) = state.vfs_db.as_ref() {
-        // 需先拿到 anki_card_id；从即将评分的 state 读 tags
-        let anki_card_id = service
-            .get_card_state(&cardStateId)
-            .ok()
-            .flatten()
-            .map(|s| s.anki_card_id);
-        match anki_card_id {
-            Some(anki_id) => match service.get_card_tags(&anki_id) {
-                Ok(tags) if !tags.is_empty() => {
-                    let concept = tags
-                        .iter()
-                        .map(|t| t.trim())
-                        .find(|t| !t.is_empty())
-                        .map(|t| t.to_string());
-                    let score = concept.and_then(|c| {
-                        crate::mastery::MasteryService::new(vfs.clone())
-                            .get_state(&c)
-                            .ok()
-                            .flatten()
-                            .map(|s| s.score)
-                    });
-                    (tags, score)
-                }
-                Ok(tags) => (tags, None),
-                Err(e) => {
-                    log::warn!(
-                        "[fsrs_rate] failed to load card tags for mastery bias: {}",
-                        e
-                    );
-                    (Vec::new(), None)
-                }
-            },
-            None => (Vec::new(), None),
-        }
-    } else {
-        (Vec::new(), None)
-    };
+    let (pre_tags, mastery_score) =
+        prefetch_mastery_for_card(&service, &cardStateId, state.vfs_db.as_ref());
 
-    let result = service.rate_with_mastery_bias(&cardStateId, rating, durationMs, mastery_score)?;
+    let enforce = enforceExpectedLastReview.unwrap_or(false);
+    let result = service.rate_with_mastery_bias_cas(
+        &cardStateId,
+        rating,
+        durationMs,
+        mastery_score,
+        clientOpId,
+        enforce,
+        expectedLastReviewMs,
+    )?;
     let cards = [(
         result.card_state.id.as_str(),
         result.card_state.anki_card_id.as_str(),
     )];
-    emit_fsrs_changed(&app, true, "user", "rate", &cards, &[]);
+    let log_ids = [Some(result.log_id.as_str())];
+    if let Some(payload) = build_fsrs_changed_payload_after_write_with_logs(
+        true,
+        "user",
+        "rate",
+        &cards,
+        &log_ids,
+        &[],
+    ) {
+        if let Err(e) = app.emit("fsrs://changed", payload) {
+            log::debug!("[fsrs_review] Failed to emit fsrs://changed: {}", e);
+        }
+    }
 
     // A-P0/A-P1：若卡片有 tags/concept 且 VFS 可用，则 emit mastery event（含 signal）
     if let Some(vfs) = state.vfs_db.as_ref() {

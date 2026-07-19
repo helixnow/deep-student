@@ -178,6 +178,17 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
             description: '替换后的文件名（含 .pptx 后缀），默认 "edited.pptx"',
             default: 'edited.pptx',
           },
+          output_target: {
+            type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
+            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+          },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
+          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          overwrite_policy: {
+            type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
+            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+          },
+          expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },
         required: ['resource_id', 'replacements'],
       },
@@ -185,10 +196,10 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
     {
       name: 'builtin-pptx_create',
       description:
-        '从 JSON spec 生成格式化的 PPTX 演示文稿文件并保存到用户的学习资源。' +
+        '从 JSON spec 生成格式化 PPTX；默认保存到学习资源，也可安全写入已授权 workspace。' +
         '支持标题页、内容页（要点列表）、表格页、空白页。' +
         '当用户要求"帮我做一份 PPT"、"生成演示文稿"时使用。' +
-        '生成成功后返回文件 ID，用户可在学习资源中查看和下载。',
+        '返回 TaskObjectHandle；workspace 输出同时返回可撤销的 mutation receipt/change set。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -207,6 +218,17 @@ spec 是一个 JSON 对象，包含 title 和 slides 数组：
             type: 'string',
             description: '可选：保存到的文件夹 ID。不指定则保存到根目录。',
           },
+          output_target: {
+            type: 'string', enum: ['vfs', 'workspace'], default: 'vfs',
+            description: '输出位置。vfs 保存到学习资源；workspace 写入已授权读写工作区。',
+          },
+          root_id: { type: 'string', enum: ['workspace'], description: 'workspace 输出时固定为 workspace。' },
+          relative_path: { type: 'string', description: 'workspace 根内相对路径；不得为绝对路径或包含 ..。' },
+          overwrite_policy: {
+            type: 'string', enum: ['fail', 'replace_if_match'], default: 'fail',
+            description: '默认拒绝覆盖；覆盖已有文件必须使用 replace_if_match。',
+          },
+          expected_sha256: { type: 'string', description: 'replace_if_match 必填：目标文件当前 SHA-256。' },
         },
         required: ['spec'],
       },

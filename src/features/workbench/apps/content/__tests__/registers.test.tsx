@@ -177,6 +177,7 @@ describe('files app register', () => {
     expect(FILES_APP_DEFINITION.typeId).toBe('files');
     expect(FILES_APP_DEFINITION.instanceMode).toBe('single');
     expect(FILES_APP_DEFINITION.memoryWeight).toBe(1);
+    expect(FILES_APP_DEFINITION.handlesCloseShortcut).toBe(true);
     expect(appRegistry.get('files')).toBe(FILES_APP_DEFINITION);
   });
 

@@ -11,8 +11,8 @@ use tauri::{State, Webview};
 
 use crate::browser::service::SurfaceCssOcclusion;
 use crate::browser::{
-    bridge_client, BridgeError, BrowserError, BrowserService, BrowserSessionState, HistoryEntry,
-    OpenSessionOptions, BROWSER_CONTENT_LABEL,
+    bridge_client, BridgeError, BrowserDownloadObservation, BrowserError, BrowserService,
+    BrowserSessionState, HistoryEntry, OpenSessionOptions, BROWSER_CONTENT_LABEL,
 };
 
 type CmdResult<T> = Result<T, String>;
@@ -416,6 +416,44 @@ pub async fn browser_type(
         .type_text(&r#ref, &text)
         .await
         .map_err(map_bridge_err)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn browser_set_input_files(
+    service: State<'_, Arc<BrowserService>>,
+    sessionId: String,
+    r#ref: String,
+    files: Value,
+) -> CmdResult<Value> {
+    service.assert_gates_open().await.map_err(map_err)?;
+    ensure_bridge_supported()?;
+    let _ = service.get_state(&sessionId).map_err(map_err)?;
+    bridge_for(service.inner())
+        .set_input_files(&r#ref, files)
+        .await
+        .map_err(map_bridge_err)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn browser_list_downloads(
+    service: State<'_, Arc<BrowserService>>,
+    sessionId: String,
+) -> CmdResult<Vec<BrowserDownloadObservation>> {
+    service.assert_gates_open().await.map_err(map_err)?;
+    let _ = service.get_state(&sessionId).map_err(map_err)?;
+    Ok(service.list_downloads(&sessionId))
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn browser_list_task_downloads(
+    service: State<'_, Arc<BrowserService>>,
+    chatSessionId: String,
+) -> CmdResult<Vec<BrowserDownloadObservation>> {
+    service.assert_gates_open().await.map_err(map_err)?;
+    Ok(service.list_task_downloads(&chatSessionId))
 }
 
 #[tauri::command]

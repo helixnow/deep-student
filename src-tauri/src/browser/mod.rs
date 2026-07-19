@@ -71,8 +71,9 @@ pub use policy::{
 };
 pub use repository::BrowserRepository;
 pub use service::{
-    assert_settings_gates_open, BrowserService, FLAG_UI_WORKBENCH_BROWSER, SETTING_BROWSER_ENABLED,
-    SETTING_BROWSER_NETWORK_MODE, SETTING_WORKBENCH_MODE,
+    assert_settings_gates_open, BrowserDownloadObservation, BrowserDownloadState, BrowserService,
+    FLAG_UI_WORKBENCH_BROWSER, SETTING_BROWSER_ENABLED, SETTING_BROWSER_NETWORK_MODE,
+    SETTING_WORKBENCH_MODE,
 };
 pub use session::{
     BrowserSession, BrowserSessionState, ControlMode, HistoryEntry, OpenSessionOptions, MAX_HISTORY,

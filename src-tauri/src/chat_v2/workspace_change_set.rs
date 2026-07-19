@@ -47,6 +47,24 @@ pub struct ChangeSet {
     pub changes: Vec<MutationReceipt>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RollbackItemResult {
+    pub change_id: String,
+    pub relative_path: String,
+    pub reverted: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RollbackChangeSetResult {
+    pub change_set_id: String,
+    pub complete: bool,
+    pub reverted_count: usize,
+    pub failed_count: usize,
+    pub items: Vec<RollbackItemResult>,
+}
+
 impl ChangeSet {
     pub fn single(receipt: MutationReceipt) -> Self {
         Self {
@@ -136,11 +154,33 @@ pub fn rollback_change_set(
     root: &Path,
     checkpoint_root: &Path,
     change_set: &ChangeSet,
-) -> Result<(), String> {
+) -> RollbackChangeSetResult {
+    let mut items = Vec::with_capacity(change_set.changes.len());
     for receipt in change_set.changes.iter().rev() {
-        rollback(root, checkpoint_root, receipt)?;
+        match rollback(root, checkpoint_root, receipt) {
+            Ok(()) => items.push(RollbackItemResult {
+                change_id: receipt.change_id.clone(),
+                relative_path: receipt.relative_path.clone(),
+                reverted: true,
+                error: None,
+            }),
+            Err(error) => items.push(RollbackItemResult {
+                change_id: receipt.change_id.clone(),
+                relative_path: receipt.relative_path.clone(),
+                reverted: false,
+                error: Some(error),
+            }),
+        }
     }
-    Ok(())
+    let reverted_count = items.iter().filter(|item| item.reverted).count();
+    let failed_count = items.len().saturating_sub(reverted_count);
+    RollbackChangeSetResult {
+        change_set_id: change_set.id.clone(),
+        complete: failed_count == 0,
+        reverted_count,
+        failed_count,
+        items,
+    }
 }
 
 pub fn workspace_mutation_guard() -> MutexGuard<'static, ()> {
@@ -389,6 +429,24 @@ pub fn write_text(
     content: &str,
     expected_current_hash: Option<&str>,
 ) -> Result<MutationReceipt, String> {
+    write_bytes(
+        root,
+        checkpoint_root,
+        root_id,
+        raw_path,
+        content.as_bytes(),
+        expected_current_hash,
+    )
+}
+
+pub fn write_bytes(
+    root: &Path,
+    checkpoint_root: &Path,
+    root_id: &str,
+    raw_path: &str,
+    content: &[u8],
+    expected_current_hash: Option<&str>,
+) -> Result<MutationReceipt, String> {
     let _guard = workspace_mutation_guard();
     let root = canonical_root(root)?;
     let relative = normalize_mutation_path(raw_path)?;
@@ -419,8 +477,8 @@ pub fn write_text(
         .as_ref()
         .map(|(bytes, _)| create_checkpoint(checkpoint_root, &change_id, bytes))
         .transpose()?;
-    atomic_write(&target, content.as_bytes(), existing.is_some())?;
-    let after_hash = hex::encode(Sha256::digest(content.as_bytes()));
+    atomic_write(&target, content, existing.is_some())?;
+    let after_hash = hex::encode(Sha256::digest(content));
     Ok(MutationReceipt {
         change_id,
         root_id: root_id.to_string(),
@@ -626,6 +684,48 @@ mod tests {
     }
 
     #[test]
+    fn binary_write_is_hash_bound_and_rollback_restores_exact_bytes() {
+        let root = tempfile::tempdir().unwrap();
+        let checkpoints = tempfile::tempdir().unwrap();
+        let original = [0_u8, 1, 2, 0xff];
+        let replacement = [9_u8, 8, 7, 0x80];
+        let created = write_bytes(
+            root.path(),
+            checkpoints.path(),
+            "workspace",
+            "reports/output.docx",
+            &original,
+            None,
+        )
+        .unwrap();
+        let original_hash = created.after_hash.clone().unwrap();
+        let modified = write_bytes(
+            root.path(),
+            checkpoints.path(),
+            "workspace",
+            "reports/output.docx",
+            &replacement,
+            Some(&original_hash),
+        )
+        .unwrap();
+        assert_eq!(modified.op, MutationKind::Modified);
+        assert!(write_bytes(
+            root.path(),
+            checkpoints.path(),
+            "workspace",
+            "reports/output.docx",
+            b"stale",
+            Some(&original_hash),
+        )
+        .is_err());
+        rollback(root.path(), checkpoints.path(), &modified).unwrap();
+        assert_eq!(
+            fs::read(root.path().join("reports/output.docx")).unwrap(),
+            original
+        );
+    }
+
+    #[test]
     fn move_delete_and_rollback_restore_tree() {
         let root = tempfile::tempdir().unwrap();
         let checkpoints = tempfile::tempdir().unwrap();
@@ -678,7 +778,10 @@ mod tests {
             record_external_changes(checkpoints.path(), "workspace", &before, &after).unwrap();
         assert_eq!(change_set.changes.len(), 3);
 
-        rollback_change_set(root.path(), checkpoints.path(), &change_set).unwrap();
+        let result = rollback_change_set(root.path(), checkpoints.path(), &change_set);
+        assert!(result.complete);
+        assert_eq!(result.reverted_count, 3);
+        assert_eq!(result.failed_count, 0);
         assert_eq!(
             fs::read_to_string(root.path().join("a.txt")).unwrap(),
             "old"
@@ -688,6 +791,46 @@ mod tests {
             "deleted"
         );
         assert!(!root.path().join("c.txt").exists());
+    }
+
+    #[test]
+    fn change_set_rollback_reports_partial_failure_and_continues() {
+        let root = tempfile::tempdir().unwrap();
+        let checkpoints = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("a.txt"), "agent-a").unwrap();
+        fs::write(root.path().join("b.txt"), "agent-b").unwrap();
+        fs::write(root.path().join("c.txt"), "created-c").unwrap();
+
+        let before = ExternalFileSnapshot::from([
+            ("a.txt".to_string(), external("before-a")),
+            ("b.txt".to_string(), external("before-b")),
+        ]);
+        let after = ExternalFileSnapshot::from([
+            ("a.txt".to_string(), external("agent-a")),
+            ("b.txt".to_string(), external("agent-b")),
+            ("c.txt".to_string(), external("created-c")),
+        ]);
+        let change_set =
+            record_external_changes(checkpoints.path(), "workspace", &before, &after).unwrap();
+
+        fs::write(root.path().join("b.txt"), "user-edit").unwrap();
+        let result = rollback_change_set(root.path(), checkpoints.path(), &change_set);
+
+        assert!(!result.complete);
+        assert_eq!(result.reverted_count, 2);
+        assert_eq!(result.failed_count, 1);
+        assert_eq!(
+            fs::read_to_string(root.path().join("a.txt")).unwrap(),
+            "before-a"
+        );
+        assert_eq!(
+            fs::read_to_string(root.path().join("b.txt")).unwrap(),
+            "user-edit"
+        );
+        assert!(!root.path().join("c.txt").exists());
+        assert!(result.items.iter().any(|item| {
+            item.relative_path == "b.txt" && !item.reverted && item.error.is_some()
+        }));
     }
 
     #[test]

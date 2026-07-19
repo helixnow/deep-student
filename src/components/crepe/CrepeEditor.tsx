@@ -57,6 +57,18 @@ import { createAgentInsertTransaction } from './useCrepeEditor';
 import { scrollSelectionIntoEditorViewport } from './scrollSelectionIntoEditorViewport';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { isNonEmptyHref } from './plugins/imageLightbox/nonEmptyHref';
+import {
+  deleteCrepeBlock,
+  duplicateCrepeBlock,
+  turnCrepeBlockInto,
+  type CrepeBlockTurnInto,
+} from './blockMenuCommands';
+import {
+  isCrepeBlockMenuDocCurrent,
+  shouldDismissCrepeBlockMenuForKey,
+} from './blockMenuState';
+
+type BlockMenuState = { pos: number; x: number; y: number; doc: unknown } | null;
 
 /**
  * Crepe 编辑器组件
@@ -89,6 +101,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     insertBefore: boolean;
   } | null>(null); // 内部块拖拽状态
   const [isReady, setIsReady] = useState(false);
+  const [blockMenu, setBlockMenu] = useState<BlockMenuState>(null);
   const [initPhase, setInitPhase] = useState('pending'); // 🔧 调试：追踪初始化阶段
   const onChangeRef = useRef(onChange);
   const defaultValueRef = useRef(defaultValue);
@@ -107,6 +120,106 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     wrapperRef,
     enabled: true,
   });
+
+  useEffect(() => {
+    if (!isReady || readonly) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    let pending: { handle: Element; x: number; y: number; pointerId: number } | null = null;
+    const getMenuHandle = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return null;
+      const handle = target.closest('.milkdown-block-handle');
+      const operation = target.closest('.operation-item');
+      if (!handle || !operation) return null;
+      const items = Array.from(handle.querySelectorAll('.operation-item'));
+      return items.indexOf(operation) === 1 ? handle : null;
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const handle = getMenuHandle(event.target);
+      pending = handle ? { handle, x: event.clientX, y: event.clientY, pointerId: event.pointerId } : null;
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      const current = pending;
+      pending = null;
+      if (!current || current.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - current.x, event.clientY - current.y) >= 8) return;
+      const target = event.target;
+      const handle = getMenuHandle(target) ?? current.handle;
+
+      const view = viewRef.current;
+      if (!view) return;
+      const rect = handle.getBoundingClientRect();
+      const hit = view.posAtCoords({ left: rect.right + 24, top: rect.top + rect.height / 2 });
+      if (!hit) return;
+      const $pos = view.state.doc.resolve(Math.max(0, hit.inside >= 0 ? hit.inside : hit.pos));
+      const pos = $pos.depth > 0 ? $pos.before(1) : hit.pos;
+      event.preventDefault();
+      event.stopPropagation();
+      setBlockMenu({
+        pos,
+        x: Math.min(rect.right + 6, window.innerWidth - 232),
+        y: Math.min(rect.top, window.innerHeight - 390),
+        doc: view.state.doc,
+      });
+    };
+    container.addEventListener('pointerdown', onPointerDown, true);
+    container.addEventListener('pointerup', onPointerUp, true);
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown, true);
+      container.removeEventListener('pointerup', onPointerUp, true);
+    };
+  }, [isReady, readonly]);
+
+  useEffect(() => {
+    if (!blockMenu) return;
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent) {
+        const editorTarget = event.target instanceof Element
+          && Boolean(event.target.closest('.ProseMirror'));
+        if (!shouldDismissCrepeBlockMenuForKey({
+          key: event.key,
+          editorTarget,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          isComposing: event.isComposing,
+        })) return;
+      } else if (event.target instanceof Element && event.target.closest('.crepe-block-menu')) {
+        return;
+      }
+      setBlockMenu(null);
+    };
+    const closeOnBeforeInput = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('.ProseMirror')) {
+        setBlockMenu(null);
+      }
+    };
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', close, true);
+    window.addEventListener('beforeinput', closeOnBeforeInput, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', close, true);
+      window.removeEventListener('beforeinput', closeOnBeforeInput, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [blockMenu]);
+
+  const runBlockAction = useCallback((action: CrepeBlockTurnInto | 'duplicate' | 'delete') => {
+    const view = viewRef.current;
+    const menu = blockMenu;
+    if (!view || !menu) return;
+    if (!isCrepeBlockMenuDocCurrent(view.state.doc, menu.doc)) {
+      setBlockMenu(null);
+      return;
+    }
+    if (action === 'duplicate') duplicateCrepeBlock(view, menu.pos);
+    else if (action === 'delete') deleteCrepeBlock(view, menu.pos);
+    else turnCrepeBlockInto(view, menu.pos, action);
+    setBlockMenu(null);
+  }, [blockMenu]);
   
   // 保持回调引用最新
   onChangeRef.current = onChange;
@@ -370,7 +483,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           
           doc.descendants((node, pos) => {
             // 检查是否是标题节点
-            if (node.type.name === 'heading' && node.attrs?.level === level) {
+            if (node.type.name === 'heading' && (level < 1 || node.attrs?.level === level)) {
               const nodeText = node.textContent.toLowerCase().trim();
               
               // 精确匹配优先
@@ -471,7 +584,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               }
               
               // 方式3: 在编辑器容器中按文本和级别查找标题
-              if (!headingElement && containerRef.current) {
+              if (!headingElement && containerRef.current && level >= 1 && level <= 6) {
                 const selector = `h${level}`;
                 const candidates = containerRef.current.querySelectorAll(selector);
                 for (const el of candidates) {
@@ -3129,6 +3242,34 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         ref={dropIndicatorRef}
         className="crepe-drop-indicator"
       />
+      {blockMenu && (
+        <div
+          className="crepe-block-menu"
+          role="menu"
+          aria-label={i18next.t('notes:blockMenu.label', 'Block actions')}
+          style={{ left: blockMenu.x, top: blockMenu.y }}
+        >
+          <div className="crepe-block-menu__label">{i18next.t('notes:blockMenu.turnInto', 'Turn into')}</div>
+          {([
+            ['paragraph', i18next.t('notes:blockMenu.paragraph', 'Text')],
+            ['heading-1', i18next.t('notes:blockMenu.heading1', 'Heading 1')],
+            ['heading-2', i18next.t('notes:blockMenu.heading2', 'Heading 2')],
+            ['heading-3', i18next.t('notes:blockMenu.heading3', 'Heading 3')],
+            ['bullet-list', i18next.t('notes:blockMenu.bulletList', 'Bulleted list')],
+            ['ordered-list', i18next.t('notes:blockMenu.orderedList', 'Numbered list')],
+            ['quote', i18next.t('notes:blockMenu.quote', 'Quote')],
+          ] as const).map(([action, label]) => (
+            <button key={action} type="button" role="menuitem" onClick={() => runBlockAction(action)}>{label}</button>
+          ))}
+          <div className="crepe-block-menu__separator" />
+          <button type="button" role="menuitem" onClick={() => runBlockAction('duplicate')}>
+            {i18next.t('notes:blockMenu.duplicate', 'Duplicate')}
+          </button>
+          <button type="button" role="menuitem" data-destructive="true" onClick={() => runBlockAction('delete')}>
+            {i18next.t('notes:blockMenu.delete', 'Delete')}
+          </button>
+        </div>
+      )}
     </div>
   );
 });

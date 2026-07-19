@@ -8,10 +8,15 @@
 //! B1d 接线：`window::bridge_init_script` / 后续 `BridgeClient` 方法挂本服务。
 //! B1e 接线：commands 调本服务公开方法；setup 中 `manage(Arc<BrowserService>)` + `boot_cleanup`。
 
+use std::collections::{HashMap, VecDeque};
+use std::fs::File;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
 
 use rand::{rngs::OsRng, RngCore};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 #[cfg(target_os = "linux")]
 use tauri::WindowEvent;
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Rect};
@@ -19,6 +24,10 @@ use tracing::{debug, info, warn};
 use url::Url;
 use uuid::Uuid;
 
+use crate::chat_v2::runtime_roots::artifact_root;
+use crate::chat_v2::task_objects::{
+    ManagedLocator, ObjectCapabilities, ObjectProvenance, TaskObjectHandle, TaskObjectKind,
+};
 use crate::commands::AppState;
 use crate::feature_flags::FeatureFlagManager;
 
@@ -52,6 +61,46 @@ pub const FLAG_UI_WORKBENCH_BROWSER: &str = "ui.workbench_browser";
 const TRUSTED_CONTENT_INPUT_KINDS: &[&str] =
     &["pointerdown", "keydown", "compositionstart", "wheel"];
 const MAX_SURFACE_OCCLUSIONS: usize = 64;
+const MAX_DOWNLOAD_OBSERVATIONS: usize = 100;
+const MAX_BROWSER_DOWNLOAD_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_BROWSER_TASK_DOWNLOAD_BYTES: u64 = 256 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserDownloadState {
+    Started,
+    Processing,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserDownloadObservation {
+    pub id: String,
+    pub browser_session_id: String,
+    pub chat_session_id: String,
+    pub url: String,
+    pub filename: String,
+    pub state: BrowserDownloadState,
+    pub root_id: String,
+    pub relative_path: String,
+    pub locator: String,
+    pub sha256: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub error: Option<String>,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub object_handle: Option<TaskObjectHandle>,
+}
+
+#[derive(Default)]
+struct BrowserDownloadRuntime {
+    observations: VecDeque<BrowserDownloadObservation>,
+    by_path: HashMap<PathBuf, String>,
+    task_completed_bytes: HashMap<String, u64>,
+    task_reserved_bytes: HashMap<String, u64>,
+}
 
 struct TrustedContentInputCapability {
     session_id: String,
@@ -151,6 +200,7 @@ pub struct BrowserService {
     /// from moving the native surface back to stale DOM coordinates.
     /// When both runtime locks are needed, acquire this before `session`.
     surface_sequence: Mutex<Option<u64>>,
+    downloads: Mutex<BrowserDownloadRuntime>,
 }
 
 impl BrowserService {
@@ -164,6 +214,7 @@ impl BrowserService {
             navigation_policy: NavigationPolicyHandle::new(),
             navigation_runtime: Mutex::new(NavigationRuntime::default()),
             surface_sequence: Mutex::new(None),
+            downloads: Mutex::new(BrowserDownloadRuntime::default()),
         })
     }
 
@@ -307,6 +358,16 @@ impl BrowserService {
             };
             if let Some(id) = existing_id {
                 if window::content_window(&self.app).is_some() {
+                    {
+                        let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+                        if let Some(session) = guard.as_mut().filter(|session| session.id == id) {
+                            update_reused_download_owner(
+                                session,
+                                from_agent,
+                                options.chat_session_id.clone(),
+                            );
+                        }
+                    }
                     if from_agent {
                         self.set_agent_control()?;
                     } else {
@@ -362,7 +423,9 @@ impl BrowserService {
             session_id.clone(),
             options.url.clone(),
             profile_dir.clone(),
-            options.chat_session_id.clone(),
+            from_agent
+                .then_some(options.chat_session_id.clone())
+                .flatten(),
             options.display_name.clone(),
         );
 
@@ -1195,6 +1258,9 @@ impl BrowserService {
         let weak: Weak<BrowserService> = Arc::downgrade(self);
         let weak_title = weak.clone();
         let weak_blocked = weak.clone();
+        let weak_download_requested = weak.clone();
+        let weak_download_finished = weak.clone();
+        let download_browser_session_id = session_id.clone();
         ContentWindowHooks {
             on_page_finished: Arc::new(move |url| {
                 if let Some(svc) = weak.upgrade() {
@@ -1221,7 +1287,264 @@ impl BrowserService {
                     });
                 }
             }),
+            on_download_requested: Arc::new(move |url, destination| {
+                let Some(svc) = weak_download_requested.upgrade() else {
+                    return false;
+                };
+                svc.on_download_requested(&download_browser_session_id, url, destination)
+            }),
+            on_download_finished: Arc::new(move |url, path, success| {
+                if let Some(svc) = weak_download_finished.upgrade() {
+                    svc.on_download_finished(url, path, success);
+                }
+            }),
         }
+    }
+
+    fn on_download_requested(
+        &self,
+        browser_session_id: &str,
+        url: String,
+        destination: &mut PathBuf,
+    ) -> bool {
+        let chat_session_id = {
+            let session = self.session.lock().unwrap_or_else(|p| p.into_inner());
+            download_owner_for_session(session.as_ref(), browser_session_id)
+        };
+        let chat_session_id = match chat_session_id {
+            Ok(owner) => owner,
+            Err(()) => return false,
+        };
+        let Some(chat_session_id) = chat_session_id else {
+            // User-owned browser sessions retain normal platform download behavior.
+            return true;
+        };
+        let root = match artifact_root(&self.app, &chat_session_id, true) {
+            Ok(root) => root,
+            Err(error) => {
+                warn!("[browser] failed to resolve download artifact root: {error}");
+                return false;
+            }
+        };
+        let download_dir = root.path.join("browser-downloads");
+        if let Err(error) = std::fs::create_dir_all(&download_dir) {
+            warn!("[browser] failed to create download artifact directory: {error}");
+            return false;
+        }
+
+        let original_name = destination
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(sanitize_download_filename)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "download.bin".into());
+        let id = format!("bd_{}", Uuid::new_v4());
+        let filename = format!("{}-{}", &id[3..11], original_name);
+        let relative_path = format!("browser-downloads/{filename}");
+        let controlled_path = download_dir.join(&filename);
+
+        let mut object_handle = TaskObjectHandle::new(
+            format!("browser_download:{id}"),
+            TaskObjectKind::File,
+            filename.clone(),
+            ObjectProvenance {
+                source: "browser_download".into(),
+                source_uri: Some(url.clone()),
+                server: None,
+                tool: Some("browser_downloads".into()),
+                derived_from: Vec::new(),
+                observed_at: now_rfc3339(),
+            },
+        );
+        object_handle.locator = ManagedLocator::new("artifacts", relative_path.clone()).ok();
+        object_handle.capabilities = ObjectCapabilities {
+            readable: true,
+            materializable: true,
+            writable: false,
+            shareable: false,
+            sendable: false,
+            deletable: true,
+        };
+        let observation = BrowserDownloadObservation {
+            id: id.clone(),
+            browser_session_id: browser_session_id.to_string(),
+            chat_session_id: chat_session_id.clone(),
+            url,
+            filename,
+            state: BrowserDownloadState::Started,
+            root_id: "artifacts".into(),
+            relative_path: relative_path.clone(),
+            locator: format!("runtime://artifacts/{relative_path}"),
+            sha256: None,
+            size_bytes: None,
+            error: None,
+            started_at: now_rfc3339(),
+            finished_at: None,
+            object_handle: Some(object_handle),
+        };
+        let mut runtime = self.downloads.lock().unwrap_or_else(|p| p.into_inner());
+        let completed = runtime
+            .task_completed_bytes
+            .get(&chat_session_id)
+            .copied()
+            .unwrap_or(0);
+        let reserved = runtime
+            .task_reserved_bytes
+            .get(&chat_session_id)
+            .copied()
+            .unwrap_or(0);
+        if !task_download_budget_available(completed, reserved) {
+            warn!(
+                "[browser] rejecting download because task budget is exhausted: {}",
+                chat_session_id
+            );
+            return false;
+        }
+        runtime
+            .task_reserved_bytes
+            .insert(chat_session_id, reserved + MAX_BROWSER_DOWNLOAD_BYTES);
+        *destination = controlled_path.clone();
+        runtime.by_path.insert(controlled_path, id);
+        runtime.observations.push_back(observation);
+        while runtime.observations.len() > MAX_DOWNLOAD_OBSERVATIONS {
+            let Some(index) = runtime.observations.iter().position(|item| {
+                matches!(
+                    item.state,
+                    BrowserDownloadState::Completed | BrowserDownloadState::Failed
+                )
+            }) else {
+                break;
+            };
+            if let Some(removed) = runtime.observations.remove(index) {
+                runtime.by_path.retain(|_, id| id != &removed.id);
+            }
+        }
+        true
+    }
+
+    fn on_download_finished(self: &Arc<Self>, url: String, path: Option<PathBuf>, success: bool) {
+        let (id, controlled_path) = {
+            let mut runtime = self.downloads.lock().unwrap_or_else(|p| p.into_inner());
+            let id = path
+                .as_ref()
+                .and_then(|path| runtime.by_path.get(path).cloned())
+                .or_else(|| {
+                    runtime
+                        .observations
+                        .iter()
+                        .rev()
+                        .find(|item| {
+                            item.url == url && matches!(item.state, BrowserDownloadState::Started)
+                        })
+                        .map(|item| item.id.clone())
+                });
+            if let Some(id) = id.as_deref() {
+                if let Some(index) = runtime.observations.iter().position(|item| item.id == id) {
+                    if success {
+                        runtime.observations[index].state = BrowserDownloadState::Processing;
+                    } else {
+                        let chat_session_id = runtime.observations[index].chat_session_id.clone();
+                        release_task_download_reservation(
+                            &mut runtime.task_reserved_bytes,
+                            &chat_session_id,
+                        );
+                        let item = &mut runtime.observations[index];
+                        item.state = BrowserDownloadState::Failed;
+                        item.error = Some("native download reported failure".into());
+                        item.finished_at = Some(now_rfc3339());
+                    }
+                }
+            }
+            let controlled_path = path.clone().or_else(|| {
+                id.as_deref().and_then(|id| {
+                    runtime
+                        .by_path
+                        .iter()
+                        .find(|(_, mapped_id)| mapped_id.as_str() == id)
+                        .map(|(path, _)| path.clone())
+                })
+            });
+            (id, controlled_path)
+        };
+        if !success {
+            return;
+        }
+        let (Some(id), Some(path)) = (id, controlled_path) else {
+            return;
+        };
+
+        let weak = Arc::downgrade(self);
+        let fallback_id = id.clone();
+        let fallback_path = path.clone();
+        if let Err(error) = std::thread::Builder::new()
+            .name("browser-download-hash".into())
+            .spawn(move || {
+                let result = hash_download_file_bounded(&path, MAX_BROWSER_DOWNLOAD_BYTES);
+                if let Some(service) = weak.upgrade() {
+                    service.finish_download_hash(&id, &path, result);
+                }
+            })
+        {
+            warn!("[browser] download hash worker unavailable; hashing inline: {error}");
+            let result = hash_download_file_bounded(&fallback_path, MAX_BROWSER_DOWNLOAD_BYTES);
+            self.finish_download_hash(&fallback_id, &fallback_path, result);
+        }
+    }
+
+    fn finish_download_hash(&self, id: &str, path: &Path, result: Result<(String, u64), String>) {
+        let mut runtime = self.downloads.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(index) = runtime.observations.iter().position(|item| item.id == id) {
+            let chat_session_id = runtime.observations[index].chat_session_id.clone();
+            release_task_download_reservation(&mut runtime.task_reserved_bytes, &chat_session_id);
+            match result {
+                Ok((sha256, size_bytes)) => {
+                    let completed = runtime
+                        .task_completed_bytes
+                        .entry(chat_session_id)
+                        .or_insert(0);
+                    *completed = completed.saturating_add(size_bytes);
+                    let item = &mut runtime.observations[index];
+                    item.state = BrowserDownloadState::Completed;
+                    item.sha256 = Some(sha256);
+                    item.size_bytes = Some(size_bytes);
+                    if let Some(handle) = item.object_handle.as_mut() {
+                        handle.sha256 = item.sha256.clone();
+                        handle.size_bytes = Some(size_bytes);
+                    }
+                }
+                Err(error) => {
+                    if error == "download exceeds per-file byte limit" {
+                        let _ = std::fs::remove_file(path);
+                    }
+                    let item = &mut runtime.observations[index];
+                    item.state = BrowserDownloadState::Failed;
+                    item.error = Some(error);
+                }
+            }
+            runtime.observations[index].finished_at = Some(now_rfc3339());
+        }
+    }
+
+    pub fn list_downloads(&self, browser_session_id: &str) -> Vec<BrowserDownloadObservation> {
+        self.downloads
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .observations
+            .iter()
+            .filter(|item| item.browser_session_id == browser_session_id)
+            .cloned()
+            .collect()
+    }
+
+    pub fn list_task_downloads(&self, chat_session_id: &str) -> Vec<BrowserDownloadObservation> {
+        self.downloads
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .observations
+            .iter()
+            .filter(|item| item.chat_session_id == chat_session_id)
+            .cloned()
+            .collect()
     }
 
     fn on_navigation_blocked(
@@ -1539,6 +1862,85 @@ fn apply_pending_navigation(
 fn rollback_pending_navigation(session: &mut BrowserSession, attempt: &PendingNavigation) {
     *session = attempt.rollback.clone();
     session.mark_loaded(None);
+}
+
+fn sanitize_download_filename(raw: &str) -> String {
+    let sanitized: String = raw
+        .chars()
+        .map(|ch| match ch {
+            '/' | '\\' | ':' | '\0' => '_',
+            ch if ch.is_control() => '_',
+            ch => ch,
+        })
+        .take(180)
+        .collect();
+    let trimmed = sanitized.trim_matches(|ch: char| ch == '.' || ch.is_whitespace());
+    if trimmed.is_empty() {
+        "download.bin".into()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn update_reused_download_owner(
+    session: &mut BrowserSession,
+    from_agent: bool,
+    chat_session_id: Option<String>,
+) {
+    session.chat_session_id = from_agent.then_some(chat_session_id).flatten();
+    session.updated_at = chrono::Utc::now();
+}
+
+fn download_owner_for_session(
+    session: Option<&BrowserSession>,
+    browser_session_id: &str,
+) -> Result<Option<String>, ()> {
+    let session = session
+        .filter(|session| session.alive && session.id == browser_session_id)
+        .ok_or(())?;
+    if session.control_mode == crate::browser::ControlMode::Agent {
+        session.chat_session_id.clone().map(Some).ok_or(())
+    } else {
+        Ok(None)
+    }
+}
+
+fn task_download_budget_available(completed_bytes: u64, reserved_bytes: u64) -> bool {
+    completed_bytes
+        .saturating_add(reserved_bytes)
+        .saturating_add(MAX_BROWSER_DOWNLOAD_BYTES)
+        <= MAX_BROWSER_TASK_DOWNLOAD_BYTES
+}
+
+fn release_task_download_reservation(reservations: &mut HashMap<String, u64>, task_id: &str) {
+    let Some(reserved) = reservations.get_mut(task_id) else {
+        return;
+    };
+    *reserved = reserved.saturating_sub(MAX_BROWSER_DOWNLOAD_BYTES);
+    if *reserved == 0 {
+        reservations.remove(task_id);
+    }
+}
+
+fn hash_download_file_bounded(path: &Path, max_bytes: u64) -> Result<(String, u64), String> {
+    let mut file = File::open(path).map_err(|error| format!("open downloaded file: {error}"))?;
+    let mut hasher = Sha256::new();
+    let mut total = 0u64;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("read downloaded file: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        total = total.saturating_add(read as u64);
+        if total > max_bytes {
+            return Err("download exceeds per-file byte limit".into());
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok((hex::encode(hasher.finalize()), total))
 }
 
 fn require_live_surface_session<'a>(
@@ -2356,5 +2758,88 @@ mod tests {
         assert_eq!(session.history.len(), 2);
         assert!(session.can_go_forward());
         assert_eq!(session.history[1].url, "https://b.example/");
+    }
+
+    #[test]
+    fn download_filename_sanitization_removes_path_control() {
+        assert_eq!(
+            sanitize_download_filename("../../report:final.xlsx"),
+            "_.._report_final.xlsx"
+        );
+        assert_eq!(sanitize_download_filename("..."), "download.bin");
+    }
+
+    #[test]
+    fn download_hash_reports_sha256_and_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("download.bin");
+        std::fs::write(&path, b"browser-download").unwrap();
+        let (sha256, size) = hash_download_file_bounded(&path, 1024).unwrap();
+        assert_eq!(sha256, hex::encode(Sha256::digest(b"browser-download")));
+        assert_eq!(size, 16);
+    }
+
+    #[test]
+    fn reused_session_download_owner_tracks_current_caller() {
+        let mut session = BrowserSession::new(
+            "bs_reused".into(),
+            "https://example.com".into(),
+            PathBuf::from("/tmp/profile"),
+            Some("chat-old".into()),
+            None,
+        );
+        update_reused_download_owner(&mut session, true, Some("chat-new".into()));
+        session.control_mode = crate::browser::ControlMode::Agent;
+        assert_eq!(session.chat_session_id.as_deref(), Some("chat-new"));
+        assert_eq!(
+            download_owner_for_session(Some(&session), "bs_reused")
+                .unwrap()
+                .as_deref(),
+            Some("chat-new")
+        );
+        assert!(download_owner_for_session(Some(&session), "bs_stale").is_err());
+        session.chat_session_id = None;
+        assert!(download_owner_for_session(Some(&session), "bs_reused").is_err());
+        update_reused_download_owner(&mut session, false, Some("ignored".into()));
+        session.control_mode = crate::browser::ControlMode::User;
+        assert!(session.chat_session_id.is_none());
+        assert_eq!(
+            download_owner_for_session(Some(&session), "bs_reused").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn download_budgets_reserve_pending_and_count_completed_bytes() {
+        assert!(task_download_budget_available(
+            0,
+            3 * MAX_BROWSER_DOWNLOAD_BYTES
+        ));
+        assert!(!task_download_budget_available(
+            0,
+            4 * MAX_BROWSER_DOWNLOAD_BYTES
+        ));
+        assert!(!task_download_budget_available(
+            MAX_BROWSER_TASK_DOWNLOAD_BYTES - MAX_BROWSER_DOWNLOAD_BYTES + 1,
+            0
+        ));
+
+        let mut reservations =
+            HashMap::from([("chat-a".to_string(), 2 * MAX_BROWSER_DOWNLOAD_BYTES)]);
+        release_task_download_reservation(&mut reservations, "chat-a");
+        assert_eq!(reservations["chat-a"], MAX_BROWSER_DOWNLOAD_BYTES);
+        release_task_download_reservation(&mut reservations, "chat-a");
+        assert!(!reservations.contains_key("chat-a"));
+    }
+
+    #[test]
+    fn bounded_download_hash_rejects_oversized_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oversized.bin");
+        std::fs::write(&path, vec![0u8; 1025]).unwrap();
+        assert_eq!(
+            hash_download_file_bounded(&path, 1024).unwrap_err(),
+            "download exceeds per-file byte limit"
+        );
     }
 }

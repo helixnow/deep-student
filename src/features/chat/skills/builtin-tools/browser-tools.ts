@@ -53,7 +53,10 @@ export const browserToolsSkill: SkillDefinition = {
 1. \`builtin-browser_open\`（High 审批）→ 自动带 snapshot
 2. \`builtin-browser_click\` / \`builtin-browser_type\`（用最新 snapshot 的 \`ref=eN\`）
 3. 需要时 \`builtin-browser_snapshot\` / \`builtin-browser_scroll\` / \`builtin-browser_back\`
-4. 结束时 \`builtin-browser_close\`
+   - \`builtin-browser_screenshot\` 仅在运行时 capability 返回 available=true 时才会产出真实像素文件；不可用时不得用 accessibility snapshot 冒充
+4. 下载后用 \`builtin-browser_downloads\` 等待完成并取得受控 runtime locator/hash
+5. 上传只用 \`builtin-browser_file_upload\`，文件必须来自已授权 runtime root 或本任务 artifacts
+6. 结束时 \`builtin-browser_close\`
 
 ## 定位规则
 
@@ -119,6 +122,16 @@ export const browserToolsSkill: SkillDefinition = {
       },
     },
     {
+      name: 'builtin-browser_screenshot',
+      description:
+        '请求捕获当前可见 WebView 的真实像素截图。若当前 Tauri/Wry 平台没有截图 API，会明确返回 available=false、reasonCode=PLATFORM_API_UNAVAILABLE，且绝不伪造文件或用 accessibility snapshot 代替。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {},
+      },
+    },
+    {
       name: 'builtin-browser_click',
       description: `${PREFER_FETCH} 点击 snapshot 中的元素。必须使用最近一次 snapshot 的 ref（如 e12）；禁止坐标。成功后默认附带新 snapshot。`,
       inputSchema: {
@@ -161,6 +174,63 @@ export const browserToolsSkill: SkillDefinition = {
             description: '逐字输入（页面依赖 key 事件时）',
           },
           include_snapshot: { type: 'boolean', default: true },
+        },
+      },
+    },
+    {
+      name: 'builtin-browser_file_upload',
+      description:
+        '将已授权 runtime root 或本任务 artifacts 中的文件设置到网页 file input。只接受 root_id + relative_path，不接受裸主机路径；不会自动提交表单。High 审批。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['ref', 'element', 'files'],
+        properties: {
+          ref: { type: 'string', pattern: '^e[0-9]+$' },
+          element: { type: 'string', description: '【必填】文件输入框的人类可读描述' },
+          files: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 10,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['root_id', 'relative_path'],
+              properties: {
+                root_id: {
+                  type: 'string',
+                  description: '已授权 runtime root id，或 artifacts',
+                },
+                relative_path: {
+                  type: 'string',
+                  description: 'root 内相对文件路径；禁止绝对路径和 ..',
+                },
+              },
+            },
+          },
+          include_snapshot: { type: 'boolean', default: true },
+        },
+      },
+    },
+    {
+      name: 'builtin-browser_downloads',
+      description:
+        '观察当前浏览器会话的下载开始/处理/完成/失败状态。Agent 下载被强制写入本任务 artifacts，并在完成后返回 runtime locator、SHA-256 与字节数。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          wait_for_terminal: {
+            type: 'boolean',
+            default: true,
+            description: '若存在进行中的下载，等待其完成或失败',
+          },
+          timeout_ms: {
+            type: 'integer',
+            default: 15000,
+            minimum: 0,
+            maximum: 30000,
+          },
         },
       },
     },

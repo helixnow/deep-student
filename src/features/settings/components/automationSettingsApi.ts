@@ -2,6 +2,37 @@ export type AutomationScheduleKind = 'daily' | 'weekly' | 'weekdays' | 'monthly'
 export type AutomationActionType = 'notify' | 'agent_turn';
 export type AutomationCatchUpPolicy = 'skip' | 'run_once' | 'catch_up_all';
 export type AutomationSessionMode = 'isolated' | 'named';
+export type AutomationRootAccess = 'read_only' | 'read_write';
+
+export interface TrustedAutomationProfile {
+  schemaVersion: 1;
+  profileHash: string;
+  allowedTools: string[];
+  runtimeRoots: Array<{ rootId: string; access: AutomationRootAccess }>;
+  shellCommandPrefixes: string[];
+  networkDomains: string[];
+  maxToolRounds: number;
+  timeoutSeconds: number;
+  maxOutputBytes: number;
+  rollbackRequired: boolean;
+}
+
+export function prepareTrustedAutomationProfile(
+  input: Omit<TrustedAutomationProfile, 'schemaVersion' | 'profileHash'> & { profileHash?: string },
+): TrustedAutomationProfile {
+  return {
+    schemaVersion: 1,
+    profileHash: input.profileHash?.trim() ?? '',
+    allowedTools: Array.from(new Set(input.allowedTools)).sort(),
+    runtimeRoots: [...input.runtimeRoots].sort((a, b) => a.rootId.localeCompare(b.rootId)),
+    shellCommandPrefixes: Array.from(new Set(input.shellCommandPrefixes)).sort(),
+    networkDomains: Array.from(new Set(input.networkDomains.map((domain) => domain.toLowerCase()))).sort(),
+    maxToolRounds: input.maxToolRounds,
+    timeoutSeconds: input.timeoutSeconds,
+    maxOutputBytes: input.maxOutputBytes,
+    rollbackRequired: input.rollbackRequired,
+  };
+}
 export const AUTOMATION_VERSION_CONFLICT_CODE = 'AUTOMATION_VERSION_CONFLICT';
 
 export interface AutomationSchedule {
@@ -29,6 +60,7 @@ export interface AutomationListItem {
   maxRetries: number;
   retryBackoffSeconds: number;
   timeoutSeconds: number;
+  trustedProfile?: TrustedAutomationProfile;
   createdAt?: string;
   lastRunAt?: string;
   nextTriggerAt?: string;
@@ -54,6 +86,7 @@ export interface AutomationUpdateInput {
   maxRetries?: number;
   retryBackoffSeconds?: number;
   timeoutSeconds?: number;
+  trustedProfile?: TrustedAutomationProfile | null;
 }
 
 export interface AutomationCreateInput extends Omit<AutomationUpdateInput, 'automationId' | 'expectedVersion'> {
@@ -156,6 +189,8 @@ function normalizeAutomation(raw: unknown): AutomationListItem | null {
   const rawActionType = raw.actionType ?? raw.action_type;
   const actionType: AutomationActionType = rawActionType === 'agent_turn' ? 'agent_turn' : 'notify';
   const prompt = readString(raw, 'prompt') ?? '';
+  const profileRaw = raw.trustedProfile ?? raw.trusted_profile;
+  const trustedProfile = isRecord(profileRaw) ? profileRaw as unknown as TrustedAutomationProfile : undefined;
 
   return {
     id,
@@ -183,6 +218,7 @@ function normalizeAutomation(raw: unknown): AutomationListItem | null {
     timeoutSeconds: typeof (raw.timeoutSeconds ?? raw.timeout_seconds) === 'number'
       ? Number(raw.timeoutSeconds ?? raw.timeout_seconds)
       : 600,
+    trustedProfile,
     createdAt: readString(raw, 'createdAt', 'created_at'),
     lastRunAt: readString(raw, 'lastRunAt', 'last_run_at'),
     nextTriggerAt: readString(raw, 'nextTriggerAt', 'next_trigger_at'),
@@ -247,6 +283,7 @@ export async function updateAutomation(
   if (input.maxRetries !== undefined) request.maxRetries = input.maxRetries;
   if (input.retryBackoffSeconds !== undefined) request.retryBackoffSeconds = input.retryBackoffSeconds;
   if (input.timeoutSeconds !== undefined) request.timeoutSeconds = input.timeoutSeconds;
+  if (input.trustedProfile !== undefined) request.trustedProfile = input.trustedProfile;
 
   await invoke('chat_v2_automation_update', { request });
 }
@@ -274,6 +311,7 @@ export async function createAutomation(
     maxRetries: input.maxRetries ?? 2,
     retryBackoffSeconds: input.retryBackoffSeconds ?? 60,
     timeoutSeconds: input.timeoutSeconds ?? 600,
+    ...(input.trustedProfile ? { trustedProfile: input.trustedProfile } : {}),
   };
   if (input.actionType === 'agent_turn') {
     request.agentPrompt = input.agentPrompt || input.prompt;

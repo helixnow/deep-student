@@ -34,6 +34,10 @@ import {
 import type { FormatOptions } from '../context/types';
 import { resourceStoreApi } from '../resources';
 import { logAttachment } from '../debug/chatV2Logger';
+import {
+  binaryStageInputs,
+  type StageInput,
+} from './attachmentMaterialization';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -114,6 +118,8 @@ export interface BuildSendContextRefsResult {
   sendRefs: SendContextRef[];
   /** ★ 文档28改造：资源 ID -> 真实路径 的映射 */
   pathMap: Record<string, string>;
+  /** Binary candidates are staged only after token budgeting retains their refs. */
+  binaryStageCandidates: StageInput[];
 }
 
 /**
@@ -348,7 +354,7 @@ export async function buildSendContextRefsWithPaths(
   options?: FormatOptions
 ): Promise<BuildSendContextRefsResult> {
   if (!contextRefs || contextRefs.length === 0) {
-    return { sendRefs: [], pathMap: {} };
+    return { sendRefs: [], pathMap: {}, binaryStageCandidates: [] };
   }
 
   const startTime = performance.now();
@@ -444,6 +450,7 @@ export async function buildSendContextRefsWithPaths(
                 injectModes: ref.injectModes,
               },
               path,
+              resource,
             };
           } catch (error: unknown) {
             lastError = error as Error;
@@ -507,6 +514,10 @@ export async function buildSendContextRefsWithPaths(
     }
   }
 
+  const binaryStageCandidates = results.flatMap((result) =>
+    result ? binaryStageInputs(result.resource, result.sendRef) : []
+  );
+
   const failedCount = contextRefs.length - sendRefs.length;
   const duration = performance.now() - startTime;
 
@@ -536,7 +547,7 @@ export async function buildSendContextRefsWithPaths(
     );
   }
 
-  return { sendRefs, pathMap };
+  return { sendRefs, pathMap, binaryStageCandidates };
 }
 
 /**

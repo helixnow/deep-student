@@ -245,7 +245,7 @@
   box-shadow: none !important;
 }
 
-/* 玻璃面搜索框（FinderSearchBar 共享组件在 OS 文件窗口的落地：
+/* 玻璃面搜索框（.finder-search 搜索壳在 OS 文件窗口的落地：
    workbench 根复位已把 input 本体刷无铬，这里由包裹容器承担视觉） */
 [data-wb-sys-app='files'] .finder-search {
   border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);

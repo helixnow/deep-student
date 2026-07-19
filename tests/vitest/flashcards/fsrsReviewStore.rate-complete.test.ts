@@ -19,6 +19,16 @@ import {
 const invokeMock = vi.mocked(invoke);
 const refreshDueMock = vi.mocked(requestFlashcardsDueRefresh);
 
+function mockInvokeByCommand(handlers: Record<string, unknown | (() => unknown)>): void {
+  invokeMock.mockImplementation(async (command: string) => {
+    const handler = handlers[command];
+    if (typeof handler === 'function') return (handler as () => unknown)();
+    if (handler !== undefined) return handler;
+    throw new Error(`unexpected invoke: ${command}`);
+  });
+}
+
+
 describe('fsrsReviewStore rate completion', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('en-US');
@@ -30,18 +40,23 @@ describe('fsrsReviewStore rate completion', () => {
     useFsrsReviewStore.setState({
       screen: 'today',
       dueCards: [],
+      dueTotal: 0,
       queue: [],
       queueIndex: 0,
       flipped: false,
       loading: false,
       ratingBusy: false,
-      usingMock: false,
       error: null,
       errorKind: null,
       lastRated: null,
       lastReview: null,
       lastSuspended: null,
       retryBatchRequest: null,
+      sessionRatedCount: 0,
+      sessionAgainCount: 0,
+      remainingDueAfterSession: null,
+      ratingPreviews: null,
+      lastSchedule: null,
     });
   });
 
@@ -51,6 +66,7 @@ describe('fsrsReviewStore rate completion', () => {
       screen: 'session',
       queue: [{ id: 'state-rate', ankiCardId: 'anki-rate', front: 'Q', back: 'A' }],
       queueIndex: 0,
+      flipped: true,
     });
     await useFsrsReviewStore.getState().rate(1);
     expect(useFsrsReviewStore.getState().error).toBe('Rating failed');
@@ -175,7 +191,6 @@ describe('fsrsReviewStore rate completion', () => {
       ],
       queueIndex: 1,
       flipped: true,
-      usingMock: false,
     });
 
     await useFsrsReviewStore.getState().rate(3);
@@ -186,11 +201,13 @@ describe('fsrsReviewStore rate completion', () => {
     expect(state.queue[state.queueIndex]).toBeUndefined();
     expect(state.ratingBusy).toBe(false);
     expect(state.flipped).toBe(false);
-    expect(state.lastReview).toEqual({
+    expect(state.lastReview).toMatchObject({
       logId: 'log-b',
       cardStateId: 'b',
       queueIndex: 1,
+      rating: 3,
     });
+    expect(state.lastReview?.queueSnapshot?.map((c) => c.id)).toEqual(['a', 'b']);
     expect(refreshDueMock).toHaveBeenCalled();
   });
 
@@ -204,7 +221,6 @@ describe('fsrsReviewStore rate completion', () => {
       ],
       queueIndex: 0,
       flipped: true,
-      usingMock: false,
     });
 
     await useFsrsReviewStore.getState().rate(4);
@@ -215,6 +231,32 @@ describe('fsrsReviewStore rate completion', () => {
     expect(state.queue[state.queueIndex]?.id).toBe('b');
   });
 
+  it('does not reinsert a learning card before its advertised due time', async () => {
+    const dueMs = Date.now() + 10 * 60 * 1000;
+    mockInvokeByCommand({
+      fsrs_rate: {
+        logId: 'log-future-learning',
+        dueMs,
+        scheduledDays: 0,
+        cardState: { lastReviewMs: Date.now() },
+      },
+      fsrs_get_stats: { due: 0 },
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [{ id: 'learning', front: 'Q', back: 'A' }],
+      queueIndex: 0,
+      flipped: true,
+    });
+
+    await useFsrsReviewStore.getState().rate(1);
+
+    const state = useFsrsReviewStore.getState();
+    expect(state.queueIndex).toBe(1);
+    expect(state.queue[state.queueIndex]).toBeUndefined();
+    expect(state.lastSchedule?.dueMs).toBe(dueMs);
+  });
+
   it('invokes fsrs_rate with cardStateId (not cardId)', async () => {
     invokeMock.mockResolvedValueOnce({ logId: 'log-1' });
     useFsrsReviewStore.setState({
@@ -222,16 +264,15 @@ describe('fsrsReviewStore rate completion', () => {
       queue: [{ id: 'state-uuid-1', ankiCardId: 'anki-1', front: 'Q', back: 'A' }],
       queueIndex: 0,
       flipped: true,
-      usingMock: false,
     });
 
     await useFsrsReviewStore.getState().rate(3);
 
-    expect(invokeMock).toHaveBeenCalledWith('fsrs_rate', {
+    expect(invokeMock).toHaveBeenCalledWith('fsrs_rate', expect.objectContaining({
       cardStateId: 'state-uuid-1',
       rating: 3,
-    });
-    expect(useFsrsReviewStore.getState().usingMock).toBe(false);
+      clientOpId: expect.any(String),
+    }));
   });
 
   it('does not advance when fsrs_rate omits the undo log id', async () => {
@@ -262,7 +303,6 @@ describe('fsrsReviewStore rate completion', () => {
       ],
       queueIndex: 0,
       flipped: true,
-      usingMock: false,
       error: null,
     });
 
@@ -273,70 +313,52 @@ describe('fsrsReviewStore rate completion', () => {
     expect(state.ratingBusy).toBe(false);
     expect(state.error).toBe('rate failed');
     expect(state.errorKind).toBe('rate');
-    expect(state.usingMock).toBe(false);
     expect(refreshDueMock).not.toHaveBeenCalled();
   });
 
-  it('advances locally when usingMock without requiring invoke success', async () => {
-    invokeMock.mockRejectedValue(new Error('offline'));
-    useFsrsReviewStore.setState({
-      screen: 'session',
-      queue: [
-        { id: 'mock-1', front: 'A', back: 'a' },
-        { id: 'mock-2', front: 'B', back: 'b' },
-      ],
-      queueIndex: 0,
-      flipped: true,
-      usingMock: true,
-    });
-
-    await useFsrsReviewStore.getState().rate(3);
-
-    const state = useFsrsReviewStore.getState();
-    expect(state.queueIndex).toBe(1);
-    expect(state.error).toBeNull();
-    expect(invokeMock).not.toHaveBeenCalled();
-    expect(refreshDueMock).toHaveBeenCalled();
-  });
-
   it('treats empty due array as success, not mock fallback', async () => {
-    invokeMock.mockResolvedValueOnce([]);
+    mockInvokeByCommand({
+      fsrs_get_due: [],
+      fsrs_get_stats: { due: 0 },
+    });
     const loaded = await useFsrsReviewStore.getState().loadDue();
     const state = useFsrsReviewStore.getState();
     expect(loaded).toBe(true);
     expect(state.dueCards).toEqual([]);
-    expect(state.usingMock).toBe(false);
     expect(state.loading).toBe(false);
 
     useFsrsReviewStore.getState().startDueSession();
     const session = useFsrsReviewStore.getState();
     expect(session.queue).toEqual([]);
-    expect(session.usingMock).toBe(false);
-    expect(session.screen).toBe('session');
+    expect(session.screen).toBe('today');
   });
 
   it('keeps loadDue failures explicit instead of substituting mock cards', async () => {
-    invokeMock.mockRejectedValueOnce(new Error('due service unavailable'));
+    mockInvokeByCommand({
+      fsrs_get_due: () => { throw new Error('due service unavailable'); },
+      fsrs_get_stats: { due: 0 },
+    });
 
     const loaded = await useFsrsReviewStore.getState().loadDue();
 
     const state = useFsrsReviewStore.getState();
     expect(loaded).toBe(false);
     expect(state.dueCards).toEqual([]);
-    expect(state.usingMock).toBe(false);
     expect(state.loading).toBe(false);
     expect(state.error).toBe('due service unavailable');
   });
 
   it('rejects a non-array due response as an explicit error', async () => {
-    invokeMock.mockResolvedValueOnce({ cards: [] });
+    mockInvokeByCommand({
+      fsrs_get_due: { cards: [] },
+      fsrs_get_stats: { due: 0 },
+    });
 
     const loaded = await useFsrsReviewStore.getState().loadDue();
 
     const state = useFsrsReviewStore.getState();
     expect(loaded).toBe(false);
     expect(state.dueCards).toEqual([]);
-    expect(state.usingMock).toBe(false);
     expect(state.error).toBe('fsrs_get_due returned an invalid response');
   });
 
@@ -346,7 +368,10 @@ describe('fsrsReviewStore rate completion', () => {
       expect(i18n.hasResourceBundle('zh-CN', 'flashcards')).toBe(true);
     });
 
-    invokeMock.mockResolvedValueOnce({ cards: [] });
+    mockInvokeByCommand({
+      fsrs_get_due: { cards: [] },
+      fsrs_get_stats: { due: 0 },
+    });
     await expect(useFsrsReviewStore.getState().loadDue()).resolves.toBe(false);
     expect(useFsrsReviewStore.getState().error).toBe('复习服务返回了无效的到期卡片数据');
 
@@ -362,13 +387,19 @@ describe('fsrsReviewStore rate completion', () => {
       expect(i18n.hasResourceBundle('en-US', 'flashcards')).toBe(true);
     });
 
-    invokeMock.mockResolvedValueOnce({ cards: [] });
+    mockInvokeByCommand({
+      fsrs_get_due: { cards: [] },
+      fsrs_get_stats: { due: 0 },
+    });
     await expect(useFsrsReviewStore.getState().loadDue()).resolves.toBe(false);
     expect(useFsrsReviewStore.getState().error).toBe(
       'fsrs_get_due returned an invalid response',
     );
 
-    invokeMock.mockRejectedValueOnce(new Error('specific backend detail'));
+    mockInvokeByCommand({
+      fsrs_get_due: () => { throw new Error('specific backend detail'); },
+      fsrs_get_stats: { due: 0 },
+    });
     await expect(useFsrsReviewStore.getState().loadDue()).resolves.toBe(false);
     expect(useFsrsReviewStore.getState().error).toBe('specific backend detail');
   });
@@ -389,7 +420,6 @@ describe('fsrsReviewStore rate completion', () => {
 
     let state = useFsrsReviewStore.getState();
     expect(state.queue).toEqual([]);
-    expect(state.usingMock).toBe(false);
     expect(state.error).toBe('enqueue unavailable');
     expect(state.retryBatchRequest).toEqual({ cardIds: ['anki-1'], cards: content });
 
@@ -409,7 +439,6 @@ describe('fsrsReviewStore rate completion', () => {
     ]);
     expect(state.error).toBeNull();
     expect(state.retryBatchRequest).toBeNull();
-    expect(state.usingMock).toBe(false);
   });
 
   it('rejects enqueue responses without a states array and keeps retry state', async () => {
@@ -422,7 +451,6 @@ describe('fsrsReviewStore rate completion', () => {
 
     const state = useFsrsReviewStore.getState();
     expect(state.queue).toEqual([]);
-    expect(state.usingMock).toBe(false);
     expect(state.error).toBe('fsrs_enqueue_cards returned an invalid response');
     expect(state.retryBatchRequest?.cardIds).toEqual(['anki-1']);
   });
@@ -580,9 +608,12 @@ describe('fsrsReviewStore rate completion', () => {
   });
 
   it('applyLaunchPayload due session loads then starts', async () => {
-    invokeMock.mockResolvedValueOnce([
-      { id: 'state-1', ankiCardId: 'anki-1', front: 'Q1', back: 'A1' },
-    ]);
+    mockInvokeByCommand({
+      fsrs_get_due: [
+        { id: 'state-1', ankiCardId: 'anki-1', front: 'Q1', back: 'A1' },
+      ],
+      fsrs_get_stats: { due: 1 },
+    });
     useFsrsReviewStore.getState().applyLaunchPayload({
       screen: 'session',
       mode: 'due',
@@ -594,12 +625,14 @@ describe('fsrsReviewStore rate completion', () => {
       expect(s.screen).toBe('session');
       expect(s.queue.length).toBe(1);
       expect(s.queue[0]?.id).toBe('state-1');
-      expect(s.usingMock).toBe(false);
     });
   });
 
   it('applyLaunchPayload keeps the current screen and error when due loading fails', async () => {
-    invokeMock.mockRejectedValueOnce(new Error('due launch unavailable'));
+    mockInvokeByCommand({
+      fsrs_get_due: () => { throw new Error('due launch unavailable'); },
+      fsrs_get_stats: { due: 0 },
+    });
 
     useFsrsReviewStore.getState().applyLaunchPayload({
       screen: 'session',
@@ -903,4 +936,168 @@ describe('fsrsReviewStore rate completion', () => {
     expect(useFsrsReviewStore.getState().screen).toBe('today');
     expect(refreshDueMock).toHaveBeenCalled();
   });
+
+  it('does not rate before the card is flipped', async () => {
+    invokeMock.mockResolvedValueOnce({ logId: 'log-hidden' });
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [{ id: 'state-1', ankiCardId: 'anki-1', front: 'Q', back: 'A' }],
+      queueIndex: 0,
+      flipped: false,
+    });
+
+    await useFsrsReviewStore.getState().rate(3);
+
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(useFsrsReviewStore.getState().queueIndex).toBe(0);
+  });
+
+  it('requeues learning cards only after they are actually due', async () => {
+    const soon = Date.now() - 1;
+    invokeMock.mockResolvedValueOnce({
+      logId: 'log-learn',
+      dueMs: soon,
+      scheduledDays: 0,
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      dueTotal: 2,
+      queue: [
+        { id: 'a', front: 'A', back: 'a' },
+        { id: 'b', front: 'B', back: 'b' },
+      ],
+      queueIndex: 0,
+      flipped: true,
+    });
+
+    await useFsrsReviewStore.getState().rate(1);
+
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((card) => card.id)).toEqual(['b', 'a']);
+    expect(state.queueIndex).toBe(0);
+    expect(state.queue[0]?.id).toBe('b');
+    expect(state.sessionRatedCount).toBe(1);
+    expect(state.sessionAgainCount).toBe(1);
+    expect(state.lastSchedule).toEqual({ dueMs: soon, scheduledDays: 0 });
+    expect(state.lastRated).toBeNull();
+  });
+
+  it('loadDue sets dueTotal from stats in parallel with due cards', async () => {
+    mockInvokeByCommand({
+      fsrs_get_due: [
+        { id: 'state-1', ankiCardId: 'anki-1', front: 'Q1', back: 'A1' },
+      ],
+      fsrs_get_stats: { due: 12 },
+    });
+
+    const loaded = await useFsrsReviewStore.getState().loadDue();
+    const state = useFsrsReviewStore.getState();
+    expect(loaded).toBe(true);
+    expect(state.dueCards).toHaveLength(1);
+    expect(state.dueTotal).toBe(12);
+  });
+
+  it('sets remainingDueAfterSession when the rated batch finishes', async () => {
+    mockInvokeByCommand({
+      fsrs_rate: {
+        logId: 'log-last',
+        dueMs: Date.now() + 3 * 24 * 60 * 60 * 1000,
+        scheduledDays: 3,
+      },
+      fsrs_get_stats: { due: 4 },
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      dueTotal: 5,
+      queue: [{ id: 'only', front: 'Q', back: 'A' }],
+      queueIndex: 0,
+      flipped: true,
+      sessionRatedCount: 0,
+    });
+
+    await useFsrsReviewStore.getState().rate(3);
+    await vi.waitFor(() => {
+      expect(useFsrsReviewStore.getState().remainingDueAfterSession).toBe(4);
+    });
+
+    const state = useFsrsReviewStore.getState();
+    expect(state.queueIndex).toBe(1);
+    expect(state.sessionRatedCount).toBe(1);
+    expect(state.dueTotal).toBe(4);
+  });
+
+  it('reconcileExternalRate removes peer-rated cards but ignores local echo', () => {
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [
+        { id: 'a', front: 'A', back: 'a' },
+        { id: 'b', front: 'B', back: 'b' },
+      ],
+      queueIndex: 0,
+      flipped: true,
+      lastReview: null,
+      recentLocalLogIds: [],
+    });
+    useFsrsReviewStore.getState().reconcileExternalRate(['a']);
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['b']);
+    expect(useFsrsReviewStore.getState().queueIndex).toBe(0);
+    expect(useFsrsReviewStore.getState().flipped).toBe(false);
+
+    useFsrsReviewStore.setState({
+      queue: [
+        { id: 'b', front: 'B', back: 'b' },
+        { id: 'a', front: 'A', back: 'a' },
+      ],
+      queueIndex: 0,
+      flipped: false,
+      lastReview: { logId: 'log-a', cardStateId: 'a', queueIndex: 0 },
+      recentLocalLogIds: ['log-a'],
+    });
+    useFsrsReviewStore.getState().reconcileExternalRate(['a'], {
+      cardLogPairs: [{ cardStateId: 'a', logId: 'log-a' }],
+    });
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['b', 'a']);
+  });
+
+  it('undo after learning requeue restores queue order and counters', async () => {
+    const soon = Date.now() - 1;
+    mockInvokeByCommand({
+      fsrs_rate: {
+        logId: 'log-again',
+        dueMs: soon,
+        scheduledDays: 0,
+        cardState: { id: 'a', lastReviewMs: 111 },
+      },
+      fsrs_undo_last_review: {
+        changed: true,
+        undoneLogId: 'log-again',
+        state: { id: 'a', lastReviewMs: null },
+      },
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [
+        { id: 'a', front: 'A', back: 'a' },
+        { id: 'b', front: 'B', back: 'b' },
+      ],
+      queueIndex: 0,
+      flipped: true,
+      sessionRatedCount: 0,
+      sessionAgainCount: 0,
+    });
+
+    await useFsrsReviewStore.getState().rate(1);
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['b', 'a']);
+    expect(useFsrsReviewStore.getState().sessionRatedCount).toBe(1);
+    expect(useFsrsReviewStore.getState().sessionAgainCount).toBe(1);
+
+    const undone = await useFsrsReviewStore.getState().undoLastReview();
+    expect(undone).toBe(true);
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((c) => c.id)).toEqual(['a', 'b']);
+    expect(state.queueIndex).toBe(0);
+    expect(state.sessionRatedCount).toBe(0);
+    expect(state.sessionAgainCount).toBe(0);
+  });
+
 });

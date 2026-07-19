@@ -5,6 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelGroupHandle } from 'react-resizable-panels';
 import {
   ArrowsClockwise,
+  FileArchive,
+  FileArrowUp,
+  ArrowLeft,
+  ArrowRight,
   FileText,
   FolderPlus,
   LinkSimple,
@@ -16,6 +20,7 @@ import {
   SidebarSimple,
   TreeStructure,
   Trash,
+  Robot,
   X,
 } from '@phosphor-icons/react';
 import { dstu, createEmpty, folderApi, trashApi, type DstuNode } from '@/dstu';
@@ -31,6 +36,7 @@ import {
   type NotesWorkspaceCommandAction,
   type NotesWorkspaceCommandDetail,
 } from '@/command-palette/modules/notes.commands';
+import { publishNotesFindQuery } from '@/features/notes/findQueryBridge';
 import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { isMacOS } from '@/utils/platform';
@@ -44,7 +50,10 @@ import {
   setWorkspaceActiveResource,
   type NotesWorkspaceResourceRef,
 } from './workspaceRegistry';
-import { NotesBacklinksPanel } from './NotesBacklinksPanel';
+import {
+  NotesBacklinksPanel,
+  type NotesBacklinksTabRequest,
+} from './NotesBacklinksPanel';
 import { NotesPropertiesTab } from './NotesPropertiesTab';
 import { NotesSearchOverlay, type NotesSearchMode } from './NotesSearchOverlay';
 import { NotesTrashDialog } from './NotesTrashDialog';
@@ -71,6 +80,14 @@ import './NotesWorkspaceApp.css';
 import { WorkbenchSidebarSurface } from '../../components/sidebar';
 import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
 import { classifyWbSysWidth, type WbSysSizeClass } from '../system/useWbSysSize';
+import { setWikilinkCreateContext } from '@/features/notes/createFromWikilink';
+import { WorkbenchNotesLibraryDialog } from './WorkbenchNotesLibraryDialog';
+import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
+import { openQuickAssistantWindow } from '@/quick-assistant/window';
+import {
+  updateFocusModeOwners,
+  type NotesFocusModeEventDetail,
+} from '@/features/notes/focusModeOwnership';
 import './notes-empty-states.css';
 
 type ResourceType = NotesWorkspaceResourceRef['type'];
@@ -144,7 +161,6 @@ interface PersistedWorkspaceState {
   splitLayout: SplitLayout;
   backlinksOpen: boolean;
   explorerOpen: boolean;
-  explorerWidth: number;
   collapsedFolderPaths: string[];
 }
 
@@ -329,8 +345,6 @@ function readPersistedWorkspaceState(): PersistedWorkspaceState {
     splitLayout: DEFAULT_SPLIT_LAYOUT,
     backlinksOpen: false,
     explorerOpen: true,
-    /* 默认宽度对齐对话标准 --wb-sidebar-width；已持久化的自定义宽度不动 */
-    explorerWidth: 272,
     collapsedFolderPaths: [],
   };
   if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return fallback;
@@ -363,9 +377,6 @@ function readPersistedWorkspaceState(): PersistedWorkspaceState {
       splitLayout: parseSplitLayout(value.splitLayout),
       backlinksOpen: typeof value.backlinksOpen === 'boolean' ? value.backlinksOpen : false,
       explorerOpen: typeof value.explorerOpen === 'boolean' ? value.explorerOpen : true,
-      explorerWidth: typeof value.explorerWidth === 'number'
-        ? Math.max(200, Math.min(360, value.explorerWidth))
-        : 272,
       collapsedFolderPaths: Array.isArray(value.collapsedFolderPaths)
         ? value.collapsedFolderPaths.filter((path): path is string => typeof path === 'string')
         : [],
@@ -406,6 +417,8 @@ interface WorkspacePaneProps {
   onSaveStateChange: (key: string, state: SaveState) => void;
   onCreateNote?: () => void;
   onOpenSearch?: () => void;
+  onImport?: () => void;
+  onAskAgent?: () => void;
 }
 
 const TREE_SKELETON_ROWS: Array<{ indent: number; width: string }> = [
@@ -426,6 +439,8 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
   onSaveStateChange,
   onCreateNote,
   onOpenSearch,
+  onImport,
+  onAskAgent,
 }) => {
   const { t } = useTranslation('workbench');
   const active = tabs.find((tab) => tab.key === activeKey) ?? null;
@@ -469,6 +484,14 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
                 >
                   <MagnifyingGlass size={14} aria-hidden />
                   {t('workbench:notesWorkspace.empty.paneOpenSearch')}
+                </button>
+                <button type="button" className="nes-action nes-action--ghost" onClick={onImport}>
+                  <FileArrowUp size={14} aria-hidden />
+                  {t('workbench:notesWorkspace.empty.paneImport', 'Import notes')}
+                </button>
+                <button type="button" className="nes-action nes-action--ghost" onClick={onAskAgent}>
+                  <Robot size={14} aria-hidden />
+                  {t('workbench:notesWorkspace.empty.paneAskAgent', 'Ask Agent')}
                 </button>
               </div>
               <ul className="nes-empty-pane__hints">
@@ -797,9 +820,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [focusedPane, setFocusedPane] = useState<WorkspacePaneId>(() => persistedState.focusedPane);
   const [splitLayout, setSplitLayout] = useState<SplitLayout>(() => persistedState.splitLayout);
   const [backlinksOpen, setBacklinksOpen] = useState(() => persistedState.backlinksOpen);
+  const [backlinksRequestedTab, setBacklinksRequestedTab] = useState<NotesBacklinksTabRequest | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<NotesSearchMode>('quick-open');
   const [explorerOpen, setExplorerOpen] = useState(() => persistedState.explorerOpen);
+  const [focusMode, setFocusMode] = useState(false);
+  const focusModeOwnersRef = useRef<Set<string>>(new Set());
   const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(
     () => new Set(persistedState.collapsedFolderPaths),
   );
@@ -816,6 +842,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [resourceDialog, setResourceDialog] = useState<ResourceDialog | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [libraryDialog, setLibraryDialog] = useState<{ open: boolean; tab: 'export' | 'import' }>({
+    open: false,
+    tab: 'export',
+  });
   const favorites = useNoteFavorites();
   const navHistory = useNotesNavHistory();
   const initialRef = useRef(parseInitialResource(instanceKey, launchPayload));
@@ -849,6 +879,11 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const activeResource = activeTab
     ? resources.find((node) => node.id === activeTab.id && node.type === activeTab.type) ?? null
     : null;
+
+  const activeResourceFolderId = activeTab
+    ? resourceFolderIds.get(treeResourceKey(activeTab.type, activeTab.id)) ?? null
+    : null;
+  const contextualFolderId = activeTab ? activeResourceFolderId : selectedFolderId;
   const tabContextTarget = tabContextMenu
     ? tabs.find((tab) => tab.key === tabContextMenu.key) ?? null
     : null;
@@ -1364,7 +1399,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       type === 'note' ? 'notesWorkspace.status.creatingNote' : 'notesWorkspace.status.creatingMindmap',
       type === 'note' ? 'Creating note...' : 'Creating mind map...',
     ));
-    const targetFolderId = folderId === undefined ? selectedFolderId : folderId;
+    const targetFolderId = folderId === undefined ? contextualFolderId : folderId;
     const result = await createEmpty({ type, folderId: targetFolderId ?? undefined });
     if (!result.ok) {
       setStatus(result.error.toUserMessage());
@@ -1372,7 +1407,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     }
     await loadResources({ blocking: false });
     await openResource({ type, id: result.value.id }, result.value.name);
-  }, [loadResources, openResource, selectedFolderId, t]);
+  }, [contextualFolderId, loadResources, openResource, t]);
 
   const createFromUnresolved = useCallback(async (title: string) => {
     const trimmed = title.trim();
@@ -1381,7 +1416,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     const result = await createEmpty({
       type: 'note',
       name: trimmed,
-      folderId: selectedFolderId ?? undefined,
+      folderId: contextualFolderId ?? undefined,
     });
     if (!result.ok) {
       setStatus(result.error.toUserMessage());
@@ -1389,7 +1424,18 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     }
     await loadResources({ blocking: false });
     await openResource({ type: 'note', id: result.value.id }, trimmed);
-  }, [loadResources, openResource, selectedFolderId, t]);
+  }, [contextualFolderId, loadResources, openResource, t]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    return setWikilinkCreateContext({
+      folderId: contextualFolderId,
+      onCreated: async (noteId, title) => {
+        await loadResources({ blocking: false });
+        await openResource({ type: 'note', id: noteId }, title);
+      },
+    });
+  }, [contextualFolderId, isActive, loadResources, openResource]);
 
   useEffect(() => {
     onTitleChange(t('notesWorkspace.title', 'Notes'));
@@ -1500,7 +1546,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         splitLayout,
         backlinksOpen,
         explorerOpen,
-        explorerWidth: 272,
         collapsedFolderPaths: [...collapsedFolderPaths].sort(),
       } satisfies PersistedWorkspaceState));
     } catch {
@@ -1546,6 +1591,23 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (!backlinksOverlay) return;
     if (explorerOpen && backlinksOpen) setExplorerOpen(false);
   }, [backlinksOpen, backlinksOverlay, explorerOpen]);
+
+  useEffect(() => {
+    const onFocusModeChanged = (event: Event) => {
+      const nextOwners = updateFocusModeOwners(
+        focusModeOwnersRef.current,
+        (event as CustomEvent<NotesFocusModeEventDetail>).detail,
+        windowId,
+      );
+      focusModeOwnersRef.current = nextOwners;
+      setFocusMode(nextOwners.size > 0);
+    };
+    window.addEventListener('notes:focus-mode-changed', onFocusModeChanged);
+    return () => {
+      window.removeEventListener('notes:focus-mode-changed', onFocusModeChanged);
+      focusModeOwnersRef.current.clear();
+    };
+  }, [windowId]);
 
   useEffect(() => {
     if (!tabContextMenu) return;
@@ -1654,10 +1716,16 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     setSearchOpen(true);
   }, []);
 
-  const openWorkspaceSearchResult = useCallback(async (node: DstuNode) => {
+  const openWorkspaceSearchResult = useCallback(async (
+    node: DstuNode,
+    context?: { mode: NotesSearchMode; query: string },
+  ) => {
     const type = resourceType(node.type);
     if (!type) return;
     await openResource({ type, id: node.id }, node.name);
+    if (type === 'note' && context?.mode === 'full-text' && context.query.trim()) {
+      publishNotesFindQuery({ noteId: node.id, query: context.query });
+    }
   }, [openResource]);
 
   useEffect(() => {
@@ -1688,10 +1756,18 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           setExplorerOpen((open) => !open);
           break;
         case 'toggle-backlinks':
+          setBacklinksRequestedTab((request) => ({
+            tab: 'links',
+            requestId: (request?.requestId ?? 0) + 1,
+          }));
           setBacklinksOpen((open) => !open);
           break;
         case 'toggle-outline':
-          window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_TOGGLE_OUTLINE));
+          setBacklinksRequestedTab((request) => ({
+            tab: 'properties',
+            requestId: (request?.requestId ?? 0) + 1,
+          }));
+          setBacklinksOpen(true);
           break;
         case 'export-current':
           if (activeTabRef.current) {
@@ -1700,6 +1776,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               i18next.getFixedT(i18next.language, 'learningHub'),
             );
           }
+          break;
+        case 'export-library':
+          setLibraryDialog({ open: true, tab: 'export' });
+          break;
+        case 'import-library':
+          setLibraryDialog({ open: true, tab: 'import' });
           break;
         case 'insert-math':
           window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_MATH));
@@ -1818,6 +1900,22 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     return selectedFolderId ?? undefined;
   }, [selectedFolderId]);
 
+  const requestDeleteTreeItem = useCallback((item: NotesWorkspaceTreeItem) => {
+    setDialogError(null);
+    if (item.kind === 'folder') {
+      if (!isStableVfsFolderId(item.id)) return;
+      setResourceDialog({
+        mode: 'delete',
+        target: { kind: 'folder', id: item.id, name: item.name, path: item.path ?? item.id },
+        value: '',
+      });
+      return;
+    }
+    const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
+    if (!node) return;
+    setResourceDialog({ mode: 'delete', target: { kind: 'resource', node }, value: '' });
+  }, []);
+
   const getTreeMenuItems = useCallback((
     item: NotesWorkspaceTreeItem,
     helpers: { beginRename: () => void },
@@ -1888,27 +1986,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         danger: true,
         separatorBefore: true,
         onSelect: () => {
-          setDialogError(null);
-          if (item.kind === 'folder') {
-            setResourceDialog({
-              mode: 'delete',
-              target: { kind: 'folder', id: item.id, name: item.name, path: item.path ?? item.id },
-              value: '',
-            });
-          } else {
-            const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
-            if (!node) return;
-            setResourceDialog({
-              mode: 'delete',
-              target: { kind: 'resource', node },
-              value: '',
-            });
-          }
+          requestDeleteTreeItem(item);
         },
       });
     }
     return items;
-  }, [createResource, favorites, openResource, openTabInRightSplit, resolveCreateFolderId, t]);
+  }, [createResource, favorites, openResource, openTabInRightSplit, requestDeleteTreeItem, resolveCreateFolderId, t]);
 
   const openTabContextMenu = useCallback((key: string, x: number, y: number, trigger: HTMLElement) => {
     restoreTabContextFocusRef.current = false;
@@ -1923,6 +2006,59 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const handleWorkspaceKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (navHistory.handleKeyDown(event, activateHistoryEntry)) return;
   }, [activateHistoryEntry, navHistory]);
+
+  const importDroppedMarkdown = useCallback(async (files: readonly File[]) => {
+    const markdownFiles = files.filter((file) => /\.md(?:own)?$/i.test(file.name));
+    if (markdownFiles.length === 0) return;
+    let firstImported: DstuNode | null = null;
+    let failed = 0;
+    for (const file of markdownFiles) {
+      try {
+        const result = await notesDstuAdapter.importMarkdownContent(
+          file.name,
+          await file.text(),
+          contextualFolderId,
+        );
+        if (result.ok) firstImported ??= result.value;
+        else failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    await loadResources({ blocking: false });
+    if (firstImported) await openResource({ type: 'note', id: firstImported.id }, firstImported.name);
+    if (failed > 0) {
+      showGlobalNotification('warning', t('notesWorkspace.import.partial', {
+        defaultValue: '{{success}} imported, {{failed}} failed',
+        success: markdownFiles.length - failed,
+        failed,
+      }));
+    } else {
+      showGlobalNotification('success', t('notesWorkspace.import.success', {
+        defaultValue: 'Imported {{count}} notes',
+        count: markdownFiles.length,
+      }));
+    }
+  }, [contextualFolderId, loadResources, openResource, t]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const onWindowKeyDown = (event: KeyboardEvent) => {
+      if (navHistory.handleKeyDown(event, activateHistoryEntry)) return;
+      if (
+        (event.metaKey || event.ctrlKey)
+        && !event.altKey
+        && !event.shiftKey
+        && event.key.toLocaleLowerCase() === 'p'
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        openSearchOverlay('quick-open');
+      }
+    };
+    window.addEventListener('keydown', onWindowKeyDown, true);
+    return () => window.removeEventListener('keydown', onWindowKeyDown, true);
+  }, [activateHistoryEntry, isActive, navHistory, openSearchOverlay]);
 
   return (
     <>
@@ -1945,9 +2081,21 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         ref={hostRef}
         className="notes-workspace"
         data-wb-notes-workspace
+        data-focus-mode={focusMode ? 'true' : 'false'}
         data-compact={sizeClass === 'compact' ? 'true' : 'false'}
         data-explorer-open={sizeClass === 'compact' ? (explorerOpen ? 'true' : 'false') : 'true'}
         onKeyDown={handleWorkspaceKeyDown}
+        onDragOver={(event) => {
+          if (!Array.from(event.dataTransfer.files).some((file) => /\.md(?:own)?$/i.test(file.name))) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+        }}
+        onDrop={(event) => {
+          const files = Array.from(event.dataTransfer.files);
+          if (!files.some((file) => /\.md(?:own)?$/i.test(file.name))) return;
+          event.preventDefault();
+          void importDroppedMarkdown(files);
+        }}
       >
       <WorkbenchSidebarLayout
         sizeClass={sizeClass}
@@ -1963,6 +2111,16 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         <header>
           <span>{t('notesWorkspace.explorer.title', 'Files')}</span>
           <div>
+            <IconButton
+              label={t('notesWorkspace.navigation.back', 'Back')}
+              disabled={!navHistory.canBack}
+              onClick={() => { void navHistory.runNavigation('back', activateHistoryEntry); }}
+            ><ArrowLeft size={15} /></IconButton>
+            <IconButton
+              label={t('notesWorkspace.navigation.forward', 'Forward')}
+              disabled={!navHistory.canForward}
+              onClick={() => { void navHistory.runNavigation('forward', activateHistoryEntry); }}
+            ><ArrowRight size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.explorer.newNote', 'New note')} onClick={() => void createResource('note')}><FileText size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.explorer.newFolder', 'New folder')} onClick={() => { setDialogError(null); setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId }); }}><FolderPlus size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.explorer.newMindmap', 'New mind map')} onClick={() => void createResource('mindmap')}><TreeStructure size={15} /></IconButton>
@@ -1970,6 +2128,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             <IconButton label={t('notesWorkspace.ribbon.search', 'Search notes')} onClick={() => openSearchOverlay('full-text')}><MagnifyingGlass size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.ribbon.backlinks', 'Linked notes')} data-active={backlinksOpen ? 'true' : 'false'} onClick={() => setBacklinksOpen((open) => !open)}><LinkSimple size={15} /></IconButton>
             <IconButton label={t('notesWorkspace.ribbon.trash', 'Trash')} onClick={() => setTrashOpen(true)}><Trash size={15} /></IconButton>
+            <IconButton label={t('notesWorkspace.library.manage', 'Import or export library')} onClick={() => setLibraryDialog({ open: true, tab: 'export' })}><FileArchive size={15} /></IconButton>
           </div>
         </header>
         <div className="notes-search">
@@ -2106,6 +2265,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               onOpen={openTreeItem}
               onMove={(dragId, targetId, position) => { void moveTreeItem(dragId, targetId, position); }}
               onRename={(id, name) => { void renameTreeItem(id, name); }}
+              onDelete={requestDeleteTreeItem}
               getMenuItems={getTreeMenuItems}
             />
           )}
@@ -2140,6 +2300,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                 onSaveStateChange={updateTabSaveState}
                 onCreateNote={() => { void createResource('note'); }}
                 onOpenSearch={() => openSearchOverlay('quick-open')}
+                onImport={() => setLibraryDialog({ open: true, tab: 'import' })}
+                onAskAgent={() => { void openQuickAssistantWindow(); }}
               />
             </Panel>
             {splitTab && (
@@ -2166,6 +2328,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                     onSaveStateChange={updateTabSaveState}
                     onCreateNote={() => { void createResource('note'); }}
                     onOpenSearch={() => openSearchOverlay('quick-open')}
+                    onImport={() => setLibraryDialog({ open: true, tab: 'import' })}
+                    onAskAgent={() => { void openQuickAssistantWindow(); }}
                   />
                 </Panel>
               </>
@@ -2173,6 +2337,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           </PanelGroup>
           <NotesBacklinksPanel
             open={backlinksOpen}
+            requestedTab={backlinksRequestedTab}
             activeResource={activeResource}
             notes={resources}
             onOpenResource={openWorkspaceSearchResult}
@@ -2208,6 +2373,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         resources={resources}
         onOpenResource={openWorkspaceSearchResult}
         onClose={() => setSearchOpen(false)}
+      />
+      <WorkbenchNotesLibraryDialog
+        open={libraryDialog.open}
+        initialTab={libraryDialog.tab}
+        onOpenChange={(open) => setLibraryDialog((current) => ({ ...current, open }))}
+        onImported={() => loadResources({ blocking: false })}
       />
       {tabContextMenu && tabContextTarget && (
         <div ref={contextMenuRef} id="notes-tab-context-menu" className="notes-context-menu notes-tab-context-menu" role="menu" style={{ left: tabContextMenu.x, top: tabContextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>

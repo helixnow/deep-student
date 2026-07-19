@@ -172,6 +172,8 @@ fn is_file_mutation_runtime_tool(tool_name: &str) -> bool {
             | "workspace_file_move"
             | "workspace_file_delete"
             | "workspace_change_revert"
+            | "file_manager_commit"
+            | "file_manager_restore"
             | "workspace_file_patch"
             | "workspace_file_append"
             | "workspace_file_create"
@@ -1220,6 +1222,27 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
                     raw_hash(&serialized)
                 ))
             }),
+        "file_manager_commit" => {
+            let root = extract_str_field(args, &["root_id", "rootId"])?;
+            let preview = extract_str_field(args, &["preview_sha256", "previewSha256"])?;
+            Some(format!("{}:{}", root, preview))
+        }
+        "file_manager_restore" => {
+            args.get("receipt")
+                .and_then(Value::as_object)
+                .and_then(|receipt| {
+                    let root = receipt
+                        .get("rootId")
+                        .or_else(|| receipt.get("root_id"))?
+                        .as_str()?;
+                    let receipt_id = receipt
+                        .get("receiptId")
+                        .or_else(|| receipt.get("receipt_id"))?
+                        .as_str()?;
+                    let serialized = serde_json::to_string(receipt).ok()?;
+                    Some(format!("{}:{}:{}", root, receipt_id, raw_hash(&serialized)))
+                })
+        }
 
         // --- 办公文档：create / read / edit / replace 等 ---
         "docx_create" | "docx_edit" | "docx_replace_text" | "docx_replace" | "docx_patch" => {
@@ -3425,5 +3448,31 @@ mod tests {
             make_runtime_scope_key_v2("builtin-backup_create", &slim),
             make_runtime_scope_key_v2("builtin-backup_create", &full)
         );
+    }
+
+    #[test]
+    fn file_manager_commit_scope_binds_root_and_preview_hash() {
+        let first = json!({
+            "plan_id": "fileplan_one",
+            "root_id": "workspace",
+            "preview_sha256": "a".repeat(64),
+        });
+        let changed_preview = json!({
+            "plan_id": "fileplan_one",
+            "root_id": "workspace",
+            "preview_sha256": "b".repeat(64),
+        });
+        assert!(requires_precise_approval_scope(
+            "builtin-file_manager_commit"
+        ));
+        assert_ne!(
+            make_runtime_scope_key_v2("builtin-file_manager_commit", &first),
+            make_runtime_scope_key_v2("builtin-file_manager_commit", &changed_preview)
+        );
+        assert!(make_runtime_scope_key_v2(
+            "builtin-file_manager_commit",
+            &json!({"plan_id": "fileplan_one", "root_id": "workspace"})
+        )
+        .is_none());
     }
 }

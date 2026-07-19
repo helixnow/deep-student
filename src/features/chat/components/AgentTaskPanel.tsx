@@ -39,6 +39,7 @@ import {
   ArrowCounterClockwise,
   ArrowSquareOut,
   Eye,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -56,6 +57,12 @@ import {
 import { blocksToSourceBundle } from './panels/sourceAdapter';
 import { computeLineDiff } from '../utils/lineDiff';
 import type { Block } from '../core/types/block';
+import {
+  listRuntimeDirectory,
+  listTaskBrowserDownloads,
+  type RuntimeDirectoryPage,
+} from '../api/taskWorkspaceApi';
+import type { BrowserDownloadObservation } from '@/features/browser/types';
 
 // ============================================================================
 // Inline types & helpers
@@ -145,6 +152,14 @@ interface ChangeItem {
   backupRef?: string;
   /** 写入完成后的内容哈希；撤销时用于阻止覆盖用户的后续修改 */
   afterHash?: string;
+  /** workspace_file_* 返回的完整、hash-bound mutation receipt */
+  receipt?: Record<string, unknown>;
+}
+
+interface ChangeCoverageIssue {
+  id: string;
+  label: string;
+  detail?: string;
 }
 
 /** Changes 内联预览的加载态（当前内容 + 可选备份旧内容） */
@@ -267,12 +282,18 @@ function inferChangeAction(toolName: string): ChangeAction | undefined {
   return undefined;
 }
 
-function isChangeProducingTool(toolName: string): boolean {
+export function isChangeProducingTool(toolName: string): boolean {
   const short = normalizeToolName(toolName);
   return (
     NOTE_WRITE_TOOLS.has(toolName) ||
     ['file_write', 'file_create', 'file_append', 'file_patch', 'file_delete'].includes(short) ||
     short === 'workspace_artifact_write' ||
+    short === 'workspace_file_write' ||
+    short === 'workspace_file_move' ||
+    short === 'workspace_file_delete' ||
+    short === 'workspace_change_revert' ||
+    short === 'file_manager_commit' ||
+    short === 'file_manager_restore' ||
     short === 'local_shell_execute' ||
     short.startsWith('docx_') ||
     short.startsWith('xlsx_') ||
@@ -282,11 +303,17 @@ function isChangeProducingTool(toolName: string): boolean {
   );
 }
 
-function isRuntimeTool(toolName: string): boolean {
+export function isRuntimeTool(toolName: string): boolean {
   const short = normalizeToolName(toolName);
   return short === 'workspace_file_list' ||
     short === 'workspace_file_read' ||
     short === 'workspace_artifact_write' ||
+    short === 'workspace_file_write' ||
+    short === 'workspace_file_move' ||
+    short === 'workspace_file_delete' ||
+    short === 'workspace_change_revert' ||
+    short === 'file_manager_commit' ||
+    short === 'file_manager_restore' ||
     short === 'local_shell_preflight' ||
     short === 'local_shell_execute';
 }
@@ -349,6 +376,7 @@ function extractChanges(blocks: Block[]): ChangeItem[] {
     const input = block.toolInput ?? {};
     const action = inferChangeAction(toolName) ?? 'update';
     const summary = asRecord(data.file_change_summary);
+    const mutationReceipt = asRecord(data.mutation_receipt);
     const summaryChanges = Array.isArray(summary?.changes) ? summary.changes : [];
 
     if (summaryChanges.length > 0) {
@@ -380,6 +408,7 @@ function extractChanges(blocks: Block[]): ChangeItem[] {
           relativePath,
           backupRef,
           afterHash,
+          receipt: mutationReceipt ?? undefined,
         });
       }
       continue;
@@ -435,6 +464,54 @@ function extractChanges(blocks: Block[]): ChangeItem[] {
   return [...changes.values()];
 }
 
+export function extractChangeCoverageIssues(blocks: Block[]): ChangeCoverageIssue[] {
+  const issues = new Map<string, ChangeCoverageIssue>();
+
+  for (const block of blocks) {
+    if (block.status !== 'success' || !block.toolName || !isChangeProducingTool(block.toolName)) {
+      continue;
+    }
+    const data = unwrapToolData(block.toolOutput);
+    const summary = asRecord(data.file_change_summary);
+    const rollback = asRecord(data.rollback_result);
+    const reasons: string[] = [];
+
+    if (summary?.changes_truncated === true) reasons.push('change-list-truncated');
+    if (summary?.snapshot_truncated === true) reasons.push('snapshot-truncated');
+    if (typeof summary?.snapshot_skipped === 'number' && summary.snapshot_skipped > 0) {
+      reasons.push(`snapshot-skipped:${summary.snapshot_skipped}`);
+    }
+    if (typeof summary?.error === 'string' && summary.error.trim()) {
+      reasons.push(`snapshot-error:${summary.error.trim()}`);
+    }
+    if (data.change_set_complete === false) reasons.push('rollback-coverage-incomplete');
+    if (typeof data.change_set_error === 'string' && data.change_set_error.trim()) {
+      reasons.push(`change-set-error:${data.change_set_error.trim()}`);
+    }
+    if (rollback?.complete === false) {
+      const failed = typeof rollback.failed_count === 'number' ? rollback.failed_count : undefined;
+      reasons.push(failed === undefined ? 'rollback-partial' : `rollback-partial:${failed}`);
+    }
+    const batchManifest = asRecord(data.batch_manifest);
+    if (batchManifest && data.complete === false) {
+      const failed = Array.isArray(batchManifest.items)
+        ? batchManifest.items.filter((item) => asRecord(item)?.status === 'failed').length
+        : undefined;
+      reasons.push(failed === undefined ? 'batch-partial' : `batch-partial:${failed}`);
+    }
+    if (reasons.length === 0) continue;
+
+    const id = `coverage:${block.toolName}:${reasons.join('|')}`;
+    issues.set(id, {
+      id,
+      label: 'coverage-incomplete',
+      detail: reasons.join(', '),
+    });
+  }
+
+  return [...issues.values()];
+}
+
 /** 从文件 runtime 工具块中提取读/列目录/写入/拦截事实，展示在任务面板内。 */
 function extractRuntimeItems(blocks: Block[]): RuntimeItem[] {
   const runtime = new Map<string, RuntimeItem>();
@@ -446,6 +523,10 @@ function extractRuntimeItems(blocks: Block[]): RuntimeItem[] {
     const short = normalizeToolName(toolName);
     const data = unwrapToolData(block.toolOutput);
     const input = block.toolInput ?? {};
+    const fileManagerSummary = asRecord(data.file_change_summary);
+    const firstFileManagerChange = Array.isArray(fileManagerSummary?.changes)
+      ? asRecord(fileManagerSummary.changes[0])
+      : undefined;
     const error = firstString(block.error, data.error, data.message, data.reason);
     const riskLevel = firstString(data.risk_level);
     const blocked = !!error || block.status === 'error' || riskLevel === 'blocked';
@@ -460,6 +541,8 @@ function extractRuntimeItems(blocks: Block[]): RuntimeItem[] {
       data.path,
       short === 'local_shell_preflight' ? data.command : undefined,
       short === 'local_shell_execute' ? data.command : undefined,
+      firstFileManagerChange?.destination_path,
+      firstFileManagerChange?.relative_path,
       input.path,
       short === 'local_shell_preflight' ? input.command : undefined,
       short === 'local_shell_execute' ? input.command : undefined,
@@ -509,6 +592,13 @@ function extractRuntimeItems(blocks: Block[]): RuntimeItem[] {
         : exitCode !== undefined
           ? `exit ${exitCode}${truncated ? ', truncated' : ''}${envSuffix}${networkSuffix} / ${cwd}`
           : cwd;
+    } else if (short === 'file_manager_commit' || short === 'file_manager_restore') {
+      const manifest = asRecord(data.batch_manifest);
+      const items = Array.isArray(manifest?.items) ? manifest.items : [];
+      const failed = items.filter((item) => asRecord(item)?.status === 'failed').length;
+      detail = data.complete === true
+        ? `${items.length} items`
+        : `${items.length - failed}/${items.length} items`;
     }
 
     const id = `${action}:${rootId}:${relativePath}:${toolName}`;
@@ -668,8 +758,36 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
   const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(new Set());
   const [previewChangeId, setPreviewChangeId] = useState<string | null>(null);
   const [preview, setPreview] = useState<ChangePreviewState | null>(null);
+  const [workspacePage, setWorkspacePage] = useState<RuntimeDirectoryPage | null>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [browserDownloads, setBrowserDownloads] = useState<BrowserDownloadObservation[]>([]);
   // 防止快速切换预览目标时，先发出的慢请求覆盖后发出的快请求结果
   const previewRequestRef = useRef<string | null>(null);
+
+  const loadWorkspacePage = useCallback(async (
+    relativePath = '',
+    cursor?: string,
+    append = false,
+  ) => {
+    if (!sessionId) return;
+    setWorkspaceLoading(true);
+    try {
+      const page = await listRuntimeDirectory({
+        sessionId,
+        rootId: 'workspace',
+        relativePath,
+        cursor,
+        limit: 40,
+      });
+      setWorkspacePage((previous) => append && previous
+        ? { ...page, entries: [...previous.entries, ...page.entries] }
+        : page);
+    } catch {
+      setWorkspacePage(null);
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  }, [sessionId]);
 
   const { steps, title, isAllDone, message } = useMemo(() => {
     const out: { toolOutput?: unknown; toolName?: string }[] = [];
@@ -684,7 +802,12 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     let found = false;
     blocksMap.forEach((b: any) => {
       if (found) return;
-      if (typeof b?.toolName === 'string' && isRuntimeTool(b.toolName)) found = true;
+      if (typeof b?.toolName === 'string') {
+        const short = normalizeToolName(b.toolName);
+        if (isRuntimeTool(b.toolName) || short === 'browser_downloads' || short === 'browser_file_upload') {
+          found = true;
+        }
+      }
     });
     return found;
   }, [blocksMap]);
@@ -708,6 +831,13 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     return extractChanges(all);
   }, [blocksMap, expanded]);
 
+  const changeCoverageIssues = useMemo(() => {
+    if (!expanded || !blocksMap) return [];
+    const all: Block[] = [];
+    blocksMap.forEach((b) => all.push(b));
+    return extractChangeCoverageIssues(all);
+  }, [blocksMap, expanded]);
+
   const runtimeItems = useMemo(() => {
     if (!expanded || !blocksMap) return [];
     const all: Block[] = [];
@@ -727,6 +857,14 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
   const running = steps.find((s) => s.status === 'running');
   const has = steps.length > 0;
   const streaming = useStore(store, (s: any) => s.activeBlockIds?.size > 0) ?? false;
+
+  useEffect(() => {
+    if (!expanded || !sessionId || (has && isAllDone !== true)) return;
+    void loadWorkspacePage();
+    void listTaskBrowserDownloads(sessionId)
+      .then(setBrowserDownloads)
+      .catch(() => setBrowserDownloads([]));
+  }, [expanded, has, isAllDone, loadWorkspacePage, sessionId]);
 
   const openSource = useCallback((item: SourceItem) => {
     if (item.url && (item.url.startsWith('http://') || item.url.startsWith('https://'))) {
@@ -765,6 +903,27 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
       );
     }
   }, [sessionId, t]);
+
+  const revealResultFile = useCallback(async (rootId: string, relativePath: string) => {
+    if (!sessionId) return;
+    try {
+      const absolutePath = await invoke<string>('chat_v2_resolve_runtime_path', {
+        sessionId,
+        rootId,
+        relativePath,
+      });
+      const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
+      await revealItemInDir(absolutePath);
+    } catch (error: unknown) {
+      showGlobalNotification('warning', t('agentPanel.revealFailed'), getErrorMessage(error));
+    }
+  }, [sessionId, t]);
+
+  const openWorkspaceParent = useCallback(() => {
+    const current = workspacePage?.relativePath ?? '';
+    const parent = current.split('/').filter(Boolean).slice(0, -1).join('/');
+    void loadWorkspacePage(parent);
+  }, [loadWorkspacePage, workspacePage?.relativePath]);
 
   const closePreview = useCallback(() => {
     previewRequestRef.current = null;
@@ -813,18 +972,27 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
   // 撤销请求进行中的 changeId 集合（ref 同步拦截双击重复 invoke）
   const revertingIdsRef = useRef<Set<string>>(new Set());
 
-  /** 真实撤销：有 backupRef 恢复旧内容，无 backupRef（当次新建）删除该文件。 */
-  const revertArtifactWrite = useCallback(async (item: ChangeItem) => {
-    if (!sessionId || !item.relativePath || !item.afterHash || item.rootId !== 'artifacts') return;
+  /** 真实撤销：artifacts 走写备份；workspace 走 hash-bound mutation receipt。 */
+  const revertRuntimeChange = useCallback(async (item: ChangeItem) => {
+    if (!sessionId || !item.relativePath) return;
     if (revertingIdsRef.current.has(item.id)) return;
     revertingIdsRef.current.add(item.id);
     try {
-      await invoke('chat_v2_revert_artifact_write', {
-        sessionId,
-        relativePath: item.relativePath,
-        backupRef: item.backupRef ?? null,
-        expectedAfterHash: item.afterHash,
-      });
+      if (item.rootId === 'workspace' && item.receipt) {
+        await invoke('chat_v2_revert_workspace_change', {
+          sessionId,
+          receipt: item.receipt,
+        });
+      } else if (item.rootId === 'artifacts' && item.afterHash) {
+        await invoke('chat_v2_revert_artifact_write', {
+          sessionId,
+          relativePath: item.relativePath,
+          backupRef: item.backupRef ?? null,
+          expectedAfterHash: item.afterHash,
+        });
+      } else {
+        return;
+      }
       setRevertedIds((prev) => {
         const next = new Set(prev);
         next.add(item.id);
@@ -836,9 +1004,11 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
       }
       showGlobalNotification(
         'success',
-        item.backupRef
-          ? t('agentPanel.restoreDone')
-          : t('agentPanel.revertDone'),
+        item.rootId === 'workspace'
+          ? t('agentPanel.revertWorkspaceDone')
+          : item.backupRef
+            ? t('agentPanel.restoreDone')
+            : t('agentPanel.revertDone'),
       );
     } catch (error: unknown) {
       showGlobalNotification(
@@ -960,9 +1130,12 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
 
   const showSources = sources.length > 0;
   const showArtifacts = artifacts.length > 0;
-  const showChanges = changes.length > 0;
+  const showChanges = changes.length > 0 || changeCoverageIssues.length > 0;
   const showRuntime = runtimeItems.length > 0;
-  const showSections = showSources || showArtifacts || showChanges || showRuntime;
+  const showWorkspaceResults = workspacePage !== null;
+  const showBrowserDownloads = browserDownloads.length > 0;
+  const showSections = showSources || showArtifacts || showChanges || showRuntime
+    || showWorkspaceResults || showBrowserDownloads;
   const runtimeBoundary = runtimeEnvironment
     ? [runtimeEnvironment.rootLabel || runtimeEnvironment.rootId, runtimeEnvironment.cwd !== '.' ? runtimeEnvironment.cwd : undefined]
       .filter(Boolean)
@@ -1306,6 +1479,97 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 </>
               )}
 
+              {showWorkspaceResults && workspacePage && (
+                <>
+                  <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
+                  <SectionLabel>
+                    {t('agentPanel.workspaceFiles')}
+                    <span className="ml-1.5 normal-case tracking-normal font-normal">
+                      {workspacePage.entries.length}{workspacePage.truncated ? '+' : ''}
+                    </span>
+                  </SectionLabel>
+                  <div className="px-4 pb-2">
+                    <div className="flex min-w-0 items-center gap-1 px-2 pb-1 text-[10px] text-[color:var(--text-muted)]">
+                      {workspacePage.relativePath && (
+                        <button type="button" onClick={openWorkspaceParent} className="shrink-0 hover:text-[color:var(--text-primary)]">
+                          .. /
+                        </button>
+                      )}
+                      <span className="truncate font-mono">{workspacePage.relativePath || '/'}</span>
+                    </div>
+                    <div className="max-h-[144px] overflow-y-auto">
+                      {workspacePage.entries.map((entry) => {
+                        const isDirectory = entry.kind === 'directory';
+                        return (
+                          <button
+                            key={`${entry.kind}:${entry.relativePath}`}
+                            type="button"
+                            onClick={() => isDirectory
+                              ? void loadWorkspacePage(entry.relativePath)
+                              : void revealResultFile('workspace', entry.relativePath)}
+                            className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)]"
+                            title={entry.relativePath}
+                          >
+                            {isDirectory ? <FolderOpen size={12} /> : <FileIcon size={12} />}
+                            <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                            {entry.sizeBytes != null && (
+                              <span className="shrink-0 text-[10px] text-[color:var(--text-muted)]">{entry.sizeBytes} B</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {workspacePage.nextCursor && (
+                      <button
+                        type="button"
+                        disabled={workspaceLoading}
+                        onClick={() => void loadWorkspacePage(
+                          workspacePage.relativePath,
+                          workspacePage.nextCursor ?? undefined,
+                          true,
+                        )}
+                        className="mt-1 px-2 text-[10px] text-[color:hsl(var(--primary))] disabled:opacity-50"
+                      >
+                        {workspaceLoading
+                          ? t('agentPanel.loadingFiles')
+                          : t('agentPanel.loadMoreFiles')}
+                      </button>
+                    )}
+                    {workspacePage.truncated && !workspacePage.nextCursor && (
+                      <div className="px-2 pt-1 text-[10px] text-[color:var(--text-muted)]">
+                        {t('agentPanel.fileTreeTruncated')}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {showBrowserDownloads && (
+                <>
+                  <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
+                  <SectionLabel>
+                    {t('agentPanel.browserDownloads')}
+                    <span className="ml-1.5 normal-case tracking-normal font-normal">{browserDownloads.length}</span>
+                  </SectionLabel>
+                  <div className="max-h-[112px] overflow-y-auto px-4 pb-2">
+                    {browserDownloads.map((download) => (
+                      <button
+                        key={download.id}
+                        type="button"
+                        disabled={download.state !== 'completed'}
+                        onClick={() => void revealResultFile(download.rootId, download.relativePath)}
+                        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[5px] px-2 text-left text-[11px] hover:bg-[color:var(--interactive-hover)] disabled:cursor-default disabled:opacity-60"
+                        title={download.locator}
+                      >
+                        <DownloadSimple size={12} className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{download.filename}</span>
+                        <span className="shrink-0 text-[10px] text-[color:var(--text-muted)]">{download.state}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
               {/* ── 区 3：产物 ── */}
               {showArtifacts && (
                 <>
@@ -1347,6 +1611,14 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                     {t('agentPanel.changes')}
                     <span className="ml-1.5 normal-case tracking-normal font-normal">{changes.length}</span>
                   </SectionLabel>
+                  {changeCoverageIssues.length > 0 && (
+                    <div className="mx-4 mb-2 rounded-[6px] border border-[color:hsl(var(--destructive)/0.28)] bg-[color:hsl(var(--destructive)/0.06)] px-2.5 py-2 text-[11px] text-[color:hsl(var(--destructive))]">
+                      <div className="font-medium">{t('agentPanel.changeCoverageIncomplete')}</div>
+                      <div className="mt-0.5 break-words text-[10px] opacity-80">
+                        {changeCoverageIssues.map((issue) => issue.detail).filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
                     {changes.map((item) => {
                       const ChangeIcon = item.kind === 'note' ? Notebook : FileIcon;
@@ -1355,12 +1627,14 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                       const clickable = !isReverted && item.kind !== 'document' && (!!item.openId || canReveal);
                       const canPreview = canReveal && !isReverted && item.action !== 'delete';
                       const isPreviewing = previewChangeId === item.id;
-                      const canRevert = !isReverted
-                        && item.rootId === 'artifacts'
-                        && !!item.relativePath
+                      const canRevertArtifact = item.rootId === 'artifacts'
                         && !!item.afterHash
-                        && !!sessionId
                         && item.action !== 'delete';
+                      const canRevertWorkspace = item.rootId === 'workspace' && !!item.receipt;
+                      const canRevert = !isReverted
+                        && !!item.relativePath
+                        && !!sessionId
+                        && (canRevertArtifact || canRevertWorkspace);
                       const savedNoteId = savedNoteIds.get(item.id);
                       const isSavingNote = savingNoteIds.has(item.id);
                       const canSaveAsNote = !isReverted
@@ -1488,18 +1762,22 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                           {canRevert && (
                             <button
                               type="button"
-                              onClick={() => revertArtifactWrite(item)}
+                              onClick={() => revertRuntimeChange(item)}
                               className={cn(
                                 'inline-flex items-center h-full px-1.5 border-l border-[color:var(--border-soft)]',
                                 'text-[color:var(--text-muted)] hover:text-[color:hsl(var(--destructive))]',
                                 'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
                               )}
-                              title={item.backupRef
-                                ? t('agentPanel.revertRestore')
-                                : t('agentPanel.revertDeleteNew')}
-                              aria-label={item.backupRef
-                                ? t('agentPanel.revertRestore')
-                                : t('agentPanel.revertDeleteNew')}
+                              title={item.rootId === 'workspace'
+                                ? t('agentPanel.revertWorkspace')
+                                : item.backupRef
+                                  ? t('agentPanel.revertRestore')
+                                  : t('agentPanel.revertDeleteNew')}
+                              aria-label={item.rootId === 'workspace'
+                                ? t('agentPanel.revertWorkspace')
+                                : item.backupRef
+                                  ? t('agentPanel.revertRestore')
+                                  : t('agentPanel.revertDeleteNew')}
                             >
                               <ArrowCounterClockwise size={10} />
                             </button>

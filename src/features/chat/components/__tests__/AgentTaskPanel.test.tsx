@@ -80,6 +80,44 @@ function createArtifactWriteStore(change: Record<string, unknown>): StoreApi<Moc
   });
 }
 
+function createWorkspaceWriteStore(receipt: Record<string, unknown>): StoreApi<MockChatStore> {
+  return createMockStore({
+    sessionId: 'sess-1',
+    blocks: new Map([
+      [
+        'todo-1',
+        {
+          toolName: 'todo_init',
+          toolOutput: {
+            title: 'Workspace runtime',
+            steps: [{ id: 'todo_1', description: 'Write workspace file', status: 'completed' }],
+          },
+        },
+      ],
+      [
+        'workspace-write-1',
+        {
+          status: 'success',
+          toolName: 'builtin-workspace_file_write',
+          toolInput: { path: 'reports/result.txt', content: 'new content' },
+          toolOutput: {
+            root_id: 'workspace',
+            path: 'reports/result.txt',
+            mutation_receipt: receipt,
+            file_change_summary: {
+              created: receipt.op === 'created' ? 1 : 0,
+              modified: receipt.op === 'modified' ? 1 : 0,
+              deleted: 0,
+              changes: [receipt],
+            },
+          },
+        },
+      ],
+    ]),
+    activeBlockIds: new Set(),
+  });
+}
+
 describe('AgentTaskPanel', () => {
   beforeEach(() => {
     invokeMock.mockReset();
@@ -247,8 +285,8 @@ describe('AgentTaskPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Local runtime audit/i }));
 
-    expect(screen.getByText('Changes')).toBeInTheDocument();
-    expect(screen.getByText('Create')).toBeInTheDocument();
+    expect(screen.getByText(/变更|Changes/)).toBeInTheDocument();
+    expect(screen.getByText(/^(新建|Create)$/)).toBeInTheDocument();
     expect(screen.getByText('artifacts/runtime-summary.md')).toBeInTheDocument();
   });
 
@@ -303,8 +341,8 @@ describe('AgentTaskPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Artifact runtime/i }));
 
-    expect(screen.getByText('Changes')).toBeInTheDocument();
-    expect(screen.getByText('Create')).toBeInTheDocument();
+    expect(screen.getByText(/变更|Changes/)).toBeInTheDocument();
+    expect(screen.getByText(/^(新建|Create)$/)).toBeInTheDocument();
     expect(screen.getAllByText('reports/session.md').length).toBeGreaterThan(0);
   });
 
@@ -366,8 +404,8 @@ describe('AgentTaskPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Runtime visibility/i }));
 
     expect(screen.getByRole('button', { name: /本地|Local/i })).toBeInTheDocument();
-    expect(screen.getByText('List')).toBeInTheDocument();
-    expect(screen.getByText('Read')).toBeInTheDocument();
+    expect(screen.getByText(/列目录|List/)).toBeInTheDocument();
+    expect(screen.getByText(/读取|Read/)).toBeInTheDocument();
     expect(screen.getByText('workspace')).toBeInTheDocument();
     expect(screen.getByText('temp')).toBeInTheDocument();
     expect(screen.getByText('src')).toBeInTheDocument();
@@ -415,7 +453,7 @@ describe('AgentTaskPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Runtime blocked/i }));
 
     expect(screen.getByRole('button', { name: /本地|Local/i })).toBeInTheDocument();
-    expect(screen.getByText('Blocked')).toBeInTheDocument();
+    expect(screen.getByText(/^(拦截|Blocked)$/)).toBeInTheDocument();
     expect(screen.getByText('secret')).toBeInTheDocument();
     expect(screen.getByText('private.txt')).toBeInTheDocument();
   });
@@ -464,7 +502,7 @@ describe('AgentTaskPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Shell preflight/i }));
 
     expect(screen.getByRole('button', { name: /本地|Local/i })).toBeInTheDocument();
-    expect(screen.getByText('Check')).toBeInTheDocument();
+    expect(screen.getByText(/命令|Command/)).toBeInTheDocument();
     expect(screen.getByText('workspace')).toBeInTheDocument();
     expect(screen.getByText('git status --short')).toBeInTheDocument();
     expect(screen.getByText('low / .')).toBeInTheDocument();
@@ -535,14 +573,14 @@ describe('AgentTaskPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Shell execution/i }));
 
     expect(screen.getByRole('button', { name: /本地|Local/i })).toBeInTheDocument();
-    expect(screen.getByText('Check')).toBeInTheDocument();
+    expect(screen.getByText(/命令|Command/)).toBeInTheDocument();
     expect(screen.getByText('workspace')).toBeInTheDocument();
     expect(screen.getByText('git status --short')).toBeInTheDocument();
     expect(screen.getByText('exit 0 / .')).toBeInTheDocument();
     expect(screen.getByText(/工作边界|Boundary/)).toBeInTheDocument();
     expect(screen.getByText('macos_seatbelt')).toBeInTheDocument();
     expect(screen.getByText(/已关闭|Disabled/)).toBeInTheDocument();
-    expect(screen.getByText('Changes')).toBeInTheDocument();
+    expect(screen.getByText(/变更|Changes/)).toBeInTheDocument();
     expect(screen.getByText('reports/shell-output.txt')).toBeInTheDocument();
   });
 
@@ -713,6 +751,79 @@ describe('AgentTaskPanel', () => {
     });
   });
 
+  it('includes workspace_file_write in Changes and reverts its mutation receipt', async () => {
+    invokeMock.mockResolvedValue({ reverted: true });
+    const receipt = {
+      change_id: 'change-workspace-1',
+      root_id: 'workspace',
+      op: 'created',
+      relative_path: 'reports/result.txt',
+      before_hash: null,
+      after_hash: 'a'.repeat(64),
+      bytes: 11,
+    };
+    const store = createWorkspaceWriteStore(receipt);
+
+    render(<AgentTaskPanel store={store as unknown as StoreApi<any>} />);
+    fireEvent.click(screen.getByRole('button', { name: /Workspace runtime/i }));
+
+    expect(screen.getAllByText('reports/result.txt')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /撤销该工作区变更|Revert this workspace change/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('chat_v2_revert_workspace_change', {
+        sessionId: 'sess-1',
+        receipt,
+      });
+    });
+    expect(await screen.findByText(/已撤销|Reverted/)).toBeInTheDocument();
+  });
+
+  it('shows an incomplete coverage warning for truncated shell tracking', () => {
+    const store = createMockStore({
+      sessionId: 'sess-1',
+      blocks: new Map([
+        [
+          'todo-1',
+          {
+            toolName: 'todo_init',
+            toolOutput: {
+              title: 'Incomplete tracking',
+              steps: [{ id: 'todo_1', description: 'Bulk write', status: 'completed' }],
+            },
+          },
+        ],
+        [
+          'shell-1',
+          {
+            status: 'success',
+            toolName: 'builtin-local_shell_execute',
+            toolOutput: {
+              root_id: 'workspace',
+              change_set_complete: false,
+              file_change_summary: {
+                created: 201,
+                modified: 0,
+                deleted: 0,
+                changes: [],
+                changes_truncated: true,
+                snapshot_truncated: true,
+                snapshot_skipped: 2,
+              },
+            },
+          },
+        ],
+      ]),
+      activeBlockIds: new Set(),
+    });
+
+    render(<AgentTaskPanel store={store as unknown as StoreApi<any>} />);
+    fireEvent.click(screen.getByRole('button', { name: /Incomplete tracking/i }));
+
+    expect(screen.getByText(/变更记录或回滚覆盖不完整|Change tracking or rollback coverage is incomplete/i)).toBeInTheDocument();
+    expect(screen.getByText(/change-list-truncated/)).toBeInTheDocument();
+  });
+
   it('saves a markdown artifact as a DSTU note and switches the button to open', async () => {
     invokeMock.mockResolvedValue({ content: '# Session summary', truncated: false });
     dstuCreateMock.mockResolvedValue({
@@ -791,5 +902,70 @@ describe('AgentTaskPanel', () => {
     expect(screen.queryByText('已存为笔记')).not.toBeInTheDocument();
     // 失败后仍可重试
     expect(screen.getByRole('button', { name: '保存到笔记库' })).toBeInTheDocument();
+  });
+
+  it('extracts bounded workspace files and browser downloads into Results', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'chat_v2_list_runtime_directory') {
+        return {
+          rootId: 'workspace',
+          relativePath: '',
+          entries: [
+            { name: 'reports', relativePath: 'reports', kind: 'directory' },
+            { name: 'summary.md', relativePath: 'summary.md', kind: 'file', sizeBytes: 12 },
+          ],
+          nextCursor: '2',
+          truncated: true,
+          scanned: 3,
+        };
+      }
+      if (cmd === 'browser_list_task_downloads') {
+        return [{
+          id: 'bd_1',
+          browserSessionId: 'browser-1',
+          chatSessionId: 'sess-results',
+          url: 'https://example.test/report.pdf',
+          filename: 'report.pdf',
+          state: 'completed',
+          rootId: 'artifacts',
+          relativePath: 'browser-downloads/report.pdf',
+          locator: 'runtime://artifacts/browser-downloads/report.pdf',
+          sha256: 'a'.repeat(64),
+          sizeBytes: 42,
+          startedAt: '2026-07-19T00:00:00Z',
+          finishedAt: '2026-07-19T00:00:01Z',
+        }];
+      }
+      return {};
+    });
+    const store = createMockStore({
+      sessionId: 'sess-results',
+      blocks: new Map([['todo-results', {
+        toolName: 'todo_init',
+        toolOutput: {
+          title: 'Results extraction',
+          steps: [{ id: 'done', description: 'Finish task', status: 'completed' }],
+          isAllDone: true,
+        },
+      }]]),
+      activeBlockIds: new Set(),
+    });
+
+    render(<AgentTaskPanel store={store as unknown as StoreApi<any>} />);
+    fireEvent.click(screen.getByRole('button', { name: /Results extraction/i }));
+
+    expect(await screen.findByText('工作区文件')).toBeInTheDocument();
+    expect(screen.getByText('reports')).toBeInTheDocument();
+    expect(screen.getByText('summary.md')).toBeInTheDocument();
+    expect(screen.getByText('浏览器下载')).toBeInTheDocument();
+    expect(screen.getByText('report.pdf')).toBeInTheDocument();
+    expect(screen.getByText('2+')).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith('chat_v2_list_runtime_directory', {
+      sessionId: 'sess-results',
+      rootId: 'workspace',
+      relativePath: '',
+      cursor: undefined,
+      limit: 40,
+    });
   });
 });

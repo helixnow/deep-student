@@ -269,8 +269,7 @@ describe('NotesCrepeEditor save queue', () => {
 
     await waitFor(() => expect(latestOnChange).not.toBeNull());
     act(() => latestOnChange?.('V1'));
-    const buttons = screen.getAllByRole('button');
-    fireEvent.click(buttons[buttons.length - 1]);
+    fireEvent.click(screen.getByRole('button', { name: /阅读模式|Reading Mode/i }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith('V1'));
     unmount();

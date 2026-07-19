@@ -117,7 +117,7 @@ vi.mock('@/features/learning-hub/hooks', async () => {
   const actual = await vi.importActual<typeof import('@/features/learning-hub/hooks')>('@/features/learning-hub/hooks');
   return {
     ...actual,
-    useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: false, isInjecting: false }),
+    useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: () => false, isInjecting: false }),
   };
 });
 vi.mock('@/command-palette/hooks/useCommandEvents', () => ({ useCommandEvents: vi.fn() }));

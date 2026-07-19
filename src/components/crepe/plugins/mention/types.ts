@@ -2,6 +2,8 @@
  * @ 提及笔记插件：类型与事件契约
  */
 
+import type { DstuOpenNoteDetail } from '@/features/notes/openNoteEvent';
+
 /** 补全候选（与接线侧 / DSTU note 字段对齐的最小子集） */
 export interface MentionNoteCandidate {
   id: string;
@@ -35,7 +37,7 @@ export const NOTE_HREF_PROTOCOL = 'note://';
 
 export function dispatchOpenMentionNote(noteId: string): void {
   window.dispatchEvent(
-    new CustomEvent(MENTION_EVENTS.OPEN_NOTE, {
+    new CustomEvent<DstuOpenNoteDetail>(MENTION_EVENTS.OPEN_NOTE, {
       detail: { noteId, source: 'mention' },
     }),
   );

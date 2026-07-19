@@ -272,8 +272,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       // 🆕 工具审批请求
       pendingApprovalRequest,
       authorityMode,
+      permissionPreset,
       authorityAskBlockedHint,
       setAuthorityMode,
+      setPermissionPreset,
       setAuthorityAskBlockedHint,
       liveAuthorityBlockedBlockId,
     } = useStore(
@@ -316,8 +318,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 🆕 阻塞交互请求
         pendingApprovalRequest: s.pendingBlockingInteraction,
         authorityMode: s.authorityMode ?? 'craft',
+        permissionPreset: s.permissionPreset ?? 'cautious',
         authorityAskBlockedHint: s.authorityAskBlockedHint ?? false,
         setAuthorityMode: s.setAuthorityMode,
+        setPermissionPreset: s.setPermissionPreset,
         setAuthorityAskBlockedHint: s.setAuthorityAskBlockedHint,
         liveAuthorityBlockedBlockId: (() => {
           if (!s.currentStreamingMessageId) return null;
@@ -1083,14 +1087,18 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     );
 
     const renderSkillPanel = useMemo(() => {
-      return () => (
+      return (opts?: { variant?: 'panel' | 'menu' }) => (
         <SkillSelector
           activeSkillIds={activeSkillIds}
           onToggleSkill={handleToggleSkill}
-          onClose={() => setPanelState('skill', false)}
+          onClose={() => {
+            if (opts?.variant === 'menu') return;
+            setPanelState('skill', false);
+          }}
           onRefresh={handleRefreshSkills}
           disabled={isStreaming}
           sessionId={sessionId}
+          variant={opts?.variant ?? 'panel'}
         />
       );
     }, [activeSkillIds, handleToggleSkill, setPanelState, handleRefreshSkills, isStreaming, sessionId]);
@@ -1210,6 +1218,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         sessionId={sessionId}
         authorityMode={authorityMode}
         onAuthorityModeChange={(mode) => setAuthorityMode(mode)}
+        permissionPreset={permissionPreset}
+        onPermissionPresetChange={(preset) => setPermissionPreset(preset)}
         authorityAskBlockedHint={authorityAskBlockedHint}
         // ★ PDF 页码引用
         pdfPageRefs={pdfPageRefs}

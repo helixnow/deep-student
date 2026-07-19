@@ -392,8 +392,16 @@ export const ChatV2Page: React.FC = () => {
     return sessions.map((s) => ({
       ...s,
       groupName: s.groupId ? groupNameMap.get(s.groupId) : undefined,
+      workspaceKey: (() => {
+        const metadata = s.metadata ?? {};
+        const direct = metadata.workspaceId ?? metadata.workspace_id
+          ?? metadata.defaultRuntimeRootId ?? metadata.default_runtime_root_id;
+        if (typeof direct === 'string' && direct.trim()) return direct;
+        const group = displayGroups.find(item => item.id === s.groupId);
+        return group?.defaultRuntimeRootId ?? 'default';
+      })(),
     }));
-  }, [groupNameMap, sessions]);
+  }, [displayGroups, groupNameMap, sessions]);
 
   // 浏览模式的分组信息
   const browserGroups = useMemo(() => {
@@ -826,8 +834,14 @@ export const ChatV2Page: React.FC = () => {
         >
           <LearningHubSidebar
             mode="canvas"
+            hostId="canvas"
+            sessionActive={canvasSidebarOpen}
+            commandsEnabled={false}
             onClose={toggleCanvasSidebar}
             onOpenApp={handleOpenApp}
+            onReferenceToChat={() => {
+              // Sidebar injects via useVfsContextInject; callback keeps the entry wired.
+            }}
             className="h-full"
           />
         </Panel>
@@ -1110,6 +1124,9 @@ export const ChatV2Page: React.FC = () => {
               ) : (
                 <LearningHubSidebar
                   mode="canvas"
+                  hostId="canvas-mobile"
+                  sessionActive={mobileResourcePanelOpen}
+                  commandsEnabled={false}
                   onClose={() => setMobileResourcePanelOpen(false)}
                   onOpenApp={(item) => {
                     if (groupPickerAddRef.current) {
@@ -1126,6 +1143,9 @@ export const ChatV2Page: React.FC = () => {
                       return;
                     }
                     handleOpenApp(item);
+                  }}
+                  onReferenceToChat={() => {
+                    // Sidebar injects via useVfsContextInject; callback keeps the entry wired.
                   }}
                   highlightedIds={groupPickerAddRef.current ? groupPinnedIds : undefined}
                   className="h-full"

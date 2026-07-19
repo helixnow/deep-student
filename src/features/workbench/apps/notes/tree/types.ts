@@ -100,6 +100,8 @@ export interface NotesWorkspaceTreeProps {
     position: NotesWorkspaceDropPosition,
   ) => void;
   onRename: (id: string, newName: string) => void;
+  /** Request host-owned deletion confirmation for the focused item. */
+  onDelete?: (item: NotesWorkspaceTreeItem) => void;
   /**
    * Optional: host notified when rename UI opens/closes so it can sync `renamingId`.
    * If omitted, rename mode is managed internally after double-click / F2 / menu.

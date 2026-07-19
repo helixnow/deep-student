@@ -1,7 +1,7 @@
 /**
  * 闪卡到期投射源（M3）
  *
- * 结构对标 `ankiTaskSource.ts`：轮询 `fsrs_get_due`，有订阅者才跑 watcher。
+ * 结构对标 `ankiTaskSource.ts`：轮询 `fsrs_get_stats`，有订阅者才跑 watcher。
  * 投射源为 badge-only（projectWindows=false），驱动 Dock 角标。
  */
 import { invoke } from '@tauri-apps/api/core';
@@ -13,8 +13,6 @@ import { subscribeFlashcardsDueRefresh } from '@/features/flashcards/events';
 const POLL_INTERVAL_ACTIVE_MS = 30_000;
 /** 无到期时拉长，降低空转 IPC */
 const POLL_INTERVAL_IDLE_MS = 120_000;
-/** 与 fsrsReviewStore.fetchDueFromBackend 一致 */
-const DUE_LIMIT = 50;
 
 export const FLASHCARDS_DUE_INSTANCE_KEY = 'flashcards-due';
 
@@ -58,10 +56,25 @@ function scheduleNextPoll(): void {
   }, pollDelayMs());
 }
 
+/** 从 fsrs_get_stats 响应解析真实到期数（兼容 camelCase / snake_case）。 */
+function parseDueFromStats(result: unknown): number | null {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
+  const row = result as Record<string, unknown>;
+  const raw = row.due !== undefined ? row.due : row.due_count;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) {
+    return Math.floor(raw);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 0) return Math.floor(parsed);
+  }
+  return null;
+}
+
 /**
  * 立即从后端刷新到期闪卡数（并发调用合流到同一次请求；测试可直接调用）。
- * 解析对齐 `fsrsReviewStore.fetchDueFromBackend`：数组长度 = dueCount；
- * 失败 / 非数组保持上次计数，不抛到 UI。
+ * 使用 `fsrs_get_stats` 的 `due` 字段作为诚实总数；
+ * 失败 / 无法解析保持上次计数，不抛到 UI。
  */
 export function refreshFlashcardsDueCount(): Promise<void> {
   if (inflight) {
@@ -72,11 +85,12 @@ export function refreshFlashcardsDueCount(): Promise<void> {
     do {
       refreshAgain = false;
       try {
-        const result = await invoke<unknown>('fsrs_get_due', { limit: DUE_LIMIT });
-        if (Array.isArray(result)) {
-          setCount(result.length);
+        const result = await invoke<unknown>('fsrs_get_stats');
+        const due = parseDueFromStats(result);
+        if (due != null) {
+          setCount(due);
         }
-        // 非数组：保持上次计数
+        // 无法解析：保持上次计数
       } catch {
         // 非 Tauri 环境 / 后端不可用：保持上次计数
       }

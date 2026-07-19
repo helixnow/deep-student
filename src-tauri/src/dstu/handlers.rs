@@ -3664,6 +3664,41 @@ pub async fn dstu_set_metadata(
             exam_to_dstu_node(&updated)
         }
         "files" | "file" | "images" | "image" => {
+            // PDF files share the `files` storage used by textbooks. Reuse these
+            // repository operations so preview metadata survives a reload.
+            if let Some(page) = metadata
+                .get("readingProgress")
+                .and_then(|progress| progress.get("page"))
+                .and_then(|value| value.as_i64())
+            {
+                match VfsTextbookRepo::update_reading_progress(&vfs_db, &id, page as i32) {
+                    Ok(_) => log::info!(
+                        "[DSTU::handlers] dstu_set_metadata: set file last_page={}, id={}",
+                        page,
+                        id
+                    ),
+                    Err(e) => {
+                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file reading_progress error={}", e);
+                        return Err(e.to_string());
+                    }
+                }
+            }
+            if let Some(bookmarks) = metadata.get("bookmarks") {
+                let bookmarks = bookmarks.as_array().ok_or_else(|| {
+                    "INVALID_ARGUMENT: file bookmarks must be an array".to_string()
+                })?;
+                match VfsTextbookRepo::update_bookmarks(&vfs_db, &id, bookmarks) {
+                    Ok(_) => log::info!(
+                        "[DSTU::handlers] dstu_set_metadata: set file bookmarks={}, id={}",
+                        bookmarks.len(),
+                        id
+                    ),
+                    Err(e) => {
+                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set file bookmarks error={}", e);
+                        return Err(e.to_string());
+                    }
+                }
+            }
             // 更新收藏状态
             if let Some(favorite) = metadata.get("isFavorite").and_then(|v| v.as_bool()) {
                 match VfsFileRepo::set_favorite(&vfs_db, &id, favorite) {

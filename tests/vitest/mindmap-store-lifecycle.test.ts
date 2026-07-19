@@ -128,6 +128,33 @@ describe('mindmap store lifecycle guards', () => {
     expect(stateAfterMove.document.root.children.map((node) => node.id)).toEqual(['node_a', 'node_b']);
   });
 
+  it('moves a canvas multi-selection as one undoable transaction', () => {
+    seedStore({
+      ...createDocument(),
+      root: {
+        ...createDocument().root,
+        children: [
+          ...createDocument().root.children,
+          { id: 'node_c', text: 'C', children: [] },
+        ],
+      },
+    });
+
+    expect(useMindMapStore.getState().moveNodes(['node_a', 'node_b'], 'node_c', 0)).toBe(true);
+    expect(useMindMapStore.getState().document.root.children.map((node) => node.id)).toEqual(['node_c']);
+    expect(useMindMapStore.getState().document.root.children[0].children.map((node) => node.id)).toEqual([
+      'node_a',
+      'node_b',
+    ]);
+
+    useMindMapStore.getState().undo();
+    expect(useMindMapStore.getState().document.root.children.map((node) => node.id)).toEqual([
+      'node_a',
+      'node_b',
+      'node_c',
+    ]);
+  });
+
   it('deduplicates sync draft persistence by document version', () => {
     const originalLocalStorage = window.localStorage;
     const setItemSpy = vi.fn();

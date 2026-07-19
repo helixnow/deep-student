@@ -11564,7 +11564,7 @@ mod tests {
         }
 
         service
-            .rate(&state_id, 3, Some(80))
+            .rate(&state_id, 3, Some(80), None)
             .expect("user rates after Agent preflight");
         let stale_conflict = db
             .delete_anki_card_for_session(

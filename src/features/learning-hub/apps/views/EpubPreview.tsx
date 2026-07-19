@@ -9,7 +9,6 @@ import {
   Minus,
   Plus,
   SidebarSimple,
-  WarningCircle,
 } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -20,6 +19,7 @@ import {
   searchEpubBook,
   type EpubBookModel,
 } from './epubReaderModel';
+import { PreviewStatus } from './PreviewStatus';
 import './EpubPreview.css';
 
 type ReaderTheme = 'light' | 'sepia' | 'dark';
@@ -75,6 +75,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadGeneration, setReloadGeneration] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +107,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
     initialState.chapterProgress,
     initialState.fontScale,
     initialState.theme,
+    reloadGeneration,
   ]);
 
   useEffect(() => {
@@ -310,20 +312,28 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
 
   if (error) {
     return (
-      <div className="epub-preview-state" role="alert">
-        <WarningCircle size={44} aria-hidden="true" />
-        <strong>{t('learningHub:epubPreview.loadFailed')}</strong>
-        <span>{error}</span>
-      </div>
+      <PreviewStatus
+        tone="error"
+        title={t('learningHub:epubPreview.loadFailed')}
+        description={error}
+        actions={[{
+          id: 'retry',
+          label: t('common:retry'),
+          onClick: () => setReloadGeneration((generation) => generation + 1),
+          loading,
+        }]}
+        className="epub-preview-state"
+      />
     );
   }
 
   if (!book) {
     return (
-      <div className="epub-preview-state" role="status">
-        <CircleNotch className="animate-spin" size={36} aria-hidden="true" />
-        <span>{t('learningHub:epubPreview.loading')}</span>
-      </div>
+      <PreviewStatus
+        tone="loading"
+        title={t('learningHub:epubPreview.loading')}
+        className="epub-preview-state"
+      />
     );
   }
 

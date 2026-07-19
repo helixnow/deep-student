@@ -16,17 +16,13 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { WarningCircle, FileText, CircleNotch, ArrowClockwise, LinkSimple, ArrowSquareOut } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { CircleNotch } from '@phosphor-icons/react';
 import { TextbookPdfViewer, type ReadingProgress, type Bookmark } from '@/features/pdf/components/TextbookPdfViewer';
 import type { ContentViewProps } from '../UnifiedAppPanel';
-import { dstu } from '@/dstu';
-import { reportError } from '@/shared/result';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { invoke } from '@tauri-apps/api/core';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { vfsFileApi } from '@/api/vfsFileApi';
 import { usePdfLoader } from '@/hooks/usePdfLoader';
 import {
   estimateBase64Size,
@@ -41,6 +37,8 @@ import { TextFilePreview } from './TextFilePreview';
 import EpubPreview from './EpubPreview';
 import { loadTextPreviewContent } from './textPreviewLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
+import { PreviewStatus } from './PreviewStatus';
+import { createPreviewPersistController } from './previewPersistence';
 
 const toToolbarPreviewType = (type: string | null): ToolbarPreviewType => {
   if (type === 'docx' || type === 'xlsx' || type === 'pptx' || type === 'text') {
@@ -80,15 +78,10 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   // 页面选择状态
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
 
-  // 保存进度的防抖引用
-  const saveProgressTimerRef = useRef<number | null>(null);
-
-  // ★ 追踪最新值的 ref（用于 cleanup flush，避免闭包捕获过期值）
+  // ★ 追踪最新值的 ref（persist controller merge 用）
   const nodePathRef = useRef(node.path);
   const nodeIdRef = useRef(node.id);
   const nodeMetadataRef = useRef(node.metadata);
-  const pendingProgressRef = useRef<ReadingProgress | null>(null);
-  const pendingBookmarksRef = useRef<Bookmark[] | null>(null);
 
   // 同步最新值到 ref
   useEffect(() => {
@@ -96,6 +89,23 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     nodeIdRef.current = node.id;
     nodeMetadataRef.current = node.metadata;
   }, [node.path, node.id, node.metadata]);
+
+  const persistControllerRef = useRef(
+    createPreviewPersistController(
+      {
+        kind: 'textbook',
+        nodeId: node.id,
+        nodePath: node.path,
+        getMetadata: () => nodeMetadataRef.current as Record<string, unknown> | undefined,
+      },
+      {
+        onBookmarksError: (err) => {
+          console.error('[TextbookContentView] Failed to save bookmarks:', err);
+          showGlobalNotification('error', t('textbook:bookmarkSaveFailed'));
+        },
+      },
+    ),
+  );
   
   // 非 PDF 文件的内容状态（富文档为 base64；text 模式为已解码/提取后的文本）
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -469,9 +479,6 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     return undefined;
   }, [node.metadata?.readingProgress]);
   
-  // 书签保存的防抖引用
-  const saveBookmarksTimerRef = useRef<number | null>(null);
-  
   // 初始化书签数据
   useEffect(() => {
     const savedBookmarks = node.metadata?.bookmarks as Bookmark[] | undefined;
@@ -481,120 +488,35 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       setBookmarks([]);
     }
   }, [node.metadata?.bookmarks]);
-  
-  // 保存阅读进度到 DSTU
+
   const handleProgressChange = useCallback((progress: ReadingProgress) => {
-    // ★ 记录 pending 值，供 unmount flush 使用
-    pendingProgressRef.current = progress;
-
-    // 防抖：清理之前的定时器
-    if (saveProgressTimerRef.current) {
-      window.clearTimeout(saveProgressTimerRef.current);
-    }
-    
-    // 延迟保存，避免频繁写入
-    saveProgressTimerRef.current = window.setTimeout(async () => {
-      saveProgressTimerRef.current = null;
-      pendingProgressRef.current = null; // 已提交，清除 pending
-      
-      // 构建新的元数据（保留原有字段）
-      const newMetadata = {
-        ...nodeMetadataRef.current,
-        readingProgress: {
-          page: progress.page,
-          lastReadAt: progress.lastReadAt,
-        },
-      };
-
-      // 通过 DSTU 保存元数据 (Result模式)
-      const result = await dstu.setMetadata(nodePathRef.current, newMetadata);
-      if (!result.ok) {
-        reportError(result.error, '保存阅读进度');
-        console.warn('[TextbookContentView] Failed to save reading progress:', result.error.toUserMessage());
-      }
-    }, 2000); // 2秒防抖，避免频繁保存
+    persistControllerRef.current.scheduleProgress(progress);
   }, []);
-  
-  // 保存书签到后端（通过 VFS API）
+
   const handleBookmarksChange = useCallback((newBookmarks: Bookmark[]) => {
-    // 更新本地状态
     setBookmarks(newBookmarks);
-    // ★ 记录 pending 值，供 unmount flush 使用
-    pendingBookmarksRef.current = newBookmarks;
-    
-    // 防抖：清理之前的定时器
-    if (saveBookmarksTimerRef.current) {
-      window.clearTimeout(saveBookmarksTimerRef.current);
-    }
-    
-    // 延迟保存，避免频繁写入
-    saveBookmarksTimerRef.current = window.setTimeout(async () => {
-      saveBookmarksTimerRef.current = null;
-      pendingBookmarksRef.current = null; // 已提交，清除 pending
-      
-      try {
-        const fileId = nodeIdRef.current;
-        
-        // 调用后端 API 保存书签
-        await vfsFileApi.updateBookmarks(fileId, newBookmarks);
-        
-        // 同时更新 DSTU 元数据，保持数据一致性
-        const newMetadata = {
-          ...nodeMetadataRef.current,
-          bookmarks: newBookmarks,
-        };
-        await dstu.setMetadata(nodePathRef.current, newMetadata);
-      } catch (err: unknown) {
-        console.error('[TextbookContentView] Failed to save bookmarks:', err);
-        showGlobalNotification('error', t('textbook:bookmarkSaveFailed'));
-      }
-    }, 1000); // 1秒防抖
-  }, [t]);
-  
-  // ★ 清理定时器并 flush 未保存的数据（防止卸载丢失）。
-  // 依赖 [node.id]：同一挂载实例切换 node 时也要先 flush 旧节点，
-  // 否则挂起的防抖定时器会在 refs 已指向新节点后触发，把旧文档的进度/书签写到新文档上。
-  // cleanup 阶段各 ref 仍持有旧节点的值（ref 同步发生在所有 cleanup 之后的 setup 阶段）。
-  React.useEffect(() => {
+    persistControllerRef.current.scheduleBookmarks(newBookmarks);
+  }, []);
+
+  // ★ node 切换 / unmount：flush 旧控制器再换新（避免串写邻文档）
+  useEffect(() => {
+    persistControllerRef.current.dispose();
+    persistControllerRef.current = createPreviewPersistController(
+      {
+        kind: 'textbook',
+        nodeId: nodeIdRef.current,
+        nodePath: nodePathRef.current,
+        getMetadata: () => nodeMetadataRef.current as Record<string, unknown> | undefined,
+      },
+      {
+        onBookmarksError: (err) => {
+          console.error('[TextbookContentView] Failed to save bookmarks:', err);
+          showGlobalNotification('error', t('textbook:bookmarkSaveFailed'));
+        },
+      },
+    );
     return () => {
-      // 清除定时器
-      if (saveProgressTimerRef.current) {
-        window.clearTimeout(saveProgressTimerRef.current);
-        saveProgressTimerRef.current = null;
-      }
-      if (saveBookmarksTimerRef.current) {
-        window.clearTimeout(saveBookmarksTimerRef.current);
-        saveBookmarksTimerRef.current = null;
-      }
-
-      // ★ 合并 flush 未保存的阅读进度和书签（单次 setMetadata，避免竞态覆盖）
-      const pendingProgress = pendingProgressRef.current;
-      const pendingBookmarks = pendingBookmarksRef.current;
-      pendingProgressRef.current = null;
-      pendingBookmarksRef.current = null;
-
-      if (pendingProgress || pendingBookmarks) {
-        const mergedMetadata = { ...nodeMetadataRef.current };
-        if (pendingProgress) {
-          mergedMetadata.readingProgress = {
-            page: pendingProgress.page,
-            lastReadAt: pendingProgress.lastReadAt,
-          };
-        }
-        if (pendingBookmarks) {
-          mergedMetadata.bookmarks = pendingBookmarks;
-          // 书签同时保存到 VFS API
-          void vfsFileApi.updateBookmarks(nodeIdRef.current, pendingBookmarks);
-        }
-        dstu.setMetadata(nodePathRef.current, mergedMetadata).then(result => {
-          if (!result.ok) {
-            reportError(result.error, '保存未持久化的阅读进度/书签');
-            console.warn('[TextbookContentView] flush setMetadata failed:', result.error.toUserMessage());
-          }
-        }).catch(err => {
-          console.error('[TextbookContentView] flush setMetadata error:', err);
-        });
-      }
+      persistControllerRef.current.dispose();
     };
   }, [node.id]);
 
@@ -643,22 +565,13 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     }
   }, []);
 
-  // 失联场景下的"重新关联"按钮（PDF/非 PDF 错误态共用）
-  const relinkButton = (
-    <NotionButton
-      variant="default"
-      size="sm"
-      disabled={isRelinking}
-      onClick={() => {
-        void handleRelink();
-      }}
-    >
-      {isRelinking
-        ? <CircleNotch className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden="true" />
-        : <LinkSimple className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />}
-      {t('textbook:relink.action')}
-    </NotionButton>
-  );
+  const relinkAction = {
+    id: 'relink',
+    label: t('textbook:relink.action'),
+    onClick: () => { void handleRelink(); },
+    variant: 'default' as const,
+    loading: isRelinking,
+  };
 
   // ★ PDF 初始态 spinner 超时检测（10 秒后显示提示 + 重试按钮，避免无限旋转）
   useEffect(() => {
@@ -686,31 +599,19 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
 
   // 非 PDF 内容首次加载视图（超时后显示提示 + 重试/重新关联按钮，与 PDF 初始态一致）
   const contentLoadingView = (
-    <div
-      className="flex flex-col items-center justify-center h-full gap-4"
-      role="status"
-      aria-label={t('common:loading')}
-    >
-      <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
-      {contentLoadTimedOut && (
-        <>
-          <p className="text-sm text-muted-foreground text-center">
-            {t('textbook:loading.timeout')}
-          </p>
-          <div className="flex gap-2">
-            <NotionButton
-              variant="default"
-              size="sm"
-              onClick={retryContentLoad}
-            >
-              <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              {t('common:retry')}
-            </NotionButton>
-            {relinkButton}
-          </div>
-        </>
-      )}
-    </div>
+    <PreviewStatus
+      tone="loading"
+      title={t('common:loading')}
+      description={contentLoadTimedOut ? t('textbook:loading.timeout') : undefined}
+      actions={
+        contentLoadTimedOut
+          ? [
+              { id: 'retry', label: t('common:retry'), onClick: retryContentLoad, variant: 'default' },
+              relinkAction,
+            ]
+          : undefined
+      }
+    />
   );
 
   // ★ 移除 filePath 为空时的硬性错误，改为在内容加载失败时显示错误
@@ -720,90 +621,55 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   if (isPdf && !effectiveFilePath && !pdfFile) {
     if (pdfLoading) {
       return (
-        <div
-          className="flex flex-col items-center justify-center h-full gap-4"
-          role="status"
-          aria-label={t('common:loading')}
-        >
-          <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
-          {isPdfLargeFile && (
-            <p className="text-sm text-muted-foreground">
-              {t('textbook:loading.largeFile')}
-            </p>
-          )}
-        </div>
+        <PreviewStatus
+          tone="loading"
+          title={t('common:loading')}
+          description={isPdfLargeFile ? t('textbook:loading.largeFile') : undefined}
+        />
       );
     }
     if (pdfError) {
       return (
-        <div className="flex flex-col items-center justify-center h-full gap-4" role="alert">
-          <WarningCircle className="w-12 h-12 text-destructive" aria-hidden="true" />
-          <p className="text-destructive text-center">{pdfError}</p>
-          <div className="flex gap-2">
-            <NotionButton
-              variant="default"
-              size="sm"
-              onClick={retryPdfLoad}
-            >
-              <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              {t('common:retry')}
-            </NotionButton>
-            {relinkButton}
-          </div>
-          <p className="text-xs text-muted-foreground max-w-md text-center">
-            {t('textbook:relink.hint')}
-          </p>
-        </div>
+        <PreviewStatus
+          tone="error"
+          title={pdfError}
+          description={t('textbook:relink.hint')}
+          actions={[
+            { id: 'retry', label: t('common:retry'), onClick: retryPdfLoad, variant: 'default' },
+            relinkAction,
+          ]}
+        />
       );
     }
     // 初始状态，等待加载（超时后显示提示 + 重试按钮）
     return (
-      <div
-        className="flex flex-col items-center justify-center h-full gap-4"
-        role="status"
-        aria-label={t('common:loading')}
-      >
-        <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
-        {pdfInitTimedOut && (
-          <>
-            <p className="text-sm text-muted-foreground text-center">
-              {t('textbook:loading.timeout')}
-            </p>
-            <div className="flex gap-2">
-              <NotionButton
-                variant="default"
-                size="sm"
-                onClick={retryPdfLoad}
-              >
-                <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-                {t('common:retry')}
-              </NotionButton>
-              {relinkButton}
-            </div>
-          </>
-        )}
-      </div>
+      <PreviewStatus
+        tone="loading"
+        title={t('common:loading')}
+        description={pdfInitTimedOut ? t('textbook:loading.timeout') : undefined}
+        actions={
+          pdfInitTimedOut
+            ? [
+                { id: 'retry', label: t('common:retry'), onClick: retryPdfLoad, variant: 'default' },
+                relinkAction,
+              ]
+            : undefined
+        }
+      />
     );
   }
   
   // 错误状态
   if (contentError) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4" role="alert">
-        <WarningCircle className="w-12 h-12 text-destructive" aria-hidden="true" />
-        <p className="text-destructive text-center">{contentError}</p>
-        <div className="flex gap-2">
-          <NotionButton
-            variant="default"
-            size="sm"
-            onClick={retryContentLoad}
-          >
-            <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            {t('common:retry')}
-          </NotionButton>
-          {relinkButton}
-        </div>
-      </div>
+      <PreviewStatus
+        tone="error"
+        title={contentError}
+        actions={[
+          { id: 'retry', label: t('common:retry'), onClick: retryContentLoad, variant: 'default' },
+          relinkAction,
+        ]}
+      />
     );
   }
   
@@ -885,30 +751,23 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     // 从文件名获取扩展名
     const ext = node.name.split('.').pop()?.toUpperCase() || '';
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <FileText className="w-16 h-16 text-muted-foreground" aria-hidden="true" />
-        <div className="text-center space-y-2">
-          <p className="text-lg font-medium text-foreground">{node.name}</p>
-          <p className="text-muted-foreground">
-            {t('learningHub:textbook.unsupportedPreview', { ext })}
-          </p>
-        </div>
-        {effectiveFilePath && (
-          <NotionButton
-            variant="default"
-            size="sm"
-            disabled={isOpeningExternal}
-            onClick={() => {
-              void handleOpenExternal(effectiveFilePath);
-            }}
-          >
-            {isOpeningExternal
-              ? <CircleNotch className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden="true" />
-              : <ArrowSquareOut className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />}
-            {t('common:openExternal')}
-          </NotionButton>
-        )}
-      </div>
+      <PreviewStatus
+        tone="empty"
+        icon="file"
+        title={node.name}
+        description={t('learningHub:textbook.unsupportedPreview', { ext })}
+        actions={
+          effectiveFilePath
+            ? [{
+                id: 'openExternal',
+                label: t('common:openExternal'),
+                onClick: () => { void handleOpenExternal(effectiveFilePath); },
+                variant: 'default',
+                loading: isOpeningExternal,
+              }]
+            : undefined
+        }
+      />
     );
   }
 

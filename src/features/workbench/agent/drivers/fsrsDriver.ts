@@ -141,6 +141,7 @@ function cardsFromEnqueuePayload(payload: unknown): ReviewCard[] {
         card.id.trim().length > 0 &&
         typeof card.ankiCardId === 'string' &&
         card.ankiCardId.trim().length > 0 &&
+        card.isErrorCard !== true &&
         hasReviewCardContent(card),
     )
     .map((card) => ({
@@ -367,6 +368,38 @@ export function handleFsrsDomainChange(payload: DomainChangePayload): void {
       useFsrsReviewStore.getState().reconcileAgentReviewChange(
         payload.action as FsrsAgentReviewAction,
         agentReviewStateChanges(payload),
+      );
+      flashEntityIds(collectDomainEntityIds(payload));
+      return;
+    }
+    // 他窗 / 本窗回声的 user rate：按 cardStateIds 对齐队列，避免双评分。
+    if (payload.action === 'rate') {
+      const fromPayload = Array.isArray(payload.cardStateIds)
+        ? payload.cardStateIds.filter((id): id is string => typeof id === 'string')
+        : [];
+      const cardLogPairs: Array<{ cardStateId: string; logId: string }> = [];
+      const fromCards = Array.isArray(payload.cards)
+        ? payload.cards
+            .map((raw) => {
+              if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+              const row = raw as Record<string, unknown>;
+              const id = row.id ?? row.cardStateId ?? row.card_state_id;
+              const logId = row.logId ?? row.log_id;
+              if (
+                typeof id === 'string'
+                && id.trim()
+                && typeof logId === 'string'
+                && logId.trim()
+              ) {
+                cardLogPairs.push({ cardStateId: id.trim(), logId: logId.trim() });
+              }
+              return typeof id === 'string' ? id : null;
+            })
+            .filter((id): id is string => !!id)
+        : [];
+      useFsrsReviewStore.getState().reconcileExternalRate(
+        [...fromPayload, ...fromCards],
+        cardLogPairs.length > 0 ? { cardLogPairs } : undefined,
       );
       flashEntityIds(collectDomainEntityIds(payload));
       return;

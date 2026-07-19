@@ -8,6 +8,8 @@ import {
   getOutlineGoalColumn,
   requestOutlineCaret,
   resolveGoalColumnOffset,
+  shouldNavigateAcrossOutlineNode,
+  isOutlineCompositionActive,
   setOutlineGoalColumn,
   takeOutlineCaret,
 } from '@/features/mindmap/utils/outlineCaret';
@@ -43,6 +45,22 @@ describe('resolveGoalColumnOffset', () => {
   it('never returns negative or beyond length', () => {
     expect(resolveGoalColumnOffset(-3, 8)).toBe(0);
     expect(resolveGoalColumnOffset(99, 0)).toBe(0);
+  });
+});
+
+describe('outline keyboard boundaries', () => {
+  it('keeps vertical arrows inside multiline text until a logical boundary', () => {
+    const text = 'first\nsecond\nthird';
+    expect(shouldNavigateAcrossOutlineNode(text, 8, 'up')).toBe(false);
+    expect(shouldNavigateAcrossOutlineNode(text, 8, 'down')).toBe(false);
+    expect(shouldNavigateAcrossOutlineNode(text, 2, 'up')).toBe(true);
+    expect(shouldNavigateAcrossOutlineNode(text, text.length - 2, 'down')).toBe(true);
+  });
+
+  it('recognizes both modern and legacy IME composition signals', () => {
+    expect(isOutlineCompositionActive({ isComposing: true })).toBe(true);
+    expect(isOutlineCompositionActive({ keyCode: 229 })).toBe(true);
+    expect(isOutlineCompositionActive({ isComposing: false, keyCode: 13 })).toBe(false);
   });
 });
 

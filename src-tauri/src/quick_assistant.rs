@@ -90,7 +90,10 @@ mod desktop {
             save_setting(
                 app,
                 BOUNDS_KEY,
-                &format!("{},{},{},{}", position.x, position.y, size.width, size.height),
+                &format!(
+                    "{},{},{},{}",
+                    position.x, position.y, size.width, size.height
+                ),
             );
         }
     }

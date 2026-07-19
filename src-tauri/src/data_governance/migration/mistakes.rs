@@ -221,6 +221,15 @@ pub const V20260715_HARDEN_AUTOMATION_RUNTIME: MigrationDef = MigrationDef::new(
 .with_expected_indexes(&["idx_automation_runs_owner_lease"])
 .idempotent();
 
+/// V20260721: optional hash-locked trusted execution profile for agent automations.
+pub const V20260721_TRUSTED_AUTOMATION_PROFILE: MigrationDef = MigrationDef::new(
+    20260721,
+    "trusted_automation_profile",
+    include_str!("../../../migrations/mistakes/V20260721__trusted_automation_profile.sql"),
+)
+.with_expected_columns(&[("automation_definitions", "trusted_profile_json")])
+.idempotent();
+
 /// V20260720: durable FSRS -> mastery outbox marker.
 pub const V20260720_FSRS_MASTERY_OUTBOX: MigrationDef = MigrationDef::new(
     20260720,
@@ -369,6 +378,7 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260714_AUTOMATION_SCHEDULER,
         V20260715_HARDEN_AUTOMATION_RUNTIME,
         V20260720_FSRS_MASTERY_OUTBOX,
+        V20260721_TRUSTED_AUTOMATION_PROFILE,
     ],
 };
 

@@ -700,12 +700,14 @@ impl WorkspaceFsExecutor {
             {
                 return Err("Change set contains a different runtime root".to_string());
             }
-            workspace_change_set::rollback_change_set(&root_canon, &temp.path, &change_set)?;
+            let rollback_result =
+                workspace_change_set::rollback_change_set(&root_canon, &temp.path, &change_set);
             return Ok(json!({
-                "reverted": true,
+                "reverted": rollback_result.complete,
                 "root": Self::root_json(&root),
                 "change_id": change_set.id,
                 "change_set": change_set,
+                "rollback_result": rollback_result,
             }));
         }
 

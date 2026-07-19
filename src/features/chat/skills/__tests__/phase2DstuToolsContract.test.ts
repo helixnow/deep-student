@@ -73,23 +73,20 @@ describe('phase 2 DSTU organization tool contracts', () => {
     }
   });
 
-  it('requires exactly one upload source and publishes only supported overrides', () => {
+  it('SECX-08 requires a managed runtime locator and rejects absolute local paths', () => {
     const upload = getTool(dstuToolsSkill, 'builtin-dstu_upload_file');
 
     expect(upload.inputSchema.additionalProperties).toBe(false);
     expect(Object.keys(upload.inputSchema.properties)).toEqual([
-      'local_path',
       'root_id',
       'relative_path',
       'folder_id',
       'name',
       'mime_type',
     ]);
-    expect(upload.inputSchema.oneOf).toEqual([
-      { type: 'object', required: ['local_path'] },
-      { type: 'object', required: ['root_id', 'relative_path'] },
-    ]);
-    expect(upload.description).toContain('严格二选一');
+    expect(upload.inputSchema.required).toEqual(['root_id', 'relative_path']);
+    expect(upload.inputSchema.properties).not.toHaveProperty('local_path');
+    expect(upload.description).toContain('不接受绝对本地路径');
     for (const field of [
       'success',
       'action',

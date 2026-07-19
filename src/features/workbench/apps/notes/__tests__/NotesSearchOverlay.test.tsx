@@ -67,7 +67,10 @@ describe('NotesSearchOverlay', () => {
     expect(search).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('option', { name: /Geometry map/ }));
-    await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(geometry));
+    await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(geometry, {
+      mode: 'quick-open',
+      query: 'geometry',
+    }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -116,7 +119,10 @@ describe('NotesSearchOverlay', () => {
     expect(screen.queryByRole('option', { name: /Quadratic worksheet/ })).toBeNull();
 
     fireEvent.click(screen.getByRole('option', { name: /Quadratic equations/ }));
-    await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(matchedNote));
+    await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(matchedNote, {
+      mode: 'full-text',
+      query: 'quadratic',
+    }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -150,7 +156,10 @@ describe('NotesSearchOverlay', () => {
     expect(screen.getByRole('option', { name: /Biology/ })).toHaveAttribute('aria-selected', 'true');
 
     fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(biology));
+    await waitFor(() => expect(onOpenResource).toHaveBeenCalledWith(biology, {
+      mode: 'quick-open',
+      query: '',
+    }));
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(2);

@@ -51,6 +51,10 @@ import {
   DEFAULT_MINDMAP_VIEWPORT,
   normalizeMindMapViewport,
 } from '../../utils/viewport';
+import {
+  collectCanvasDragSubtreeIds,
+  resolveCanvasDragNodeIds,
+} from '../../utils/canvasDragSelection';
 
 /** 节点是否与画布视口有任何交集（屏幕坐标）。完全在外才返回 false。 */
 function isNodeIntersectingViewport(
@@ -124,10 +128,12 @@ export interface MindMapCanvasHandle {
 export interface MindMapCanvasProps {
   /** 从大纲切回时恢复的视口；有值则跳过初始 fitView，避免冲掉保真视口 */
   initialViewport?: { x: number; y: number; zoom: number } | null;
+  /** Increment to start an association from the focused/selected node. */
+  associationModeRequest?: number;
 }
 
 const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasProps>(function MindMapCanvasInner(
-  { initialViewport = null },
+  { initialViewport = null, associationModeRequest = 0 },
   ref,
 ) {
   ensureInitialized();
@@ -292,6 +298,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   const dropModeRef = useRef<DropMode>('child');
   const [isDragging, setIsDragging] = useState(false);
   const dragNodeIdRef = useRef<string | null>(null);
+  const dragRootIdsRef = useRef<string[]>([]);
+  const dragSubtreeIdsRef = useRef<Set<string>>(new Set());
   const [dragPositionOverride, setDragPositionOverride] = useState<Record<string, { x: number; y: number }>>({});
   // rAF 合帧：mousemove 只写 pending，每帧最多一次 setState，避免 flushSync 卡顿
   const pendingDragOverrideRef = useRef<Record<string, { x: number; y: number }> | null>(null);
@@ -461,6 +469,14 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     setFocusedNodeId(nodeId);
     setSelection([nodeId]);
   }, [setFocusedNodeId, setSelection]);
+
+  const handledAssociationRequestRef = useRef(0);
+  useEffect(() => {
+    if (associationModeRequest <= 0 || associationModeRequest === handledAssociationRequestRef.current) return;
+    handledAssociationRequestRef.current = associationModeRequest;
+    const sourceId = focusedNodeId || selection[0];
+    if (sourceId) handleStartAssociation(sourceId);
+  }, [associationModeRequest, focusedNodeId, handleStartAssociation, selection]);
 
   const handleAssociationLabelChange = useCallback((associationId: string, label: string) => {
     updateAssociationLabel(associationId, label);
@@ -758,6 +774,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   const setEditingNodeId = useMindMapStore(s => s.setEditingNodeId);
   const setEditingNoteNodeId = useMindMapStore(s => s.setEditingNoteNodeId);
   const moveNode = useMindMapStore(s => s.moveNode);
+  const moveNodes = useMindMapStore(s => s.moveNodes);
   const editingNodeId = useMindMapStore(s => s.editingNodeId);
 
   // 进入编辑（含连续建点新建）：节点未完全在视口内时轻量居中，不 fitView。
@@ -933,9 +950,13 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     if (node.id === document.root.id) return;
     // 拖拽选中不强制居中
     prevFocusedNodeId.current = node.id;
-    setSelection([node.id]);
+    const dragRootIds = resolveCanvasDragNodeIds(document.root, selection, node.id);
+    if (!selection.includes(node.id)) setSelection([node.id]);
     setFocusedNodeId(node.id);
     dragNodeIdRef.current = node.id;
+    dragRootIdsRef.current = dragRootIds;
+    const draggedTreeIds = collectCanvasDragSubtreeIds(document.root, dragRootIds);
+    dragSubtreeIdsRef.current = draggedTreeIds;
     dropTargetIdRef.current = null;
     dropModeRef.current = 'child';
     setDropTargetId(null);
@@ -949,27 +970,21 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     const offsets: Record<string, { dx: number; dy: number }> = {};
     const overrides: Record<string, { x: number; y: number }> = { [node.id]: node.position };
 
-    const collectDescendants = (parentId: string) => {
-      const mmNode = findNodeById(document.root, parentId);
-      if (!mmNode?.children) return;
-      for (const child of mmNode.children) {
-        const layoutNode = layoutNodeById.get(child.id);
-        if (layoutNode) {
-          offsets[child.id] = {
-            dx: layoutNode.position.x - node.position.x,
-            dy: layoutNode.position.y - node.position.y,
-          };
-          overrides[child.id] = layoutNode.position;
-        }
-        collectDescendants(child.id);
-      }
-    };
-    collectDescendants(node.id);
+    for (const draggedId of draggedTreeIds) {
+      if (draggedId === node.id) continue;
+      const layoutNode = layoutNodeById.get(draggedId);
+      if (!layoutNode) continue;
+      offsets[draggedId] = {
+        dx: layoutNode.position.x - node.position.x,
+        dy: layoutNode.position.y - node.position.y,
+      };
+      overrides[draggedId] = layoutNode.position;
+    }
 
     dragSubtreeOffsetsRef.current = offsets;
     cancelPendingDragOverride();
     setDragPositionOverride(overrides);
-  }, [document.root, setFocusedNodeId, setSelection, getNodes, cancelPendingDragOverride]);
+  }, [document.root, selection, setFocusedNodeId, setSelection, getNodes, cancelPendingDragOverride]);
 
   const onNodesChange = useCallback((_changes: NodeChange[]) => {
     // 位置同步由 onNodeDrag 处理，此处无需操作
@@ -999,16 +1014,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     // ★ A6-25：每次 drag move 只算一次拖拽子树 id 集合（O(子树)），
     // 替代旧实现对每个候选节点调用 isDescendantOf（每个候选 O(全树)，整体 O(n²)，
     // 500+ 节点大图拖拽时每次 mousemove 高达数十万次节点访问，明显卡顿）。
-    const dragSubtree = findNodeById(document.root, dragId);
-    const dragSubtreeIds = new Set<string>();
-    if (dragSubtree) {
-      const stack: MindMapNode[] = [dragSubtree];
-      while (stack.length > 0) {
-        const cur = stack.pop()!;
-        dragSubtreeIds.add(cur.id);
-        for (const child of cur.children) stack.push(child);
-      }
-    }
+    const dragSubtreeIds = dragSubtreeIdsRef.current;
 
     const candidates: DropCandidate[] = [];
     for (const n of allNodes) {
@@ -1050,7 +1056,10 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
 
   const onNodeDragStop = useCallback<OnNodeDrag>(() => {
     const draggedId = dragNodeIdRef.current;
+    const draggedRootIds = dragRootIdsRef.current;
     dragNodeIdRef.current = null;
+    dragRootIdsRef.current = [];
+    dragSubtreeIdsRef.current = new Set();
     dragSubtreeOffsetsRef.current = {};
     cancelPendingDragOverride();
     setIsDragging(false);
@@ -1063,15 +1072,15 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     if (draggedId && finalTargetId && draggedId !== finalTargetId) {
       if (!isDescendantOf(document.root, draggedId, finalTargetId)) {
         if (finalMode === 'child') {
-          moveNode(draggedId, finalTargetId, 0);
+          moveNodes(draggedRootIds.length > 0 ? draggedRootIds : [draggedId], finalTargetId, 0);
         } else {
           const parent = findParentNode(document.root, finalTargetId);
           if (parent) {
             const idx = parent.children.findIndex(c => c.id === finalTargetId);
             const insertIdx = finalMode === 'sibling-before' ? idx : idx + 1;
-            moveNode(draggedId, parent.id, insertIdx);
+            moveNodes(draggedRootIds.length > 0 ? draggedRootIds : [draggedId], parent.id, insertIdx);
           } else {
-            moveNode(draggedId, finalTargetId, 0);
+            moveNodes(draggedRootIds.length > 0 ? draggedRootIds : [draggedId], finalTargetId, 0);
           }
         }
       }
@@ -1081,7 +1090,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
     dropModeRef.current = 'child';
     setDropTargetId(null);
     setDropMode('child');
-  }, [document.root, moveNode, cancelPendingDragOverride]);
+  }, [document.root, moveNodes, cancelPendingDragOverride]);
 
   // Ctrl+0 / Cmd+0: 适应视图；关联线模式 Esc；选中关联线 Delete
   // Esc/Delete 用 capture：抢在 useMindMapKeyboard（document bubble + stopPropagation）之前

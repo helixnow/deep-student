@@ -49,4 +49,4 @@ export {
 export { PathBreadcrumb, type PathBreadcrumbProps } from './components';
 
 // 真实路径导航类型
-export type { RealPathBreadcrumbItem } from './hooks';
+export type { RealPathBreadcrumbItem } from './types/navigation';

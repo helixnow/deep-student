@@ -151,6 +151,23 @@ pub struct FsrsRateResult {
     pub due_ms: i64,
 }
 
+/// 单档评分预览间隔（只读，不写库）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsPreviewInterval {
+    pub rating: u8,
+    pub scheduled_days: f64,
+    pub due_ms: i64,
+    pub interval_ms: i64,
+}
+
+/// 四档评分预览结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsPreviewResult {
+    pub intervals: Vec<FsrsPreviewInterval>,
+}
+
 #[derive(Debug, Clone)]
 pub struct FsrsPendingMasteryReview {
     pub log_id: String,
@@ -1285,20 +1302,49 @@ impl FsrsReviewService {
         card_state_id: &str,
         rating: u8,
         duration_ms: Option<i64>,
+        client_op_id: Option<String>,
     ) -> Result<FsrsRateResult> {
-        self.rate_with_mastery_bias(card_state_id, rating, duration_ms, None)
+        self.rate_with_mastery_bias(card_state_id, rating, duration_ms, None, client_op_id)
     }
 
     /// 评分；可选按掌握度分数对 rs-fsrs 产出的 due 做有界应用层偏置（A-P1）。
     ///
     /// `mastery_score` 为评分前该 concept 的 `mastery_states.score`；None 时行为与
     /// [`Self::rate`] 完全一致，不触碰 rs-fsrs 核心参数。
+    ///
+    /// `client_op_id` 若为合法 UUID：已存在于 `fsrs_review_logs.id` 时幂等返回该 log 结果；
+    /// 否则用该 UUID 作为新 log id（替代随机 uuid）。
+    ///
+    /// `enforce_expected_last_review` 为 true 时，要求当前 `last_review_ms` 与
+    /// `expected_last_review_ms` 一致（含双方均为 None），否则 conflict，防止他端抢先评分。
     pub fn rate_with_mastery_bias(
         &self,
         card_state_id: &str,
         rating: u8,
         duration_ms: Option<i64>,
         mastery_score: Option<f64>,
+        client_op_id: Option<String>,
+    ) -> Result<FsrsRateResult> {
+        self.rate_with_mastery_bias_cas(
+            card_state_id,
+            rating,
+            duration_ms,
+            mastery_score,
+            client_op_id,
+            false,
+            None,
+        )
+    }
+
+    pub fn rate_with_mastery_bias_cas(
+        &self,
+        card_state_id: &str,
+        rating: u8,
+        duration_ms: Option<i64>,
+        mastery_score: Option<f64>,
+        client_op_id: Option<String>,
+        enforce_expected_last_review: bool,
+        expected_last_review_ms: Option<i64>,
     ) -> Result<FsrsRateResult> {
         let rating = FsrsRating::from_u8(rating)
             .ok_or_else(|| AppError::validation(format!("rating must be 1..=4, got {}", rating)))?;
@@ -1306,6 +1352,7 @@ impl FsrsReviewService {
         let now = Utc::now();
         let now_rfc = now.to_rfc3339();
         let now_ms = now.timestamp_millis();
+        let resolved_op_id = parse_client_op_id(client_op_id.as_deref())?;
 
         let mut conn = self
             .db
@@ -1314,6 +1361,23 @@ impl FsrsReviewService {
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|e| AppError::database(format!("开启事务失败: {}", e)))?;
+
+        if let Some(op_id) = resolved_op_id.as_deref() {
+            match Self::load_rate_result_for_existing_log(
+                &tx,
+                op_id,
+                card_state_id,
+                rating.as_u8(),
+            )? {
+                ExistingLogLookup::Replay(existing) => return Ok(existing),
+                ExistingLogLookup::SoftDeleted => {
+                    return Err(AppError::conflict(
+                        "client op id was undone and cannot be reused",
+                    ));
+                }
+                ExistingLogLookup::Missing => {}
+            }
+        }
 
         let (before, is_error_card) =
             Self::load_state_for_rate(&tx, card_state_id)?.ok_or_else(|| {
@@ -1328,34 +1392,58 @@ impl FsrsReviewService {
             return Err(AppError::validation("card is suspended"));
         }
 
+        if enforce_expected_last_review && before.last_review_ms != expected_last_review_ms {
+            return Err(AppError::conflict(
+                "card was rated elsewhere; refresh and retry",
+            ));
+        }
+
         let state_before_json =
             serde_json::to_string(&FsrsStateBeforeSnapshot::from_state(&before))
                 .map_err(|e| AppError::database(format!("序列化评分前状态失败: {}", e)))?;
         let mut outcome = schedule_review(&before, rating, now_ms);
-        if let Some(score) = mastery_score {
-            let fsrs_due = outcome.due_ms;
-            let biased_due = crate::mastery::apply_mastery_due_bias(score, now_ms, fsrs_due);
-            if biased_due != fsrs_due {
-                let old_interval = fsrs_due.saturating_sub(now_ms);
-                let new_interval = biased_due.saturating_sub(now_ms);
-                if old_interval > 0 && outcome.scheduled_days > 0.0 {
-                    outcome.scheduled_days =
-                        outcome.scheduled_days * (new_interval as f64) / (old_interval as f64);
-                }
-                outcome.due_ms = biased_due;
-                debug!(
-                    "[FsrsReviewService] mastery due bias: score={:.3} fsrs_due={} biased_due={} delta_ms={}",
-                    score,
-                    fsrs_due,
-                    biased_due,
-                    biased_due - fsrs_due
-                );
-            }
-        }
-        let log_id = uuid::Uuid::new_v4().to_string();
+        apply_mastery_bias_to_outcome(&mut outcome, mastery_score, now_ms);
+        let log_id = resolved_op_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        let updated = tx
-            .execute(
+        let updated = if enforce_expected_last_review {
+            tx.execute(
+                "UPDATE fsrs_card_states SET
+                state = ?1,
+                stability = ?2,
+                difficulty = ?3,
+                elapsed_days = ?4,
+                scheduled_days = ?5,
+                reps = ?6,
+                lapses = ?7,
+                due_ms = ?8,
+                last_review_ms = ?9,
+                fsrs_params_version = ?10,
+                updated_at = ?11,
+                local_version = COALESCE(local_version, 0) + 1
+             WHERE id = ?12 AND deleted_at IS NULL
+               AND (
+                 (?13 IS NULL AND last_review_ms IS NULL)
+                 OR last_review_ms = ?13
+               )",
+                params![
+                    outcome.state.as_i32(),
+                    outcome.stability,
+                    outcome.difficulty,
+                    outcome.elapsed_days,
+                    outcome.scheduled_days,
+                    outcome.reps,
+                    outcome.lapses,
+                    outcome.due_ms,
+                    now_ms,
+                    FSRS_PARAMS_VERSION,
+                    now_rfc,
+                    card_state_id,
+                    expected_last_review_ms,
+                ],
+            )
+            .map_err(|e| AppError::database(format!("更新 fsrs_card_states 失败: {}", e)))?
+        } else {
+            tx.execute(
                 "UPDATE fsrs_card_states SET
                 state = ?1,
                 stability = ?2,
@@ -1385,15 +1473,21 @@ impl FsrsReviewService {
                     card_state_id,
                 ],
             )
-            .map_err(|e| AppError::database(format!("更新 fsrs_card_states 失败: {}", e)))?;
+            .map_err(|e| AppError::database(format!("更新 fsrs_card_states 失败: {}", e)))?
+        };
         if updated != 1 {
+            if enforce_expected_last_review {
+                return Err(AppError::conflict(
+                    "card was rated elsewhere; refresh and retry",
+                ));
+            }
             return Err(AppError::not_found(format!(
                 "fsrs card state not found: {}",
                 card_state_id
             )));
         }
 
-        tx.execute(
+        if let Err(e) = tx.execute(
             "INSERT INTO fsrs_review_logs (
                 id, card_state_id, anki_card_id, rating,
                 state_before, state_after,
@@ -1434,8 +1528,18 @@ impl FsrsReviewService {
                 now_rfc,
                 state_before_json,
             ],
-        )
-        .map_err(|e| AppError::database(format!("写入 fsrs_review_logs 失败: {}", e)))?;
+        ) {
+            let msg = e.to_string();
+            if msg.contains("UNIQUE") || msg.contains("unique") {
+                return Err(AppError::conflict(
+                    "client op id already exists; retry with a new id",
+                ));
+            }
+            return Err(AppError::database(format!(
+                "写入 fsrs_review_logs 失败: {}",
+                e
+            )));
+        }
 
         let card_state = Self::load_state_by_id(&tx, card_state_id)?
             .ok_or_else(|| AppError::database("state missing after update"))?;
@@ -1454,6 +1558,47 @@ impl FsrsReviewService {
             scheduled_days: outcome.scheduled_days,
             due_ms: outcome.due_ms,
         })
+    }
+
+    /// 只读预览四档评分后的间隔（不写库）。拒 diagnostic / suspended，与 [`Self::rate`] 一致。
+    pub fn preview_intervals(
+        &self,
+        card_state_id: &str,
+        mastery_score: Option<f64>,
+    ) -> Result<FsrsPreviewResult> {
+        let now_ms = Utc::now().timestamp_millis();
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+
+        let (before, is_error_card) =
+            Self::load_state_for_rate(&conn, card_state_id)?.ok_or_else(|| {
+                AppError::not_found(format!("fsrs card state not found: {}", card_state_id))
+            })?;
+
+        if is_error_card {
+            return Err(diagnostic_card_not_reviewable_error(&before.anki_card_id));
+        }
+
+        if before.suspended {
+            return Err(AppError::validation("card is suspended"));
+        }
+
+        let mut intervals = Vec::with_capacity(4);
+        for rating_u8 in 1u8..=4 {
+            let rating = FsrsRating::from_u8(rating_u8).expect("1..=4 is valid");
+            let mut outcome = schedule_review(&before, rating, now_ms);
+            apply_mastery_bias_to_outcome(&mut outcome, mastery_score, now_ms);
+            intervals.push(FsrsPreviewInterval {
+                rating: rating_u8,
+                scheduled_days: outcome.scheduled_days,
+                due_ms: outcome.due_ms,
+                interval_ms: outcome.due_ms.saturating_sub(now_ms),
+            });
+        }
+
+        Ok(FsrsPreviewResult { intervals })
     }
 
     /// 按 fsrs_card_states.id 读取调度状态（供命令层掌握度偏置预取）
@@ -2402,6 +2547,89 @@ impl FsrsReviewService {
     /// Loads the scheduling state and current diagnostic flag from one live
     /// card/task snapshot. Callers must hold the write transaction that will
     /// apply the rating so the card cannot become diagnostic after this check.
+    /// 若 `log_id` 已存在：校验归属 card/rating 且仍为该卡最新 log 后幂等重放。
+    fn load_rate_result_for_existing_log(
+        conn: &rusqlite::Connection,
+        log_id: &str,
+        card_state_id: &str,
+        expected_rating: u8,
+    ) -> Result<ExistingLogLookup> {
+        let soft_deleted: Option<i64> = conn
+            .query_row(
+                "SELECT 1 FROM fsrs_review_logs WHERE id = ?1 AND deleted_at IS NOT NULL LIMIT 1",
+                params![log_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("查询 fsrs_review_logs 失败: {}", e)))?;
+        if soft_deleted.is_some() {
+            return Ok(ExistingLogLookup::SoftDeleted);
+        }
+
+        let existing: Option<(String, String, i32, f64, i64)> = conn
+            .query_row(
+                "SELECT id, card_state_id, rating, scheduled_days, due_after_ms
+                 FROM fsrs_review_logs
+                 WHERE id = ?1 AND deleted_at IS NULL",
+                params![log_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("查询 fsrs_review_logs 失败: {}", e)))?;
+
+        let Some((log_id, log_card_state_id, log_rating, scheduled_days, due_ms)) = existing else {
+            return Ok(ExistingLogLookup::Missing);
+        };
+
+        if log_card_state_id != card_state_id {
+            return Err(AppError::conflict(
+                "client op id belongs to a different card state",
+            ));
+        }
+        if log_rating != expected_rating as i32 {
+            return Err(AppError::conflict(
+                "client op id was committed with a different rating",
+            ));
+        }
+
+        let latest_log_id: Option<String> = conn
+            .query_row(
+                "SELECT id
+                 FROM fsrs_review_logs
+                 WHERE card_state_id = ?1 AND deleted_at IS NULL
+                 ORDER BY review_ms DESC, created_at DESC, id DESC
+                 LIMIT 1",
+                params![card_state_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("校验最新复习日志失败: {}", e)))?;
+        if latest_log_id.as_deref() != Some(log_id.as_str()) {
+            return Err(AppError::conflict(
+                "client op id is stale and is no longer the latest rating",
+            ));
+        }
+
+        let card_state = Self::load_state_by_id(conn, card_state_id)?.ok_or_else(|| {
+            AppError::not_found(format!("fsrs card state not found: {}", card_state_id))
+        })?;
+
+        Ok(ExistingLogLookup::Replay(FsrsRateResult {
+            card_state,
+            log_id,
+            scheduled_days,
+            due_ms,
+        }))
+    }
+
     fn load_state_for_rate(
         conn: &rusqlite::Connection,
         id: &str,
@@ -2550,6 +2778,56 @@ fn schedule_review(before: &FsrsCardState, rating: FsrsRating, now_ms: i64) -> S
     }
 }
 
+enum ExistingLogLookup {
+    Missing,
+    SoftDeleted,
+    Replay(FsrsRateResult),
+}
+
+/// 缺省 → 随机 log id；提供时必须是合法 UUID，避免重试静默失去幂等保护。
+fn parse_client_op_id(raw: Option<&str>) -> Result<Option<String>> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::validation("clientOpId must be a valid UUID"));
+    }
+    uuid::Uuid::parse_str(trimmed)
+        .map(|id| Some(id.to_string()))
+        .map_err(|_| AppError::validation("clientOpId must be a valid UUID"))
+}
+
+/// 应用层掌握度 due 偏置（与 `rate_with_mastery_bias` 同源，供 preview 复用）。
+fn apply_mastery_bias_to_outcome(
+    outcome: &mut ScheduleOutcome,
+    mastery_score: Option<f64>,
+    now_ms: i64,
+) {
+    let Some(score) = mastery_score else {
+        return;
+    };
+    let fsrs_due = outcome.due_ms;
+    let biased_due = crate::mastery::apply_mastery_due_bias(score, now_ms, fsrs_due);
+    if biased_due == fsrs_due {
+        return;
+    }
+    let old_interval = fsrs_due.saturating_sub(now_ms);
+    let new_interval = biased_due.saturating_sub(now_ms);
+    if old_interval > 0 && outcome.scheduled_days > 0.0 {
+        outcome.scheduled_days =
+            outcome.scheduled_days * (new_interval as f64) / (old_interval as f64);
+    }
+    outcome.due_ms = biased_due;
+    debug!(
+        "[FsrsReviewService] mastery due bias: score={:.3} fsrs_due={} biased_due={} delta_ms={}",
+        score,
+        fsrs_due,
+        biased_due,
+        biased_due - fsrs_due
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2634,6 +2912,184 @@ mod tests {
     }
 
     #[test]
+    fn preview_intervals_returns_four_ratings() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-preview", "task-preview", "card-preview");
+        let service = FsrsReviewService::new(db.clone());
+        let enq = service
+            .enqueue_cards(&["card-preview".to_string()])
+            .expect("enqueue");
+        let state_id = &enq.states[0].id;
+
+        let preview = service
+            .preview_intervals(state_id, None)
+            .expect("preview intervals");
+        assert_eq!(preview.intervals.len(), 4);
+        let ratings: Vec<u8> = preview.intervals.iter().map(|i| i.rating).collect();
+        assert_eq!(ratings, vec![1, 2, 3, 4]);
+        for interval in &preview.intervals {
+            assert!(interval.interval_ms >= 0);
+            assert_eq!(
+                interval.due_ms,
+                interval
+                    .due_ms
+                    .saturating_sub(interval.interval_ms)
+                    .saturating_add(interval.interval_ms)
+            );
+        }
+
+        // Read-only: no review logs written
+        let conn = db.get_conn_safe().expect("conn");
+        let log_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM fsrs_review_logs WHERE card_state_id = ?1",
+                params![state_id],
+                |row| row.get(0),
+            )
+            .expect("count logs");
+        assert_eq!(log_count, 0);
+    }
+
+    #[test]
+    fn rate_with_same_client_op_id_is_idempotent() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-idem", "task-idem", "card-idem");
+        let service = FsrsReviewService::new(db.clone());
+        let enq = service
+            .enqueue_cards(&["card-idem".to_string()])
+            .expect("enqueue");
+        let state_id = enq.states[0].id.clone();
+        let client_op_id = uuid::Uuid::new_v4().to_string();
+
+        let first = service
+            .rate(&state_id, 3, Some(10), Some(client_op_id.clone()))
+            .expect("first rate");
+        assert_eq!(first.log_id, client_op_id);
+        let due_after_first = first.due_ms;
+        let scheduled_after_first = first.scheduled_days;
+        let reps_after_first = first.card_state.reps;
+
+        let second = service
+            .rate(&state_id, 3, Some(10), Some(client_op_id.clone()))
+            .expect("idempotent rate");
+        assert_eq!(second.log_id, first.log_id);
+        assert_eq!(second.due_ms, due_after_first);
+        assert_eq!(second.scheduled_days, scheduled_after_first);
+        assert_eq!(second.card_state.reps, reps_after_first);
+        assert_eq!(second.card_state.due_ms, due_after_first);
+
+        let conn = db.get_conn_safe().expect("conn");
+        let log_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM fsrs_review_logs WHERE card_state_id = ?1 AND deleted_at IS NULL",
+                params![state_id],
+                |row| row.get(0),
+            )
+            .expect("count logs");
+        assert_eq!(
+            log_count, 1,
+            "idempotent retry must not insert a second log"
+        );
+    }
+
+    #[test]
+    fn malformed_client_op_id_is_rejected_without_rating() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-bad-op", "task-bad-op", "card-bad-op");
+        let service = FsrsReviewService::new(db.clone());
+        let enq = service
+            .enqueue_cards(&["card-bad-op".to_string()])
+            .expect("enqueue");
+        let state_id = enq.states[0].id.clone();
+
+        let error = service
+            .rate(&state_id, 3, Some(10), Some("not-a-uuid".into()))
+            .expect_err("malformed client op id must fail closed");
+        assert!(error.to_string().contains("valid UUID"));
+        let current = service.get_card_state(&state_id).unwrap().unwrap();
+        assert_eq!(current.reps, 0);
+        service
+            .rate(&state_id, 3, Some(10), None)
+            .expect("absent client op id remains supported");
+    }
+
+    #[test]
+    fn rate_client_op_id_rejects_card_mismatch() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-op-a", "task-op-a", "card-op-a");
+        insert_task_and_card(&db, "doc-op-b", "task-op-b", "card-op-b");
+        let service = FsrsReviewService::new(db.clone());
+        let enq_a = service
+            .enqueue_cards(&["card-op-a".to_string()])
+            .expect("enqueue a");
+        let enq_b = service
+            .enqueue_cards(&["card-op-b".to_string()])
+            .expect("enqueue b");
+        let state_a = enq_a.states[0].id.clone();
+        let state_b = enq_b.states[0].id.clone();
+        let client_op_id = uuid::Uuid::new_v4().to_string();
+
+        service
+            .rate(&state_a, 3, Some(10), Some(client_op_id.clone()))
+            .expect("rate a");
+        let err = service
+            .rate(&state_b, 3, Some(10), Some(client_op_id))
+            .expect_err("op id must not replay onto another card");
+        assert!(
+            err.to_string().contains("different card") || err.to_string().contains("conflict"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn rate_client_op_id_rejects_reuse_after_undo() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-op-undo", "task-op-undo", "card-op-undo");
+        let service = FsrsReviewService::new(db.clone());
+        let enq = service
+            .enqueue_cards(&["card-op-undo".to_string()])
+            .expect("enqueue");
+        let state_id = enq.states[0].id.clone();
+        let client_op_id = uuid::Uuid::new_v4().to_string();
+
+        let first = service
+            .rate(&state_id, 3, Some(10), Some(client_op_id.clone()))
+            .expect("rate");
+        service
+            .undo_last_review(&first.log_id, &state_id)
+            .expect("undo");
+        let err = service
+            .rate(&state_id, 3, Some(10), Some(client_op_id))
+            .expect_err("soft-deleted op id must not be reused");
+        assert!(
+            err.to_string().contains("undone") || err.to_string().contains("conflict"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn rate_cas_rejects_stale_expected_last_review() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-cas", "task-cas", "card-cas");
+        let service = FsrsReviewService::new(db.clone());
+        let enq = service
+            .enqueue_cards(&["card-cas".to_string()])
+            .expect("enqueue");
+        let state_id = enq.states[0].id.clone();
+
+        service
+            .rate_with_mastery_bias_cas(&state_id, 3, Some(10), None, None, false, None)
+            .expect("first rate");
+        let err = service
+            .rate_with_mastery_bias_cas(&state_id, 2, Some(10), None, None, true, None)
+            .expect_err("stale CAS must conflict");
+        assert!(
+            err.to_string().contains("rated elsewhere") || err.to_string().contains("conflict"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn mastery_bias_advances_low_score_and_caps_high_interval() {
         use crate::mastery::{apply_mastery_due_bias, mastery_due_bias_delta_ms, MAX_ADVANCE_MS};
 
@@ -2702,7 +3158,7 @@ mod tests {
         let expected_due = apply_mastery_due_bias(0.0, rate_now, fsrs_only.due_ms);
 
         let biased = service
-            .rate_with_mastery_bias(&state_id, 3, Some(10), Some(0.0))
+            .rate_with_mastery_bias(&state_id, 3, Some(10), Some(0.0), None)
             .expect("biased rate");
 
         // Wall clock may drift a few ms between schedule_review preview and rate();
@@ -2742,7 +3198,7 @@ mod tests {
         let rate_now_hi = Utc::now().timestamp_millis();
         let fsrs_hi = schedule_review(&before_hi, FsrsRating::Good, rate_now_hi);
         let high = service
-            .rate_with_mastery_bias(&state_hi, 3, Some(10), Some(0.95))
+            .rate_with_mastery_bias(&state_hi, 3, Some(10), Some(0.95), None)
             .expect("high bias");
         assert!(
             high.due_ms >= fsrs_hi.due_ms - 5_000,
@@ -2758,7 +3214,7 @@ mod tests {
         insert_task_and_card(&db, "doc-outbox", "task-outbox", "card-outbox");
         let service = FsrsReviewService::new(db);
         let enqueued = service.enqueue_cards(&["card-outbox".to_string()]).unwrap();
-        let rated = service.rate(&enqueued.states[0].id, 3, None).unwrap();
+        let rated = service.rate(&enqueued.states[0].id, 3, None, None).unwrap();
 
         let pending = service.pending_mastery_reviews(10).unwrap();
         assert!(pending.iter().any(|row| row.log_id == rated.log_id));
@@ -2777,7 +3233,7 @@ mod tests {
         let service = FsrsReviewService::new(db);
         let enqueued = service.enqueue_cards(&["card-revert".to_string()]).unwrap();
         let state_id = enqueued.states[0].id.clone();
-        let rated = service.rate(&state_id, 3, None).unwrap();
+        let rated = service.rate(&state_id, 3, None, None).unwrap();
         service.undo_last_review(&rated.log_id, &state_id).unwrap();
 
         let pending = service.pending_mastery_reviews(10).unwrap();
@@ -2895,10 +3351,10 @@ mod tests {
         let sid_cap = seed_review("card-c5-cap", 200.0, 100.0);
 
         let baseline = service
-            .rate_with_mastery_bias(&sid_base, 3, Some(10), None)
+            .rate_with_mastery_bias(&sid_base, 3, Some(10), None, None)
             .unwrap();
         let biased = service
-            .rate_with_mastery_bias(&sid_bias, 3, Some(10), Some(score))
+            .rate_with_mastery_bias(&sid_bias, 3, Some(10), Some(score), None)
             .unwrap();
         let now_ms = Utc::now().timestamp_millis();
         let interval = baseline.due_ms.saturating_sub(now_ms);
@@ -2919,7 +3375,7 @@ mod tests {
         let rate_now = Utc::now().timestamp_millis();
         let fsrs_cap = schedule_review(&before_cap, FsrsRating::Good, rate_now);
         let capped = service
-            .rate_with_mastery_bias(&sid_cap, 3, Some(10), Some(0.0))
+            .rate_with_mastery_bias(&sid_cap, 3, Some(10), Some(0.0), None)
             .unwrap();
         let cap_advance = fsrs_cap.due_ms.saturating_sub(capped.due_ms);
         assert!(
@@ -3058,7 +3514,9 @@ mod tests {
         assert_eq!(result.enqueued, 1);
         let state_id = result.states[0].id.clone();
         assert_ne!(state_id, card_id, "state ID must differ from Anki card ID");
-        service.rate(&state_id, 3, Some(250)).expect("rate card");
+        service
+            .rate(&state_id, 3, Some(250), None)
+            .expect("rate card");
         state_id
     }
 
@@ -3514,7 +3972,7 @@ mod tests {
         assert_eq!(before.1, 0);
 
         let error = service
-            .rate(&state_id, 3, Some(125))
+            .rate(&state_id, 3, Some(125), None)
             .expect_err("stale state ID must not rate a card that became diagnostic");
 
         assert!(matches!(error.error_type, AppErrorType::Validation));
@@ -3556,7 +4014,7 @@ mod tests {
             .expect("enqueue reviewable card");
         assert_eq!(result.enqueued, 1);
         service
-            .rate(&result.states[0].id, 3, Some(25))
+            .rate(&result.states[0].id, 3, Some(25), None)
             .expect("create today's review log");
         {
             let conn = db.get_conn_safe().expect("open mistakes connection");
@@ -3741,7 +4199,7 @@ mod tests {
             0
         );
         assert!(service
-            .rate(&state_id, 3, None)
+            .rate(&state_id, 3, None, None)
             .expect_err("tombstoned card state cannot be rated")
             .message
             .contains("fsrs card state not found"));
@@ -3818,7 +4276,7 @@ mod tests {
         assert_eq!(service.get_due(None).expect("load live due cards").len(), 1);
         assert_eq!(service.get_stats().expect("load live stats").total, 1);
         service
-            .rate(&state_id, 3, Some(25))
+            .rate(&state_id, 3, Some(25), None)
             .expect("live state remains writable");
         assert_eq!(
             service
@@ -4046,7 +4504,7 @@ mod tests {
             .enqueue_cards(&card_ids)
             .expect("enqueue stats fixtures");
         service
-            .rate(&enqueue.states[0].id, 3, Some(50))
+            .rate(&enqueue.states[0].id, 3, Some(50), None)
             .expect("create today's review log");
 
         let now_ms = Utc::now().timestamp_millis();
@@ -4218,7 +4676,7 @@ mod tests {
         );
 
         let rated = service
-            .rate(&state_id, FsrsRating::Again.as_u8(), Some(321))
+            .rate(&state_id, FsrsRating::Again.as_u8(), Some(321), None)
             .expect("rate fixture");
         let snapshot_json: String = db
             .get_conn_safe()
@@ -4282,8 +4740,12 @@ mod tests {
             .states[0]
             .id
             .clone();
-        let first = service.rate(&state_id, 3, None).expect("first rating");
-        let second = service.rate(&state_id, 2, None).expect("second rating");
+        let first = service
+            .rate(&state_id, 3, None, None)
+            .expect("first rating");
+        let second = service
+            .rate(&state_id, 2, None, None)
+            .expect("second rating");
 
         let before_stale_attempt = undo_fingerprint(&db, &state_id, &first.log_id);
         let error = service
@@ -4328,7 +4790,7 @@ mod tests {
             .id
             .clone();
         let rated = service
-            .rate(&state_id, 3, None)
+            .rate(&state_id, 3, None, None)
             .expect("rate before suspension");
         service
             .suspend_card(&state_id)
@@ -4369,7 +4831,7 @@ mod tests {
             .id
             .clone();
         let rated = service
-            .rate(&state_a, 3, None)
+            .rate(&state_a, 3, None, None)
             .expect("rate rejection fixture");
 
         let baseline = undo_fingerprint(&db, &state_a, &rated.log_id);
@@ -4445,7 +4907,7 @@ mod tests {
             .get_due(None)
             .expect("due while suspended")
             .is_empty());
-        assert!(service.rate(&initial.id, 3, None).is_err());
+        assert!(service.rate(&initial.id, 3, None, None).is_err());
         let suspended_fingerprint = {
             let conn = db.get_conn_safe().expect("open mistakes connection");
             conn.query_row(
@@ -4541,6 +5003,7 @@ mod tests {
                 &initial[0].card_state_id,
                 FsrsRating::Good.as_u8(),
                 Some(125),
+                None,
             )
             .expect("rate Agent read fixture");
         let reviewed = service
@@ -4733,7 +5196,7 @@ mod tests {
             .states[0]
             .clone();
         let rated = service
-            .rate(&initial_state.id, FsrsRating::Easy.as_u8(), Some(500))
+            .rate(&initial_state.id, FsrsRating::Easy.as_u8(), Some(500), None)
             .expect("rate Agent undo fixture");
         let current = service
             .get_review_states_for_session(&["card-agent-undo".to_string()], "session-owner")
@@ -4792,10 +5255,10 @@ mod tests {
             .id
             .clone();
         let first = service
-            .rate(&state_id, 3, None)
+            .rate(&state_id, 3, None, None)
             .expect("first Agent rating");
         let second = service
-            .rate(&state_id, 2, None)
+            .rate(&state_id, 2, None, None)
             .expect("second Agent rating");
         let current = service
             .get_review_states_for_session(&["card-agent-stale".to_string()], "session-owner")
@@ -4889,7 +5352,7 @@ mod tests {
             .id
             .clone();
         let rated = service
-            .rate(&state_id, 3, None)
+            .rate(&state_id, 3, None, None)
             .expect("rate before card becomes diagnostic");
         db.get_conn_safe()
             .expect("open mistakes connection")
@@ -5524,7 +5987,7 @@ mod tests {
             .get_due(Some(50))
             .expect("load due cards")
             .is_empty());
-        assert!(service.rate(&tombstoned_state, 3, None).is_err());
+        assert!(service.rate(&tombstoned_state, 3, None, None).is_err());
         let stats = service.get_stats().expect("load FSRS stats");
         assert_eq!(stats.total, 0);
         assert_eq!(stats.reviews_today, 0);
@@ -5549,7 +6012,7 @@ mod tests {
         assert_eq!(restored_stats.total, 1);
         assert_eq!(restored_stats.reviews_today, 1);
         service
-            .rate(&tombstoned_state, 3, None)
+            .rate(&tombstoned_state, 3, None, None)
             .expect("restored state remains rateable");
     }
 
@@ -5747,10 +6210,10 @@ mod tests {
             other => panic!("expected enqueue, got {other:?}"),
         };
         let first = service
-            .rate(&state_id, FsrsRating::Good.as_u8(), Some(100))
+            .rate(&state_id, FsrsRating::Good.as_u8(), Some(100), None)
             .expect("first rating");
         let second = service
-            .rate(&state_id, FsrsRating::Hard.as_u8(), Some(100))
+            .rate(&state_id, FsrsRating::Hard.as_u8(), Some(100), None)
             .expect("second rating");
         let current = service
             .get_review_states_for_library(scope, &["card-library-undo".to_string()])

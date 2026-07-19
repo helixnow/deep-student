@@ -494,6 +494,11 @@
     "search": {
       "title": "搜索",
       "placeholder": "搜索资源...",
+      "placeholderRecent": "搜索最近访问的名称…",
+      "placeholderTrash": "在已加载的回收站项中筛选…",
+      "placeholderFavorites": "搜索收藏…",
+      "placeholderSmartFolder": "主要匹配标题/文件名…",
+      "truncatedHint": "仅搜索了前 {{limit}} 项，结果可能不完整",
       "noResults": "没有找到匹配的资源"
     },
     "loading": {
@@ -501,13 +506,25 @@
     },
     "empty": {
       "folder": "此文件夹为空",
+      "favorites": "收藏夹为空",
+      "recent": "还没有最近访问",
+      "recentHint": "打开任意资源后会出现在这里",
+      "trash": "回收站为空",
       "noNotes": "还没有笔记",
       "noTextbooks": "还没有教材",
       "dropHint": "点击上方按钮或右键新建",
       "dropHintTouch": "点击上方按钮新建",
+      "noCreateHint": "当前视图不能新建，可从文件夹视图创建后收藏",
+      "noCreateHintTouch": "当前视图不能新建",
+      "trashHint": "删除的项目会保留在这里，可恢复或永久删除",
       "rightClick": "右键",
       "contextMenuHint": "新建文件"
     },
+    "undo": "撤销",
+    "movedToTrash": "已移入回收站",
+    "movedToTrashWithRefs": "已移入回收站（被 {{count}} 个对话引用）",
+    "batchMovedToTrash": "已将 {{count}} 项移入回收站",
+    "restored": "已恢复",
     "error": {
       "title": "加载失败",
       "retry": "重新加载"
@@ -581,6 +598,7 @@
       "emptyConfirm": "确定要永久删除回收站中的所有项目吗？此操作不可撤销。",
       "emptySuccess": "已清空回收站",
       "restoreSuccess": "已恢复",
+      "restoreSuccessWithReindex": "已恢复；内容搜索可能稍晚生效（已排队重新索引）",
       "deleteSuccess": "已永久删除",
       "confirmPermanentDelete": "确定要永久删除此项目吗？此操作不可撤销。",
       "confirmBatchPermanentDelete": "确定要永久删除选中的 {{count}} 个项目吗？此操作不可撤销。",

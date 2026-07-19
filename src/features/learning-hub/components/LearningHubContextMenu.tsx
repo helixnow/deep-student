@@ -75,6 +75,14 @@ export interface LearningHubContextMenuProps {
   currentFolderId?: string | null;
   /** 是否在回收站视图 */
   isTrashView?: boolean;
+  /** VIEW_CAPABILITY：当前视图是否允许新建 */
+  canCreate?: boolean;
+  /** VIEW_CAPABILITY：当前视图是否允许删除 */
+  canDelete?: boolean;
+  /** VIEW_CAPABILITY：当前视图是否允许移动 */
+  canMove?: boolean;
+  /** VIEW_CAPABILITY：当前视图是否允许添加到对话 */
+  canAddToChat?: boolean;
   
   // ========== 回调函数 ==========
   /** 新建文件夹 */
@@ -128,6 +136,10 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   dataView,
   currentFolderId,
   isTrashView = false,
+  canCreate = true,
+  canDelete = true,
+  canMove = true,
+  canAddToChat = true,
   onCreateFolder,
   onCreateItem,
   onImportMarkdownNote,
@@ -311,7 +323,23 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   );
 
   // ========== 渲染空白区域菜单 ==========
-  const renderEmptyMenu = () => (
+  const renderEmptyMenu = () => {
+    // 非 creatable 视图（收藏/最近等）：空白菜单只保留刷新
+    if (!canCreate) {
+      return (
+        <AppMenuItem
+          icon={<ArrowClockwise size={16} />}
+          onClick={() => {
+            onRefresh?.();
+            closeMenu();
+          }}
+        >
+          {t('common.refresh')}
+        </AppMenuItem>
+      );
+    }
+
+    return (
     <>
       {/* 新建文件夹 - 仅在文件夹视图显示 */}
       {dataView === 'folder' && (
@@ -406,7 +434,8 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('common.refresh')}
       </AppMenuItem>
     </>
-  );
+    );
+  };
 
   // ========== 渲染文件夹菜单 ==========
   const renderFolderMenu = (folder: FolderTreeNode) => (
@@ -424,6 +453,8 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         <AppMenuSeparator />
       
         {/* 在此文件夹新建 */}
+      {canCreate && (
+        <>
       <AppMenuItem
         icon={<FolderPlus size={16} />}
         onClick={() => {
@@ -452,9 +483,11 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.importMarkdownHere')}
       </AppMenuItem>
       <AppMenuSeparator />
+        </>
+      )}
 
       {/* ★ 移动到… */}
-      {onMoveTo && (
+      {canMove && onMoveTo && (
         <AppMenuItem
           icon={<ArrowBendUpRight size={16} />}
           onClick={() => {
@@ -478,16 +511,18 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         </AppMenuItem>
       
         {/* 删除 */}
+      {canDelete && onDeleteFolder && (
       <AppMenuItem
         icon={<Trash size={16} />}
         onClick={() => {
-          onDeleteFolder?.(folder.folder.id);
+          onDeleteFolder(folder.folder.id);
           closeMenu();
         }}
         className="text-destructive hover:text-destructive"
       >
         {t('contextMenu.delete')}
         </AppMenuItem>
+      )}
     </>
   );
 
@@ -517,7 +552,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         <AppMenuSeparator />
         
         {/* 引用到对话 */}
-        {onReferenceToChat && (
+        {canAddToChat && onReferenceToChat && (
           <AppMenuItem
             icon={<Chat size={16} />}
             onClick={() => {
@@ -543,7 +578,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         )}
 
         {/* ★ 移动到… */}
-        {onMoveTo && (
+        {canMove && onMoveTo && (
           <AppMenuItem
             icon={<ArrowBendUpRight size={16} />}
             onClick={() => {
@@ -643,7 +678,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         )}
         
         {/* 删除 - 仅资源项 */}
-        {resourceItem && onDeleteResource && (
+        {canDelete && resourceItem && onDeleteResource && (
           <>
             <AppMenuSeparator />
             <AppMenuItem

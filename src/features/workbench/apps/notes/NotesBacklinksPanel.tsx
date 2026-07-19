@@ -94,10 +94,16 @@ export interface NotesBacklinksPanelProps {
    * 与笔记内嵌属性浮层互斥（宿主应同时隐藏内嵌浮层）。
    */
   propertiesContent?: React.ReactNode;
+  requestedTab?: NotesBacklinksTabRequest | null;
   className?: string;
 }
 
 type PanelTab = 'properties' | 'links';
+
+export interface NotesBacklinksTabRequest {
+  tab: PanelTab;
+  requestId: number;
+}
 
 const PANEL_TAB_STORAGE_KEY = 'notes-backlinks-panel:active-tab';
 
@@ -108,6 +114,27 @@ function readInitialPanelTab(): PanelTab {
   } catch {
     return 'links';
   }
+}
+
+export function useRequestedPanelTab(
+  hasPropertiesTab: boolean,
+  requestedTab: NotesBacklinksTabRequest | null | undefined,
+): readonly [PanelTab, (tab: PanelTab) => void] {
+  const [activeTab, setActiveTab] = useState<PanelTab>(readInitialPanelTab);
+  useEffect(() => {
+    if (requestedTab && (requestedTab.tab === 'links' || hasPropertiesTab)) {
+      setActiveTab(requestedTab.tab);
+    }
+  }, [hasPropertiesTab, requestedTab?.requestId, requestedTab?.tab]);
+  const switchTab = useCallback((tab: PanelTab) => {
+    setActiveTab(tab);
+    try {
+      window.localStorage.setItem(PANEL_TAB_STORAGE_KEY, tab);
+    } catch {
+      // localStorage unavailable: retain the in-memory selection only.
+    }
+  }, []);
+  return [activeTab, switchTab] as const;
 }
 
 export interface ContextSnippet {
@@ -176,6 +203,9 @@ function backlinkSearchQueries(activeResource: DstuNode): string[] {
     queries.add(`[[ ${target}|`);
     queries.add(`[[ ${target} `);
   }
+  // `@` mentions serialize to `[Title](note://id)`, so ID search is exact and
+  // avoids the title-collision ambiguity of wiki-link candidate discovery.
+  queries.add(`note://${activeResource.id}`);
   return [...queries];
 }
 
@@ -428,20 +458,13 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   onCreateFromUnresolved,
   onRefresh,
   propertiesContent,
+  requestedTab,
   className,
 }) => {
   const { t } = useTranslation('workbench');
   const hasPropertiesTab = propertiesContent !== undefined;
-  const [activeTab, setActiveTab] = useState<PanelTab>(readInitialPanelTab);
+  const [activeTab, switchTab] = useRequestedPanelTab(hasPropertiesTab, requestedTab);
   const resolvedTab: PanelTab = hasPropertiesTab ? activeTab : 'links';
-  const switchTab = useCallback((tab: PanelTab) => {
-    setActiveTab(tab);
-    try {
-      window.localStorage.setItem(PANEL_TAB_STORAGE_KEY, tab);
-    } catch {
-      // localStorage 不可用时仅内存生效
-    }
-  }, []);
   const [loadState, setLoadState] = useState<RelationshipsLoadState>({ status: 'idle' });
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [openingResourceId, setOpeningResourceId] = useState<string | null>(null);

@@ -17,6 +17,14 @@ const DEFAULT_PROVIDER_ID: &str = "siliconflow";
 const DEFAULT_SILICONFLOW_BASE_URL: &str = "https://api.siliconflow.cn/v1";
 const DEFAULT_SILICONFLOW_MODEL: &str = "TeleAI/TeleSpeechASR";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct VoiceInputAsrCapability {
+    pub provider_id: &'static str,
+    pub provider_name: &'static str,
+    pub model: &'static str,
+    pub configured: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceInputTranscribeRequest {
@@ -75,6 +83,7 @@ fn resolve_audio_extension(mime_type: &str) -> &'static str {
         "audio/mpeg" | "audio/mp3" => "mp3",
         "audio/wav" | "audio/x-wav" => "wav",
         "audio/ogg" | "audio/ogg;codecs=opus" => "ogg",
+        "audio/flac" => "flac",
         _ => "webm",
     }
 }
@@ -157,6 +166,15 @@ fn resolve_siliconflow_api_key(state: &AppState) -> Option<String> {
             .find(|value| !value.trim().is_empty())
             .map(|value| value.to_string())
         })
+}
+
+pub(crate) fn voice_input_asr_capability(state: &AppState) -> VoiceInputAsrCapability {
+    VoiceInputAsrCapability {
+        provider_id: DEFAULT_PROVIDER_ID,
+        provider_name: "SiliconFlow",
+        model: DEFAULT_SILICONFLOW_MODEL,
+        configured: resolve_siliconflow_api_key(state).is_some(),
+    }
 }
 
 fn resolve_requested_provider_id(request: &VoiceInputTranscribeRequest) -> String {
@@ -296,6 +314,16 @@ async fn transcribe_with_siliconflow(
 pub async fn voice_input_transcribe(
     request: VoiceInputTranscribeRequest,
     state: State<'_, AppState>,
+) -> Result<VoiceInputTranscribeResponse> {
+    voice_input_transcribe_with_state(request, &state).await
+}
+
+/// Shared managed ASR entry point for voice input and agent media tools.
+/// It only uses application-managed credentials/configuration and never
+/// installs packages or mutates the host environment.
+pub(crate) async fn voice_input_transcribe_with_state(
+    request: VoiceInputTranscribeRequest,
+    state: &AppState,
 ) -> Result<VoiceInputTranscribeResponse> {
     let provider_id = resolve_requested_provider_id(&request);
     let started_at = Instant::now();

@@ -26,7 +26,9 @@ export const FILES_APP_DEFINITION: AppDefinition = {
   // R1-14：openFolder / reveal（store 在 handler 内动态 import）
   onActivation: handleFilesActivation,
   agentManifest: filesAgentManifest,
-};
+  // Cmd/Ctrl+W 由 FilesAppWindow 自己处理（关窗），避免壳层与 WebView 默认竞态
+  handlesCloseShortcut: true,
+}
 
 appRegistry.register(FILES_APP_DEFINITION);
 startResourceSync();

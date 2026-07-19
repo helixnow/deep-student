@@ -76,7 +76,9 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     skillApprovalScope?.kind === 'skill_install'
       ? (skillApprovalScope.declaredRiskLevel ?? skillApprovalScope.riskLevel)
       : skillApprovalScope?.riskLevel;
-  const rememberDisabled = Boolean(interaction.runtimeScope?.rememberDisabled);
+  const rememberDisabled = Boolean(interaction.runtimeScope?.rememberDisabled)
+    || interaction.permissionPreset !== 'relaxed'
+    || interaction.sensitivity !== 'medium';
 
   // 工具显示名称
   const displayToolName = useMemo(
@@ -473,32 +475,6 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
 
       {/* Row 3: 操作按钮 */}
       <div className="flex items-center gap-2">
-        {!rememberDisabled && (
-          <>
-            {/* 始终拒绝 */}
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={() => handleResponse('always_deny')}
-              disabled={disabled}
-              className="text-xs text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
-            >
-              {t('approval.alwaysDeny')}
-            </NotionButton>
-
-            {/* 始终允许 */}
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              onClick={() => handleResponse('always_allow')}
-              disabled={disabled}
-              className="text-xs text-muted-foreground hover:text-green-600 dark:hover:text-green-400"
-            >
-              {t('approval.alwaysAllow')}
-            </NotionButton>
-          </>
-        )}
-
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {/* 拒绝：首次点击展开理由输入行，不立即发送 */}
           <NotionButton

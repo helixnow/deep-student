@@ -5,6 +5,7 @@ import {
   formatWikiLink,
   parseWikiLinkInner,
   parseWikiLinkText,
+  splitWikiLinkTarget,
 } from '../format';
 
 describe('wikilink format', () => {
@@ -41,5 +42,14 @@ describe('wikilink format', () => {
       { target: 'a', label: 'b', raw: '[[a|b]]', start: 0, end: 7 },
       { target: 'c', label: '', raw: '[[c]]', start: 12, end: 17 },
     ]);
+  });
+
+  it('splits an optional heading without changing the serialized destination', () => {
+    expect(splitWikiLinkTarget('Note#Section one')).toEqual({
+      noteTarget: 'Note',
+      heading: 'Section one',
+    });
+    expect(splitWikiLinkTarget(' Note ')).toEqual({ noteTarget: 'Note', heading: undefined });
+    expect(formatWikiLink('Note#Section one', 'Jump')).toBe('[[Note#Section one|Jump]]');
   });
 });

@@ -93,6 +93,7 @@ struct ResolvedCanonicalImage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CanonicalVfsImage {
     image_id: String,
+    name: Option<String>,
     source_id: String,
     blob_hash: Option<String>,
     content_hash: String,
@@ -474,6 +475,7 @@ impl ChatV2Pipeline {
                 saw_image = true;
                 result.push(CanonicalContentPart::ImageRef {
                     image_id: image.image_id,
+                    name: image.name.or_else(|| context_ref.display_name.clone()),
                     resource_id: Some(context_ref.resource_id.clone()),
                     source_id: Some(image.source_id),
                     blob_hash: image.blob_hash,
@@ -499,6 +501,7 @@ impl ChatV2Pipeline {
                     saw_image = true;
                     result.push(CanonicalContentPart::ImageRef {
                         image_id: format!("{}:image:{}", context_ref.resource_id, image_offset),
+                        name: context_ref.display_name.clone(),
                         resource_id: Some(context_ref.resource_id.clone()),
                         source_id: None,
                         blob_hash: None,
@@ -577,6 +580,7 @@ impl ChatV2Pipeline {
                 if seen.insert(blob_hash.clone()) {
                     images.push(CanonicalVfsImage {
                         image_id: format!("{}:{}:page:{}", resource_id, item.source_id, unit_index),
+                        name: Some(format!("{} (page {})", item.name, unit_index + 1)),
                         source_id: item.source_id.clone(),
                         content_hash: blob_hash.clone(),
                         blob_hash: Some(blob_hash),
@@ -607,6 +611,7 @@ impl ChatV2Pipeline {
                         {
                             images.push(CanonicalVfsImage {
                                 image_id: format!("{}:{}", resource_id, item.source_id),
+                                name: Some(item.name.clone()),
                                 source_id: item.source_id,
                                 blob_hash,
                                 content_hash,
@@ -632,6 +637,7 @@ impl ChatV2Pipeline {
                         &mut seen,
                         resource_id,
                         &item.source_id,
+                        &item.name,
                         &item.resource_hash,
                         preview.as_deref(),
                     );
@@ -650,6 +656,7 @@ impl ChatV2Pipeline {
                         &mut seen,
                         resource_id,
                         &item.source_id,
+                        &item.name,
                         &item.resource_hash,
                         preview.as_deref(),
                     );
@@ -1026,6 +1033,7 @@ fn append_preview_images(
     seen: &mut HashSet<String>,
     container_resource_id: &str,
     source_id: &str,
+    source_name: &str,
     fallback_content_hash: &str,
     preview_json: Option<&str>,
 ) {
@@ -1068,6 +1076,7 @@ fn append_preview_images(
                 container_resource_id, source_id, page_index
             ),
             source_id: source_id.to_string(),
+            name: Some(format!("{} (page {})", source_name, page_index + 1)),
             blob_hash: Some(blob_hash.to_string()),
             content_hash: if blob_hash.is_empty() {
                 fallback_content_hash.to_string()
@@ -1634,6 +1643,7 @@ mod tests {
             },
             CanonicalContentPart::ImageRef {
                 image_id: "img-1".to_string(),
+                name: None,
                 resource_id: Some("res-1".to_string()),
                 source_id: Some("source-1".to_string()),
                 blob_hash: Some("original-blob".to_string()),
@@ -1756,6 +1766,7 @@ mod tests {
     fn tm_mm_alternating_turns_recompile_the_same_original_image() {
         let canonical = vec![CanonicalContentPart::ImageRef {
             image_id: "img-1".to_string(),
+            name: Some("source.png".to_string()),
             resource_id: Some("res-1".to_string()),
             source_id: Some("source-1".to_string()),
             blob_hash: Some("blob-original".to_string()),
@@ -1826,6 +1837,7 @@ mod tests {
             vec![
                 CanonicalContentPart::ImageRef {
                     image_id: "stable-image-id".to_string(),
+                    name: Some("stable.png".to_string()),
                     resource_id: Some("res-1".to_string()),
                     source_id: Some("source-1".to_string()),
                     blob_hash: Some("same-blob".to_string()),

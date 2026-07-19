@@ -34,7 +34,10 @@ export interface NotesSearchOverlayProps {
    */
   resources: readonly DstuNode[];
   /** Called after a result is chosen. Resolve when the resource has been opened. */
-  onOpenResource: (resource: DstuNode) => void | Promise<void>;
+  onOpenResource: (
+    resource: DstuNode,
+    context: { mode: NotesSearchMode; query: string },
+  ) => void | Promise<void>;
   /** Closes the overlay. */
   onClose: () => void;
   /** Optional controlled search mode. */
@@ -389,7 +392,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
     setIsOpening(true);
     setOpenError(null);
     try {
-      await onOpenResource(resource);
+      await onOpenResource(resource, { mode: activeMode, query: highlightQuery });
       // `onClose` normally unmounts the overlay. Clear this first so a host
       // that deliberately keeps it mounted does not leave every result disabled.
       setIsOpening(false);
@@ -401,7 +404,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       ));
       setIsOpening(false);
     }
-  }, [isOpening, onClose, onOpenResource, t]);
+  }, [activeMode, highlightQuery, isOpening, onClose, onOpenResource, t]);
 
   const moveActiveResult = useCallback((direction: 1 | -1) => {
     if (displayedResults.length === 0) return;
@@ -437,6 +440,12 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       onClose();
       return;
     }
+    if (event.key === 'Tab' && event.ctrlKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      setSearchMode(activeMode === 'quick-open' ? 'full-text' : 'quick-open');
+      return;
+    }
     if (event.key !== 'Tab') return;
     const dialog = event.currentTarget;
     const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
@@ -453,7 +462,7 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
       event.preventDefault();
       first.focus();
     }
-  }, [onClose]);
+  }, [activeMode, onClose, setSearchMode]);
 
   if (!open) return null;
 

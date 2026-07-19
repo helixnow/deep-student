@@ -91,6 +91,7 @@ pub mod question_sync_service;
 pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
+pub mod secret_prompt;
 pub mod secure_store;
 pub mod services;
 pub mod spaced_repetition;
@@ -1165,6 +1166,7 @@ pub fn run() {
         })
         // Provide ChatV2State for Chat V2 stream management (Arc wrapped for spawn usage)
         .manage(std::sync::Arc::new(crate::chat_v2::ChatV2State::new()))
+        .manage(crate::secret_prompt::SecretPromptStore::default())
         // NOTE: ChatV2Pipeline is now initialized in setup() closure after AppState is available
         .invoke_handler(tauri::generate_handler![
             // =================================================
@@ -1221,6 +1223,10 @@ pub fn run() {
             crate::quick_assistant::quick_assistant_hide,
             crate::quick_assistant::quick_assistant_apply_enabled,
             crate::voice_input::voice_input_transcribe,
+            crate::secret_prompt::secret_prompt_submit,
+            crate::secret_prompt::secret_prompt_status,
+            crate::secret_prompt::secret_prompt_discard,
+            crate::secret_prompt::secret_prompt_capabilities,
             // 调试日志管理
             crate::commands::get_debug_logs_info,
             crate::commands::clear_debug_logs,
@@ -1596,8 +1602,10 @@ pub fn run() {
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_clear_approval_history
             // Ask / Plan / Craft 会话档位
             ,crate::chat_v2::handlers::manage_session::chat_v2_set_authority_mode
+            ,crate::chat_v2::handlers::manage_session::chat_v2_set_permission_preset
             ,crate::chat_v2::handlers::manage_session::chat_v2_plan_gate_respond
             ,crate::chat_v2::runtime_roots::chat_v2_list_runtime_roots
+            ,crate::chat_v2::runtime_roots::chat_v2_list_runtime_directory
             ,crate::chat_v2::runtime_roots::chat_v2_set_workspace_root
             ,crate::chat_v2::runtime_roots::chat_v2_reset_workspace_root
             ,crate::chat_v2::runtime_roots::chat_v2_authorize_runtime_root
@@ -1606,7 +1614,9 @@ pub fn run() {
             ,crate::chat_v2::runtime_roots::chat_v2_resolve_runtime_path
             ,crate::chat_v2::runtime_roots::chat_v2_delete_artifact
             ,crate::chat_v2::runtime_roots::chat_v2_revert_artifact_write
+            ,crate::chat_v2::runtime_roots::chat_v2_revert_workspace_change
             ,crate::chat_v2::runtime_roots::chat_v2_read_runtime_file
+            ,crate::chat_v2::tools::attachment_stage_executor::chat_v2_stage_context_attachments
             // 🆕 用户提问命令（轻量级问答交互）
             ,crate::chat_v2::handlers::ask_user_handlers::chat_v2_ask_user_respond
             // Canvas 工具前端回调命令（完全前端模式）
@@ -2032,6 +2042,7 @@ pub fn run() {
             // =================================================
             ,crate::cmd::fsrs_review::fsrs_enqueue_cards
             ,crate::cmd::fsrs_review::fsrs_get_due
+            ,crate::cmd::fsrs_review::fsrs_preview_intervals
             ,crate::cmd::fsrs_review::fsrs_rate
             ,crate::cmd::fsrs_review::fsrs_get_stats
             ,crate::cmd::fsrs_review::fsrs_undo_last_review
@@ -2061,6 +2072,9 @@ pub fn run() {
             ,crate::cmd::browser::browser_snapshot
             ,crate::cmd::browser::browser_click
             ,crate::cmd::browser::browser_type
+            ,crate::cmd::browser::browser_set_input_files
+            ,crate::cmd::browser::browser_list_downloads
+            ,crate::cmd::browser::browser_list_task_downloads
             ,crate::cmd::browser::browser_scroll
             // =================================================
             // 题目集同步冲突策略

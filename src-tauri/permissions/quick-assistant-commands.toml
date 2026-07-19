@@ -18,5 +18,6 @@ commands.allow = [
   "todo_create_item",
   "todo_get_active_summary",
   "fsrs_get_due",
+  "fsrs_preview_intervals",
   "fsrs_rate"
 ]

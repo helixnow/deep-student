@@ -424,20 +424,23 @@ fn update_anki_card_rows_for_document(
         .get_conn_safe()
         .map_err(|e| AppError::database(format!("更新当前文档卡片失败: {}", e)))?;
     let updated_at = chrono::Utc::now().to_rfc3339();
+    // 故意不改写 is_error_card / error_content：chat 保存路径始终带 false，
+    // 若写入会把诊断卡洗成可复习卡。诊断卡只能由专门修复路径改标记。
     conn.execute(
         "UPDATE anki_cards SET
          front = ?1, back = ?2, text = ?3, tags_json = ?4, images_json = ?5,
-         is_error_card = ?6, error_content = ?7, updated_at = ?8,
-         extra_fields_json = ?9, template_id = ?10
-         WHERE id = ?11
+         updated_at = ?6,
+         extra_fields_json = ?7, template_id = ?8
+         WHERE id = ?9
            AND source_type = 'document'
-           AND source_id = ?12
+           AND source_id = ?10
            AND deleted_at IS NULL
+           AND is_error_card = 0
            AND EXISTS (
              SELECT 1
              FROM document_tasks dt
              WHERE dt.id = anki_cards.task_id
-               AND dt.document_id = ?12
+               AND dt.document_id = ?10
                AND dt.deleted_at IS NULL
            )",
         rusqlite::params![
@@ -448,8 +451,6 @@ fn update_anki_card_rows_for_document(
                 .map_err(|e| AppError::validation(format!("无法序列化卡片标签: {}", e)))?,
             serde_json::to_string(&card.images)
                 .map_err(|e| AppError::validation(format!("无法序列化卡片图片: {}", e)))?,
-            if card.is_error_card { 1 } else { 0 },
-            card.error_content,
             updated_at,
             serde_json::to_string(&card.extra_fields)
                 .map_err(|e| AppError::validation(format!("无法序列化卡片字段: {}", e)))?,
@@ -459,6 +460,38 @@ fn update_anki_card_rows_for_document(
         ],
     )
     .map_err(|e| AppError::database(format!("更新当前文档卡片失败: {}", e)))
+}
+
+fn anki_card_is_diagnostic_in_document(
+    database: &crate::database::Database,
+    document_id: &str,
+    card_id: &str,
+) -> Result<bool> {
+    let conn = database
+        .get_conn_safe()
+        .map_err(|e| AppError::database(format!("查询诊断卡失败: {}", e)))?;
+    let flag: Option<i64> = conn
+        .query_row(
+            "SELECT is_error_card
+             FROM anki_cards
+             WHERE id = ?1
+               AND source_type = 'document'
+               AND source_id = ?2
+               AND deleted_at IS NULL
+               AND EXISTS (
+                 SELECT 1
+                 FROM document_tasks dt
+                 WHERE dt.id = anki_cards.task_id
+                   AND dt.document_id = ?2
+                   AND dt.deleted_at IS NULL
+               )
+             LIMIT 1",
+            rusqlite::params![card_id, document_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| AppError::database(format!("查询诊断卡失败: {}", e)))?;
+    Ok(matches!(flag, Some(v) if v != 0))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -478,6 +511,10 @@ fn apply_card_update_fallback(
             persisted_ids[input_index] = Some(card.id.clone());
         }
         Ok(_) => {
+            if anki_card_is_diagnostic_in_document(database, document_id, &card.id)? {
+                skipped_ids.push(card.id.clone());
+                return Ok(());
+            }
             if let Some(existing_id) =
                 find_existing_card_id_by_content(database, document_id, card)?
             {

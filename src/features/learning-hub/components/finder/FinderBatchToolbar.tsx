@@ -32,7 +32,8 @@ interface FinderBatchToolbarProps {
   totalCount: number;
   onSelectAll: () => void;
   onClearSelection: () => void;
-  onBatchDelete: () => void;
+  /** 批量删除；未传则不显示删除按钮（受 VIEW_CAPABILITY 门禁） */
+  onBatchDelete?: () => void;
   onBatchMove?: () => void;
   onBatchAddToChat?: () => void;
   isProcessing?: boolean;
@@ -55,6 +56,8 @@ interface FinderBatchToolbarProps {
   multiSelectMode?: boolean;
   /** 多选模式切换回调（传入时显示开关按钮） */
   onToggleMultiSelectMode?: () => void;
+  /** 回收站视图：删除按钮文案改为永久删除 */
+  isTrashView?: boolean;
 }
 
 const SORT_OPTIONS: { value: SortBy; labelKey: string }[] = [
@@ -87,10 +90,14 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   onCloseApp,
   multiSelectMode = false,
   onToggleMultiSelectMode,
+  isTrashView = false,
 }: FinderBatchToolbarProps) {
   const { t } = useTranslation('learningHub');
 
   const hasSelection = selectedCount > 0;
+  const deleteLabel = isTrashView
+    ? t('finder.contextMenu.permanentDelete')
+    : t('finder.multiSelect.delete');
 
   const allSelected = selectedCount === totalCount && totalCount > 0;
 
@@ -256,17 +263,19 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
             </NotionButton>
             )}
 
+            {onBatchDelete && (
             <NotionButton
               variant="ghost"
               size="icon"
               onClick={onBatchDelete}
               disabled={isProcessing}
               className={cn(actionIconBtnClass, 'text-destructive hover:bg-destructive/10')}
-              title={t('finder.multiSelect.delete')}
-              aria-label={t('finder.multiSelect.delete')}
+              title={deleteLabel}
+              aria-label={deleteLabel}
             >
               <Trash size={16} />
             </NotionButton>
+            )}
 
             {/* 清除选择/关闭按钮 - 放在删除按钮后面，使用明显的样式 */}
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { onClearSelection(); if (hasOpenApp && onCloseApp) { onCloseApp(); } }} className={cn(isTouchPrimary ? '!h-9 !w-9 !p-2' : '!h-7 !w-7 !p-1.5', 'hover:bg-[var(--interactive-hover)] ml-0.5')} title={hasOpenApp ? t('finder.appPanel.close') : t('common:close')} aria-label={hasOpenApp ? t('finder.appPanel.close') : t('common:close')}>

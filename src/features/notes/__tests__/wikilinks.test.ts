@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createWikiLinkIndex,
   getWikiLinkRelationships,
+  parseNoteLinks,
+  parseNoteMentions,
   parseWikiLinks,
   resolveWikiLinks,
 } from '../wikilinks';
@@ -72,6 +74,38 @@ describe('wikilinks', () => {
       matchedBy: null,
       candidateIds: [],
     });
+  });
+
+  it('indexes heading links against the note while preserving heading metadata', () => {
+    const markdown = 'Jump [[Alpha#Methods]] and [[Alpha#Results|the results]].';
+    expect(parseWikiLinks(markdown).map(({ target, heading, label }) => ({ target, heading, label }))).toEqual([
+      { target: 'Alpha', heading: 'Methods', label: undefined },
+      { target: 'Alpha', heading: 'Results', label: 'the results' },
+    ]);
+
+    const relationships = getWikiLinkRelationships(new Map([
+      ['note_alpha', { title: 'Alpha', content: '' }],
+      ['note_beta', { title: 'Beta', content: markdown }],
+    ]));
+    expect(relationships.inboundByNoteId.note_alpha.map((entry) => entry.link.heading)).toEqual([
+      'Methods',
+      'Results',
+    ]);
+  });
+
+  it('indexes @ mentions stored as note:// markdown links with wiki links', () => {
+    const markdown = 'See [Alpha](note://note_a) and [[Beta]].\n```md\n[No](note://ignored)\n```';
+    expect(parseNoteMentions(markdown)).toEqual([
+      expect.objectContaining({ target: 'note_a', label: 'Alpha', raw: '[Alpha](note://note_a)' }),
+    ]);
+    expect(parseNoteLinks(markdown).map((link) => link.target)).toEqual(['note_a', 'Beta']);
+
+    const relationships = getWikiLinkRelationships(new Map([
+      ['note_a', { title: 'Alpha', content: '' }],
+      ['note_b', { title: 'Beta', content: '[Alpha](note://note_a)' }],
+    ]));
+    expect(relationships.inboundByNoteId.note_a).toHaveLength(1);
+    expect(relationships.inboundByNoteId.note_a[0].link.label).toBe('Alpha');
   });
 
   it('builds outbound, inbound, and unresolved relationships from a note-content map', () => {

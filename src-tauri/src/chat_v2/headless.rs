@@ -35,13 +35,17 @@
 //! - `run_headless_agent_turn(&app, HeadlessSessionTurn)`：低层入口，
 //!   供已自管会话 ID 的调用方使用（返回未截断的最终回复全文）。
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Window};
 use tokio_util::sync::CancellationToken;
 
+use super::automations::{
+    trusted_profile_write_tool, AutomationRootAccess, TrustedAutomationProfile,
+};
 use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
 use super::pipeline::ChatV2Pipeline;
@@ -52,6 +56,231 @@ use super::types::{
     block_status, ChatMessage, ChatSession, McpToolSchema, MessageBlock, PersistStatus,
     SendMessageRequest, SendOptions,
 };
+
+static TRUSTED_AUTOMATION_SESSIONS: LazyLock<StdMutex<HashMap<String, TrustedAutomationProfile>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+struct TrustedAutomationSessionGuard {
+    session_id: String,
+}
+
+impl TrustedAutomationSessionGuard {
+    fn install(session_id: &str, profile: Option<&TrustedAutomationProfile>) -> Option<Self> {
+        let profile = profile?.clone();
+        TRUSTED_AUTOMATION_SESSIONS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(session_id.to_string(), profile);
+        Some(Self {
+            session_id: session_id.to_string(),
+        })
+    }
+}
+
+impl Drop for TrustedAutomationSessionGuard {
+    fn drop(&mut self) {
+        TRUSTED_AUTOMATION_SESSIONS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&self.session_id);
+    }
+}
+
+fn command_matches_prefix(command: &str, prefix: &str) -> bool {
+    command == prefix
+        || command
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.chars().next().is_some_and(char::is_whitespace))
+}
+
+fn domain_allowed(host: &str, allowed: &[String]) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    allowed.iter().any(|domain| {
+        domain
+            .strip_prefix("*.")
+            .map_or(host == domain.as_str(), |suffix| {
+                host != suffix && host.ends_with(&format!(".{suffix}"))
+            })
+    })
+}
+
+fn command_network_hosts(command: &str) -> Vec<String> {
+    command
+        .split_whitespace()
+        .filter_map(|token| {
+            let token = token.trim_matches(|ch: char| matches!(ch, '\'' | '"' | ',' | ')' | '('));
+            url::Url::parse(token)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_string))
+        })
+        .collect()
+}
+
+fn collect_explicit_network_hosts(value: &Value, hosts: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            for (key, value) in map {
+                let normalized = key.to_ascii_lowercase();
+                if matches!(
+                    normalized.as_str(),
+                    "url" | "uri" | "host" | "hostname" | "domain"
+                ) {
+                    if let Some(raw) = value.as_str() {
+                        if let Ok(url) = url::Url::parse(raw) {
+                            if let Some(host) = url.host_str() {
+                                hosts.push(host.to_string());
+                            }
+                        } else if !raw.contains('/') && !raw.chars().any(char::is_whitespace) {
+                            hosts.push(raw.to_string());
+                        }
+                    }
+                }
+                collect_explicit_network_hosts(value, hosts);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                collect_explicit_network_hosts(value, hosts);
+            }
+        }
+        _ => {}
+    }
+}
+
+pub fn validate_trusted_automation_tool_call(
+    session_id: &str,
+    tool_name: &str,
+    arguments: &Value,
+) -> Result<(), String> {
+    let profile = TRUSTED_AUTOMATION_SESSIONS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(session_id)
+        .cloned();
+    let Some(profile) = profile else {
+        return Ok(());
+    };
+    let canonical = if tool_name.starts_with("builtin-") {
+        tool_name.to_string()
+    } else {
+        format!("builtin-{tool_name}")
+    };
+    if !headless_allowed_tools().contains(&canonical) && !profile.allowed_tools.contains(&canonical)
+    {
+        return Err(format!(
+            "Tool '{tool_name}' is not allowed by the trusted automation profile"
+        ));
+    }
+
+    let mut explicit_hosts = Vec::new();
+    collect_explicit_network_hosts(arguments, &mut explicit_hosts);
+    if explicit_hosts
+        .iter()
+        .any(|host| !domain_allowed(host, &profile.network_domains))
+    {
+        return Err("Explicit network target is outside trusted-profile domains".to_string());
+    }
+
+    let short = canonical.strip_prefix("builtin-").unwrap_or(&canonical);
+    if short.starts_with("workspace_")
+        || matches!(short, "local_shell_execute" | "local_shell_preflight")
+    {
+        let root_id = arguments
+            .get("root_id")
+            .or_else(|| arguments.get("rootId"))
+            .and_then(Value::as_str)
+            .or_else(|| {
+                arguments
+                    .get("receipt")
+                    .and_then(|receipt| receipt.get("root_id").or_else(|| receipt.get("rootId")))
+                    .and_then(Value::as_str)
+            })
+            .ok_or_else(|| {
+                "Trusted automation runtime tools require explicit root_id".to_string()
+            })?;
+        let root = profile
+            .runtime_roots
+            .iter()
+            .find(|root| root.root_id == root_id)
+            .ok_or_else(|| {
+                format!("Runtime root '{root_id}' is not allowed by the trusted profile")
+            })?;
+        if trusted_profile_write_tool(&canonical) && root.access != AutomationRootAccess::ReadWrite
+        {
+            return Err(format!(
+                "Runtime root '{root_id}' is read-only in the trusted profile"
+            ));
+        }
+    }
+
+    if matches!(short, "local_shell_execute" | "local_shell_preflight") {
+        let command = arguments
+            .get("command")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "Trusted automation shell calls require command".to_string())?;
+        if !profile
+            .shell_command_prefixes
+            .iter()
+            .any(|prefix| command_matches_prefix(command, prefix))
+        {
+            return Err(
+                "Shell command does not match an approved trusted-profile prefix".to_string(),
+            );
+        }
+        let analysis = super::approval_scope::analyze_shell_command(command);
+        if analysis.has_shell_operators || analysis.uses_script_runner {
+            return Err(
+                "Trusted automation shell commands cannot use shell operators or script runners"
+                    .to_string(),
+            );
+        }
+        if analysis.write_capable
+            && profile.rollback_required
+            && arguments.get("track_file_changes").and_then(Value::as_bool) != Some(true)
+        {
+            return Err(
+                "Write-capable trusted automation shell calls require track_file_changes=true"
+                    .to_string(),
+            );
+        }
+        if analysis.network_capable {
+            if arguments.get("allow_network").and_then(Value::as_bool) != Some(true) {
+                return Err("Network-capable shell call requires allow_network=true".to_string());
+            }
+            let hosts = command_network_hosts(command);
+            if hosts.is_empty()
+                || hosts
+                    .iter()
+                    .any(|host| !domain_allowed(host, &profile.network_domains))
+            {
+                return Err(
+                    "Shell network target is absent or outside trusted-profile domains".to_string(),
+                );
+            }
+        }
+        let requested_output = arguments
+            .get("max_output_bytes")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                "Trusted automation shell calls require explicit max_output_bytes".to_string()
+            })?;
+        if requested_output > profile.max_output_bytes {
+            return Err("Shell max_output_bytes exceeds trusted-profile limit".to_string());
+        }
+    }
+    if short == "workspace_file_read" {
+        let max_bytes = arguments
+            .get("max_bytes")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                "Trusted automation workspace reads require explicit max_bytes".to_string()
+            })?;
+        if max_bytes > profile.max_output_bytes {
+            return Err("workspace_file_read max_bytes exceeds trusted-profile limit".to_string());
+        }
+    }
+    Ok(())
+}
 
 // ============================================================================
 // 常量与默认配置
@@ -722,6 +951,34 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
     filter_headless_tool_schemas(schemas)
 }
 
+fn trusted_profile_tool_schemas(profile: &TrustedAutomationProfile) -> Vec<McpToolSchema> {
+    profile
+        .allowed_tools
+        .iter()
+        .map(|name| McpToolSchema {
+            name: name.clone(),
+            server_id: None,
+            description: Some(
+                "Trusted automation tool. Every call is constrained by the pinned profile's runtime roots, command prefixes, network domains, output budget, and rollback policy."
+                    .to_string(),
+            ),
+            input_schema: Some(json!({
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                    "root_id": { "type": "string" },
+                    "path": { "type": "string" },
+                    "command": { "type": "string" },
+                    "allow_network": { "type": "boolean" },
+                    "max_output_bytes": { "type": "integer", "maximum": profile.max_output_bytes },
+                    "max_bytes": { "type": "integer", "maximum": profile.max_output_bytes },
+                    "track_file_changes": { "type": "boolean" }
+                }
+            })),
+        })
+        .collect()
+}
+
 // ============================================================================
 // 请求 / 结果类型
 // ============================================================================
@@ -770,6 +1027,8 @@ pub struct HeadlessTurnRequest {
     pub hard_timeout_secs: Option<u64>,
     /// 工具轮次上限，None 用默认值/全局设置
     pub max_tool_rounds: Option<u32>,
+    /// Explicit pre-authorized profile. None preserves the read-only default.
+    pub trusted_profile: Option<TrustedAutomationProfile>,
     /// Optional caller-owned token used by durable schedulers to cancel this run.
     pub cancellation_token: Option<CancellationToken>,
 }
@@ -855,6 +1114,11 @@ pub async fn run_headless_turn(
             "headless turn prompt must not be empty".to_string(),
         ));
     }
+    if let Some(profile) = req.trusted_profile.as_ref() {
+        profile
+            .validate()
+            .map_err(|error| ChatV2Error::Validation(error.to_string()))?;
+    }
 
     let chat_v2_db = app
         .try_state::<Arc<ChatV2Database>>()
@@ -864,6 +1128,8 @@ pub async fn run_headless_turn(
 
     // —— 会话：isolated 新建 / named 复用（失效则新建）
     let session_id = ensure_headless_session(&chat_v2_db, &req)?;
+    let _trusted_profile_guard =
+        TrustedAutomationSessionGuard::install(&session_id, req.trusted_profile.as_ref());
 
     // —— 超时/轮次预算：请求值 > 全局设置 > 默认值，并施加硬顶
     let (hard_timeout_secs, _max_tool_rounds) = resolve_budget(&app, &req);
@@ -1120,7 +1386,15 @@ async fn execute_headless_pipeline(
         HeadlessPipelineTermination::Failed("没有可用的应用窗口，无法创建事件发射通道".to_string())
     })?;
 
-    let max_tool_rounds = max_tool_rounds_override
+    let trusted_profile = TRUSTED_AUTOMATION_SESSIONS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(session_id)
+        .cloned();
+    let max_tool_rounds = trusted_profile
+        .as_ref()
+        .map(|profile| profile.max_tool_rounds)
+        .or(max_tool_rounds_override)
         .or_else(|| {
             read_main_db_setting_u64(app, SETTING_HEADLESS_MAX_TOOL_ROUNDS).map(|v| v as u32)
         })
@@ -1129,12 +1403,26 @@ async fn execute_headless_pipeline(
 
     // —— system prompt 追加：headless 约束说明 + 调用方补充段
     let mut system_append = headless_system_prompt_note();
+    if let Some(profile) = trusted_profile.as_ref() {
+        system_append.push_str(&format!(
+            "\n\nTrusted automation profile {} is active. Use only its pinned tools, roots, command prefixes, network domains and budgets; write operations must preserve rollback evidence.",
+            profile.profile_hash
+        ));
+    }
     if let Some(extra) = extra_system_append.map(str::trim).filter(|s| !s.is_empty()) {
         system_append.push_str("\n\n");
         system_append.push_str(extra);
     }
 
     // —— 构建请求（工具双层 fail-closed：schema 白名单注入 + 执行白名单拦截）
+    let mut schemas = headless_tool_schemas();
+    let mut allowed_tools = headless_allowed_tools();
+    if let Some(profile) = trusted_profile.as_ref() {
+        schemas.extend(trusted_profile_tool_schemas(profile));
+        allowed_tools.extend(profile.allowed_tools.iter().cloned());
+        allowed_tools.sort();
+        allowed_tools.dedup();
+    }
     let options = SendOptions {
         model_id: model_id.map(|s| s.to_string()),
         // todo_* 元工具经后端 SchemaToolRegistry 注入；attempt_completion 自动追加
@@ -1145,9 +1433,9 @@ async fn execute_headless_pipeline(
             "todo_get".to_string(),
         ]),
         // 白名单工具 schema（后端维护的精简副本），模型只能看见这些
-        mcp_tool_schemas: Some(headless_tool_schemas()),
+        mcp_tool_schemas: Some(schemas),
         // 执行层 fail-closed：白名单外的调用在审批/执行前被直接拦截回喂
-        execution_allowed_tools: Some(headless_allowed_tools()),
+        execution_allowed_tools: Some(allowed_tools),
         max_tool_recursion: Some(max_tool_rounds),
         memory_enabled: Some(true),
         rag_enabled: Some(true),
@@ -1304,12 +1592,18 @@ fn resolve_budget(app: &AppHandle, req: &HeadlessTurnRequest) -> (u64, u32) {
         read_main_db_setting_u64(app, SETTING_HEADLESS_MAX_TOOL_ROUNDS).map(|v| v as u32);
 
     let timeout = req
-        .hard_timeout_secs
+        .trusted_profile
+        .as_ref()
+        .map(|profile| profile.timeout_seconds)
+        .or(req.hard_timeout_secs)
         .or(setting_timeout)
         .unwrap_or(DEFAULT_HARD_TIMEOUT_SECS)
         .clamp(30, MAX_HARD_TIMEOUT_SECS);
     let rounds = req
-        .max_tool_rounds
+        .trusted_profile
+        .as_ref()
+        .map(|profile| profile.max_tool_rounds)
+        .or(req.max_tool_rounds)
         .or(setting_rounds)
         .unwrap_or(DEFAULT_MAX_TOOL_ROUNDS)
         .clamp(1, MAX_TOOL_ROUNDS_CAP);
@@ -1848,5 +2142,101 @@ mod tests {
             summarize_assistant_blocks(&[content, failed]),
             "可用的正文结果"
         );
+    }
+
+    fn trusted_profile_for_policy_test() -> TrustedAutomationProfile {
+        let mut profile = TrustedAutomationProfile {
+            schema_version: super::super::automations::TRUSTED_AUTOMATION_PROFILE_SCHEMA_VERSION,
+            profile_hash: String::new(),
+            allowed_tools: vec![
+                "builtin-local_shell_execute".to_string(),
+                "builtin-workspace_change_revert".to_string(),
+            ],
+            runtime_roots: vec![super::super::automations::AutomationRuntimeRoot {
+                root_id: "workspace".to_string(),
+                access: AutomationRootAccess::ReadWrite,
+            }],
+            shell_command_prefixes: vec!["curl".to_string(), "unzip".to_string()],
+            network_domains: vec!["example.com".to_string()],
+            max_tool_rounds: 8,
+            timeout_seconds: 300,
+            max_output_bytes: 65_536,
+            rollback_required: true,
+        };
+        profile.profile_hash = profile.computed_hash().unwrap();
+        profile
+    }
+
+    #[test]
+    fn aut_06_trusted_profile_enforces_root_prefix_network_output_and_rollback() {
+        let profile = trusted_profile_for_policy_test();
+        let _guard = TrustedAutomationSessionGuard::install("aut-06", Some(&profile)).unwrap();
+        assert!(validate_trusted_automation_tool_call(
+            "aut-06",
+            "builtin-local_shell_execute",
+            &json!({
+                "root_id": "workspace",
+                "command": "unzip bundle.zip",
+                "track_file_changes": true,
+                "max_output_bytes": 4096
+            })
+        )
+        .is_ok());
+        assert!(validate_trusted_automation_tool_call(
+            "aut-06",
+            "builtin-local_shell_execute",
+            &json!({"root_id":"temp", "command":"unzip bundle.zip", "track_file_changes":true})
+        )
+        .is_err());
+        assert!(validate_trusted_automation_tool_call(
+            "aut-06",
+            "builtin-local_shell_execute",
+            &json!({"root_id":"workspace", "command":"rm -rf out", "track_file_changes":true})
+        )
+        .is_err());
+        assert!(validate_trusted_automation_tool_call(
+            "aut-06",
+            "builtin-local_shell_execute",
+            &json!({"root_id":"workspace", "command":"curl https://evil.test/x", "allow_network":true})
+        )
+        .is_err());
+        assert!(validate_trusted_automation_tool_call(
+            "aut-06",
+            "builtin-local_shell_execute",
+            &json!({"root_id":"workspace", "command":"unzip bundle.zip", "track_file_changes":true, "max_output_bytes":65537})
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn aut_07_profile_constrains_web_fetch_and_reads_revert_root_from_receipt() {
+        let profile = trusted_profile_for_policy_test();
+        let _guard = TrustedAutomationSessionGuard::install("aut-07", Some(&profile)).unwrap();
+        assert!(validate_trusted_automation_tool_call(
+            "aut-07",
+            "builtin-web_fetch",
+            &json!({"url":"https://example.com/allowed"})
+        )
+        .is_ok());
+        assert!(validate_trusted_automation_tool_call(
+            "aut-07",
+            "builtin-web_fetch",
+            &json!({"url":"https://outside.test/blocked"})
+        )
+        .is_err());
+        assert!(validate_trusted_automation_tool_call(
+            "aut-07",
+            "builtin-workspace_change_revert",
+            &json!({"receipt":{"root_id":"workspace", "path":"notes/a.md"}})
+        )
+        .is_ok());
+
+        drop(_guard);
+        assert!(validate_trusted_automation_tool_call(
+            "ordinary-session",
+            "builtin-local_shell_execute",
+            &json!({})
+        )
+        .is_ok());
     }
 }

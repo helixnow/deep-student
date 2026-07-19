@@ -36,7 +36,8 @@ export const automationToolsSkill: SkillDefinition = {
 headless 运行时**没有用户在场**，工具集被策略预过滤（fail-closed）：
 
 - 可用：知识库/网络检索、记忆只读、学习资源只读、用户待办只读、题库只读统计、复习计划只读（review_get_due / review_stats）等 Low 敏感度后端工具
-- **不可用**：全部 MCP 外部工具（依赖前端桥）、ask_user、shell、子代理/workspace、以及一切 Medium/High 敏感度写操作（需人工授权）
+- 默认**不可用**：全部 MCP 外部工具（依赖前端桥）、ask_user、shell、子代理/workspace、以及一切 Medium/High 敏感度写操作（需人工授权）
+- 仅当用户显式保存并锁定 trusted_profile 时，可额外开放受控 shell/workspace 工具；profile 固定工具、RO/RW roots、命令前缀、网络域、轮次/超时/输出预算及回滚要求，内容 hash 不匹配即拒绝运行
 - 单次运行硬超时 10 分钟、工具轮次上限 15；运行过程完整落库，用户可随时打开会话查看
 
 ## 何时使用
@@ -197,6 +198,24 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
             default: 600,
             description: '单次 agent_turn 硬超时秒数',
           },
+          trusted_profile: {
+            type: 'object',
+            description: '仅 agent_turn：显式预授权且带内容哈希锁的 trusted AutomationProfile。普通自动化不要设置。',
+            additionalProperties: false,
+            required: ['schemaVersion', 'profileHash', 'allowedTools', 'runtimeRoots', 'shellCommandPrefixes', 'networkDomains', 'maxToolRounds', 'timeoutSeconds', 'maxOutputBytes', 'rollbackRequired'],
+            properties: {
+              schemaVersion: { type: 'integer', enum: [1] },
+              profileHash: { type: 'string', pattern: '^(|[0-9a-fA-F]{64})$', description: '创建/更新时可传空字符串，由后端 canonical seal 后回传并持久化；非空值必须与内容匹配。' },
+              allowedTools: { type: 'array', items: { type: 'string' }, minItems: 1 },
+              runtimeRoots: { type: 'array', minItems: 1, items: { type: 'object', required: ['rootId', 'access'], properties: { rootId: { type: 'string' }, access: { type: 'string', enum: ['read_only', 'read_write'] } }, additionalProperties: false } },
+              shellCommandPrefixes: { type: 'array', items: { type: 'string' } },
+              networkDomains: { type: 'array', items: { type: 'string' } },
+              maxToolRounds: { type: 'integer', minimum: 1, maximum: 30 },
+              timeoutSeconds: { type: 'integer', minimum: 30, maximum: 3600 },
+              maxOutputBytes: { type: 'integer', minimum: 1, maximum: 4194304 },
+              rollbackRequired: { type: 'boolean' },
+            },
+          },
         },
       },
     },
@@ -282,6 +301,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
           max_retries: { type: 'integer', minimum: 0, maximum: 10 },
           retry_backoff_seconds: { type: 'integer', minimum: 5, maximum: 86400 },
           timeout_seconds: { type: 'integer', minimum: 30, maximum: 3600 },
+          trusted_profile: { type: 'object', description: '替换 trusted profile；调用底层更新 API 时传 null 可清除并恢复默认只读 headless。' },
         },
       },
     },

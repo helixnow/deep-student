@@ -157,6 +157,7 @@ const SUPPORTED_EXTENSIONS: &[&str] = &[
     "epub", "rtf", // ebook/rtf
     "mp3", "wav", "ogg", "m4a", "flac", "aac", "wma", "opus", // audio
     "mp4", "webm", "mov", "avi", "mkv", "m4v", "wmv", "flv", // video
+    "zip", "rar", "7z", // archives (validated by magic before persistence)
 ];
 
 /// 允许的 MIME 类型（用于服务端类型校验）
@@ -212,7 +213,74 @@ const SUPPORTED_MIME_TYPES: &[&str] = &[
     "video/x-m4v",
     "video/x-ms-wmv",
     "video/x-flv",
+    // archives
+    "application/zip",
+    "application/x-zip-compressed",
+    "application/vnd.rar",
+    "application/x-rar-compressed",
+    "application/x-7z-compressed",
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArchiveKind {
+    Zip,
+    Rar,
+    SevenZip,
+}
+
+fn archive_kind_from_extension(name: &str) -> Option<ArchiveKind> {
+    match normalize_extension(name).as_deref() {
+        Some("zip") => Some(ArchiveKind::Zip),
+        Some("rar") => Some(ArchiveKind::Rar),
+        Some("7z") => Some(ArchiveKind::SevenZip),
+        _ => None,
+    }
+}
+
+fn archive_kind_from_mime(mime_type: &str) -> Option<ArchiveKind> {
+    match mime_type.trim().to_ascii_lowercase().as_str() {
+        "application/zip" | "application/x-zip-compressed" => Some(ArchiveKind::Zip),
+        "application/vnd.rar" | "application/x-rar-compressed" => Some(ArchiveKind::Rar),
+        "application/x-7z-compressed" => Some(ArchiveKind::SevenZip),
+        _ => None,
+    }
+}
+
+fn archive_kind_from_magic(data: &[u8]) -> Option<ArchiveKind> {
+    if data.starts_with(b"PK\x03\x04")
+        || data.starts_with(b"PK\x05\x06")
+        || data.starts_with(b"PK\x07\x08")
+    {
+        Some(ArchiveKind::Zip)
+    } else if data.starts_with(b"Rar!\x1a\x07\x00") || data.starts_with(b"Rar!\x1a\x07\x01\x00") {
+        Some(ArchiveKind::Rar)
+    } else if data.starts_with(b"\x37\x7a\xbc\xaf\x27\x1c") {
+        Some(ArchiveKind::SevenZip)
+    } else {
+        None
+    }
+}
+
+fn validate_archive_content(name: &str, mime_type: &str, data: &[u8]) -> VfsResult<()> {
+    let extension_kind = archive_kind_from_extension(name);
+    let mime_kind = archive_kind_from_mime(mime_type);
+    let Some(declared_kind) = extension_kind.or(mime_kind) else {
+        return Ok(());
+    };
+    if extension_kind.is_some() && mime_kind.is_some() && extension_kind != mime_kind {
+        return Err(VfsError::InvalidArgument {
+            param: "content".to_string(),
+            reason: "Archive extension and MIME type disagree".to_string(),
+        });
+    }
+    if archive_kind_from_magic(data) != Some(declared_kind) {
+        return Err(VfsError::InvalidArgument {
+            param: "content".to_string(),
+            reason: "Archive signature does not match the declared format".to_string(),
+        });
+    }
+    Ok(())
+}
 
 /// VFS 附件 Repo
 pub struct VfsAttachmentRepo;
@@ -548,6 +616,7 @@ impl VfsAttachmentRepo {
         let data = Self::decode_base64_bounded(&params.base64_content, max_upload_bytes)?;
         let size = data.len() as i64;
         Self::validate_upload_size(&params.mime_type, data.len())?;
+        validate_archive_content(&params.name, &params.mime_type, &data)?;
 
         // 1.6 PDF 专项校验：文件头 + 加密检测
         let is_pdf_upload =
@@ -2144,6 +2213,11 @@ impl VfsAttachmentRepo {
             "video/x-ms-wmv" => Some("wmv".to_string()),
             "video/x-flv" => Some("flv".to_string()),
 
+            // 压缩包
+            "application/zip" | "application/x-zip-compressed" => Some("zip".to_string()),
+            "application/vnd.rar" | "application/x-rar-compressed" => Some("rar".to_string()),
+            "application/x-7z-compressed" => Some("7z".to_string()),
+
             _ => None,
         }
     }
@@ -2720,6 +2794,44 @@ mod tests {
             VfsAttachmentRepo::decode_base64_bounded("SGVsbG8=", 5).unwrap(),
             b"Hello"
         );
+    }
+
+    #[test]
+    fn archive_magic_accepts_supported_formats() {
+        assert!(
+            validate_archive_content("bundle.zip", "application/zip", b"PK\x03\x04payload").is_ok()
+        );
+        assert!(validate_archive_content(
+            "bundle.rar",
+            "application/vnd.rar",
+            b"Rar!\x1a\x07\x01\x00payload"
+        )
+        .is_ok());
+        assert!(validate_archive_content(
+            "bundle.7z",
+            "application/x-7z-compressed",
+            b"\x37\x7a\xbc\xaf\x27\x1cpayload"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn archive_magic_rejects_spoofing_and_declared_mismatch() {
+        assert!(
+            validate_archive_content("bundle.zip", "application/zip", b"not an archive").is_err()
+        );
+        assert!(validate_archive_content(
+            "bundle.zip",
+            "application/x-7z-compressed",
+            b"PK\x03\x04payload"
+        )
+        .is_err());
+        assert!(validate_archive_content(
+            "bundle.rar",
+            "application/vnd.rar",
+            b"PK\x03\x04payload"
+        )
+        .is_err());
     }
 
     #[test]

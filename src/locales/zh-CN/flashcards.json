@@ -20,6 +20,8 @@
     "demoBanner": "当前为示例复习队列，便于预览流程。",
     "startReview": "开始复习",
     "empty": "今天没有到期卡片",
+    "batchCapHint": "本轮先练前 {{n}} 张",
+    "goLibrary": "打开卡片库",
     "errors": {
       "invalidResponse": "复习服务返回了无效的到期卡片数据"
     }
@@ -68,6 +70,11 @@
     "rateFailed": "评分失败",
     "retry": "重试",
     "done": "本轮复习已完成",
+    "emptyQueue": "当前没有可复习的卡片",
+    "batchDoneRemaining": "本批结束，仍有 {{count}} 张到期",
+    "summaryRated": "本轮已评 {{count}} 张",
+    "stillDue": "仍有 {{count}} 张到期",
+    "intervalHint": "{{interval}}",
     "backToday": "返回今日",
     "exit": "退出",
     "progress": "{{current}} / {{total}}",

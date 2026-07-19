@@ -1083,6 +1083,11 @@ export function createRestoreActions(
               const raw = meta?.authorityMode ?? meta?.authority_mode;
               return raw === 'ask' || raw === 'plan' || raw === 'craft' ? raw : 'craft';
             })(),
+            permissionPreset: (() => {
+              const meta = session.metadata as Record<string, unknown> | null | undefined;
+              const raw = meta?.permissionPreset ?? meta?.permission_preset;
+              return raw === 'relaxed' ? 'relaxed' : 'cautious';
+            })(),
             authorityAskBlockedHint: false,
             sessionStatus: finalSessionStatus,
             isDataLoaded: true,

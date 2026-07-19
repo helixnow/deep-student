@@ -460,6 +460,7 @@ mod tests {
     fn multi_variant_user_can_persist_canonical_refs_without_claiming_a_model_snapshot() {
         let canonical = vec![CanonicalContentPart::ImageRef {
             image_id: "image-1".to_string(),
+            name: Some("image.png".to_string()),
             resource_id: Some("res-1".to_string()),
             source_id: Some("file-1".to_string()),
             blob_hash: Some("blob-hash".to_string()),

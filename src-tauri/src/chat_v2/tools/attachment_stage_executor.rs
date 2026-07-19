@@ -24,19 +24,24 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
 use base64::Engine;
 use rusqlite::OptionalExtension;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use tauri::Manager;
+use tauri::{AppHandle, Manager, State};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::{normalize_runtime_relative_path, temp_root};
+use crate::chat_v2::task_objects::{
+    ManagedLocator, ObjectCapabilities, ObjectProvenance, TaskObjectHandle, TaskObjectKind,
+};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::vfs::repos::attachment_repo::VfsAttachmentContentSource;
 use crate::vfs::repos::VfsAttachmentRepo;
@@ -65,6 +70,14 @@ const MAX_SUFFIX_ATTEMPTS: u32 = 100;
 
 /// 清洗后文件名的最大字符数（超长截断 stem、保留扩展名）
 const MAX_FILE_NAME_CHARS: usize = 120;
+/// A single user turn is bounded independently from the UI attachment limit.
+/// This also covers context refs assembled by plugins or restored drafts.
+const MAX_AUTO_STAGE_ITEMS: usize = 64;
+const MAX_ARCHIVE_ENTRIES: usize = 4_096;
+const MAX_ARCHIVE_TOTAL_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_ARCHIVE_ENTRY_UNCOMPRESSED_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_ARCHIVE_COMPRESSION_RATIO: u64 = 200;
+const MAX_ARCHIVE_MANIFEST_ENTRIES: usize = 200;
 
 // ============================================================================
 // 物化结果
@@ -90,6 +103,222 @@ struct ResolvedAttachment {
     name: String,
     mime_type: Option<String>,
     payload: AttachmentPayload,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoStageContextAttachmentInput {
+    pub resource_id: String,
+    pub source_id: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoStagedContextAttachment {
+    pub resource_id: String,
+    pub source_id: String,
+    pub root_id: String,
+    pub relative_path: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+    pub reused: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    pub object_handle: TaskObjectHandle,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoStageContextAttachmentFailure {
+    pub resource_id: String,
+    pub source_id: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoStageContextAttachmentsResult {
+    pub expected_items: usize,
+    pub observed_items: usize,
+    pub coverage_complete: bool,
+    pub truncated: bool,
+    pub attachments: Vec<AutoStagedContextAttachment>,
+    pub failures: Vec<AutoStageContextAttachmentFailure>,
+}
+
+fn archive_format(name: &str, mime_type: Option<&str>) -> Option<&'static str> {
+    let lower_name = name.to_ascii_lowercase();
+    let mime = mime_type.unwrap_or_default().trim().to_ascii_lowercase();
+    if lower_name.ends_with(".zip")
+        || matches!(
+            mime.as_str(),
+            "application/zip" | "application/x-zip-compressed"
+        )
+    {
+        Some("zip")
+    } else if lower_name.ends_with(".rar")
+        || matches!(
+            mime.as_str(),
+            "application/vnd.rar" | "application/x-rar-compressed"
+        )
+    {
+        Some("rar")
+    } else if lower_name.ends_with(".7z") || mime == "application/x-7z-compressed" {
+        Some("7z")
+    } else {
+        None
+    }
+}
+
+fn validate_archive_signature(path: &Path, format: &str) -> Result<(), String> {
+    let mut file = fs::File::open(path).map_err(|e| format!("Failed to open archive: {e}"))?;
+    let mut header = [0u8; 8];
+    let read = file
+        .read(&mut header)
+        .map_err(|e| format!("Failed to read archive signature: {e}"))?;
+    let header = &header[..read];
+    let valid = match format {
+        "zip" => {
+            header.starts_with(b"PK\x03\x04")
+                || header.starts_with(b"PK\x05\x06")
+                || header.starts_with(b"PK\x07\x08")
+        }
+        "rar" => {
+            header.starts_with(b"Rar!\x1a\x07\x00") || header.starts_with(b"Rar!\x1a\x07\x01\x00")
+        }
+        "7z" => header.starts_with(b"\x37\x7a\xbc\xaf\x27\x1c"),
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(format!(
+            "Archive signature does not match declared {format} format"
+        ))
+    }
+}
+
+fn scan_zip_archive(path: &Path) -> Result<Value, String> {
+    validate_archive_signature(path, "zip")?;
+    let file = fs::File::open(path).map_err(|e| format!("Failed to open ZIP archive: {e}"))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Invalid ZIP archive: {e}"))?;
+    if archive.len() > MAX_ARCHIVE_ENTRIES {
+        return Err(format!(
+            "Archive contains too many entries: {} exceeds {}",
+            archive.len(),
+            MAX_ARCHIVE_ENTRIES
+        ));
+    }
+
+    let mut total_uncompressed = 0u64;
+    let mut max_entry_uncompressed = 0u64;
+    let mut entries = Vec::new();
+    for index in 0..archive.len() {
+        let entry = archive
+            .by_index(index)
+            .map_err(|e| format!("Failed to inspect ZIP entry {index}: {e}"))?;
+        let name = entry.name().to_string();
+        if entry.enclosed_name().is_none() {
+            return Err(format!("Archive entry has unsafe path: {name}"));
+        }
+        if entry
+            .unix_mode()
+            .is_some_and(|mode| mode & 0o170000 == 0o120000)
+        {
+            return Err(format!("Archive entry is a symbolic link: {name}"));
+        }
+        let uncompressed = entry.size();
+        let compressed = entry.compressed_size();
+        if uncompressed > MAX_ARCHIVE_ENTRY_UNCOMPRESSED_BYTES {
+            return Err(format!(
+                "Archive entry is too large after extraction: {name}"
+            ));
+        }
+        if uncompressed > 0
+            && (compressed == 0 || uncompressed / compressed.max(1) > MAX_ARCHIVE_COMPRESSION_RATIO)
+        {
+            return Err(format!(
+                "Archive entry exceeds compression ratio limit: {name}"
+            ));
+        }
+        total_uncompressed = total_uncompressed
+            .checked_add(uncompressed)
+            .ok_or_else(|| "Archive expanded size overflow".to_string())?;
+        if total_uncompressed > MAX_ARCHIVE_TOTAL_UNCOMPRESSED_BYTES {
+            return Err("Archive total expanded size exceeds limit".to_string());
+        }
+        max_entry_uncompressed = max_entry_uncompressed.max(uncompressed);
+        if entries.len() < MAX_ARCHIVE_MANIFEST_ENTRIES {
+            entries.push(json!({
+                "path": name,
+                "directory": entry.is_dir(),
+                "compressedSize": compressed,
+                "uncompressedSize": uncompressed,
+            }));
+        }
+    }
+
+    Ok(json!({
+        "format": "zip",
+        "scanned": true,
+        "safeToExtract": true,
+        "entryCount": archive.len(),
+        "totalUncompressedBytes": total_uncompressed,
+        "maxEntryUncompressedBytes": max_entry_uncompressed,
+        "entries": entries,
+        "entriesTruncated": archive.len() > MAX_ARCHIVE_MANIFEST_ENTRIES,
+        "limits": {
+            "maxEntries": MAX_ARCHIVE_ENTRIES,
+            "maxTotalUncompressedBytes": MAX_ARCHIVE_TOTAL_UNCOMPRESSED_BYTES,
+            "maxEntryUncompressedBytes": MAX_ARCHIVE_ENTRY_UNCOMPRESSED_BYTES,
+            "maxCompressionRatio": MAX_ARCHIVE_COMPRESSION_RATIO,
+        }
+    }))
+}
+
+fn scan_archive_for_stage(
+    path: &Path,
+    name: &str,
+    mime_type: Option<&str>,
+) -> Result<Option<Value>, String> {
+    let Some(format) = archive_format(name, mime_type) else {
+        return Ok(None);
+    };
+    if format == "zip" {
+        return scan_zip_archive(path).map(Some);
+    }
+    validate_archive_signature(path, format)?;
+    Ok(Some(json!({
+        "format": format,
+        "scanned": false,
+        "safeToExtract": false,
+        "reason": "Entry-level scanning is unavailable for this archive format; no extraction was performed",
+    })))
+}
+
+fn scan_staged_archive_or_cleanup(
+    temp_root_path: &Path,
+    staged: &StagedFile,
+    name: &str,
+    mime_type: Option<&str>,
+) -> Result<Option<Value>, String> {
+    let staged_path = temp_root_path.join(&staged.relative_path);
+    match scan_archive_for_stage(&staged_path, name, mime_type) {
+        Ok(manifest) => Ok(manifest),
+        Err(error) => {
+            if !staged.reused {
+                let _ = fs::remove_file(&staged_path);
+                if let Some(parent) = staged_path.parent() {
+                    let mut index = load_stage_index(parent);
+                    index.remove(&staged.sha256);
+                    save_stage_index(parent, &index);
+                }
+            }
+            Err(error)
+        }
+    }
 }
 
 // ============================================================================
@@ -732,6 +961,71 @@ impl AttachmentStageExecutor {
         }
     }
 
+    fn stage_context_attachment(
+        app: &AppHandle,
+        vfs_db: &crate::vfs::database::VfsDatabase,
+        session_id: &str,
+        input: &AutoStageContextAttachmentInput,
+    ) -> Result<AutoStagedContextAttachment, String> {
+        let resolved = Self::resolve_vfs_attachment(vfs_db, &input.source_id)?
+            .ok_or_else(|| format!("Attachment source not found in VFS: {}", input.source_id))?;
+        let requested_name = if input.display_name.trim().is_empty() {
+            resolved.name.as_str()
+        } else {
+            input.display_name.trim()
+        };
+        let temp = temp_root(app, session_id, true)?;
+        let staged = stage_payload_into_temp_root(&temp.path, requested_name, &resolved.payload)?;
+        // Automatic staging never extracts archives, but validates supported archive
+        // signatures/manifests with the same bounded checks as the agent tool.
+        let _ = scan_staged_archive_or_cleanup(
+            &temp.path,
+            &staged,
+            requested_name,
+            resolved.mime_type.as_deref(),
+        )?;
+
+        let locator = ManagedLocator::new(temp.id.clone(), staged.relative_path.clone())?;
+        let mut object_handle = TaskObjectHandle::new(
+            format!("attachment:{}:{}", input.source_id, staged.sha256),
+            TaskObjectKind::File,
+            resolved.name,
+            ObjectProvenance {
+                source: "chat_context_ref".to_string(),
+                source_uri: None,
+                server: None,
+                tool: Some("send_time_attachment_stage".to_string()),
+                derived_from: vec![input.resource_id.clone(), input.source_id.clone()],
+                observed_at: chrono::Utc::now().to_rfc3339(),
+            },
+        );
+        object_handle.media_type = resolved.mime_type.clone();
+        object_handle.size_bytes = Some(staged.size_bytes);
+        object_handle.sha256 = Some(staged.sha256.clone());
+        object_handle.locator = Some(locator);
+        object_handle.capabilities = ObjectCapabilities {
+            readable: true,
+            materializable: true,
+            writable: false,
+            shareable: false,
+            sendable: false,
+            deletable: false,
+        };
+        object_handle.validate()?;
+
+        Ok(AutoStagedContextAttachment {
+            resource_id: input.resource_id.clone(),
+            source_id: input.source_id.clone(),
+            root_id: temp.id,
+            relative_path: staged.relative_path,
+            size_bytes: staged.size_bytes,
+            sha256: staged.sha256,
+            reused: staged.reused,
+            media_type: resolved.mime_type,
+            object_handle,
+        })
+    }
+
     /// 定位附件并取原始数据（与 attachment_read 相同的 message_id + attachment_id 定位方式）
     fn resolve_attachment(
         main_db: &crate::database::Database,
@@ -876,26 +1170,33 @@ impl AttachmentStageExecutor {
         let blocking_message_id = message_id.clone();
         let blocking_attachment_id = attachment_id.clone();
 
-        let (staged, temp_id, original_name, mime_type) = tokio::task::spawn_blocking(move || {
-            let resolved = Self::resolve_attachment(
-                main_db.as_ref(),
-                vfs_db.as_deref(),
-                &session_id,
-                &blocking_message_id,
-                &blocking_attachment_id,
-            )?;
-            let ResolvedAttachment {
-                name,
-                mime_type,
-                payload,
-            } = resolved;
-            let requested_name = filename_override.as_deref().unwrap_or(&name);
-            let temp = temp_root(&app_handle, &session_id, true)?;
-            let staged = stage_payload_into_temp_root(&temp.path, requested_name, &payload)?;
-            Ok::<_, String>((staged, temp.id, name, mime_type))
-        })
-        .await
-        .map_err(|e| format!("Attachment staging task failed: {}", e))??;
+        let (staged, temp_id, original_name, mime_type, archive_manifest) =
+            tokio::task::spawn_blocking(move || {
+                let resolved = Self::resolve_attachment(
+                    main_db.as_ref(),
+                    vfs_db.as_deref(),
+                    &session_id,
+                    &blocking_message_id,
+                    &blocking_attachment_id,
+                )?;
+                let ResolvedAttachment {
+                    name,
+                    mime_type,
+                    payload,
+                } = resolved;
+                let requested_name = filename_override.as_deref().unwrap_or(&name);
+                let temp = temp_root(&app_handle, &session_id, true)?;
+                let staged = stage_payload_into_temp_root(&temp.path, requested_name, &payload)?;
+                let archive_manifest = scan_staged_archive_or_cleanup(
+                    &temp.path,
+                    &staged,
+                    requested_name,
+                    mime_type.as_deref(),
+                )?;
+                Ok::<_, String>((staged, temp.id, name, mime_type, archive_manifest))
+            })
+            .await
+            .map_err(|e| format!("Attachment staging task failed: {}", e))??;
 
         let duration = start_time.elapsed().as_millis() as u64;
         let staged_status = if staged.reused {
@@ -911,6 +1212,34 @@ impl AttachmentStageExecutor {
             duration
         );
 
+        let locator = ManagedLocator::new(temp_id.clone(), staged.relative_path.clone())?;
+        let mut object_handle = TaskObjectHandle::new(
+            format!("attachment:{}:{}", attachment_id, staged.sha256),
+            TaskObjectKind::File,
+            original_name.clone(),
+            ObjectProvenance {
+                source: "chat_attachment".to_string(),
+                source_uri: None,
+                server: None,
+                tool: Some("attachment_stage".to_string()),
+                derived_from: vec![attachment_id.clone()],
+                observed_at: chrono::Utc::now().to_rfc3339(),
+            },
+        );
+        object_handle.media_type = mime_type.clone();
+        object_handle.size_bytes = Some(staged.size_bytes);
+        object_handle.sha256 = Some(staged.sha256.clone());
+        object_handle.locator = Some(locator);
+        object_handle.capabilities = ObjectCapabilities {
+            readable: true,
+            materializable: true,
+            writable: false,
+            shareable: false,
+            sendable: false,
+            deletable: false,
+        };
+        object_handle.validate()?;
+
         let mut output = json!({
             "success": true,
             "root_id": temp_id,
@@ -923,13 +1252,70 @@ impl AttachmentStageExecutor {
             "message_id": message_id,
             "hint": "物化完成：可用 workspace_file_read（root_id=temp, path=relative_path）或 local_shell_execute（root_id=temp, cwd 指向 attachments 目录）处理该文件；产物请写入 artifacts。",
             "durationMs": duration,
+            "object_handle": object_handle,
         });
         if let Some(mime_type) = mime_type {
             output["mime_type"] = json!(mime_type);
         }
+        if let Some(manifest) = archive_manifest {
+            output["archive_manifest"] = manifest;
+        }
 
         Ok(output)
     }
+}
+
+/// Materialize binary user ContextRefs before the model turn begins.
+///
+/// The command is deliberately source-id based: the user message does not exist in
+/// the backend yet, while the VFS attachment already does. Folder refs are never
+/// accepted here, preventing an implicit recursive upload.
+#[tauri::command]
+pub async fn chat_v2_stage_context_attachments(
+    app: AppHandle,
+    vfs_db: State<'_, Arc<crate::vfs::database::VfsDatabase>>,
+    session_id: String,
+    items: Vec<AutoStageContextAttachmentInput>,
+) -> Result<AutoStageContextAttachmentsResult, String> {
+    if session_id.trim().is_empty() {
+        return Err("sessionId is required for attachment materialization".to_string());
+    }
+
+    let expected_items = items.len();
+    let truncated = expected_items > MAX_AUTO_STAGE_ITEMS;
+    let bounded_items: Vec<_> = items.into_iter().take(MAX_AUTO_STAGE_ITEMS).collect();
+    let observed_items = bounded_items.len();
+    let vfs_db = Arc::clone(vfs_db.inner());
+    tokio::task::spawn_blocking(move || {
+        let mut attachments = Vec::with_capacity(observed_items);
+        let mut failures = Vec::new();
+        for input in bounded_items {
+            match AttachmentStageExecutor::stage_context_attachment(
+                &app,
+                &vfs_db,
+                &session_id,
+                &input,
+            ) {
+                Ok(staged) => attachments.push(staged),
+                Err(error) => failures.push(AutoStageContextAttachmentFailure {
+                    resource_id: input.resource_id,
+                    source_id: input.source_id,
+                    error,
+                }),
+            }
+        }
+
+        Ok(AutoStageContextAttachmentsResult {
+            expected_items,
+            observed_items,
+            coverage_complete: !truncated && observed_items == expected_items,
+            truncated,
+            attachments,
+            failures,
+        })
+    })
+    .await
+    .map_err(|error| format!("Attachment materialization task failed: {error}"))?
 }
 
 impl Default for AttachmentStageExecutor {
@@ -1073,6 +1459,79 @@ mod tests {
         let err = check_stage_size(MAX_STAGE_BYTES + 1).unwrap_err();
         assert!(err.contains("256 MB"));
         assert!(check_stage_size(u64::MAX).is_err());
+    }
+
+    fn write_test_zip(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = fs::File::create(path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        let options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        for (name, bytes) in entries {
+            writer.start_file(*name, options).unwrap();
+            writer.write_all(bytes).unwrap();
+        }
+        writer.finish().unwrap();
+    }
+
+    #[test]
+    fn zip_scan_returns_bounded_safe_manifest() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("bundle.zip");
+        write_test_zip(
+            &path,
+            &[("docs/readme.txt", b"hello"), ("data.csv", b"a,b")],
+        );
+
+        let manifest = scan_zip_archive(&path).unwrap();
+        assert_eq!(manifest["format"], "zip");
+        assert_eq!(manifest["scanned"], true);
+        assert_eq!(manifest["safeToExtract"], true);
+        assert_eq!(manifest["entryCount"], 2);
+        assert_eq!(manifest["totalUncompressedBytes"], 8);
+    }
+
+    #[test]
+    fn zip_scan_rejects_parent_traversal() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("unsafe.zip");
+        write_test_zip(&path, &[("../outside.txt", b"escape")]);
+
+        let error = scan_zip_archive(&path).unwrap_err();
+        assert!(error.contains("unsafe path"), "{error}");
+    }
+
+    #[test]
+    fn rar_and_7z_are_signature_checked_but_not_claimed_as_scanned() {
+        let temp = tempfile::tempdir().unwrap();
+        let rar = temp.path().join("bundle.rar");
+        fs::write(&rar, b"Rar!\x1a\x07\x01\x00payload").unwrap();
+        let manifest = scan_archive_for_stage(&rar, "bundle.rar", Some("application/vnd.rar"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(manifest["scanned"], false);
+        assert_eq!(manifest["safeToExtract"], false);
+
+        let fake = temp.path().join("fake.7z");
+        fs::write(&fake, b"not-7z").unwrap();
+        assert!(
+            scan_archive_for_stage(&fake, "fake.7z", Some("application/x-7z-compressed")).is_err()
+        );
+    }
+
+    #[test]
+    fn rejected_new_archive_is_removed_with_its_index_entry() {
+        let temp = tempfile::tempdir().unwrap();
+        let staged = stage_bytes_into_temp_root(temp.path(), "fake.zip", b"not-a-zip").unwrap();
+        let error = scan_staged_archive_or_cleanup(
+            temp.path(),
+            &staged,
+            "fake.zip",
+            Some("application/zip"),
+        )
+        .unwrap_err();
+        assert!(error.contains("signature"));
+        assert!(!temp.path().join(&staged.relative_path).exists());
+        assert!(!load_stage_index(&temp.path().join(STAGE_SUBDIR)).contains_key(&staged.sha256));
     }
 
     #[test]

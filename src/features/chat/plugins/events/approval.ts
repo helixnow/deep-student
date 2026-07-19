@@ -51,6 +51,7 @@ interface ApprovalRequestPayload {
   toolName: string;
   arguments: Record<string, unknown>;
   sensitivity: 'low' | 'medium' | 'high';
+  permissionPreset?: 'cautious' | 'relaxed';
   description: string;
   timeoutSeconds: number;
   runtimeScope?: ShellRuntimeApprovalScope;
@@ -101,6 +102,7 @@ function toStoreApproval(request: ApprovalRequestPayload) {
     toolName: request.toolName,
     arguments: request.arguments || {},
     sensitivity: request.sensitivity || 'medium',
+    permissionPreset: request.permissionPreset ?? 'cautious',
     description: request.description || '',
     timeoutSeconds: request.timeoutSeconds || 30,
     runtimeScope: request.runtimeScope,

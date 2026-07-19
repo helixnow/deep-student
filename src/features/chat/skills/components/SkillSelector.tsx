@@ -55,6 +55,11 @@ export interface SkillSelectorProps {
   className?: string;
   /** 会话 ID（用于显示工具调用加载的技能状态） */
   sessionId?: string | null;
+  /**
+   * panel: ComposerPanelOverlay 全宽面板（含详情分栏）
+   * menu: 加号菜单次级飞出层（列表优先、紧凑）
+   */
+  variant?: 'panel' | 'menu';
 }
 
 // ============================================================================
@@ -69,8 +74,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
   disabled = false,
   className,
   sessionId,
+  variant = 'panel',
 }) => {
   const { t } = useTranslation(['skills', 'common']);
+  const isMenuVariant = variant === 'menu';
 
   const { isSkillLoaded } = useLoadedSkills(sessionId ?? null);
   const { isFavorite, toggleFavorite } = useSkillFavorites();
@@ -253,16 +260,22 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
   ) : null;
 
   return (
-    <ComposerPanel.Root fillHeight className={cn('overflow-hidden', className)}>
+    <ComposerPanel.Root
+      fillHeight={!isMenuVariant}
+      className={cn('overflow-hidden', isMenuVariant && 'min-h-0', className)}
+      data-testid={isMenuVariant ? 'skill-selector-menu' : 'skill-selector-panel'}
+    >
       {/* 📱 移动端也渲染 Header：提供可见的关闭按钮（契约：面板须可见关闭 + 返回键） */}
-      <ComposerPanel.Header
-        icon={Lightning}
-        title={t('skills:selector.title')}
-        subtitle={t('skills:selector.count', {count: allSkills.length})}
-        actions={headerActions}
-        onClose={onClose}
-        closeAriaLabel={t('common:actions.close')}
-      />
+      {!isMenuVariant && (
+        <ComposerPanel.Header
+          icon={Lightning}
+          title={t('skills:selector.title')}
+          subtitle={t('skills:selector.count', {count: allSkills.length})}
+          actions={headerActions}
+          onClose={onClose}
+          closeAriaLabel={t('common:actions.close')}
+        />
+      )}
 
       <ComposerPanel.Search
         value={searchTerm}
@@ -346,14 +359,18 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         </div>
       )}
 
-      {/* 分栏布局：左侧技能列表 + 右侧详情面板 */}
-      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
+      {/* 分栏布局：左侧技能列表 + 右侧详情面板（menu 变体仅列表） */}
+      <div className={cn('flex min-h-0 flex-1 gap-3 overflow-hidden', isMenuVariant && 'min-h-[240px]')}>
         {/* 左侧：技能列表 */}
         <CustomScrollArea
           className={cn(
             'h-full',
-            // 以解析后的 selectedSkill 判断：选中技能被删除/刷新掉时移动端回退到列表，避免死角
-            isMobile ? (selectedSkill ? 'hidden' : 'w-full') : 'w-1/2'
+            isMenuVariant
+              ? 'w-full'
+              // 以解析后的 selectedSkill 判断：选中技能被删除/刷新掉时移动端回退到列表，避免死角
+              : isMobile
+                ? (selectedSkill ? 'hidden' : 'w-full')
+                : 'w-1/2'
           )}
           viewportClassName="space-y-1 pr-1"
         >
@@ -376,12 +393,30 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 return (
                   <ComposerPanel.Row
                     key={skill.id}
-                    selected={isSelected}
+                    selected={isMenuVariant ? isActiveSkill : isSelected}
                     selectedAccent="tinted"
-                    onClick={() => handleSelect(skill.id)}
+                    onClick={() => {
+                      if (isMenuVariant) {
+                        if (!activationBlocked) handleToggleActivate(skill.id);
+                        return;
+                      }
+                      handleSelect(skill.id);
+                    }}
                     aria-label={skillName}
                     leading={
-                      !isActiveSkill && isToolLoaded ? (
+                      isMenuVariant ? (
+                        <span
+                          className={cn(
+                            'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
+                            isActiveSkill
+                              ? 'bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
+                              : 'bg-muted text-muted-foreground',
+                          )}
+                          aria-hidden="true"
+                        >
+                          {(skillName.trim().charAt(0) || '?').toUpperCase()}
+                        </span>
+                      ) : !isActiveSkill && isToolLoaded ? (
                         <span
                           className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center text-amber-500"
                           title={t('skills:status.toolLoaded')}
@@ -428,6 +463,11 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       )
                     }
                     trailing={
+                      isMenuVariant ? (
+                        isActiveSkill ? (
+                          <Check size={14} weight="bold" className="text-[color:var(--button-primary-border)] opacity-90" />
+                        ) : null
+                      ) : (
                       <span className="flex shrink-0 items-center gap-1">
                         <NotionButton
                           variant="ghost"
@@ -466,32 +506,40 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           {getLocationLabel(skill.location, t)}
                         </span>
                       </span>
+                      )
                     }
                   >
-                    <span className={cn('flex items-center gap-1.5', isDisabledSkill && 'opacity-60')}>
-                      <span
-                        className={cn(
-                          'truncate text-sm font-medium',
-                          isToolLoaded && 'text-amber-600 dark:text-amber-400'
-                        )}
-                      >
-                        {skillName}
-                      </span>
-                      {isDisabledSkill ? (
+                    <span className={cn('flex min-w-0 flex-col gap-0.5', isDisabledSkill && 'opacity-60')}>
+                      <span className={cn('flex items-center gap-1.5', isDisabledSkill && 'opacity-60')}>
                         <span
-                          className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-                          title={t('skills:selector.disabled_hint')}
+                          className={cn(
+                            'truncate text-sm font-medium',
+                            isToolLoaded && 'text-amber-600 dark:text-amber-400'
+                          )}
                         >
-                          {t('skills:selector.disabled_badge')}
+                          {skillName}
                         </span>
-                      ) : null}
-                      {isDefaultSkill ? (
-                        <span
-                          className="inline-flex shrink-0 items-center gap-0.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
-                          title={t('skills:default.isDefault')}
-                        >
-                          <Check size={9} />
-                          {t('skills:default.label')}
+                        {isDisabledSkill ? (
+                          <span
+                            className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                            title={t('skills:selector.disabled_hint')}
+                          >
+                            {t('skills:selector.disabled_badge')}
+                          </span>
+                        ) : null}
+                        {!isMenuVariant && isDefaultSkill ? (
+                          <span
+                            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                            title={t('skills:default.isDefault')}
+                          >
+                            <Check size={9} />
+                            {t('skills:default.label')}
+                          </span>
+                        ) : null}
+                      </span>
+                      {isMenuVariant ? (
+                        <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                          {getLocalizedSkillDescription(skill.id, skill.description, t)}
                         </span>
                       ) : null}
                     </span>
@@ -502,11 +550,15 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           )}
         </CustomScrollArea>
 
-        {/* 右侧：技能详情面板 */}
+        {/* 右侧：技能详情面板（menu 变体隐藏） */}
         <div
           className={cn(
             'flex h-full flex-col',
-            isMobile ? (selectedSkill ? 'w-full' : 'hidden') : 'w-1/2 border-l border-[color:var(--composer-panel-control-border)] pl-3'
+            isMenuVariant
+              ? 'hidden'
+              : isMobile
+                ? (selectedSkill ? 'w-full' : 'hidden')
+                : 'w-1/2 border-l border-[color:var(--composer-panel-control-border)] pl-3'
           )}
         >
           {selectedSkill ? (
@@ -778,6 +830,26 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           )}
         </div>
       </div>
+
+      {isMenuVariant && onRefresh ? (
+        <ComposerPanel.Footer divided className="!justify-between gap-2">
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="gap-1.5"
+          >
+            <ArrowClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
+            <span>{t('skills:selector.refresh')}</span>
+          </NotionButton>
+          {onClose ? (
+            <NotionButton variant="ghost" size="sm" onClick={onClose}>
+              {t('common:actions.close')}
+            </NotionButton>
+          ) : null}
+        </ComposerPanel.Footer>
+      ) : null}
     </ComposerPanel.Root>
   );
 };

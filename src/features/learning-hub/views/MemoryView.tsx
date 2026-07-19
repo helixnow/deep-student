@@ -90,7 +90,7 @@ import {
 import { folderApi } from '@/dstu';
 import type { FolderTreeNode as DstuFolderTreeNode } from '@/dstu/types/folder';
 import type { ResourceListItem } from '../types';
-import { useDialogFocusManagement } from '../components/FolderSelectorDialog';
+import { useDialogFocusManagement } from '../hooks/useDialogFocusManagement';
 import { registerMemoryDomainRefresh } from './memoryDomainRefresh';
 
 // ============================================================================

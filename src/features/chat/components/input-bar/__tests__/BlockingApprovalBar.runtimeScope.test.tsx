@@ -56,9 +56,7 @@ describe('BlockingApprovalBar runtime scope', () => {
     expect(screen.getByText('.')).toBeInTheDocument();
     expect(screen.getByText('git status')).toBeInTheDocument();
     expect(screen.getByText('net')).toBeInTheDocument();
-    // 本文件 mock 的 t 只回退到 key（组件对 approval.* 一律不带 defaultValue，
-    // 同目录 rejectReason 测试也断言原始 key），故这里按 key 断言按钮存在
-    expect(screen.getByRole('button', { name: 'approval.allowScope' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'approval.allowScope' })).not.toBeInTheDocument();
   });
 
   it('shows the bound root authority and effective sandbox-readable roots', () => {

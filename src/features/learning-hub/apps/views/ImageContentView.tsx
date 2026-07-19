@@ -24,7 +24,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowClockwise, ArrowsOut, Warning, Download, CircleNotch, ImageBroken } from '@phosphor-icons/react';
+import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowClockwise, ArrowsOut } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -35,6 +35,7 @@ import { base64ToBlob, base64ToUint8Array } from '@/utils/base64FileUtils';
 import { fileManager } from '@/utils/fileManager';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { formatFileSize } from './previewUtils';
+import { PreviewStatus } from './PreviewStatus';
 
 /** 图片大文件确认阈值（后端图片上限 50MB；超过 20MB 先提示再加载） */
 const IMAGE_LARGE_FILE_THRESHOLD = 20 * 1024 * 1024;
@@ -526,51 +527,35 @@ const ImageContentView: React.FC<ContentViewProps> = ({
   // 检查文件大小中
   if (loadingStage === 'checking') {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        <p className="text-sm text-muted-foreground">
-          {t('learningHub:image.checkingSize')}
-        </p>
-      </div>
+      <PreviewStatus
+        tone="loading"
+        title={t('learningHub:image.checkingSize')}
+      />
     );
   }
 
   // 大文件警告
   if (loadingStage === 'large_file_warning') {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 p-6">
-        <div className="flex items-center gap-2 text-amber-500">
-          <Warning size={32} />
-        </div>
-        <div className="text-center space-y-2">
-          <h3 className="text-lg font-medium">
-            {t('learningHub:image.largeFileWarning')}
-          </h3>
-          <p className="text-sm text-muted-foreground max-w-md">
-            {t(
-              'learningHub:image.largeFileDescription', { size: formatFileSize(fileSize) }
-            )}
-          </p>
-        </div>
-        <div className="flex gap-3 mt-2">
-          <NotionButton
-            variant="default"
-            onClick={() => {
-              onClose?.();
-            }}
-          >
-            {t('common:cancel')}
-          </NotionButton>
-          <NotionButton
-            variant="primary"
-            onClick={() => {
-              void loadImageContent();
-            }}
-          >
-            {t('learningHub:image.loadAnyway')}
-          </NotionButton>
-        </div>
-      </div>
+      <PreviewStatus
+        tone="warning"
+        title={t('learningHub:image.largeFileWarning')}
+        description={t('learningHub:image.largeFileDescription', { size: formatFileSize(fileSize) })}
+        actions={[
+          {
+            id: 'cancel',
+            label: t('common:cancel'),
+            onClick: () => { onClose?.(); },
+            variant: 'default',
+          },
+          {
+            id: 'loadAnyway',
+            label: t('learningHub:image.loadAnyway'),
+            onClick: () => { void loadImageContent(); },
+            variant: 'primary',
+          },
+        ]}
+      />
     );
   }
 
@@ -578,38 +563,34 @@ const ImageContentView: React.FC<ContentViewProps> = ({
   if (loadingStage === 'loading') {
     const elapsed = loadStartTime > 0 ? Math.floor((Date.now() - loadStartTime) / 1000) : 0;
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        <div className="text-center">
-          <p className="text-sm text-muted-foreground">
-            {t('learningHub:image.loading')}
-          </p>
-          {fileSize > 0 && (
-            <p className="text-xs text-muted-foreground mt-1">
-              {formatFileSize(fileSize)}
-              {elapsed > 2 && ` · ${elapsed}s`}
-            </p>
-          )}
-        </div>
-      </div>
+      <PreviewStatus
+        tone="loading"
+        title={t('learningHub:image.loading')}
+        description={
+          fileSize > 0
+            ? `${formatFileSize(fileSize)}${elapsed > 2 ? ` · ${elapsed}s` : ''}`
+            : undefined
+        }
+      />
     );
   }
 
   // 错误
   if (error || !imageUrl) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-        <p>{error || t('learningHub:error.imageNotFound')}</p>
-        <NotionButton
-          variant="default"
-          size="sm"
-          onClick={() => {
-            void loadImageContent();
-          }}
-        >
-          {t('common:retry')}
-        </NotionButton>
-      </div>
+      <PreviewStatus
+        tone="error"
+        icon="warning"
+        title={error || t('learningHub:error.imageNotFound')}
+        actions={[
+          {
+            id: 'retry',
+            label: t('common:retry'),
+            onClick: () => { void loadImageContent(); },
+            variant: 'default',
+          },
+        ]}
+      />
     );
   }
 
@@ -617,41 +598,32 @@ const ImageContentView: React.FC<ContentViewProps> = ({
   // 旧实现没有 onError 处理，失败时只显示一个永远加载不出来的空白裂图。
   if (renderFailed) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
-        <ImageBroken size={40} className="text-muted-foreground" />
-        <div className="space-y-1">
-          <p className="text-sm font-medium">
-            {t('learningHub:image.renderFailed')}
-          </p>
-          <p className="text-xs text-muted-foreground max-w-md">
-            {isLikelyUnsupportedFormat
-              ? t('learningHub:image.unsupportedFormatHint')
-              : t('learningHub:image.renderFailedHint')}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <NotionButton
-            variant="default"
-            size="sm"
-            onClick={() => {
-              void loadImageContent();
-            }}
-          >
-            {t('common:retry')}
-          </NotionButton>
-          <NotionButton
-            variant="primary"
-            size="sm"
-            disabled={isSaving}
-            onClick={() => {
-              void handleSaveToDevice();
-            }}
-          >
-            {isSaving ? <CircleNotch size={14} className="animate-spin" /> : <Download size={14} />}
-            <span className="ml-1">{t('learningHub:image.saveToDevice')}</span>
-          </NotionButton>
-        </div>
-      </div>
+      <PreviewStatus
+        tone="error"
+        icon="brokenImage"
+        title={t('learningHub:image.renderFailed')}
+        description={
+          isLikelyUnsupportedFormat
+            ? t('learningHub:image.unsupportedFormatHint')
+            : t('learningHub:image.renderFailedHint')
+        }
+        actions={[
+          {
+            id: 'retry',
+            label: t('common:retry'),
+            onClick: () => { void loadImageContent(); },
+            variant: 'default',
+          },
+          {
+            id: 'save',
+            label: t('learningHub:image.saveToDevice'),
+            onClick: () => { void handleSaveToDevice(); },
+            variant: 'primary',
+            loading: isSaving,
+            disabled: isSaving,
+          },
+        ]}
+      />
     );
   }
 

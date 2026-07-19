@@ -1976,19 +1976,22 @@ fn resolve_exam(
     };
     let include_ocr = pdf_modes.is_some_and(|modes| modes.contains(&PdfInjectMode::Ocr))
         || image_modes.is_some_and(|modes| modes.contains(&ImageInjectMode::Ocr));
+    // No explicit mode preserves the legacy image + text behavior. An explicit
+    // image-only choice must not unexpectedly inject the complete question bank.
+    let include_exam_text = include_ocr || !include_images || (!has_pdf_modes && !has_image_modes);
     let sql = "SELECT preview_json FROM exam_sheets WHERE id = ?1";
     match conn.query_row(sql, rusqlite::params![vfs_ref.source_id], |row| {
         row.get::<_, Option<String>>(0)
     }) {
         Ok(Some(preview_json)) => {
-            // 始终保留题目页原图；模型能力降级由 context compiler 统一处理。
+            // 页图来自 preview_json；题干/答案等文本以 questions 表为 SSOT。
             resolve_exam_multimodal(
                 conn,
                 blobs_dir,
                 vfs_ref,
                 &preview_json,
                 include_images,
-                include_ocr,
+                include_exam_text,
             )
         }
         Ok(None) => {
@@ -1996,7 +1999,20 @@ fn resolve_exam(
                 "[VfsResolver] Exam has no preview_json: {}",
                 vfs_ref.source_id
             );
-            vec![]
+            let mut blocks = Vec::new();
+            if include_images {
+                append_exam_manual_images(conn, blobs_dir, &vfs_ref.source_id, &mut blocks);
+            }
+            if include_exam_text {
+                if let Some(block) = build_exam_questions_ssot_block(conn, vfs_ref) {
+                    blocks.push(block);
+                }
+                let history_xml = build_exam_history_xml(conn, &vfs_ref.source_id);
+                if !history_xml.is_empty() {
+                    blocks.push(ContentBlock::Text { text: history_xml });
+                }
+            }
+            blocks
         }
         Err(e) => {
             log::debug!("[VfsResolver] Exam not found {}: {}", vfs_ref.source_id, e);
@@ -2023,9 +2039,20 @@ fn resolve_exam_multimodal(
         Ok(v) => v,
         Err(e) => {
             log::warn!("[VfsResolver] Failed to parse exam preview_json: {}", e);
-            return vec![ContentBlock::Text {
-                text: format!("[题目集解析失败: {}]", vfs_ref.name),
-            }];
+            let mut blocks = Vec::new();
+            if include_images {
+                append_exam_manual_images(conn, blobs_dir, &vfs_ref.source_id, &mut blocks);
+            }
+            if include_ocr_text {
+                if let Some(ssot) = build_exam_questions_ssot_block(conn, vfs_ref) {
+                    blocks.push(ssot);
+                }
+                let history_xml = build_exam_history_xml(conn, &vfs_ref.source_id);
+                if !history_xml.is_empty() {
+                    blocks.push(ContentBlock::Text { text: history_xml });
+                }
+            }
+            return blocks;
         }
     };
 
@@ -2075,27 +2102,6 @@ fn resolve_exam_multimodal(
                     }
                 }
             }
-
-            // 获取该页的 OCR 文本
-            if include_ocr_text {
-                if let Some(cards) = page.get("cards").and_then(|c| c.as_array()) {
-                    let mut page_text = String::new();
-                    for card in cards {
-                        if let Some(label) = card.get("questionLabel").and_then(|l| l.as_str()) {
-                            if let Some(ocr) = card.get("ocrText").and_then(|o| o.as_str()) {
-                                page_text.push_str(&format!(
-                                    "<question label=\"{}\">{}</question>\n",
-                                    escape_xml_attr(label),
-                                    escape_xml_content(ocr)
-                                ));
-                            }
-                        }
-                    }
-                    if !page_text.is_empty() {
-                        blocks.push(ContentBlock::Text { text: page_text });
-                    }
-                }
-            }
         }
     }
 
@@ -2103,10 +2109,22 @@ fn resolve_exam_multimodal(
         append_exam_manual_images(conn, blobs_dir, &vfs_ref.source_id, &mut blocks);
     }
 
+    // ★ LH-INJ-RS：题目文本以 questions 表为准；preview_json 仅承载页图。
+    // Text is intentionally gated so image-only injection does not dump the bank.
+    if include_ocr_text {
+        if let Some(ssot) = build_exam_questions_ssot_block(conn, vfs_ref) {
+            blocks.push(ssot);
+        } else {
+            blocks.extend(resolve_exam_text_only_from_preview(preview_json, vfs_ref));
+        }
+    }
+
     // 注入作答历史（answer_submissions，每题最近 5 条）
-    let history_xml = build_exam_history_xml(conn, &vfs_ref.source_id);
-    if !history_xml.is_empty() {
-        blocks.push(ContentBlock::Text { text: history_xml });
+    if include_ocr_text {
+        let history_xml = build_exam_history_xml(conn, &vfs_ref.source_id);
+        if !history_xml.is_empty() {
+            blocks.push(ContentBlock::Text { text: history_xml });
+        }
     }
 
     log::debug!(
@@ -2259,8 +2277,229 @@ fn resolve_question_image_blob(conn: &Connection, image_value: &Value) -> Option
     blob_hash.map(|h| (h, mime_type))
 }
 
-/// 解析题目集识别 - 文本模式（增强版：支持智能题目集字段）
-fn resolve_exam_text_only(preview_json: &str, vfs_ref: &VfsResourceRef) -> Vec<ContentBlock> {
+/// 从 questions 表构建题目集 SSOT 文本块（题干/答案/状态等）
+fn build_exam_questions_ssot_block(
+    conn: &Connection,
+    vfs_ref: &VfsResourceRef,
+) -> Option<ContentBlock> {
+    use crate::vfs::repos::question_repo::{QuestionStatus, QuestionType};
+
+    const MAX_QUESTIONS: i64 = 200;
+    let sql = r#"
+        SELECT COALESCE(question_label, ''),
+               COALESCE(content, ''),
+               COALESCE(status, 'new'),
+               difficulty,
+               question_type,
+               answer,
+               explanation,
+               user_note,
+               user_answer,
+               COALESCE(attempt_count, 0),
+               COALESCE(correct_count, 0),
+               COALESCE(tags, '[]')
+        FROM questions
+        WHERE exam_id = ?1
+          AND deleted_at IS NULL
+        ORDER BY created_at ASC, id ASC
+        LIMIT ?2
+    "#;
+
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(e) => {
+            log::debug!(
+                "[VfsResolver] questions SSOT prepare failed for {}: {}",
+                vfs_ref.source_id,
+                e
+            );
+            return None;
+        }
+    };
+
+    let rows = match stmt.query_map(rusqlite::params![vfs_ref.source_id, MAX_QUESTIONS], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<String>>(8)?,
+            row.get::<_, i64>(9)?,
+            row.get::<_, i64>(10)?,
+            row.get::<_, String>(11)?,
+        ))
+    }) {
+        Ok(r) => r,
+        Err(e) => {
+            log::debug!(
+                "[VfsResolver] questions SSOT query failed for {}: {}",
+                vfs_ref.source_id,
+                e
+            );
+            return None;
+        }
+    };
+
+    let mut questions_xml = String::new();
+    let mut stats = QuestionBankStatsBuilder::default();
+    let total_available = conn
+        .query_row(
+            "SELECT COUNT(*) FROM questions WHERE exam_id = ?1 AND deleted_at IS NULL",
+            rusqlite::params![vfs_ref.source_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0);
+
+    for row in rows.flatten() {
+        let (
+            label,
+            content,
+            status_raw,
+            difficulty,
+            question_type,
+            answer,
+            explanation,
+            user_note,
+            user_answer,
+            attempt_count,
+            correct_count,
+            tags_json,
+        ) = row;
+
+        if content.trim().is_empty()
+            && label.trim().is_empty()
+            && answer.as_deref().is_none_or(str::is_empty)
+            && explanation.as_deref().is_none_or(str::is_empty)
+            && user_answer.as_deref().is_none_or(str::is_empty)
+            && user_note.as_deref().is_none_or(str::is_empty)
+        {
+            continue;
+        }
+
+        stats.total += 1;
+        let status = QuestionStatus::from_str(&status_raw);
+        match status {
+            QuestionStatus::Mastered => stats.mastered += 1,
+            QuestionStatus::Review => stats.review += 1,
+            QuestionStatus::InProgress => stats.in_progress += 1,
+            QuestionStatus::New => stats.new += 1,
+        }
+
+        let mut attrs = vec![
+            format!("label=\"{}\"", escape_xml_attr(&label)),
+            format!("status=\"{}\"", escape_xml_attr(status.as_str())),
+        ];
+        if let Some(ref d) = difficulty {
+            attrs.push(format!("difficulty=\"{}\"", escape_xml_attr(d)));
+        }
+        if let Some(ref t) = question_type {
+            let normalized = QuestionType::from_str(t).as_str();
+            attrs.push(format!("type=\"{}\"", escape_xml_attr(normalized)));
+        }
+        if attempt_count > 0 {
+            attrs.push(format!("attempts=\"{}\"", attempt_count));
+            attrs.push(format!("correct=\"{}\"", correct_count));
+        }
+
+        questions_xml.push_str(&format!("<question {}>\n", attrs.join(" ")));
+        questions_xml.push_str(&format!(
+            "  <content>{}</content>\n",
+            escape_xml_content(&content)
+        ));
+
+        let tags = serde_json::from_str::<Vec<String>>(&tags_json)
+            .ok()
+            .map(|arr| arr.join(", "))
+            .filter(|s| !s.is_empty());
+        if let Some(t) = tags {
+            questions_xml.push_str(&format!("  <tags>{}</tags>\n", escape_xml_content(&t)));
+        }
+        if let Some(a) = answer.as_deref().filter(|s| !s.is_empty()) {
+            questions_xml.push_str(&format!("  <answer>{}</answer>\n", escape_xml_content(a)));
+        }
+        if let Some(e) = explanation.as_deref().filter(|s| !s.is_empty()) {
+            questions_xml.push_str(&format!(
+                "  <explanation>{}</explanation>\n",
+                escape_xml_content(e)
+            ));
+        }
+        if let Some(ua) = user_answer.as_deref().filter(|s| !s.is_empty()) {
+            questions_xml.push_str(&format!(
+                "  <user_answer>{}</user_answer>\n",
+                escape_xml_content(ua)
+            ));
+        }
+        if let Some(n) = user_note.as_deref().filter(|s| !s.is_empty()) {
+            questions_xml.push_str(&format!(
+                "  <user_note>{}</user_note>\n",
+                escape_xml_content(n)
+            ));
+        }
+        questions_xml.push_str("</question>\n");
+    }
+
+    if questions_xml.is_empty() {
+        return None;
+    }
+
+    let correct_rate = if stats.total > 0 && (stats.mastered + stats.review) > 0 {
+        let attempted = stats.mastered + stats.review + stats.in_progress;
+        if attempted > 0 {
+            Some(format!("{:.2}", stats.mastered as f64 / attempted as f64))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let mut stats_xml = format!(
+        "<stats total=\"{}\" mastered=\"{}\" review=\"{}\" in_progress=\"{}\" new=\"{}\"",
+        stats.total, stats.mastered, stats.review, stats.in_progress, stats.new
+    );
+    if let Some(rate) = correct_rate {
+        stats_xml.push_str(&format!(" correct_rate=\"{}\"", rate));
+    }
+    if total_available > MAX_QUESTIONS {
+        stats_xml.push_str(&format!(
+            " truncated=\"true\" total_available=\"{}\"",
+            total_available
+        ));
+    }
+    stats_xml.push_str("/>");
+    if total_available > MAX_QUESTIONS {
+        questions_xml.push_str(&format!(
+            "<system_note>题目较多，已按预算注入前 {} 题（共 {} 题）。</system_note>\n",
+            MAX_QUESTIONS, total_available
+        ));
+    }
+
+    log::debug!(
+        "[VfsResolver] Resolved exam {} SSOT text: {} questions",
+        vfs_ref.source_id,
+        stats.total
+    );
+
+    Some(ContentBlock::Text {
+        text: format!(
+            "<question_bank id=\"{}\" name=\"{}\" source=\"questions\">\n{}\n<questions>\n{}</questions>\n</question_bank>",
+            escape_xml_attr(&vfs_ref.source_id),
+            escape_xml_attr(&vfs_ref.name),
+            stats_xml,
+            questions_xml
+        ),
+    })
+}
+
+/// 旧卷回退：从 preview_json 卡片 OCR 拼题干（仅当 questions 表无数据时）
+fn resolve_exam_text_only_from_preview(
+    preview_json: &str,
+    vfs_ref: &VfsResourceRef,
+) -> Vec<ContentBlock> {
     let preview: serde_json::Value = match serde_json::from_str(preview_json) {
         Ok(v) => v,
         Err(e) => {
@@ -2392,14 +2631,14 @@ fn resolve_exam_text_only(preview_json: &str, vfs_ref: &VfsResourceRef) -> Vec<C
         stats_xml.push_str("/>");
 
         log::debug!(
-            "[VfsResolver] Resolved exam {} text: {} questions",
+            "[VfsResolver] Resolved exam {} preview OCR fallback: {} questions",
             vfs_ref.source_id,
             stats.total
         );
 
         vec![ContentBlock::Text {
             text: format!(
-                "<question_bank id=\"{}\" name=\"{}\">\n{}\n<questions>\n{}</questions>\n</question_bank>",
+                "<question_bank id=\"{}\" name=\"{}\" source=\"preview_ocr\">\n{}\n<questions>\n{}</questions>\n</question_bank>",
                 escape_xml_attr(&vfs_ref.source_id),
                 escape_xml_attr(&vfs_ref.name),
                 stats_xml,

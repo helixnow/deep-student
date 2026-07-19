@@ -8793,7 +8793,7 @@ mod tests {
             .remove(0);
         assert_eq!(preflight.review_version, 0);
 
-        service.rate(&state_id, FsrsRating::Good.as_u8(), Some(75))?;
+        service.rate(&state_id, FsrsRating::Good.as_u8(), Some(75), None)?;
         let conflict = db.delete_anki_card_for_library(
             scope,
             &card.id,

@@ -45,11 +45,19 @@
     "shortcutList": "Keyboard Shortcuts",
     "closeShortcuts": "Close shortcuts panel",
     "hideCompleted": "Hide completed",
+    "learning": "Learn",
     "fold": "Fold",
     "foldMenu": "Expand / collapse to level",
     "expandAll": "Expand all",
     "collapseAll": "Collapse all",
     "collapseToLevel": "Collapse to level {{level}}"
+  },
+  "preferences": {
+    "mubuKeymap": "Mubu-compatible keymap",
+    "spatialNavigation": "Spatial canvas arrow navigation",
+    "descriptionFirstLine": "Preview first description line only",
+    "mubuKeymapActive": "Mubu keymap: Cmd+Enter completes, Shift+Enter edits description, Cmd+[/] focuses; Alt+[/] folds.",
+    "deepStudentKeymapActive": "Deep Student default (not Mubu): Cmd+Enter adds a child, Shift+Enter inserts a line; Alt+[/] folds."
   },
   "export": {
     "title": "Export",
@@ -86,7 +94,13 @@
     "emptyMap": "Empty Mind Map",
     "unsavedWarning": "The current mind map has unsaved changes. Importing will overwrite them. Continue?",
     "unsavedTitle": "Import will overwrite unsaved changes",
-    "unsavedConfirm": "Continue import"
+    "unsavedConfirm": "Continue import",
+    "unnamedTopic": "Untitled topic"
+  },
+  "presentation": {
+    "enter": "Presentation mode",
+    "exit": "Exit presentation mode",
+    "exitHint": "Exit presentation mode (Esc)"
   },
   "errors": {
     "notFound": "Mind map not found"
@@ -115,6 +129,7 @@
     "editNote": "Edit note",
     "moveNode": "Move node up / down",
     "collapseExpand": "Collapse / expand node",
+    "zoomInOut": "Focus in / return to parent",
     "bold": "Bold",
     "fitView": "Fit view",
     "clipboard": "Copy / cut / paste",
@@ -280,6 +295,7 @@
   },
   "association": {
     "add": "Add association",
+    "selectSource": "Select a source node first",
     "pickTarget": "Click a target node",
     "editLabel": "Edit label",
     "delete": "Delete association",
@@ -326,6 +342,7 @@
     "markBlank": "Mark blank",
     "clearBlanks": "Clear All Blanks",
     "emptyHint": "Select text and click 'Blank' to create cloze items",
+    "createBlankCta": "Exit recite and create a blank",
     "progress": "{{revealed}}/{{total}} revealed"
   }
 }

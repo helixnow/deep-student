@@ -4,11 +4,17 @@ import type { DstuNode, DstuNodeType, DstuListOptions } from '@/dstu/types';
 import { dstu } from '@/dstu/api';
 import { folderApi, trashApi } from '@/dstu';
 import type { BreadcrumbItem as BackendBreadcrumbItem } from '@/dstu/api/folderApi';
-import { reportError } from '@/shared/result';
+import { reportError, type VfsError } from '@/shared/result';
 import i18n from '@/i18n';
 import type { FinderViewKind, QuickAccessType } from '../learningHubContracts';
 import { getQuickAccessTarget } from '../learningHubContracts';
 import { getViewKindFromFolderId, isRealFolderId, isSpecialViewFolderId } from '../viewGuards';
+import {
+  TRASH_RESOURCE_TYPE_MAP,
+  isResultTruncated,
+  matchesLiveName,
+} from '../utils/searchHonesty';
+import { pruneSelectionAgainstItems } from './selectionPrune';
 
 /** 视图模式 */
 export type ViewMode = 'grid' | 'list';
@@ -129,6 +135,10 @@ export interface FinderPath {
   typeFilter: DstuNodeType | null;
 }
 
+export type QueryItemsForPathResult =
+  | { ok: true; value: DstuNode[] }
+  | { ok: false; error: VfsError };
+
 /** 内联编辑状态 */
 export interface InlineEditState {
   /** 正在编辑的项 ID */
@@ -169,6 +179,8 @@ interface FinderState {
   searchQuery: string;
   /** 是否正在搜索 */
   isSearching: boolean;
+  /** 搜索截断元数据（诚实提示用；非搜索时为 null） */
+  searchMeta: { truncated: boolean; limit: number } | null;
   
   // ========== 数据状态 ==========
   /** 当前目录内容 */
@@ -234,6 +246,8 @@ interface FinderState {
    *                    数据到达后原地替换，不显示 loading 骨架、不打断浏览/选择
    */
   refresh: (opts?: { silent?: boolean }) => Promise<void>;
+  /** 查询指定路径的内容，不改变全局路径或列表状态。 */
+  queryItemsForPath: (path: FinderPath) => Promise<QueryItemsForPathResult>;
   /** 加载目录内容 */
   loadItems: (opts?: { silent?: boolean }) => Promise<void>;
   
@@ -270,7 +284,7 @@ const DEFAULT_PATH: FinderPath = {
   typeFilter: null,
 };
 
-function createFinderPath(overrides: Partial<FinderPath> = {}): FinderPath {
+export function createFinderPath(overrides: Partial<FinderPath> = {}): FinderPath {
   return {
     viewKind: 'folder',
     breadcrumbs: [],
@@ -278,6 +292,28 @@ function createFinderPath(overrides: Partial<FinderPath> = {}): FinderPath {
     typeFilter: null,
     ...overrides,
   };
+}
+
+function getDstuListOptionsForPath(
+  path: FinderPath,
+  sortBy: SortBy,
+  sortOrder: SortOrder,
+): DstuListOptions {
+  const options: DstuListOptions = {
+    sortBy: sortBy === 'type' ? 'name' : sortBy,
+    sortOrder,
+  };
+
+  if (path.viewKind === 'folder' && isRealFolderId(path.folderId)) {
+    options.folderId = path.folderId;
+  }
+  if (path.typeFilter) {
+    options.typeFilter = path.typeFilter;
+  }
+  if (path.viewKind === 'favorites') {
+    options.isFavorite = true;
+  }
+  return options;
 }
 
 /** 历史记录最大条数，防止内存无限增长 */
@@ -304,6 +340,7 @@ export const useFinderStore = create<FinderState>()(
       // 搜索状态
       searchQuery: '',
       isSearching: false,
+      searchMeta: null,
       
       // 数据状态
       items: [],
@@ -322,7 +359,7 @@ export const useFinderStore = create<FinderState>()(
       
       // Actions
       navigateTo: (path: FinderPath) => {
-        const { history, historyIndex } = get();
+        const { history, historyIndex, _currentRequestId } = get();
         // 截断历史记录，添加新路径
         let newHistory = history.slice(0, historyIndex + 1);
         newHistory.push(path);
@@ -340,6 +377,8 @@ export const useFinderStore = create<FinderState>()(
           lastSelectedId: null,
           searchQuery: '',
           isSearching: false,
+          searchMeta: null,
+          _currentRequestId: _currentRequestId + 1,
         });
       },
       
@@ -377,7 +416,7 @@ export const useFinderStore = create<FinderState>()(
       },
       
       goBack: () => {
-        const { historyIndex, history } = get();
+        const { historyIndex, history, _currentRequestId } = get();
         if (historyIndex > 0) {
           const newIndex = historyIndex - 1;
           set({
@@ -385,12 +424,16 @@ export const useFinderStore = create<FinderState>()(
             currentPath: history[newIndex],
             selectedIds: new Set(),
             lastSelectedId: null,
+            searchQuery: '',
+            isSearching: false,
+            searchMeta: null,
+            _currentRequestId: _currentRequestId + 1,
           });
         }
       },
       
       goForward: () => {
-        const { historyIndex, history } = get();
+        const { historyIndex, history, _currentRequestId } = get();
         if (historyIndex < history.length - 1) {
           const newIndex = historyIndex + 1;
           set({
@@ -398,6 +441,10 @@ export const useFinderStore = create<FinderState>()(
             currentPath: history[newIndex],
             selectedIds: new Set(),
             lastSelectedId: null,
+            searchQuery: '',
+            isSearching: false,
+            searchMeta: null,
+            _currentRequestId: _currentRequestId + 1,
           });
         }
       },
@@ -409,11 +456,14 @@ export const useFinderStore = create<FinderState>()(
         const viewKind = getViewKindFromFolderId(normalizedFolderId);
         
         // 如果已经是当前路径，跳过
-        const { currentPath } = get();
+        const { currentPath, _currentRequestId } = get();
         if (currentPath.folderId === normalizedFolderId && currentPath.viewKind === viewKind) {
           return;
         }
         
+        // Invalidate any current search/load before awaiting breadcrumbs.
+        set({ _currentRequestId: _currentRequestId + 1 });
+
         // 获取面包屑
         const newBreadcrumbs = normalizedFolderId && isRealFolderId(normalizedFolderId)
           ? await fetchBreadcrumbs(normalizedFolderId)
@@ -432,6 +482,8 @@ export const useFinderStore = create<FinderState>()(
           lastSelectedId: null,
           searchQuery: '',
           isSearching: false,
+          searchMeta: null,
+          _currentRequestId: get()._currentRequestId,
         });
       },
       
@@ -528,7 +580,11 @@ export const useFinderStore = create<FinderState>()(
 
       setSelectedIds: (ids: Set<string>) => set({ selectedIds: ids }),
       
-      setSearchQuery: (query: string) => set({ searchQuery: query, isSearching: !!query }),
+      setSearchQuery: (query: string) => set({
+        searchQuery: query,
+        isSearching: !!query,
+        searchMeta: query.trim() ? get().searchMeta : null,
+      }),
       
       executeSearch: async () => {
         const { searchQuery, getDstuListOptions, currentPath } = get();
@@ -536,69 +592,74 @@ export const useFinderStore = create<FinderState>()(
 
         // 如果搜索关键词为空，不执行搜索
         if (!searchQuery.trim()) {
-          set({ isSearching: false });
+          set({ isSearching: false, searchMeta: null });
           return;
         }
 
         // ★ 生成新的请求 ID，取消之前的请求
         const requestId = get()._currentRequestId + 1;
-        set({ isSearching: true, isLoading: true, error: null, _currentRequestId: requestId });
+        set({ isSearching: true, isLoading: true, error: null, searchMeta: null, _currentRequestId: requestId });
 
         // 根据当前路径状态选择搜索方式
         let result;
+        let effectiveLimit = options.limit ?? 50;
+        let resultsTruncated = false;
         if (currentPath.viewKind === 'indexStatus' || currentPath.viewKind === 'memory' || currentPath.viewKind === 'desktop') {
-          result = { ok: true as const, value: [] };
+          result = { ok: true as const, value: [] as DstuNode[] };
         } else if (currentPath.viewKind === 'recent') {
+          // hydrate-then-filter：先 dstu.get 再用活名 filter（避免改名后搜新名漏命中）
           const { useRecentStore } = await import('./recentStore');
           let recentItems = useRecentStore.getState().getRecentItems();
-          const normalizedQuery = searchQuery.trim().toLowerCase();
-          recentItems = recentItems.filter(item => {
-            if (currentPath.typeFilter && item.type !== currentPath.typeFilter) {
-              return false;
-            }
-            return item.name.toLowerCase().includes(normalizedQuery);
-          });
+          if (currentPath.typeFilter) {
+            recentItems = recentItems.filter((item) => item.type === currentPath.typeFilter);
+          }
 
-          const recentResults = await Promise.all(
+          const hydrated = await Promise.all(
             recentItems.map(async (recent) => {
               let getResult = await dstu.get(recent.path);
               if (!getResult.ok) {
                 getResult = await dstu.get(`/${recent.id}`);
               }
-              return { recent, getResult };
-            })
+              return { recent, node: getResult.ok ? getResult.value : null };
+            }),
           );
 
-          const recentNodes: DstuNode[] = [];
-          for (const { recent, getResult } of recentResults) {
-            if (getResult.ok) {
-              recentNodes.push(getResult.value);
-            } else {
+          const liveNodes: DstuNode[] = [];
+          for (const { recent, node } of hydrated) {
+            if (!node) {
               useRecentStore.getState().removeRecent(recent.id);
+              continue;
             }
+            liveNodes.push(node);
           }
-          result = { ok: true as const, value: recentNodes };
-        } else if (currentPath.viewKind === 'trash') {
-          const resourceTypeMap: Record<string, string> = {
-            note: 'notes',
-            textbook: 'textbooks',
-            exam: 'exams',
-            essay: 'essays',
-            translation: 'translations',
-            image: 'images',
-            file: 'files',
-            mindmap: 'mindmaps',
+          result = {
+            ok: true as const,
+            value: liveNodes.filter((node) => matchesLiveName(node, searchQuery)),
           };
-
-          const trashResult = currentPath.typeFilter && resourceTypeMap[currentPath.typeFilter]
-            ? await dstu.listDeleted(resourceTypeMap[currentPath.typeFilter], options.limit, options.offset)
-            : await trashApi.listTrash(options.limit, options.offset);
+          effectiveLimit = useRecentStore.getState().maxItems ?? 50;
+        } else if (currentPath.viewKind === 'trash') {
+          effectiveLimit = options.limit ?? 100;
+          const requestLimit = effectiveLimit + 1;
+          const trashResult = currentPath.typeFilter && TRASH_RESOURCE_TYPE_MAP[currentPath.typeFilter]
+            ? await dstu.listDeleted(
+              TRASH_RESOURCE_TYPE_MAP[currentPath.typeFilter],
+              requestLimit,
+              options.offset,
+            )
+            : await trashApi.listTrash(requestLimit, options.offset);
 
           if (trashResult.ok) {
-            const normalizedQuery = searchQuery.trim().toLowerCase();
+            resultsTruncated = trashResult.value.length > effectiveLimit;
             result = {
               ok: true as const,
-              value: trashResult.value.filter(item => item.name.toLowerCase().includes(normalizedQuery)),
+              value: trashResult.value
+                .filter((item) =>
+                  (!currentPath.typeFilter ||
+                    TRASH_RESOURCE_TYPE_MAP[currentPath.typeFilter] ||
+                    item.type === currentPath.typeFilter) &&
+                  matchesLiveName(item, searchQuery),
+                )
+                .slice(0, effectiveLimit),
             };
           } else {
             result = trashResult;
@@ -619,22 +680,90 @@ export const useFinderStore = create<FinderState>()(
         }
 
         if (result.ok) {
+          const { selectedIds, lastSelectedId } = get();
+          const pruned = pruneSelectionAgainstItems(selectedIds, result.value, lastSelectedId, {
+            preserveLastSelectedIfWasSelected: true,
+          });
+          const truncated = currentPath.viewKind === 'trash'
+            ? resultsTruncated
+            : isResultTruncated(result.value.length, effectiveLimit);
           set({
             items: result.value,
             isSearching: true,
-            isLoading: false
+            isLoading: false,
+            selectedIds: pruned.selectedIds,
+            lastSelectedId: pruned.lastSelectedId,
+            searchMeta: { truncated, limit: effectiveLimit },
           });
         } else {
           reportError(result.error, '搜索资源');
+          const { selectedIds, lastSelectedId } = get();
+          const pruned = pruneSelectionAgainstItems(selectedIds, [], lastSelectedId, {
+            preserveLastSelectedIfWasSelected: true,
+          });
           set({
             error: result.error.message,
             isSearching: true,
             isLoading: false,
-            items: []
+            items: [],
+            selectedIds: pruned.selectedIds,
+            lastSelectedId: pruned.lastSelectedId,
+            searchMeta: null,
           });
         }
       },
       
+      queryItemsForPath: async (path) => {
+        const { sortBy, sortOrder } = get();
+        const options = getDstuListOptionsForPath(path, sortBy, sortOrder);
+
+        if (path.viewKind === 'indexStatus' || path.viewKind === 'memory' || path.viewKind === 'desktop') {
+          return { ok: true, value: [] };
+        }
+
+        if (path.viewKind === 'recent') {
+          const { useRecentStore } = await import('./recentStore');
+          let recentItems = useRecentStore.getState().getRecentItems();
+          if (path.typeFilter) {
+            recentItems = recentItems.filter((item) => item.type === path.typeFilter);
+          }
+
+          const results = await Promise.all(recentItems.map(async (recent) => {
+            let result = await dstu.get(recent.path);
+            if (!result.ok) result = await dstu.get(`/${recent.id}`);
+            return { recent, result };
+          }));
+
+          const items: DstuNode[] = [];
+          for (const { recent, result } of results) {
+            if (result.ok) items.push(result.value);
+            else useRecentStore.getState().removeRecent(recent.id);
+          }
+          return { ok: true, value: items };
+        }
+
+        if (path.viewKind === 'trash') {
+          const result = path.typeFilter && TRASH_RESOURCE_TYPE_MAP[path.typeFilter]
+            ? await dstu.listDeleted(TRASH_RESOURCE_TYPE_MAP[path.typeFilter], options.limit, options.offset)
+            : await trashApi.listTrash(options.limit, options.offset);
+          if (!result.ok) return result;
+
+          // Unsupported backend resource types (folder/image/file/etc.) are
+          // intentionally filtered locally from the complete trash listing.
+          return {
+            ok: true,
+            value: path.typeFilter && !TRASH_RESOURCE_TYPE_MAP[path.typeFilter]
+              ? result.value.filter((item) => item.type === path.typeFilter)
+              : result.value,
+          };
+        }
+
+        const result = path.viewKind === 'favorites'
+          ? await dstu.list('/', { ...options, isFavorite: true })
+          : await dstu.list('/', options);
+        return result;
+      },
+
       refresh: async (opts) => {
         const { searchQuery, executeSearch, loadItems } = get();
         if (searchQuery.trim()) {
@@ -661,123 +790,28 @@ export const useFinderStore = create<FinderState>()(
           if (silent) {
             set({ error: message, isLoading: false });
           } else {
-            set({ error: message, isLoading: false, items: [] });
+            const { selectedIds, lastSelectedId } = get();
+            const pruned = pruneSelectionAgainstItems(selectedIds, [], lastSelectedId, {
+              preserveLastSelectedIfWasSelected: true,
+            });
+            set({
+              error: message,
+              isLoading: false,
+              items: [],
+              selectedIds: pruned.selectedIds,
+              lastSelectedId: pruned.lastSelectedId,
+            });
           }
         };
 
-        const { currentPath, getDstuListOptions } = get();
-        let items: DstuNode[] = [];
-
-        // 获取统一的列表选项（包含排序、筛选等）
-        const options = getDstuListOptions();
-
-        // 根据当前路径状态选择不同的加载方式
-        if (currentPath.viewKind === 'indexStatus' || currentPath.viewKind === 'memory' || currentPath.viewKind === 'desktop') {
-          items = [];
-        } else if (currentPath.viewKind === 'recent') {
-          // ★ 最近文件模式：从前端存储加载访问记录
-          const { useRecentStore } = await import('./recentStore');
-          let recentItems = useRecentStore.getState().getRecentItems();
-
-          // ★ 修复1: 支持类型筛选（前端筛选，避免加载不需要的资源）
-          if (currentPath.typeFilter) {
-            recentItems = recentItems.filter(item => item.type === currentPath.typeFilter);
-          }
-
-          // ★ 修复2: 并发加载提升性能（而非串行 for 循环）
-          const results = await Promise.all(
-            recentItems.map(async (recent) => {
-              // ★ 修复3: 优先用 path，失败则用 ID 重试（处理资源移动场景）
-              let result = await dstu.get(recent.path);
-              if (!result.ok) {
-                // 降级：尝试用 ID 构造路径重试
-                result = await dstu.get(`/${recent.id}`);
-              }
-              return { recent, result };
-            })
-          );
-
-          // 提取成功的资源，清理失效记录
-          const nodes: DstuNode[] = [];
-          for (const { recent, result } of results) {
-            if (result.ok) {
-              nodes.push(result.value);
-            } else {
-              // 如果资源已被删除或不存在，从最近记录中移除
-              console.warn('[finderStore] 最近文件已不存在，从记录中移除:', recent.path, recent.id);
-              useRecentStore.getState().removeRecent(recent.id);
-            }
-          }
-
-          items = nodes;
-        } else if (currentPath.viewKind === 'trash') {
-          // ★ 回收站模式：加载已删除的资源
-          // 将DstuNodeType映射到资源类型字符串
-          const resourceTypeMap: Record<string, string> = {
-            note: 'notes',
-            textbook: 'textbooks',
-            exam: 'exams',
-            essay: 'essays',
-            translation: 'translations',
-            image: 'images',
-            file: 'files',
-            folder: 'folders',
-            retrieval: 'retrieval',
-            mindmap: 'mindmaps',
-          };
-          if (currentPath.typeFilter && resourceTypeMap[currentPath.typeFilter]) {
-            const resourceType = resourceTypeMap[currentPath.typeFilter];
-            const result = await dstu.listDeleted(resourceType, options.limit, options.offset);
-            if (result.ok) {
-              items = result.value;
-            } else {
-              reportError(result.error, '加载回收站');
-              failLoad(result.error.message);
-              return;
-            }
-          } else {
-            if (currentPath.typeFilter && !resourceTypeMap[currentPath.typeFilter]) {
-              console.warn('[finderStore] Unknown typeFilter for trash:', currentPath.typeFilter, '- loading all items');
-            }
-            // 没有类型过滤或未知类型时，加载所有已删除项
-            const result = await trashApi.listTrash(options.limit, options.offset);
-            if (result.ok) {
-              items = result.value;
-            } else {
-              reportError(result.error, '加载回收站');
-              failLoad(result.error.message);
-              return;
-            }
-          }
-        } else if (currentPath.viewKind === 'favorites') {
-          const result = await dstu.list('/', { ...options, isFavorite: true });
-          if (!result.ok) {
-            reportError(result.error, '加载收藏');
-            failLoad(result.error.message);
-            return;
-          }
-          items = result.value;
-        } else if (currentPath.viewKind === 'folder') {
-          const dstuResult = await dstu.list('/', options);
-
-          if (!dstuResult.ok) {
-            reportError(dstuResult.error, currentPath.folderId ? '加载文件夹' : '加载根目录');
-            failLoad(dstuResult.error.message);
-            return;
-          }
-
-          items = dstuResult.value;
-        } else {
-          // ★ 智能文件夹模式：按类型筛选
-          const result = await dstu.list('/', options);
-          if (result.ok) {
-            items = result.value;
-          } else {
-            reportError(result.error, '加载列表');
-            failLoad(result.error.message);
-            return;
-          }
+        const { currentPath, queryItemsForPath } = get();
+        const result = await queryItemsForPath(currentPath);
+        if (!result.ok && 'error' in result) {
+          reportError(result.error, '加载列表');
+          failLoad(result.error.message);
+          return;
         }
+        let items = result.value;
 
         // ★ 检查请求是否已过期（有更新的请求发起）
         if (get()._currentRequestId !== requestId) {
@@ -786,16 +820,31 @@ export const useFinderStore = create<FinderState>()(
         }
 
         // 应用前端排序
-        const { sortBy, sortOrder } = get();
+        const { sortBy, sortOrder, selectedIds, lastSelectedId } = get();
         items = sortItems(items, sortBy, sortOrder);
 
+        const pruned = pruneSelectionAgainstItems(selectedIds, items, lastSelectedId, {
+          preserveLastSelectedIfWasSelected: true,
+        });
         set({
           items,
-          isLoading: false
+          isLoading: false,
+          selectedIds: pruned.selectedIds,
+          lastSelectedId: pruned.lastSelectedId,
         });
       },
       
-      setItems: (items: DstuNode[]) => set({ items }),
+      setItems: (items: DstuNode[]) => {
+        const { selectedIds, lastSelectedId } = get();
+        const pruned = pruneSelectionAgainstItems(selectedIds, items, lastSelectedId, {
+          preserveLastSelectedIfWasSelected: true,
+        });
+        set({
+          items,
+          selectedIds: pruned.selectedIds,
+          lastSelectedId: pruned.lastSelectedId,
+        });
+      },
       setLoading: (isLoading: boolean) => set({ isLoading }),
       setError: (error: string | null) => set({ error }),
 
@@ -841,6 +890,7 @@ export const useFinderStore = create<FinderState>()(
        * 重置状态
        */
       reset: () => {
+          const { _currentRequestId } = get();
           set({
               currentPath: DEFAULT_PATH,
               history: [DEFAULT_PATH],
@@ -849,12 +899,14 @@ export const useFinderStore = create<FinderState>()(
               lastSelectedId: null,
               searchQuery: '',
               isSearching: false,
+              searchMeta: null,
               items: [],
               inlineEdit: {
                 editingId: null,
                 editingType: null,
                 originalName: '',
               },
+              _currentRequestId: _currentRequestId + 1,
           })
       },
       

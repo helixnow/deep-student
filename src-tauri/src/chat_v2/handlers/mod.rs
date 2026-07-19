@@ -55,7 +55,7 @@ pub use manage_session::{
     chat_v2_get_message_summary, chat_v2_get_session, chat_v2_list_agent_sessions,
     chat_v2_list_sessions, chat_v2_plan_gate_respond, chat_v2_restore_session,
     chat_v2_save_session, chat_v2_session_message_count, chat_v2_set_authority_mode,
-    chat_v2_soft_delete_session, chat_v2_update_session_settings,
+    chat_v2_set_permission_preset, chat_v2_soft_delete_session, chat_v2_update_session_settings,
 };
 pub use migration::{
     chat_v2_check_migration_status, chat_v2_migrate_legacy_chat, chat_v2_rollback_migration,

@@ -32,6 +32,7 @@ pub mod prompt_builder;
 pub mod repo;
 pub mod resource_repo; // ⚠️ DEPRECATED: 资源存储已迁移到 VFS (vfs.db)，由 vfs/repos/resource_repo.rs 替代。参见 P1-#9。
 pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（类型仍被 pipeline/context 使用，暂不废弃）
+pub mod role_packs;
 pub mod runtime_roots;
 pub mod shell_command_policy;
 pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
@@ -39,6 +40,8 @@ pub mod skill_taps; // 🆕 Tap 式技能源（GitHub 仓库即技能目录）
 pub mod skill_updates; // 🆕 技能更新检查与一键更新（基于 provenance URL）
 pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
+pub mod task_audit; // Deterministic task audit manifests and export redaction
+pub mod task_objects; // Unified file/message/event/record identity and delivery receipts
 pub mod tool_approval_policy;
 pub mod tool_policy;
 pub mod tools;

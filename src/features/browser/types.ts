@@ -94,6 +94,24 @@ export interface BrowserSessionState extends BrowserSessionSnapshot {
   lastError: string | null;
 }
 
+export interface BrowserDownloadObservation {
+  id: string;
+  browserSessionId: string;
+  chatSessionId: string;
+  url: string;
+  filename: string;
+  state: 'started' | 'processing' | 'completed' | 'failed';
+  rootId: 'artifacts';
+  relativePath: string;
+  locator: string;
+  sha256?: string | null;
+  sizeBytes?: number | null;
+  error?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  objectHandle?: Record<string, unknown> | null;
+}
+
 export type BrowserCommandName =
   | 'browser_open_session'
   | 'browser_close'
@@ -111,4 +129,6 @@ export type BrowserCommandName =
   | 'browser_snapshot'
   | 'browser_click'
   | 'browser_type'
+  | 'browser_set_input_files'
+  | 'browser_list_downloads'
   | 'browser_scroll';

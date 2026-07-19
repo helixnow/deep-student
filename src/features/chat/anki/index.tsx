@@ -117,6 +117,7 @@ export async function saveCardsToLibrary(
   taskId?: string;
   warning?: AnkiSaveWarning;
   error?: string;
+  skippedErrorCards?: number;
 }> {
   const { cards, context } = params;
 
@@ -124,9 +125,29 @@ export async function saveCardsToLibrary(
     return { success: true, savedCount: 0, cardIdMappings: [] };
   }
 
+  const errorCardCount = cards.filter((card) => {
+    const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
+    return row.is_error_card === true || row.isErrorCard === true;
+  }).length;
+  const savableCards = cards.filter((card) => {
+    const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
+    return row.is_error_card !== true && row.isErrorCard !== true;
+  });
+  if (errorCardCount > 0) {
+    console.warn(`[anki] saveCardsToLibrary: ${errorCardCount} error cards skipped`);
+  }
+  if (savableCards.length === 0) {
+    return {
+      success: false,
+      savedCount: 0,
+      skippedErrorCards: errorCardCount,
+      error: 'all cards are diagnostic error cards',
+    };
+  }
+
   try {
     const result = await ankiApiAdapter.saveAnkiCards({
-      cards,
+      cards: savableCards,
       documentId: context?.documentId ?? null,
       businessSessionId: context?.businessSessionId ?? null,
       messageStableId: context?.messageStableId ?? null,
@@ -188,6 +209,7 @@ export async function saveCardsToLibrary(
       duplicated: duplicatedIds.length,
       skipped: skippedIds.length,
       failed: failed.length,
+      skippedErrorCards: errorCardCount,
     });
 
     return {
@@ -200,11 +222,17 @@ export async function saveCardsToLibrary(
       failed,
       taskId: result.taskId,
       warning,
+      ...(errorCardCount > 0 ? { skippedErrorCards: errorCardCount } : {}),
     };
   } catch (error: unknown) {
     console.error('[anki] saveCardsToLibrary error:', error);
     const message = error instanceof Error ? error.message : String(error ?? 'unknown error');
-    return { success: false, savedCount: 0, error: message };
+    return {
+      success: false,
+      savedCount: 0,
+      error: message,
+      ...(errorCardCount > 0 ? { skippedErrorCards: errorCardCount } : {}),
+    };
   }
 }
 
@@ -229,9 +257,15 @@ export async function exportCardsAsApkg(
   try {
     // 多模板导出：直接调用后端 export_cards_as_apkg_with_template
     // 每张卡片保留自己的 template_id，后端会按卡片分组加载对应模板
-    const errorCardCount = cards.filter(card => card.is_error_card).length;
+    const errorCardCount = cards.filter((card) => {
+      const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
+      return row.is_error_card === true || row.isErrorCard === true;
+    }).length;
     const cardsForExport = cards
-      .filter(card => !card.is_error_card)
+      .filter((card) => {
+        const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
+        return row.is_error_card !== true && row.isErrorCard !== true;
+      })
       .map(card => ({
         front: card.front ?? card.fields?.Front ?? '',
         back: card.back ?? card.fields?.Back ?? '',
@@ -312,7 +346,10 @@ export async function importCardsViaAnkiConnect(
 
   try {
     const validCards = cards
-      .filter(c => !c.is_error_card)
+      .filter((c) => {
+        const row = c as { is_error_card?: unknown; isErrorCard?: unknown };
+        return row.is_error_card !== true && row.isErrorCard !== true;
+      })
       .map(card => ({
         front: card.front ?? card.fields?.Front ?? '',
         back: card.back ?? card.fields?.Back ?? '',

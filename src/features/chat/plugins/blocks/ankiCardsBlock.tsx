@@ -804,7 +804,16 @@ const ActionButtons: React.FC<{
         throw new Error(failDetail);
       }
       await onCardsPersisted?.(result.cardIdMappings ?? []);
-      logChatAnkiEvent('chat_anki_action_performed', { action: 'save', cardCount: cards.length }, context);
+      const reviewableSavedCount = result.savedCount;
+      logChatAnkiEvent(
+        'chat_anki_action_performed',
+        {
+          action: 'save',
+          cardCount: reviewableSavedCount,
+          skippedErrorCards: result.skippedErrorCards ?? 0,
+        },
+        context,
+      );
       setSaveStatus('success');
       if (result.warning?.code === 'anki_save_partial') {
         showGlobalNotification(
@@ -825,6 +834,15 @@ const ActionButtons: React.FC<{
             skipped: result.warning.details.skipped,
             duplicated: result.warning.details.duplicated,
           })
+        );
+      } else if ((result.skippedErrorCards ?? 0) > 0) {
+        showGlobalNotification(
+          'warning',
+          t('blocks.ankiCards.action.savedCountWithHint', { count: result.savedCount }),
+          t('blocks.ankiCards.action.skippedDiagnosticDetail', {
+            count: result.skippedErrorCards,
+            defaultValue: 'Skipped {{count}} diagnostic cards',
+          }),
         );
       } else {
         showGlobalNotification(
@@ -899,27 +917,54 @@ const ActionButtons: React.FC<{
     resetStatusAfterDelay(setExportStatus);
   }, [cards, context, exportStatus, resetStatusAfterDelay, t]);
 
-  const reviewCardIds = useMemo(
-    () => cards.map((card) => (typeof card.id === 'string' ? card.id.trim() : '')),
+  const reviewableCards = useMemo(
+    () => cards.filter((card) => {
+      const row = card as { is_error_card?: unknown; isErrorCard?: unknown };
+      return row.is_error_card !== true && row.isErrorCard !== true;
+    }),
     [cards],
   );
+  const reviewCardIds = useMemo(
+    () => reviewableCards.map((card) => (typeof card.id === 'string' ? card.id.trim() : '')),
+    [reviewableCards],
+  );
+  const reviewTemplateId = useCallback((card: AnkiCard): string | undefined => {
+    if (typeof card.template_id === 'string') return card.template_id;
+    const legacyTemplateId = Reflect.get(card, 'templateId');
+    return typeof legacyTemplateId === 'string' ? legacyTemplateId : undefined;
+  }, []);
   const reviewCards = useMemo(
     () =>
-      cards.map((card, index) => ({
-        id: reviewCardIds[index],
-        ankiCardId: reviewCardIds[index],
-        front: card.front || card.text || '',
-        back: card.back || card.text || '',
-        tags: card.tags,
-      })),
-    [cards, reviewCardIds],
+      reviewableCards.map((card, index) => {
+        const templateId = reviewTemplateId(card);
+        return {
+          id: reviewCardIds[index],
+          ankiCardId: reviewCardIds[index],
+          front: card.front || '',
+          back: card.back || '',
+          ...(typeof card.text === 'string' && card.text.trim()
+            ? { text: card.text }
+            : {}),
+          tags: card.tags,
+          ...(Array.isArray(card.images) ? { images: card.images } : {}),
+          ...(templateId ? { templateId } : {}),
+          ...(card.fields && typeof card.fields === 'object'
+            ? { extraFields: card.fields as Record<string, string> }
+            : {}),
+        };
+      }),
+    [reviewableCards, reviewCardIds, reviewTemplateId],
   );
   const canReviewBatch =
-    cards.length > 0 &&
+    reviewCards.length > 0 &&
     reviewCards.every((card) => {
       const id = card.ankiCardId;
+      const hasFace =
+        card.front.trim().length > 0
+        || card.back.trim().length > 0
+        || (typeof card.text === 'string' && card.text.trim().length > 0);
       return (
-        (card.front.trim().length > 0 || card.back.trim().length > 0) &&
+        hasFace &&
         id.length > 0 &&
         !id.startsWith('anki_synthetic_') &&
         !id.startsWith('chat-batch-')

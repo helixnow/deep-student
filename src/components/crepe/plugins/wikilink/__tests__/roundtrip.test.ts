@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from '@milkdown/kit/core';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { getMarkdown } from '@milkdown/kit/utils';
@@ -32,6 +32,7 @@ describe('wikilink markdown roundtrip', () => {
     'See [[目标|别名]] here',
     'Link [[带 空格的标题]] ok',
     '[[a|b]] and [[c]]',
+    'Jump to [[Note#Section one]] or [[Note#Other|label]]',
   ])('roundtrips without escaping brackets: %s', async (md) => {
     const { editor, root } = await createEditor(md);
     try {
@@ -40,6 +41,31 @@ describe('wikilink markdown roundtrip', () => {
       // Milkdown#1278 regression: must not degrade to \[\[
       expect(out).not.toMatch(/\\\[/);
     } finally {
+      await destroyEditor(editor, root);
+    }
+  });
+
+  it('resolves and opens a heading link against its note destination', async () => {
+    const resolve = vi.fn(() => ({ resolved: true, noteId: 'note-1' }));
+    const onOpen = vi.fn();
+    window.addEventListener(WIKILINK_EVENTS.OPEN_NOTE, onOpen);
+    const { editor, root } = await createEditor('[[Note#Section one]]', { resolve });
+    try {
+      const link = root.querySelector<HTMLElement>('.crepe-wikilink');
+      expect(link?.dataset.heading).toBe('Section one');
+      link?.click();
+      expect(resolve).toHaveBeenCalledWith('Note');
+      expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
+        detail: expect.objectContaining({
+          noteId: 'note-1',
+          source: 'wikilink',
+          target: 'Note',
+          heading: 'Section one',
+        }),
+      }));
+      expect(editor.action(getMarkdown()).trim()).toBe('[[Note#Section one]]');
+    } finally {
+      window.removeEventListener(WIKILINK_EVENTS.OPEN_NOTE, onOpen);
       await destroyEditor(editor, root);
     }
   });

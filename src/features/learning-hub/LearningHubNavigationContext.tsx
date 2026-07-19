@@ -8,7 +8,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { RealPathBreadcrumbItem } from './hooks/useFolderNavigation';
+import type { RealPathBreadcrumbItem } from './types/navigation';
 import { useFinderStore } from './stores/finderStore';
 
 // ============================================================================

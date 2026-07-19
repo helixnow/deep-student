@@ -9,12 +9,15 @@ import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
 export type AuthorityMode = 'ask' | 'plan' | 'craft';
+export type PermissionPreset = 'cautious' | 'relaxed';
 
 export interface AuthorityModeSegmentProps {
   sessionId: string;
   mode: AuthorityMode;
   /** Persist + update store; may return a Promise (awaited for busy state). */
   onModeChange: (mode: AuthorityMode) => void | Promise<void>;
+  permissionPreset?: PermissionPreset;
+  onPermissionPresetChange?: (preset: PermissionPreset) => void | Promise<void>;
   disabled?: boolean;
   className?: string;
   /** Show Ask-blocked CTA to switch into Plan */
@@ -27,6 +30,8 @@ export const AuthorityModeSegment: React.FC<AuthorityModeSegmentProps> = ({
   sessionId,
   mode,
   onModeChange,
+  permissionPreset = 'cautious',
+  onPermissionPresetChange = () => {},
   disabled,
   className,
   showSwitchToPlanHint,
@@ -48,6 +53,18 @@ export const AuthorityModeSegment: React.FC<AuthorityModeSegmentProps> = ({
     },
     [disabled, mode, onModeChange, pending, sessionId],
   );
+
+  const setPreset = useCallback(async (next: PermissionPreset) => {
+    if (!sessionId || next === permissionPreset || pending || disabled) return;
+    setPending(true);
+    try {
+      await Promise.resolve(onPermissionPresetChange(next));
+    } catch (error) {
+      console.error('[AuthorityModeSegment] Failed to set permission preset:', error);
+    } finally {
+      setPending(false);
+    }
+  }, [disabled, onPermissionPresetChange, pending, permissionPreset, sessionId]);
 
   const label = (m: AuthorityMode) => {
     switch (m) {
@@ -72,7 +89,7 @@ export const AuthorityModeSegment: React.FC<AuthorityModeSegmentProps> = ({
   };
 
   return (
-    <div className={cn('flex flex-col gap-1', className)}>
+    <div className={cn('flex flex-col items-end gap-1', className)}>
       <div
         className="inline-flex rounded-md border border-border/60 bg-muted/30 p-0.5"
         role="group"
@@ -101,6 +118,37 @@ export const AuthorityModeSegment: React.FC<AuthorityModeSegmentProps> = ({
             </button>
           </CommonTooltip>
         ))}
+      </div>
+      <div
+        className="inline-flex rounded-md border border-border/60 bg-muted/20 p-0.5"
+        role="group"
+        aria-label={t('authority.permissionPreset.label', '审批预设')}
+        data-testid="permission-preset-segment"
+      >
+        {(['cautious', 'relaxed'] as PermissionPreset[]).map((preset) => {
+          const active = permissionPreset === preset;
+          const title = t(`authority.permissionPreset.hints.${preset}`);
+          return (
+            <CommonTooltip key={preset} content={title}>
+              <button
+                type="button"
+                disabled={disabled || pending || !sessionId}
+                onClick={() => void setPreset(preset)}
+                className={cn(
+                  'rounded-[5px] px-2 py-0.5 text-[10px] transition-colors',
+                  active
+                    ? 'bg-background font-medium text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+                aria-pressed={active}
+                title={title}
+                data-testid={`permission-preset-${preset}`}
+              >
+                {t(`authority.permissionPreset.modes.${preset}`)}
+              </button>
+            </CommonTooltip>
+          );
+        })}
       </div>
       {showSwitchToPlanHint && mode === 'ask' && (
         <button

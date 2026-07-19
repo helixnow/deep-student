@@ -349,6 +349,21 @@ export function createSessionActions(
           });
         },
 
+        setPermissionPreset: async (preset: 'cautious' | 'relaxed'): Promise<void> => {
+          const sessionId = getState().sessionId;
+          if (!sessionId) return;
+          await invoke('chat_v2_set_permission_preset', { sessionId, preset });
+          const prevMeta = getState().sessionMetadata ?? {};
+          set({
+            permissionPreset: preset,
+            sessionMetadata: {
+              ...prevMeta,
+              permissionPreset: preset,
+              permission_preset: preset,
+            },
+          });
+        },
+
         handlePlanGateRequest: (payload: {
           planId: string;
           toolCallId: string;
@@ -408,6 +423,7 @@ export function createSessionActions(
             attachments: [],
             panelStates: createDefaultPanelStates(),
             authorityMode: 'craft',
+            permissionPreset: 'cautious',
             authorityAskBlockedHint: false,
           });
 

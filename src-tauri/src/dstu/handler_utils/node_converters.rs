@@ -445,6 +445,8 @@ pub fn file_to_dstu_node(file: &VfsFile) -> DstuNode {
             "contentHash": file.sha256,
             "isFavorite": file.is_favorite,
             "pageCount": file.page_count,
+            "readingProgress": file.last_page.map(|page| serde_json::json!({ "page": page })),
+            "bookmarks": file.bookmarks,
         }))
 }
 

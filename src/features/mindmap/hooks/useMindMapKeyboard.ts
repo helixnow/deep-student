@@ -10,6 +10,11 @@ import { useMindMapStore } from '../store';
 import { useMindMapIsActive } from '../MindMapActiveContext';
 import { flattenVisibleNodes } from '../utils/node/traverse';
 import { findNodeById, findParentNode } from '../utils/node/find';
+import { findNextUnrevealedBlank } from '../utils/reciteNavigation';
+import {
+  findSpatialMindMapNeighbor,
+  getMindMapPreferences,
+} from '../utils/mindmapPreferences';
 
 // ============================================================================
 // Hook
@@ -38,7 +43,11 @@ export function useMindMapKeyboard(): void {
   const redo = useMindMapStore(s => s.redo);
   const save = useMindMapStore(s => s.save);
   const reciteMode = useMindMapStore(s => s.reciteMode);
+  const revealedBlanks = useMindMapStore(s => s.revealedBlanks);
+  const revealBlank = useMindMapStore(s => s.revealBlank);
   const setReciteMode = useMindMapStore(s => s.setReciteMode);
+  const viewRootId = useMindMapStore(s => s.viewRootId);
+  const setViewRootId = useMindMapStore(s => s.setViewRootId);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const target = e.target as HTMLElement;
@@ -158,9 +167,17 @@ export function useMindMapKeyboard(): void {
         }
         case 'Enter':
         case ' ': {
-          // 背诵模式：Enter/空格不做操作（挖空揭示由点击完成）
           e.preventDefault();
           handled();
+          const target = findNextUnrevealedBlank(
+            visibleNodes.map((entry) => entry.node),
+            focusedNodeId,
+            revealedBlanks,
+          );
+          if (target) {
+            setFocusedNodeId(target.nodeId);
+            revealBlank(target.nodeId, target.rangeIndex);
+          }
           return;
         }
         default:
@@ -172,6 +189,37 @@ export function useMindMapKeyboard(): void {
     const root = document.root;
     const visibleNodes = flattenVisibleNodes(root);
     const currentIndex = visibleNodes.findIndex(n => n.node.id === focusedNodeId);
+    const preferences = getMindMapPreferences();
+
+    const focusSpatialNeighbor = (direction: 'up' | 'down' | 'left' | 'right'): boolean => {
+      if (preferences.canvasNavigation !== 'spatial') return false;
+      const escaped = typeof CSS?.escape === 'function' ? CSS.escape(focusedNodeId) : focusedNodeId;
+      const current = globalThis.document.querySelector<HTMLElement>(`.react-flow__node[data-id="${escaped}"]`);
+      if (!current) return false;
+      const candidates = Array.from(globalThis.document.querySelectorAll<HTMLElement>('.react-flow__node[data-id]'))
+        .filter((element) => element !== current && !!element.dataset.id)
+        .map((element) => ({ id: element.dataset.id!, rect: element.getBoundingClientRect() }));
+      const nextId = findSpatialMindMapNeighbor(current.getBoundingClientRect(), candidates, direction);
+      if (!nextId) return false;
+      setFocusedNodeId(nextId);
+      return true;
+    };
+
+    // Fold is independent from zoom in both keymaps.
+    if (e.altKey && (e.key === '[' || e.key === ']')) {
+      e.preventDefault();
+      handled();
+      if (e.shiftKey) {
+        if (e.key === '[') collapseAll();
+        else expandAll();
+        return;
+      }
+      const node = findNodeById(root, focusedNodeId);
+      if (node?.children.length && ((e.key === '[' && !node.collapsed) || (e.key === ']' && node.collapsed))) {
+        toggleCollapse(focusedNodeId);
+      }
+      return;
+    }
 
     // ── Cmd 组合键 ──
     if (isMod) {
@@ -199,9 +247,13 @@ export function useMindMapKeyboard(): void {
           return;
         }
         case '[': {
-          // 折叠（阻止冒泡，防止与 nav.back 冲突）
           e.preventDefault();
           handled();
+          if (preferences.keymap === 'mubu') {
+            const parent = viewRootId ? findParentNode(root, viewRootId) : null;
+            setViewRootId(parent && parent.id !== root.id ? parent.id : null);
+            return;
+          }
           if (e.shiftKey) {
             collapseAll();
             return;
@@ -213,9 +265,12 @@ export function useMindMapKeyboard(): void {
           return;
         }
         case ']': {
-          // 展开（阻止冒泡，防止与 nav.forward 冲突）
           e.preventDefault();
           handled();
+          if (preferences.keymap === 'mubu') {
+            setViewRootId(focusedNodeId === root.id ? null : focusedNodeId);
+            return;
+          }
           if (e.shiftKey) {
             expandAll();
             return;
@@ -243,6 +298,11 @@ export function useMindMapKeyboard(): void {
         case 'Enter': {
           e.preventDefault();
           handled();
+          if (preferences.keymap === 'mubu' && !e.shiftKey) {
+            const node = findNodeById(root, focusedNodeId);
+            if (node) updateNode(focusedNodeId, { completed: !node.completed });
+            return;
+          }
           const newId = addNode(focusedNodeId, 0);
           if (newId) {
             setFocusedNodeId(newId);
@@ -260,6 +320,7 @@ export function useMindMapKeyboard(): void {
     switch (e.key) {
       case 'ArrowUp': {
         e.preventDefault();
+        if (focusSpatialNeighbor('up')) return;
         if (currentIndex > 0) {
           setFocusedNodeId(visibleNodes[currentIndex - 1].node.id);
         }
@@ -267,6 +328,7 @@ export function useMindMapKeyboard(): void {
       }
       case 'ArrowDown': {
         e.preventDefault();
+        if (focusSpatialNeighbor('down')) return;
         if (currentIndex < visibleNodes.length - 1) {
           setFocusedNodeId(visibleNodes[currentIndex + 1].node.id);
         }
@@ -274,6 +336,7 @@ export function useMindMapKeyboard(): void {
       }
       case 'ArrowLeft': {
         e.preventDefault();
+        if (focusSpatialNeighbor('left')) return;
         const node = findNodeById(root, focusedNodeId);
         if (node && node.children.length > 0 && !node.collapsed) {
           // 有展开的子节点 → 折叠
@@ -289,6 +352,7 @@ export function useMindMapKeyboard(): void {
       }
       case 'ArrowRight': {
         e.preventDefault();
+        if (focusSpatialNeighbor('right')) return;
         const node = findNodeById(root, focusedNodeId);
         if (node && node.collapsed) {
           // 折叠状态 → 展开
@@ -361,7 +425,8 @@ export function useMindMapKeyboard(): void {
     focusedNodeId, editingNodeId, editingNoteNodeId, selection, document,
     setFocusedNodeId, setEditingNodeId, setEditingNoteNodeId, setSelection,
     addNode, deleteNodes, moveNode, toggleCollapse, collapseAll, expandAll, updateNode,
-    undo, redo, save, reciteMode, setReciteMode,
+    undo, redo, save, reciteMode, revealedBlanks, revealBlank, setReciteMode,
+    viewRootId, setViewRootId,
   ]);
 
   useEffect(() => {

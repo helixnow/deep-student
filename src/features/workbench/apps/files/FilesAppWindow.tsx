@@ -57,6 +57,8 @@ export function launchResourceItem(item: Pick<ResourceListItem, 'id' | 'type'>):
 
 const FilesAppWindow: React.FC<AppWindowProps> = ({
   windowId,
+  isActive,
+  requestClose,
   onTitleChange,
   renderThrottleMs = 0,
 }) => {
@@ -75,6 +77,23 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
     // onTitleChange 由窗口壳提供，标题只需在挂载时设置一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Cmd/Ctrl+W：关 files 窗（handlesCloseShortcut 让壳层放行）
+  useEffect(() => {
+    if (!isActive) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey)
+        || event.altKey
+        || event.shiftKey
+        || event.key.toLocaleLowerCase() !== 'w'
+      ) return;
+      event.preventDefault();
+      void requestClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isActive, requestClose]);
 
   useLayoutEffect(() => {
     const findTarget = () => {
@@ -134,8 +153,11 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
       <div ref={viewportRef} className="wb-files-viewport" data-wb-files-viewport>
         <LearningHubSidebar
           mode="fullscreen"
+          hostId="files"
+          sessionActive={isActive}
           onOpenApp={handleOpenApp}
           onOpenPreview={handleOpenApp}
+          commandsEnabled={isActive}
           className="h-full w-full"
           isCollapsed={false}
           toolbarPortalTarget={titlebarTarget}

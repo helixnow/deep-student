@@ -15,8 +15,9 @@ use crate::chat_v2::automations::{
     list_automation_runs_page, retry_automation_run, run_automation_now_core,
     serialize_automation_update_error, set_automation_enabled, update_automation_full,
     validate_automation_fields, validate_schedule, AutomationActionType, AutomationCreateFields,
-    AutomationSchedule, AutomationUpdateFields, CatchUpPolicy, ScheduleKind, DEFAULT_MAX_RETRIES,
-    DEFAULT_RETRY_BACKOFF_SECS, DEFAULT_TIMEOUT_SECS, MAX_PROMPT_LEN,
+    AutomationSchedule, AutomationUpdateFields, CatchUpPolicy, ScheduleKind,
+    TrustedAutomationProfile, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_BACKOFF_SECS,
+    DEFAULT_TIMEOUT_SECS, MAX_PROMPT_LEN,
 };
 use crate::chat_v2::headless::HeadlessSessionMode;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -48,6 +49,7 @@ const PROPOSE_ALLOWED_KEYS: &[&str] = &[
     "max_retries",
     "retry_backoff_seconds",
     "timeout_seconds",
+    "trusted_profile",
 ];
 const SET_ENABLED_ALLOWED_KEYS: &[&str] = &["id", "expected_version", "enabled"];
 const UPDATE_ALLOWED_KEYS: &[&str] = &[
@@ -64,6 +66,7 @@ const UPDATE_ALLOWED_KEYS: &[&str] = &[
     "max_retries",
     "retry_backoff_seconds",
     "timeout_seconds",
+    "trusted_profile",
 ];
 const ID_ONLY_ALLOWED_KEYS: &[&str] = &["id"];
 const ID_VERSION_ALLOWED_KEYS: &[&str] = &["id", "expected_version"];
@@ -443,6 +446,11 @@ impl AutomationExecutor {
                 .unwrap_or(DEFAULT_RETRY_BACKOFF_SECS);
         let timeout_seconds = Self::parse_optional_u64(args, "timeout_seconds", 30, 3_600)?
             .unwrap_or(DEFAULT_TIMEOUT_SECS);
+        let trusted_profile = args
+            .get("trusted_profile")
+            .map(|value| serde_json::from_value::<TrustedAutomationProfile>(value.clone()))
+            .transpose()
+            .map_err(|error| format!("Invalid trusted_profile: {error}"))?;
 
         Self::with_database(ctx, |db| {
             let definition = create_automation(
@@ -461,6 +469,7 @@ impl AutomationExecutor {
                     max_retries,
                     retry_backoff_seconds,
                     timeout_seconds,
+                    trusted_profile: trusted_profile.clone(),
                     source_session_id: ctx.session_id.clone(),
                 },
             )
@@ -584,6 +593,18 @@ impl AutomationExecutor {
         let retry_backoff_seconds =
             Self::parse_optional_u64(args, "retry_backoff_seconds", 5, 86_400)?;
         let timeout_seconds = Self::parse_optional_u64(args, "timeout_seconds", 30, 3_600)?;
+        let trusted_profile = args
+            .get("trusted_profile")
+            .map(|value| {
+                if value.is_null() {
+                    Ok(None)
+                } else {
+                    serde_json::from_value::<TrustedAutomationProfile>(value.clone())
+                        .map(Some)
+                        .map_err(|error| format!("Invalid trusted_profile: {error}"))
+                }
+            })
+            .transpose()?;
         Self::with_database(ctx, |db| {
             let (previous, current) = update_automation_full(
                 db,
@@ -601,6 +622,7 @@ impl AutomationExecutor {
                     max_retries,
                     retry_backoff_seconds,
                     timeout_seconds,
+                    trusted_profile,
                 },
             )
             .map_err(|error| serialize_automation_update_error(error, true))?;

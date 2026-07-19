@@ -22,6 +22,7 @@ import {
   CaretDown,
   Tag,
   FileText,
+  CircleNotch,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -33,6 +34,7 @@ import { useSessionTags } from '../../hooks/useSessionTags';
 import { SearchResultList } from './SearchResultList';
 import { TagFilterPanel, SessionTagBadges, AddTagInput } from './TagFilter';
 import { Input } from '@/components/ui/shad/Input';
+import { groupTaskSessions, summarizeTaskSession } from './taskCenter';
 
 // ============================================================================
 // 类型定义
@@ -49,6 +51,8 @@ export interface SessionItem {
   updatedAt: string;
   groupId?: string;
   groupName?: string;
+  metadata?: Record<string, unknown>;
+  workspaceKey?: string;
 }
 
 /** 分组信息（用于按分组浏览） */
@@ -61,7 +65,7 @@ export interface BrowserGroupInfo {
 }
 
 /** 浏览视图分组模式 */
-export type BrowseGroupMode = 'time' | 'group';
+export type BrowseGroupMode = 'time' | 'group' | 'workspace';
 
 interface SessionBrowserProps {
   /** 会话列表 */
@@ -161,6 +165,11 @@ const SessionCard: React.FC<SessionCardProps> = ({
   const { t } = useTranslation(['chatV2', 'common']);
   const fallbackTitle = t('page.untitled');
   const sessionTitle = getSessionTitleText(session.title, fallbackTitle);
+  const taskSummary = summarizeTaskSession(session);
+  const hasTaskSummary = taskSummary.status !== 'unknown'
+    || taskSummary.artifactCount > 0
+    || taskSummary.changeCount > 0
+    || Boolean(taskSummary.lastArtifact);
   const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // 触屏无 hover:重命名/删除按钮常显(与 FinderFileItem N-4 同范式)
@@ -305,6 +314,24 @@ const SessionCard: React.FC<SessionCardProps> = ({
               <span className="inline-flex w-fit text-[11px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground">
                 {session.groupName}
               </span>
+            )}
+            {hasTaskSummary && <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className={cn(
+                'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
+                taskSummary.status === 'running' && 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+                taskSummary.status === 'blocked' && 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+                taskSummary.status === 'completed' && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+              )}>
+                {taskSummary.status === 'running' && <CircleNotch size={10} className="animate-spin" />}
+                {t(`browser.taskStatus.${taskSummary.status}`)}
+              </span>
+              {taskSummary.artifactCount > 0 && <span>{t('browser.taskArtifacts', { count: taskSummary.artifactCount })}</span>}
+              {taskSummary.changeCount > 0 && <span>{t('browser.taskChanges', { count: taskSummary.changeCount })}</span>}
+            </div>}
+            {taskSummary.lastArtifact && (
+              <p className="truncate text-[11px] text-muted-foreground" title={taskSummary.lastArtifact}>
+                {taskSummary.lastArtifact}
+              </p>
             )}
             {/* 简介 */}
             {session.description && (
@@ -495,6 +522,15 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
     return { grouped, ungrouped };
   }, [filteredSessions, groups]);
 
+  const sessionsGroupedByWorkspace = useMemo(() => {
+    return [...groupTaskSessions(filteredSessions).entries()]
+      .map(([workspaceKey, workspaceSessions]) => ({
+        workspaceKey,
+        sessions: [...workspaceSessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+      }))
+      .sort((a, b) => a.workspaceKey.localeCompare(b.workspaceKey));
+  }, [filteredSessions]);
+
   // 计算过滤后的数量
   const filteredCount = filteredSessions.length;
 
@@ -541,21 +577,13 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             </div>
 
             {/* 分组模式滑块切换 */}
-            {groups.length > 0 && (
+            {(
               <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5">
-                {/* 滑块背景 */}
-                <div
-                  className={cn(
-                    'absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md bg-background shadow-sm border border-border/50',
-                    'transition-transform duration-200 ease-out',
-                    groupMode === 'time' ? 'translate-x-0' : 'translate-x-full'
-                  )}
-                />
                 <button
                   onClick={() => setGroupMode('time')}
                   className={cn(
                     'relative z-10 flex items-center gap-1.5 px-3 h-full rounded-md text-xs font-medium transition-colors',
-                    groupMode === 'time' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/70'
+                    groupMode === 'time' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground/70'
                   )}
                   title={t('browser.groupByTime')}
                 >
@@ -566,12 +594,23 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   onClick={() => setGroupMode('group')}
                   className={cn(
                     'relative z-10 flex items-center gap-1.5 px-3 h-full rounded-md text-xs font-medium transition-colors',
-                    groupMode === 'group' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/70'
+                    groupMode === 'group' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground/70'
                   )}
                   title={t('browser.groupByGroup')}
                 >
                   <Stack size={14} />
                   <span className="hidden sm:inline">{t('browser.groupByGroup')}</span>
+                </button>
+                <button
+                  onClick={() => setGroupMode('workspace')}
+                  className={cn(
+                    'relative z-10 flex items-center gap-1.5 px-3 h-full rounded-md text-xs font-medium transition-colors',
+                    groupMode === 'workspace' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground/70'
+                  )}
+                  title={t('browser.groupByWorkspace')}
+                >
+                  <Folder size={14} />
+                  <span className="hidden sm:inline">{t('browser.groupByWorkspace')}</span>
                 </button>
               </div>
             )}
@@ -679,20 +718,13 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 className="w-full h-9 pl-9 pr-3"
               />
             </div>
-            {groups.length > 0 && (
+            {(
               <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5 shrink-0">
-                <div
-                  className={cn(
-                    'absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md bg-background shadow-sm border border-border/50',
-                    'transition-transform duration-200 ease-out',
-                    groupMode === 'time' ? 'translate-x-0' : 'translate-x-full'
-                  )}
-                />
                 <button
                   onClick={() => setGroupMode('time')}
                   className={cn(
                     'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-xs font-medium transition-colors',
-                    groupMode === 'time' ? 'text-foreground' : 'text-muted-foreground'
+                    groupMode === 'time' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
                   )}
                   title={t('browser.groupByTime')}
                 >
@@ -702,11 +734,21 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   onClick={() => setGroupMode('group')}
                   className={cn(
                     'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-xs font-medium transition-colors',
-                    groupMode === 'group' ? 'text-foreground' : 'text-muted-foreground'
+                    groupMode === 'group' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
                   )}
                   title={t('browser.groupByGroup')}
                 >
                   <Stack size={14} />
+                </button>
+                <button
+                  onClick={() => setGroupMode('workspace')}
+                  className={cn(
+                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-xs font-medium transition-colors',
+                    groupMode === 'workspace' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                  )}
+                  title={t('browser.groupByWorkspace')}
+                >
+                  <Folder size={14} />
                 </button>
               </div>
             )}
@@ -813,6 +855,55 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 );
               }
             )}
+          </div>
+        ) : groupMode === 'workspace' ? (
+          <div className="space-y-6 sm:space-y-8">
+            {sessionsGroupedByWorkspace.map(({ workspaceKey, sessions: workspaceSessions }) => {
+              const summaryCounts = workspaceSessions.reduce(
+                (counts, session) => {
+                  counts[summarizeTaskSession(session).status] += 1;
+                  return counts;
+                },
+                { running: 0, blocked: 0, completed: 0, unknown: 0 },
+              );
+              return (
+                <section key={workspaceKey}>
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <Folder size={16} className="text-muted-foreground" />
+                    <span className="text-sm font-medium text-foreground">
+                      {workspaceKey === 'default' ? t('browser.defaultWorkspace') : workspaceKey}
+                    </span>
+                    {(['running', 'blocked', 'completed'] as const).map(status => (
+                      summaryCounts[status] > 0 && (
+                        <span key={status} className="text-[11px] text-muted-foreground">
+                          {t(`browser.taskStatus.${status}`)} {summaryCounts[status]}
+                        </span>
+                      )
+                    ))}
+                    <div className="h-px min-w-8 flex-1 bg-border/40" />
+                  </div>
+                  <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
+                    {workspaceSessions.map((session) => (
+                      <SessionCard
+                        key={session.id}
+                        session={session}
+                        isEditing={editingSessionId === session.id}
+                        editingTitle={editingTitle}
+                        tags={sessionTags.tagsBySession.get(session.id)}
+                        onSelect={() => onSelectSession(session.id)}
+                        onDelete={() => onDeleteSession(session.id)}
+                        onStartEdit={() => handleStartEdit(session)}
+                        onSaveEdit={() => handleSaveEdit(session.id)}
+                        onCancelEdit={handleCancelEdit}
+                        onEditTitleChange={setEditingTitle}
+                        onAddTag={(tag) => sessionTags.addTag(session.id, tag)}
+                        onRemoveTag={(tag) => sessionTags.removeTag(session.id, tag)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         ) : (
           // 按分组显示会话卡片

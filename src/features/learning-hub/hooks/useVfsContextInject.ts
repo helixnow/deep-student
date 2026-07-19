@@ -44,6 +44,8 @@ export interface VfsInjectParams {
   metadata?: Record<string, unknown>;
   /** 资源 hash（可选，如果已知） */
   resourceHash?: string;
+  /** 添加后是否展开附件面板（默认展开） */
+  openAttachmentPanel?: boolean;
 }
 
 /**
@@ -89,17 +91,11 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
 
   /**
    * 检查是否可以注入
-   * 🔧 P1-26: 优先使用当前活跃会话，其次使用任意活跃会话
+   * 仅当前活跃会话存在时才允许注入，避免资源进入不可见的旧会话。
    */
   const canInject = useCallback((): boolean => {
-    // 优先检查当前活跃会话
     const currentId = sessionManager.getCurrentSessionId();
-    if (currentId && sessionManager.has(currentId)) {
-      return true;
-    }
-    // 回退：检查是否有任意活跃会话
-    const sessionIds = sessionManager.getAllSessionIds();
-    return sessionIds.length > 0;
+    return Boolean(currentId && sessionManager.has(currentId));
   }, []);
 
   /**
@@ -107,23 +103,18 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
    */
   const injectToChat = useCallback(
     async (params: VfsInjectParams): Promise<VfsInjectResult> => {
-      const { sourceId, sourceType, name, metadata, resourceHash } = params;
+      const {
+        sourceId, sourceType, name, metadata, resourceHash, openAttachmentPanel = true,
+      } = params;
 
       debugLog.log(LOG_PREFIX, 'injectToChat:', { sourceId, sourceType, name });
 
       // 1. 检查是否有活跃会话
-      // 🔧 P1-26: 优先使用当前活跃会话，其次使用任意活跃会话
-      let activeSessionId = sessionManager.getCurrentSessionId();
+      const activeSessionId = sessionManager.getCurrentSessionId();
       if (!activeSessionId || !sessionManager.has(activeSessionId)) {
-        // 回退：使用第一个可用会话
-        const sessionIds = sessionManager.getAllSessionIds();
-        if (sessionIds.length === 0) {
-          const errorMsg = t('notes:reference.no_active_session');
-          showGlobalNotification('warning', errorMsg);
-          return { success: false, error: errorMsg };
-        }
-        activeSessionId = sessionIds[0];
-        debugLog.log(LOG_PREFIX, 'No current session, falling back to:', activeSessionId);
+        const errorMsg = t('notes:reference.no_active_session');
+        showGlobalNotification('warning', errorMsg);
+        return { success: false, error: errorMsg };
       }
 
       const store = sessionManager.get(activeSessionId);
@@ -233,7 +224,9 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
 
         // ★ Bug2 修复：通知 InputBar 打开附件面板，让用户看到已添加的资源
         // 注意：批量注入时由调用方统一派发一次，避免 N 次事件
-        window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
+        if (openAttachmentPanel) {
+          window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
+        }
 
         debugLog.log(LOG_PREFIX, 'Context ref added:', contextRef);
 

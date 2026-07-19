@@ -593,6 +593,38 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         const conflictNotePath = node.path;
         const conflictNoteType = node.type;
         const userVersionFull = saveContent;
+        const restoreMine = () => {
+          if (isViewStillCurrent()) {
+            // 把用户版本写回编辑器（force 路径会同步草稿基线），
+            // 并显式入队保存：以已刷新的乐观锁基线覆盖外部版本。
+            const userWindow = projectMarkdownWindow(userVersionFull, initialLineWindow);
+            fullContentRef.current = userVersionFull;
+            setContent(userVersionFull);
+            setContentNoteId(conflictNoteId);
+            setMarkdownWindow(userWindow);
+            persistedContentRef.current = userVersionFull;
+            window.dispatchEvent(new CustomEvent('notes:external-updated', {
+              detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown, force: true },
+            }));
+            window.dispatchEvent(new CustomEvent('notes:request-save', {
+              detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown },
+            }));
+            return;
+          }
+          // 用户已切换到其他笔记时，直接以磁盘最新基线恢复原路径。
+          void (async () => {
+            const latest = await dstu.get(conflictNotePath);
+            const expected = latest.ok && latest.value ? latest.value.updatedAt : undefined;
+            const restore = await dstu.update(conflictNotePath, userVersionFull, conflictNoteType, {
+              expectedUpdatedAtMs: expected ?? undefined,
+            });
+            if (restore.ok) showGlobalNotification('success', t('notes:actions.save_success'));
+            else showGlobalNotification('error', restore.error.toUserMessage());
+          })();
+        };
+        window.dispatchEvent(new CustomEvent('notes:content-conflict', {
+          detail: { noteId: conflictNoteId, restoreMine },
+        }));
         showGlobalNotification(
           'warning',
           t('notes:editor.conflict_refreshed'),
@@ -600,40 +632,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           {
             action: {
               label: t('notes:editor.conflict_restore_mine'),
-              onClick: () => {
-                if (isViewStillCurrent()) {
-                  // 把用户版本写回编辑器（force 路径会同步草稿基线），
-                  // 并显式入队保存：以已刷新的乐观锁基线覆盖外部版本。
-                  const userWindow = projectMarkdownWindow(userVersionFull, initialLineWindow);
-                  fullContentRef.current = userVersionFull;
-                  setContent(userVersionFull);
-                  setContentNoteId(conflictNoteId);
-                  setMarkdownWindow(userWindow);
-                  persistedContentRef.current = userVersionFull;
-                  window.dispatchEvent(new CustomEvent('notes:external-updated', {
-                    detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown, force: true },
-                  }));
-                  window.dispatchEvent(new CustomEvent('notes:request-save', {
-                    detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown },
-                  }));
-                  return;
-                }
-                // ★ R4：用户已切换到其他笔记——原路径的视图回写会污染当前视图，
-                // 编辑器事件也会因 noteId 不匹配被丢弃（按钮静默失效）。
-                // 改为以磁盘最新基线直接写回用户版本。
-                void (async () => {
-                  const latest = await dstu.get(conflictNotePath);
-                  const expected = latest.ok && latest.value ? latest.value.updatedAt : undefined;
-                  const restore = await dstu.update(conflictNotePath, userVersionFull, conflictNoteType, {
-                    expectedUpdatedAtMs: expected ?? undefined,
-                  });
-                  if (restore.ok) {
-                    showGlobalNotification('success', t('notes:actions.save_success'));
-                  } else {
-                    showGlobalNotification('error', restore.error.toUserMessage());
-                  }
-                })();
-              },
+              onClick: restoreMine,
             },
           }
         );
@@ -922,6 +921,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             onSaveStateChange={(state) => onSaveStateChangeRef.current?.(state)}
             dirtyRegistryKey={{ typeId: 'note', instanceKey: node.id }}
             acrWindowId={hostWindowId}
+            focusModeScopeId={hostWindowId}
             windowingState={editorWindowingState}
             onRequestLoadMore={handleRequestLoadMore}
             onRetryLoadMore={handleRetryLoadMore}

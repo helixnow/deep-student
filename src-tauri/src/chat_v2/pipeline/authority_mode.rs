@@ -282,6 +282,7 @@ mod tests {
     fn ask_blocks_medium_write_and_allows_low() {
         let state = SessionAuthorityState {
             authority_mode: AuthorityMode::Ask,
+            permission_preset: Default::default(),
             plan: None,
         };
         let blocked = evaluate_authority_gate(
@@ -331,6 +332,7 @@ mod tests {
     fn plan_waits_without_approval_then_allows_active_batch() {
         let mut state = SessionAuthorityState {
             authority_mode: AuthorityMode::Plan,
+            permission_preset: Default::default(),
             plan: None,
         };
         let now = Utc::now();
@@ -383,6 +385,7 @@ mod tests {
 
         let with_ask = SessionAuthorityState {
             authority_mode: AuthorityMode::Ask,
+            permission_preset: Default::default(),
             plan: None,
         };
         let meta = with_ask.apply_to_metadata(None);
@@ -402,6 +405,7 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let state = SessionAuthorityState {
             authority_mode: AuthorityMode::Ask,
+            permission_preset: Default::default(),
             plan: None,
         };
         let decision = evaluate_authority_gate(

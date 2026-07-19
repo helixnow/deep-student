@@ -9,9 +9,9 @@
  * - Find & Replace
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -25,8 +25,14 @@ import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NotesEditorToolbar } from './components/NotesEditorToolbar';
 import {
   MobileEditorToolbar,
+  type MobileEditorToolbarActiveStates,
 } from './components/MobileEditorToolbar';
 import { FindReplacePanel } from './components/FindReplacePanel';
+import {
+  consumeNotesFindQuery,
+  NOTES_FIND_QUERY_EVENT,
+  type NotesFindQuery,
+} from './findQueryBridge';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
 import { isMacOS } from '../../utils/platform';
 import { useTauriDragAndDrop } from '../../hooks/useTauriDragAndDrop';
@@ -36,6 +42,15 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { buildMobileEditorCommands } from './mobileEditorCommands';
+import { parseWorkbenchDragData, WB_RESOURCE_MIME } from '@/features/workbench/hooks/useDesktopDrop';
+import { insertWikilink } from '@/components/crepe/plugins/wikilink/autocomplete';
+import { editorViewCtx } from '@milkdown/kit/core';
+import { openQuickAssistantWindow } from '@/quick-assistant/window';
+import {
+  consumeNotesHeadingTarget,
+  NOTES_HEADING_TARGET_EVENT,
+  type NotesHeadingTarget,
+} from './headingTargetBridge';
 import {
   CREATE_FROM_WIKILINK_EVENT,
   createNoteFromWikilinkTitle,
@@ -47,6 +62,9 @@ import {
   refreshWikilinkNotesCache,
 } from './wikilinkNotesCache';
 import '@/styles/notes-typography.css';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
+import { applyNoteTemplate, getNoteTemplates } from './noteTemplates';
+import type { NotesFocusModeEventDetail } from './focusModeOwnership';
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 const SAVING_INDICATOR_DELAY_MS = 400;
@@ -105,6 +123,8 @@ export interface NotesCrepeEditorProps {
   dirtyRegistryKey?: { typeId: string; instanceKey: string };
   /** Exact Workbench window for local ACR suggestion routing. */
   acrWindowId?: string;
+  /** Focus-mode events affect only this owning Notes workspace. */
+  focusModeScopeId?: string;
   windowingState?: NotesEditorWindowingState;
   onRequestLoadMore?: (currentMarkdown: string) => Promise<MarkdownLoadMoreResult | null | void>;
   onRetryLoadMore?: () => void;
@@ -124,11 +144,12 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   onSaveStateChange,
   dirtyRegistryKey,
   acrWindowId,
+  focusModeScopeId,
   windowingState,
   onRequestLoadMore,
   onRetryLoadMore,
 }) => {
-  const { t } = useTranslation(['notes', 'common']);
+  const { t, i18n } = useTranslation(['notes', 'common']);
   
   // ========== 模式判断 ==========
   // DSTU 模式：通过 props 传入数据
@@ -162,6 +183,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [isDirty, setIsDirty] = useState(false);
   /** 最近一次放弃重试后的保存错误（冲突 / 失败） */
   const [saveError, setSaveError] = useState<'failed' | 'conflict' | null>(null);
+  const [conflictAction, setConflictAction] = useState<null | { restoreMine: () => void }>(null);
 
   useEffect(() => {
     onSaveStateChange?.(isSaving ? 'saving' : isDirty ? 'dirty' : 'saved');
@@ -181,6 +203,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // Find & Replace 状态
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
+  const [findInitialQuery, setFindInitialQuery] = useState('');
 
   // 字数统计（非空白字符数，防抖更新）
   const [charCount, setCharCount] = useState(0);
@@ -198,11 +221,55 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 阅读模式状态（防止手机滑动时弹出键盘）
   const [readingMode, setReadingMode] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const focusModeOwnerId = useId();
+  const focusModeRef = useRef(false);
+  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const effectiveReadOnly = readOnly || readingMode;
+
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((enabled) => !enabled);
+  }, []);
+
+  const publishFocusMode = useCallback((enabled: boolean) => {
+    if (!focusModeScopeId) return;
+    window.dispatchEvent(new CustomEvent<NotesFocusModeEventDetail>(
+      'notes:focus-mode-changed',
+      { detail: { ownerId: focusModeOwnerId, scopeId: focusModeScopeId, enabled } },
+    ));
+  }, [focusModeOwnerId, focusModeScopeId]);
+
+  useEffect(() => {
+    focusModeRef.current = focusMode;
+    publishFocusMode(focusMode);
+  }, [focusMode, publishFocusMode]);
+
+  useEffect(() => () => {
+    if (focusModeRef.current) publishFocusMode(false);
+  }, [publishFocusMode]);
+
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setFocusMode(false);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [focusMode]);
+
+  const applyTemplate = useCallback((markdown: string) => {
+    if (!editorApi || effectiveReadOnly) return;
+    editorApi.setMarkdown(applyNoteTemplate(editorApi.getMarkdown(), markdown));
+    editorApi.focus();
+    setTemplateMenuOpen(false);
+  }, [editorApi, effectiveReadOnly]);
 
   // 移动端底部工具条：`(pointer: coarse)` 且编辑态（SSR 安全 matchMedia）
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
   const showMobileToolbar = isCoarsePointer && !effectiveReadOnly && !!editorApi;
+  const [mobileActiveStates, setMobileActiveStates] = useState<MobileEditorToolbarActiveStates>({});
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
@@ -219,6 +286,73 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // ========== 根据模式选择 noteId 和初始值 ==========
   const noteId = isDstuMode ? dstuNoteId : active?.id;
   const initialValue = isDstuMode ? initialContent : (active?.content_md || '');
+
+  useEffect(() => {
+    const onFindQuery = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<NotesFindQuery>>).detail;
+      if (!detail?.query || (detail.noteId && detail.noteId !== noteIdRef.current)) return;
+      const query = detail.noteId
+        ? consumeNotesFindQuery(detail.noteId) ?? detail.query
+        : detail.query;
+      setFindInitialQuery(query);
+      setIsFindReplaceOpen(true);
+    };
+    window.addEventListener(NOTES_FIND_QUERY_EVENT, onFindQuery);
+    const pending = consumeNotesFindQuery(noteIdRef.current);
+    if (pending) {
+      setFindInitialQuery(pending);
+      setIsFindReplaceOpen(true);
+    }
+    return () => window.removeEventListener(NOTES_FIND_QUERY_EVENT, onFindQuery);
+  }, []);
+
+  useEffect(() => {
+    const onConflict = (event: Event) => {
+      const detail = (event as CustomEvent<{ noteId?: string; restoreMine?: () => void }>).detail;
+      if (!detail?.restoreMine || detail.noteId !== noteIdRef.current) return;
+      setConflictAction({ restoreMine: detail.restoreMine });
+      setSaveError('conflict');
+    };
+    window.addEventListener('notes:content-conflict', onConflict);
+    return () => window.removeEventListener('notes:content-conflict', onConflict);
+  }, []);
+
+  useEffect(() => {
+    if (!editorApi || !showMobileToolbar) return undefined;
+    const update = () => {
+      const crepe = editorApi.getCrepe();
+      if (!crepe) return;
+      crepe.editor.action((ctx) => {
+        const state = ctx.get(editorViewCtx).state;
+        const markNames = new Set(state.selection.$from.marks().map((mark) => mark.type.name));
+        const ancestorNames = new Set<string>();
+        for (let depth = state.selection.$from.depth; depth >= 0; depth -= 1) {
+          ancestorNames.add(state.selection.$from.node(depth).type.name);
+        }
+        const parent = state.selection.$from.parent;
+        const headingLevel = parent.type.name === 'heading' ? Number(parent.attrs.level) : 0;
+        setMobileActiveStates({
+          bold: markNames.has('strong'),
+          italic: markNames.has('emphasis') || markNames.has('em'),
+          strikethrough: markNames.has('strike_through') || markNames.has('strikethrough'),
+          h1: headingLevel === 1,
+          h2: headingLevel === 2,
+          h3: headingLevel === 3,
+          bullet: ancestorNames.has('bullet_list'),
+          task: ancestorNames.has('task_list') || ancestorNames.has('task_item'),
+        });
+      });
+    };
+    update();
+    document.addEventListener('selectionchange', update);
+    window.addEventListener('keyup', update, true);
+    window.addEventListener('pointerup', update, true);
+    return () => {
+      document.removeEventListener('selectionchange', update);
+      window.removeEventListener('keyup', update, true);
+      window.removeEventListener('pointerup', update, true);
+    };
+  }, [editorApi, showMobileToolbar]);
 
   // Keep each note bound to the save callback that owns its original path.
   // A queued draft may finish after the component has switched to another note.
@@ -652,6 +786,38 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     };
   }, [isDstuMode]);
 
+  useEffect(() => {
+    const container = dropZoneRef.current;
+    if (!container || !editorApi || effectiveReadOnly) return;
+    const onDragOver = (event: DragEvent) => {
+      if (!Array.from(event.dataTransfer?.types ?? []).includes(WB_RESOURCE_MIME)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    };
+    const onDrop = (event: DragEvent) => {
+      if (!event.dataTransfer) return;
+      const resource = parseWorkbenchDragData(event.dataTransfer);
+      if (!resource || resource.resourceType !== 'note') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const crepe = editorApi.getCrepe();
+      if (!crepe) return;
+      crepe.editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const point = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        const position = point?.pos ?? view.state.selection.from;
+        insertWikilink(view, position, position, resource.title);
+        view.focus();
+      });
+    };
+    container.addEventListener('dragover', onDragOver, true);
+    container.addEventListener('drop', onDrop, true);
+    return () => {
+      container.removeEventListener('dragover', onDragOver, true);
+      container.removeEventListener('drop', onDrop, true);
+    };
+  }, [editorApi, effectiveReadOnly]);
+
   // 🔧 修复：监听 canvas:content-changed 事件，用于后端 Canvas 工具更新笔记后刷新编辑器
   useEffect(() => {
     const handleCanvasContentChanged = (event: Event) => {
@@ -776,6 +942,24 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   useEffect(() => {
     void refreshWikilinkNotesCache();
   }, []);
+
+  useEffect(() => {
+    if (!editorApi || !noteId) return;
+    const scroll = (heading: string) => {
+      // Level 0 asks Crepe to match the heading text across all heading levels.
+      editorApi.scrollToHeading?.(heading, 0, heading.toLowerCase().trim());
+    };
+    const onHeadingTarget = (event: Event) => {
+      const detail = (event as CustomEvent<NotesHeadingTarget>).detail;
+      if (detail?.noteId !== noteId || !detail.heading) return;
+      consumeNotesHeadingTarget(noteId);
+      scroll(detail.heading);
+    };
+    window.addEventListener(NOTES_HEADING_TARGET_EVENT, onHeadingTarget);
+    const pending = consumeNotesHeadingTarget(noteId);
+    if (pending) scroll(pending);
+    return () => window.removeEventListener(NOTES_HEADING_TARGET_EVENT, onHeadingTarget);
+  }, [editorApi, noteId]);
 
   // 未解析 wikilink 点击 → 创建笔记 → 刷新链接样式 → DSTU_OPEN_NOTE
   useEffect(() => {
@@ -1208,7 +1392,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   return (
     <ErrorBoundary name="NotesEditor">
-    <div className={cn("flex-1 min-h-0 flex flex-col bg-background relative", className)}>
+    <div className={cn("notes-crepe-shell flex-1 min-h-0 flex flex-col bg-background relative", className)} data-focus-mode={focusMode ? 'true' : 'false'}>
       {/* 内容加载中遮罩 - 覆盖在编辑器上方 */}
       {!isContentLoaded && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -1290,11 +1474,67 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         </div>
       )}
 
+      {conflictAction && (
+        <div className="notes-conflict-banner" role="alert">
+          <WarningCircle size={16} aria-hidden />
+          <span>{t('notes:editor.conflict_refreshed')}</span>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const action = conflictAction.restoreMine;
+              setConflictAction(null);
+              setSaveError(null);
+              action();
+            }}
+          >
+            {t('notes:editor.conflict_restore_mine')}
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => { setConflictAction(null); setSaveError(null); }}
+          >
+            {t('notes:editor.conflict_keep_remote', 'Keep remote')}
+          </NotionButton>
+        </div>
+      )}
+
       {/* 桌面编辑器风格的轻量 pane 操作栏；文档标题随正文滚动。 */}
       <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background">
         <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-1 px-5 sm:px-12">
             <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} />
           <div className="ml-auto flex items-center gap-1">
+            {!readOnly && (
+              <Popover open={templateMenuOpen} onOpenChange={setTemplateMenuOpen}>
+                <CommonTooltip content={t('notes:toolbar.note_templates', 'Note templates')} position="bottom">
+                  <PopoverTrigger asChild>
+                    <NotionButton variant="ghost" iconOnly size="sm" className="h-7 w-7 text-muted-foreground hover:text-foreground" aria-label={t('notes:toolbar.note_templates', 'Note templates')}>
+                      <NoteBlank size={16} />
+                    </NotionButton>
+                  </PopoverTrigger>
+                </CommonTooltip>
+                <PopoverContent align="end" sideOffset={4} className="w-48 p-1" role="menu">
+                  {getNoteTemplates(i18n?.resolvedLanguage ?? i18n?.language ?? 'en-US').map((template) => (
+                    <NotionButton key={template.id} variant="ghost" size="sm" role="menuitem" className="w-full justify-start" onClick={() => applyTemplate(template.markdown)}>
+                      {t(`notes:templates.${template.id}`, template.title)}
+                    </NotionButton>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            )}
+            <CommonTooltip content={t('notes:toolbar.ask_agent', 'Ask Agent')} position="bottom">
+              <NotionButton
+                variant="ghost"
+                iconOnly
+                size="sm"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => { void openQuickAssistantWindow(); }}
+                aria-label={t('notes:toolbar.ask_agent', 'Ask Agent')}
+              >
+                <Robot size={16} />
+              </NotionButton>
+            </CommonTooltip>
             {/* 查找替换按钮 */}
             <CommonTooltip content={t('notes:toolbar.find_replace')} position="bottom">
               <NotionButton
@@ -1344,10 +1584,38 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 </NotionButton>
               </CommonTooltip>
             )}
+            <CommonTooltip content={focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')} position="bottom">
+              <NotionButton
+                variant="ghost"
+                iconOnly
+                size="sm"
+                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={toggleFocusMode}
+                aria-label={focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}
+                aria-pressed={focusMode}
+              >
+                {focusMode ? <CornersIn size={16} /> : <CornersOut size={16} />}
+              </NotionButton>
+            </CommonTooltip>
             {headerActions}
           </div>
         </div>
       </div>
+
+      {focusMode && (
+        <CommonTooltip content={t('notes:toolbar.exit_focus_mode', 'Exit focus mode')} position="left">
+          <NotionButton
+            variant="ghost"
+            iconOnly
+            size="sm"
+            className="notes-focus-exit h-8 w-8"
+            onClick={toggleFocusMode}
+            aria-label={t('notes:toolbar.exit_focus_mode', 'Exit focus mode')}
+          >
+            <CornersIn size={17} />
+          </NotionButton>
+        </CommonTooltip>
+      )}
       
       {/* 查找替换面板 - 固定在 header 下方，不随内容滚动 */}
       <div className="relative">
@@ -1356,6 +1624,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             editorApi={editorApi}
             onClose={handleFindReplaceClose}
             readOnly={effectiveReadOnly}
+            initialQuery={findInitialQuery}
           />
         )}
       </div>
@@ -1426,6 +1695,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       <MobileEditorToolbar
         visible={showMobileToolbar}
         commands={mobileCommands}
+        activeStates={mobileActiveStates}
       />
     </div>
     </ErrorBoundary>

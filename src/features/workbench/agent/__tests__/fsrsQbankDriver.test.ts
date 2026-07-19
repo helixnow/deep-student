@@ -187,8 +187,7 @@ describe('appendToQueue 铁律（R1-15）', () => {
           images: ['paris.png'],
           templateId: 'design-redaction',
           extraFields: { Hint: 'France' },
-          isErrorCard: true,
-          errorContent: 'source warning',
+          isErrorCard: false,
         },
         {
           id: 'state-snake',
@@ -212,8 +211,7 @@ describe('appendToQueue 铁律（R1-15）', () => {
         images: ['paris.png'],
         templateId: 'design-redaction',
         extraFields: { Hint: 'France' },
-        isErrorCard: true,
-        errorContent: 'source warning',
+        isErrorCard: false,
       }),
       expect.objectContaining({
         id: 'state-snake',
@@ -224,6 +222,23 @@ describe('appendToQueue 铁律（R1-15）', () => {
         errorContent: null,
       }),
     ]);
+  });
+
+  it('enqueue 拒绝诊断卡进入活动 session', () => {
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'enqueue',
+      cards: [
+        {
+          id: 'state-diag',
+          ankiCardId: 'anki-diag',
+          front: 'broken',
+          back: 'x',
+          isErrorCard: true,
+        },
+      ],
+    });
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['a', 'b', 'c']);
   });
 
   it.each([
@@ -267,6 +282,71 @@ describe('appendToQueue 铁律（R1-15）', () => {
       expect(state.flipped).toBe(true);
     },
   );
+
+  it('他窗 rate 当前卡时从队列移除并翻回正面', () => {
+    useFsrsReviewStore.setState({
+      queue: [card('a'), card('b'), card('c')],
+      queueIndex: 1,
+      flipped: true,
+      lastReview: null,
+      ratingBusy: false,
+    });
+
+    handleFsrsDomainChange({
+      source: 'user',
+      action: 'rate',
+      entityIds: ['b'],
+      cardStateIds: ['b'],
+      cards: [{ id: 'b', ankiCardId: 'b' }],
+    });
+
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((c) => c.id)).toEqual(['a', 'c']);
+    expect(state.queueIndex).toBe(1);
+    expect(state.queue[state.queueIndex]?.id).toBe('c');
+    expect(state.flipped).toBe(false);
+  });
+
+  it('本窗 rate 回声不删除已回插的学习卡', () => {
+    useFsrsReviewStore.setState({
+      queue: [card('b'), card('a')],
+      queueIndex: 0,
+      flipped: false,
+      lastReview: { logId: 'log-a', cardStateId: 'a', queueIndex: 0 },
+      recentLocalLogIds: ['log-a'],
+      ratingBusy: false,
+    });
+
+    handleFsrsDomainChange({
+      source: 'user',
+      action: 'rate',
+      cardStateIds: ['a'],
+      cards: [{ id: 'a', ankiCardId: 'a', logId: 'log-a' }],
+    });
+
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['b', 'a']);
+    expect(useFsrsReviewStore.getState().queueIndex).toBe(0);
+  });
+
+  it('延迟本窗回声在 lastReview 已切换后仍保留回插卡', () => {
+    useFsrsReviewStore.setState({
+      queue: [card('b'), card('a')],
+      queueIndex: 0,
+      flipped: false,
+      lastReview: { logId: 'log-b', cardStateId: 'b', queueIndex: 0 },
+      recentLocalLogIds: ['log-a', 'log-b'],
+      ratingBusy: false,
+    });
+
+    handleFsrsDomainChange({
+      source: 'user',
+      action: 'rate',
+      cardStateIds: ['a'],
+      cards: [{ id: 'a', ankiCardId: 'a', logId: 'log-a' }],
+    });
+
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['b', 'a']);
+  });
 
   it('Agent 撤销评分会重新打开对应卡并清除失效的本地撤销状态', () => {
     useFsrsReviewStore.setState({

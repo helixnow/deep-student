@@ -371,7 +371,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   }
 
   return (
-    <div className={cn('flex flex-col h-full bg-background', className)}>
+    <div className={cn('flex flex-col h-full min-h-0 overflow-hidden bg-background', className)}>
       <Suspense fallback={<PanelLoading label={t('common:loading')} />}>
         {/* resetKey：切换到其他资源/类型时自动清除上一个视图的崩溃状态；
             onClose：移动端崩溃兜底页的返回出路（关闭当前标签页） */}

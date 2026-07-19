@@ -308,6 +308,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
               resourceId: result.resourceId,
               hash: result.hash,
               typeId,
+              displayName: attachment.name,
             };
             logAttachment('store', 'add_context_ref', {
               resourceId: result.resourceId,

@@ -37,12 +37,13 @@ pub(crate) use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 pub(crate) use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, AutomationExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, DataGovernanceToolExecutor,
-    DstuToolExecutor, ExecutionContext, FetchExecutor, GeneralToolExecutor,
+    DstuToolExecutor, ExecutionContext, FetchExecutor, FileManagerExecutor, GeneralToolExecutor,
     ImageGenerationExecutor, IndexWebpageToolExecutor, KnowledgeExecutor, LearningOverviewExecutor,
     LlmUsageToolExecutor, LocalShellExecuteExecutor, LocalShellPreflightExecutor,
-    McpProposeExecutor, MemoryToolExecutor, SettingsModelsToolExecutor, SkillsExecutor,
-    TemplateDesignerExecutor, TextbookPdfToolExecutor, ToolExecutorRegistry, ToolSensitivity,
-    TranslationToolExecutor, UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
+    McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor, OfficeFidelityExecutor,
+    SettingsModelsToolExecutor, SkillsExecutor, TemplateDesignerExecutor, TextbookPdfToolExecutor,
+    ToolExecutorRegistry, ToolSensitivity, TranslationToolExecutor, UserTodoExecutor,
+    WorkspaceFsExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -248,10 +249,14 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(ChatAnkiToolExecutor::new()));
         executors.push(Arc::new(BuiltinRetrievalExecutor::new()));
         executors.push(Arc::new(BuiltinResourceExecutor::new()));
+        executors.push(Arc::new(super::tools::ConnectorToolExecutor::new()));
+        executors.push(Arc::new(super::tools::TaskAuditExecutor::new()));
         executors.push(Arc::new(DstuToolExecutor::new()));
         executors.push(Arc::new(super::tools::AttachmentToolExecutor::new())); // 🆕 附件工具执行器（解决 P0 断裂点）
         executors.push(Arc::new(FetchExecutor::new())); // 🆕 内置 Web Fetch 工具
         executors.push(Arc::new(super::tools::BrowserToolExecutor::new())); // 🆕 内置浏览器 Agent 工具（非 Playwright）
+        executors.push(Arc::new(MediaToolExecutor::new())); // Managed attachment audio transcription
+        executors.push(Arc::new(OfficeFidelityExecutor::new())); // Read-only Office/PDF fidelity inventory
         executors.push(Arc::new(McpProposeExecutor::new())); // 🆕 MCP server 提案工具（High 敏感度）
         executors.push(Arc::new(AutomationExecutor::new())); // 🆕 周期自动化工具（propose High / set_enabled Medium）
         executors.push(Arc::new(AcademicSearchExecutor::new())); // 🆕 学术论文搜索工具（arXiv + OpenAlex）
@@ -277,6 +282,7 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
         executors.push(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
         executors.push(Arc::new(WorkspaceFsExecutor::new()));
+        executors.push(Arc::new(FileManagerExecutor::new()));
         executors.push(Arc::new(
             super::tools::attachment_stage_executor::AttachmentStageExecutor::new(),
         )); // 🆕 附件物化工具执行器（附件原始字节 → temp root 路径）
@@ -293,6 +299,9 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(
             super::tools::self_inspect_executor::SelfInspectExecutor::new(),
         )); // 🆕 self_inspect 只读自查工具（Low 敏感度，脱敏输出）
+        executors.push(Arc::new(
+            super::tools::role_pack_executor::RolePackExecutor::new(),
+        )); // Versioned role pack list/get/validate (read-only + auditable selection)
         executors.push(Arc::new(
             super::tools::runtime_root_request_executor::RuntimeRootRequestExecutor::new(),
         )); // 🆕 runtime_root_request 授权请求（High，never-remember，critical 直接拒绝）

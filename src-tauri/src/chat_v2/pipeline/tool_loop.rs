@@ -2564,6 +2564,18 @@ impl ChatV2Pipeline {
                 tool_call.name
             )));
         }
+        if let Err(error) = crate::chat_v2::headless::validate_trusted_automation_tool_call(
+            session_id,
+            &tool_call.name,
+            &tool_call.arguments,
+        ) {
+            log::warn!(
+                "[ChatV2::pipeline] Trusted automation profile blocked tool '{}': {}",
+                tool_call.name,
+                error
+            );
+            return Ok(build_preflight_blocked_result(error));
+        }
 
         let is_memory_tool = short_name.starts_with("memory_");
         let is_rag_tool = short_name.starts_with("rag_");
@@ -2817,54 +2829,33 @@ impl ChatV2Pipeline {
             // 统一入口 `approval_scope::make_setting_key`（v2 优先，未知工具 fallback v1）
             // 同时读取旧版 v1 键作为向后兼容（如果 v2 未命中）
             // ADR-B2：权限类工具跳过一切 remember 路径（不可绕过人工审批）。
-            let skip_remember = crate::chat_v2::approval_scope::never_remember_approval_for_args(
+            let irreversible = crate::chat_v2::approval_scope::never_remember_approval_for_args(
                 &tool_call.name,
                 &approval_arguments,
             );
-            let persisted_approval: Option<bool> = if skip_remember {
-                None
-            } else {
-                self.main_db.as_ref().and_then(|db| {
-                    use crate::chat_v2::approval_scope;
+            let can_use_session_remember = authority_state.permission_preset
+                == crate::chat_v2::types::PermissionPreset::Relaxed
+                && effective_sensitivity == Some(ToolSensitivity::Medium)
+                && !irreversible;
 
-                    // v2 查询（若为已知工具）
-                    if let Some(v2_key) =
-                        approval_scope::make_setting_key_v2(&tool_call.name, &approval_arguments)
-                    {
-                        if let Ok(Some(v)) = db.get_setting(&v2_key) {
-                            return Some(v == "allow");
-                        }
-                    }
-                    // v1 回退查询（保证旧"记住选择"仍生效）
-                    let v1_key =
-                        approval_scope::make_setting_key_v1(&tool_call.name, &approval_arguments);
-                    db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
+            // Both presets are session-only. Persistent/global remembers are
+            // deliberately ignored; relaxed may reuse only Medium approvals.
+            let remembered = can_use_session_remember
+                .then(|| {
+                    approval_manager.check_session_remembered(
+                        session_id,
+                        &tool_call.name,
+                        &approval_arguments,
+                    )
                 })
-            };
-
-            // 使用持久化设置、会话级记住（🆕 三档分级中间档）或内存缓存
-            let remembered = if skip_remember {
-                None
-            } else {
-                persisted_approval
-                    .or_else(|| {
-                        approval_manager.check_session_remembered(
-                            session_id,
-                            &tool_call.name,
-                            &approval_arguments,
-                        )
-                    })
-                    .or_else(|| {
-                        approval_manager.check_remembered(&tool_call.name, &approval_arguments)
-                    })
-            };
+                .flatten();
 
             if let Some(is_allowed) = remembered {
                 log::info!(
                     "[ChatV2::pipeline] Tool {} approval remembered: {} (persisted={})",
                     tool_call.name,
                     is_allowed,
-                    persisted_approval.is_some()
+                    false
                 );
                 if !is_allowed {
                     // 用户之前选择了"始终拒绝"
@@ -2875,7 +2866,7 @@ impl ChatV2Pipeline {
                 // 用户之前选择了"始终允许"，继续执行
             } else {
                 // 需要请求用户审批
-                let actual_sensitivity = sensitivity.unwrap_or(ToolSensitivity::Medium);
+                let actual_sensitivity = effective_sensitivity.unwrap_or(ToolSensitivity::Medium);
                 let approval_outcome = self
                     .request_tool_approval(
                         tool_call,
@@ -2885,6 +2876,7 @@ impl ChatV2Pipeline {
                         message_id,
                         block_id,
                         &actual_sensitivity,
+                        authority_state.permission_preset,
                         approval_manager,
                         cancellation_token.as_ref(),
                     )
@@ -3211,6 +3203,7 @@ impl ChatV2Pipeline {
         message_id: &str,
         block_id: &str,
         sensitivity: &ToolSensitivity,
+        permission_preset: crate::chat_v2::types::PermissionPreset,
         approval_manager: &Arc<ApprovalManager>,
         cancellation_token: Option<&CancellationToken>,
     ) -> ApprovalOutcome {
@@ -3232,6 +3225,7 @@ impl ChatV2Pipeline {
                 approval_arguments,
             ),
             sensitivity: sensitivity_label.to_string(),
+            permission_preset,
             description: ApprovalManager::generate_description(&tool_call.name, approval_arguments),
             timeout_seconds,
             runtime_scope: crate::chat_v2::approval_scope::make_runtime_approval_scope(
@@ -3242,11 +3236,13 @@ impl ChatV2Pipeline {
         };
 
         // 注册等待
-        let rx = approval_manager.register_with_scope(
+        let rx = approval_manager.register_with_permission_preset(
             session_id,
             &tool_call.id,
             &tool_call.name,
             approval_arguments,
+            permission_preset,
+            *sensitivity,
         );
 
         // 发射审批请求事件到前端
@@ -4151,6 +4147,7 @@ mod tests {
         let mut session = ChatSession::new(session_id.clone(), "chat".to_string());
         let authority = crate::chat_v2::types::SessionAuthorityState {
             authority_mode: mode,
+            permission_preset: Default::default(),
             plan: None,
         };
         session.metadata = Some(authority.apply_to_metadata(None));
@@ -4430,6 +4427,7 @@ mod tests {
         let mut session = ChatSession::new(session_id.clone(), "chat".to_string());
         let authority = crate::chat_v2::types::SessionAuthorityState {
             authority_mode: mode,
+            permission_preset: Default::default(),
             plan: None,
         };
         session.metadata = Some(authority.apply_to_metadata(None));
@@ -4755,6 +4753,7 @@ mod tests {
         .expect("create headless session");
         let ask_state = SessionAuthorityState {
             authority_mode: AuthorityMode::Ask,
+            permission_preset: Default::default(),
             plan: None,
         };
         ChatV2Repo::set_session_authority_mode(

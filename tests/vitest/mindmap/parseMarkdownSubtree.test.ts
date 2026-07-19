@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   looksLikeMarkdownList,
   markdownListToNodes,
+  htmlOutlineToMarkdown,
 } from '@/features/mindmap/utils/pasteMarkdown';
 import {
   filterCompletedTree,
@@ -35,6 +36,11 @@ describe('looksLikeMarkdownList', () => {
   it('accepts dense ordered lists', () => {
     expect(looksLikeMarkdownList('1. a\n2. b\n3. c')).toBe(true);
   });
+
+  it('accepts indentation-only and common pasted bullet outlines', () => {
+    expect(looksLikeMarkdownList('Parent\n  Child\n    Deep')).toBe(true);
+    expect(looksLikeMarkdownList('• Parent\n  • Child')).toBe(true);
+  });
 });
 
 describe('markdownListToNodes', () => {
@@ -50,6 +56,39 @@ describe('markdownListToNodes', () => {
   it('supports multiple top-level roots', () => {
     const forest = markdownListToNodes('- a\n- b');
     expect(forest.map((n) => n.text)).toEqual(['a', 'b']);
+  });
+
+  it('builds a tree from indentation-only text', () => {
+    const forest = markdownListToNodes('Parent\n  Child\n    Deep\nSibling');
+    expect(forest.map((node) => node.text)).toEqual(['Parent', 'Sibling']);
+    expect(forest[0].children[0].text).toBe('Child');
+    expect(forest[0].children[0].children[0].text).toBe('Deep');
+  });
+});
+
+describe('htmlOutlineToMarkdown', () => {
+  it('extracts nested Word/HTML lists as an outline', () => {
+    const markdown = htmlOutlineToMarkdown(
+      '<ul><li>Parent<ul><li>Child</li></ul></li><li>Sibling</li></ul>',
+    );
+    expect(markdown).toBe('- Parent\n  - Child\n- Sibling');
+    const forest = markdownListToNodes(markdown!);
+    expect(forest.map((node) => node.text)).toEqual(['Parent', 'Sibling']);
+    expect(forest[0].children[0].text).toBe('Child');
+  });
+
+  it('extracts heading hierarchy and ignores unstructured HTML', () => {
+    expect(htmlOutlineToMarkdown('<h1>Chapter</h1><h2>Section</h2>')).toBe(
+      '# Chapter\n## Section',
+    );
+    expect(htmlOutlineToMarkdown('<p>ordinary inline text</p>')).toBeNull();
+  });
+
+  it('recognizes Word MsoListParagraph markup', () => {
+    expect(htmlOutlineToMarkdown(
+      '<p class="MsoListParagraph" style="mso-list:l0 level1 lfo1;margin-left:36pt">• Parent</p>' +
+      '<p class="MsoListParagraph" style="mso-list:l0 level2 lfo1;margin-left:72pt">• Child</p>',
+    )).toBe('- Parent\n  - Child');
   });
 });
 

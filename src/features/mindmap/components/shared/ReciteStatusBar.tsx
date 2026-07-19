@@ -39,9 +39,13 @@ export const ReciteStatusBar: React.FC = () => {
           </span>
         </div>
       ) : (
-        <span className="text-xs text-[var(--mm-text-muted)] whitespace-nowrap max-w-[200px] truncate">
-          {t('recite.emptyHint')}
-        </span>
+        <NotionButton
+          variant="ghost"
+          className="h-7 px-2 text-xs"
+          onClick={() => setReciteMode(false)}
+        >
+          {t('recite.createBlankCta')}
+        </NotionButton>
       )}
 
       <div className="w-px h-4 bg-[var(--mm-border)]" />

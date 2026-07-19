@@ -43,8 +43,8 @@ export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
   }, [dragging, minLeft, minRight]);
 
   return (
-    <div ref={containerRef} className={`w-full h-full flex select-none ${className || ''}`}>
-      <div style={{ width: `calc(${ratio * 100}% - 3px)` }} className="shrink-0 min-w-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!basis-auto [&>*]:!flex-none">
+    <div ref={containerRef} className={`w-full h-full min-h-0 flex select-none ${className || ''}`}>
+      <div style={{ width: `calc(${ratio * 100}% - 3px)` }} className="h-full min-h-0 shrink-0 min-w-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
         {left}
       </div>
       <div
@@ -56,7 +56,7 @@ export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
       >
         <DotsSixVertical size={12} className="text-muted-foreground/50" />
       </div>
-      <div style={{ width: `calc(${(1 - ratio) * 100}% - 3px)` }} className="shrink-0 min-w-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!basis-auto [&>*]:!flex-none">
+      <div style={{ width: `calc(${(1 - ratio) * 100}% - 3px)` }} className="h-full min-h-0 shrink-0 min-w-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
         {right}
       </div>
     </div>
@@ -111,8 +111,8 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
   }, [dragging, minTop, minBottom]);
 
   return (
-    <div ref={containerRef} className={`w-full h-full flex flex-col select-none ${className || ''}`}>
-      <div style={{ height: `calc(${ratio * 100}% - 12px)` }} className="shrink-0 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!basis-auto [&>*]:!flex-none">
+    <div ref={containerRef} className={`w-full h-full min-h-0 flex flex-col select-none ${className || ''}`}>
+      <div style={{ height: `calc(${ratio * 100}% - 12px)` }} className="shrink-0 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
         {top}
       </div>
       <div
@@ -126,7 +126,7 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
         {/* 拖拽手柄指示器 */}
         <div className={`w-12 h-1.5 rounded-full ${dragging ? 'bg-primary' : 'bg-muted-foreground/40'} transition-colors`} />
       </div>
-      <div style={{ height: `calc(${(1 - ratio) * 100}% - 12px)` }} className="shrink-0 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!basis-auto [&>*]:!flex-none">
+      <div style={{ height: `calc(${(1 - ratio) * 100}% - 12px)` }} className="shrink-0 min-h-0 overflow-hidden [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
         {bottom}
       </div>
     </div>

@@ -6,6 +6,7 @@ import { InlineLatex } from '../../shared/InlineLatex';
 import { containsLatex } from '../../../utils/renderLatex';
 import TextareaAutosize from 'react-textarea-autosize';
 import type { BlankRange, MindMapNodeRef } from '../../../types';
+import { getMindMapPreferences } from '../../../utils/mindmapPreferences';
 import { NodeRefList } from '../../shared/NodeRefCard';
 import { useTextSelectionBubble } from '../../../hooks/useTextSelectionBubble';
 
@@ -211,6 +212,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
 
   const displayWithBlanks = !isEditing && (reciteMode || !!onAddBlank);
   const hasLatex = containsLatex(text);
+  const descriptionFirstLine = getMindMapPreferences().descriptionPreview === 'first-line';
 
   return (
     <div
@@ -333,6 +335,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
           text={note}
           className={cn(
             "text-xs text-[var(--mm-text-muted)] px-1 mt-0.5 whitespace-pre-wrap leading-tight",
+            descriptionFirstLine && "mm-note-first-line",
             isRoot ? "text-center" : "text-left",
             isCompleted && "line-through opacity-70"
           )}

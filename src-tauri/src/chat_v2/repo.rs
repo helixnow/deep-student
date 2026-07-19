@@ -2215,6 +2215,21 @@ impl ChatV2Repo {
         Ok(session)
     }
 
+    pub fn set_session_permission_preset(
+        db: &ChatV2Database,
+        session_id: &str,
+        preset: crate::chat_v2::types::PermissionPreset,
+    ) -> ChatV2Result<ChatSession> {
+        let mut session = Self::get_session_v2(db, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+        let mut authority = SessionAuthorityState::from_metadata(session.metadata.as_ref());
+        authority.permission_preset = preset;
+        session.metadata = Some(authority.apply_to_metadata(session.metadata.take()));
+        session.updated_at = Utc::now();
+        Self::update_session_v2(db, &session)?;
+        Ok(session)
+    }
+
     /// Persist an approved/pending plan batch onto session metadata.
     pub fn set_session_plan_state(
         db: &ChatV2Database,

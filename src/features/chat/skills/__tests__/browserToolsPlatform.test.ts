@@ -21,4 +21,25 @@ describe('browser-tools platform registration', () => {
       expect(filtered.some((skill) => skill.id === 'browser-tools')).toBe(false);
     },
   );
+
+  it('exposes controlled file bridge tools without a raw path parameter', () => {
+    const upload = browserToolsSkill.embeddedTools?.find(
+      (tool) => tool.name === 'builtin-browser_file_upload',
+    );
+    const downloads = browserToolsSkill.embeddedTools?.find(
+      (tool) => tool.name === 'builtin-browser_downloads',
+    );
+
+    expect(upload).toBeDefined();
+    expect(downloads).toBeDefined();
+    expect(upload?.inputSchema.properties).not.toHaveProperty('path');
+    expect(upload?.inputSchema.properties).not.toHaveProperty('absolute_path');
+    expect(upload?.inputSchema.properties.files.items.properties).toEqual(
+      expect.objectContaining({
+        root_id: expect.any(Object),
+        relative_path: expect.any(Object),
+      }),
+    );
+    expect(upload?.description).toContain('不会自动提交表单');
+  });
 });

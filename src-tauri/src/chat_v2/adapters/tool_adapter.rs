@@ -21,10 +21,15 @@ use tokio::time::timeout;
 
 use super::super::error::{ChatV2Error, ChatV2Result};
 use super::super::events::{event_types, ChatV2EventEmitter};
+use super::super::runtime_roots::artifact_root;
+use super::super::tools::mcp_content_materializer::{
+    materialize_mcp_tool_output, McpOutputProvenance,
+};
 use super::super::types::{MessageBlock, SourceInfo};
 use crate::mcp::client::{Content, ToolResult};
 use crate::mcp::global::get_global_mcp_client;
 use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
+use tauri::Manager;
 
 // ============================================================================
 // 常量
@@ -163,7 +168,9 @@ impl ChatV2ToolAdapter {
         match call_result {
             Ok(Ok(tool_result)) => {
                 // 工具调用成功
-                let result_value = self.convert_mcp_tool_result(&tool_result);
+                let result_value = self
+                    .convert_mcp_tool_result(tool_name, &tool_result)
+                    .await?;
 
                 // 发射 end 事件
                 self.emitter.emit_end_with_meta(
@@ -227,42 +234,53 @@ impl ChatV2ToolAdapter {
     }
 
     /// 转换 MCP 工具结果为 JSON Value
-    fn convert_mcp_tool_result(&self, result: &ToolResult) -> Value {
-        // 提取文本内容
+    async fn convert_mcp_tool_result(
+        &self,
+        tool_name: &str,
+        result: &ToolResult,
+    ) -> ChatV2Result<Value> {
         let mut text_contents = Vec::new();
-        let mut has_error = false;
 
         for content in &result.content {
             match content {
                 Content::Text { text } => {
                     text_contents.push(text.clone());
                 }
-                Content::Image { data, mime_type } => {
-                    text_contents.push(format!(
-                        "[Image: {} bytes, type: {}]",
-                        data.len(),
-                        mime_type
-                    ));
-                }
+                Content::Image { .. } => {}
                 Content::Resource { resource } => {
                     if let Some(ref text) = resource.text {
                         text_contents.push(text.clone());
-                    } else if let Some(ref blob) = resource.blob {
-                        text_contents.push(format!("[Resource blob: {} bytes]", blob.len()));
                     }
                 }
             }
         }
 
-        if let Some(is_error) = result.is_error {
-            has_error = is_error;
-        }
+        let raw = serde_json::to_value(&result.content)
+            .map_err(|error| ChatV2Error::Serialization(error.to_string()))?;
+        let window = self.emitter.window();
+        let artifact = artifact_root(
+            &window.app_handle().clone(),
+            self.emitter.session_id(),
+            true,
+        )
+        .map_err(ChatV2Error::Tool)?;
+        let materialized = materialize_mcp_tool_output(
+            raw,
+            artifact.path,
+            McpOutputProvenance {
+                provider: "mcp".to_string(),
+                server: "global-mcp".to_string(),
+                tool: tool_name.to_string(),
+            },
+        )
+        .await
+        .map_err(ChatV2Error::Tool)?;
 
-        json!({
+        Ok(json!({
             "content": text_contents.join("\n"),
-            "isError": has_error,
-            "raw": text_contents
-        })
+            "isError": result.is_error.unwrap_or(false),
+            "raw": materialized
+        }))
     }
 
     // ========================================================================

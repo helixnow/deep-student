@@ -1,5 +1,5 @@
 /**
- * flashcardsDueSource — fsrs_get_due 轮询与 badge 行为
+ * flashcardsDueSource — fsrs_get_stats 轮询与 badge 行为
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { requestFlashcardsDueRefresh } from '@/features/flashcards/events';
@@ -23,7 +23,7 @@ describe('flashcardsDueSource', () => {
   beforeEach(async () => {
     stopFlashcardsDueWatcher();
     invokeMock.mockReset();
-    invokeMock.mockResolvedValue([]);
+    invokeMock.mockResolvedValue({ due: 0 });
     await refreshFlashcardsDueCount();
   });
 
@@ -31,21 +31,27 @@ describe('flashcardsDueSource', () => {
     stopFlashcardsDueWatcher();
   });
 
-  it('dueCount = fsrs_get_due 数组长度；badge 为 count；归零后 badge 消失', async () => {
-    invokeMock.mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+  it('dueCount = fsrs_get_stats.due；badge 为 count；归零后 badge 消失', async () => {
+    invokeMock.mockResolvedValue({ due: 3 });
     await refreshFlashcardsDueCount();
-    expect(invokeMock).toHaveBeenCalledWith('fsrs_get_due', { limit: 50 });
+    expect(invokeMock).toHaveBeenCalledWith('fsrs_get_stats');
     expect(getFlashcardsDueCount()).toBe(3);
     expect(flashcardsDueBadgeSource()).toEqual({ kind: 'count', value: 3 });
 
-    invokeMock.mockResolvedValue([]);
+    invokeMock.mockResolvedValue({ due: 0 });
     await refreshFlashcardsDueCount();
     expect(getFlashcardsDueCount()).toBe(0);
     expect(flashcardsDueBadgeSource()).toBeNull();
   });
 
+  it('兼容 snake_case due 字段', async () => {
+    invokeMock.mockResolvedValue({ due_count: 2 });
+    await refreshFlashcardsDueCount();
+    expect(getFlashcardsDueCount()).toBe(2);
+  });
+
   it('invoke 失败不抛错，保持上次计数', async () => {
-    invokeMock.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+    invokeMock.mockResolvedValue({ due: 2 });
     await refreshFlashcardsDueCount();
     expect(getFlashcardsDueCount()).toBe(2);
 
@@ -54,8 +60,8 @@ describe('flashcardsDueSource', () => {
     expect(getFlashcardsDueCount()).toBe(2);
   });
 
-  it('非数组返回保持上次计数', async () => {
-    invokeMock.mockResolvedValue([{ id: 'a' }]);
+  it('无法解析的返回保持上次计数', async () => {
+    invokeMock.mockResolvedValue({ due: 1 });
     await refreshFlashcardsDueCount();
     expect(getFlashcardsDueCount()).toBe(1);
 
@@ -67,7 +73,7 @@ describe('flashcardsDueSource', () => {
   it('projection source 为 badge-only：subscribe 启动 watcher 并按计数产出 0/1 个实例', async () => {
     expect(flashcardsDueProjectionSource.projectWindows).toBe(false);
 
-    invokeMock.mockResolvedValue([{ id: 'a' }]);
+    invokeMock.mockResolvedValue({ due: 1 });
     const notify = vi.fn();
     const unsubscribe = flashcardsDueProjectionSource.subscribe(notify);
     expect(notify).toHaveBeenCalledWith([]);
@@ -77,7 +83,7 @@ describe('flashcardsDueSource', () => {
       expect.objectContaining({ instanceKey: FLASHCARDS_DUE_INSTANCE_KEY }),
     ]);
 
-    invokeMock.mockResolvedValue([]);
+    invokeMock.mockResolvedValue({ due: 0 });
     await refreshFlashcardsDueCount();
     expect(notify).toHaveBeenLastCalledWith([]);
 
@@ -85,7 +91,7 @@ describe('flashcardsDueSource', () => {
   });
 
   it('无订阅者时 stop；有订阅者时 start 幂等且立即刷新', async () => {
-    invokeMock.mockResolvedValue([{ id: 'x' }]);
+    invokeMock.mockResolvedValue({ due: 1 });
     const unsub = subscribeFlashcardsDueCount(() => {});
     await refreshFlashcardsDueCount();
     expect(getFlashcardsDueCount()).toBe(1);
@@ -96,7 +102,7 @@ describe('flashcardsDueSource', () => {
 
     unsub();
     // 退订后 stop；再次 refresh 仍可用（手动）
-    invokeMock.mockResolvedValue([{ id: 'y' }, { id: 'z' }]);
+    invokeMock.mockResolvedValue({ due: 2 });
     await refreshFlashcardsDueCount();
     expect(getFlashcardsDueCount()).toBe(2);
   });
@@ -105,11 +111,11 @@ describe('flashcardsDueSource', () => {
     const unsub = subscribeFlashcardsDueCount(() => {});
     await refreshFlashcardsDueCount();
     invokeMock.mockClear();
-    invokeMock.mockResolvedValue([{ id: 'event-card' }]);
+    invokeMock.mockResolvedValue({ due: 1 });
 
     requestFlashcardsDueRefresh();
 
-    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('fsrs_get_due', { limit: 50 }));
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('fsrs_get_stats'));
     expect(getFlashcardsDueCount()).toBe(1);
     unsub();
   });

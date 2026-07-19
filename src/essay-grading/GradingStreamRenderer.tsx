@@ -209,13 +209,13 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
       )}
 
       {/* 批改内容 - Notion 风格留白 */}
-      <CustomScrollArea 
-        className="grading-content flex-1 min-h-0"
-        viewportClassName="px-5 pt-5 pb-20"
-        hideTrackWhenIdle={true}
-      >
-        {content ? (
-          activeTab === 'overview' ? (
+      {content ? (
+        <CustomScrollArea
+          className="grading-content flex-1 min-h-0"
+          viewportClassName="px-5 pt-5 pb-20"
+          hideTrackWhenIdle={true}
+        >
+          {activeTab === 'overview' ? (
             shouldShowAnnotated ? (
               <StreamingAnnotatedText
                 text={content}
@@ -246,13 +246,13 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
             <PolishSectionView items={parseResult.polishItems} />
           ) : activeTab === 'model_essay' ? (
             <ModelEssayView essay={parseResult.modelEssay ?? ''} />
-          ) : null
-        ) : (
-          <div className="h-full flex items-center justify-center text-muted-foreground/40 text-sm select-none">
-            {displayPlaceholder}
-          </div>
-        )}
-      </CustomScrollArea>
+          ) : null}
+        </CustomScrollArea>
+      ) : (
+        <div className="flex-1 min-h-0 flex items-center justify-center text-muted-foreground/40 text-sm select-none px-5">
+          {displayPlaceholder}
+        </div>
+      )}
 
       {/* 字符统计 - Notion 风格极简 */}
       {showStats && content && (

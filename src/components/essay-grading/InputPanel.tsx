@@ -25,7 +25,6 @@ import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { UploadedImage } from '../EssayGradingWorkbench';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
-import { CustomScrollArea } from '../custom-scroll-area';
 
 /** ★ F-2: 作文最大字符数限制（约 5 万字符） */
 const ESSAY_MAX_CHARS = 50000;
@@ -153,52 +152,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   // 确保 inputText 有默认值，防止 undefined
   const safeInputText = inputText ?? '';
 
-  // 获取当前选中的模式
-  const currentMode = modes.find(m => m.id === modeId);
-  
   // 获取默认模型
   const defaultModel = models.find(m => m.is_default);
   const topicImageCount = topicImages?.length ?? 0;
   const hasTopicContent = Boolean(topicText?.trim()) || topicImageCount > 0;
   const getUnicodeCharCount = (text: string): number => Array.from(text).length;
-
-  // ---- 自研滚动条：合并转发 ref + textarea 自动调高 ----
-  const internalRef = React.useRef<HTMLTextAreaElement>(null);
-  const mergedRef = React.useCallback(
-    (node: HTMLTextAreaElement | null) => {
-      internalRef.current = node;
-      if (typeof ref === 'function') ref(node);
-      else if (ref) (ref as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
-    },
-    [ref],
-  );
-
-  // 文本变化时自动调高（让 CustomScrollArea 接管溢出滚动）
-  React.useLayoutEffect(() => {
-    const el = internalRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }, [safeInputText]);
-
-  // 宽度变化时重新计算（面板拖拽缩放等场景）
-  React.useEffect(() => {
-    const el = internalRef.current;
-    if (!el) return;
-    let prevW = el.clientWidth;
-    const ro = new ResizeObserver(() => {
-      const w = el.clientWidth;
-      if (w !== prevW) {
-        prevW = w;
-        requestAnimationFrame(() => {
-          el.style.height = 'auto';
-          el.style.height = `${el.scrollHeight}px`;
-        });
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 border-b lg:border-b-0 lg:border-r border-border/40 relative group/source">
@@ -439,7 +397,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         </div>
       )}
 
-      {/* Content - Notion 风格编辑区 */}
+      {/* Content - 与翻译面板一致：flex-1 撑满剩余高度，避免空态在 0 高度容器内重叠压缩 */}
       <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
         <UnifiedDragDropZone
           zoneId="essay-grading-upload"
@@ -450,11 +408,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           className="flex-1 min-h-0 flex flex-col relative"
         >
           {!safeInputText && !isGrading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none px-6">
               <div className="text-center space-y-3 pointer-events-auto">
                 <div>
-                  <h3 className="text-sm font-medium text-foreground/70">{t('essay_grading:empty_state.title')}</h3>
-                  <p className="text-xs text-muted-foreground/50 mt-1 max-w-[240px]">{t('essay_grading:empty_state.description')}</p>
+                  <h3 className="text-sm font-medium text-foreground/70 leading-normal">{t('essay_grading:empty_state.title')}</h3>
+                  <p className="text-xs text-muted-foreground/50 mt-1 max-w-[240px] leading-relaxed">{t('essay_grading:empty_state.description')}</p>
                 </div>
                 <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30">
                   <Image size={14} />
@@ -463,23 +421,21 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               </div>
             </div>
           )}
-          <CustomScrollArea className="flex-1 min-h-0">
-            <Textarea
-              ref={mergedRef}
-              value={safeInputText}
-              readOnly={isGrading}
-              onChange={(e) => {
-                const newValue = e.target.value;
-                if (getUnicodeCharCount(newValue) <= ESSAY_MAX_CHARS) {
-                  setInputText(newValue);
-                } else if (getUnicodeCharCount(inputText ?? '') < ESSAY_MAX_CHARS) {
-                  showGlobalNotification('warning', t('essay_grading:char_limit.reached', { max: ESSAY_MAX_CHARS.toLocaleString() }));
-                }
-              }}
-              placeholder={t('essay_grading:input_section.placeholder')}
-              className="w-full min-h-full resize-none overflow-hidden px-5 py-5 text-[15px] leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40"
-/>
-          </CustomScrollArea>
+          <Textarea
+            ref={ref}
+            value={safeInputText}
+            readOnly={isGrading}
+            onChange={(e) => {
+              const newValue = e.target.value;
+              if (getUnicodeCharCount(newValue) <= ESSAY_MAX_CHARS) {
+                setInputText(newValue);
+              } else if (getUnicodeCharCount(inputText ?? '') < ESSAY_MAX_CHARS) {
+                showGlobalNotification('warning', t('essay_grading:char_limit.reached', { max: ESSAY_MAX_CHARS.toLocaleString() }));
+              }
+            }}
+            placeholder={!safeInputText && !isGrading ? '' : t('essay_grading:input_section.placeholder')}
+            className="flex-1 !min-h-0 w-full resize-none overflow-y-auto px-5 py-5 text-[15px] leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40 [scrollbar-width:thin]"
+          />
         </UnifiedDragDropZone>
 
         {/* Floating Bottom Controls - Notion 风格悬浮工具 */}

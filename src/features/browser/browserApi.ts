@@ -10,6 +10,7 @@ import { assertBrowserGatesOpen, BrowserGateClosedError } from './gates';
 import type {
   BrowserCommandName,
   BrowserControlMode,
+  BrowserDownloadObservation,
   BrowserHistoryEntry,
   BrowserSessionSnapshot,
   BrowserSurfaceBounds,
@@ -339,6 +340,19 @@ export async function takeOver(): Promise<BrowserSessionSnapshot> {
   return invokeState('browser_take_over');
 }
 
+export async function listDownloads(sessionId: string): Promise<BrowserDownloadObservation[]> {
+  return invokeBrowser<BrowserDownloadObservation[]>('browser_list_downloads', { sessionId });
+}
+
+/** Internal byte bridge; Agent paths are authorized and materialized by Rust executor. */
+export async function setInputFiles(
+  sessionId: string,
+  ref: string,
+  files: Array<{ name: string; mimeType: string; base64: string }>,
+): Promise<unknown> {
+  return invokeBrowser('browser_set_input_files', { sessionId, ref, files });
+}
+
 export const browserApi = {
   openSession,
   closeSession,
@@ -353,6 +367,8 @@ export const browserApi = {
   setSurfaceVisibility,
   getSurfaceHostMode,
   takeOver,
+  listDownloads,
+  setInputFiles,
   normalizeNavigationInput,
   parseBrowserSessionSnapshot,
   parseBrowserSurfaceHostMode,

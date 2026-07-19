@@ -235,8 +235,8 @@ export interface InputBarUIProps {
   renderAdvancedPanel?: () => React.ReactNode;
   /** 渲染 MCP 工具面板（模式插件提供） */
   renderMcpPanel?: () => React.ReactNode;
-  /** 渲染技能选择面板 */
-  renderSkillPanel?: () => React.ReactNode;
+  /** 渲染技能选择面板；variant=menu 用于加号菜单次级飞出层 */
+  renderSkillPanel?: (opts?: { variant?: 'panel' | 'menu' }) => React.ReactNode;
   /** 打开当前对话模型面板（统一入口，承接单模型 / 对比 / 重试） */
   onOpenRuntimeModelPanel?: (mode?: 'single' | 'compare') => void;
 
@@ -334,6 +334,8 @@ export interface InputBarUIProps {
   /** Ask / Plan / Craft */
   authorityMode?: 'ask' | 'plan' | 'craft';
   onAuthorityModeChange?: (mode: 'ask' | 'plan' | 'craft') => void | Promise<void>;
+  permissionPreset?: 'cautious' | 'relaxed';
+  onPermissionPresetChange?: (preset: 'cautious' | 'relaxed') => void | Promise<void>;
   authorityAskBlockedHint?: boolean;
 
   // ========== PDF 页码引用（精准提问） ==========

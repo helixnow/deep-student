@@ -22,6 +22,8 @@ import {
   TranslationIcon,
   MindmapIcon,
   FolderIcon,
+  ImageFileIcon,
+  GenericFileIcon,
   type ResourceIconProps,
 } from '../../icons';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -50,6 +52,8 @@ interface FinderQuickAccessProps {
   onToggleCollapse?: () => void;
   searchQuery?: string;
   onSearchChange?: (value: string) => void;
+  /** View-honest placeholder (recent/trash/favorites/smart folder) */
+  searchPlaceholder?: string;
   searchDisabled?: boolean;
   onNewFolder?: () => void;
   onNewNote?: () => void;
@@ -83,6 +87,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   onToggleCollapse,
   searchQuery = '',
   onSearchChange,
+  searchPlaceholder,
   searchDisabled = false,
   onNewFolder,
   onNewNote,
@@ -101,12 +106,28 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 }: FinderQuickAccessProps) {
   const { t } = useTranslation(['learningHub', 'common']);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const resolvedSearchPlaceholder = searchPlaceholder || t('finder.search.placeholder');
 
   const quickAccessItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
     { type: 'desktop', icon: Desktop, label: t('finder.quickAccess.desktop') },
     { type: 'allFiles', icon: Files, label: t('finder.quickAccess.allFiles') },
     { type: 'recent', icon: ClockCounterClockwise, label: t('finder.quickAccess.recent'), count: recentCount },
     { type: 'favorites', icon: Star, label: t('finder.quickAccess.favorites'), count: favoriteCount },
+  ];
+
+  // 与 DstuAppLauncher 顺序对齐：资源类型 → 媒体 → 系统
+  const resourceTypeItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
+    { type: 'notes', CustomIcon: NoteIcon, label: t('finder.quickAccess.notes') },
+    { type: 'textbooks', CustomIcon: TextbookIcon, label: t('finder.quickAccess.textbooks') },
+    { type: 'exams', CustomIcon: ExamIcon, label: t('finder.quickAccess.exams') },
+    { type: 'essays', CustomIcon: EssayIcon, label: t('finder.quickAccess.essays') },
+    { type: 'translations', CustomIcon: TranslationIcon, label: t('finder.quickAccess.translations') },
+    { type: 'mindmaps', CustomIcon: MindmapIcon, label: t('finder.quickAccess.mindmaps') },
+  ];
+
+  const mediaItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
+    { type: 'images', CustomIcon: ImageFileIcon, label: t('finder.quickAccess.images') },
+    { type: 'files', CustomIcon: GenericFileIcon, label: t('finder.quickAccess.files') },
   ];
 
   const systemItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
@@ -309,8 +330,8 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 {fillContainer ? (
                   <input
                     type="search"
-                    placeholder={t('finder.search.placeholder')}
-                    aria-label={t('finder.search.placeholder')}
+                    placeholder={resolvedSearchPlaceholder}
+                    aria-label={resolvedSearchPlaceholder}
                     value={searchQuery}
                     onChange={(e) => onSearchChange?.(e.target.value)}
                     onKeyDown={(e) => {
@@ -332,7 +353,8 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 ) : (
                   <Input
                     type="search"
-                    placeholder={t('finder.search.placeholder')}
+                    placeholder={resolvedSearchPlaceholder}
+                    aria-label={resolvedSearchPlaceholder}
                     value={searchQuery}
                     onChange={(e) => onSearchChange?.(e.target.value)}
                     onKeyDown={(e) => {
@@ -397,6 +419,24 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
         <CustomScrollArea className="flex-1" viewportClassName={fillContainer ? 'px-2 py-1' : 'px-1.5 pb-2'}>
           <div className="space-y-0.5">
             {quickAccessItems.map((item) => (
+              <React.Fragment key={item.type}>
+                {renderNavButton(item.type, item.icon, item.label, item.count, item.color, item.CustomIcon)}
+              </React.Fragment>
+            ))}
+          </div>
+
+          {renderSectionTitle(t('finder.quickAccess.resourceTypes'))}
+          <div className="space-y-0.5">
+            {resourceTypeItems.map((item) => (
+              <React.Fragment key={item.type}>
+                {renderNavButton(item.type, item.icon, item.label, item.count, item.color, item.CustomIcon)}
+              </React.Fragment>
+            ))}
+          </div>
+
+          {renderSectionTitle(t('finder.quickAccess.media'))}
+          <div className="space-y-0.5">
+            {mediaItems.map((item) => (
               <React.Fragment key={item.type}>
                 {renderNavButton(item.type, item.icon, item.label, item.count, item.color, item.CustomIcon)}
               </React.Fragment>

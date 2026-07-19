@@ -16,6 +16,7 @@ use std::sync::mpsc::{self, SyncSender};
 use std::sync::Arc;
 use std::time::Duration;
 
+use tauri::webview::DownloadEvent;
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use tauri::webview::PageLoadEvent;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -302,6 +303,11 @@ pub struct ContentWindowHooks {
     pub on_title_changed: Arc<dyn Fn(String, Option<String>) + Send + Sync + 'static>,
     /// 顶层导航被策略拒绝，同时携带目标 URL 与拒绝原因。
     pub on_navigation_blocked: Arc<dyn Fn(String, String) + Send + Sync + 'static>,
+    /// Native download lifecycle. Agent-owned sessions redirect requested
+    /// downloads into their session artifact root; user-only sessions keep the
+    /// platform default destination.
+    pub on_download_requested: Arc<dyn Fn(String, &mut PathBuf) -> bool + Send + Sync + 'static>,
+    pub on_download_finished: Arc<dyn Fn(String, Option<PathBuf>, bool) + Send + Sync + 'static>,
 }
 
 #[derive(Debug, Clone)]
@@ -435,6 +441,8 @@ fn get_or_create_content_window_desktop(
         if let Some(hooks) = hooks {
             let on_finished = hooks.on_page_finished.clone();
             let on_title = hooks.on_title_changed.clone();
+            let on_download_requested = hooks.on_download_requested.clone();
+            let on_download_finished = hooks.on_download_finished.clone();
             builder = builder
                 .on_page_load(move |_webview, payload| {
                     if matches!(payload.event(), PageLoadEvent::Finished) {
@@ -444,6 +452,16 @@ fn get_or_create_content_window_desktop(
                 .on_document_title_changed(move |webview, title| {
                     let url = webview.url().ok().map(|value| value.as_str().to_string());
                     on_title(title, url);
+                })
+                .on_download(move |_webview, event| match event {
+                    DownloadEvent::Requested { url, destination } => {
+                        on_download_requested(url.as_str().to_string(), destination)
+                    }
+                    DownloadEvent::Finished { url, path, success } => {
+                        on_download_finished(url.as_str().to_string(), path, success);
+                        true
+                    }
+                    _ => true,
                 });
         }
 
@@ -514,6 +532,8 @@ fn get_or_create_content_window_desktop(
         if let Some(hooks) = hooks {
             let on_finished = hooks.on_page_finished.clone();
             let on_title = hooks.on_title_changed.clone();
+            let on_download_requested = hooks.on_download_requested.clone();
+            let on_download_finished = hooks.on_download_finished.clone();
             builder = builder
                 .on_page_load(move |_window, payload| {
                     if matches!(payload.event(), PageLoadEvent::Finished) {
@@ -523,6 +543,16 @@ fn get_or_create_content_window_desktop(
                 .on_document_title_changed(move |window, title| {
                     let url = window.url().ok().map(|value| value.as_str().to_string());
                     on_title(title, url);
+                })
+                .on_download(move |_webview, event| match event {
+                    DownloadEvent::Requested { url, destination } => {
+                        on_download_requested(url.as_str().to_string(), destination)
+                    }
+                    DownloadEvent::Finished { url, path, success } => {
+                        on_download_finished(url.as_str().to_string(), path, success);
+                        true
+                    }
+                    _ => true,
                 });
         }
         builder = builder.data_directory(options.profile_dir.clone());

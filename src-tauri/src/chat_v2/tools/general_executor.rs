@@ -12,9 +12,12 @@ use serde_json::json;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::is_canvas_tool;
+use super::mcp_content_materializer::{materialize_mcp_tool_output, McpOutputProvenance};
 use super::types::is_external_mcp_tool_name;
+use crate::chat_v2::runtime_roots::artifact_root;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::tools::ToolContext;
+use tauri::Manager;
 
 // ============================================================================
 // 通用工具执行器
@@ -92,7 +95,7 @@ impl ToolExecutor for GeneralToolExecutor {
         };
 
         // 3. 执行工具调用（超时由 ToolExecutorRegistry 统一控制）
-        let (ok, data, error, _usage, _citations, _inject) = ctx
+        let (ok, data, error, usage, _citations, _inject) = ctx
             .tool_registry
             .call_tool(&call.name, &call.arguments, &tool_ctx)
             .await;
@@ -102,7 +105,34 @@ impl ToolExecutor for GeneralToolExecutor {
         // 4. 处理结果
         if ok {
             // 工具调用成功
-            let output = data.unwrap_or(json!(null));
+            let mut output = data.unwrap_or(json!(null));
+            if is_external_mcp_tool_name(&call.name) {
+                let app = ctx.window_ref().app_handle().clone();
+                let artifact = artifact_root(&app, &ctx.session_id, true)?;
+                let provenance = McpOutputProvenance::from_usage(&call.name, usage.as_ref());
+                output = match materialize_mcp_tool_output(output, artifact.path, provenance).await
+                {
+                    Ok(output) => output,
+                    Err(error_msg) => {
+                        ctx.emit_tool_call_error(&error_msg);
+                        let result = ToolResultInfo::failure(
+                            Some(call.id.clone()),
+                            Some(ctx.block_id.clone()),
+                            call.name.clone(),
+                            audited_arguments,
+                            error_msg,
+                            duration_ms,
+                        );
+                        if let Err(error) = ctx.save_tool_block(&result) {
+                            log::warn!(
+                                "[GeneralToolExecutor] Failed to save MCP materialization error block: {}",
+                                error
+                            );
+                        }
+                        return Ok(result);
+                    }
+                };
+            }
             ctx.emit_tool_call_end(Some(json!({
                 "result": output,
                 "durationMs": duration_ms,

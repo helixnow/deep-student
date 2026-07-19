@@ -272,6 +272,7 @@
       features: {
         ax: true,
         highlight: true,
+        setInputFiles: true,
         virtualCursor: false,
         sameOriginFrames: false,
       },
@@ -499,6 +500,58 @@
     );
   }
 
+  function decodeBase64(base64) {
+    var binary = window.atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  function setInputFiles(ref, files) {
+    var el = resolveRef(ref);
+    if (!el) return err('STALE_REF', 'file input ref not found: ' + ref);
+    if (!(el instanceof HTMLInputElement) || (el.type || '').toLowerCase() !== 'file') {
+      return err('NOT_FILE_INPUT', 'target is not an input[type=file]');
+    }
+    if (!Array.isArray(files) || files.length === 0) {
+      return err('INVALID_ARGS', 'at least one file is required');
+    }
+    if (!el.multiple && files.length > 1) {
+      return err('TOO_MANY_FILES', 'target does not allow multiple files');
+    }
+    if (typeof DataTransfer !== 'function') {
+      return err('UNSUPPORTED', 'DataTransfer is unavailable in this WebView');
+    }
+
+    var transfer = new DataTransfer();
+    var selected = [];
+    try {
+      for (var i = 0; i < files.length; i++) {
+        var item = files[i] || {};
+        if (typeof item.name !== 'string' || typeof item.base64 !== 'string') {
+          return err('INVALID_ARGS', 'file payload requires name and base64');
+        }
+        var bytes = decodeBase64(item.base64);
+        var file = new File([bytes], item.name, {
+          type: typeof item.mimeType === 'string' ? item.mimeType : 'application/octet-stream',
+          lastModified: typeof item.lastModified === 'number' ? item.lastModified : Date.now(),
+        });
+        transfer.items.add(file);
+        selected.push({ name: file.name, size: file.size, type: file.type });
+      }
+      el.files = transfer.files;
+      el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+      showHighlight(boxOf(el), 500, ref);
+      // Deliberately do not submit the containing form.
+      return ok({ ref: ref, files: selected, submitted: false });
+    } catch (e) {
+      return err('FILE_SET_FAILED', String(e && e.message ? e.message : e));
+    }
+  }
+
   function scroll(opts) {
     opts = opts || {};
     var target = findScrollTarget(opts.ref);
@@ -576,6 +629,7 @@
     snapshot: snapshot,
     click: click,
     type: typeText,
+    setInputFiles: setInputFiles,
     scroll: scroll,
     highlight: highlight,
     /** @internal test helpers */

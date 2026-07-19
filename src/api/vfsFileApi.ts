@@ -121,6 +121,10 @@ export const vfsFileApi = {
    * @param fileId 文件 ID（textbook ID）
    * @param bookmarks 书签数组
    */
+  /**
+   * 更新教材书签。fileId 必须是 textbook ID。
+   * Learning Hub / Workbench 的普通 file PDF 请走 dstu.setMetadata，禁止调用本方法。
+   */
   async updateBookmarks(fileId: string, bookmarks: Bookmark[]): Promise<boolean> {
     return invoke('textbooks_update_bookmarks', { id: fileId, bookmarks });
   },

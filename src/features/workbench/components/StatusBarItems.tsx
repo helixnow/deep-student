@@ -26,10 +26,16 @@ function launchApp(typeId: 'pomodoro' | 'taskDashboard'): void {
 }
 
 function launchFlashcardsDue(): void {
-  workbenchBus.launch({
+  void workbenchBus.activate({
     typeId: 'flashcards',
-    reason: 'api',
+    instanceKey: '',
+    action: 'startReview',
     payload: FLASHCARDS_DUE_PAYLOAD,
+    fallbackLaunch: {
+      typeId: 'flashcards',
+      reason: 'api',
+      payload: FLASHCARDS_DUE_PAYLOAD,
+    },
   });
 }
 

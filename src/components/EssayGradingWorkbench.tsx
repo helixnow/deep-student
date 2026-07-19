@@ -911,7 +911,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       <MacTopSafeDragZone className="essay-grading-top-safe-drag-zone" />
 
       {/* Main Content - 始终显示批改界面 */}
-      <div className="flex-1 min-h-0 flex flex-col relative">
+      <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
         <GradingMain
           inputText={inputText}
           setInputText={setInputText}

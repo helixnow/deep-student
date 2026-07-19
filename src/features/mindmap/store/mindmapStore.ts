@@ -208,6 +208,8 @@ export interface MindMapStoreState {
   editingNodeId: string | null; // 当前正在编辑的节点 ID
   editingNoteNodeId: string | null; // 当前正在编辑备注的节点 ID
   selection: string[];
+  /** Shift range selection anchor, shared across outline remounts/view switches. */
+  selectionAnchorId: string | null;
 
   /**
    * ACR R1-11 / R2-02：Agent 演出入场节点（瞬态，不进 history/draft/持久化）。
@@ -322,6 +324,7 @@ export interface MindMapStoreState {
   setEditingNodeId: (nodeId: string | null) => void;
   setEditingNoteNodeId: (nodeId: string | null) => void;
   setSelection: (nodeIds: string[]) => void;
+  setSelectionAnchorId: (nodeId: string | null) => void;
 
   // 节点操作
   updateNode: (
@@ -380,6 +383,12 @@ export interface MindMapStoreState {
     nodeId: string,
     textOverride?: string
   ) => MergeWithPreviousResult | null;
+  /** 行末 Forward Delete：把下一可见节点合并进当前节点。 */
+  mergeNextIntoCurrent: (
+    nodeId: string,
+    textOverride?: string,
+    nextVisibleNodeId?: string | null,
+  ) => MergeWithPreviousResult | null;
   /** 批量切换完成状态（一次 history） */
   toggleCompleted: (nodeIds: string[]) => void;
 
@@ -415,8 +424,12 @@ export interface MindMapStoreState {
   pasteNodes: (targetId: string) => void;
   /** 将普通多行文本作为同级子节点一次性粘贴（单 history）。 */
   pasteTextChildren: (targetId: string, lines: string[]) => void;
-  /** 将 Markdown 列表解析为层级子树，一次 undo 贴到 targetId 下 */
-  pasteMarkdownChildren: (targetId: string, markdown: string) => void;
+  /** 将 Markdown 列表解析为层级子树，一次 undo 贴到 targetId 下。 */
+  pasteMarkdownChildren: (
+    targetId: string,
+    markdown: string,
+    options?: { currentText?: string },
+  ) => void;
 
   // 保存
   /** 将当前脏文档刷新到后端；返回本次保存是否成功。 */
@@ -716,6 +729,7 @@ export function createMindMapStore(): MindMapStoreApi {
       editingNodeId: null,
       editingNoteNodeId: null,
       selection: [],
+      selectionAnchorId: null,
       agentEnteringIds: new Set<string>(),
       agentFitViewNonce: 0,
 
@@ -814,6 +828,7 @@ export function createMindMapStore(): MindMapStoreApi {
             state.editingNodeId = null; // 修复: 重置编辑状态
             state.editingNoteNodeId = null;
             state.selection = [];
+            state.selectionAnchorId = null;
             state.history = { past: [], future: [] };
             state.isDirty = recoveredDraft;
             state.isSaving = false; // 修复: 重置保存状态
@@ -870,6 +885,7 @@ export function createMindMapStore(): MindMapStoreApi {
           state.currentView = 'mindmap';
           state.focusedNodeId = doc.root.id;
           state.selection = [];
+          state.selectionAnchorId = null;
           state.history = { past: [], future: [] };
           state.isDirty = false;
           state._documentVersion = 0;
@@ -900,6 +916,7 @@ export function createMindMapStore(): MindMapStoreApi {
           state.editingNodeId = null; // 修复: 重置编辑状态
           state.editingNoteNodeId = null;
           state.selection = [];
+          state.selectionAnchorId = null;
           state.agentEnteringIds = new Set(); // ACR R1-11 瞬态
           state.agentFitViewNonce = 0; // ACR R2-02
           state.layoutId = 'tree';
@@ -1021,6 +1038,12 @@ export function createMindMapStore(): MindMapStoreApi {
       setSelection: (nodeIds: string[]) => {
         set((state) => {
           state.selection = nodeIds;
+        });
+      },
+
+      setSelectionAnchorId: (nodeId: string | null) => {
+        set((state) => {
+          state.selectionAnchorId = nodeId;
         });
       },
 
@@ -1683,6 +1706,66 @@ export function createMindMapStore(): MindMapStoreApi {
         });
 
         return { mergedIntoId, cursorOffset };
+      },
+
+      mergeNextIntoCurrent: (nodeId: string, textOverride?: string, nextVisibleNodeId?: string | null) => {
+        const { document } = get();
+        const current = findNodeById(document.root, nodeId);
+        if (!current) return null;
+
+        const visible = flattenVisibleNodes(document.root);
+        const currentIndex = visible.findIndex((entry) => entry.node.id === nodeId);
+        const source = nextVisibleNodeId === undefined
+          ? (currentIndex >= 0 ? visible[currentIndex + 1]?.node : null)
+          : (nextVisibleNodeId ? findNodeById(document.root, nextVisibleNodeId) : null);
+        if (!source || source.id === nodeId || !findParentNode(document.root, source.id)) return null;
+
+        const cursorOffset = (textOverride ?? current.text ?? '').length;
+        const sourceId = source.id;
+
+        applyMutation((state) => {
+          const target = findNodeById(state.document.root, nodeId);
+          const liveSource = findNodeById(state.document.root, sourceId);
+          const liveSourceParent = findParentNode(state.document.root, sourceId);
+          if (!target || !liveSource || !liveSourceParent) return;
+
+          const sourceIndex = liveSourceParent.children.findIndex((child) => child.id === sourceId);
+          if (sourceIndex === -1) return;
+
+          target.text = (textOverride ?? target.text ?? '') + (liveSource.text ?? '');
+          delete target.blankedRanges;
+          delete state.revealedBlanks[nodeId];
+          delete state.revealedBlanks[sourceId];
+
+          if (liveSource.note) {
+            target.note = target.note ? `${target.note}\n${liveSource.note}` : liveSource.note;
+          }
+          if (!target.style && liveSource.style) target.style = { ...liveSource.style };
+          if (liveSource.refs?.length) {
+            const existing = new Set((target.refs ?? []).map((ref) => ref.sourceId));
+            const incoming = liveSource.refs.filter((ref) => !existing.has(ref.sourceId));
+            if (incoming.length) target.refs = [...(target.refs ?? []), ...incoming];
+          }
+          if (liveSource.completed && !target.completed) target.completed = true;
+
+          const movingChildren = [...liveSource.children];
+          liveSource.children = [];
+          if (target.id === liveSourceParent.id) {
+            liveSourceParent.children.splice(sourceIndex, 1, ...movingChildren);
+          } else {
+            target.children.push(...movingChildren);
+            liveSourceParent.children.splice(sourceIndex, 1);
+          }
+          pruneAssociationsForRemovedNodes(state.document, new Set([sourceId]));
+
+          state.focusedNodeId = nodeId;
+          if (state.document.meta) state.document.meta.lastFocusId = nodeId;
+          if (state.editingNodeId === sourceId) state.editingNodeId = nodeId;
+          if (state.editingNoteNodeId === sourceId) state.editingNoteNodeId = null;
+          state.selection = state.selection.filter((id) => id !== sourceId);
+        });
+
+        return { mergedIntoId: nodeId, cursorOffset };
       },
 
       toggleCompleted: (nodeIds: string[]) => {
@@ -2561,7 +2644,11 @@ export function createMindMapStore(): MindMapStoreApi {
         });
       },
 
-      pasteMarkdownChildren: (targetId: string, markdown: string) => {
+      pasteMarkdownChildren: (
+        targetId: string,
+        markdown: string,
+        options?: { currentText?: string },
+      ) => {
         let forest: MindMapNode[];
         try {
           forest = markdownListToNodes(markdown);
@@ -2603,6 +2690,15 @@ export function createMindMapStore(): MindMapStoreApi {
           const parentNode = findNodeById(state.document.root, targetId);
           if (!parentNode) return;
 
+          if (options && Object.prototype.hasOwnProperty.call(options, 'currentText')) {
+            const nextText = options.currentText ?? '';
+            if (nextText !== parentNode.text) {
+              parentNode.text = nextText;
+              // Text offsets are no longer valid after an actual title edit.
+              delete parentNode.blankedRanges;
+              delete state.revealedBlanks[targetId];
+            }
+          }
           parentNode.children.push(...forest);
           if (forest[0]) {
             state.focusedNodeId = forest[0].id;

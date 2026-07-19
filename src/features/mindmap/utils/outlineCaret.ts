@@ -46,6 +46,28 @@ export function resolveGoalColumnOffset(
   return Math.max(0, Math.min(Math.floor(raw), len));
 }
 
+/**
+ * 多行标题的 ↑/↓ 先交给 textarea；只有位于第一/最后一个逻辑行时才跨节点。
+ * 这里按换行符判断，软换行仍由浏览器原生光标移动处理。
+ */
+export function shouldNavigateAcrossOutlineNode(
+  text: string,
+  caretOffset: number,
+  direction: 'up' | 'down',
+): boolean {
+  const offset = Math.max(0, Math.min(Math.floor(caretOffset), text.length));
+  if (direction === 'up') return !text.slice(0, offset).includes('\n');
+  return !text.slice(offset).includes('\n');
+}
+
+/** React KeyboardEvent/native KeyboardEvent 均可映射到该最小形状。 */
+export function isOutlineCompositionActive(event: {
+  isComposing?: boolean;
+  keyCode?: number;
+}): boolean {
+  return event.isComposing === true || event.keyCode === 229;
+}
+
 /** 统计后代节点数（不含自身） */
 export function countDescendants(node: Pick<MindMapNode, 'children'>): number {
   let count = 0;

@@ -13,7 +13,7 @@ import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody }
 import { Progress } from '@/components/ui/shad/Progress';
 import { CircleNotch, CheckCircle, XCircle, FileText } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { useDialogFocusManagement } from './FolderSelectorDialog';
+import { useDialogFocusManagement } from '../hooks/useDialogFocusManagement';
 
 /** 导入进度阶段 */
 export type ImportStage = 'hashing' | 'copying' | 'rendering' | 'parsing' | 'indexing' | 'saving' | 'done' | 'error';

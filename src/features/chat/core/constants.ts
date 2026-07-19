@@ -242,12 +242,24 @@ export const ATTACHMENT_VIDEO_TYPES = [
 /** 允许的视频扩展名 */
 export const ATTACHMENT_VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v', 'wmv', 'flv'];
 
+/** 允许作为附件进入受控 stage/scan 链路的压缩包类型（聊天入口不自动解压） */
+export const ATTACHMENT_ARCHIVE_TYPES = [
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/vnd.rar',
+  'application/x-rar-compressed',
+  'application/x-7z-compressed',
+];
+
+export const ATTACHMENT_ARCHIVE_EXTENSIONS = ['zip', 'rar', '7z'];
+
 /** 所有允许的附件类型 */
 export const ATTACHMENT_ALLOWED_TYPES = [
   ...ATTACHMENT_IMAGE_TYPES,
   ...ATTACHMENT_DOCUMENT_TYPES,
   ...ATTACHMENT_AUDIO_TYPES,
   ...ATTACHMENT_VIDEO_TYPES,
+  ...ATTACHMENT_ARCHIVE_TYPES,
 ];
 
 /** 所有允许的附件扩展名 */
@@ -256,6 +268,7 @@ export const ATTACHMENT_ALLOWED_EXTENSIONS = [
   ...ATTACHMENT_DOCUMENT_EXTENSIONS,
   ...ATTACHMENT_AUDIO_EXTENSIONS,
   ...ATTACHMENT_VIDEO_EXTENSIONS,
+  ...ATTACHMENT_ARCHIVE_EXTENSIONS,
 ];
 
 // ==================== 格式化工具 ====================

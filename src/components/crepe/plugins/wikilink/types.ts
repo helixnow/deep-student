@@ -2,6 +2,8 @@
  * Wikilink 插件类型与事件契约
  */
 
+import type { DstuOpenNoteDetail } from '@/features/notes/openNoteEvent';
+
 /** 补全候选笔记（与 NotesSearchOverlay / DSTU note 字段对齐的最小子集） */
 export interface WikilinkNoteCandidate {
   id: string;
@@ -69,10 +71,10 @@ export function normalizeResolve(
   };
 }
 
-export function dispatchOpenNote(target: string, noteId: string): void {
+export function dispatchOpenNote(target: string, noteId: string, heading?: string): void {
   window.dispatchEvent(
-    new CustomEvent(WIKILINK_EVENTS.OPEN_NOTE, {
-      detail: { noteId, source: 'wikilink', target },
+    new CustomEvent<DstuOpenNoteDetail>(WIKILINK_EVENTS.OPEN_NOTE, {
+      detail: { noteId, source: 'wikilink', target, ...(heading ? { heading } : {}) },
     }),
   );
 }

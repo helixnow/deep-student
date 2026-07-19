@@ -2180,10 +2180,10 @@ mod tests {
         assert!(due.iter().any(|card| card.state.id == cloze_review.id));
 
         let basic_rating = fsrs
-            .rate(&basic_review.id, 3, Some(750))
+            .rate(&basic_review.id, 3, Some(750), None)
             .expect("rate imported Basic card");
         let cloze_rating = fsrs
-            .rate(&cloze_review.id, 3, Some(900))
+            .rate(&cloze_review.id, 3, Some(900), None)
             .expect("rate imported Cloze card");
         assert!(!basic_rating.log_id.is_empty());
         assert!(!cloze_rating.log_id.is_empty());

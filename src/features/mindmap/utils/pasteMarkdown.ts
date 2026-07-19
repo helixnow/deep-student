@@ -19,7 +19,7 @@ export function looksLikeMarkdownList(text: string): boolean {
   let bulletOrHeading = 0;
   let ordered = 0;
   for (const line of lines) {
-    if (/^\s*[-*+]\s+\S/.test(line) || /^\s*#{1,6}\s+\S/.test(line)) {
+    if (/^\s*[-*+•‣◦]\s+\S/.test(line) || /^\s*#{1,6}\s+\S/.test(line)) {
       bulletOrHeading += 1;
     } else if (/^\s*\d+[.)]\s+\S/.test(line)) {
       ordered += 1;
@@ -33,7 +33,76 @@ export function looksLikeMarkdownList(text: string): boolean {
   // 有序：要求每一行都是列表项（避免「1. 散文\n2. 散文\n续写」误判）
   if (ordered >= 2 && ordered === lines.length) return true;
 
+  // 幕布/纯文本导出常只有缩进，没有项目符号；要求至少一行顶格、一行缩进。
+  const hasRootLine = lines.some((line) => /^\S/.test(line));
+  const hasIndentedLine = lines.some((line) => /^\s{2,}\S/.test(line));
+  if (bulletOrHeading === 0 && ordered === 0 && hasRootLine && hasIndentedLine) return true;
+
   return false;
+}
+
+/**
+ * 从 Word/网页剪贴板 HTML 中提取标题与列表，转换成现有 Markdown 树解析器可读的文本。
+ * 返回 null 表示 HTML 不包含可识别的结构，调用方应保留普通行内粘贴。
+ */
+export function htmlOutlineToMarkdown(html: string): string | null {
+  if (!html.trim() || typeof DOMParser === 'undefined') return null;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const lines: string[] = [];
+
+  const cleanText = (value: string | null | undefined) =>
+    (value ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const appendList = (list: Element, depth: number) => {
+    const ordered = list.tagName.toLowerCase() === 'ol';
+    const items = Array.from(list.children).filter(
+      (child) => child.tagName.toLowerCase() === 'li',
+    );
+    items.forEach((item, index) => {
+      const clone = item.cloneNode(true) as Element;
+      clone.querySelectorAll('ul, ol').forEach((nested) => nested.remove());
+      const text = cleanText(clone.textContent);
+      if (text) {
+        const marker = ordered ? `${index + 1}.` : '-';
+        lines.push(`${'  '.repeat(depth)}${marker} ${text}`);
+      }
+      Array.from(item.children)
+        .filter((child) => /^(UL|OL)$/i.test(child.tagName))
+        .forEach((nested) => appendList(nested, depth + 1));
+    });
+  };
+
+  const appendElement = (element: Element) => {
+    const heading = element.tagName.match(/^H([1-6])$/i);
+    if (heading) {
+      const text = cleanText(element.textContent);
+      if (text) lines.push(`${'#'.repeat(Number(heading[1]))} ${text}`);
+      return;
+    }
+    if (/^(UL|OL)$/i.test(element.tagName)) {
+      appendList(element, 0);
+      return;
+    }
+
+    // Word 会把列表复制成带 mso-list/MsoListParagraph 的段落。
+    if (element.tagName.toLowerCase() === 'p') {
+      const className = element.getAttribute('class') ?? '';
+      const style = element.getAttribute('style') ?? '';
+      if (/MsoListParagraph/i.test(className) || /mso-list/i.test(style)) {
+        const margin = Number(style.match(/margin-left:\s*([\d.]+)pt/i)?.[1] ?? 0);
+        const depth = Math.max(0, Math.round(margin / 36) - 1);
+        const text = cleanText(element.textContent).replace(/^[-*+•‣◦]\s*/, '');
+        if (text) lines.push(`${'  '.repeat(depth)}- ${text}`);
+      }
+      return;
+    }
+
+    Array.from(element.children).forEach(appendElement);
+  };
+
+  Array.from(doc.body.children).forEach(appendElement);
+
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 interface ParsedLine {
@@ -52,6 +121,9 @@ function parseMarkdownLines(markdown: string): ParsedLine[] {
   const lines = markdown.split('\n');
   const parsed: ParsedLine[] = [];
   let lastHeadingLevel = 0;
+  const hasExplicitMarkers = lines.some((line) =>
+    /^\s*(?:#{1,6}\s+|[-*+•‣◦]\s+|\d+[.)]\s+)/.test(line.replace(/\t/g, '    ')),
+  );
 
   for (const rawLine of lines) {
     const trimmed = rawLine.replace(/\t/g, '    ').trimEnd();
@@ -65,11 +137,22 @@ function parseMarkdownLines(markdown: string): ParsedLine[] {
       continue;
     }
 
-    const listMatch = trimmed.match(/^(\s*)[-*+]\s+(.+)$/);
+    const listMatch = trimmed.match(/^(\s*)[-*+•‣◦]\s+(.+)$/);
     if (listMatch) {
       const indent = listMatch[1].length;
       const level = lastHeadingLevel + 1 + indentToLevel(indent);
       parsed.push({ level, text: listMatch[2] });
+      continue;
+    }
+
+    if (!hasExplicitMarkers) {
+      const indentMatch = trimmed.match(/^(\s*)(.+)$/);
+      if (indentMatch) {
+        parsed.push({
+          level: indentToLevel(indentMatch[1].length),
+          text: indentMatch[2],
+        });
+      }
       continue;
     }
 

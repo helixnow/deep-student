@@ -166,4 +166,25 @@ describe('NotesWorkspaceTree keyboard integration', () => {
     fireEvent.keyDown(alpha, { key: 'Enter' });
     expect(onOpen).toHaveBeenCalledWith('note_1');
   });
+
+  it('Delete requests host-owned deletion for the focused item', () => {
+    const onDelete = vi.fn();
+    render(
+      <NotesWorkspaceTree
+        items={sampleItems}
+        expandedIds={new Set(['fld_a'])}
+        selectedId="note_1"
+        onToggleExpand={vi.fn()}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+    const alpha = screen.getByRole('treeitem', { name: '笔记：Alpha' });
+    alpha.focus();
+    fireEvent.keyDown(alpha, { key: 'Delete' });
+    expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 'note_1', kind: 'note' }));
+  });
 });

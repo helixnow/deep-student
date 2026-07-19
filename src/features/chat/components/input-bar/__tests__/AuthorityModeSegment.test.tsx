@@ -86,4 +86,20 @@ describe('AuthorityModeSegment', () => {
     fireEvent.click(screen.getByTestId('authority-mode-ask'));
     expect(onModeChange).not.toHaveBeenCalled();
   });
+
+  it('switches the session-only permission preset independently', async () => {
+    const onPermissionPresetChange = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AuthorityModeSegment
+        sessionId="sess_auth"
+        mode="craft"
+        onModeChange={() => undefined}
+        permissionPreset="cautious"
+        onPermissionPresetChange={onPermissionPresetChange}
+      />,
+    );
+    expect(screen.getByTestId('permission-preset-cautious')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('permission-preset-relaxed'));
+    await waitFor(() => expect(onPermissionPresetChange).toHaveBeenCalledWith('relaxed'));
+  });
 });

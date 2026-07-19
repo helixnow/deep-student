@@ -216,11 +216,52 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         .filter((w) => w.typeId === typeId)
         .sort((a, b) => a.createdAt - b.createdAt);
 
+      const dueBadgeCount =
+        typeId === 'flashcards'
+        && badge?.kind === 'count'
+        && typeof badge.value === 'number'
+        && badge.value > 0
+          ? badge.value
+          : 0;
+      const duePayload = { screen: 'session', mode: 'due' } as const;
+
       if (current.length === 0) {
-        workbenchBus.launch({ typeId, reason: 'dock' });
+        if (dueBadgeCount > 0) {
+          void workbenchBus.activate({
+            typeId,
+            instanceKey: '',
+            action: 'startReview',
+            payload: duePayload,
+            fallbackLaunch: {
+              typeId,
+              reason: 'dock',
+              payload: duePayload,
+            },
+          });
+          return;
+        }
+        workbenchBus.launch({
+          typeId,
+          reason: 'dock',
+        });
         return;
       }
       if (current.length === 1) {
+        // 有到期角标时：热启动也进入 due 复习，而不是只 focus/minimize
+        if (dueBadgeCount > 0) {
+          void workbenchBus.activate({
+            typeId,
+            instanceKey: '',
+            action: 'startReview',
+            payload: duePayload,
+            fallbackLaunch: {
+              typeId,
+              reason: 'dock',
+              payload: duePayload,
+            },
+          });
+          return;
+        }
         const win = current[0];
         const topId = state.focusStack[state.focusStack.length - 1];
         if (topId === win.id && !win.minimized) {

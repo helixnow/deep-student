@@ -67,7 +67,13 @@ import {
 } from './contextHelper';
 import { ensureModelsCacheLoaded, getCachedModels, getModelInfoByConfigId, isModelMultimodal, isModelMultimodalAsync } from '../hooks/useAvailableModels';
 import type { ContextRef } from '../resources/types';
+import type { ContextSnapshot } from '../context/types';
 import { logAttachment } from '../debug/chatV2Logger';
+import {
+  filterStagedPathMap,
+  materializeRetainedBinaryContextRefs,
+  prepareRetainedAttachmentsAndCommit,
+} from './attachmentMaterialization';
 import { collectSchemaToolIds } from '../tools/collector';
 import { McpService } from '@/mcp/mcpService';
 import { skillRegistry } from '../skills/registry';
@@ -2669,17 +2675,17 @@ export class ChatV2TauriAdapter {
         pendingContextRefs,
       });
       await this.applyRuntimeModelSelection(options);
-
-      // 3. 使用指定 ID 更新本地状态
-      await this.store.sendMessageWithIds(
-        content,
-        attachments,
-        userMessageId,
-        assistantMessageId
-      );
-
-      // 注意：不在这里清空 pendingParallelModelIds，等待发送成功后再清空
-      // 这样如果发送失败，用户可以重试而不会丢失多变体配置
+      let localTurnCommitted = false;
+      const commitLocalTurn = async () => {
+        if (localTurnCommitted) return;
+        await this.store.sendMessageWithIds(
+          content,
+          attachments,
+          userMessageId,
+          assistantMessageId,
+        );
+        localTurnCommitted = true;
+      };
 
       // 🆕 统一上下文注入：构建 SendContextRef[]（附件已通过 pendingContextRefs 处理）
       // ★ 根据当前模型的多模态能力决定注入图片还是文本
@@ -2696,7 +2702,7 @@ export class ChatV2TauriAdapter {
         const currentModelId = options.modelId;
         const isMultimodal = await this.shouldResolveContextAsMultimodal(options);
         isMultimodalModel = isMultimodal;
-        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(refsForUserMessage, { isMultimodal });
+        const { sendRefs, pathMap, binaryStageCandidates } = await buildSendContextRefsWithPaths(refsForUserMessage, { isMultimodal });
 
         // Token 预估和截断（防止上下文过长）
         // ✅ 按模型上下文预算截断（优先使用用户覆盖，其次模型推断）
@@ -2714,12 +2720,28 @@ export class ChatV2TauriAdapter {
         }
 
         userContextRefs = truncateResult.truncatedRefs;
+        const stagedPathMap = await prepareRetainedAttachmentsAndCommit(
+          this.sessionId,
+          userContextRefs,
+          binaryStageCandidates,
+          pathMap,
+          commitLocalTurn,
+        );
 
         // ★ 文档28 Prompt10：保存 pathMap 用于传递给后端和更新 store
-        if (Object.keys(pathMap).length > 0) {
-          contextPathMap = pathMap;
-          this.store.updateMessagePathMap(userMessageId, pathMap);
+        const keptPathMap = filterStagedPathMap(
+          stagedPathMap,
+          new Set(userContextRefs.map((ref) => ref.resourceId)),
+        );
+        if (Object.keys(keptPathMap).length > 0) {
+          contextPathMap = keptPathMap;
         }
+      }
+
+      // Commit the optimistic local turn only after attachment preparation succeeds.
+      await commitLocalTurn();
+      if (contextPathMap) {
+        this.store.updateMessagePathMap(userMessageId, contextPathMap);
       }
 
       // 🔧 2026-01-15: 超时机制已移除
@@ -2847,14 +2869,17 @@ export class ChatV2TauriAdapter {
         pendingContextRefs,
       });
       await this.applyRuntimeModelSelection(options);
-
-      // 2. 使用指定 ID 更新本地状态（这会清空 pendingContextRefs）
-      await this.store.sendMessageWithIds(
-        content,
-        attachments,
-        userMessageId,
-        assistantMessageId
-      );
+      let localTurnCommitted = false;
+      const commitLocalTurn = async () => {
+        if (localTurnCommitted) return;
+        await this.store.sendMessageWithIds(
+          content,
+          attachments,
+          userMessageId,
+          assistantMessageId,
+        );
+        localTurnCommitted = true;
+      };
 
       // 🔧 调试打点：发送消息时的状态
       if (options.parallelModelIds && options.parallelModelIds.length >= 2) {
@@ -2877,6 +2902,7 @@ export class ChatV2TauriAdapter {
       // ★ 文档28 Prompt10：使用 buildSendContextRefsWithPaths 获取 pathMap
       let userContextRefs = undefined;
       let contextPathMap: Record<string, string> | undefined;
+      let retainedContextSnapshot: ContextSnapshot | undefined;
       let isMultimodalModel = false;
       // 🔧 2026-02-22: 过滤掉 skill_instruction 类型 refs
       // 技能内容改由后端 auto-load_skills 工具结果投递（role: tool），不再注入 user message
@@ -2889,7 +2915,7 @@ export class ChatV2TauriAdapter {
         const isMultimodal = await this.shouldResolveContextAsMultimodal(options);
         isMultimodalModel = isMultimodal;
         console.debug('[TauriAdapter] send: model =', currentModelId, 'isMultimodal =', isMultimodal);
-        const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(refsForUserMessage2, { isMultimodal });
+        const { sendRefs, pathMap, binaryStageCandidates } = await buildSendContextRefsWithPaths(refsForUserMessage2, { isMultimodal });
 
         // 3.1 Token 预估和截断（基于模型预算，防止上下文过长）
         const contextTokenLimit = this.getContextTruncateLimit(options.contextLimit);
@@ -2919,6 +2945,13 @@ export class ChatV2TauriAdapter {
 
         // 使用截断后的 sendRefs
         userContextRefs = truncateResult.truncatedRefs;
+        const stagedPathMap = await prepareRetainedAttachmentsAndCommit(
+          this.sessionId,
+          userContextRefs,
+          binaryStageCandidates,
+          pathMap,
+          commitLocalTurn,
+        );
         logSendContextRefsSummary(userContextRefs);
 
         // 🔧 修复：同步更新 contextSnapshot，确保与截断后的请求一致
@@ -2929,10 +2962,8 @@ export class ChatV2TauriAdapter {
           displayName: ref.displayName,
           injectModes: ref.injectModes,
         }));
-        const keptResourceIds = new Set(keptContextRefs.map((ref) => ref.resourceId));
-        const filteredPathMap = Object.fromEntries(
-          Object.entries(pathMap).filter(([resourceId]) => keptResourceIds.has(resourceId))
-        );
+        const keptResourceIds = new Set<string>(keptContextRefs.map((ref) => String(ref.resourceId)));
+        const filteredPathMap = filterStagedPathMap(stagedPathMap, keptResourceIds);
         const contextSnapshot = keptContextRefs.length > 0
           ? {
               userRefs: keptContextRefs,
@@ -2940,12 +2971,11 @@ export class ChatV2TauriAdapter {
               ...(Object.keys(filteredPathMap).length > 0 ? { pathMap: filteredPathMap } : {}),
             }
           : undefined;
-        this.store.updateMessageMeta(userMessageId, { contextSnapshot });
+        retainedContextSnapshot = contextSnapshot;
 
         // ★ 文档28 Prompt10：保存 pathMap 用于传递给后端和更新 store
         if (Object.keys(filteredPathMap).length > 0) {
           contextPathMap = filteredPathMap;
-          this.store.updateMessagePathMap(userMessageId, filteredPathMap);
         }
 
         // 3.2 收集上下文类型 Hints（用于 System Prompt 中声明 XML 标签含义）
@@ -2958,6 +2988,15 @@ export class ChatV2TauriAdapter {
       }
 
       // ========== 🆕 统一上下文注入结束 ==========
+
+      // Staging can fail. Keep the composer and ContextRefs intact until it succeeds.
+      await commitLocalTurn();
+      if (retainedContextSnapshot) {
+        this.store.updateMessageMeta(userMessageId, { contextSnapshot: retainedContextSnapshot });
+      }
+      if (contextPathMap) {
+        this.store.updateMessagePathMap(userMessageId, contextPathMap);
+      }
 
       // 🔧 2026-01-15: 超时机制已移除
 
@@ -3354,7 +3393,7 @@ export class ChatV2TauriAdapter {
           if (validContextRefs.length > 0) {
             const currentModelId = options.modelId;
             const isMultimodal = await this.shouldResolveContextAsMultimodal(options);
-            const { sendRefs, pathMap } = await buildSendContextRefsWithPaths(validContextRefs, { isMultimodal });
+            const { sendRefs, pathMap, binaryStageCandidates } = await buildSendContextRefsWithPaths(validContextRefs, { isMultimodal });
 
             // Token 预估和截断（基于模型预算，防止上下文过长）
             const contextTokenLimit = this.getContextTruncateLimit(options.contextLimit);
@@ -3372,7 +3411,15 @@ export class ChatV2TauriAdapter {
             }
 
             newContextRefsForBackend = truncateResult.truncatedRefs;
-            newPathMap = Object.keys(pathMap).length > 0 ? pathMap : undefined;
+            const stagedPathMap = await materializeRetainedBinaryContextRefs(
+              this.sessionId,
+              truncateResult.truncatedRefs,
+              binaryStageCandidates,
+              pathMap,
+            );
+            const keptIds = new Set(truncateResult.truncatedRefs.map((ref) => ref.resourceId));
+            const filteredPathMap = filterStagedPathMap(stagedPathMap, keptIds);
+            newPathMap = Object.keys(filteredPathMap).length > 0 ? filteredPathMap : undefined;
             if (newPathMap) {
               console.log(LOG_PREFIX, 'PathMap for editAndResend:', Object.keys(newPathMap).length, 'entries');
             }

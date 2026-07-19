@@ -248,6 +248,7 @@ export interface ToolApprovalBlockingInteraction {
   toolName: string;
   arguments: Record<string, unknown>;
   sensitivity: 'low' | 'medium' | 'high';
+  permissionPreset?: PermissionPreset;
   description: string;
   timeoutSeconds: number;
   resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
@@ -293,6 +294,7 @@ export type BlockingInteraction =
   | PlanGateBlockingInteraction;
 
 export type AuthorityMode = 'ask' | 'plan' | 'craft';
+export type PermissionPreset = 'cautious' | 'relaxed';
 
 // ============================================================================
 // ChatStore 类型定义
@@ -328,6 +330,7 @@ export interface ChatStore {
    * Defaults to craft for legacy sessions.
    */
   authorityMode: AuthorityMode;
+  permissionPreset: PermissionPreset;
 
   /** Hint: last Ask-mode write was blocked — show switch-to-Plan CTA */
   authorityAskBlockedHint: boolean;
@@ -418,6 +421,7 @@ export interface ChatStore {
     toolName: string;
     arguments: Record<string, unknown>;
     sensitivity: 'low' | 'medium' | 'high';
+    permissionPreset?: PermissionPreset;
     description: string;
     timeoutSeconds: number;
     resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
@@ -673,6 +677,7 @@ export interface ChatStore {
 
   /** Persist Ask/Plan/Craft mode via backend */
   setAuthorityMode(mode: AuthorityMode): Promise<void>;
+  setPermissionPreset(preset: PermissionPreset): Promise<void>;
 
   /** Apply plan_gate start payload from backend events */
   handlePlanGateRequest(payload: {

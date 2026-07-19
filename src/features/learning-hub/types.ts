@@ -142,6 +142,16 @@ export interface LearningHubSidebarProps {
   toolbarPortalMode?: 'shell' | 'window';
   /** ★ 高亮标记的资源 ID（如分组已关联的资源，显示勾选状态） */
   highlightedIds?: Set<string>;
+  /** ★ LH-HOST：宿主标识（canvas / files / page…）；Step1 仅透传，不改 store 分桶 */
+  hostId?: string;
+  /** ★ LH-HOST：会话是否活跃；false 时跳过 path→refresh */
+  sessionActive?: boolean;
+  /**
+   * 是否启用 learningHub:* 命令事件（create-folder / focus-search）。
+   * 未传时回退到 `useViewVisibility('learning-hub')`；
+   * Workbench Files 窗应传 `isActive`，避免与 legacy LH 双监听。
+   */
+  commandsEnabled?: boolean;
 }
 
 /**
