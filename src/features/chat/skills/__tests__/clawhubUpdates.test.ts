@@ -42,8 +42,9 @@ describe('ClawHub update check', () => {
       checkable: true,
       updateAvailable: true,
       sourceKind: 'clawhub',
-      currentSha256: '1.0.0',
-      remoteSha256: '1.2.0',
+      currentVersion: '1.0.0',
+      remoteVersion: '1.2.0',
+      remoteSha256: null,
       error: null,
     });
   });
@@ -66,8 +67,10 @@ describe('ClawHub update check', () => {
       updateAvailable: true,
       sourceKind: 'clawhub',
       sourceSummary: 'clawhub:sonoscli@1.0.0',
-      currentSha256: '1.0.0',
-      remoteSha256: '1.1.0',
+      currentSha256: 'abc123',
+      remoteSha256: null,
+      currentVersion: '1.0.0',
+      remoteVersion: '1.1.0',
       error: null,
     };
     const urlLatest: SkillUpdateCheckResult = {
@@ -133,7 +136,7 @@ describe('ClawHub update check', () => {
       remoteVersion: detail.version,
     });
     expect(check.updateAvailable).toBe(true);
-    expect(check.remoteSha256).toBe('1.3.0');
+    expect(check.remoteVersion).toBe('1.3.0');
     expect(selectOutdatedClawhubUpdates([check])).toHaveLength(1);
   });
 
@@ -144,8 +147,10 @@ describe('ClawHub update check', () => {
       updateAvailable: false,
       sourceKind: 'clawhub',
       sourceSummary: 'clawhub:sonoscli@1.0.0',
-      currentSha256: '1.0.0',
+      currentSha256: 'abc123',
       remoteSha256: null,
+      currentVersion: '1.0.0',
+      remoteVersion: null,
       error: 'RATE_LIMITED: ClawHub rate limit exceeded (Retry-After=30)',
     };
     invokeMock.mockResolvedValueOnce([rateLimited]);

@@ -30,6 +30,8 @@ export interface ParsedSkillCommands {
  * 把令牌解析为已注册且未停用的技能 id；不匹配返回 null。
  *
  * 独立导出便于测试注入；默认实现查 skillRegistry。
+ * `userInvocable: false` 的技能不可被斜杠命令激活
+ * （与输入栏 SkillSlashPopover 的补全过滤语义保持一致）。
  */
 export function resolveSkillToken(token: string): string | null {
   const match = SLASH_TOKEN_PATTERN.exec(token);
@@ -39,6 +41,7 @@ export function resolveSkillToken(token: string): string | null {
     .getAll()
     .find((s) => s.id.toLowerCase() === candidate);
   if (!skill) return null;
+  if (skill.userInvocable === false) return null;
   if (isSkillDisabled(skill.id)) return null;
   return skill.id;
 }

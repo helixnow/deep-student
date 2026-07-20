@@ -254,6 +254,23 @@ export function useTextSelection(
     // 监听 selectionchange 并防抖，选区稳定后评估
     let selectionChangeTimer: number | null = null;
     const handleSelectionChange = () => {
+      // ★ M4 修复：快速短路——直渲长列表时每条消息都挂着本监听，
+      // 选区折叠（无选区）且工具栏未显示时直接返回，不进防抖/评估；
+      // 选区存在但锚点不在本消息容器内（且工具栏未显示）同样跳过
+      const sel = window.getSelection();
+      const collapsed = !sel || sel.isCollapsed;
+      if (!isVisibleRef.current) {
+        if (collapsed) {
+          if (selectionChangeTimer !== null) {
+            window.clearTimeout(selectionChangeTimer);
+            selectionChangeTimer = null;
+          }
+          return;
+        }
+        if (sel?.anchorNode && !container.contains(sel.anchorNode)) {
+          return;
+        }
+      }
       if (selectionChangeTimer !== null) {
         window.clearTimeout(selectionChangeTimer);
       }

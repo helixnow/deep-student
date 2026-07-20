@@ -187,7 +187,7 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
           {imageError ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground">
               <ImageBroken size={16} />
-              <span className="text-[10px]">
+              <span className="text-2xs">
                 {t('chatV2:sourcePanel.thumbnailUnavailable')}
               </span>
             </div>
@@ -234,7 +234,7 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
           {sourceTypeLabel && (
             <span
               className={cn(
-                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px]',
+                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs',
                 getSourceTypeColor(multimodal?.sourceType)
               )}
             >
@@ -242,7 +242,7 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
             </span>
           )}
           {pageLabel && (
-            <span className="text-muted-foreground text-[10px]">{pageLabel}</span>
+            <span className="text-muted-foreground text-2xs">{pageLabel}</span>
           )}
         </div>
       )}
@@ -254,7 +254,7 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
 
       {/* 底部操作区 */}
       <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">
+        <span className="text-2xs text-muted-foreground uppercase tracking-wider opacity-70">
           {t('common:chat.sources.groupLabels.multimodal')}
         </span>
         {onLocate && (

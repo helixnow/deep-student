@@ -10,7 +10,8 @@
 
   "status": {
     "manualActivated": "手动激活",
-    "toolLoaded": "工具调用加载"
+    "toolLoaded": "工具调用加载",
+    "toolLoadedBadge": "工具已加载"
   },
 
   "bundles": {
@@ -100,7 +101,9 @@
     "disabled_badge": "已停用",
     "disabled_hint": "此技能已停用，启用后才能激活",
     "enable": "启用",
-    "disable": "停用"
+    "disable": "停用",
+    "manage": "更多设置",
+    "installMore": "获取更多技能"
   },
 
   "card": {
@@ -118,7 +121,11 @@
     "selectSkillToViewDetails": "选择左侧技能查看详情",
     "loadedByTool": "已由工具调用加载",
     "clickToDeactivate": "点击取消激活",
-    "clickToActivate": "点击激活"
+    "clickToActivate": "点击激活",
+    "pinToSession": "启用（钉住会话）",
+    "pinnedClickToUnpin": "已启用（点击取消）",
+    "pinLoadedByTool": "钉住到会话",
+    "toolLoadedHint": "已由工具临时加载，钉住后整段会话持续生效"
   },
 
   "location": {
@@ -278,6 +285,7 @@
     "export_all_success_one": "已导出 {{count}} 个技能",
     "export_all_success_other": "已导出 {{count}} 个技能",
     "export_no_skills": "没有可导出的用户技能",
+    "export_all_mobile_confirm": "将逐个弹出 {{count}} 个保存对话框；批量分享建议改用「导出源」一次打包",
     "copy_id": "复制 ID",
     "export_all_short": "导出",
     "all_skills": "所有技能",

@@ -16,6 +16,7 @@ import {
   clearEventContext,
 } from '../middleware/eventBridge';
 import { clearVariantDebounceTimersForSession } from '../store/variantActions';
+import { readBlockingInteraction } from '../types/queue';
 import { adapterManager } from '../../adapters/AdapterManager';
 import type {
   ISessionManager,
@@ -286,6 +287,16 @@ export class SessionManagerImpl implements ISessionManager {
     }
 
     if (operation.cancelled || this.sessions.get(sessionId) !== store) return;
+
+    // 🔧 P0 定时器竞态修复：摘除 store 前统一取消运行时定时器。
+    // 出队 breather（queueActions 300ms setTimeout）与操作锁看门狗
+    // （messageActions lockWatchdog）都是闭包定时器，不随 Map 摘除失效；
+    // 不取消则 destroy 后仍会写入僵尸 store，甚至触发新一轮出队发送。
+    try {
+      store.getState().disposeRuntimeTimers?.();
+    } catch (err: unknown) {
+      console.error(`[SessionManager] Failed to dispose runtime timers for session ${sessionId}:`, err);
+    }
 
     // [FIX-P3] Cleanup all auto-save related state
     autoSave.cleanup(sessionId);
@@ -558,6 +569,13 @@ export class SessionManagerImpl implements ISessionManager {
 
     this.pendingEvictions.delete(sessionId);
 
+    // 🔧 P0 定时器竞态修复：淘汰摘除前统一取消运行时定时器（同 performDestroy）
+    try {
+      currentStore.getState().disposeRuntimeTimers?.();
+    } catch (err: unknown) {
+      console.error(`[SessionManager] Failed to dispose runtime timers for session ${sessionId}:`, err);
+    }
+
     // Cleanup auto-save state
     autoSave.cleanup(sessionId);
 
@@ -634,7 +652,9 @@ export class SessionManagerImpl implements ISessionManager {
   private isRuntimeBusyForEviction(state: ChatStore): boolean {
     return (
       state.sessionStatus === 'streaming' ||
-      state.pendingBlockingInteraction !== null ||
+      // 🔧 P0-3 读路径收敛：经 readBlockingInteraction 单一入口读取，
+      // 兼容 pendingBlockingInteraction（SSOT）与 pendingApprovalRequest（旧镜像）
+      readBlockingInteraction(state) !== null ||
       state.activeBlockIds.size > 0 ||
       Array.from(state.blocks.values()).some(
         (block) => block.status === 'running' || block.status === 'pending'
@@ -673,7 +693,8 @@ export class SessionManagerImpl implements ISessionManager {
     );
 
     const unsubscribeBlocking = selectorStore.subscribe(
-      (state) => state.pendingBlockingInteraction !== null,
+      // 🔧 P0-3 读路径收敛：经 readBlockingInteraction 单一入口读取
+      (state) => readBlockingInteraction(state) !== null,
       (hasBlockingInteraction) => {
         this.emit({
           type: 'blocking-interaction-change',

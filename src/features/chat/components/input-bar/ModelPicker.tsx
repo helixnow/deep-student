@@ -33,6 +33,7 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
+import { triggerOpenSettingsModels } from '../../readiness/readinessGate';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ModelAssignments } from '@/types';
 
@@ -395,7 +396,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         {effectiveMode === 'compare' ? (
           <span
             className={cn(
-              'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border text-[10px] font-semibold transition',
+              'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border text-2xs font-semibold transition',
               isCompareSelected
                 ? 'border-[color:var(--menu-shell-border)] bg-[color:var(--menu-shell-foreground)] text-[color:var(--menu-shell-surface)]'
                 : 'border-[color:var(--menu-shell-border)] bg-transparent text-transparent'
@@ -441,7 +442,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               <CommonTooltip content={systemBadgeTooltip} position="top">
                 <Badge
                   variant="outline"
-                  className="hidden h-[18px] px-1.5 py-0 text-[9px] font-medium shrink-0 border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] text-[color:var(--menu-shell-muted-foreground)] cursor-help sm:inline-flex"
+                  className="hidden h-[18px] px-1.5 py-0 text-2xs font-medium shrink-0 border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] text-[color:var(--menu-shell-muted-foreground)] cursor-help sm:inline-flex"
                 >
                   {systemBadge}
                 </Badge>
@@ -451,7 +452,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           <span
             className={cn(
               'mt-0.5 block w-full truncate text-[color:var(--menu-shell-foreground)]',
-              compact ? 'text-[12px] leading-4' : isMobile ? 'text-[13px] leading-4' : 'text-[12px] leading-4'
+              compact ? 'text-[12px] leading-4' : isMobile ? 'text-ui leading-4' : 'text-[12px] leading-4'
             )}
           >
             {option.model || option.name}
@@ -500,13 +501,13 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             <span className="shrink-0 text-[12px] font-medium text-[color:var(--menu-shell-foreground)]">
               {titleText}
             </span>
-            <span className="truncate text-[10.5px] text-[color:var(--menu-shell-muted-foreground)]">
+            <span className="truncate text-2xs text-[color:var(--menu-shell-muted-foreground)]">
               · {subtitleText}
             </span>
             {effectiveMode === 'compare' && compareSelected.length >= 2 && !isRetryMode && (
               <Badge
                 variant="default"
-                className="h-[18px] shrink-0 self-center border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] px-1.5 py-0 text-[9px] font-medium text-[color:var(--menu-shell-muted-foreground)]"
+                className="h-[18px] shrink-0 self-center border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] px-1.5 py-0 text-2xs font-medium text-[color:var(--menu-shell-muted-foreground)]"
               >
                 {t('chatV2:modelPicker.parallelMode')}
               </Badge>
@@ -623,7 +624,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                         <CaretDown size={14} className="shrink-0 text-[color:var(--menu-shell-muted-foreground)]" />
                       )}
                       <span className={cn(
-                        'truncate text-[10px] font-medium uppercase tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]',
+                        'truncate text-2xs font-medium uppercase tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]',
                         compact && 'max-w-[10rem]'
                       )}>
                         {group.vendorName}
@@ -634,7 +635,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       {groupSelectedCount > 0 && (
                         <Badge
                           variant="default"
-                          className="ml-auto h-[16px] border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] px-1 py-0 text-[9px] font-medium text-[color:var(--menu-shell-muted-foreground)]"
+                          className="ml-auto h-[16px] border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] px-1 py-0 text-2xs font-medium text-[color:var(--menu-shell-muted-foreground)]"
                         >
                           {groupSelectedCount}
                         </Badge>
@@ -647,10 +648,26 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 );
               })
             ) : (
-              <div className="px-2 py-4 text-center text-sm text-[color:var(--menu-shell-muted-foreground)]">
-                {searchTerm
-                  ? t('chatV2:modelPicker.noMatches')
-                  : t('chatV2:modelPicker.empty')}
+              <div className="flex flex-col items-center gap-2 px-2 py-4 text-center text-sm text-[color:var(--menu-shell-muted-foreground)]">
+                <span>
+                  {searchTerm
+                    ? t('chatV2:modelPicker.noMatches')
+                    : t('chatV2:modelPicker.empty')}
+                </span>
+                {/* 真空态（非搜索无结果）：深链设置-模型页，复用 readiness 的引导机制 */}
+                {!searchTerm && (
+                  <NotionButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      onClose();
+                      triggerOpenSettingsModels();
+                    }}
+                    className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
+                  >
+                    {t('chatV2:modelPicker.goToSettings')}
+                  </NotionButton>
+                )}
               </div>
             )}
           </div>
@@ -704,7 +721,7 @@ const CompareToggle: React.FC<CompareToggleProps> = ({ checked, onChange, label,
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-[999px] border px-2 py-1 text-[10px] font-medium transition-colors',
+        'inline-flex items-center gap-1.5 rounded-[999px] border px-2 py-1 text-2xs font-medium transition-colors',
         checked
           ? 'border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] text-[color:var(--menu-shell-foreground)]'
           : 'border-[color:var(--menu-shell-border)] bg-transparent text-[color:var(--menu-shell-muted-foreground)] hover:bg-[color:var(--menu-shell-row-hover)]',

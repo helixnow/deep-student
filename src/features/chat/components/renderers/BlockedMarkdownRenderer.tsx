@@ -10,9 +10,9 @@
  * 如需回到旧整段渲染路径，显式传 streamRenderingMode="legacy"。
  */
 
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useRef } from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { splitMarkdownBlocks, type MarkdownBlock } from './splitMarkdownBlocks';
+import { createMarkdownBlockSplitter, type MarkdownBlock } from './splitMarkdownBlocks';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import type { CitationImageInfo } from './MarkdownRenderer';
 
@@ -86,8 +86,11 @@ export const BlockedMarkdownRenderer: React.FC<BlockedMarkdownRendererProps> = m
     onCitationClick,
     resolveCitationImage,
   }) => {
+    // 增量拆分器：流式 append-only 增长时只重解析尾部两个块，避免全流 O(n²)
+    const splitterRef = useRef<ReturnType<typeof createMarkdownBlockSplitter> | null>(null);
+    if (!splitterRef.current) splitterRef.current = createMarkdownBlockSplitter();
     const blocks = useMemo(
-      () => splitMarkdownBlocks(content, isStreaming),
+      () => splitterRef.current!(content, isStreaming),
       [content, isStreaming],
     );
 

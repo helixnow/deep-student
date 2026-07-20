@@ -45,7 +45,7 @@ const colorClasses: Record<string, string> = {
   default: 'bg-muted/80 text-foreground hover:bg-[var(--interactive-hover)]',
   purple: 'bg-muted/80 text-purple-600 hover:bg-[var(--interactive-hover)] dark:text-purple-400',
   blue: 'bg-muted/80 text-blue-600 hover:bg-[var(--interactive-hover)] dark:text-blue-400',
-  green: 'bg-muted/80 text-emerald-600 hover:bg-[var(--interactive-hover)] dark:text-emerald-400',
+  green: 'bg-muted/80 text-green-600 hover:bg-[var(--interactive-hover)] dark:text-green-400',
   orange: 'bg-muted/80 text-orange-600 hover:bg-[var(--interactive-hover)] dark:text-orange-400',
 };
 
@@ -74,7 +74,8 @@ const FeatureChip: React.FC<FeatureChipProps> = ({ feature, disabled }) => {
         {feature.icon}
       </span>
       <span className="truncate max-w-[120px]">{feature.label}</span>
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10" aria-label={`${t('common:actions.close')} ${feature.label}`}>
+      {/* ★ M5：16px 关闭按钮触屏命中区用伪元素扩到 ≥44px（chip 本体不可点，重叠无害） */}
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10 relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={`${t('common:actions.close')} ${feature.label}`}>
         <X size={10} weight="bold" />
       </NotionButton>
     </div>

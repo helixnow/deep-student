@@ -27,6 +27,10 @@ import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import Z_INDEX from '@/config/zIndex';
 import { useSmoothWheel } from '../hooks/useSmoothWheel';
+import {
+  registerChatMessageListScrollHandle,
+  type ChatMessageScrollResult,
+} from './messageListScrollRegistry';
 import { ArrowDown } from '@phosphor-icons/react';
 import { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
 import { ThreadContentShell } from './ui/ThreadContentShell';
@@ -687,6 +691,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
     isAutoScrollingRef.current = true;
 
+    // ★ 低-15：贴底空转降频——连续 N 帧 distance<=0 后改用 setTimeout 低频轮询，
+    // 避免流式全程每帧强制 layout read（scrollHeight/scrollTop）
+    const IDLE_FRAMES_BEFORE_THROTTLE = 10;
+    const IDLE_POLL_MS = 120;
+    let idleFrames = 0;
+    let idleTimerId: number | null = null;
+
     // 使用 rAF 循环，仅在流式时执行
     // 大块内容（代码块/图片）出现时用 easing 平滑追赶，逐行文本用 instant 紧跟
     const scrollLoop = () => {
@@ -703,9 +714,19 @@ const MessageListInner: React.FC<MessageListProps> = ({
       const distance = maxScroll + viewportElement.clientHeight - currentBottom;
 
       if (distance <= 0) {
-        rafIdRef.current = requestAnimationFrame(scrollLoop);
+        idleFrames += 1;
+        if (idleFrames >= IDLE_FRAMES_BEFORE_THROTTLE) {
+          // 已稳定贴底：降频轮询，等新内容把 distance 拉开后自动回到 rAF 节奏
+          idleTimerId = window.setTimeout(() => {
+            idleTimerId = null;
+            scrollLoop();
+          }, IDLE_POLL_MS);
+        } else {
+          rafIdRef.current = requestAnimationFrame(scrollLoop);
+        }
         return;
       }
+      idleFrames = 0;
 
       // 大块内容（>200px，如代码块/图片）→ easing 追赶，避免视觉跳动
       // 小块内容（逐行文本）→ instant 紧跟
@@ -719,9 +740,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
       rafIdRef.current = requestAnimationFrame(scrollLoop);
     };
 
-    // 重启入口（防重入：循环仍在运行时调用为 no-op）
+    // 重启入口（防重入：rAF 或降频定时器任一在运行时调用为 no-op）
     const startLoop = () => {
-      if (!isAutoScrollingRef.current || rafIdRef.current !== null) return;
+      if (!isAutoScrollingRef.current || rafIdRef.current !== null || idleTimerId !== null) return;
+      idleFrames = 0;
       rafIdRef.current = requestAnimationFrame(scrollLoop);
     };
     resumeAutoScrollRef.current = startLoop;
@@ -734,6 +756,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
+      }
+      if (idleTimerId !== null) {
+        window.clearTimeout(idleTimerId);
+        idleTimerId = null;
       }
     };
   }, [isStreaming, viewportElement]);
@@ -824,6 +850,105 @@ const MessageListInner: React.FC<MessageListProps> = ({
     const rafId = requestAnimationFrame(() => { scrollToBottom(); });
     return () => cancelAnimationFrame(rafId);
   }, [messageOrder.length, isStreaming, scrollToBottom]);
+
+  // ==========================================================================
+  // A45-5（docs/dev/acr/ACR-4.5.md）：agent 程序化滚动到指定消息
+  // 旧路径（workbench chat/register.ts 直接 querySelector role="log" 子节点）
+  // 在虚拟化长会话（>80 条）下目标行未渲染必然失败；这里暴露按 messageId
+  // 的滚动 handle：虚拟化走 virtualizer.scrollToIndex，直渲先补齐尾部窗口，
+  // 滚动后等目标行真实挂载才报成功。
+  // ==========================================================================
+
+  // handle 闭包读取的最新渲染态快照（避免依赖变化时反复注册/注销 handle）
+  const agentScrollStateRef = useRef({
+    useDirectRender,
+    virtualizerReady,
+    tailWindowExpanded,
+    viewportElement,
+  });
+  agentScrollStateRef.current = {
+    useDirectRender,
+    virtualizerReady,
+    tailWindowExpanded,
+    viewportElement,
+  };
+
+  const scrollToMessageForAgent = useCallback(
+    async (messageId: string): Promise<ChatMessageScrollResult> => {
+      const order = store.getState().messageOrder;
+      const index = order.indexOf(messageId);
+      if (index < 0) return { status: 'message_not_found' };
+      const viewport = agentScrollStateRef.current.viewportElement;
+      if (!viewport) return { status: 'view_not_ready' };
+
+      // 程序化定位视为用户接管滚动：流式吸底 rAF 循环立即停跟随，
+      // 避免刚定位到历史消息又被自动拉回底部
+      userHasScrolledRef.current = true;
+
+      // 直渲模式且尾部窗口未补齐：目标可能在窗口之外，先展开再等挂载
+      if (
+        agentScrollStateRef.current.useDirectRender
+        && !agentScrollStateRef.current.tailWindowExpanded
+      ) {
+        setTailWindowExpanded(true);
+      }
+
+      const escapeAttr = (value: string) =>
+        typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+          ? CSS.escape(value)
+          : value.replace(/["\\]/g, '\\$&');
+      const findRow = () =>
+        viewport.querySelector<HTMLElement>(
+          `[data-chat-message-id="${escapeAttr(messageId)}"]`,
+        );
+      const nextFrame = () =>
+        new Promise<void>((resolve) => {
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => resolve());
+          } else {
+            setTimeout(resolve, 16);
+          }
+        });
+
+      // 上限约 30 帧（≈0.5s）：覆盖虚拟化测量收敛与直渲窗口补齐的提交时序
+      for (let frame = 0; frame < 30; frame += 1) {
+        const mode = agentScrollStateRef.current;
+        if (!mode.useDirectRender && mode.virtualizerReady) {
+          // 虚拟化：让虚拟化器按当前测量把目标 index 滚入视口；
+          // 行挂载后仍以 DOM 实测做一次精确对齐（动态测量可能微调偏移）
+          virtualizer.scrollToIndex(index, { align: 'start', behavior: 'auto' });
+        }
+        const el = findRow();
+        if (el) {
+          // 与既有消息定位一致：滚动只发生在消息视口内，不用 scrollIntoView
+          //（scrollIntoView 会连带滚动 OS/workbench 宿主窗口）
+          const viewportRect = viewport.getBoundingClientRect();
+          const rowRect = el.getBoundingClientRect();
+          const target = viewport.scrollTop + rowRect.top - viewportRect.top;
+          viewport.scrollTop = Math.max(
+            0,
+            Math.min(target, viewport.scrollHeight - viewport.clientHeight),
+          );
+          resetScrollBaselineRef.current();
+          // 按最终位置校正吸底状态与「回到底部」按钮可见性
+          syncScrollStateRef.current();
+          return { status: 'scrolled', element: el };
+        }
+        await nextFrame();
+      }
+      return { status: 'view_not_ready' };
+    },
+    [store, virtualizer],
+  );
+
+  // 挂载期按 sessionId 注册 handle；会话固定绑定 store 实例，依赖 [store] 即可
+  useEffect(() => {
+    const sessionId = store.getState().sessionId;
+    if (!sessionId) return undefined;
+    return registerChatMessageListScrollHandle(sessionId, {
+      scrollToMessage: scrollToMessageForAgent,
+    });
+  }, [store, scrollToMessageForAgent]);
 
   // 📊 性能打点：首次渲染完成
   // 只有当 isDataLoaded 为 true 时才触发 first_render，避免 race condition
@@ -919,7 +1044,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                       className={cn(
                         'min-h-11 w-full rounded-2xl border border-[color:var(--composer-panel-border,hsl(var(--border)))]',
                         'bg-[color:var(--surface-root,hsl(var(--background)))] px-4 py-2.5 text-left',
-                        'text-[13px] leading-relaxed text-muted-foreground',
+                        'text-ui leading-relaxed text-muted-foreground',
                         'transition-colors duration-150 hover:text-foreground',
                         'active:bg-[var(--interactive-hover)]',
                         'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
@@ -983,6 +1108,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
                   <motion.div
                     key={messageId}
                     data-chat-message-id={messageId}
+                    // A45-5：ACR 实体锚点（agentFlash 定位演出用）
+                    data-agent-entity={`chat:${messageId}`}
                     variants={newMessageVariants}
                     initial={isNewlyAppended && !prefersReducedMotion ? 'initial' : false}
                     animate="animate"
@@ -999,6 +1126,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 <div
                   key={messageId}
                   data-chat-message-id={messageId}
+                  // A45-5：ACR 实体锚点（agentFlash 定位演出用）
+                  data-agent-entity={`chat:${messageId}`}
                   className={cn(isNewlyAppended && ASSISTANT_ENTER_CLASS)}
                 >
                   {content}
@@ -1034,6 +1163,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 key={messageId}
                 data-index={virtualRow.index}
                 data-chat-message-id={messageId}
+                // A45-5：ACR 实体锚点（agentFlash 定位演出用）
+                data-agent-entity={`chat:${messageId}`}
                 ref={virtualizer.measureElement}
                 style={{
                   position: 'absolute',

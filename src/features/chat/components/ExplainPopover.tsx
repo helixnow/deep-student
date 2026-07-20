@@ -1,38 +1,28 @@
 /**
- * ExplainPopover - 轻量解释弹出卡片
+ * ExplainPopover - 内联解释卡片（P0-3 去 Portal / 去 dialog 改造）
  *
- * 当用户在 SelectionToolbar 点击"解释"后，toolbar 消失，
- * 原位替换为此解释卡片，调用对话模型解释选中文本。
+ * 当用户在 SelectionToolbar 点击"解释"后，在选中消息下方展开此内联卡片，
+ * 调用对话模型解释选中文本。
  *
- * 交互：
+ * 契约：
+ * - 非 Portal / 非 fixed / 非 dialog：卡片挂在消息 DOM 流内（消息下方），
+ *   随消息一起滚动，不遮挡其他内容
+ * - 可折叠：头部常显（原文摘要 + 折叠/关闭），正文经 .chat-collapse 过渡
+ * - 入场复用 .chat-msg-enter；动效自带 prefers-reduced-motion 降级
+ * - Escape（焦点在卡片内时）与关闭按钮均可关闭
+ *
+ * 请求语义保持不变：
  * - 使用 call_llm_for_boundary 调用对话模型（非流式）
- * - 显示解释结果
- * - 提供：复制、添加到聊天输入框 操作
- * - 点击外部、滚动或 Escape 关闭
- *
- * 定位策略：
- * - useLayoutEffect 测量真实尺寸后再定位（不再用估算高度）
- * - ResizeObserver 在内容变化（loading→result→error）时重新计算
- * - 上下空间均不足时，贴向较大一侧的视口边缘
- *
- * 复用项目样式：
- * - 毛玻璃卡片：ModelMentionPopover 风格
- * - Z-index：Z_INDEX.popover
+ * - requestId 防"关闭→重开"或重试时的旧响应竞态
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, ChatDots, X, ArrowsClockwise } from '@phosphor-icons/react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { CaretDown, Copy, Check, ChatDots, X, ArrowsClockwise } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/utils/cn';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { Z_INDEX } from '@/config/zIndex';
-import { useViewStore } from '@/stores/viewStore';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import type { SelectionRect } from '../hooks/useTextSelection';
 
 // ============================================================================
 // 类型
@@ -41,8 +31,6 @@ import type { SelectionRect } from '../hooks/useTextSelection';
 export interface ExplainPopoverProps {
   /** 要解释的原文 */
   sourceText: string;
-  /** 选区位置（视口坐标） */
-  selectionRect: SelectionRect | null;
   /** 是否显示 */
   isVisible: boolean;
   /** 关闭回调 */
@@ -52,48 +40,12 @@ export interface ExplainPopoverProps {
 }
 
 // ============================================================================
-// 常量
-// ============================================================================
-
-const POPOVER_WIDTH = 380;
-const POPOVER_GAP = 8;
-const VIEWPORT_PADDING = 12;
-
-/**
- * P1-10: 可视视口度量——移动端软键盘弹出时 window.innerHeight 不缩小，
- * 用 visualViewport 才能避免 popover 被键盘遮住；桌面端两者一致。
- */
-function getVisualViewportBox(): { top: number; left: number; width: number; height: number } {
-  const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-  if (vv) {
-    return { top: vv.offsetTop, left: vv.offsetLeft, width: vv.width, height: vv.height };
-  }
-  return { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight };
-}
-/** 打开后的滚动宽限期：触控选词后的惯性滚动不应立刻误关弹层 */
-const SCROLL_CLOSE_GRACE_MS = 350;
-
-// ============================================================================
 // 加载动画组件
 // ============================================================================
 
-const ThinkingIndicator: React.FC<{ label: string }> = ({ label }) => (
-  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-    <span className="inline-flex items-center gap-0.5">
-      {[0, 1, 2].map((i) => (
-        <motion.span
-          key={i}
-          className="inline-block w-1 h-1 rounded-full bg-primary/60"
-          animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.1, 0.8] }}
-          transition={{
-            duration: 1,
-            repeat: Infinity,
-            delay: i * 0.2,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </span>
+const ExplainThinkingIndicator: React.FC<{ label: string }> = ({ label }) => (
+  <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+    <span className="chat-wait-dots" aria-hidden="true"><i /><i /><i /></span>
     <span>{label}</span>
   </div>
 );
@@ -104,97 +56,25 @@ const ThinkingIndicator: React.FC<{ label: string }> = ({ label }) => (
 
 export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
   sourceText,
-  selectionRect,
   isVisible,
   onClose,
   onAddToInput,
 }) => {
   const { t } = useTranslation(['chatV2']);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [explanation, setExplanation] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // 可折叠：头部常显，正文经 .chat-collapse 过渡
+  const [collapsed, setCollapsed] = useState(false);
 
   // 用 requestId 防止"关闭→重开"或重试时的旧响应竞态
   const requestIdRef = useRef(0);
-
-  // 动态位置：根据真实测量尺寸计算
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-
-  // ===== 定位 =====
-
-  const computePosition = useCallback(() => {
-    if (!selectionRect || !popoverRef.current) return;
-
-    const el = popoverRef.current;
-    // 使用真实测量值，避免估算误差
-    const height = el.offsetHeight || el.getBoundingClientRect().height || 0;
-    const width = el.offsetWidth || POPOVER_WIDTH;
-
-    if (height === 0) return; // 还未渲染完成，等下一帧
-
-    // P1-10: 用 visualViewport 度量，键盘弹出/页面缩放时定位仍然正确
-    const viewport = getVisualViewportBox();
-    const viewportTop = viewport.top;
-    const viewportBottom = viewport.top + viewport.height;
-
-    const spaceAbove = selectionRect.top - viewportTop - VIEWPORT_PADDING;
-    const spaceBelow = viewportBottom - selectionRect.bottom - VIEWPORT_PADDING;
-    const needed = height + POPOVER_GAP;
-
-    let top: number;
-    if (needed <= spaceAbove) {
-      // 上方放得下：贴近选区上方
-      top = selectionRect.top - height - POPOVER_GAP;
-    } else if (needed <= spaceBelow) {
-      // 下方放得下：贴近选区下方
-      top = selectionRect.bottom + POPOVER_GAP;
-    } else {
-      // 上下都放不下：选较大一侧贴边
-      top =
-        spaceAbove >= spaceBelow
-          ? viewportTop + VIEWPORT_PADDING
-          : Math.max(viewportTop + VIEWPORT_PADDING, viewportBottom - height - VIEWPORT_PADDING);
-    }
-
-    let left = selectionRect.left + selectionRect.width / 2 - width / 2;
-    const maxLeft = viewport.left + viewport.width - width - VIEWPORT_PADDING;
-    left = Math.max(viewport.left + VIEWPORT_PADDING, Math.min(left, maxLeft));
-
-    setPosition((prev) => {
-      // 避免无意义的状态写入引起额外渲染
-      if (prev && prev.top === top && prev.left === left) return prev;
-      return { top, left };
-    });
-  }, [selectionRect]);
-
-  // 渲染后立即测量并定位（同步避开闪烁）
-  useLayoutEffect(() => {
-    if (!isVisible) return;
-    computePosition();
-  }, [isVisible, isLoading, explanation, error, computePosition]);
-
-  // ResizeObserver 监听内容尺寸变化（如 loading → 长文本 → 错误条）
-  useEffect(() => {
-    if (!isVisible) return;
-    const el = popoverRef.current;
-    if (!el) return;
-
-    const ro = new ResizeObserver(() => computePosition());
-    ro.observe(el);
-    // 视口尺寸变化也重算；软键盘弹出/收起只反映在 visualViewport 上
-    const onResize = () => computePosition();
-    window.addEventListener('resize', onResize);
-    const vv = window.visualViewport;
-    vv?.addEventListener('resize', onResize);
-
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', onResize);
-      vv?.removeEventListener('resize', onResize);
-    };
-  }, [isVisible, computePosition]);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
 
   // ===== 解释请求（带 requestId 防竞态） =====
 
@@ -235,87 +115,26 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
       setError(null);
       setIsLoading(false);
       setCopied(false);
-      setPosition(null);
+      setCollapsed(false);
     }
   }, [isVisible]);
 
-  // 全局视图切换离开 chat-v2 时，强制关闭弹窗
-  const currentView = useViewStore((s) => s.currentView);
+  // ===== 焦点管理：打开时聚焦卡片（读屏/键盘可达） =====
   useEffect(() => {
-    if (isVisible && currentView !== 'chat-v2') {
-      onClose();
-    }
-  }, [isVisible, currentView, onClose]);
-
-  // ===== 焦点管理：打开时聚焦弹层（读屏/键盘可达），关闭时还原焦点 =====
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
-  const openedAtRef = useRef(0);
-  useEffect(() => {
-    if (isVisible) {
-      openedAtRef.current = Date.now();
-      previouslyFocusedRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const raf = requestAnimationFrame(() => {
-        popoverRef.current?.focus({ preventScroll: true });
-      });
-      return () => cancelAnimationFrame(raf);
-    }
-    const prev = previouslyFocusedRef.current;
-    previouslyFocusedRef.current = null;
-    if (prev && document.contains(prev)) {
-      prev.focus({ preventScroll: true });
-    }
+    if (!isVisible) return;
+    const raf = requestAnimationFrame(() => {
+      rootRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [isVisible]);
 
-  // ===== 关闭事件 =====
-
-  // Escape 关闭
-  useEffect(() => {
-    if (!isVisible) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isVisible, onClose]);
-
-  // Android 系统返回键 = 关闭浮层（自绘 popover，协调器 Radix 兜底覆盖不到）
-  const backCloseRef = useRef(onClose);
-  backCloseRef.current = onClose;
-  useEffect(() => {
-    if (!isVisible) return;
-    return registerBackHandler(() => {
-      backCloseRef.current();
-      return true;
-    }, BACK_PRIORITY.overlay);
-  }, [isVisible]);
-
-  // 外部点击关闭（pointerdown：移动端触摸滚动/拖选不产生 mousedown，与 ComposerPanel 一致）
-  useEffect(() => {
-    if (!isVisible) return;
-    const handlePointerDown = (e: PointerEvent) => {
-      const target = e.target as Node | null;
-      if (!target) return;
-      if (popoverRef.current?.contains(target)) return;
+  // Escape 关闭（仅当焦点在卡片内：内联卡片不劫持全局键盘）
+  const handleRootKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
       onClose();
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [isVisible, onClose]);
-
-  // 滚动关闭（忽略 popover 内部滚动；打开初期的惯性滚动有宽限期，避免触控误关）
-  useEffect(() => {
-    if (!isVisible) return;
-    const handleScroll = (e: Event) => {
-      const target = e.target as Node | null;
-      // 内容区域自身可滚动（max-h-[240px] overflow-y-auto），不应触发关闭
-      if (target && popoverRef.current?.contains(target)) return;
-      if (Date.now() - openedAtRef.current < SCROLL_CLOSE_GRACE_MS) return;
-      onClose();
-    };
-    window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
-    return () => window.removeEventListener('scroll', handleScroll, { capture: true });
-  }, [isVisible, onClose]);
+    }
+  }, [onClose]);
 
   // ===== 用户操作 =====
 
@@ -323,7 +142,8 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     if (!explanation) return;
     await copyTextToClipboard(explanation);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
   }, [explanation]);
 
   const handleAddToInput = useCallback(() => {
@@ -340,58 +160,69 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     setIsLoading(false);
   }, []);
 
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => !prev);
+  }, []);
+
+  if (!isVisible) return null;
+
   // 截断原文显示
   const displaySource = sourceText.length > 80
     ? sourceText.slice(0, 80) + '...'
     : sourceText;
 
-  return createPortal(
-    <AnimatePresence>
-      {isVisible && selectionRect && (
-        <motion.div
-          ref={popoverRef}
-          data-explain-popover
-          data-wb-blur-surface
-          role="dialog"
-          aria-label={t('selectionToolbar.explain')}
-          tabIndex={-1}
-          initial={{ opacity: 0, scale: 0.96, y: -4 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.1 } }}
-          transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-          className={cn(
-            'fixed w-[380px] max-w-[calc(100vw-24px)]',
-            'rounded-2xl border border-border/50',
-            'bg-popover/80 backdrop-blur-xl backdrop-saturate-150',
-            'shadow-lg ring-1 ring-border/40',
-            'overflow-hidden outline-none',
-          )}
-          style={{
-            // 测量未完成前用大负偏移避免视觉闪烁；visibility 隐藏交互
-            top: position?.top ?? -9999,
-            left: position?.left ?? -9999,
-            visibility: position ? 'visible' : 'hidden',
-            zIndex: Z_INDEX.popover,
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
+  return (
+    <div
+      ref={rootRef}
+      data-explain-popover
+      role="group"
+      aria-label={t('selectionToolbar.explain')}
+      tabIndex={-1}
+      onKeyDown={handleRootKeyDown}
+      className={cn(
+        'chat-msg-enter mt-2 w-full',
+        'rounded-[var(--chat-radius-md,12px)] border border-border/50',
+        'bg-muted/30',
+        'outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+      )}
+    >
+      {/* 头部：原文摘要 + 折叠 + 关闭 */}
+      <div className="flex items-start gap-2 px-3 pt-2.5 pb-1.5">
+        <p className="flex-1 text-xs text-muted-foreground leading-relaxed line-clamp-2">
+          {displaySource}
+        </p>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? t('common:actions.expand') : t('common:actions.collapse')}
+          title={collapsed ? t('common:actions.expand') : t('common:actions.collapse')}
+          // ★ 低-11：p-1→p-2 放大视觉目标，触屏再用伪元素扩命中区到 ≥44px
+          className="shrink-0 p-2 rounded-md hover:bg-accent/60 text-muted-foreground/50 hover:text-foreground transition-colors relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
         >
-          {/* 头部：原文摘要 + 关闭按钮 */}
-          <div className="flex items-start gap-2 px-3 pt-2.5 pb-1.5 border-b border-border/30">
-            <p className="flex-1 text-xs text-muted-foreground leading-relaxed line-clamp-2">
-              {displaySource}
-            </p>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={t('common:actions.close')}
-              className="shrink-0 p-1 rounded-md hover:bg-accent/60 text-muted-foreground/50 hover:text-foreground transition-colors"
-            >
-              <X size={13} />
-            </button>
-          </div>
+          <CaretDown
+            size={13}
+            className={cn(
+              'transition-transform duration-[var(--chat-motion-base,200ms)]',
+              collapsed && '-rotate-90'
+            )}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('common:actions.close')}
+          title={t('common:actions.close')}
+          className="shrink-0 p-2 rounded-md hover:bg-accent/60 text-muted-foreground/50 hover:text-foreground transition-colors relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
+        >
+          <X size={13} />
+        </button>
+      </div>
 
-          {/* 解释内容区域 */}
-          <div className="px-3 py-2.5 min-h-[48px] max-h-[240px] overflow-y-auto">
+      {/* 正文（可折叠） */}
+      <div className="chat-collapse" data-open={collapsed ? 'false' : 'true'}>
+        <div className={cn(collapsed && 'pointer-events-none')} aria-hidden={collapsed}>
+          <div className="px-3 py-2.5 min-h-[48px] border-t border-border/30">
             {error ? (
               <div className="flex items-center gap-2">
                 <p className="text-xs text-destructive flex-1">{error}</p>
@@ -406,11 +237,11 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                 </button>
               </div>
             ) : explanation ? (
-              <p className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap">
+              <p className="text-ui text-foreground leading-relaxed whitespace-pre-wrap">
                 {explanation}
               </p>
             ) : isLoading ? (
-              <ThinkingIndicator label={t('explainPopover.thinking')} />
+              <ExplainThinkingIndicator label={t('explainPopover.thinking')} />
             ) : null}
           </div>
 
@@ -423,7 +254,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                   <IconSwap
                     active={copied}
                     a={<Copy size={13} />}
-                    b={<Check size={13} className="text-green-500" />}
+                    b={<Check size={13} className="text-success" />}
                   />
                 }
                 label={copied ? t('selectionToolbar.copied') : t('selectionToolbar.copy')}
@@ -437,10 +268,9 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
               )}
             </div>
           )}
-        </motion.div>
-      )}
-    </AnimatePresence>,
-    document.body
+        </div>
+      </div>
+    </div>
   );
 };
 

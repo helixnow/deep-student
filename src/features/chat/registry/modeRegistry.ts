@@ -137,17 +137,11 @@ export interface ModePlugin {
   /** 输入栏右侧扩展按钮 */
   renderInputBarRight?: ComponentType<{ store: StoreApi<ChatStore> }>;
 
-  /** 自定义 RAG 面板（替换默认面板） */
-  renderRagPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void }>;
-
   /** 自定义模型选择面板 */
   renderModelPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void; closeOnSelect?: boolean }>;
 
   /** 自定义高级设置面板 */
   renderAdvancedPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void }>;
-
-  /** 学习模式面板 */
-  renderLearnModePanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void }>;
 
   /** MCP 工具面板 */
   renderMcpPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void }>;

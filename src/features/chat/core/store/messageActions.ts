@@ -14,8 +14,38 @@ import { clearEventContext, clearBridgeState } from '../middleware/eventBridge';
 import { batchUpdate, updateSingleBlock } from './immerHelpers';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { generateId, showOperationLockNotification, OPERATION_LOCK_TIMEOUT_MS, IS_VITEST } from './createChatStore';
+import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+/**
+ * 🔧 P0 回滚快照深拷贝：对"将被修改的消息/块"做结构化深快照。
+ *
+ * editAndResend / retryMessage 的回滚快照此前只做 Map 浅拷贝——Map 条目引用
+ * 的 message/block 对象与活动 store 共享。若后端 await 窗口内有任何路径对这些
+ * 对象做了原地写（流式事件、插件、未来重构），回滚会把脏对象写回，造成
+ * "回滚后数据仍是修改后"的隐性损坏。
+ *
+ * 仅对被修改实体做深拷贝（而非整个 Map），控制大会话下的快照成本。
+ * structuredClone 优先；数据均为可序列化 POJO（消息/块来自后端 JSON），
+ * JSON 兜底仅防御宿主环境缺失 structuredClone。
+ */
+function deepCloneForSnapshot<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(value);
+    }
+  } catch {
+    // toolOutput 等字段理论上可能包含不可克隆值，降级到 JSON 兜底
+  }
+  try {
+    return JSON.parse(JSON.stringify(value)) as T;
+  } catch {
+    // 最后兜底：返回原引用（与旧行为一致，不比浅拷贝更差）
+    return value;
+  }
+}
 
 export function createMessageActions(
   set: SetState,
@@ -23,6 +53,19 @@ export function createMessageActions(
 ) {
   let lockWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
   return {
+        /**
+         * 🔧 P0 定时器竞态修复（内部清理接口）：
+         * 取消 deleteMessage 的操作锁看门狗 timer。store destroy/LRU 淘汰后
+         * 该 timer 仍可能 fire 并对已摘除的 store 执行 set({ messageOperationLock: null })。
+         * 由 createChatStore 组合进 disposeRuntimeTimers 统一调用。
+         */
+        cancelLockWatchdog: (): void => {
+          if (lockWatchdogTimer) {
+            clearTimeout(lockWatchdogTimer);
+            lockWatchdogTimer = null;
+          }
+        },
+
         sendMessage: async (
           content: string,
           attachments?: AttachmentMeta[]
@@ -151,6 +194,11 @@ export function createMessageActions(
 
           // 更新用户消息的 blockIds
           userMessage.blockIds = [userBlockId];
+
+          // 🔧 P1 内存泄漏修复：直接置空 attachments 前释放 blob: 预览 URL。
+          // 附件文件本体在附加时已上传 VFS，消息展示走 contextSnapshot（VFS 引用），
+          // 不依赖 previewUrl，发送后即可安全释放。
+          revokeAttachmentBlobUrls(state.attachments);
 
           set((s) => ({
             sessionStatus: 'streaming',
@@ -365,18 +413,29 @@ export function createMessageActions(
           }
 
           // 🔧 P1修复：保存状态快照，用于失败时回滚
-          // 在修改本地状态之前，保存当前状态的深拷贝
+          // 🔧 P0 深快照修复：Map 浅拷贝的条目仍与活动 store 共享对象引用。
+          // 对"将被修改的实体"（被编辑消息 + 其内容块）做结构化深拷贝并写入
+          // 快照 Map，保证回滚恢复的是修改前的原始数据，而非可能被
+          // 后端 await 窗口内其他写路径污染过的共享对象。
           const currentState = getState();
           const snapshotMessageMap = new Map(currentState.messageMap);
           const snapshotMessageOrder = [...currentState.messageOrder];
           const snapshotBlocks = new Map(currentState.blocks);
-          
-          // 保存被编辑消息的原始内容块
+
+          // 被编辑消息：深快照进 snapshotMessageMap
+          snapshotMessageMap.set(messageId, deepCloneForSnapshot(message));
+
+          // 保存被编辑消息的原始内容块（深快照）
           const contentBlockId = message.blockIds.find((id) => {
             const block = currentState.blocks.get(id);
             return block?.type === 'content';
           });
-          const originalContentBlock = contentBlockId ? currentState.blocks.get(contentBlockId) : null;
+          const originalContentBlock = contentBlockId
+            ? deepCloneForSnapshot(currentState.blocks.get(contentBlockId) ?? null)
+            : null;
+          if (contentBlockId && originalContentBlock) {
+            snapshotBlocks.set(contentBlockId, originalContentBlock);
+          }
 
           // 找出需要删除的消息（该用户消息之后的所有消息）
           // 这些消息基于旧的用户输入，编辑后将变得无效

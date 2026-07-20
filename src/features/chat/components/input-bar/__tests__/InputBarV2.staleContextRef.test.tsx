@@ -26,12 +26,9 @@ vi.mock('../useInputBarV2', () => ({
     attachments: store.getState().attachments,
     panelStates: {
       attachment: false,
-      rag: false,
       model: false,
       advanced: false,
-      learn: false,
       mcp: false,
-      search: false,
       skill: false,
     },
     setInputValue: vi.fn(),

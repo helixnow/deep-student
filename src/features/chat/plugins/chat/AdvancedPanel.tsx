@@ -73,6 +73,11 @@ const RAG_TOPK_DEFAULT = 10;
 const RAG_TOPK_SNAP_POINTS = [1, 2, 3, 5, 8, 10, 12, 16, 20, 24, 30, 40, 50];
 const DEFAULT_RAG_ENABLE_RERANKING = true;
 const DEFAULT_MULTIMODAL_RAG_ENABLED = false;
+// 多模态 Top-K / 精排（原 RagPanel 独有配置：RagPanel 已不再挂载，入口统一收进本面板）
+const MULTIMODAL_TOPK_MIN = 1;
+const MULTIMODAL_TOPK_MAX = 20;
+const MULTIMODAL_TOPK_SNAP_POINTS = [1, 2, 3, 5, 8, 10, 15, 20];
+const DEFAULT_MULTIMODAL_TOPK = 10;
 
 function formatTokenNumber(value: number): string {
   if (value >= 1_000_000) {
@@ -100,7 +105,7 @@ interface AdvancedPanelProps {
 // ============================================================================
 
 export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, sidebarMode = false }) => {
-  const { t } = useTranslation(['chat_host', 'common']);
+  const { t } = useTranslation(['chat_host', 'common', 'chatV2']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
 
@@ -119,6 +124,8 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
     ragTopK: s.chatParams.ragTopK,
     ragEnableReranking: s.chatParams.ragEnableReranking,
     multimodalRagEnabled: s.chatParams.multimodalRagEnabled,
+    multimodalTopK: s.chatParams.multimodalTopK,
+    multimodalEnableReranking: s.chatParams.multimodalEnableReranking,
   })));
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
   const isStreaming = sessionStatus === 'streaming';
@@ -213,6 +220,9 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   const ragTopK = chatParams.ragTopK ?? RAG_TOPK_DEFAULT;
   const ragEnableReranking = chatParams.ragEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING;
   const multimodalRagEnabled = chatParams.multimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED;
+  const multimodalTopK = chatParams.multimodalTopK ?? DEFAULT_MULTIMODAL_TOPK;
+  // 多模态精排：未显式设置时跟随全局 Rerank 开关（发送链路同样按此回退）
+  const multimodalEnableReranking = chatParams.multimodalEnableReranking ?? ragEnableReranking;
 
   return (
     <div className={cn('flex flex-col', isMobile ? 'h-full' : sidebarMode ? 'h-full' : undefined)}>
@@ -234,7 +244,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
         {/* 侧栏模式强制单列布局，非侧栏模式使用响应式双列 */}
         <div className={sidebarMode ? 'flex flex-col gap-2 pb-1' : 'grid grid-cols-1 md:grid-cols-2 gap-2 pb-1'}>
         {deepSeekV4SamplingLocked && (
-          <div className={cn('rounded-lg border border-amber-300/40 bg-amber-50/70 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200', !sidebarMode && 'md:col-span-2')}>
+          <div className={cn('rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] leading-relaxed text-warning', !sidebarMode && 'md:col-span-2')}>
             {t('chat_host:advanced.deepseek_v4_sampling_notice', {
               effort: deepSeekV4ReasoningEffort,
               defaultValue: 'DeepSeek V4 thinking mode ({{effort}}) ignores temperature, top_p, presence_penalty, and frequency_penalty. Turn thinking off to use sampling controls.',
@@ -248,7 +258,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             <Label htmlFor={temperatureId} className="text-xs font-medium shrink-0">
               {t('chat_host:advanced.temperature.label')}
             </Label>
-            <span className="text-[10px] text-muted-foreground line-clamp-2">
+            <span className="text-2xs text-muted-foreground line-clamp-2">
               {t('chat_host:advanced.temperature.description')}
             </span>
           </div>
@@ -271,7 +281,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             disabled={samplingControlsDisabled}
           />
           {enableThinking && !deepSeekV4SamplingLocked && (
-            <p className="mt-1 text-[10px] text-amber-500/80">
+            <p className="mt-1 text-2xs text-warning/80">
               {t('chat_host:advanced.thinking_mode_notice')}
             </p>
           )}
@@ -284,7 +294,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             <Label htmlFor={topPId} className="text-xs font-medium shrink-0">
               {t('chat_host:advanced.top_p.label')}
             </Label>
-            <span className="text-[10px] text-muted-foreground line-clamp-2">
+            <span className="text-2xs text-muted-foreground line-clamp-2">
               {t('chat_host:advanced.top_p.description')}
             </span>
           </div>
@@ -315,14 +325,15 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             <Label htmlFor={contextLimitId} className="text-xs font-medium shrink-0">
               {t('chat_host:advanced.context.label')}
             </Label>
-            <span className="text-[10px] text-muted-foreground line-clamp-2">
+            <span className="text-2xs text-muted-foreground line-clamp-2">
               {t('chat_host:advanced.context.description')}
             </span>
             <NotionButton
               variant="ghost"
               size="sm"
               className={cn(
-                'ml-auto !h-auto !px-1.5 !py-0.5 text-[10px]',
+                // 触控目标保底：移动/平板 min-h-8，桌面 lg 起恢复紧凑
+                'ml-auto !h-auto min-h-8 lg:min-h-0 !px-1.5 !py-0.5 text-2xs',
                 isStreaming && 'pointer-events-none opacity-60'
               )}
               onClick={() => {
@@ -352,7 +363,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             }}
             disabled={isStreaming}
           />
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-2xs text-muted-foreground">
             {chatParams.contextLimit === undefined
               ? t('chat_host:advanced.context.auto_hint', {
                   window: formatTokenNumber(inferredContextWindow),
@@ -370,7 +381,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             <Label htmlFor={maxTokensId} className="text-xs font-medium shrink-0">
               {t('chat_host:advanced.max_tokens.label')}
             </Label>
-            <span className="text-[10px] text-muted-foreground line-clamp-2">
+            <span className="text-2xs text-muted-foreground line-clamp-2">
               {t('chat_host:advanced.max_tokens.description')}
             </span>
           </div>
@@ -401,7 +412,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             <Label htmlFor={freqPenaltyId} className="text-xs font-medium shrink-0">
               {t('chat_host:advanced.frequency_penalty.label')}
             </Label>
-            <span className="text-[10px] text-muted-foreground line-clamp-2">
+            <span className="text-2xs text-muted-foreground line-clamp-2">
               {t('chat_host:advanced.frequency_penalty.description')}
             </span>
           </div>
@@ -432,7 +443,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             <Label htmlFor={presPenaltyId} className="text-xs font-medium shrink-0">
               {t('chat_host:advanced.presence_penalty.label')}
             </Label>
-            <span className="text-[10px] text-muted-foreground line-clamp-2">
+            <span className="text-2xs text-muted-foreground line-clamp-2">
               {t('chat_host:advanced.presence_penalty.description')}
             </span>
           </div>
@@ -463,7 +474,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             <Label className="text-xs font-medium shrink-0">
               {t('analysis:input_bar.rag.title')}
             </Label>
-            <span className="text-[10px] text-muted-foreground line-clamp-2">
+            <span className="text-2xs text-muted-foreground line-clamp-2">
               {t('chat_host:rag.panel.vfs_subtitle')}
             </span>
           </div>
@@ -503,7 +514,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                   className="shrink-0"
                 />
               </div>
-              <p className="mt-1 text-[10px] leading-3 text-muted-foreground">
+              <p className="mt-1 text-2xs leading-3 text-muted-foreground">
                 {t('chat_host:rag.panel.rerank_helper')}
               </p>
             </div>
@@ -524,9 +535,53 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                   className="shrink-0"
                 />
               </div>
-              <p className="mt-1 text-[10px] leading-3 text-muted-foreground">
+              <p className="mt-1 text-2xs leading-3 text-muted-foreground">
                 {t('chat_host:rag.panel.multimodal_helper')}
               </p>
+
+              {/* 多模态 Top-K + 精排（原 RagPanel 独有配置迁移至此，开关开启时展开） */}
+              {multimodalRagEnabled && (
+                <div className="mt-2 border-t border-border/50 pt-2">
+                  <SnappySlider
+                    className={cn('pb-1', isStreaming && 'pointer-events-none opacity-60')}
+                    values={MULTIMODAL_TOPK_SNAP_POINTS}
+                    defaultValue={DEFAULT_MULTIMODAL_TOPK}
+                    value={Math.min(MULTIMODAL_TOPK_MAX, Math.max(MULTIMODAL_TOPK_MIN, multimodalTopK))}
+                    min={MULTIMODAL_TOPK_MIN}
+                    max={MULTIMODAL_TOPK_MAX}
+                    step={1}
+                    onChange={(next: number) => {
+                      if (!isStreaming) updateParam('multimodalTopK', next);
+                    }}
+                    config={{
+                      snappingThreshold: 0.35,
+                      labelFormatter: (v: number) => Math.round(v).toString(),
+                    }}
+                    label={t('chatV2:ragPanel.multimodalTopkLabel')}
+                    disabled={isStreaming}
+                  />
+                  <p className="text-2xs leading-3 text-muted-foreground">
+                    {t('chatV2:ragPanel.multimodalTopkHelper')}
+                  </p>
+                  <div className="mt-2 border-t border-border/50 pt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-foreground">
+                        {t('chatV2:ragPanel.multimodalRerankLabel')}
+                      </span>
+                      <Switch
+                        size="sm"
+                        checked={multimodalEnableReranking}
+                        onCheckedChange={(checked) => updateParam('multimodalEnableReranking', checked)}
+                        disabled={isStreaming}
+                        className="shrink-0"
+                      />
+                    </div>
+                    <p className="mt-1 text-2xs leading-3 text-muted-foreground">
+                      {t('chatV2:ragPanel.multimodalRerankHelper')}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

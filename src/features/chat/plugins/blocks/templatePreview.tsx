@@ -40,7 +40,9 @@ const TemplatePreviewBlock: React.FC<BlockComponentProps> = React.memo(({ block,
 
   const isRunning = block.status === 'running' || block.status === 'pending' || Boolean(isStreaming);
   const isError = block.status === 'error';
-  const hasVisual = isTemplateVisualOutput(block.toolOutput);
+  // 先通过类型守卫收窄并保存结果，供下方分支直接使用（unknown -> TemplateVisualData）
+  const visualOutput = isTemplateVisualOutput(block.toolOutput) ? block.toolOutput : null;
+  const hasVisual = visualOutput !== null;
 
   // 加载中（尚无可视化输出）
   if (!hasVisual && isRunning) {
@@ -74,10 +76,10 @@ const TemplatePreviewBlock: React.FC<BlockComponentProps> = React.memo(({ block,
   }
 
   // 正常可视化输出
-  if (hasVisual) {
+  if (visualOutput) {
     return (
       <div className="rounded-lg border border-border/50 bg-card overflow-hidden p-3">
-        <TemplateToolOutput output={block.toolOutput} />
+        <TemplateToolOutput output={visualOutput} />
       </div>
     );
   }

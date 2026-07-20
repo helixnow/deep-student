@@ -19,7 +19,7 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
   id: 'data-governance-tools',
   name: 'data-governance-tools',
   description:
-    '查看本地备份与同步状态，创建完整备份并轮询后台任务，或使用 Settings 已配置的安全云存储执行同步。恢复、导入、清库和任何云凭据操作不开放。',
+    '查看本地备份与同步状态，创建完整备份并轮询后台任务，或使用 Settings 已配置的安全云存储执行同步。恢复、导入、清库和任何云凭据操作有意不开放：用户要恢复备份时应引导其到 设置→数据治理 页面自行操作，AI 无此权限。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 8,
@@ -42,9 +42,12 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
 - **builtin-sync_run**（High）只接受 direction 和冲突 strategy。云端 endpoint/用户名等非敏感配置从后端 SSOT 读取，密码/secret/access key/加密密码由 secure store 在 Rust 内补齐；不得把 cloud_config、WebDAV/S3/FTP 凭据、token 或密钥放进工具参数。
 - download/bidirectional 可能覆盖本地状态，应先向用户说明方向和冲突策略并取得明确确认。返回 partial 或 skipped_changes>0 时不得宣称完全成功。
 
-## 明确不开放
+## 明确不开放（有意的安全设计，不是功能缺失）
 
-恢复备份、删除备份、ZIP 导入、purge_all_data、API key/OAuth/WebDAV/S3/FTP 凭据与云配置编辑均不暴露给 Agent。需要这些操作时打开 Settings > Data Governance / Cloud Storage 让用户接管。
+恢复备份、删除备份、ZIP 导入、purge_all_data、API key/OAuth/WebDAV/S3/FTP 凭据与云配置编辑均**有意**不暴露给 Agent——这些操作可能不可逆地覆盖或清除用户数据，必须由用户本人在 UI 中执行。
+
+- **恢复备份**：不存在 backup_restore / restore 之类的工具，也不要试图用 shell、文件工具或 sync_run download 模拟恢复。用户要求恢复备份时，回复中明确引导：请打开 设置 → 数据治理（Settings > Data Governance）页面，在备份列表中选择要恢复的备份并确认；AI 无此权限。
+- 其余不开放操作同理：引导用户到 Settings > Data Governance / Cloud Storage 自行接管，不要猜测或编造工具名。
 `,
   allowedTools: [
     'builtin-backup_status',
@@ -57,7 +60,7 @@ export const dataGovernanceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-backup_status',
       description:
-        '分页读取本机备份目录（Low）。返回 backup_id/created_at/size_bytes/backup_type/databases 及 total/has_more，scope=local_backup_catalog；不探测云端。',
+        '分页读取本机备份目录（Low）。返回 backup_id/created_at/size_bytes/backup_type/databases 及 total/has_more，scope=local_backup_catalog；不探测云端。注意：只有查看能力，恢复备份没有对应工具（有意设计）——用户要恢复时引导其到 设置→数据治理 页面操作。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,

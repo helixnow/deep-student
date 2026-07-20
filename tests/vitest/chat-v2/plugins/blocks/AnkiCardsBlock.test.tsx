@@ -90,6 +90,7 @@ import {
   AnkiCardsBlock,
   resolveZombieCompletionState,
 } from '@/features/chat/plugins/blocks/ankiCardsBlock';
+import { resetAnkiBlockUiState } from '@/features/chat/plugins/blocks/components/ankiCardsBlockState';
 
 function createBlock(overrides?: Partial<Block>): Block {
   return {
@@ -122,6 +123,9 @@ describe('AnkiCardsBlock', () => {
     mockSaveCardsToLibrary.mockResolvedValue(undefined);
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue(undefined);
+    // UI 状态（展开/编辑/多选）挂在模块级 Map（按 blockId），
+    // 用例间复用同一 blockId，必须重置避免串状态。
+    resetAnkiBlockUiState();
   });
 
   it('should be registered in blockRegistry', async () => {
@@ -267,13 +271,15 @@ describe('AnkiCardsBlock', () => {
     expect(screen.getByRole('menuitem', { name: 'Sync · checking' })).toBeDisabled();
   });
 
-  it('should render action buttons when has cards and disable them while streaming', () => {
+  it('should keep browsing unlocked while streaming but gate batch delivery actions', () => {
     const block = createBlock({ status: 'running' });
     const data = createData();
 
     render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} isStreaming={true} />);
 
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+    // 生成中允许展开浏览（按动作粒度解锁）
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
+    // 整批交付动作（加入卡片库/导出/同步）仍等终态
     expect(screen.getByRole('button', { name: 'Add to card library' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'More card actions' }));
     expect(screen.getByRole('menuitem', { name: 'Export' })).toBeDisabled();

@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/shad/Label';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { Check, CircleNotch, Plus, X } from '@phosphor-icons/react';
-import { createAgent, listAgents } from '../api';
+import { createAgent, listAgents, agentMetadataFromInfo } from '../api';
 import { useWorkspaceStore } from '../workspaceStore';
 import type { WorkspaceAgent } from '../types';
 import { useSkillsByLocation } from '../../skills/hooks/useSkillList';
@@ -91,6 +91,9 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
           status: a.status as WorkspaceAgent['status'],
           joinedAt: a.joined_at,
           lastActiveAt: a.last_active_at,
+          metadata: agentMetadataFromInfo(a),
+          // 🆕 C12: inbox 未消费消息数
+          pendingInboxCount: a.pending_inbox_count,
         }));
         const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
         if (!currentWorkspaceId || currentWorkspaceId !== workspaceId) {

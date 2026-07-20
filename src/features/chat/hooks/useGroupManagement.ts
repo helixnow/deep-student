@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
 import { setGroupsCache } from '../core/store/groupCache';
 
 const emitGroupListUpdated = () => {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
+  dispatchAppEvent(APP_EVENTS.CHAT_GROUPS_UPDATED);
 };
 
 function sortGroups(groups: SessionGroup[]): SessionGroup[] {

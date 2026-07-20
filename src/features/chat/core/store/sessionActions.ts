@@ -1,7 +1,7 @@
 import i18n from 'i18next';
 import type { AttachmentMeta } from '../types/message';
 import type { ContextRef } from '../../resources/types';
-import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
+import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
 import { invoke } from '@tauri-apps/api/core';
 import type { AuthorityMode, ChatStore, BlockingInteraction } from '../types';
 import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types/common';
@@ -13,6 +13,7 @@ import { modeRegistry } from '../../registry';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { eventRegistry, type EventHandler } from '../../registry/eventRegistry';
+import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -424,6 +425,9 @@ export function createSessionActions(
 
           ensurePlanGateEventHandlerRegistered();
 
+          // 🔧 P1 内存泄漏修复：重置前释放未发送附件的 blob: 预览 URL
+          revokeAttachmentBlobUrls(getState().attachments);
+
           set({
             mode,
             sessionStatus: 'idle',
@@ -608,6 +612,46 @@ export function createSessionActions(
 
           // Fallback：发送"继续"消息（创建新轮次）
           await getState().sendMessage(i18n.t('chatV2:store.continueMessage', { defaultValue: 'continue' }));
+        },
+
+        // ========== 🆕 P0 分支模型：会话分支 ==========
+
+        setBranchSessionCallback: (
+          callback: ((upToMessageId: string) => Promise<BranchSessionResult>) | null
+        ): void => {
+          set({ _branchSessionCallback: callback } as Partial<ChatStoreState>);
+          console.log(
+            '[ChatStore] BranchSession callback',
+            callback ? 'set' : 'cleared'
+          );
+        },
+
+        /**
+         * 从当前会话分支出新会话（含 upToMessageId 的历史）。
+         * 优先走 TauriAdapter 注入的回调；回调未注入时直接 invoke 兜底，
+         * 保证适配器尚未 setup（或测试环境）下能力仍可用。
+         */
+        branchSession: async (upToMessageId: string): Promise<BranchSessionResult> => {
+          const state = getState() as ChatStoreState & ChatStore;
+          const branchCallback = state._branchSessionCallback;
+
+          if (branchCallback) {
+            const newSession = await branchCallback(upToMessageId);
+            console.log('[ChatStore] branchSession completed via callback:', newSession.id);
+            return newSession;
+          }
+
+          // 兜底路径：直接调用后端命令（与 setAuthorityMode 等既有直连一致）
+          const sessionId = state.sessionId;
+          if (!sessionId) {
+            throw new Error('[ChatStore] branchSession: no sessionId');
+          }
+          const newSession = await invoke<BranchSessionResult>('chat_v2_branch_session', {
+            sourceSessionId: sessionId,
+            upToMessageId,
+          });
+          console.log('[ChatStore] branchSession completed via direct invoke:', newSession.id);
+          return newSession;
         },
 
         setLoadCallback: (

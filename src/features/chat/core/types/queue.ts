@@ -25,14 +25,21 @@ export const QUEUE_DEQUEUE_BREATHER_MS = 300;
 /**
  * Tolerantly read the "blocking interaction" sentinel from a store snapshot.
  *
+ * 🔧 P0-3 读路径收敛：本函数是逻辑层读取阻塞交互的唯一入口（SSOT read path）。
+ *
  * Two field names exist in the codebase:
- * - `pendingApprovalRequest` (HEAD, original tool-approval-only shape)
- * - `pendingBlockingInteraction` (in-progress refactor, discriminated union for
- *   tool_approval / ask_user / tool_limit)
+ * - `pendingBlockingInteraction`：唯一事实源（discriminated union for
+ *   tool_approval / ask_user / tool_limit / plan_gate）
+ * - `pendingApprovalRequest`：兼容旧字段，由 sessionActions 的
+ *   blockingInteractionPatch 保持为新字段的严格派生镜像（仅 tool_approval）
  *
  * Whichever is non-null at runtime indicates the input bar is blocked and the
- * queue must NOT auto-dequeue. We read both so this code compiles and behaves
- * correctly regardless of which migration step is active.
+ * queue must NOT auto-dequeue.
+ *
+ * 约束：
+ * - 逻辑层（store/guards/sessionManager/AdapterManager/hooks）判断"是否被阻塞"
+ *   必须使用本函数，禁止直接读单个字段；
+ * - UI 组件在并行改造，暂可继续读旧字段渲染，但新代码同样应经此入口。
  */
 export function readBlockingInteraction(state: unknown): unknown {
   const s = state as {

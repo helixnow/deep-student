@@ -61,6 +61,8 @@ const ORIGIN_TO_CITATION_TYPE: Record<string, SourceCitationType> = {
   memory: 'memory',
   web_search: 'web_search',
   multimodal: 'multimodal',
+  // 学术搜索在 UI 上独立分组，但引用契约仍走 `[搜索-N]`（后端与 web_search 共用计数）
+  academic_search: 'web_search',
 };
 
 /**
@@ -71,19 +73,67 @@ const RETRIEVAL_BLOCK_TYPE_TO_ORIGIN: Record<string, string> = {
   memory: 'memory',
   web_search: 'web_search',
   multimodal_rag: 'multimodal',
-  academic_search: 'web_search',
+  academic_search: 'academic_search',
 };
 
 /**
+ * 归一化后端提供的 typeIndex（1-based 正整数才有效）
+ */
+function normalizeBackendTypeIndex(value: unknown): number | undefined {
+  const num = typeof value === 'string' ? Number(value) : value;
+  if (typeof num === 'number' && Number.isInteger(num) && num >= 1) {
+    return num;
+  }
+  return undefined;
+}
+
+/**
+ * 从后端 citationTag（如 `[知识库-2]` / `[搜索-3]`）解析类型内序号
+ */
+function parseCitationTagIndex(tag: unknown): number | undefined {
+  if (typeof tag !== 'string') return undefined;
+  const match = tag.match(/-(\d+)\]\s*$/);
+  if (!match) return undefined;
+  return normalizeBackendTypeIndex(Number(match[1]));
+}
+
+/**
+ * 提取 item 上后端已声明的类型内序号：typeIndex 优先，citationTag 兜底
+ */
+function backendTypeIndexOf(item: UnifiedSourceItem): number | undefined {
+  return normalizeBackendTypeIndex(item.typeIndex) ?? parseCitationTagIndex(item.citationTag);
+}
+
+/**
  * 收尾处理：保证跨块/跨 provider 的 id 全局唯一，
- * 并按全局顺序为每个 item 分配"类型内序号"（typeIndex，1-based）。
+ * 并为每个 item 确定"类型内序号"（typeIndex，1-based）。
  *
- * typeIndex 与后端 citation `[类型-N]` 契约一致：
- * 同一 citation 类型的来源按出现顺序从 1 开始计数。
+ * 序号信任策略（与后端 Citation Ledger 契约一致）：
+ * 1. 后端提供 citationTag/typeIndex 时**直接信任使用**——后端是 `[类型-N]`
+ *    编号的唯一权威（跨块全局稳定），前端不做重排；
+ * 2. 仅当后端未提供时才本地按出现顺序补号（防御式兼容旧数据），
+ *    补号会跳过后端已占用的序号，避免同类型内撞号。
  */
 function finalizeSourceItems(items: UnifiedSourceItem[]): UnifiedSourceItem[] {
   const seenIds = new Set<string>();
-  const typeCounters = new Map<SourceCitationType, number>();
+
+  // Pass 1: 收集后端已声明的序号，供本地补号避让
+  const backendUsedIndexes = new Map<SourceCitationType, Set<number>>();
+  for (const item of items) {
+    const citationType = ORIGIN_TO_CITATION_TYPE[item.origin];
+    if (!citationType) continue;
+    const backendIndex = backendTypeIndexOf(item);
+    if (backendIndex == null) continue;
+    let used = backendUsedIndexes.get(citationType);
+    if (!used) {
+      used = new Set<number>();
+      backendUsedIndexes.set(citationType, used);
+    }
+    used.add(backendIndex);
+  }
+
+  // Pass 2: 分配最终序号（信任后端；缺失时本地补号）
+  const localCounters = new Map<SourceCitationType, number>();
 
   return items.map((item) => {
     let id = item.id;
@@ -97,9 +147,16 @@ function finalizeSourceItems(items: UnifiedSourceItem[]): UnifiedSourceItem[] {
     const citationType = ORIGIN_TO_CITATION_TYPE[item.origin];
     let typeIndex: number | undefined;
     if (citationType) {
-      const next = (typeCounters.get(citationType) ?? 0) + 1;
-      typeCounters.set(citationType, next);
-      typeIndex = next;
+      const backendIndex = backendTypeIndexOf(item);
+      if (backendIndex != null) {
+        typeIndex = backendIndex;
+      } else {
+        const used = backendUsedIndexes.get(citationType);
+        let next = (localCounters.get(citationType) ?? 0) + 1;
+        while (used?.has(next)) next++;
+        localCounters.set(citationType, next);
+        typeIndex = next;
+      }
     }
 
     return { ...item, id, citationType, typeIndex };
@@ -183,6 +240,8 @@ function citationsToSourceItems(
   blockType: string
 ): UnifiedSourceItem[] {
   return citations.map((citation, index) => {
+    // 防御式读取后端 Citation Ledger 字段（Citation 类型可能尚未声明这两个字段）
+    const ledger = citation as Citation & { citationTag?: string; typeIndex?: number };
     // 🔧 防御性处理：如果 citation.type 缺失，从 blockType 推断
     // 这可以处理后端 SourceInfo 被错误地当作 Citation 使用的情况
     let groupType: string;
@@ -220,6 +279,9 @@ function citationsToSourceItems(
       providerId,
       providerLabel: providerLabelKey,
       raw,
+      // 后端 Citation Ledger 字段（存在即被 finalizeSourceItems 信任）
+      citationTag: ledger.citationTag,
+      typeIndex: normalizeBackendTypeIndex(ledger.typeIndex),
     };
   });
 }
@@ -270,6 +332,9 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
     resourceId?: string;
     resourceType?: string;
     pageIndex?: number;
+    // 后端 Citation Ledger 字段（numbered sources 契约）
+    citationTag?: string;
+    typeIndex?: number;
   }> = [];
 
   if (Array.isArray(output)) {
@@ -340,6 +405,9 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
     // 回退到 metadata 中提取（兼容其他格式）
     const resourceId = source.resourceId || (metadata.resourceId as string | undefined);
     const resourceType = source.resourceType || (metadata.resourceType as string | undefined);
+    // 后端 Citation Ledger：citationTag/typeIndex 存在时直接信任（finalize 阶段消费）
+    const citationTag = source.citationTag || (metadata.citationTag as string | undefined);
+    const backendTypeIndex = normalizeBackendTypeIndex(source.typeIndex ?? metadata.typeIndex);
     
     const resolvedTitle = source.title || source.note_title || '';
     const resolvedSnippet = source.snippet || source.chunk_text || source.text_content || '';
@@ -388,6 +456,8 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
       path,
       pageIndex,
       resourceType,
+      citationTag,
+      typeIndex: backendTypeIndex,
     };
 
     // 多模态结果：填充 multimodal 扩展字段
@@ -514,6 +584,9 @@ function getProviderContextType(blockType: string, groupType?: string): string {
   if (groupType === 'memory') {
     return 'memory';
   }
+  if (groupType === 'academic_search') {
+    return 'academic_search';
+  }
   if (groupType === 'web_search') {
     return 'web_search';
   }
@@ -558,8 +631,18 @@ function isMultimodalSourceType(value: unknown): value is MultimodalSourceType {
     || value === 'textbook';
 }
 
+/** 学术来源可辨识的 sourceType 值（web_search 结果中独立成学术分组） */
+const ACADEMIC_SOURCE_TYPES = new Set(['academic', 'academic_search', 'paper', 'arxiv', 'openalex']);
+
 function resolveSourceGroupType(defaultGroupType: string, sourceType: unknown): string {
-  if (defaultGroupType !== 'rag' || typeof sourceType !== 'string') {
+  if (typeof sourceType !== 'string') {
+    return defaultGroupType;
+  }
+  // web_search 块中混有学术结果时（数据源可辨），独立到 academic_search 分组
+  if (defaultGroupType === 'web_search' && ACADEMIC_SOURCE_TYPES.has(sourceType)) {
+    return 'academic_search';
+  }
+  if (defaultGroupType !== 'rag') {
     return defaultGroupType;
   }
   if (sourceType === 'memory') {
@@ -700,83 +783,33 @@ export function resolveCitationSource(
  * @param sharedContext - SharedContext 对象
  * @returns UnifiedSourceBundle 或 null
  */
+/** SharedContext 中各来源数组的元素形状（多变体共享检索结果） */
+interface SharedContextSource {
+  title?: string;
+  snippet?: string;
+  url?: string;
+  score?: number;
+  metadata?: Record<string, unknown>;
+  sourceId?: string;
+  resourceId?: string;
+  resourceType?: string;
+  pageIndex?: number;
+  imageUrl?: string;
+  imageCitation?: string;
+  chunkIndex?: number;
+  sourceType?: string;
+  /** 后端 Citation Ledger 字段（存在即信任） */
+  citationTag?: string;
+  typeIndex?: number;
+}
+
 export function extractSourcesFromSharedContext(
   sharedContext: {
-    ragSources?: Array<{
-      title?: string;
-      snippet?: string;
-      url?: string;
-      score?: number;
-      metadata?: Record<string, unknown>;
-      sourceId?: string;
-      resourceId?: string;
-      resourceType?: string;
-      pageIndex?: number;
-      imageUrl?: string;
-      imageCitation?: string;
-      chunkIndex?: number;
-      sourceType?: string;
-    }>;
-    memorySources?: Array<{
-      title?: string;
-      snippet?: string;
-      url?: string;
-      score?: number;
-      metadata?: Record<string, unknown>;
-      sourceId?: string;
-      resourceId?: string;
-      resourceType?: string;
-      pageIndex?: number;
-      imageUrl?: string;
-      imageCitation?: string;
-      chunkIndex?: number;
-      sourceType?: string;
-    }>;
-    graphSources?: Array<{
-      title?: string;
-      snippet?: string;
-      url?: string;
-      score?: number;
-      metadata?: Record<string, unknown>;
-      sourceId?: string;
-      resourceId?: string;
-      resourceType?: string;
-      pageIndex?: number;
-      imageUrl?: string;
-      imageCitation?: string;
-      chunkIndex?: number;
-      sourceType?: string;
-    }>;
-    webSearchSources?: Array<{
-      title?: string;
-      snippet?: string;
-      url?: string;
-      score?: number;
-      metadata?: Record<string, unknown>;
-      sourceId?: string;
-      resourceId?: string;
-      resourceType?: string;
-      pageIndex?: number;
-      imageUrl?: string;
-      imageCitation?: string;
-      chunkIndex?: number;
-      sourceType?: string;
-    }>;
-    multimodalSources?: Array<{
-      title?: string;
-      snippet?: string;
-      url?: string;
-      score?: number;
-      metadata?: Record<string, unknown>;
-      sourceId?: string;
-      resourceId?: string;
-      resourceType?: string;
-      pageIndex?: number;
-      imageUrl?: string;
-      imageCitation?: string;
-      chunkIndex?: number;
-      sourceType?: string;
-    }>;
+    ragSources?: SharedContextSource[];
+    memorySources?: SharedContextSource[];
+    graphSources?: SharedContextSource[];
+    webSearchSources?: SharedContextSource[];
+    multimodalSources?: SharedContextSource[];
   } | undefined
 ): UnifiedSourceBundle | null {
   if (!sharedContext) {
@@ -787,23 +820,7 @@ export function extractSourcesFromSharedContext(
 
   // 处理每种来源类型
   const sourceTypeMap: Array<{
-    sources:
-      | Array<{
-          title?: string;
-          snippet?: string;
-          url?: string;
-          score?: number;
-          metadata?: Record<string, unknown>;
-          sourceId?: string;
-          resourceId?: string;
-          resourceType?: string;
-          pageIndex?: number;
-          imageUrl?: string;
-          imageCitation?: string;
-          chunkIndex?: number;
-          sourceType?: string;
-        }>
-      | undefined;
+    sources: SharedContextSource[] | undefined;
     origin: string;
     providerId: string;
     providerLabelKey: string;
@@ -869,6 +886,13 @@ export function extractSourcesFromSharedContext(
       const sourceType = source.sourceType
         || (metadata.sourceType as string | undefined)
         || (metadata.source_type as string | undefined);
+      // 后端 Citation Ledger：存在即信任（finalize 阶段消费）
+      const citationTag = source.citationTag
+        || (metadata.citationTag as string | undefined)
+        || (metadata.citation_tag as string | undefined);
+      const backendTypeIndex = normalizeBackendTypeIndex(
+        source.typeIndex ?? metadata.typeIndex ?? metadata.type_index
+      );
       const path = (metadata.path as string | undefined) || (metadata.resourcePath as string | undefined);
       const memoryDocumentId =
         origin === 'memory'
@@ -916,6 +940,8 @@ export function extractSourcesFromSharedContext(
         pageIndex,
         imageUrl,
         imageCitation,
+        citationTag,
+        typeIndex: backendTypeIndex,
       });
     });
   }

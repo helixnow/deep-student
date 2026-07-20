@@ -12,7 +12,7 @@ export const vfsMemorySkill: SkillDefinition = {
   id: 'vfs-memory',
   name: 'vfs-memory',
   description: 'VFS 记忆管理能力组，包含记忆读取、写入、列表、更新、删除等工具。你应主动使用这些工具：回答前检索相关记忆以个性化回复，发现用户偏好/背景/目标时主动保存，用户纠正信息时更新旧记忆。',
-  version: '2.1.0',
+  version: '2.2.0',
   author: 'Deep Student',
   priority: 3,
   location: 'builtin',
@@ -78,9 +78,10 @@ export const vfsMemorySkill: SkillDefinition = {
 - **builtin-memory_write_smart**: 智能写入（推荐首选），自动判断新增/更新/追加
 - **builtin-memory_write**: 创建新记忆或更新现有记忆
 - **builtin-memory_update_by_id**: 按 ID 精确更新记忆
-- **builtin-memory_update_tags**: 用 OCC 版本替换用户标签，保留系统标签
+- **builtin-memory_update_tags**: 用 OCC 版本替换用户标签，保留系统标签；用户表示某记忆仍然有效时可传 remove_stale=true 移除其 \`_stale\` 过时标记
 - **builtin-memory_add_relation** / **builtin-memory_remove_relation**: 用两个 OCC 版本原子维护双向关联
 - **builtin-memory_batch_move**: 最多 20 条、逐条 OCC 地移动记忆
+- **builtin-memory_log_activity**: 记录一条"今天做了什么"的学习活动到每日学习日志（≤80 字，供画像晋升蒸馏）
 - **builtin-memory_export_all**: High 敏感分页导出，每页最多 20 条
 
 ### 删除记忆
@@ -143,6 +144,7 @@ export const vfsMemorySkill: SkillDefinition = {
     'builtin-memory_add_relation',
     'builtin-memory_remove_relation',
     'builtin-memory_update_tags',
+    'builtin-memory_log_activity',
     'builtin-memory_export_all',
     'builtin-learner_profile_get',
     'builtin-learner_profile_update',
@@ -451,7 +453,7 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_update_tags',
-      description: '替换一条记忆的用户标签（Medium），以下划线开头的系统标签始终保留且不能由 Agent 注入。必须传最新 updated_at；返回实际写后标签、新版本及撤销调用。',
+      description: '替换一条记忆的用户标签（Medium），以下划线开头的系统标签始终保留且不能由 Agent 注入。唯一例外：remove_stale=true 时会同时移除 _stale 过时标记——当用户表示某记忆仍然有效、需要救回被误判衰亡的记忆时使用。必须传最新 updated_at；返回实际写后标签、新版本及撤销调用。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -472,8 +474,30 @@ export const vfsMemorySkill: SkillDefinition = {
             minLength: 1,
             description: '【必填】memory_read/list 返回的最新 updated_at OCC 基线',
           },
+          remove_stale: {
+            type: 'boolean',
+            default: false,
+            description: '可选：为 true 时移除该记忆的 _stale 过时标记（仅 _stale，其余系统标签仍保留）。用户表示某记忆仍然有效时使用。',
+          },
         },
         required: ['note_id', 'tags', 'expected_updated_at'],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: 'builtin-memory_log_activity',
+      description: '把一条"今天做了什么"的学习活动记入每日学习日志（Medium 写操作）。用于学习活动流水：做题、复习、背单词、上课等，如"做了 5 道二次函数题，错 2 道"。日志按天聚合，供系统蒸馏进学习者画像；同日重复条目自动跳过。不要用它保存用户事实/偏好（用 memory_write_smart）。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          activity: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 80,
+            description: '【必填】一句话概括的学习活动（≤80 字），如"做了 5 道二次函数题，错 2 道，均为符号错误"',
+          },
+        },
+        required: ['activity'],
         additionalProperties: false,
       },
     },

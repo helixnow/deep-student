@@ -13,7 +13,6 @@
  * 3. 格式化失败时使用默认文本块
  */
 
-import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -23,7 +22,6 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { isErr } from '@/shared/result';
 import type { ContextRef, SendContextRef, ContentBlock, Resource } from '../resources/types';
 import {
-  VFS_REF_TYPES,
   isVfsRefType,
   type VfsContextRefData,
   type VfsResourceRef,
@@ -89,14 +87,6 @@ export const DEFAULT_FALLBACK_CONTEXT_TOKENS = 131072;
  */
 export const SAFE_MAX_CONTEXT_TOKENS = Math.floor(DEFAULT_FALLBACK_CONTEXT_TOKENS * 0.9);
 
-/**
- * Token 估算比率（字符数/Token数）- 已废弃
- *
- * ⚠️ 此常量已废弃，请使用 estimateTokensForText() 动态估算
- * @deprecated 使用 estimateTokensForText() 代替
- */
-const CHARS_PER_TOKEN = 3;
-
 // ============================================================================
 // VFS 引用模式常量（从 vfsRefTypes.ts 统一导入）
 // ============================================================================
@@ -123,243 +113,223 @@ export interface BuildSendContextRefsResult {
 }
 
 /**
- * 构建 SendContextRef 数组
+ * 构建流程的控制选项（与 FormatOptions 解耦：FormatOptions 描述"如何格式化"，
+ * BuildControlOptions 描述"如何执行本次构建"）
+ */
+export interface BuildControlOptions {
+  /**
+   * 取消信号。中止后：
+   * - 尚未开始的资源不再解析；
+   * - 进行中的资源在下一个 await 边界停止（信号会透传到 resolveVfsRefs 链路）；
+   * - 整个构建以 AbortError（DOMException, name='AbortError'）拒绝。
+   */
+  signal?: AbortSignal;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new DOMException('buildSendContextRefs aborted', 'AbortError');
+  }
+}
+
+/** 单个 ContextRef 的处理结果（core 内部使用） */
+interface ProcessedContextRef {
+  sendRef: SendContextRef;
+  path?: string;
+  resource: Resource;
+}
+
+/**
+ * 处理单个 ContextRef：加载资源 → 解析 VFS 引用 → 格式化为 ContentBlock。
+ *
+ * ★ P1-004：最多 2 次重试；★ MEDIUM-002：5 秒总时间限制；
+ * ★ HIGH-A007：超时/外部取消通过 AbortSignal 真正传递到 resolveVfsRefs 链路。
+ */
+async function processContextRef(
+  ref: ContextRef,
+  options: FormatOptions | undefined,
+  outerSignal: AbortSignal | undefined
+): Promise<ProcessedContextRef | null> {
+  const maxRetries = 2;
+  const MAX_TOTAL_RETRY_TIME = 5000; // 5秒总时间限制
+  const startTime = Date.now();
+
+  // 每个 ref 一个内部控制器：内部超时与外部取消统一收敛到同一个 signal，
+  // 再透传给 resolveVfsRefs（HIGH-A007 修复：之前 controller 只自转，signal 未下传）。
+  const abortController = new AbortController();
+  const onOuterAbort = () => abortController.abort();
+  if (outerSignal) {
+    if (outerSignal.aborted) {
+      abortController.abort();
+    } else {
+      outerSignal.addEventListener('abort', onOuterAbort, { once: true });
+    }
+  }
+  const signal = abortController.signal;
+
+  try {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // 检查总时间限制
+      if (Date.now() - startTime > MAX_TOTAL_RETRY_TIME) {
+        console.warn(LOG_PREFIX, `Retry timeout, exceeded ${MAX_TOTAL_RETRY_TIME}ms, resource:`, ref.resourceId);
+        abortController.abort();
+        break;
+      }
+
+      if (signal.aborted) break;
+
+      try {
+        // 1. 从资源库获取内容
+        const resource = await resourceStoreApi.get(ref.resourceId);
+        if (signal.aborted) break;
+
+        if (!resource) {
+          console.warn(
+            LOG_PREFIX,
+            `Resource not found (attempt ${attempt + 1}/${maxRetries + 1}):`,
+            ref.resourceId
+          );
+          return null;
+        }
+
+        // 2. VFS 引用预解析（文档 24 Prompt 8）
+        // ★ 文档25扩展：options.isMultimodal 决定多模态内容获取
+        // ★ 注入模式扩展：传递 injectModes；★ 取消：透传 signal
+        const resolvedResource = await resolveVfsRefs(resource, ref.typeId, options, ref.injectModes, signal);
+        if (signal.aborted) break;
+
+        // 3. ★ 文档28改造：提取路径信息
+        const resolved = resolvedResource._resolvedResources?.[0];
+        const path = resolved?.found && resolved.path ? resolved.path : undefined;
+
+        // 4. 调用 formatToBlocks 格式化（将 injectModes 合并到 options）
+        const formatOptions = ref.injectModes
+          ? { ...options, injectModes: ref.injectModes }
+          : options;
+        const formattedBlocks = contextTypeRegistry.formatResource(ref.typeId, resolvedResource, formatOptions);
+
+        // ★ 调试日志：详细记录实际注入的内容
+        const textBlocks = formattedBlocks.filter(b => b.type === 'text');
+        const imageBlocks = formattedBlocks.filter(b => b.type === 'image');
+        const totalTextLength = textBlocks.reduce((sum, b) => sum + ((b as { type: 'text'; text: string }).text?.length || 0), 0);
+
+        logAttachment('adapter', 'format_resource_done', {
+          resourceId: ref.resourceId,
+          typeId: ref.typeId,
+          blocksCount: formattedBlocks.length,
+          hasResolvedResources: !!resolvedResource._resolvedResources?.length,
+          resolvedFound: resolved?.found,
+          resolvedContentLen: resolved?.content?.length,
+          hasPath: !!path,
+          path,
+          retryAttempt: attempt,
+          injectModes: ref.injectModes,
+          injectedContent: {
+            textBlocks: textBlocks.length,
+            imageBlocks: imageBlocks.length,
+            totalTextLength,
+            hasMultimodal: imageBlocks.length > 0,
+          },
+        }, 'success');
+
+        // 5. 返回结果
+        // ★ 2026-02 修复：包含 injectModes，确保重试时能恢复用户选择
+        return {
+          sendRef: {
+            resourceId: ref.resourceId,
+            hash: ref.hash,
+            typeId: ref.typeId,
+            formattedBlocks,
+            displayName: ref.displayName,
+            injectModes: ref.injectModes,
+          },
+          path,
+          resource,
+        };
+      } catch (error: unknown) {
+        // 外部取消/内部超时导致的中断不再重试
+        if (signal.aborted) break;
+
+        if (attempt < maxRetries) {
+          console.warn(
+            LOG_PREFIX,
+            `Error processing context ref (attempt ${attempt + 1}/${maxRetries + 1}), retrying:`,
+            ref.resourceId,
+            getErrorMessage(error)
+          );
+          // ✅ HIGH-A008 修复：使用 Math.min 限制最大退避时间，防止溢出
+          const backoffDelay = Math.min(Math.pow(2, attempt) * 100, MAX_BACKOFF_DELAY);
+          const remainingTime = MAX_TOTAL_RETRY_TIME - (Date.now() - startTime);
+          const actualDelay = Math.min(backoffDelay, Math.max(0, remainingTime));
+
+          if (actualDelay > 0 && !signal.aborted) {
+            await new Promise(resolve => setTimeout(resolve, actualDelay));
+          }
+        } else {
+          // 最后一次尝试失败，记录详细错误
+          console.error(
+            LOG_PREFIX,
+            `Error processing context ref after ${maxRetries + 1} attempts:`,
+            ref.resourceId,
+            'typeId:',
+            ref.typeId,
+            'error:',
+            getErrorMessage(error)
+          );
+          logAttachment('adapter', 'format_resource_failed', {
+            resourceId: ref.resourceId,
+            typeId: ref.typeId,
+            error: getErrorMessage(error),
+            attempts: maxRetries + 1,
+          }, 'error');
+        }
+      }
+    }
+
+    // 所有重试都失败/被取消，返回 null
+    return null;
+  } finally {
+    if (outerSignal) {
+      outerSignal.removeEventListener('abort', onOuterAbort);
+    }
+    // 释放下游可能仍在等待该信号的操作
+    abortController.abort();
+  }
+}
+
+/**
+ * 构建 SendContextRef 数组（含路径映射）—— 唯一实现
  *
  * 遵循文档 16 发送流程：
  * 1. 按 priority 排序 pendingContextRefs
  * 2. 从资源库获取内容
  * 3. 调用 formatToBlocks 格式化
  *
- * ★ 文档25扩展：支持 options 参数传递模型能力（isMultimodal）
- * ★ 文档28改造：返回 pathMap 用于存储真实路径
+ * ★ 文档25扩展：options 传递模型能力（isMultimodal）
+ * ★ 文档28改造：返回 pathMap 存储真实路径
  * ★ 性能优化：并行加载资源，限制并发数为 5
- *
- * @param contextRefs 待处理的上下文引用数组
- * @param options 格式化选项（可选，包含 isMultimodal 等）
- * @returns 格式化后的 SendContextRef 数组（已排序）
- */
-export async function buildSendContextRefs(
-  contextRefs: ContextRef[],
-  options?: FormatOptions
-): Promise<SendContextRef[]> {
-  if (!contextRefs || contextRefs.length === 0) {
-    return [];
-  }
-
-  const startTime = performance.now();
-
-  logAttachment('adapter', 'build_send_context_refs_start', {
-    count: contextRefs.length,
-    typeIds: contextRefs.map(r => r.typeId),
-  });
-
-  // 1. 按 priority 排序
-  const sortedRefs = [...contextRefs].sort((a, b) => {
-    const priorityA = contextTypeRegistry.getPriority(a.typeId);
-    const priorityB = contextTypeRegistry.getPriority(b.typeId);
-    return priorityA - priorityB;
-  });
-
-  // 2. 并行加载资源（带并发限制和重试机制）
-  const results = await pMap(
-    sortedRefs,
-    async (ref) => {
-      // ★ P1-004 修复：添加重试逻辑（最多2次重试）
-      // ★ MEDIUM-002 修复：添加总时间限制
-      // ✅ HIGH-A007 修复：使用 AbortController 取消超时的异步操作
-      const maxRetries = 2;
-      const MAX_TOTAL_RETRY_TIME = 5000; // 5秒总时间限制
-      let lastError: Error | null = null;
-      const startTime = Date.now();
-      const abortController = new AbortController();
-
-      try {
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          // 检查总时间限制
-          if (Date.now() - startTime > MAX_TOTAL_RETRY_TIME) {
-            console.warn(LOG_PREFIX, `Retry timeout, exceeded ${MAX_TOTAL_RETRY_TIME}ms, resource:`, ref.resourceId);
-            // ✅ HIGH-A007 修复：取消正在进行的异步操作
-            abortController.abort();
-            break;
-          }
-
-          // 检查是否已被取消
-          if (abortController.signal.aborted) {
-            break;
-          }
-
-          try {
-            // 2.1 从资源库获取内容
-            const resource = await resourceStoreApi.get(ref.resourceId);
-
-            if (!resource) {
-              console.warn(
-                LOG_PREFIX,
-                `Resource not found (attempt ${attempt + 1}/${maxRetries + 1}):`,
-                ref.resourceId
-              );
-              return null;
-            }
-
-            // 2.2 VFS 引用预解析（文档 24 Prompt 8）
-            // ★ 文档25扩展：传递 isMultimodal 到 resolveVfsRefs 以获取多模态内容
-            // ★ 注入模式扩展：传递 injectModes 到 resolveVfsRefs
-            const resolvedResource = await resolveVfsRefs(resource, ref.typeId, options, ref.injectModes);
-
-            // 2.3 调用 formatToBlocks 格式化（使用解析后的资源）
-            // ★ 文档25扩展：传递 options 到 formatResource
-            // ★ 注入模式扩展：将 injectModes 合并到 options
-            const formatOptions = ref.injectModes 
-              ? { ...options, injectModes: ref.injectModes }
-              : options;
-            const formattedBlocks = contextTypeRegistry.formatResource(ref.typeId, resolvedResource, formatOptions);
-
-            // ★ 调试日志：详细记录实际注入的内容
-            const textBlocks = formattedBlocks.filter(b => b.type === 'text');
-            const imageBlocks = formattedBlocks.filter(b => b.type === 'image');
-            const totalTextLength = textBlocks.reduce((sum, b) => sum + ((b as { type: 'text'; text: string }).text?.length || 0), 0);
-            
-            logAttachment('adapter', 'format_resource_done', {
-              resourceId: ref.resourceId,
-              typeId: ref.typeId,
-              blocksCount: formattedBlocks.length,
-              hasResolvedResources: !!resolvedResource._resolvedResources?.length,
-              resolvedFound: resolvedResource._resolvedResources?.[0]?.found,
-              resolvedContentLen: resolvedResource._resolvedResources?.[0]?.content?.length,
-              retryAttempt: attempt,
-              // ★ 新增：注入模式和内容详情
-              injectModes: ref.injectModes,
-              injectedContent: {
-                textBlocks: textBlocks.length,
-                imageBlocks: imageBlocks.length,
-                totalTextLength,
-                hasMultimodal: imageBlocks.length > 0,
-              },
-            }, 'success');
-            
-            console.log('[InjectContent] Actual injected content:', {
-              resourceId: ref.resourceId,
-              injectModes: ref.injectModes,
-              textBlocks: textBlocks.length,
-              imageBlocks: imageBlocks.length,
-              totalTextLength,
-              textPreview: textBlocks.length > 0 ? (textBlocks[0] as { type: 'text'; text: string }).text?.slice(0, 200) : undefined,
-            });
-
-          // 2.4 返回 SendContextRef
-            // ★ 2026-02 修复：包含 injectModes，确保重试时能恢复用户选择
-            const sendRef: SendContextRef = {
-              resourceId: ref.resourceId,
-              hash: ref.hash,
-              typeId: ref.typeId,
-              formattedBlocks,
-              displayName: ref.displayName,
-              injectModes: ref.injectModes,
-            };
-            return sendRef;
-          } catch (error: unknown) {
-            lastError = error as Error;
-
-            if (attempt < maxRetries) {
-              console.warn(
-                LOG_PREFIX,
-                `Error processing context ref (attempt ${attempt + 1}/${maxRetries + 1}), retrying:`,
-                ref.resourceId,
-                getErrorMessage(error)
-              );
-              // ✅ HIGH-A008 修复：使用 Math.min 限制最大退避时间，防止溢出
-              const backoffDelay = Math.min(Math.pow(2, attempt) * 100, MAX_BACKOFF_DELAY);
-              const remainingTime = MAX_TOTAL_RETRY_TIME - (Date.now() - startTime);
-              const actualDelay = Math.min(backoffDelay, Math.max(0, remainingTime));
-
-              if (actualDelay > 0 && !abortController.signal.aborted) {
-                await new Promise(resolve => setTimeout(resolve, actualDelay));
-              }
-            } else {
-              // 最后一次尝试失败，记录详细错误
-              console.error(
-                LOG_PREFIX,
-                `Error processing context ref after ${maxRetries + 1} attempts:`,
-                ref.resourceId,
-                'typeId:',
-                ref.typeId,
-                'error:',
-                getErrorMessage(error)
-              );
-              logAttachment('adapter', 'format_resource_failed', {
-                resourceId: ref.resourceId,
-                typeId: ref.typeId,
-                error: getErrorMessage(error),
-                attempts: maxRetries + 1,
-              }, 'error');
-            }
-          }
-        }
-
-        // 所有重试都失败，返回 null
-        return null;
-      } finally {
-        // ✅ HIGH-A007 修复：在 finally 块中清理 AbortController，确保资源释放
-        abortController.abort();
-      }
-    },
-    RESOURCE_LOAD_CONCURRENCY
-  );
-
-  // 3. 过滤掉失败的资源
-  const sendRefs = results.filter((ref): ref is SendContextRef => ref !== null);
-  const failedCount = contextRefs.length - sendRefs.length;
-
-  const duration = performance.now() - startTime;
-
-  logAttachment('adapter', 'build_send_context_refs_done', {
-    count: sendRefs.length,
-    total: contextRefs.length,
-    failed: failedCount,
-    duration: Math.round(duration),
-    avgPerResource: Math.round(duration / contextRefs.length),
-  }, 'success');
-
-  // 🔧 修复：如果有资源解析失败，通知用户
-  if (failedCount > 0) {
-    showGlobalNotification('warning', i18n.t('chatV2:context.resolve_failed_skipped', { count: failedCount }));
-  }
-
-  // 开发模式下输出性能日志
-  if (process.env.NODE_ENV === 'development' && contextRefs.length > 0) {
-    console.log(
-      `${LOG_PREFIX} [性能] 资源加载完成:`,
-      `总数=${contextRefs.length}`,
-      `成功=${sendRefs.length}`,
-      `耗时=${duration.toFixed(0)}ms`,
-      `平均=${(duration / contextRefs.length).toFixed(0)}ms/个`
-    );
-  }
-
-  return sendRefs;
-}
-
-/**
- * 构建 SendContextRef 数组（含路径映射）
- *
- * ★ 文档28改造：新增的函数，返回 pathMap 用于存储真实路径
- * ★ 性能优化：并行加载资源，限制并发数为 5
+ * ★ 2026-07：与 buildSendContextRefs 合并为单实现（后者是本函数的窄投影）
  *
  * @param contextRefs 待处理的上下文引用数组
  * @param options 格式化选项
- * @returns SendContextRef 数组和 pathMap
+ * @param control 构建控制选项（signal 取消等）
+ * @returns SendContextRef 数组、pathMap 和二进制物化候选
  */
 export async function buildSendContextRefsWithPaths(
   contextRefs: ContextRef[],
-  options?: FormatOptions
+  options?: FormatOptions,
+  control?: BuildControlOptions
 ): Promise<BuildSendContextRefsResult> {
   if (!contextRefs || contextRefs.length === 0) {
     return { sendRefs: [], pathMap: {}, binaryStageCandidates: [] };
   }
 
+  const signal = control?.signal;
+  throwIfAborted(signal);
+
   const startTime = performance.now();
 
-  logAttachment('adapter', 'build_send_context_refs_with_paths_start', {
+  logAttachment('adapter', 'build_send_context_refs_start', {
     count: contextRefs.length,
     typeIds: contextRefs.map(r => r.typeId),
     isMultimodal: options?.isMultimodal,
@@ -372,134 +342,15 @@ export async function buildSendContextRefsWithPaths(
     return priorityA - priorityB;
   });
 
-  // 2. 并行加载资源（带并发限制和重试机制）
+  // 2. 并行加载资源（带并发限制、重试机制和取消传递）
   const results = await pMap(
     sortedRefs,
-    async (ref) => {
-      // ★ P1-004 修复：添加重试逻辑（最多2次重试）
-      // ★ MEDIUM-002 修复：添加总时间限制
-      // ✅ HIGH-A007 修复：使用 AbortController 取消超时的异步操作
-      const maxRetries = 2;
-      const MAX_TOTAL_RETRY_TIME = 5000; // 5秒总时间限制
-      let lastError: Error | null = null;
-      const startTime = Date.now();
-      const abortController = new AbortController();
-
-      try {
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          // 检查总时间限制
-          if (Date.now() - startTime > MAX_TOTAL_RETRY_TIME) {
-            console.warn(LOG_PREFIX, `Retry timeout, exceeded ${MAX_TOTAL_RETRY_TIME}ms, resource:`, ref.resourceId);
-            // ✅ HIGH-A007 修复：取消正在进行的异步操作
-            abortController.abort();
-            break;
-          }
-
-          // 检查是否已被取消
-          if (abortController.signal.aborted) {
-            break;
-          }
-
-          try {
-            // 2.1 从资源库获取内容
-            const resource = await resourceStoreApi.get(ref.resourceId);
-
-            if (!resource) {
-              console.warn(
-                LOG_PREFIX,
-                `Resource not found (attempt ${attempt + 1}/${maxRetries + 1}):`,
-                ref.resourceId
-              );
-              return null;
-            }
-
-            // 2.2 VFS 引用预解析
-            // ★ 注入模式扩展：传递 injectModes 到 resolveVfsRefs
-            const resolvedResource = await resolveVfsRefs(resource, ref.typeId, options, ref.injectModes);
-
-            // 2.3 ★ 文档28改造：提取路径信息
-            const resolved = resolvedResource._resolvedResources?.[0];
-            const path = resolved?.found && resolved.path ? resolved.path : undefined;
-
-          // 2.4 调用 formatToBlocks 格式化
-          // ★ 注入模式扩展：将 injectModes 合并到 options
-          const formatOptions = ref.injectModes 
-            ? { ...options, injectModes: ref.injectModes }
-            : options;
-          
-          const formattedBlocks = contextTypeRegistry.formatResource(ref.typeId, resolvedResource, formatOptions);
-
-          logAttachment('adapter', 'format_resource_with_path_done', {
-            resourceId: ref.resourceId,
-            typeId: ref.typeId,
-            blocksCount: formattedBlocks.length,
-            hasPath: !!path,
-            path,
-            retryAttempt: attempt,
-          }, 'success');
-
-            // 2.5 返回结果
-            // ★ 2026-02 修复：包含 injectModes，确保重试时能恢复用户选择
-            return {
-              sendRef: {
-                resourceId: ref.resourceId,
-                hash: ref.hash,
-                typeId: ref.typeId,
-                formattedBlocks,
-                displayName: ref.displayName,
-                injectModes: ref.injectModes,
-              },
-              path,
-              resource,
-            };
-          } catch (error: unknown) {
-            lastError = error as Error;
-
-            if (attempt < maxRetries) {
-              console.warn(
-                LOG_PREFIX,
-                `Error processing context ref with path (attempt ${attempt + 1}/${maxRetries + 1}), retrying:`,
-                ref.resourceId,
-                getErrorMessage(error)
-              );
-              // ✅ HIGH-A008 修复：使用 Math.min 限制最大退避时间，防止溢出
-              const backoffDelay = Math.min(Math.pow(2, attempt) * 100, MAX_BACKOFF_DELAY);
-              const remainingTime = MAX_TOTAL_RETRY_TIME - (Date.now() - startTime);
-              const actualDelay = Math.min(backoffDelay, Math.max(0, remainingTime));
-
-              if (actualDelay > 0 && !abortController.signal.aborted) {
-                await new Promise(resolve => setTimeout(resolve, actualDelay));
-              }
-            } else {
-              // 最后一次尝试失败，记录详细错误
-              console.error(
-                LOG_PREFIX,
-                `Error processing context ref with path after ${maxRetries + 1} attempts:`,
-                ref.resourceId,
-                'typeId:',
-                ref.typeId,
-                'error:',
-                getErrorMessage(error)
-              );
-              logAttachment('adapter', 'format_resource_with_path_failed', {
-                resourceId: ref.resourceId,
-                typeId: ref.typeId,
-                error: getErrorMessage(error),
-                attempts: maxRetries + 1,
-              }, 'error');
-            }
-          }
-        }
-
-        // 所有重试都失败，返回 null
-        return null;
-      } finally {
-        // ✅ HIGH-A007 修复：在 finally 块中清理 AbortController，确保资源释放
-        abortController.abort();
-      }
-    },
+    (ref) => processContextRef(ref, options, signal),
     RESOURCE_LOAD_CONCURRENCY
   );
+
+  // 取消时不派发"解析失败"通知，直接以 AbortError 结束
+  throwIfAborted(signal);
 
   // 3. 构建 sendRefs 和 pathMap
   const sendRefs: SendContextRef[] = [];
@@ -521,7 +372,7 @@ export async function buildSendContextRefsWithPaths(
   const failedCount = contextRefs.length - sendRefs.length;
   const duration = performance.now() - startTime;
 
-  logAttachment('adapter', 'build_send_context_refs_with_paths_done', {
+  logAttachment('adapter', 'build_send_context_refs_done', {
     sendRefsCount: sendRefs.length,
     pathMapCount: Object.keys(pathMap).length,
     total: contextRefs.length,
@@ -538,7 +389,7 @@ export async function buildSendContextRefsWithPaths(
   // 开发模式下输出性能日志
   if (process.env.NODE_ENV === 'development' && contextRefs.length > 0) {
     console.log(
-      `${LOG_PREFIX} [性能] 资源加载完成（含路径）:`,
+      `${LOG_PREFIX} [性能] 资源加载完成:`,
       `总数=${contextRefs.length}`,
       `成功=${sendRefs.length}`,
       `路径=${Object.keys(pathMap).length}`,
@@ -548,6 +399,26 @@ export async function buildSendContextRefsWithPaths(
   }
 
   return { sendRefs, pathMap, binaryStageCandidates };
+}
+
+/**
+ * 构建 SendContextRef 数组
+ *
+ * ★ 2026-07：与 buildSendContextRefsWithPaths 合并为单实现，本函数只是
+ * 丢弃 pathMap/binaryStageCandidates 的窄投影，行为完全一致。
+ *
+ * @param contextRefs 待处理的上下文引用数组
+ * @param options 格式化选项（可选，包含 isMultimodal 等）
+ * @param control 构建控制选项（signal 取消等）
+ * @returns 格式化后的 SendContextRef 数组（已排序）
+ */
+export async function buildSendContextRefs(
+  contextRefs: ContextRef[],
+  options?: FormatOptions,
+  control?: BuildControlOptions
+): Promise<SendContextRef[]> {
+  const { sendRefs } = await buildSendContextRefsWithPaths(contextRefs, options, control);
+  return sendRefs;
 }
 
 /**
@@ -1127,14 +998,20 @@ export function countContextRefsByType(contextRefs: ContextRef[]): Record<string
  * @param typeId 资源类型 ID
  * @param options 格式化选项（可选，包含 isMultimodal 等）
  * @param injectModes 注入模式配置（可选，用于图片和 PDF 的注入模式选择）
+ * @param signal 取消信号（可选）：在各 await 边界检查，中止时抛出 AbortError
  * @returns 带有 _resolvedResources 的资源（新对象）
  */
 export async function resolveVfsRefs(
   resource: Resource, 
   typeId: string, 
   options?: FormatOptions,
-  injectModes?: import('../context/vfsRefTypes').ResourceInjectModes
+  injectModes?: import('../context/vfsRefTypes').ResourceInjectModes,
+  signal?: AbortSignal
 ): Promise<Resource> {
+  if (signal?.aborted) {
+    throw new DOMException('resolveVfsRefs aborted', 'AbortError');
+  }
+
   console.debug('[resolveVfsRefs]', resource.id, typeId, { dataLen: resource.data?.length ?? 0 });
 
   // 非 VFS 类型，直接返回
@@ -1179,10 +1056,14 @@ export async function resolveVfsRefs(
     const name = String(metadata.name || metadata.title || i18n.t('chatV2:context.unnamed_resource'));
 
     // 创建合成的 ResolvedResource
+    // ★ SSOT 修复：函数入口的 isVfsRefType 守卫已把 typeId 收窄为 VfsRefType，
+    //   但 folder 是引用容器而非可解析资源类型（不在 VfsResourceType 中）；
+    //   旧格式直存内容按通用文件处理，不再用 as 强转掩盖该差异。
+    const legacyType: FullVfsResourceType = typeId === 'folder' ? 'file' : typeId;
     const syntheticResolved: ResolvedResource[] = [{
       sourceId,
       resourceHash: resource.hash || '',
-      type: typeId as FullVfsResourceType,
+      type: legacyType,
       name,
       path: '', // 旧格式没有路径信息
       content: resource.data || '', // 使用资源数据作为内容
@@ -1231,8 +1112,8 @@ export async function resolveVfsRefs(
     effectiveInjectModes: effectiveInjectModes,
   });
 
-  // 调用后端解析（已移除 Mock 实现）
-  const resolvedResources = await invokeVfsResolve(refsWithInjectModes);
+  // 调用后端解析（已移除 Mock 实现）；signal 透传实现可取消
+  const resolvedResources = await invokeVfsResolve(refsWithInjectModes, true, signal);
 
   // ★ 补强：收集后端返回的 warning，通知用户内容质量降级
   // ★ P1-2 修复（二轮审阅）：去重并限制数量，避免多资源场景下通知洪水
@@ -1283,12 +1164,19 @@ export async function resolveVfsRefs(
  *
  * @param refs VFS 资源引用数组
  * @param notifyOnError 是否在错误时通知用户（默认 true）
+ * @param signal 取消信号（可选）：在 await 边界检查；已发出的后端 IPC 不可中断，
+ *   但取消后不再消费其结果，也不触发错误通知
  * @returns 解析后的资源数组
  */
 async function invokeVfsResolve(
   refs: VfsResourceRef[],
-  notifyOnError = true
+  notifyOnError = true,
+  signal?: AbortSignal
 ): Promise<ResolvedResource[]> {
+  if (signal?.aborted) {
+    throw new DOMException('invokeVfsResolve aborted', 'AbortError');
+  }
+
   logAttachment('backend', 'invoke_vfs_resolve_start', {
     refsCount: refs.length,
     refs: refs.map(r => ({ sourceId: r.sourceId, type: r.type, hash: r.resourceHash })),
@@ -1297,6 +1185,10 @@ async function invokeVfsResolve(
   // ★ P0修复：优先使用带缓存的 batchGetResources
   const { batchGetResources } = await import('../context/vfsRefApiEnhancements');
   const batchResult = await batchGetResources(refs);
+
+  if (signal?.aborted) {
+    throw new DOMException('invokeVfsResolve aborted', 'AbortError');
+  }
 
   // 🔧 P0修复：检查批量查询结果
   if (isErr(batchResult)) {

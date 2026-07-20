@@ -110,7 +110,7 @@ export const RenderedAnkiCard: React.FC<RenderedAnkiCardProps> = ({
         />
       </div>
       {flippable ? (
-        <div className="pointer-events-none absolute bottom-1 right-2 select-none text-[10px] text-muted-foreground/60 transition-opacity">
+        <div className="pointer-events-none absolute bottom-1 right-2 select-none text-2xs text-muted-foreground/60 transition-opacity">
           {showBack ? t('chatV2.front') : t('chatV2.back')} ↩
         </div>
       ) : null}

@@ -52,6 +52,20 @@ function getLocalizedSkillName(skillId: string, t: (key: string, options?: { def
   return translatedName || skillId;
 }
 
+/**
+ * 🆕 从 agent.metadata 安全读取后端 register_agent 持久化的 profile id
+ * （metadata.agent_profile.id）。当前前端 agent 转换尚未回传该字段，
+ * 读不到时由调用方回退 skillId。
+ */
+function readAgentProfileId(metadata: Record<string, unknown> | undefined): string | undefined {
+  const profile = metadata?.agent_profile;
+  if (profile !== null && typeof profile === 'object' && !Array.isArray(profile)) {
+    const id = (profile as Record<string, unknown>).id;
+    if (typeof id === 'string' && id.length > 0) return id;
+  }
+  return undefined;
+}
+
 // ============================================================================
 // 类型定义
 // ============================================================================
@@ -120,7 +134,7 @@ const MessageTypeBadge: React.FC<MessageTypeBadgeProps> = ({ type }) => {
   const { t } = useTranslation('chatV2');
   const className = messageTypeClassNames[type];
   return (
-    <span className={cn('px-1.5 py-0.5 text-[10px] font-medium rounded', className)}>
+    <span className={cn('px-1.5 py-0.5 text-2xs font-medium rounded', className)}>
       {t(`workspace.messageType.${type}`)}
     </span>
   );
@@ -136,11 +150,13 @@ interface AgentItemProps {
 }
 
 const AgentItem: React.FC<AgentItemProps> = ({ agent, isCurrentUser }) => {
-  const { t } = useTranslation(['chatV2', 'skills']);
+  const { t } = useTranslation(['chatV2', 'skills', 'workspace']);
   const shortId = agent.sessionId.slice(-8);
   const skillName = agent.skillId 
     ? getLocalizedSkillName(agent.skillId, t) 
     : (agent.role === 'coordinator' ? '-' : t('chatV2:workspace.agent.worker'));
+  // 🆕 skill/profile 小标签：优先持久化的 profile id，回退 skillId，两者都无则不显示
+  const profileTag = readAgentProfileId(agent.metadata) ?? agent.skillId;
 
   return (
     <div
@@ -161,13 +177,28 @@ const AgentItem: React.FC<AgentItemProps> = ({ agent, isCurrentUser }) => {
               ? t('workspace.agent.coordinator')
               : skillName}
           </span>
+          {/* 🆕 skill/profile 小标签（紧凑 chip） */}
+          {profileTag && (
+            <span className="px-1 py-px rounded border border-border/60 text-2xs text-muted-foreground flex-shrink-0 max-w-[96px] truncate">
+              {profileTag}
+            </span>
+          )}
+          {/* 🆕 C12: inbox 待消费计数小徽标（琥珀色，>0 时显示） */}
+          {typeof agent.pendingInboxCount === 'number' && agent.pendingInboxCount > 0 && (
+            <span
+              className="px-1 py-px rounded border border-warning/40 bg-warning/10 text-2xs text-warning flex-shrink-0"
+              title={t('workspace:subagentEmbed.pendingInboxHint')}
+            >
+              {t('workspace:subagentEmbed.pendingInbox', { count: String(agent.pendingInboxCount) })}
+            </span>
+          )}
           {isCurrentUser && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               ({t('workspace.agent.you')})
             </span>
           )}
         </div>
-        <div className="text-[10px] text-muted-foreground truncate">
+        <div className="text-2xs text-muted-foreground truncate">
           ID: {shortId}
         </div>
       </div>
@@ -200,9 +231,9 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
   return (
     <div className="flex flex-col gap-0.5 py-1 border-b border-border/50 last:border-0">
       <div className="flex items-center gap-1.5">
-        <span className="text-[10px] text-muted-foreground">{time}</span>
+        <span className="text-2xs text-muted-foreground">{time}</span>
         <MessageTypeBadge type={message.messageType} />
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {shortSenderId}
           {shortTargetId && ` → ${shortTargetId}`}
         </span>
@@ -335,9 +366,9 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
   if (isHistoricalMode) {
     return (
       <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
-          <Clock size={16} className="text-blue-600 dark:text-blue-400" />
-          <span className="text-sm text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-2 p-3 bg-info/10 border-b border-info/30">
+          <Clock size={16} className="text-info" />
+          <span className="text-sm text-info">
             {t('workspace.status.historicalWorkspace')}
           </span>
         </div>
@@ -349,7 +380,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
           {/* Agent 列表 */}
           {agents.length > 0 && (
             <div className="mt-2">
-              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
                 {t('workspace.status.agents')} ({agents.length})
               </div>
               <div className="space-y-0.5">
@@ -364,14 +395,14 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
             </div>
           )}
           {snapshotCreatedAt && (
-            <div className="flex items-center gap-1 mt-2 text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-1 mt-2 text-2xs text-muted-foreground">
               <Clock size={12} />
               <span>
                 {t('workspace.status.createdAt')}: {new Date(snapshotCreatedAt).toLocaleString()}
               </span>
             </div>
           )}
-          <p className="text-[10px] text-muted-foreground mt-2">
+          <p className="text-2xs text-muted-foreground mt-2">
             ID: {blockWorkspaceId?.slice(-12)}
           </p>
         </div>
@@ -383,9 +414,9 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
   if (isWorkspaceMismatch) {
     return (
       <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-        <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
-          <Warning size={16} className="text-amber-600 dark:text-amber-400" />
-          <span className="text-sm text-amber-700 dark:text-amber-300">
+        <div className="flex items-center gap-2 p-3 bg-warning/10 border-b border-warning/30">
+          <Warning size={16} className="text-warning" />
+          <span className="text-sm text-warning">
             {t('workspace.status.workspaceSwitched')}
           </span>
         </div>
@@ -397,7 +428,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
           <p className="text-xs text-muted-foreground">
             {t('workspace.status.historicalSnapshot')}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground mt-1">
             ID: {blockWorkspaceId?.slice(-12)}
           </p>
         </div>
@@ -425,7 +456,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
           <Buildings size={16} className="text-primary" />
           <span className="text-sm font-medium">{workspaceName}</span>
           {status === 'running' && (
-            <CircleNotch size={14} className="text-blue-500 animate-spin" />
+            <CircleNotch size={14} className="text-info animate-spin" />
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -463,7 +494,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
           <motion.div {...disclosureMotion}>
             {/* Agent 列表 */}
             <div className="px-3 pb-2">
-              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
+              <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
                 {t('workspace.status.agents')} ({agents.length})
               </div>
               <div className="space-y-0.5">
@@ -505,7 +536,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
                 >
                   <div className="flex items-center gap-1.5">
                     <Chat size={14} className="text-muted-foreground" />
-                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                    <span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
                       {t('workspace.status.recentMessages')} ({recentMessages.length})
                     </span>
                   </div>
@@ -533,7 +564,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
 
             {/* 时间戳 */}
             {workspace?.createdAt && (
-              <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border/50 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border/50 text-2xs text-muted-foreground">
                 <Clock size={12} />
                 <span>
                   {t('workspace.status.createdAt')}: {new Date(workspace.createdAt).toLocaleString()}

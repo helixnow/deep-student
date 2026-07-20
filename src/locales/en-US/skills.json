@@ -10,7 +10,8 @@
 
   "status": {
     "manualActivated": "Manually activated",
-    "toolLoaded": "Loaded by tool call"
+    "toolLoaded": "Loaded by tool call",
+    "toolLoadedBadge": "Tool-loaded"
   },
 
   "bundles": {
@@ -100,7 +101,9 @@
     "disabled_badge": "Disabled",
     "disabled_hint": "This skill is disabled; enable it before activating",
     "enable": "Enable",
-    "disable": "Disable"
+    "disable": "Disable",
+    "manage": "More settings",
+    "installMore": "Get more skills"
   },
 
   "card": {
@@ -118,7 +121,11 @@
     "selectSkillToViewDetails": "Select a skill to view details",
     "loadedByTool": "Loaded by tool call",
     "clickToDeactivate": "Click to deactivate",
-    "clickToActivate": "Click to activate"
+    "clickToActivate": "Click to activate",
+    "pinToSession": "Enable (pin to chat)",
+    "pinnedClickToUnpin": "Enabled (click to unpin)",
+    "pinLoadedByTool": "Pin to this chat",
+    "toolLoadedHint": "Temporarily loaded by a tool call; pin it to keep it active for the whole chat"
   },
 
   "location": {
@@ -278,6 +285,7 @@
     "export_all_success_one": "Exported {{count}} skill",
     "export_all_success_other": "Exported {{count}} skills",
     "export_no_skills": "No user skills to export",
+    "export_all_mobile_confirm": "This will open {{count}} save dialogs one by one; for bulk sharing, use \"Export Source\" to pack everything at once",
     "copy_id": "Copy ID",
     "export_all_short": "Export",
     "all_skills": "All Skills",

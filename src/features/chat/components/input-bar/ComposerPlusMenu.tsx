@@ -12,7 +12,10 @@
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Archive,
   Camera,
+  Check,
+  CircleNotch,
   FolderOpen,
   Hammer,
   Lightning,
@@ -38,6 +41,7 @@ import {
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
+import { Z_INDEX } from '@/config/zIndex';
 
 export type ComposerAuthorityMode = 'ask' | 'plan' | 'craft';
 export type ComposerPermissionPreset = 'cautious' | 'relaxed';
@@ -59,6 +63,10 @@ export interface ComposerPlusMenuProps {
   /** 移动端：打开内联技能面板（替代桌面端的技能 SubContent 飞出层） */
   onOpenSkillPanel?: () => void;
   sessionId?: string;
+  onCompactContext?: () => void | Promise<void>;
+  isCompactingContext?: boolean;
+  compactContextDisabled?: boolean;
+  compactContextStatus?: 'success' | 'not-needed' | 'skipped' | 'error' | null;
   authorityMode?: ComposerAuthorityMode;
   onAuthorityModeChange?: (mode: ComposerAuthorityMode) => void | Promise<void>;
   permissionPreset?: ComposerPermissionPreset;
@@ -73,7 +81,9 @@ export interface ComposerPlusMenuProps {
   selectedMcpServerCount?: number;
 }
 
-export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
+// React.memo：输入栏每个按键都会重渲染，"+"菜单（AppMenu/Radix 子树）
+// props 稳定时整体跳过协调（调用点回调均为 useCallback/useMemo 稳定引用）
+export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   open,
   onOpenChange,
   attachmentCount,
@@ -87,6 +97,10 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
   onOpenCamera,
   onOpenSkillPanel,
   sessionId,
+  onCompactContext,
+  isCompactingContext = false,
+  compactContextDisabled = false,
+  compactContextStatus = null,
   authorityMode = 'craft',
   onAuthorityModeChange,
   permissionPreset = 'cautious',
@@ -154,6 +168,10 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
     if (!onAuthorityModeChange) return;
     void onAuthorityModeChange('plan');
   }, [onAuthorityModeChange]);
+  const handleCompactContext = useCallback(() => {
+    if (!onCompactContext || isCompactingContext || compactContextDisabled) return;
+    void onCompactContext();
+  }, [compactContextDisabled, isCompactingContext, onCompactContext]);
 
   const showMode = Boolean(sessionId && onAuthorityModeChange);
   const showSkills = Boolean(renderSkillPanel);
@@ -163,20 +181,36 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
   const mobileItemClass = 'min-h-[44px]';
 
   const skillBadge = activeSkillCount > 0 ? (
-    <span className="rounded-full bg-[color:var(--button-primary-surface)] px-1.5 text-[10px] font-medium text-[color:var(--button-primary-foreground)]">
+    <span className="rounded-full bg-[color:var(--button-primary-surface)] px-1.5 text-2xs font-medium text-[color:var(--button-primary-foreground)]">
       {activeSkillCount}
     </span>
   ) : hasLoadedSkills ? (
-    <Lightning className="h-3 w-3 shrink-0 text-amber-500" weight="fill" />
+    <Lightning className="h-3 w-3 shrink-0 text-warning" weight="fill" />
   ) : null;
 
   const connectorsBadge = selectedMcpServerCount > 0 ? (
-    <span className="rounded-full bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">
+    <span className="rounded-full bg-muted px-1.5 text-2xs font-medium text-muted-foreground">
       {selectedMcpServerCount}
     </span>
   ) : mcpEnabled ? (
-    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
   ) : null;
+  const compactionIcon = isCompactingContext
+    ? <CircleNotch className="h-4 w-4 animate-spin" />
+    : compactContextStatus === 'success'
+      ? <Check className="h-4 w-4 text-success" />
+      : <Archive className="h-4 w-4" />;
+  const compactionLabel = isCompactingContext
+    ? t('chatV2:inputBar.plusMenu.compactingContext')
+    : compactContextStatus === 'success'
+      ? t('chatV2:inputBar.plusMenu.compactionComplete')
+      : compactContextStatus === 'not-needed'
+        ? t('chatV2:inputBar.plusMenu.compactionNotNeeded')
+        : compactContextStatus === 'skipped'
+          ? t('chatV2:inputBar.plusMenu.compactionSkipped')
+          : compactContextStatus === 'error'
+            ? t('chatV2:inputBar.plusMenu.compactionFailed')
+            : t('chatV2:inputBar.plusMenu.compactContext');
 
   return (
     <div className="flex flex-col items-start gap-0.5">
@@ -214,7 +248,8 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
         <AppMenuContent
           align="start"
           width={useFlatMobileMenu ? 248 : 200}
-          style={{ zIndex: 320 }}
+          // ★ L4 修复：魔法数 320 收敛到 Z_INDEX 体系（高于移动顶栏 1100）
+          style={{ zIndex: Z_INDEX.composerPanel }}
           data-testid="composer-plus-menu"
         >
           {useFlatMobileMenu ? (
@@ -248,6 +283,23 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
                   {t('chatV2:inputBar.resourceLibrary')}
                 </AppMenuItem>
               </AppMenuGroup>
+
+              {sessionId && onCompactContext && (
+                <>
+                  <AppMenuSeparator />
+                  <AppMenuGroup>
+                    <AppMenuItem
+                      className={mobileItemClass}
+                      icon={compactionIcon}
+                      onClick={handleCompactContext}
+                      disabled={compactContextDisabled || isCompactingContext}
+                      data-testid="plus-menu-compact-context"
+                    >
+                      {compactionLabel}
+                    </AppMenuItem>
+                  </AppMenuGroup>
+                </>
+              )}
 
               {/* 模式开关直出（不再折进 SubContent） */}
               {showMode && (
@@ -344,6 +396,17 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
               </AppMenuSubContent>
             </AppMenuSub>
 
+            {sessionId && onCompactContext && (
+              <AppMenuItem
+                icon={compactionIcon}
+                onClick={handleCompactContext}
+                disabled={compactContextDisabled || isCompactingContext}
+                data-testid="plus-menu-compact-context"
+              >
+                {compactionLabel}
+              </AppMenuItem>
+            )}
+
             {showMode && (
               <AppMenuSub openOnClick>
                 <AppMenuSubTrigger
@@ -367,7 +430,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
                   >
                     <span className="flex flex-col items-start gap-0.5">
                       <span>{t('chatV2:authority.modes.plan', '想一想')}</span>
-                      <span className="text-[10px] text-muted-foreground">Plan</span>
+                      <span className="text-2xs text-muted-foreground">Plan</span>
                     </span>
                   </AppMenuSwitchItem>
                   <AppMenuSwitchItem
@@ -377,7 +440,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
                   >
                     <span className="flex flex-col items-start gap-0.5">
                       <span>{t('chatV2:authority.modes.ask', '问一问')}</span>
-                      <span className="text-[10px] text-muted-foreground">Ask</span>
+                      <span className="text-2xs text-muted-foreground">Ask</span>
                     </span>
                   </AppMenuSwitchItem>
                   <AppMenuSeparator />
@@ -389,7 +452,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
                   >
                     <span className="flex flex-col items-start gap-0.5">
                       <span>{t('chatV2:authority.permissionPreset.modes.relaxed', '放开')}</span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-2xs text-muted-foreground">
                         {t('chatV2:inputBar.plusMenu.approvalMemory', '审批记忆')}
                       </span>
                     </span>
@@ -459,7 +522,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
       {authorityAskBlockedHint && authorityMode === 'ask' && onAuthorityModeChange && (
         <button
           type="button"
-          className="ml-1 text-[11px] text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
+          className="ml-1 text-[11px] text-warning underline-offset-2 hover:underline"
           onClick={handleSwitchToPlan}
           data-testid="plus-menu-switch-to-plan"
         >
@@ -468,6 +531,8 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = ({
       )}
     </div>
   );
-};
+});
+
+ComposerPlusMenu.displayName = 'ComposerPlusMenu';
 
 export default ComposerPlusMenu;

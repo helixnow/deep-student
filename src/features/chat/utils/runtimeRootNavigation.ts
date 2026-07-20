@@ -7,6 +7,7 @@
  */
 
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 /** 判断一条工具错误信息是否是 runtime root / 本地运行时授权类拦截。 */
 export function isRuntimeRootBlockedError(error: string | undefined | null): boolean {
@@ -27,6 +28,6 @@ export function isRuntimeRootBlockedError(error: string | undefined | null): boo
 /** 打开 Settings > MCP 工具（工具权限 + 运行时目录管理所在 tab）。 */
 export function openToolPermissionSettings(): void {
   setPendingSettingsRoute({ tab: 'mcp' });
-  window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
-  window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'mcp' } }));
+  dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'mcp' });
 }

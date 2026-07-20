@@ -222,7 +222,12 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
                 ? 'bg-accent text-accent-foreground'
                 : 'hover:bg-[var(--interactive-hover)] text-foreground'
             )}
-            onClick={() => onSelect(model)}
+            // ★ M2 修复：pointerdown 早于 textarea blur，避免移动端点选时键盘先收起
+            // 造成布局位移点击落空（与 SkillSlashPopover 的处理一致）
+            onPointerDown={(e) => {
+              e.preventDefault();
+              onSelect(model);
+            }}
             onMouseEnter={() => onSelectedIndexChange(index)}
           >
             {/* 模型图标 */}
@@ -252,19 +257,19 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
       </div>
 
       {/* 底部提示 */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 text-[10px] text-muted-foreground">
+      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 text-2xs text-muted-foreground">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-0.5">
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">↑</kbd>
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">↓</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-muted text-2xs">↑</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-muted text-2xs">↓</kbd>
             <span className="ml-0.5">{t('chatV2:modelMention.navigate')}</span>
           </span>
           <span className="inline-flex items-center gap-0.5">
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">↵</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-muted text-2xs">↵</kbd>
             <span className="ml-0.5">{t('chatV2:modelMention.confirm')}</span>
           </span>
           <span className="inline-flex items-center gap-0.5">
-            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px]">Esc</kbd>
+            <kbd className="px-1 py-0.5 rounded bg-muted text-2xs">Esc</kbd>
             <span className="ml-0.5">{t('chatV2:modelMention.dismiss')}</span>
           </span>
         </div>

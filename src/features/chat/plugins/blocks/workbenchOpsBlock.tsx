@@ -11,7 +11,7 @@
  * 设计见 docs/dev/acr/DESIGN.md §3 / §4.2；规范 docs/dev/acr/STANDARDS.md。
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowSquareOut,
@@ -63,6 +63,17 @@ let uiUndoSequence = 0;
 function nextUiUndoNonce(): string {
   uiUndoSequence += 1;
   return `${Date.now().toString(36)}-${uiUndoSequence.toString(36)}`;
+}
+
+/** ACR 4.0（A2）：desktop 是无宿主窗口的虚拟目标，「打开目标窗」对它无意义 */
+const VIRTUAL_TARGET_TYPE_IDS = new Set(['desktop']);
+
+/** 距底部该像素内视为「贴底」：恢复步骤流自动跟随 */
+const STEP_FOLLOW_RESUME_PX = 24;
+
+/** 撤销令牌/账本过期类错误（agentRuntime UNDO_NOT_FOUND；预留 UNDO_EXPIRED 同义码） */
+function isUndoExpiredError(message: string | undefined | null): boolean {
+  return typeof message === 'string' && /UNDO_(NOT_FOUND|EXPIRED)/.test(message);
 }
 
 /** 从 toolInput 提取 typeId / instanceKey（兼容嵌套 target） */
@@ -273,6 +284,41 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
       .filter(Boolean);
   }, [block.content]);
 
+  // ACR 4.0（A8）：步骤流自动滚底——流式追加时跟随最新一条；
+  // 用户上滚即暂停跟随，滚回底部附近恢复；prefers-reduced-motion 时瞬滚。
+  const stepsListRef = useRef<HTMLUListElement | null>(null);
+  const followStepsRef = useRef(true);
+  const programmaticStepScrollRef = useRef(false);
+
+  const handleStepsScroll = useCallback(() => {
+    const el = stepsListRef.current;
+    if (!el) return;
+    const nearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= STEP_FOLLOW_RESUME_PX;
+    if (programmaticStepScrollRef.current) {
+      // 平滑滚动自身触发的中间态不改判「用户上滚」；到底后解除标记
+      if (nearBottom) programmaticStepScrollRef.current = false;
+      return;
+    }
+    followStepsRef.current = nearBottom;
+  }, []);
+
+  const stepCount = progressSteps.length;
+  useEffect(() => {
+    if (stepCount === 0 || !followStepsRef.current) return;
+    const el = stepsListRef.current;
+    if (!el || el.scrollHeight <= el.clientHeight) return;
+    const reduceMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion || typeof el.scrollTo !== 'function') {
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    programmaticStepScrollRef.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [stepCount]);
+
   const targetSummary = useMemo(() => {
     if (!target.typeId) return null;
     return target.instanceKey
@@ -280,7 +326,9 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
       : target.typeId;
   }, [target]);
 
-  const canOpenTarget = Boolean(target.typeId);
+  const canOpenTarget = Boolean(
+    target.typeId && !VIRTUAL_TARGET_TYPE_IDS.has(target.typeId)
+  );
   const undoToken = actResult?.undoToken;
   const persistentUndo = undoToken != null && actResult?.undoDurability === 'persistent';
   const showLegacyUndoChrome =
@@ -364,13 +412,14 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
         const data = asRecord(response.data);
         if (response.ok && data?.reverted === true) {
           setUndoState('reverted');
-        } else if (response.error?.includes('UNDO_NOT_FOUND')) {
+        } else if (isUndoExpiredError(response.error)) {
           setUndoState('expired');
         } else {
           setUndoState('incomplete');
         }
-      } catch {
-        setUndoState('incomplete');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setUndoState(isUndoExpiredError(message) ? 'expired' : 'incomplete');
       }
       return;
     }
@@ -382,16 +431,17 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
     try {
       const ok = await stageManager.revertRun(runId, sessionId);
       setUndoState(ok ? 'reverted' : 'incomplete');
-    } catch {
-      setUndoState('incomplete');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setUndoState(isUndoExpiredError(message) ? 'expired' : 'incomplete');
     }
   };
 
   const statusBadgeClass = {
     running: 'bg-primary/10 text-primary',
     success: 'bg-success/10 text-success',
-    partial: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-    unknown: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    partial: 'bg-warning/10 text-warning',
+    unknown: 'bg-warning/10 text-warning',
     cancelled: 'bg-muted text-muted-foreground',
     error: 'bg-destructive/10 text-destructive',
   }[statusKey];
@@ -445,12 +495,12 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
               variant="outline"
               size="sm"
               onClick={handleOpenTarget}
-              className="h-7 gap-1.5 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)]"
+              className="lg:h-7 gap-1.5 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)]"
               data-testid="workbench-ops-open"
               aria-label={t('blocks.workbenchOps.openTarget')}
               title={t('blocks.workbenchOps.openTarget')}
             >
-              <ArrowSquareOut size={12} />
+              <ArrowSquareOut size={16} />
               <span className="hidden sm:inline">{t('blocks.workbenchOps.openTarget')}</span>
             </NotionButton>
           )}
@@ -483,11 +533,16 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             <span>{t('blocks.workbenchOps.steps')}</span>
           </div>
           {progressSteps.length > 0 ? (
-            <ul className="space-y-1 max-h-40 overflow-auto">
+            <ul
+              ref={stepsListRef}
+              onScroll={handleStepsScroll}
+              className="space-y-1 max-h-40 overflow-auto"
+              data-testid="workbench-ops-steps-list"
+            >
               {progressSteps.map((step, index) => (
                 <li
                   key={`${index}-${step.slice(0, 24)}`}
-                  className="text-xs text-muted-foreground font-mono leading-relaxed pl-3 border-l border-border/40"
+                  className="text-xs text-muted-foreground font-mono leading-relaxed pl-3 border-l border-border/40 break-all"
                 >
                   {step}
                 </li>
@@ -576,7 +631,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             {actResult.verified ? (
               <Check size={13} className="text-success flex-shrink-0" />
             ) : (
-              <WarningCircle size={13} className="text-amber-500 flex-shrink-0" />
+              <WarningCircle size={13} className="text-warning flex-shrink-0" />
             )}
             <span>
               {actResult.verified
@@ -598,7 +653,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
 
       {resultUnknown && block.status !== 'running' && block.status !== 'pending' && (
         <div
-          className="border-t border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
+          className="border-t border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
           data-testid="workbench-result-unknown"
           role="alert"
         >
@@ -606,7 +661,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             <WarningCircle size={14} className="flex-shrink-0" />
             {t('blocks.workbenchOps.resultUnknownTitle')}
           </p>
-          <p className="mt-1 text-amber-700/90 dark:text-amber-200/80">
+          <p className="mt-1 text-warning/90">
             {t('blocks.workbenchOps.resultUnknownHint')}
           </p>
         </div>
@@ -630,7 +685,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             className="flex w-full items-start gap-1.5 text-[11px] text-muted-foreground"
             data-testid="workbench-undo-risk"
           >
-            <WarningCircle size={12} className="mt-0.5 flex-shrink-0 text-amber-500" />
+            <WarningCircle size={12} className="mt-0.5 flex-shrink-0 text-warning" />
             {t('blocks.workbenchOps.undoHighRisk')}
           </p>
           <NotionButton
@@ -643,7 +698,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             data-testid="workbench-ops-undo"
             title={
               undoExpired
-                ? t('blocks.workbenchOps.undoExpired')
+                ? t('blocks.workbenchOps.undoExpiredHint')
                 : undoUnavailable
                   ? t('blocks.workbenchOps.undoUnavailable')
                   : undoState === 'incomplete'
@@ -655,7 +710,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
           >
             {undoState === 'reverted' ? (
               <>
-                <Check size={12} className="text-emerald-500" />
+                <Check size={12} className="text-success" />
                 {t('blocks.workbenchOps.undoApplied')}
               </>
             ) : undoState === 'incomplete' ? (

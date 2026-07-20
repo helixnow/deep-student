@@ -281,6 +281,36 @@
   border-color: hsl(var(--primary) / 0.35);
 }
 
+/* 引用定位高亮：时长需与 TSX 中 CITATION_HIGHLIGHT_MS(2000ms) 保持一致 */
+.chat-v2 .unified-source-panel .usp-citation-pulse {
+  animation: usp-citation-pulse 2000ms ease-out;
+}
+
+@keyframes usp-citation-pulse {
+  0% {
+    border-color: hsl(var(--primary) / 0.7);
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.35);
+    background: hsl(var(--primary) / 0.12);
+  }
+  60% {
+    border-color: hsl(var(--primary) / 0.5);
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.15);
+    background: hsl(var(--primary) / 0.06);
+  }
+  100% {
+    border-color: hsl(var(--border) / 0.35);
+    box-shadow: 0 0 0 0 transparent;
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-v2 .unified-source-panel .usp-citation-pulse {
+    animation: none;
+    border-color: hsl(var(--primary) / 0.5);
+  }
+}
+
 /* 暗色模式翻页按钮 */
 [data-theme="dark"] .chat-v2 .unified-source-panel .usp-scroll-btn,
 .dark .chat-v2 .unified-source-panel .usp-scroll-btn {

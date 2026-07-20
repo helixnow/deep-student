@@ -77,12 +77,16 @@ import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerInlinePanel } from './ComposerInlinePanel';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
 import { ComposerToolButton } from './ComposerToolButton';
+import { ContextUsagePopover } from './ContextUsagePopover';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import {
   type MediaInjectMode,
   getSelectedInjectModes as ssotGetSelectedModes,
   getEffectiveReadyModes as ssotGetEffectiveReadyModes,
+  getAttachmentMediaType,
+  getMediaTypeForAttachment,
+  buildDefaultInjectModes,
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
@@ -97,7 +101,6 @@ import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import {
   ATTACHMENT_MAX_SIZE,
   ATTACHMENT_MAX_COUNT,
-  ATTACHMENT_IMAGE_EXTENSIONS,
   ATTACHMENT_ALLOWED_TYPES,
   ATTACHMENT_ALLOWED_EXTENSIONS,
   ATTACHMENT_AUDIO_TYPES,
@@ -106,6 +109,8 @@ import {
   ATTACHMENT_VIDEO_EXTENSIONS,
   ATTACHMENT_ARCHIVE_TYPES,
   ATTACHMENT_ARCHIVE_EXTENSIONS,
+  ATTACHMENT_MINDMAP_EXTENSIONS,
+  ATTACHMENT_MINDMAP_TEXT_EXTENSIONS,
   formatFileSize,
 } from '../../core/constants';
 
@@ -220,7 +225,7 @@ function ContextWindowUsageRing({
         <span className="font-semibold text-[color:var(--text-primary)]">
           {t('chatV2:tokenUsage.contextWindow')}
         </span>
-        <span className="rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-muted)] px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums text-[color:var(--text-secondary)]">
+        <span className="rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-muted)] px-1.5 py-0.5 font-mono text-2xs leading-none tabular-nums text-[color:var(--text-secondary)]">
           {usage.usedPercent}%
         </span>
       </div>
@@ -486,8 +491,13 @@ const useDeferredOpen = (open: boolean, delay = 220): DeferredPanelState => {
 
 /**
  * InputBarUI - 纯展示输入栏组件
+ *
+ * ★ 性能：底部以 React.memo 导出。InputBarV2 因 store 订阅（流式 usage 更新、
+ * 面板状态等）重渲染而 props 未变时，跳过整棵输入栏子树的重复渲染。
+ * 打字路径（inputValue prop 变化）仍会渲染本组件，但内部重型子树
+ * （ComposerPlusMenu / ComposerToolButton / 各 chips）已独立 memo。
  */
-export const InputBarUI: React.FC<InputBarUIProps> = ({
+const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // 状态
   inputValue,
   canSend,
@@ -512,6 +522,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   onClearAttachments,
   onFilesUpload,
   onSetPanelState,
+  onCompactContext,
+  isCompactingContext = false,
+  compactContextStatus = null,
+  getCompactionInfo,
   // UI 配置
   placeholder,
   sendShortcut = 'enter',
@@ -522,7 +536,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   className,
   autoFocus = false,
   // 模式插件面板
-  renderRagPanel,
+  // renderRagPanel 已彻底废弃：独立 RAG 面板 UI 删除后无插件注册，快捷键统一走对话控制面板
   renderModelPanel,
   renderAdvancedPanel,
   renderMcpPanel,
@@ -641,12 +655,54 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 焦点门控：仅当焦点位于 composer 区域内的可编辑元素（输入框 / 面板搜索框等）
   // 时才应用 inset，避免页面其他输入框唤起键盘时输入栏被误抬升
   const [composerEditableFocused, setComposerEditableFocused] = useState(false);
+  // 桌面端「Enter 发送 / Shift+Enter 换行」提示：仅在 textarea 聚焦且输入为空时展示
+  const [composerTextareaFocused, setComposerTextareaFocused] = useState(false);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   // ★ B9 修复：长文本默认进输入框；这里记录粘贴片段，提供「转为附件」内联建议
   const [longPasteCandidate, setLongPasteCandidate] = useState<{ text: string } | null>(null);
+  // ★ 制卡可发现性：附加 pdf/docx/apkg 时展示一条可关闭的制卡/导入提示
+  const [flashcardHintDismissed, setFlashcardHintDismissed] = useState(false);
+  const flashcardHintKind = useMemo<'apkg' | 'document' | null>(() => {
+    let kind: 'apkg' | 'document' | null = null;
+    for (const att of attachments) {
+      if (att.status === 'error') continue;
+      const ext = getFileExtension(att.name);
+      if (ext === 'apkg') return 'apkg';
+      if (ext === 'pdf' || ext === 'docx') kind = 'document';
+    }
+    return kind;
+  }, [attachments]);
+  useEffect(() => {
+    // 相关附件全部移除后复位，下次附加时重新提示
+    if (!flashcardHintKind) setFlashcardHintDismissed(false);
+  }, [flashcardHintKind]);
+  // ★ 音视频可见性警示：AI 仅能看到文件名（音频可调用转写工具获取文字）
+  const [mediaHintDismissed, setMediaHintDismissed] = useState(false);
+  const mediaHintKind = useMemo<'audio' | 'video' | null>(() => {
+    let kind: 'audio' | 'video' | null = null;
+    for (const att of attachments) {
+      if (att.status === 'error') continue;
+      if (att.type === 'audio') return 'audio';
+      if (att.type === 'video') kind = 'video';
+    }
+    return kind;
+  }, [attachments]);
+  useEffect(() => {
+    if (!mediaHintKind) setMediaHintDismissed(false);
+  }, [mediaHintKind]);
+  // ★ 思维导图可发现性：附加 xmind/opml/mm/mmap 时提示可导入为思维导图
+  const [mindmapHintDismissed, setMindmapHintDismissed] = useState(false);
+  const hasMindmapAttachment = useMemo(() => attachments.some((att) => (
+    att.status !== 'error' && ATTACHMENT_MINDMAP_EXTENSIONS.includes(getFileExtension(att.name))
+  )), [attachments]);
+  useEffect(() => {
+    if (!hasMindmapAttachment) setMindmapHintDismissed(false);
+  }, [hasMindmapAttachment]);
   // armed=true 表示粘贴内容已落入输入框，可以开始监测「片段被编辑掉」
   const longPasteArmedRef = useRef(false);
+  // ★ L2 修复：会话切换后 isReady 前（~0.5s）粘贴的文件先缓存，就绪后自动补投
+  const pendingEarlyPasteRef = useRef<File[]>([]);
   // ★ 斜杠命令/@mention 共用的光标位置跟踪（onChange / onSelect / 补全后更新）
   const [composerCaretPos, setComposerCaretPos] = useState(0);
 
@@ -678,6 +734,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   useEffect(() => {
     liveAttachmentCountRef.current = attachments.length;
   }, [attachments.length]);
+
+  // 使用 useRef 追踪 attachments 的引用，避免作为 useEffect 依赖导致频繁触发
+  //（声明提前到 processFilesToAttachments 之前：上传完成回调需读取最新注入模式）
+  const attachmentsRef = useRef(attachments);
+  attachmentsRef.current = attachments;
 
   // 处理文件转换为附件元数据并上传
   const processFilesToAttachments = useCallback((files: File[]) => {
@@ -715,11 +776,18 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     // 🔧 P2优化：使用 updateAttachment 原地更新，避免闪烁
     filesToProcess.forEach((file) => {
       const fileExt = getFileExtension(file.name);
-      const isImage = file.type.startsWith('image/') || ATTACHMENT_IMAGE_EXTENSIONS.includes(fileExt);
+      // ★ P1 SSOT：媒体类型统一走 getAttachmentMediaType（MIME OR 扩展名），
+      // 修复空 mime 的 .png 等文件在部分链路中不进图片流水线的分裂
+      const mediaType = getAttachmentMediaType(file.type, file.name);
+      const isImage = mediaType === 'image';
       const isAudio = file.type.startsWith('audio/') || ATTACHMENT_AUDIO_TYPES.includes(file.type) || ATTACHMENT_AUDIO_EXTENSIONS.includes(fileExt);
       const isVideo = file.type.startsWith('video/') || ATTACHMENT_VIDEO_TYPES.includes(file.type) || ATTACHMENT_VIDEO_EXTENSIONS.includes(fileExt);
       const isArchive = ATTACHMENT_ARCHIVE_TYPES.includes(file.type) || ATTACHMENT_ARCHIVE_EXTENSIONS.includes(fileExt);
-      const attachmentType: AttachmentMeta['type'] = isImage ? 'image' : isAudio ? 'audio' : isVideo ? 'video' : isArchive ? 'other' : 'document';
+      // ★ 思维导图：xmind/mmap 为二进制容器（不注入文本，归 other）；
+      // opml/mm 为 XML 纯文本（按文档/文本注入）
+      const isBinaryMindmap = ATTACHMENT_MINDMAP_EXTENSIONS.includes(fileExt)
+        && !ATTACHMENT_MINDMAP_TEXT_EXTENSIONS.includes(fileExt);
+      const attachmentType: AttachmentMeta['type'] = isImage ? 'image' : isAudio ? 'audio' : isVideo ? 'video' : (isArchive || isBinaryMindmap) ? 'other' : 'document';
       const attachmentId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
       // 🔧 P2优化：文件大小验证 (P1-08: 使用统一常量)
@@ -764,6 +832,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       }
 
       // 先添加 pending 状态的附件
+      // ★ P0 契约：PDF/图片附件从创建起就显式携带 UI 默认注入模式，
+      // 后续 ContextRef 同步与发送快照均以此为准，后端缺省逻辑永不触发
       const pendingAttachment: AttachmentMeta = {
         id: attachmentId,
         name: file.name,
@@ -774,6 +844,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         status: 'uploading', // 标记为上传中
         uploadProgress: 0,
         uploadStage: 'reading',
+        injectModes: buildDefaultInjectModes(mediaType),
       };
       onAddAttachment(pendingAttachment);
       liveAttachmentCountRef.current += 1;
@@ -880,17 +951,25 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
           // 3. 添加 ContextRef 到 store
           // 注意：InputBarUI 是纯 UI 组件，通过回调通知上层处理 ContextRef
+          // ★ P0 契约修复：创建 ContextRef 时就显式写入注入模式。
+          // 优先取用户在上传期间已改过的选择（读同步 ref 中的最新附件），
+          // 否则回落到 UI 默认（PDF=['text'] / 图片=['image']），
+          // 确保后端「缺省 text+image 双开」的兜底永不触发。
+          const liveInjectModes = attachmentsRef.current.find(a => a.id === attachmentId)?.injectModes;
+          const explicitInjectModes = liveInjectModes ?? buildDefaultInjectModes(mediaType);
           const contextRef: ContextRef = {
             resourceId: result.resourceId,
             hash: result.hash,
             typeId,
             displayName: file.name,
+            ...(explicitInjectModes ? { injectModes: explicitInjectModes } : {}),
           };
 
           logAttachment('store', 'add_context_ref_event', {
             resourceId: result.resourceId,
             hash: result.hash,
             typeId,
+            injectModes: explicitInjectModes,
           });
 
           // 通过回调交给上层统一注册 ContextRef，避免跨模块散落事件监听
@@ -901,9 +980,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           // Blob URL 由浏览器管理，内存占用更低
 
           // 🆕 判断文件类型，PDF 和图片需要进入 processing 状态等待预处理完成
-          const isPdfFile = file.type === 'application/pdf'
-            || file.name.toLowerCase().endsWith('.pdf');
-          const isImageFile = file.type.startsWith('image/');
+          //（复用 SSOT mediaType：MIME OR 扩展名，与上方附件创建口径一致）
+          const isPdfFile = mediaType === 'pdf';
+          const isImageFile = mediaType === 'image';
 
           if (isPdfFile) {
             // PDF 上传完成后设为 processing 状态，等待预处理流水线
@@ -949,7 +1028,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               readyModes,
               fileName: file.name,
             });
-            console.log('[MediaProcessing] PDF init store:', { sourceId: uploadResult.sourceId, stage, percent, readyModes });
           } else if (isImageFile) {
             // 图片上传完成后设为 processing 状态，等待预处理流水线
             // ★ v2.1: 使用后端返回的实际处理状态（从 uploadResult 获取）
@@ -993,7 +1071,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               readyModes,
               fileName: file.name,
             });
-            console.log('[MediaProcessing] Image init store:', { sourceId: uploadResult.sourceId, stage, percent, readyModes });
           } else {
             // 其他文件类型直接 ready
             onUpdateAttachment(attachmentId, {
@@ -1230,12 +1307,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // P1-3 触控目标：36px 视觉尺寸不变，触屏（pointer:coarse）用透明伪元素把
   // 命中区域扩到 ≥44px，避免改变桌面视觉密度
   const coarseHitAreaClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-['']";
+  // ★ M5：28px 级小控件（h-7 推理触发器等）需要更大的外扩量才能凑满 ≥44px
+  const coarseHitAreaLgClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']";
+  const coarseHitAreaXlClass = "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']";
   const iconButtonClass = cn(
     'inline-flex items-center justify-center h-9 w-9 rounded-[var(--radius-shell-control)] text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]',
     coarseHitAreaClass
   );
   const studyUiButtonBaseClassName =
-    'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-[13px] font-medium leading-none tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
+    'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-ui font-medium leading-none tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
   const studyUiButtonSizeIconClassName =
     'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
   const studyUiSendButtonSizeClass =
@@ -1371,6 +1451,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         inputContainerRef.current?.contains(active)
         || panelContainerRef.current?.contains(active)
         || composerPanelOverlayRef.current?.contains(active)
+        // ★ M3 修复：AppMenu 内容 portal 在 body 上（加号菜单 / 推理菜单里的
+        // 模型搜索框），焦点落入其中时同样需要应用键盘 inset
+        || !!(active instanceof Element && active.closest('[data-app-menu-id]'))
       );
       setComposerEditableFocused(Boolean(withinComposer && isEditableElement(active)));
     };
@@ -1396,12 +1479,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 允许 ready 或 processing 但选中模式已就绪的附件发送
   const hasSendableAttachments = useMemo(() => {
     return attachments.some(att => {
-      const isPdf = att.mimeType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf');
-      const isImage = att.mimeType?.startsWith('image/') || false;
-      if (!isPdf && !isImage) return att.status === 'ready';
+      const mediaType = getMediaTypeForAttachment(att);
+      if (!mediaType) return att.status === 'ready';
 
+      const isPdf = mediaType === 'pdf';
+      const isImage = mediaType === 'image';
       const selectedModes = getSelectedModes(att, isPdf, isImage);
-      const mediaType = isPdf ? 'pdf' : 'image';
 
       if (att.status !== 'ready' && att.status !== 'processing') return false;
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
@@ -1415,19 +1498,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // ★ P0 修复：传入 mediaType 参数，正确判断图片模式的默认就绪状态
   const hasProcessingMedia = useMemo(() => {
     return attachments.some(att => {
-      const isPdf = att.mimeType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf');
-      const isImage = att.mimeType?.startsWith('image/') || false;
+      const mediaType = getMediaTypeForAttachment(att);
 
       // 只处理 PDF 和图片
-      if (!isPdf && !isImage) return false;
+      if (!mediaType) return false;
 
       // ★ 跳过上传中的附件，避免误显示"部分模式未就绪"
       // 上传中的附件由 hasUploadingAttachments 处理
       if (att.status === 'uploading' || att.status === 'pending') return false;
 
       // 获取选中的注入模式和媒体类型
-      const selectedModes = getSelectedModes(att, isPdf, isImage);
-      const mediaType = isPdf ? 'pdf' : 'image';
+      const selectedModes = getSelectedModes(att, mediaType === 'pdf', mediaType === 'image');
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
       const readyModes = getEffectiveReadyModes(status, mediaType, att);
       return !hasAnyReadyMode(selectedModes, readyModes);
@@ -1436,13 +1517,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
   const firstBlockingAttachment = useMemo(() => {
     for (const att of attachments) {
-      const isPdf = att.mimeType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf');
-      const isImage = att.mimeType?.startsWith('image/') || false;
-      if (!isPdf && !isImage) continue;
+      const mediaType = getMediaTypeForAttachment(att);
+      if (!mediaType) continue;
       // ★ 跳过上传中的附件，由 hasUploadingAttachments 处理
       if (att.status === 'uploading' || att.status === 'pending') continue;
-      const selectedModes = getSelectedModes(att, isPdf, isImage);
-      const mediaType = isPdf ? 'pdf' : 'image';
+      const selectedModes = getSelectedModes(att, mediaType === 'pdf', mediaType === 'image');
       const status = att.sourceId ? (pdfStatusMap.get(att.sourceId) || att.processingStatus) : att.processingStatus;
       const readyModes = getEffectiveReadyModes(status, mediaType, att);
       if (!hasAnyReadyMode(selectedModes, readyModes)) {
@@ -1486,7 +1565,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, [firstBlockingAttachment, formatModeList, t]);
 
   // 使用 CSS 变量作为 Android fallback，iOS 正常使用 env()
-  const bottomGapValue = `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${bottomGapPx}px + ${keyboardInsetPx}px)`;
+  // ★ M1 修复：键盘弹出时 inset 已包含覆盖 home indicator 的高度，
+  // 与 safe-area 相加会让输入栏悬空 ~34px；改为两者取 max
+  const safeAreaExpr = 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))';
+  const bottomGapValue = keyboardInsetPx > 0
+    ? `calc(max(${safeAreaExpr}, ${keyboardInsetPx}px) + ${bottomGapPx}px)`
+    : `calc(${safeAreaExpr} + ${bottomGapPx}px)`;
   const measuredInputHeight = inputContainerRef.current?.offsetHeight || inputContainerHeight || 96;
   const dockedHeightWithGap = Math.max(0, Math.round(measuredInputHeight + bottomGapPx + keyboardInsetPx));
   const dockedHeightVarValue = `${dockedHeightWithGap}px`;
@@ -1504,6 +1588,33 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     : !!disabledReason || !canSendWithAttachments || !effectiveCanSubmit || hasUploadingAttachments || hasProcessingMedia || queueFull;
 
   // ========== 回调函数 ==========
+
+  // ★ M4 修复：textarea 超过最大高度后由外层 wrapper 滚动，而 textarea 自身
+  // overflow-hidden，浏览器不会自动把光标滚入可视区；这里用 ghost 元素量出
+  // 光标底部 Y 偏移，手动同步 wrapper.scrollTop（等下一帧，等 viewport 高度状态生效）
+  const scrollCaretIntoView = useCallback(() => {
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      const ghost = ghostRef.current;
+      const viewport = textareaScrollViewportRef.current;
+      if (!textarea || !ghost || !viewport) return;
+      if (viewport.scrollHeight <= viewport.clientHeight) return;
+      const caret = textarea.selectionEnd ?? textarea.value.length;
+      // ghost 样式已由 adjustTextareaHeight 同步，只替换文本做一次测量后还原
+      const prevText = ghost.textContent;
+      ghost.textContent = textarea.value.slice(0, caret) + '\u200b';
+      const caretBottom = ghost.scrollHeight;
+      ghost.textContent = prevText;
+      const lineHeight = 24;
+      const top = viewport.scrollTop;
+      const bottom = top + viewport.clientHeight;
+      if (caretBottom > bottom) {
+        viewport.scrollTop = caretBottom - viewport.clientHeight;
+      } else if (caretBottom - lineHeight < top) {
+        viewport.scrollTop = Math.max(0, caretBottom - lineHeight);
+      }
+    });
+  }, []);
 
   // 调整 textarea 高度
   const adjustTextareaHeight = useCallback(() => {
@@ -1788,6 +1899,22 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     handleCameraClick();
   }, [handleCameraClick]);
 
+  // ★ 性能：以下回调传给已 memo 的 ComposerPlusMenu / ComposerToolButton，
+  // 必须保持引用稳定（内联箭头函数会击穿 memo，导致每个按键重渲染整个菜单子树）
+  const handleOpenSkillPanelAction = useCallback(() => {
+    togglePanel('skill');
+  }, [togglePanel]);
+  const handleOpenMcpPanelAction = useCallback(() => {
+    togglePanel('mcp');
+  }, [togglePanel]);
+  const handleToggleAdvancedPanel = useCallback(() => {
+    togglePanel('advanced');
+  }, [togglePanel]);
+  const renderSkillPanelMenuVariant = useMemo(() => {
+    if (!renderSkillPanel) return undefined;
+    return () => renderSkillPanel({ variant: 'menu' });
+  }, [renderSkillPanel]);
+
   // ========== Effects ==========
 
   // 监听内容变化调整高度
@@ -1834,12 +1961,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         onToggleThinkingRef.current?.();
         return;
       }
-      // ⌘⇧K / Ctrl+Shift+K: 切换知识库
+      // ⌘⇧K / Ctrl+Shift+K: 切换知识库（RAG 设置已并入对话控制面板；
+      // 独立 rag 面板 UI 已删除且无 mode 插件再注册 renderRagPanel，死分支已移除）
       if (key === 'k') {
         e.preventDefault();
         e.stopPropagation();
-        if (renderRagPanel) {
-          togglePanelRef.current('rag');
+        if (renderAdvancedPanel) {
+          togglePanelRef.current('advanced');
         }
         return;
       }
@@ -1865,7 +1993,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [renderRagPanel, renderMcpPanel, renderSkillPanel]);
+  }, [renderAdvancedPanel, renderMcpPanel, renderSkillPanel]);
 
   // ★ Bug2 修复：监听资源库注入事件，自动打开附件面板
   useEffect(() => {
@@ -1905,7 +2033,16 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     };
   }, [sessionSwitchKey]);
 
+  // ★ L2：isReady 后补投未就绪期间缓存的粘贴文件
+  useEffect(() => {
+    if (!isReady || pendingEarlyPasteRef.current.length === 0) return;
+    const files = pendingEarlyPasteRef.current;
+    pendingEarlyPasteRef.current = [];
+    processFilesToAttachments(files);
+  }, [isReady, processFilesToAttachments]);
+
   // 响应式 bottom gap + 移动端检测
+  // ★ L7 修复：依赖 isMobile，避免 resize 闭包捕获初始断点值
   useEffect(() => {
     const handleResize = () => {
       const mobile = mobileLayout?.isMobile ?? (window.innerWidth < MOBILE_BREAKPOINT_PX);
@@ -1914,7 +2051,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [mobileLayout?.isMobile]);
 
   // ⌨️ P0-2：键盘 inset 检测已统一到 useKeyboardInset 单例（见上方焦点门控），
   // 此处不再自管 visualViewport 监听
@@ -1987,10 +2124,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     };
   }, [sessionId]);
 
-  // 使用 useRef 追踪 attachments 的引用，避免作为 useEffect 依赖导致频繁触发
-  const attachmentsRef = useRef(attachments);
-  attachmentsRef.current = attachments;
-
   // 🔧 P1-25: 组件卸载 / 会话切换时释放所有 Blob URL，避免内存泄漏
   useEffect(() => {
     return () => {
@@ -2032,7 +2165,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       const currentAttachments = attachmentsRef.current;
       const processingAttachments = currentAttachments
         .filter(att => att.status === 'processing' && !!att.sourceId)
-        .filter(att => att.mimeType === 'application/pdf' || att.mimeType?.startsWith('image/'));
+        .filter(att => getMediaTypeForAttachment(att) !== null);
       const fileIds = processingAttachments.map(att => att.sourceId as string);
 
       // ★ 修复：没有 processing 附件时完全停止轮询，不再空转
@@ -2073,7 +2206,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             percent: 0,
             readyModes: [],
             error: 'Processing timed out after 5 minutes',
-            mediaType: att.mimeType === 'application/pdf' ? 'pdf' : 'image',
+            mediaType: getMediaTypeForAttachment(att) ?? 'image',
           },
         });
       }
@@ -2148,10 +2281,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       // ★ P0 修复：使用 sourceId (file_id) 作为 key，与后端事件保持一致
       if (!att.sourceId) return;
 
-      // ★ P1 修复：同时处理 PDF 和图片
-      const isPdf = att.mimeType === 'application/pdf' || att.name.toLowerCase().endsWith('.pdf');
-      const isImage = att.mimeType?.startsWith('image/') || false;
-      if (!isPdf && !isImage) return;
+      // ★ P1 修复：同时处理 PDF 和图片（SSOT 媒体识别：MIME OR 扩展名）
+      const attMediaType = getMediaTypeForAttachment(att);
+      if (!attMediaType) return;
+      const isPdf = attMediaType === 'pdf';
 
       // ★ P0 修复：使用 sourceId 查询 Store
       const status = pdfStatusMap.get(att.sourceId);
@@ -2294,13 +2427,60 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     const root = document.documentElement;
     root.style.setProperty('--unified-input-docked-height', dockedHeightVarValue);
     root.style.setProperty('--unified-input-keyboard-inset', `${keyboardInsetPx}px`);
+    // ★ 全局契约：输入栏实际停靠高度（含底部 gap 与键盘 inset），
+    // 供聊天模块之外的悬浮组件（如全局番茄钟药丸）做底部避让；
+    // 高度来源是 inputContainer 的 ResizeObserver 测量（见 inputContainerHeight）
+    root.style.setProperty('--composer-dock-height', dockedHeightVarValue);
     return () => {
       root.style.removeProperty('--unified-input-docked-height');
       root.style.removeProperty('--unified-input-keyboard-inset');
+      root.style.removeProperty('--composer-dock-height');
     };
   }, [dockedHeightVarValue, keyboardInsetPx]);
 
   // ========== 附件面板内容（桌面 overlay 与移动端内联共用） ==========
+
+  // ★ 错误态重试：附件面板与预览 chips 共用（chip 上的内联重试入口）
+  const handleRetryAttachment = useCallback(async (attachment: AttachmentMeta) => {
+    if (!attachment.sourceId) return;
+    try {
+      const fileId = attachment.sourceId;
+      const isPdfRetry = getMediaTypeForAttachment(attachment) === 'pdf';
+      logAttachment('ui', 'retry_processing_start', {
+        attachmentId: attachment.id,
+        sourceId: fileId,
+        mediaType: isPdfRetry ? 'pdf' : 'image',
+        previousError: attachment.error,
+      });
+      onUpdateAttachment(attachment.id, {
+        status: 'processing',
+        error: undefined,
+        processingStatus: {
+          stage: isPdfRetry ? 'ocr_processing' : 'image_compression',
+          percent: isPdfRetry ? 50 : 10,
+          readyModes: attachment.processingStatus?.readyModes || [],
+          mediaType: isPdfRetry ? 'pdf' : 'image',
+        },
+      });
+      await retryPdfProcessing(fileId);
+      logAttachment('ui', 'retry_processing_triggered', {
+        attachmentId: attachment.id,
+        sourceId: fileId,
+      }, 'success');
+      showGlobalNotification('success', t('chatV2:inputBar.retryStarted'));
+    } catch (error) {
+      logAttachment('ui', 'retry_processing_failed', {
+        attachmentId: attachment.id,
+        error: getErrorMessage(error),
+      }, 'error');
+      const retryErrorMsg = t('chatV2:inputBar.retryFailed', { error: getErrorMessage(error) });
+      onUpdateAttachment(attachment.id, {
+        status: 'error',
+        error: retryErrorMsg,
+      });
+      showGlobalNotification('error', retryErrorMsg);
+    }
+  }, [onUpdateAttachment, t]);
 
   const handleClearAllAttachments = () => {
     attachments.forEach(att => {
@@ -2440,9 +2620,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             const isVfsRef = attachment.id.startsWith('vfs-');
             const sizeLabel = isVfsRef ? t('analysis:input_bar.attachments.reference') : `${(attachment.size / 1024).toFixed(1)} KB`;
 
-            // 判断是否为 PDF
-            const isPdf = attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
-            const isImage = attachment.type === 'image' || attachment.mimeType.startsWith('image/');
+            // 判断媒体类型（SSOT：MIME OR 扩展名；type === 'image' 作为兜底）
+            const rowMediaType = getMediaTypeForAttachment(attachment)
+              ?? (attachment.type === 'image' ? 'image' : null);
+            const isPdf = rowMediaType === 'pdf';
+            const isImage = rowMediaType === 'image';
 
             // 🆕 媒体处理中状态显示（PDF + 图片）
             const isPdfProcessing = isPdf && attachment.status === 'processing';
@@ -2502,7 +2684,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 {/* 第一行：文件名、大小、状态、移除按钮 */}
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <span className="text-[13px] text-foreground truncate block">{attachment.name}</span>
+                    <span className="text-ui text-foreground truncate block">{attachment.name}</span>
                     {attachment.status === 'error' && attachment.error && <span className="text-[11px] text-destructive truncate block">{attachment.error}</span>}
                     {/* 🆕 统一进度条：上传(0-50%) + 处理(50-100%) */}
                     {(() => {
@@ -2530,14 +2712,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                               style={{ width: `${unifiedPercent}%` }}
                             />
                           </div>
-                          <span className="text-[10px] text-info whitespace-nowrap">
+                          <span className="text-2xs text-info whitespace-nowrap">
                             {unifiedLabel}{unifiedPercent > 0 ? ` · ${unifiedPercent}%` : ''}
                           </span>
                         </div>
                       );
                     })()}
                     {missingModesLabel && !isUploading && (
-                      <div className="mt-0.5 text-[10px] text-warning">
+                      <div className="mt-0.5 text-2xs text-warning">
                         {t('chatV2:inputBar.modesNotReady', { modes: missingModesLabel })}
                       </div>
                     )}
@@ -2549,45 +2731,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     <NotionButton
                       variant="outline"
                       size="sm"
-                      onClick={async () => {
-                        try {
-                          const fileId = attachment.sourceId!;
-                          const isPdfRetry = attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
-                          logAttachment('ui', 'retry_processing_start', {
-                            attachmentId: attachment.id,
-                            sourceId: fileId,
-                            mediaType: isPdfRetry ? 'pdf' : 'image',
-                            previousError: attachment.error,
-                          });
-                          onUpdateAttachment(attachment.id, {
-                            status: 'processing',
-                            error: undefined,
-                            processingStatus: {
-                              stage: isPdfRetry ? 'ocr_processing' : 'image_compression',
-                              percent: isPdfRetry ? 50 : 10,
-                              readyModes: attachment.processingStatus?.readyModes || [],
-                              mediaType: isPdfRetry ? 'pdf' : 'image',
-                            },
-                          });
-                          await retryPdfProcessing(fileId);
-                          logAttachment('ui', 'retry_processing_triggered', {
-                            attachmentId: attachment.id,
-                            sourceId: fileId,
-                          }, 'success');
-                          showGlobalNotification('success', t('chatV2:inputBar.retryStarted'));
-                        } catch (error) {
-                          logAttachment('ui', 'retry_processing_failed', {
-                            attachmentId: attachment.id,
-                            error: getErrorMessage(error),
-                          }, 'error');
-                          const retryErrorMsg = t('chatV2:inputBar.retryFailed', { error: getErrorMessage(error) });
-                          onUpdateAttachment(attachment.id, {
-                            status: 'error',
-                            error: retryErrorMsg,
-                          });
-                          showGlobalNotification('error', retryErrorMsg);
-                        }
-                      }}
+                      onClick={() => { void handleRetryAttachment(attachment); }}
                       className="text-info"
                     >
                       {t('common:retry')}
@@ -2687,17 +2831,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       }
       if (inlineContent) {
         inlineComposerPanelNode = (
-          <ComposerInlinePanel
-            panelKey={inlineRenderPanel}
-            motionState={inlineMotion.motionState}
-            heightMode={inlineHeightMode}
-            maxHeight={inlineMaxHeight}
-            ariaLabel={inlineAriaLabel}
-            className="-mx-3 -mt-2.5"
-            bodyClassName="mb-2.5 border-b border-[color:var(--composer-panel-border)] px-3 pb-3 pt-3"
-          >
-            {inlineContent}
-          </ComposerInlinePanel>
+          // ★ H1 修复：壳体去掉 overflow-hidden 后，内联面板改由自身包装层
+          // 负责负 margin 贴边与顶部圆角裁切（rounded-t 继承壳体 22px 圆角）
+          <div className="-mx-3 -mt-2.5 overflow-hidden rounded-t-[inherit]">
+            <ComposerInlinePanel
+              panelKey={inlineRenderPanel}
+              motionState={inlineMotion.motionState}
+              heightMode={inlineHeightMode}
+              maxHeight={inlineMaxHeight}
+              ariaLabel={inlineAriaLabel}
+              bodyClassName="mb-2.5 border-b border-[color:var(--composer-panel-border)] px-3 pb-3 pt-3"
+            >
+              {inlineContent}
+            </ComposerInlinePanel>
+          </div>
         );
       }
     }
@@ -2712,6 +2859,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       className={cn(
         // 🎨 布局分离：作为 flex 子项，relative 用于面板定位
         // 🔧 P0修复：移除 ring 样式，避免拖拽时显示难看的实心边框
+        // 层级契约：z-[100] = Z_INDEX.inputBar；isolate 建立局部层叠上下文，
+        // 内部的 z-[200] 壳体（= inputBarInner，自身又是一层上下文，包着
+        // 补全弹层 150 = inputBarPopover 与拖拽遮罩 300 = inputBarDragOverlay）
+        // 只在此上下文内比较，对外整体以 100 参与排序（低于移动顶栏 1100，符合设计）。
+        // Tailwind 任意值无法引用 TS 常量，改档位时请与 src/config/zIndex.ts 同步。
         'relative isolate z-[100] w-full flex-shrink-0 px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
         className
       )}
@@ -2732,13 +2884,18 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           ref={inputContainerRef}
           data-composer-panel-anchor
           className={cn(
-            'relative z-[200] overflow-hidden border transition-[background-color,border-color,box-shadow] duration-150 ease-out',
+            // ★ H1 修复：壳体不再 overflow-hidden（会把壳内 absolute 定位的
+            // 斜杠技能 / @模型提及补全弹层整体裁掉）；内联面板的圆角裁切
+            // 已下放到面板自身的包装层（见 inlineComposerPanelNode）
+            // z-[200] = Z_INDEX.inputBarInner（根容器 isolate 局部层级，见根节点注释）
+            'relative z-[200] border transition-[background-color,border-color,box-shadow] duration-150 ease-out',
             isMobile
               ? 'rounded-[22px] border-[color:var(--composer-panel-border)] bg-[color:var(--surface-root)] px-3 py-2.5 shadow-[0_10px_24px_hsl(var(--shadow-base)/0.05)] focus-within:shadow-[0_14px_28px_hsl(var(--shadow-base)/0.07)]'
               : 'rounded-[var(--radius-shell-toolbar)] border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] focus-within:shadow-[var(--shadow-shell-panel)]'
           )}
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
+        {/* z-[300] = Z_INDEX.inputBarDragOverlay（壳体局部层级，压过弹层 150） */}
         {isReady && isDragging && (
           <div data-wb-blur-surface className="absolute inset-0 z-[300] flex items-center justify-center rounded-[inherit] border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm pointer-events-none">
             <div className="flex flex-col items-center gap-2 text-primary">
@@ -2834,6 +2991,70 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             </div>
           )}
 
+          {/* ★ 制卡可发现性提示：pdf/docx 可制卡，apkg 可导入 */}
+          {flashcardHintKind && !flashcardHintDismissed && (
+            <div
+              data-testid="flashcard-hint"
+              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
+            >
+              <span className="min-w-0 truncate">
+                {flashcardHintKind === 'apkg'
+                  ? t('chatV2:inputBar.flashcardHint.apkg')
+                  : t('chatV2:inputBar.flashcardHint.document')}
+              </span>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 shrink-0 !px-2 !text-xs"
+                onClick={() => setFlashcardHintDismissed(true)}
+              >
+                {t('chatV2:inputBar.flashcardHint.dismiss')}
+              </NotionButton>
+            </div>
+          )}
+
+          {/* ★ 音视频可见性警示：AI 仅能看到文件名 */}
+          {mediaHintKind && !mediaHintDismissed && (
+            <div
+              data-testid="media-attachment-hint"
+              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
+            >
+              <span className="min-w-0 truncate">
+                {mediaHintKind === 'audio'
+                  ? t('chatV2:inputBar.mediaHint.audio')
+                  : t('chatV2:inputBar.mediaHint.video')}
+              </span>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 shrink-0 !px-2 !text-xs"
+                onClick={() => setMediaHintDismissed(true)}
+              >
+                {t('chatV2:inputBar.mediaHint.dismiss')}
+              </NotionButton>
+            </div>
+          )}
+
+          {/* ★ 思维导图导入提示：xmind/opml/mm/mmap 可导入为思维导图 */}
+          {hasMindmapAttachment && !mindmapHintDismissed && (
+            <div
+              data-testid="mindmap-hint"
+              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
+            >
+              <span className="min-w-0 truncate">
+                {t('chatV2:inputBar.mindmapHint.notice')}
+              </span>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="!h-6 shrink-0 !px-2 !text-xs"
+                onClick={() => setMindmapHintDismissed(true)}
+              >
+                {t('chatV2:inputBar.mindmapHint.dismiss')}
+              </NotionButton>
+            </div>
+          )}
+
           {/* 🔧 已选中的模型 Chips */}
           {modelMentionState && modelMentionActions && (
             <ModelMentionChips
@@ -2866,6 +3087,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           <AttachmentPreviewChips
             attachments={attachments}
             onRemove={onRemoveAttachment}
+            onRetry={(attachment) => { void handleRetryAttachment(attachment); }}
             disabled={isStreaming}
           />
 
@@ -2903,14 +3125,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 const composedTarget = e.target as HTMLTextAreaElement;
                 onInputChange(composedTarget.value);
                 setComposerCaretPos(composedTarget.selectionStart);
-                setTimeout(adjustTextareaHeight, 0);
+                setTimeout(() => {
+                  adjustTextareaHeight();
+                  scrollCaretIntoView();
+                }, 0);
               }}
               onChange={(e) => {
                 // 🔧 IME 合成期间跳过 store 更新，仅移动端 WKWebView 需要（桌面端受控组件会阻止输入）
                 if (!isComposingRef.current || !isMobile) {
                   onInputChange(e.target.value);
                 }
-                setTimeout(adjustTextareaHeight, 0);
+                setTimeout(() => {
+                  adjustTextareaHeight();
+                  scrollCaretIntoView();
+                }, 0);
                 // 更新光标位置（用于斜杠命令 / 模型提及检测）
                 setComposerCaretPos(e.target.selectionStart);
                 if (modelMentionActions) {
@@ -3019,6 +3247,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   return;
                 }
               }}
+              onFocus={() => setComposerTextareaFocused(true)}
+              onBlur={() => setComposerTextareaFocused(false)}
               onSelect={(e) => {
                 // 光标位置变化时更新（支持点击、选择等操作）
                 const selectionStart = (e.target as HTMLTextAreaElement).selectionStart;
@@ -3026,6 +3256,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 if (modelMentionActions) {
                   modelMentionActions.updateCursorPosition(selectionStart);
                 }
+                // ★ M4：键盘移动光标（方向键/Home/End）时也保证光标可见
+                scrollCaretIntoView();
               }}
               onPaste={(e) => {
                 // 🔧 辅助链路：粘贴附件处理延迟到 isReady 后
@@ -3033,24 +3265,28 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   handlePasteAsAttachment(e);
                   return;
                 }
-                // 未就绪：仅当剪贴板包含文件或超长文本（会被转成附件）时才警告并阻断；
-                // 普通短文本直接走浏览器默认粘贴，避免每次会话切换都弹"正在初始化"
+                // ★ L2 修复：未就绪时不再直接拒绝——同步读出剪贴板文件缓存起来，
+                // isReady 后自动补投（File 对象在事件结束后仍然有效）；
+                // 普通短文本直接走浏览器默认粘贴
                 const cd = e.clipboardData;
                 if (!cd) return;
-                const hasFiles =
-                  (cd.files && cd.files.length > 0) ||
-                  (cd.items && Array.from(cd.items).some((it) => it.kind === 'file'));
-                const longText = (cd.getData('text/plain') ?? '').length
-                  > INPUT_BAR_CONFIG.paste.longTextAutoAttachChars;
-                if (hasFiles || longText) {
+                const earlyFiles = cd.files
+                  ? Array.from(cd.files).filter((file) => file && file.size > 0)
+                  : [];
+                const text = cd.getData('text/plain') ?? '';
+                if (text.length > INPUT_BAR_CONFIG.paste.longTextAutoAttachChars) {
+                  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                  earlyFiles.push(new File([text], `pasted_${timestamp}.txt`, { type: 'text/plain' }));
+                }
+                if (earlyFiles.length > 0) {
                   e.preventDefault();
                   e.stopPropagation();
-                  showGlobalNotification('warning', t('chatV2:inputBar.pasteNotReady'));
+                  pendingEarlyPasteRef.current.push(...earlyFiles);
                 }
               }}
               readOnly={isStreaming && !queueEnabled}
               rows={1}
-              className="w-full resize-none border-0 bg-transparent py-1 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-0 overflow-hidden"
+              className="w-full resize-none border-0 bg-transparent py-1 text-md leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-0 overflow-hidden"
               style={{
                 minHeight: '40px',
                 background: 'transparent',
@@ -3088,22 +3324,22 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               onAddAttachment={handleAddAttachmentAction}
               onOpenResourceLibrary={handleOpenResourceLibrary}
               onOpenCamera={handleOpenCameraAction}
-              onOpenSkillPanel={renderSkillPanel ? () => togglePanel('skill') : undefined}
+              onOpenSkillPanel={renderSkillPanel ? handleOpenSkillPanelAction : undefined}
+              onCompactContext={onCompactContext}
+              isCompactingContext={isCompactingContext}
+              compactContextStatus={compactContextStatus}
+              compactContextDisabled={isStreaming}
               sessionId={sessionId}
               authorityMode={authorityMode}
               onAuthorityModeChange={onAuthorityModeChange}
               permissionPreset={permissionPreset}
               onPermissionPresetChange={onPermissionPresetChange}
               authorityAskBlockedHint={authorityAskBlockedHint}
-              renderSkillPanel={
-                renderSkillPanel
-                  ? () => renderSkillPanel({ variant: 'menu' })
-                  : undefined
-              }
+              renderSkillPanel={renderSkillPanelMenuVariant}
               activeSkillCount={activeSkillIds?.length ?? 0}
               hasLoadedSkills={!!hasLoadedSkills}
               renderMcpPanel={renderMcpPanel}
-              onOpenMcpPanel={renderMcpPanel ? () => togglePanel('mcp') : undefined}
+              onOpenMcpPanel={renderMcpPanel ? handleOpenMcpPanelAction : undefined}
               mcpEnabled={mcpEnabled}
               selectedMcpServerCount={selectedMcpServerCount}
             />
@@ -3116,7 +3352,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 icon={SlidersHorizontal}
                 label={t('common:chat_controls')}
                 active={panelStates.advanced}
-                onClick={() => togglePanel('advanced')}
+                onClick={handleToggleAdvancedPanel}
                 tooltipDisabled={tooltipDisabled}
               />
             )}
@@ -3156,6 +3392,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               </button>
             )}
 
+            {/* 快捷键提示（对齐旧版 InputBar）：桌面 Enter 发送模式下，
+                输入框聚焦且为空时在工具行空白区展示，不占额外行、不产生布局抖动 */}
+            {!isMobile &&
+              (sendShortcut || 'enter') === 'enter' &&
+              isComposerEmpty &&
+              composerTextareaFocused && (
+                <span className="pointer-events-none ml-auto shrink-0 select-none whitespace-nowrap pl-2 text-2xs text-muted-foreground/60">
+                  {t('chatV2:inputBar.shortcut')}
+                </span>
+              )}
+
           </div>
 
           {/* 右侧按钮 - 固定不滚动 */}
@@ -3163,12 +3410,22 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {extraButtonsRight}
 
             {contextWindowUsage && (
-              <ContextWindowUsageRing
+              /* ★ 点击水位环展开用量明细弹层（逻辑在 ContextUsagePopover，这里只挂载） */
+              <ContextUsagePopover
                 usage={contextWindowUsage}
                 sessionUsage={sessionUsage}
-                t={t}
-                disabled={tooltipDisabled}
-              />
+                onCompactContext={onCompactContext}
+                isCompactingContext={isCompactingContext}
+                compactDisabled={isStreaming}
+                getCompactionInfo={getCompactionInfo}
+              >
+                <ContextWindowUsageRing
+                  usage={contextWindowUsage}
+                  sessionUsage={sessionUsage}
+                  t={t}
+                  disabled={tooltipDisabled}
+                />
+              </ContextUsagePopover>
             )}
 
             {/* 推理强度 - 放在原附件按钮位置，靠近发送动作 */}
@@ -3176,7 +3433,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               <span
                 ref={runtimeModelTriggerRef}
                 className={cn(
-                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-[13px] font-semibold leading-none',
+                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-ui font-semibold leading-none',
                   enableThinking && !thinkingUnsupported
                     ? 'text-[color:var(--text-primary)]'
                     : 'text-[color:var(--text-muted)]'
@@ -3191,7 +3448,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         data-testid="thinking-runtime-menu-trigger"
                         className={cn(
                           'inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-1 text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
-                          coarseHitAreaClass
+                          coarseHitAreaLgClass
                         )}
                         title={thinkingRuntimeTitle}
                         aria-label={
@@ -3280,7 +3537,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                     </span>
                                     {runtimeModelProviderLabel && (
                                       <span
-                                        className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground"
+                                        className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
                                         title={runtimeModelProviderLabel}
                                       >
                                         {runtimeModelProviderLabel}
@@ -3326,7 +3583,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                                 {model.label}
                                               </span>
                                               {model.providerLabel && (
-                                                <span className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground">
+                                                <span className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground">
                                                   {model.providerLabel}
                                                 </span>
                                               )}
@@ -3364,7 +3621,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                   </span>
                                   {runtimeModelProviderLabel && (
                                     <span
-                                      className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground"
+                                      className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
                                       title={runtimeModelProviderLabel}
                                     >
                                       {runtimeModelProviderLabel}
@@ -3389,7 +3646,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       disabled={thinkingUnsupported}
                       className={cn(
                         'inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
-                        coarseHitAreaClass,
+                        coarseHitAreaXlClass,
                         thinkingUnsupported ? 'opacity-55' : enableThinking ? 'opacity-90' : 'opacity-65 hover:opacity-90'
                       )}
                       title={thinkingStateLabel ?? t('chatV2:inputBar.thinking', '推理模式')}
@@ -3597,5 +3854,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     </div>
   );
 };
+
+export const InputBarUI = React.memo(InputBarUIInner);
+InputBarUI.displayName = 'InputBarUI';
 
 export default InputBarUI;

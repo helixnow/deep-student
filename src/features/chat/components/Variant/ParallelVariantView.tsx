@@ -83,6 +83,14 @@ export interface ParallelVariantViewProps {
   onContinue?: () => void;
   /** 🆕 会话分支回调 */
   onBranchSession?: () => Promise<void>;
+  /** ★ 中-8：存为笔记（移动端消息级操作栏溢出菜单） */
+  onSaveAsNote?: () => Promise<void> | void;
+  /** ★ 中-8：导出 Markdown（移动端消息级操作栏溢出菜单） */
+  onExportMarkdown?: () => Promise<void> | void;
+  /** ★ 中-8：消息时间戳（操作栏尾部展示） */
+  messageTimestamp?: number;
+  /** ★ 中-8：多变体聚合 Token 用量（操作栏尾部展示） */
+  aggregatedUsage?: Variant['usage'];
   /** 是否隐藏底部消息级操作栏（由父级自行渲染） */
   hideMessageLevelActions?: boolean;
   /** 🚀 P0修复：移除 isBlockStreaming，块状态由 BlockRendererWithStore 内部订阅 */
@@ -464,7 +472,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
         <div className="flex items-center gap-0.5">
           {/* 复制 */}
           <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
-            {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+            {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
           </NotionButton>
 
           {/* 重试（可重试状态） */}
@@ -549,6 +557,11 @@ interface MessageLevelActionsProps {
   onDeleteMessage?: () => Promise<void>;
   onCopy?: () => Promise<void>;
   onBranchSession?: () => Promise<void>;
+  /** ★ 中-8：次要动作（溢出菜单）与元信息展示 */
+  onSaveAsNote?: () => Promise<void> | void;
+  onExportMarkdown?: () => Promise<void> | void;
+  timestamp?: number;
+  usage?: Variant['usage'];
 }
 
 const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
@@ -558,6 +571,10 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
   onDeleteMessage,
   onCopy,
   onBranchSession,
+  onSaveAsNote,
+  onExportMarkdown,
+  timestamp,
+  usage,
 }) => {
   const { t } = useTranslation('chatV2');
   const [isRetryingAll, setIsRetryingAll] = useState(false);
@@ -631,9 +648,11 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
   }, [onBranchSession, isBranching, isLocked]);
 
   // 如果没有任何操作可用，不显示操作栏
-  if (!onRetryAll && !onDeleteMessage && !onCopy && !onBranchSession) {
+  if (!onRetryAll && !onDeleteMessage && !onCopy && !onBranchSession && !onSaveAsNote && !onExportMarkdown) {
     return null;
   }
+
+  const hasOverflowActions = Boolean(onSaveAsNote || onExportMarkdown);
 
   return (
     <div className="mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity max-w-thread mx-auto">
@@ -641,7 +660,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
         {/* 复制按钮 */}
         {onCopy && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
-            {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+            {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
           </NotionButton>
         )}
 
@@ -679,6 +698,47 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
             </AppMenuContent>
           </AppMenu>
         )}
+
+        {/* ★ 中-8：次要动作溢出菜单（存为笔记 / 导出 Markdown），
+            移动端多变体消息不再缺失这些消息级动作 */}
+        {hasOverflowActions && (
+          <AppMenu>
+            <AppMenuTrigger asChild>
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                aria-label={t('common:more')}
+                title={t('common:more')}
+              >
+                <DotsThree size={16} />
+              </NotionButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="start" width={180}>
+              {onSaveAsNote && (
+                <AppMenuItem onClick={() => void onSaveAsNote()}>
+                  {t('messageItem.actions.saveAsNote')}
+                </AppMenuItem>
+              )}
+              {onExportMarkdown && (
+                <AppMenuItem onClick={() => void onExportMarkdown()}>
+                  {t('messageItem.actions.exportMarkdown')}
+                </AppMenuItem>
+              )}
+            </AppMenuContent>
+          </AppMenu>
+        )}
+
+        {/* ★ 中-8：时间戳 + 聚合 Token 用量（对齐单变体消息 footer 的元信息） */}
+        {timestamp && (
+          <span
+            className="ml-1 select-none text-2xs text-muted-foreground/70"
+            title={new Date(timestamp).toLocaleString()}
+          >
+            {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+        {usage && <TokenUsageDisplay usage={usage} compact />}
       </div>
     </div>
   );
@@ -714,6 +774,10 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
   isLocked = false,
   onContinue,
   onBranchSession,
+  onSaveAsNote,
+  onExportMarkdown,
+  messageTimestamp,
+  aggregatedUsage,
   hideMessageLevelActions = false,
   className,
 }) => {
@@ -815,8 +879,8 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               <CaretLeft size={16} />
             </button>
 
-            {/* 指示器圆点 */}
-            <div className="flex items-center gap-2">
+            {/* 指示器圆点（★ 低-10：加大间距 + 扩横向命中区，圆点更易点中） */}
+            <div className="flex items-center gap-3">
               {variants.map((variant, index) => {
                 const isActive = variant.id === activeVariantId;
                 return (
@@ -834,8 +898,8 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                     className={cn(
                       '!rounded-full flex-shrink-0 !p-0',
                       // P1-9: 圆点视觉 10px，用透明伪元素扩大命中区（纵向 ≥40px；
-                      // 横向受相邻圆点 18px 间距限制，不外扩避免误触相邻点）
-                      'relative after:absolute after:content-[\'\'] after:-inset-x-1 after:-inset-y-4',
+                      // ★ 低-10：gap 提到 12px 后横向可外扩到 ±6px 而不压相邻点）
+                      'relative after:absolute after:content-[\'\'] after:-inset-x-1.5 after:-inset-y-4',
                       isActive
                         ? 'variant-indicator-dot-active bg-primary'
                         : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'
@@ -928,6 +992,10 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
           onDeleteMessage={onDeleteMessage}
           onCopy={onCopy}
           onBranchSession={onBranchSession}
+          onSaveAsNote={onSaveAsNote}
+          onExportMarkdown={onExportMarkdown}
+          timestamp={messageTimestamp}
+          usage={aggregatedUsage}
         />
       )}
     </div>

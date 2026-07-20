@@ -12,6 +12,19 @@ import { CodeBlockShell } from '../ui/CodeBlockShell';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { launchSandboxWorkbench } from '@/features/sandbox/launchSandboxWorkbench';
+import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureFlags';
+import { reportFrontendError } from '@/logging/errorReporter';
+
+/**
+ * OS 模式拖/缩/settle 手势期让路：mermaid 解析/渲染主线程开销大，
+ * 延迟重试到手势结束再跑（结果不变只是延后）。旗由 settle 桥接兜底清理，
+ * 不会悬挂；轮询间隔与 SETTLE_BRIDGE_MS 同量级。
+ */
+const waitForShellGestureIdle = async (): Promise<void> => {
+  while (shouldPauseHeavyContent()) {
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+};
 
 // ============================================================================
 // HTML 转义辅助函数（防止 XSS）
@@ -122,7 +135,20 @@ class MermaidErrorBoundary extends Component<MermaidErrorBoundaryProps, MermaidE
   }
 
   componentDidCatch(error: unknown, errorInfo: ErrorInfo): void {
-    console.error('[CodeBlock] Mermaid render error:', getErrorMessage(error), errorInfo.componentStack);
+    console.error(
+      '[CodeBlock] Mermaid render error:',
+      getErrorMessage(error),
+      error,
+      errorInfo.componentStack,
+    );
+    void reportFrontendError(error, {
+      kind: 'REACT_ERROR_BOUNDARY',
+      component: 'mermaid-renderer',
+      extra: {
+        language: this.props.language,
+        componentStack: errorInfo.componentStack,
+      },
+    }).catch(() => undefined);
   }
 
   handleReset = (): void => {
@@ -297,6 +323,8 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     try {
       setRunning(true);
       setMermaidError(null);
+      // 手势期不启动渲染，结束后再跑（拖拽热路径禁止 mermaid 抢帧）
+      await waitForShellGestureIdle();
       const lib: any = await import('mermaid');
       
       if (!isMountedRef.current) return;

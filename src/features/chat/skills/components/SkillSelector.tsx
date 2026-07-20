@@ -7,11 +7,10 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Lightning, ArrowClockwise, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal, Stack, X } from '@phosphor-icons/react';
+import { Lightning, ArrowClockwise, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal, Stack, Storefront, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPanel';
@@ -20,21 +19,20 @@ import { useLoadedSkills } from '../hooks/useLoadedSkills';
 import { useSkillFavorites } from '../hooks/useSkillFavorites';
 import { useSkillDefaults } from '../hooks/useSkillDefaults';
 import {
+  useSkillEnableOverrides,
+  useSkillTrust,
+  useSkillUsageRevision,
+  useSkillBundles,
+} from '../hooks/useSkillOverrides';
+import {
   getLocalizedSkillDescription,
   getLocalizedSkillName,
   getLocationLabel,
   getLocationStyle,
 } from '../utils';
 import { getSkillEmbeddedToolLabels, getSkillPermissionSummary } from '../packageMetadata';
-import { resolveEffectiveTrustStatus, setSkillTrustOverride } from '../skillTrustStorage';
-import { isSkillDisabled, setSkillDisabled, SKILL_ENABLED_CHANGED_EVENT } from '../skillEnableStorage';
-import { getSkillUsageScore, SKILL_USAGE_CHANGED_EVENT } from '../skillUsageStats';
-import {
-  getSkillBundles,
-  saveSkillBundle,
-  deleteSkillBundle,
-  SKILL_BUNDLES_CHANGED_EVENT,
-} from '../skillBundles';
+import { resolveEffectiveTrustStatus } from '../skillTrustStorage';
+import { getSkillUsageScore } from '../skillUsageStats';
 
 // ============================================================================
 // 类型定义
@@ -87,15 +85,13 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [registryVersion, setRegistryVersion] = useState(0);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
-  // 信任覆盖存在 localStorage，变更后靠 tick 强制重算 resolveEffectiveTrustStatus
-  const [, setTrustTick] = useState(0);
-  // 停用覆盖同样存在 localStorage，变更后靠 tick 强制重算 isSkillDisabled
-  const [, setEnableTick] = useState(0);
-  // 使用遥测同样存在 localStorage，变更后靠 tick 重算排序
-  const [usageTick, setUsageTick] = useState(0);
-  // 技能组合（Bundles）
-  const [bundlesTick, setBundlesTick] = useState(0);
   const [bundleNameInput, setBundleNameInput] = useState<string | null>(null);
+
+  // localStorage 覆盖状态改由声明式 hook 订阅（替代旧的 setXxxTick 强刷）
+  const { isDisabled: isSkillDisabledNow, setDisabled: setSkillDisabledNow } = useSkillEnableOverrides();
+  const { setTrust } = useSkillTrust();
+  const usageRevision = useSkillUsageRevision();
+  const { bundles, saveBundle, deleteBundle } = useSkillBundles();
 
   useEffect(() => {
     const unsubscribe = subscribeToSkillRegistry(() => {
@@ -103,16 +99,6 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     });
     return unsubscribe;
   }, []);
-
-  useEventRegistry(
-    [
-      { target: 'window', type: 'SKILL_TRUST_CHANGED', listener: () => setTrustTick((v) => v + 1) },
-      { target: 'window', type: SKILL_ENABLED_CHANGED_EVENT, listener: () => setEnableTick((v) => v + 1) },
-      { target: 'window', type: SKILL_USAGE_CHANGED_EVENT, listener: () => setUsageTick((v) => v + 1) },
-      { target: 'window', type: SKILL_BUNDLES_CHANGED_EVENT, listener: () => setBundlesTick((v) => v + 1) },
-    ],
-    []
-  );
 
   const allSkills = useMemo(() => {
     return skillRegistry.getAll();
@@ -146,7 +132,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
       return getSkillUsageScore(b.id) - getSkillUsageScore(a.id);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allSkills, searchTerm, isFavorite, defaultIds, t, usageTick]);
+  }, [allSkills, searchTerm, isFavorite, defaultIds, t, usageRevision]);
 
   // 从全量技能解析选中项：搜索词过滤掉选中技能时，详情面板仍保持可见
   // （尤其是移动端，否则列表隐藏 + 详情空白会造成无法返回的死角）
@@ -168,10 +154,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     (skillId: string) => {
       if (disabled) return;
       // 停用的技能不可被激活；仍允许取消先前的激活状态
-      if (isSkillDisabled(skillId) && !activeSkillIds.includes(skillId)) return;
+      if (isSkillDisabledNow(skillId) && !activeSkillIds.includes(skillId)) return;
       onToggleSkill(skillId);
     },
-    [disabled, onToggleSkill, activeSkillIds]
+    [disabled, onToggleSkill, activeSkillIds, isSkillDisabledNow]
   );
 
   const isSkillActive = useCallback(
@@ -191,24 +177,32 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
 
   const handleTrustOverride = useCallback(async (skillId: string, trust: 'trusted' | 'untrusted') => {
     try {
-      await setSkillTrustOverride(skillId, trust);
-      setTrustTick((v) => v + 1);
+      // setTrust 内部广播 SKILL_TRUST_CHANGED，hook 订阅方自动刷新
+      await setTrust(skillId, trust);
     } catch (error) {
       console.error('[SkillTrust] Failed to update trust:', error);
     }
-  }, []);
+  }, [setTrust]);
 
   const handleEnableSkill = useCallback((skillId: string) => {
-    setSkillDisabled(skillId, false);
-    setEnableTick((v) => v + 1);
-  }, []);
+    setSkillDisabledNow(skillId, false);
+  }, [setSkillDisabledNow]);
+
+  // 停用：若技能当前已钉住会话，先取消钉住再停用，避免出现「已停用但仍生效」的矛盾态
+  const handleDisableSkill = useCallback((skillId: string) => {
+    if (activeSkillIds.includes(skillId)) {
+      void onToggleSkill(skillId);
+    }
+    setSkillDisabledNow(skillId, true);
+  }, [activeSkillIds, onToggleSkill, setSkillDisabledNow]);
+
+  // 轻量安装入口：跳转技能管理页（内含 GitHub 技能源 + ClawHub 市场浏览安装）
+  const handleOpenSkillMarket = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'skills-management' } }));
+    onClose?.();
+  }, [onClose]);
 
   // ========== 技能组合（Bundles） ==========
-  const bundles = useMemo(() => {
-    void bundlesTick;
-    return getSkillBundles();
-  }, [bundlesTick]);
-
   // 一键激活组合：只补激活未激活的技能，不做取消。
   // ★ 必须顺序 await：activateSkill 内有 per-store 并发锁，同步循环会导致
   // 第二个及之后的激活请求被锁丢弃（整组只激活第一个）。
@@ -217,19 +211,19 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     for (const skillId of skillIds) {
       if (activeSkillIds.includes(skillId)) continue;
       if (!skillRegistry.get(skillId)) continue;
-      if (isSkillDisabled(skillId)) continue;
+      if (isSkillDisabledNow(skillId)) continue;
       await onToggleSkill(skillId);
     }
-  }, [disabled, activeSkillIds, onToggleSkill]);
+  }, [disabled, activeSkillIds, onToggleSkill, isSkillDisabledNow]);
 
   const handleSaveBundle = useCallback(() => {
     const name = (bundleNameInput ?? '').trim();
     if (!name || activeSkillIds.length === 0) return;
-    const saved = saveSkillBundle(name, activeSkillIds);
+    const saved = saveBundle(name, activeSkillIds);
     if (saved) {
       setBundleNameInput(null);
     }
-  }, [bundleNameInput, activeSkillIds]);
+  }, [bundleNameInput, activeSkillIds, saveBundle]);
 
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
@@ -244,20 +238,34 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [isMobile, selectedSkillId]);
 
-  const headerActions = onRefresh ? (
-    <NotionButton
-      variant="ghost"
-      size="icon"
-      iconOnly
-      onClick={handleRefresh}
-      disabled={isRefreshing}
-      aria-label={t('skills:selector.refresh')}
-      title={t('skills:selector.refresh')}
-      className={cn(isRefreshing && 'animate-spin')}
-    >
-      <ArrowClockwise size={16} />
-    </NotionButton>
-  ) : null;
+  const headerActions = (
+    <>
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        onClick={handleOpenSkillMarket}
+        aria-label={t('skills:selector.installMore')}
+        title={t('skills:selector.installMore')}
+      >
+        <Storefront size={16} />
+      </NotionButton>
+      {onRefresh ? (
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          aria-label={t('skills:selector.refresh')}
+          title={t('skills:selector.refresh')}
+          className={cn(isRefreshing && 'animate-spin')}
+        >
+          <ArrowClockwise size={16} />
+        </NotionButton>
+      ) : null}
+    </>
+  );
 
   return (
     <ComposerPanel.Root
@@ -308,10 +316,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联删除按钮 */}
               <button
                 type="button"
-                onClick={() => deleteSkillBundle(bundle.id)}
+                onClick={() => deleteBundle(bundle.id)}
                 aria-label={t('skills:bundles.delete', { name: bundle.name })}
                 title={t('skills:bundles.delete', { name: bundle.name })}
-                className="ml-0.5 rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-lg:opacity-100"
+                className="relative ml-0.5 rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 max-lg:opacity-100 after:absolute after:-inset-2 after:content-['']"
               >
                 <X size={10} />
               </button>
@@ -341,7 +349,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   }}
                   placeholder={t('skills:bundles.name_placeholder')}
                   aria-label={t('skills:bundles.name_placeholder')}
-                  className="h-6 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] outline-none focus:border-[color:var(--button-primary-border)]"
+                  className="h-6 max-lg:h-8 w-32 rounded-md border border-[color:var(--composer-panel-control-border)] bg-transparent px-2 text-[11px] outline-none focus:border-[color:var(--button-primary-border)]"
                 />
                 {/* eslint-disable-next-line ds-components/no-native-button -- chip 内联确认按钮 */}
                 <button
@@ -349,7 +357,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   onClick={handleSaveBundle}
                   disabled={!(bundleNameInput ?? '').trim()}
                   aria-label={t('common:actions.confirm')}
-                  className="rounded-md p-1 text-muted-foreground hover:text-foreground disabled:opacity-40"
+                  className="relative rounded-md p-1 text-muted-foreground hover:text-foreground disabled:opacity-40 after:absolute after:-inset-2 after:content-['']"
                 >
                   <Check size={12} weight="bold" />
                 </button>
@@ -386,7 +394,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 const isActiveSkill = isSkillActive(skill.id);
                 const isToolLoaded = isSkillLoaded(skill.id);
                 const isDefaultSkill = isDefault(skill.id);
-                const isDisabledSkill = isSkillDisabled(skill.id);
+                const isDisabledSkill = isSkillDisabledNow(skill.id);
                 const activationBlocked = disabled || (isDisabledSkill && !isActiveSkill);
                 const skillName = getLocalizedSkillName(skill.id, skill.name, t);
 
@@ -416,15 +424,9 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         >
                           {(skillName.trim().charAt(0) || '?').toUpperCase()}
                         </span>
-                      ) : !isActiveSkill && isToolLoaded ? (
-                        <span
-                          className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center text-amber-500"
-                          title={t('skills:status.toolLoaded')}
-                          aria-hidden="true"
-                        >
-                          <Lightning size={14} />
-                        </span>
                       ) : (
+                        // 主操作统一为「启用（钉住会话）」复选框：工具加载态不再抢占该位置，
+                        // 保证被工具加载的技能也能从列表一键钉住
                         // eslint-disable-next-line ds-components/no-native-button -- 此处需精确控制 --button-primary-* token 的 16px 方块复选框，NotionButton 的 size/variant 体系不适配
                         <button
                           type="button"
@@ -438,15 +440,19 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                             isDisabledSkill && !isActiveSkill
                               ? t('skills:selector.disabled_hint')
                               : isActiveSkill
-                                ? t('skills:card.clickToDeactivate')
-                                : t('skills:card.clickToActivate')
+                                ? t('skills:card.pinnedClickToUnpin')
+                                : isToolLoaded
+                                  ? t('skills:card.pinLoadedByTool')
+                                  : t('skills:card.pinToSession')
                           }
                           title={
                             isDisabledSkill && !isActiveSkill
                               ? t('skills:selector.disabled_hint')
                               : isActiveSkill
-                                ? t('skills:card.clickToDeactivate')
-                                : t('skills:card.clickToActivate')
+                                ? t('skills:card.pinnedClickToUnpin')
+                                : isToolLoaded
+                                  ? t('skills:card.pinLoadedByTool')
+                                  : t('skills:card.pinToSession')
                           }
                           className={cn(
                             'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold transition-colors',
@@ -491,15 +497,15 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                             // 视觉 20px，透明伪元素扩大触控命中区（移动端契约 ≥44px 方向靠拢）
                             '!h-5 !w-5 relative after:absolute after:-inset-2 after:content-[\'\']',
                             isFavorite(skill.id)
-                              ? 'text-amber-500 hover:text-amber-600'
-                              : 'text-[color:var(--composer-panel-muted-foreground)] opacity-60 hover:text-amber-500 hover:opacity-100'
+                              ? 'text-warning hover:text-warning'
+                              : 'text-[color:var(--composer-panel-muted-foreground)] opacity-60 hover:text-warning hover:opacity-100'
                           )}
                         >
                           <Star size={12} weight={isFavorite(skill.id) ? 'fill' : 'regular'} />
                         </NotionButton>
                         <span
                           className={cn(
-                            'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                            'rounded px-1.5 py-0.5 text-2xs font-medium',
                             getLocationStyle(skill.location)
                           )}
                         >
@@ -511,17 +517,22 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   >
                     <span className={cn('flex min-w-0 flex-col gap-0.5', isDisabledSkill && 'opacity-60')}>
                       <span className={cn('flex items-center gap-1.5', isDisabledSkill && 'opacity-60')}>
-                        <span
-                          className={cn(
-                            'truncate text-sm font-medium',
-                            isToolLoaded && 'text-amber-600 dark:text-amber-400'
-                          )}
-                        >
+                        <span className="truncate text-sm font-medium">
                           {skillName}
                         </span>
+                        {/* 次级状态：被工具临时加载（未钉住时展示，可从复选框一键钉住） */}
+                        {!isMenuVariant && isToolLoaded && !isActiveSkill ? (
+                          <span
+                            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-warning/10 px-1.5 py-0.5 text-2xs font-medium text-warning"
+                            title={t('skills:card.toolLoadedHint')}
+                          >
+                            <Lightning size={9} />
+                            {t('skills:status.toolLoadedBadge')}
+                          </span>
+                        ) : null}
                         {isDisabledSkill ? (
                           <span
-                            className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                            className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground"
                             title={t('skills:selector.disabled_hint')}
                           >
                             {t('skills:selector.disabled_badge')}
@@ -529,7 +540,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         ) : null}
                         {!isMenuVariant && isDefaultSkill ? (
                           <span
-                            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-success/10 px-1.5 py-0.5 text-2xs font-medium text-success"
                             title={t('skills:default.isDefault')}
                           >
                             <Check size={9} />
@@ -581,13 +592,13 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       <h3
                         className={cn(
                           'truncate text-base font-medium text-[color:var(--composer-panel-foreground)]',
-                          isSkillDisabled(selectedSkill.id) && 'opacity-60'
+                          isSkillDisabledNow(selectedSkill.id) && 'opacity-60'
                         )}
                       >
                         {getLocalizedSkillName(selectedSkill.id, selectedSkill.name, t)}
                       </h3>
-                      {isSkillDisabled(selectedSkill.id) ? (
-                        <span className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {isSkillDisabledNow(selectedSkill.id) ? (
+                        <span className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                           {t('skills:selector.disabled_badge')}
                         </span>
                       ) : null}
@@ -599,8 +610,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         className={cn(
                           '!h-6 !w-6',
                           isFavorite(selectedSkill.id)
-                            ? 'text-amber-500 hover:text-amber-600'
-                            : 'text-[color:var(--composer-panel-muted-foreground)] opacity-60 hover:text-amber-500 hover:opacity-100'
+                            ? 'text-warning hover:text-warning'
+                            : 'text-[color:var(--composer-panel-muted-foreground)] opacity-60 hover:text-warning hover:opacity-100'
                         )}
                         aria-label={
                           isFavorite(selectedSkill.id)
@@ -623,7 +634,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         </span>
                       ) : null}
                       {isDefault(selectedSkill.id) ? (
-                        <span className="inline-flex items-center gap-0.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                        <span className="inline-flex items-center gap-0.5 rounded bg-success/10 px-1.5 py-0.5 text-2xs font-medium text-success">
                           <Check size={9} />
                           {t('skills:default.isDefault')}
                         </span>
@@ -632,7 +643,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   </div>
                   <span
                     className={cn(
-                      'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium',
+                      'shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium',
                       getLocationStyle(selectedSkill.location)
                     )}
                   >
@@ -643,13 +654,21 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 <p
                   className={cn(
                     'mb-3 text-xs text-[color:var(--composer-panel-muted-foreground)]',
-                    isSkillDisabled(selectedSkill.id) && 'opacity-60'
+                    isSkillDisabledNow(selectedSkill.id) && 'opacity-60'
                   )}
                 >
                   {getLocalizedSkillDescription(selectedSkill.id, selectedSkill.description, t)}
                 </p>
 
-                {isSkillDisabled(selectedSkill.id) ? (
+                {/* 次级状态：被工具临时加载（未钉住时给出解释与一键钉住引导） */}
+                {isSkillLoaded(selectedSkill.id) && !isSkillActive(selectedSkill.id) ? (
+                  <div className="mb-3 flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5 text-[11px] text-warning">
+                    <Lightning size={12} className="mt-0.5 shrink-0" />
+                    <span>{t('skills:card.toolLoadedHint')}</span>
+                  </div>
+                ) : null}
+
+                {isSkillDisabledNow(selectedSkill.id) ? (
                   <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-muted px-2 py-1.5 text-[11px] text-muted-foreground">
                     <span>{t('skills:selector.disabled_hint')}</span>
                     <NotionButton
@@ -669,7 +688,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   const canToggleTrust = !selectedSkill.isBuiltin && source !== 'builtin';
                   if (trust === 'untrusted') {
                     return (
-                      <div className="mb-3 space-y-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                      <div className="mb-3 space-y-1 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5 text-[11px] text-warning">
                         <div className="flex items-start gap-1.5">
                           <ShieldWarning size={12} className="mt-0.5 shrink-0" />
                           <span>{t('skills:selector.untrusted_hint')}</span>
@@ -684,7 +703,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                             >
                               {t('skills:package.trust_enable')}
                             </NotionButton>
-                            <span className="text-[10px] opacity-80">
+                            <span className="text-2xs opacity-80">
                               {t('skills:package.trust_effect_trusted')}
                             </span>
                           </div>
@@ -695,7 +714,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   if (trust === 'trusted' && canToggleTrust) {
                     return (
                       <div className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-[color:var(--composer-panel-muted-foreground)]">
-                        <ShieldCheck size={12} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <ShieldCheck size={12} className="shrink-0 text-success" />
                         <span title={t('skills:package.trust_effect_trusted')}>
                           {t('skills:package.trust_trusted')}
                         </span>
@@ -720,12 +739,12 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   if (toolLabels.length === 0 && perm.scripts === 0) return null;
                   return (
                     <div className="mb-3 space-y-1.5">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-[color:var(--composer-panel-muted-foreground)]">
+                      <div className="text-2xs font-semibold uppercase tracking-wider text-[color:var(--composer-panel-muted-foreground)]">
                         {t('skills:selector.capabilities')}
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {perm.scripts > 0 && (
-                          <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                             <Terminal size={10} />
                             {t('skills:package.permission_scripts', { count: perm.scripts })}
                           </span>
@@ -733,7 +752,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                         {toolLabels.map((label) => (
                           <span
                             key={label}
-                            className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                            className="rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground"
                           >
                             {label}
                           </span>
@@ -759,60 +778,85 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* 更多设置：默认/停用等低频管理操作收进详情区，不占主操作位 */}
+                <div className="mb-3 space-y-1.5">
+                  <div className="text-2xs font-semibold uppercase tracking-wider text-[color:var(--composer-panel-muted-foreground)]">
+                    {t('skills:selector.manage')}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleDefault(selectedSkill.id)}
+                      title={t('skills:default.hint')}
+                      className={cn(
+                        '!h-auto !px-2 !py-1 text-xs',
+                        isDefault(selectedSkill.id)
+                          ? 'text-success'
+                          : 'text-[color:var(--composer-panel-muted-foreground)]'
+                      )}
+                    >
+                      <Check size={12} className={cn(!isDefault(selectedSkill.id) && 'opacity-40')} />
+                      {isDefault(selectedSkill.id)
+                        ? t('skills:default.removeDefault')
+                        : t('skills:default.setDefault')}
+                    </NotionButton>
+                    {isSkillDisabledNow(selectedSkill.id) ? (
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEnableSkill(selectedSkill.id)}
+                        title={t('skills:package.disabled_hint')}
+                        className="!h-auto !px-2 !py-1 text-xs text-primary"
+                      >
+                        {t('skills:selector.enable')}
+                      </NotionButton>
+                    ) : (
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDisableSkill(selectedSkill.id)}
+                        title={t('skills:package.disabled_hint')}
+                        className="!h-auto !px-2 !py-1 text-xs text-[color:var(--composer-panel-muted-foreground)] hover:text-destructive"
+                      >
+                        {t('skills:selector.disable')}
+                      </NotionButton>
+                    )}
+                  </div>
+                </div>
               </CustomScrollArea>
 
+              {/* 主操作只保留一个：启用（钉住会话）/取消；工具加载态支持一键钉住 */}
               <ComposerPanel.Footer divided className="!justify-stretch flex-col gap-2">
                 <NotionButton
-                  variant={isDefault(selectedSkill.id) ? 'success' : 'default'}
+                  variant={isSkillActive(selectedSkill.id) ? 'primary' : 'default'}
                   size="md"
-                  onClick={() => toggleDefault(selectedSkill.id)}
+                  onClick={() => handleToggleActivate(selectedSkill.id)}
+                  disabled={disabled || (isSkillDisabledNow(selectedSkill.id) && !isSkillActive(selectedSkill.id))}
+                  title={
+                    isSkillDisabledNow(selectedSkill.id) && !isSkillActive(selectedSkill.id)
+                      ? t('skills:selector.disabled_hint')
+                      : undefined
+                  }
                   className="w-full"
                 >
-                  <Check
-                    size={14}
-                    className={cn(
-                      'transition-opacity',
-                      !isDefault(selectedSkill.id) && 'opacity-50'
-                    )}
-                  />
-                  <span>
-                    {isDefault(selectedSkill.id)
-                      ? t('skills:default.removeDefault')
-                      : t('skills:default.setDefault')}
-                  </span>
+                  {isSkillActive(selectedSkill.id) ? (
+                    <>
+                      <Check size={16} />
+                      <span>{t('skills:card.pinnedClickToUnpin')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lightning size={16} />
+                      <span>
+                        {isSkillLoaded(selectedSkill.id)
+                          ? t('skills:card.pinLoadedByTool')
+                          : t('skills:card.pinToSession')}
+                      </span>
+                    </>
+                  )}
                 </NotionButton>
-
-                {isSkillLoaded(selectedSkill.id) && !isSkillActive(selectedSkill.id) ? (
-                  <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-600 dark:text-amber-400">
-                    <Lightning size={16} />
-                    <span>{t('skills:card.loadedByTool')}</span>
-                  </div>
-                ) : (
-                  <NotionButton
-                    variant={isSkillActive(selectedSkill.id) ? 'primary' : 'default'}
-                    size="md"
-                    onClick={() => handleToggleActivate(selectedSkill.id)}
-                    disabled={disabled || (isSkillDisabled(selectedSkill.id) && !isSkillActive(selectedSkill.id))}
-                    title={
-                      isSkillDisabled(selectedSkill.id) && !isSkillActive(selectedSkill.id)
-                        ? t('skills:selector.disabled_hint')
-                        : undefined
-                    }
-                    className="w-full"
-                  >
-                    {isSkillActive(selectedSkill.id) ? (
-                      <>
-                        <Check size={16} />
-                        <span>{t('skills:card.activatedClickToCancel')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Lightning size={16} />
-                        <span>{t('skills:card.activateSkill')}</span>
-                      </>
-                    )}
-                  </NotionButton>
-                )}
               </ComposerPanel.Footer>
             </>
           ) : (
@@ -831,18 +875,31 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         </div>
       </div>
 
-      {isMenuVariant && onRefresh ? (
+      {isMenuVariant ? (
         <ComposerPanel.Footer divided className="!justify-between gap-2">
-          <NotionButton
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="gap-1.5"
-          >
-            <ArrowClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
-            <span>{t('skills:selector.refresh')}</span>
-          </NotionButton>
+          <span className="flex items-center gap-1">
+            {onRefresh ? (
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="gap-1.5"
+              >
+                <ArrowClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
+                <span>{t('skills:selector.refresh')}</span>
+              </NotionButton>
+            ) : null}
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={handleOpenSkillMarket}
+              className="gap-1.5"
+            >
+              <Storefront size={14} />
+              <span>{t('skills:selector.installMore')}</span>
+            </NotionButton>
+          </span>
           {onClose ? (
             <NotionButton variant="ghost" size="sm" onClick={onClose}>
               {t('common:actions.close')}

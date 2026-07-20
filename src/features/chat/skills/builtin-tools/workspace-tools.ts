@@ -47,37 +47,54 @@ export const workspaceToolsSkill: SkillDefinition = {
   skillType: 'standalone',
   content: `# 工作区协作技能
 
-当你需要协调多个 Agent 完成复杂任务时，使用这些工具：
+当你需要把任务委托给子代理，或协调多个 Agent 完成复杂任务时，使用这些工具：
 
-## ⚠️ 重要：创建子代理后必须调用 sleep
+## 子代理委托决策树
 
-创建 Worker Agent（使用 builtin-workspace_create_agent 并提供 initial_task）后，你**必须立即调用 builtin-coordinator_sleep 工具**进入睡眠状态等待结果。
+按场景选择路径，不要混用：
 
-**正确流程**:
-1. 调用 builtin-workspace_create 创建工作区
-2. 调用 builtin-workspace_create_agent 创建 Worker（带 initial_task）
-3. **立即调用 builtin-coordinator_sleep** 等待 Worker 完成
+1. **单个委托任务（最常见）**：直接调用 \`builtin-subagent_call\`（默认 wait=true 阻塞等待）。不需要预先 workspace_create，也不需要 coordinator_sleep——子代理的最终输出就在工具返回值的 \`output\` 字段里。
+2. **并行 fan-out 多任务**：多次调用 \`builtin-subagent_call\` 并显式传 \`wait: false\` 立即拿到各自的 ids，全部派发完后调用**一次** \`builtin-coordinator_sleep\` 统一等待结果。
+3. **多代理长期协作 / 共享文档**：走 workspace 三件套高级路径（workspace_create → workspace_create_agent → workspace_query/send，配合 coordinator_sleep）。
+
+### 续跑与自定义代理
+
+- **续跑（resume）**：需要对**同一个**子代理追问或迭代时，不要新开子代理——再次调用 \`builtin-subagent_call\`，传 \`resume_agent_session_id\`（首次返回的 \`agent_session_id\`）并带上首次返回的 \`workspace_id\`。后端会把新 task 作为追问投给同一会话（保留其全部历史上下文），返回值 \`resumed: true\`。
+- **自定义 profile**：用户可在 \`{appData}/workspaces/agents/\` 目录放置 markdown 文件定义自定义子代理档案，之后其 \`name\` 就能作为 \`profile\` 参数使用。最小示例：
+
+\`\`\`markdown
+---
+name: reviewer
+description: 只读代码审阅代理
+base: worker
+---
+你是代码审阅者，只指出问题，不改写代码。
+\`\`\`
+
+frontmatter 里 \`name\` 必填（小写字母/数字/连字符，不得与内建名冲突）；可选 \`base\`（缺省 worker）、\`model\`、\`tools\`（只能是只读白名单 + workspace 协作工具的子集）；正文即 instructions。
 
 ## 工具选择指南
 
 ### 工作区管理
-- **builtin-workspace_create**: 创建新工作区
-- **builtin-workspace_create_agent**: 在工作区中创建 Agent
-- **builtin-subagent_call**: 通过后端运行时即时创建并派发一个带明确技能和任务的 Worker，返回 agent session/run 标识
+- **builtin-workspace_create**: 创建新工作区（仅高级协作路径需要；subagent_call 缺省 workspace_id 时会自动创建）
+- **builtin-workspace_create_agent**: 在工作区中注册 Agent；提供 initial_task 时由后端运行时直接派发（返回 status:"dispatched"）
+- **builtin-subagent_call**: 单 Task 委托工具：即时创建并派发一个子代理，默认阻塞直到完成并在返回值中直接携带最终输出
 - **builtin-workspace_query**: 查询工作区信息
 
 ### 等待子代理
-- **builtin-coordinator_sleep**: 【必需】创建 Worker 后调用，等待结果
+- **builtin-coordinator_sleep**: 等待以 wait=false 派发的子代理完成；默认（wait=true）的 subagent_call 阻塞直接返回结果，不需要再 sleep
 
 ### Workspace 三件套与编排边界
 
-工作区的三件套是：
+大多数委托场景只需要一次 \`builtin-subagent_call\`：不传 \`workspace_id\` 时后端会自动创建工作区并把当前会话注册为 coordinator（返回值 \`auto_created_workspace: true\`）；默认 wait=true 阻塞返回，\`output\` 字段即子代理最终结果。
+
+需要显式编排多代理协作时，工作区三件套是：
 
 1. \`builtin-workspace_create\` 建立共享工作区并取得 \`workspace_id\`；
-2. \`builtin-workspace_create_agent\` 注册一个可协作的 Worker（需要它自行运行时提供 \`initial_task\`），或使用 \`builtin-subagent_call\` 让后端运行时按 \`skill_id + task\` 立即创建并派发专用 Worker；
-3. 用 \`builtin-workspace_query\` / \`builtin-workspace_send\` 观察和沟通，必要时由协调者调用 \`builtin-coordinator_sleep\` 等待结果。
+2. \`builtin-workspace_create_agent\` 注册一个可协作的 Worker（提供 \`initial_task\` 时由后端运行时直接派发），或使用 \`builtin-subagent_call\` 按 \`task\`（可选 \`profile\` / \`skill_id\`）即时派发专用子代理；
+3. 用 \`builtin-workspace_query\` / \`builtin-workspace_send\` 观察和沟通；对以 wait=false 派发的子代理，由协调者调用 \`builtin-coordinator_sleep\` 统一等待。
 
-\`subagent_call\` 是 \`workspace_create_agent\` 的运行时派发路径，不是另一个未实现的 MCP 工具；同一任务只选择一种派发路径，避免重复创建 Worker。它必须使用真实已加载的技能 ID（例如 \`subagent-worker\`、\`academic-search\`、\`document-processing\`），并传回 \`workspace_id\`、\`agent_session_id\` 与 \`run_id\` 供后续查询。
+\`subagent_call\` 是 \`workspace_create_agent\` 的运行时派发路径，不是另一个未实现的 MCP 工具；同一任务只选择一种派发路径，避免重复创建 Worker。profile 选择指南：\`worker\`（默认）适合纯执行任务；\`explorer\` 拥有只读检索工具面，适合需要检索或阅读资料的调研任务。若使用 legacy 的 \`skill_id\`，必须是真实已加载的技能 ID（例如 \`subagent-worker\`、\`academic-search\`、\`document-processing\`）。子代理完成后的结果交付由运行时负责，不依赖子代理调用 workspace_send。
 
 ### 消息通信
 - **builtin-workspace_send**: 向 Agent 发送消息
@@ -98,7 +115,7 @@ export const workspaceToolsSkill: SkillDefinition = {
 - **builtin-local_shell_preflight**: 检查本地命令、cwd、runtime root 与风险等级，但不会执行命令
 - **builtin-local_shell_execute**: 经用户审批后执行非交互本地命令，返回 exit code、stdout/stderr 与截断状态
 
-本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 固定使用受信任 System32 路径下的 Windows PowerShell（\`-NoProfile -NonInteractive\`，UTF-8 输出）；其他平台当前不支持本地 shell。每次真实执行都必须经过用户审批，网络默认禁止，只有显式 \`allow_network=true\` 的独立审批 scope 才可放行。
+本地执行器不是交互式终端：没有 PTY、stdin 或持久 shell session。macOS 固定使用 \`/bin/sh -c\`；Windows 固定使用受信任 System32 路径下的 Windows PowerShell（\`-NoProfile -NonInteractive\`，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱包裹的 \`/bin/sh -c\`（UTF-8 输出），系统未安装 bubblewrap 时预检会报告沙箱不可用并拒绝执行，此时应提示用户安装 bubblewrap 包；其余平台（移动端）当前不支持本地 shell。每次真实执行都必须经过用户审批，网络默认禁止，只有显式 \`allow_network=true\` 的独立审批 scope 才可放行。
 
 ### 本地命令的执行根选择
 - 与用户项目文件相关的命令使用 \`root_id=workspace\`；如果 workspace 未配置，应提示用户选择工作区，不要在其他 root 中猜测项目位置。
@@ -139,7 +156,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
 
 1. 调用 local_shell_preflight / local_shell_execute 时传 skill_root_id（如 skill:pdf-tools），执行器会向子进程注入环境变量 SKILL_DIR，指向该 Skill 包根目录的绝对路径。
 2. cwd 仍然使用 workspace、temp 或 artifacts 等可执行 root，不要尝试把 skill:<skillId> 当 cwd。
-3. 命令里通过环境变量引用脚本路径并给路径加引号：Windows PowerShell 用 \`python "$env:SKILL_DIR/scripts/convert.py"\`；macOS \`/bin/sh\` 用 \`python "$SKILL_DIR/scripts/convert.py"\`。不要把 Windows 命令写成 cmd 的 \`%SKILL_DIR%\` 语法，也不要假设 Linux 可执行。
+3. 命令里通过环境变量引用脚本路径并给路径加引号：Windows PowerShell 用 \`python "$env:SKILL_DIR/scripts/convert.py"\`；macOS/Linux 的 \`/bin/sh\` 用 \`python "$SKILL_DIR/scripts/convert.py"\`。不要把 Windows 命令写成 cmd 的 \`%SKILL_DIR%\` 语法。
 4. 脚本产物请写到 temp 或 artifacts（cwd 所在 root），不要试图写回 SKILL_DIR。
 
 ## 产物交付纪律
@@ -165,7 +182,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_create_agent',
       description:
-        '在工作区中创建一个新的 Agent。必须先创建工作区（workspace_create）。【重要】如果希望 Worker 自动执行任务，必须提供 initial_task 参数，否则 Worker 会保持空闲状态不会处理后续消息。',
+        '在工作区中创建一个新的 Agent。必须先创建工作区（workspace_create）。提供 initial_task 时由后端运行时直接派发任务（返回 status:"dispatched"），不依赖前端启动；不提供 initial_task 则 Worker 保持空闲状态，不会处理后续消息。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -187,39 +204,61 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
       // an unconsumed Rust schema beside the executor.
       name: 'builtin-subagent_call',
       description:
-        '通过后端工作区运行时即时创建并派发一个专用 Worker。必须先有 workspace_create 返回的 workspace_id；skill_id 必须是真实技能 ID，task 是要执行的具体任务。返回 agent_session_id 与 run_id，后续用 workspace_query/send 协作。不要对同一任务同时调用 workspace_create_agent 和 subagent_call。',
+        '单 Task 委托工具：即时创建并派发一个子代理执行 task。默认 wait=true 阻塞直到子代理完成，返回值的 output 字段直接携带最终输出——单个委托任务不需要预先 workspace_create，也不需要之后 coordinator_sleep。不传 workspace_id 时后端自动创建工作区并把当前会话注册为 coordinator（返回 auto_created_workspace=true）。并行多任务时用 wait=false 派发多个子代理拿到 ids，再调用一次 coordinator_sleep 统一等待。profile 选择：worker（默认）适合纯执行任务；explorer 拥有只读检索工具面（unified_search/rag_search/web_search/web_fetch/resource_list/resource_read/resource_search/folder_list/memory_read/memory_list），适合需要检索或读资料的调研任务；也支持用户自定义 profile（见 profile 参数说明）。对同一子代理追问/迭代时传 resume_agent_session_id 续跑，返回值携带 resumed 标记。终态返回值含 token_usage（可能为 null），反映子代理本次运行的 token 消耗。不要对同一任务同时调用 workspace_create_agent 和 subagent_call。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
+          task: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 20000,
+            description: '【必填】交给子代理执行的具体任务',
+          },
           workspace_id: {
             type: 'string',
             minLength: 1,
-            description: '【必填】已创建的工作区 ID',
+            description:
+              '可选。已创建的工作区 ID；缺省时后端自动创建工作区并把当前会话注册为 coordinator，返回值带 auto_created_workspace=true',
+          },
+          profile: {
+            type: 'string',
+            description:
+              '可选。子代理配置档案：内建三型 worker=纯执行（默认）、explorer=只读检索工具面（适合调研/读资料任务）、default=完整默认工具面；也可以填用户自定义 profile 的 name。自定义 profile 是放在 {appData}/workspaces/agents/ 目录下的 markdown 文件：YAML frontmatter 里 name 必填（小写字母/数字/连字符，不得与 default/worker/explorer 冲突），可选 description、base（缺省 worker）、model、tools（只能是 headless 只读白名单 + workspace 协作工具的子集，越界项会被剔除），正文即 instructions——用户想要新档案时可以引导其创建这样的文件。传未知 profile 时后端报错并列出全部可用 profile',
+          },
+          resume_agent_session_id: {
+            type: 'string',
+            minLength: 1,
+            description:
+              '可选。续跑：传入首次 subagent_call 返回的 agent_session_id，后端跳过创建、把本次 task 作为追问投给同一个子代理会话（保留其全部历史上下文），照常阻塞等待。使用时 workspace_id 必填（用首次返回的值）；返回值中 resumed=true。适合对同一子代理追问或迭代，而不是新开一个子代理',
           },
           skill_id: {
             type: 'string',
             minLength: 1,
             description:
-              '【必填】真实技能 ID，例如 subagent-worker、academic-search、document-processing；不要填写不存在的技能名',
+              '可选（legacy 别名，通常优先用 profile）。真实技能 ID，例如 subagent-worker、academic-search、document-processing；不要填写不存在的技能名',
           },
-          task: {
+          model: {
             type: 'string',
-            minLength: 1,
-            maxLength: 20000,
-            description: '【必填】交给 Worker 执行的具体任务',
+            description: '可选。覆盖子代理使用的模型',
           },
           context: {
-            description: '可选：传给 Worker 的结构化上下文（任意 JSON 值）',
+            description: '可选：传给子代理的结构化上下文（任意 JSON 值）',
+          },
+          wait: {
+            type: 'boolean',
+            default: true,
+            description:
+              '可选，默认 true：阻塞等待子代理完成（内部预算 750s），返回值直接携带 output；超预算返回 status:"running" 与各项 ids。设为 false 立即返回 ids（并行 fan-out 场景），之后用 coordinator_sleep 统一等待',
           },
         },
-        required: ['workspace_id', 'skill_id', 'task'],
+        required: ['task'],
       },
     },
     {
       name: 'builtin-workspace_send',
       description:
-        '向工作区中的 Agent 发送消息。必须已创建工作区并存在目标 Agent。注意：消息内容使用 content 参数（不是 message）。',
+        '向工作区中的 Agent 发送消息。必须已创建工作区并存在目标 Agent。注意：消息内容使用 content 参数（不是 message）。注意：对已结束/空闲的子代理，消息只入队不会触发执行；需要它继续处理时，请用 subagent_call 传 resume_agent_session_id 续跑（会一并消费积压消息）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -546,7 +585,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-local_shell_execute',
       description:
-        '经用户审批后执行非交互本地 shell 命令。macOS 固定使用 /bin/sh -c；Windows 固定使用受信任 System32 Windows PowerShell（-NoProfile -NonInteractive，UTF-8 输出）；其他平台不支持。执行前会重新校验 runtime root 和 cwd，强制 timeout，截断 stdout/stderr，并保存 tool block 审计记录；不提供 PTY、stdin 或持久 shell session，网络默认禁止。',
+        '经用户审批后执行非交互本地 shell 命令。macOS 固定使用 /bin/sh -c；Windows 固定使用受信任 System32 Windows PowerShell（-NoProfile -NonInteractive，UTF-8 输出）；Linux 桌面使用 bubblewrap（bwrap）沙箱 + /bin/sh -c（需系统安装 bubblewrap，缺失时拒绝执行）；移动端不支持。执行前会重新校验 runtime root 和 cwd，强制 timeout，截断 stdout/stderr，并保存 tool block 审计记录；不提供 PTY、stdin 或持久 shell session，网络默认禁止。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -627,7 +666,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-coordinator_sleep',
       description:
-        '【重要】创建子代理后调用此工具进入睡眠状态。睡眠期间 pipeline 挂起，等待子代理发送结果消息后自动唤醒继续执行。这避免了轮询浪费，是推荐的多代理协作模式。',
+        '等待以 wait=false 派发的子代理完成：睡眠期间 pipeline 挂起，收到子代理结果后自动唤醒继续执行，避免轮询浪费。并行 fan-out 时在全部派发完成后调用一次即可。默认（wait=true）的 subagent_call 阻塞直接返回结果，不需要调用本工具。',
       inputSchema: {
         type: 'object',
         properties: {

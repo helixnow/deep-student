@@ -80,14 +80,15 @@ describe('InputBarUI attachment preview chips', () => {
     expect(showGlobalNotificationMock).toHaveBeenCalledWith('warning', '请输入内容');
   });
 
-  it('opens a compact attachment launcher from the plus button', () => {
+  it('opens a compact attachment launcher from the plus button', async () => {
     renderInputBar({ attachments: [] });
 
     fireEvent.click(screen.getByTestId('btn-toggle-attachments'));
 
-    expect(screen.getByRole('menuitem', { name: 'analysis:input_bar.attachments.add' })).toBeInTheDocument();
-    // chatV2 命名空间在测试环境已同步加载，断言用户可见的翻译文案而非原始 key
-    expect(screen.getByRole('menuitem', { name: '资源库' })).toBeInTheDocument();
+    // 桌面端加号菜单：文件动作收在「添加文件」二级飞出层内（P1-1 改造后结构）
+    fireEvent.click(await screen.findByTestId('plus-menu-add-file'));
+    expect(await screen.findByTestId('plus-menu-add-attachment')).toBeInTheDocument();
+    expect(screen.getByTestId('plus-menu-resource-library')).toBeInTheDocument();
   });
 
   it('renders pending attachments as compact preview chips above the textarea', () => {
@@ -153,8 +154,11 @@ describe('InputBarUI attachment preview chips', () => {
     renderInputBar({ attachments });
 
     expect(screen.getByTestId('attachment-chip-icon-att_psd')).toHaveClass('h-5', 'w-5');
-    expect(screen.getByTitle('1AI_图像 (1).psd')).not.toHaveClass('pr-8');
-    expect(screen.getByTitle('1AI_图像 (1).psd')).toHaveClass('pr-3');
+    // chip title 现为「文件名 · 状态」，改用 listitem 定位 chip 按钮
+    const chipItem = screen.getByRole('listitem', { name: '1AI_图像 (1).psd' });
+    const chipButton = chipItem.querySelector('.attachment-preview-chip');
+    expect(chipButton).not.toHaveClass('pr-8');
+    expect(chipButton).toHaveClass('pr-3');
     expect(screen.getByRole('button', { name: 'analysis:input_bar.attachments.remove 1AI_图像 (1).psd' })).toHaveClass(
       'absolute',
       'inset-0',
@@ -179,10 +183,14 @@ describe('InputBarUI attachment preview chips', () => {
     renderInputBar({ attachments });
 
     // P0-3: 触屏没有 hover，删除按钮常显 + 伪元素扩大命中区（≥44px）
+    // ★ L5 修复后：命中区只向左/上/下外扩，不向右压住文件名（点 chip 开预览）区域
     expect(screen.getByRole('button', { name: 'analysis:input_bar.attachments.remove touch.png' })).toHaveClass(
       '[@media(pointer:coarse)]:opacity-100',
       '[@media(pointer:coarse)]:after:absolute',
-      '[@media(pointer:coarse)]:after:-inset-3'
+      '[@media(pointer:coarse)]:after:-left-3',
+      '[@media(pointer:coarse)]:after:-top-3',
+      '[@media(pointer:coarse)]:after:-bottom-3',
+      '[@media(pointer:coarse)]:after:right-0'
     );
   });
 
@@ -204,7 +212,9 @@ describe('InputBarUI attachment preview chips', () => {
     expect(iconHost.querySelector('.text-emerald-500')).not.toBeInTheDocument();
   });
 
-  it('shows short attachment filenames without truncating the text label', () => {
+  it('truncates long attachment filenames while keeping the full name in the chip title', () => {
+    // ★ M6 修复后：文件名标签统一 max-w + truncate（超长文件名不再把 chip 撑爆），
+    // 完整文件名保留在 chip 的 title 中
     const attachments: AttachmentMeta[] = [
       {
         id: 'att_icon',
@@ -219,9 +229,10 @@ describe('InputBarUI attachment preview chips', () => {
     renderInputBar({ attachments });
 
     const filename = screen.getByText('app-icon.png');
-    expect(filename).toHaveClass('whitespace-nowrap');
-    expect(filename).not.toHaveClass('truncate');
-    expect(screen.getByTitle('app-icon.png')).not.toHaveClass('max-w-[220px]');
+    expect(filename).toHaveClass('max-w-[10rem]', 'truncate');
+    const chipItem = screen.getByRole('listitem', { name: 'app-icon.png' });
+    const chipButton = chipItem.querySelector('.attachment-preview-chip');
+    expect(chipButton?.getAttribute('title')).toContain('app-icon.png');
   });
 
   it('keeps the enabled send and streaming stop controls pure black', () => {

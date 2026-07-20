@@ -2,17 +2,18 @@
  * Chat V2 - 模板工具可视化输出组件
  *
  * 用于渲染 template_preview / template_get / template_update / template_create / template_fork 的工具输出。
- * 使用项目成熟的 renderCardPreview + ShadowDomPreview 做真实 Mustache/Cloze 渲染。
+ * 使用统一的 TemplateRenderService（ankiTemplateEngine）+ ShadowDomPreview 做真实 Anki 语法渲染，
+ * 并把引擎返回的渲染问题列表内联展示（不再吞掉）。
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { ShadowDomPreview } from '@/components/ShadowDomPreview';
-import { renderCardPreview } from '@/components/SharedPreview';
-import type { AnkiCardTemplate } from '@/types';
+import { TemplateRenderService } from '@/services/templateRenderService';
+import type { TemplateRenderIssue } from '@/services/ankiTemplateEngine';
+import type { CustomAnkiTemplate } from '@/types';
 import {
   Eye,
   FileJs,
@@ -45,7 +46,7 @@ interface TemplateSnapshot {
 interface TemplateVisualData {
   _templateVisual?: boolean;
   _templateDiff?: boolean;
-  // 原始模板数据（前端用 renderCardPreview 渲染）
+  // 原始模板数据（前端用 TemplateRenderService 渲染）
   frontTemplate?: string;
   backTemplate?: string;
   cssStyle?: string;
@@ -98,7 +99,7 @@ export function isTemplateVisualOutput(output: unknown): output is TemplateVisua
 }
 
 // ============================================================================
-// 辅助：构建 AnkiCardTemplate 对象供 renderCardPreview 使用
+// 辅助：构建 CustomAnkiTemplate 对象供 TemplateRenderService 使用
 // ============================================================================
 
 function buildAnkiTemplate(data: {
@@ -111,7 +112,7 @@ function buildAnkiTemplate(data: {
   previewDataJson?: string;
   generationPrompt?: string;
   id?: string;
-}): AnkiCardTemplate {
+}): CustomAnkiTemplate {
   return {
     id: data.id || 'preview',
     name: data.name || '',
@@ -125,40 +126,69 @@ function buildAnkiTemplate(data: {
     note_type: data.noteType || 'Basic',
     generation_prompt: data.generationPrompt || '',
     fields: data.fields || [],
+    field_extraction_rules: {},
+    created_at: '',
+    updated_at: '',
+    is_active: true,
+    is_built_in: false,
   };
 }
 
+/** 预览示例数据：优先工具入参 sampleData，其次模板库存的 preview_data_json */
+function resolveSampleData(
+  template: CustomAnkiTemplate,
+  sampleData?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (sampleData && Object.keys(sampleData).length > 0) return sampleData;
+  if (template.preview_data_json) {
+    try {
+      const parsed: unknown = JSON.parse(template.preview_data_json);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // 库存示例数据损坏时按空数据渲染
+    }
+  }
+  return {};
+}
+
 /**
- * 使用 renderCardPreview 渲染模板的正面和背面
+ * 使用 TemplateRenderService 渲染模板的正面和背面（返回结构化渲染问题）
  */
 function renderTemplateSides(
-  template: AnkiCardTemplate,
+  template: CustomAnkiTemplate,
   sampleData?: Record<string, unknown>,
-): { front: string; back: string } {
-  try {
-    const front = renderCardPreview(
-      template.front_template,
-      template,
-      sampleData,
-      false,
-    );
-    const back = renderCardPreview(
-      template.back_template,
-      template,
-      sampleData,
-      true,
-    );
-    return { front, back };
-  } catch (err: unknown) {
-    const renderFailed = i18next.t('chatV2:codeBlock.renderFailed');
-    const unknownError = i18next.t('chatV2:codeBlock.unknownError');
-    const message = err instanceof Error ? err.message : unknownError;
-    return {
-      front: `<div style="color:red;padding:8px;">${renderFailed}: ${message}</div>`,
-      back: `<div style="color:red;padding:8px;">${renderFailed}</div>`,
-    };
-  }
+): { front: string; back: string; issues: TemplateRenderIssue[] } {
+  const data = resolveSampleData(template, sampleData);
+  const detailed = TemplateRenderService.renderCardDetailed(
+    { fields: data, tags: data.Tags ?? data.tags },
+    template,
+  );
+  return {
+    front: detailed.front.html,
+    back: detailed.back.html,
+    issues: [...detailed.front.issues, ...detailed.back.issues],
+  };
 }
+
+/** 渲染问题内联列表 */
+const RenderIssueList: React.FC<{ issues: TemplateRenderIssue[] }> = ({ issues }) => {
+  const { t } = useTranslation('chatV2');
+  if (issues.length === 0) return null;
+  return (
+    <div className="mb-2 px-2 py-1.5 rounded bg-warning/10 border border-warning/50" role="status">
+      <div className="text-xs text-warning font-medium">
+        {t('templateTool.renderIssues', { count: issues.length })}
+      </div>
+      {issues.map((issue, i) => (
+        <div key={`${issue.code}-${i}`} className="text-xs text-warning">
+          ⚠ {issue.message}{issue.tag ? `（${issue.tag}）` : ''}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 // ============================================================================
 // 子组件：单面预览卡片（使用真实渲染）
@@ -217,6 +247,9 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
 
   return (
     <div>
+      {/* 更新后模板的渲染问题 */}
+      <RenderIssueList issues={afterRendered.issues} />
+
       {/* 正面/背面切换 */}
       <div className="flex gap-1 mb-2">
         <NotionButton variant={side === 'front' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('front')} className={cn(side === 'front' && 'bg-primary/15 text-primary')}>
@@ -227,16 +260,16 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
         </NotionButton>
       </div>
 
-      {/* Before / After 并排 */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Before / After 并排（窄屏纵向堆叠，避免每列被压到不可读） */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-red-400/70" />
+            <span className="inline-block w-2 h-2 rounded-full bg-danger/70" />
             {t('templateTool.before')}
           </div>
           <div
             className={cn(
-              'rounded-lg border border-red-200/50 dark:border-red-900/30 overflow-hidden',
+              'rounded-lg border border-danger/50 overflow-hidden',
               'bg-white dark:bg-zinc-900'
             )}
           >
@@ -251,12 +284,12 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
 
         <div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-green-400/70" />
+            <span className="inline-block w-2 h-2 rounded-full bg-success/70" />
             {t('templateTool.after')}
           </div>
           <div
             className={cn(
-              'rounded-lg border border-green-200/50 dark:border-green-900/30 overflow-hidden',
+              'rounded-lg border border-success/50 overflow-hidden',
               'bg-white dark:bg-zinc-900'
             )}
           >
@@ -295,7 +328,7 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
   const isCreateResult = output.created === true;
   const isUpdateResult = output.updated === true;
 
-  // 使用 renderCardPreview 做真实渲染
+  // 使用统一渲染引擎做真实渲染
   const ankiTemplate = useMemo(
     () => (hasTemplate ? buildAnkiTemplate(output) : null),
     [hasTemplate, output],
@@ -381,7 +414,7 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
           )}
           {(output.templateId || output.id) && (
             <div className="text-muted-foreground">
-              ID: <code className="text-[10px] bg-muted/50 px-1 rounded">{(output.templateId || output.id || '').slice(0, 8)}…</code>
+              ID: <code className="text-2xs bg-muted/50 px-1 rounded">{(output.templateId || output.id || '').slice(0, 8)}…</code>
             </div>
           )}
           {output.version && (
@@ -400,11 +433,11 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
           {output.isActive !== undefined && (
             <div className="flex items-center gap-0.5">
               {output.isActive ? (
-                <CheckCircle size={12} className="text-green-500" />
+                <CheckCircle size={12} className="text-success" />
               ) : (
                 <XCircle size={12} className="text-muted-foreground" />
               )}
-              <span className={output.isActive ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}>
+              <span className={output.isActive ? 'text-success' : 'text-muted-foreground'}>
                 {output.isActive
                   ? t('templateTool.active')
                   : t('templateTool.inactive')}
@@ -412,14 +445,14 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
             </div>
           )}
           {output.isBuiltIn && (
-            <div className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px]">
+            <div className="px-1.5 py-0.5 rounded bg-info/10 text-info text-2xs">
               {t('templateTool.builtin')}
             </div>
           )}
           {isForkResult && output.sourceTemplateId && (
             <div className="text-muted-foreground">
               {t('templateTool.forkedFrom')}：
-              <code className="text-[10px] bg-muted/50 px-1 rounded">{output.sourceTemplateId.slice(0, 8)}…</code>
+              <code className="text-2xs bg-muted/50 px-1 rounded">{output.sourceTemplateId.slice(0, 8)}…</code>
             </div>
           )}
         </div>
@@ -427,14 +460,17 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
 
       {/* 警告 */}
       {warnings.length > 0 && (
-        <div className="mb-2 px-2 py-1.5 rounded bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200/50 dark:border-yellow-800/30">
+        <div className="mb-2 px-2 py-1.5 rounded bg-warning/10 border border-warning/50">
           {warnings.map((w, i) => (
-            <div key={i} className="text-xs text-yellow-700 dark:text-yellow-400">
+            <div key={i} className="text-xs text-warning">
               ⚠ {w}
             </div>
           ))}
         </div>
       )}
+
+      {/* 引擎返回的渲染问题（diff 模式在 DiffView 内展示） */}
+      {!isDiff && rendered && <RenderIssueList issues={rendered.issues} />}
 
       {/* 内容区 */}
       <div
@@ -456,7 +492,8 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
             sampleData={output.sampleData as Record<string, unknown> | undefined}
           />
         ) : rendered ? (
-          <div className="flex gap-3">
+          // 窄屏正/背面纵向堆叠，避免每面被压到 ~150px 不可读
+          <div className="flex flex-col gap-3 sm:flex-row">
             <CardSide
               label={t('templateTool.front')}
               htmlContent={rendered.front}

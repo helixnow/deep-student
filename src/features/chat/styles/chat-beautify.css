@@ -315,10 +315,10 @@
 }
 
 .chat-v2 .user-message-bubble .prose {
-  font-size: 0.9375rem; /* 15px */
+  font-size: var(--chat-user-font-size, 0.9375rem); /* 15px，token 见 chat.css */
   line-height: 1.65;
   letter-spacing: 0.01em;
-  color: hsl(var(--foreground));
+  color: var(--chat-user-message-text, hsl(var(--foreground)));
 }
 
 .chat-v2 .user-message-bubble .prose p {
@@ -372,10 +372,12 @@
   border-radius: calc(var(--radius, 0.5rem) - 4px);
 }
 
-/* 暗色模式微调 */
+/* 暗色模式微调：muted 底降到 60% 避免过亮；加 1px 内描边（inset shadow，
+   不改盒模型）提升气泡与深色画布的边界对比度 */
 :root.dark .chat-v2 .user-message-bubble,
 .dark .chat-v2 .user-message-bubble {
   background: hsl(var(--muted) / 60%);
+  box-shadow: inset 0 0 0 1px hsl(var(--border) / 55%);
 }
 
 /* ============================================================================

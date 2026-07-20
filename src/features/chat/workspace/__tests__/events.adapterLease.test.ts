@@ -94,12 +94,18 @@ const mocks = vi.hoisted(() => {
       status: 'running',
     })),
     showGlobalNotification: vi.fn(),
+    // 🆕 SUBAGENT_RETRY / AGENT_COMPLETION 终态写回使用的后端 invoke
+    invoke: vi.fn(async (_cmd: string, _args?: unknown): Promise<unknown> => undefined),
   };
 });
 
 vi.mock('@tauri-apps/api/event', () => ({ listen: mocks.listen }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../../adapters/AdapterManager', () => ({ adapterManager: mocks.adapterManager }));
 vi.mock('../../core/session/sessionManager', () => ({ sessionManager: mocks.sessionManager }));
+vi.mock('../../core/store/createChatStore', () => ({
+  generateId: vi.fn((prefix: string) => `${prefix}_mock`),
+}));
 vi.mock('../api', () => ({ runAgent: mocks.runAgent }));
 vi.mock('../../debug/exportSessionDebug', () => ({
   addSubagentEventLog: vi.fn(),
@@ -360,6 +366,100 @@ describe('workspace worker adapter lease', () => {
       status: 'interrupted',
     });
     expect(mocks.adapterManager.release).toHaveBeenCalledOnce();
+  });
+
+  it('finalizes a pending subagent_retry block when the runtime completion arrives', async () => {
+    useWorkspaceStore.getState().setCurrentWorkspace('ws_test');
+    useWorkspaceStore.getState().addAgent({
+      sessionId: 'sess_coordinator',
+      workspaceId: 'ws_test',
+      role: 'coordinator',
+      status: 'running',
+      joinedAt: '2026-01-01T00:00:00.000Z',
+      lastActiveAt: '2026-01-01T00:00:00.000Z',
+    });
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'chat_v2_load_session') {
+        return { messages: [{ id: 'msg_last', role: 'assistant' }] };
+      }
+      return undefined;
+    });
+
+    await initWorkspaceEventListeners();
+    const retry = mocks.callbacks.get(WORKSPACE_EVENTS.SUBAGENT_RETRY)!;
+    const completed = mocks.callbacks.get(WORKSPACE_EVENTS.AGENT_COMPLETION)!;
+
+    // 1. 子代理重试事件 → 创建"重试中"块并登记
+    retry({
+      payload: {
+        workspace_id: 'ws_test',
+        agent_session_id: 'agent_retry',
+        reason: 'no_message_sent',
+        message: 'no message sent',
+        retry_count: 1,
+      },
+    });
+    await vi.waitFor(() => {
+      expect(mocks.invoke).toHaveBeenCalledWith(
+        'chat_v2_upsert_streaming_block',
+        expect.objectContaining({
+          blockType: 'subagent_retry',
+          status: 'running',
+          messageId: 'msg_last',
+        }),
+      );
+    });
+    const createCall = mocks.invoke.mock.calls.find(
+      (call) => call[0] === 'chat_v2_upsert_streaming_block',
+    )!;
+    const createdBlockId = (createCall[1] as { blockId: string }).blockId;
+
+    // 2. 运行时完成事件 → 同一块被写回终态 resolved: true / success
+    completed({
+      payload: {
+        workspace_id: 'ws_test',
+        agent_session_id: 'agent_retry',
+        run_id: 'run_retry',
+        status: 'completed',
+      },
+    });
+
+    await vi.waitFor(() => {
+      const upsertCalls = mocks.invoke.mock.calls.filter(
+        (call) => call[0] === 'chat_v2_upsert_streaming_block',
+      );
+      expect(upsertCalls.length).toBe(2);
+      const finalizeArgs = upsertCalls[1][1] as {
+        blockId: string;
+        messageId: string;
+        sessionId: string;
+        status: string;
+        toolOutputJson: string;
+      };
+      expect(finalizeArgs.blockId).toBe(createdBlockId);
+      expect(finalizeArgs.messageId).toBe('msg_last');
+      expect(finalizeArgs.sessionId).toBe('sess_coordinator');
+      expect(finalizeArgs.status).toBe('success');
+      expect(JSON.parse(finalizeArgs.toolOutputJson)).toMatchObject({
+        resolved: true,
+        reason: 'no_message_sent',
+      });
+    });
+
+    // 3. 登记已消费：同一 agent 再次完成不再重复写回
+    completed({
+      payload: {
+        workspace_id: 'ws_test',
+        agent_session_id: 'agent_retry',
+        run_id: 'run_retry_2',
+        status: 'completed',
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(
+      mocks.invoke.mock.calls.filter((call) => call[0] === 'chat_v2_upsert_streaming_block').length,
+    ).toBe(2);
   });
 
   it('does not poison coordinator wake dedup with a background workspace event', async () => {

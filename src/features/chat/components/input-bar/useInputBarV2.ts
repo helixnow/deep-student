@@ -19,7 +19,9 @@ import { isMultiModelSelectEnabled } from '@/config/featureFlags';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import {
   getMissingInjectModesForAttachment,
+  getMediaTypeForAttachment,
   hasAnySelectedInjectModeReady,
+  resolveExplicitInjectModes,
 } from './injectModeUtils';
 import { resolveChatReadiness, triggerOpenSettingsModels } from '@/features/chat/readiness/readinessGate';
 // ============================================================================
@@ -254,8 +256,7 @@ export function useInputBarV2(
     };
 
     const getMissingModesLabel = (attachment: AttachmentMeta, missingModes: string[]): string => {
-      const isPdf = attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
-      const mediaTypeKey = isPdf ? 'pdf' : 'image';
+      const mediaTypeKey = getMediaTypeForAttachment(attachment) === 'pdf' ? 'pdf' : 'image';
       const modeLabels = missingModes.map((mode) => i18n.t(`chatV2:injectMode.${mediaTypeKey}.${mode}`, {
         defaultValue: mode,
       }));
@@ -279,9 +280,8 @@ export function useInputBarV2(
     }
 
     const blockingModeAttachment = effectiveAttachments.find((attachment) => {
-      const isMedia = attachment.mimeType === 'application/pdf'
-        || attachment.name.toLowerCase().endsWith('.pdf')
-        || attachment.mimeType?.startsWith('image/');
+      // SSOT 媒体识别：MIME OR 扩展名（含空 mime 的图片文件）
+      const isMedia = getMediaTypeForAttachment(attachment) !== null;
       if (!isMedia) {
         return false;
       }
@@ -307,11 +307,24 @@ export function useInputBarV2(
       return;
     }
 
+    // ★ P2：error 附件不再静默剔除——发送前明确列出被排除的文件名
+    const errorAttachments = effectiveAttachments.filter((a) => a.status === 'error');
+    if (errorAttachments.length > 0) {
+      const separator = i18n.t('chatV2:inputBar.modeSeparator', { defaultValue: '、' });
+      const names = errorAttachments.map((a) => a.name).join(separator);
+      showGlobalNotification(
+        'warning',
+        i18n.t('chatV2:inputBar.errorAttachmentsExcluded', {
+          count: errorAttachments.length,
+          names,
+          defaultValue: `${errorAttachments.length} 个失败附件未随消息发送：${names}`,
+        })
+      );
+    }
+
     // 只发送 ready 状态，或 processing 但所选模式已就绪的附件。
     const readyAttachments = effectiveAttachments.filter((attachment) => {
-      const isMedia = attachment.mimeType === 'application/pdf'
-        || attachment.name.toLowerCase().endsWith('.pdf')
-        || attachment.mimeType?.startsWith('image/');
+      const isMedia = getMediaTypeForAttachment(attachment) !== null;
 
       if (!isMedia) {
         return attachment.status === 'ready';
@@ -407,41 +420,40 @@ export function useInputBarV2(
   );
 
   // 更新附件（原地更新，避免闪烁）
-  // ★ 如果更新包含 injectModes，同时更新对应的 ContextRef
-  // ★ 如果更新包含 resourceId（上传完成），同步附件的 injectModes 到 ContextRef
+  // ★ P0 契约（注入模式 SSOT）：附件与其 ContextRef 的 injectModes 必须始终一致，
+  //   且 ContextRef 上永远显式携带（后端缺省逻辑不触发）。三条同步路径：
+  //   1) updates.injectModes —— 用户在选择器中变更模式；
+  //   2) updates.resourceId —— 上传完成建立 ContextRef 关联；
+  //   3) 附件缺省 —— 兜底补写 UI 默认模式（PDF=['text'] / 图片=['image']）。
   const updateAttachment = useCallback(
     (attachmentId: string, updates: Partial<AttachmentMeta>) => {
+      store.getState().updateAttachment(attachmentId, updates);
+
+      // 统一读取更新后的最新状态（旧实现读更新前快照，附件刚创建时会漏同步）
       const state = store.getState();
-      state.updateAttachment(attachmentId, updates);
-      
-      // ★ 如果更新包含 injectModes，同时更新对应的 ContextRef
-      if (updates.injectModes !== undefined) {
-        // 找到对应的附件以获取 resourceId
-        const attachment = state.attachments.find(a => a.id === attachmentId);
-        if (attachment?.resourceId) {
-          // 将 AttachmentInjectModes 转换为 ResourceInjectModes
-          const resourceInjectModes = updates.injectModes ? {
-            image: updates.injectModes.image,
-            pdf: updates.injectModes.pdf,
-          } : undefined;
-          state.updateContextRefInjectModes(attachment.resourceId, resourceInjectModes);
-        }
+      const attachment = state.attachments.find(a => a.id === attachmentId);
+      if (!attachment) return;
+
+      const modesTouched = updates.injectModes !== undefined;
+      const refLinked = updates.resourceId !== undefined;
+      if (!modesTouched && !refLinked) return;
+
+      const resourceId = updates.resourceId ?? attachment.resourceId;
+      if (!resourceId) return;
+
+      // 显式解析生效模式：用户已选则用之，否则补 UI 默认（不允许 undefined 落到后端）
+      const effectiveModes = resolveExplicitInjectModes(attachment);
+      if (!effectiveModes) return; // 非 PDF/图片附件无注入模式概念
+
+      // 附件本体缺省时回填，保持 SSOT 一致（避免 UI 读默认、快照读 undefined 的分裂）
+      if (!attachment.injectModes) {
+        state.updateAttachment(attachmentId, { injectModes: effectiveModes });
       }
-      
-      // ★ 如果更新包含 resourceId（上传完成），同步附件的 injectModes 到 ContextRef
-      // 这处理了用户在上传完成前修改 injectModes 的情况
-      if (updates.resourceId !== undefined) {
-        // 获取更新后的附件状态
-        const updatedState = store.getState();
-        const updatedAttachment = updatedState.attachments.find(a => a.id === attachmentId);
-        if (updatedAttachment?.injectModes) {
-          const resourceInjectModes = {
-            image: updatedAttachment.injectModes.image,
-            pdf: updatedAttachment.injectModes.pdf,
-          };
-          updatedState.updateContextRefInjectModes(updates.resourceId, resourceInjectModes);
-        }
-      }
+
+      state.updateContextRefInjectModes(resourceId, {
+        image: effectiveModes.image,
+        pdf: effectiveModes.pdf,
+      });
     },
     [store]
   );

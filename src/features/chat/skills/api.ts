@@ -213,10 +213,14 @@ export interface SkillUpdateCheckResult {
   updateAvailable: boolean;
   sourceKind: string;
   sourceSummary: string;
-  /** url/tap：本地 package sha256；clawhub：已安装 version */
+  /** 本地记录的 package sha256（所有来源均为真实哈希） */
   currentSha256: string;
-  /** url/tap：远程 package sha256；clawhub：远程 latest version */
+  /** 远程 package sha256；clawhub 检查只比对 version、不下载包，为 null */
   remoteSha256: string | null;
+  /** 已安装版本（目前仅 clawhub 来源填充） */
+  currentVersion?: string | null;
+  /** 远程 latest version（目前仅 clawhub 来源填充） */
+  remoteVersion?: string | null;
   error: string | null;
 }
 
@@ -241,6 +245,8 @@ export function buildClawhubUpdateCheckResult(params: {
   sourceDetail: string;
   installedVersion: string;
   remoteVersion: string | null;
+  /** provenance 中记录的本地包哈希（可选，测试场景常省略） */
+  packageSha256?: string;
   error?: string | null;
 }): SkillUpdateCheckResult {
   const remote = params.remoteVersion?.trim() || null;
@@ -252,8 +258,10 @@ export function buildClawhubUpdateCheckResult(params: {
       updateAvailable: false,
       sourceKind: 'clawhub',
       sourceSummary: params.sourceDetail,
-      currentSha256: params.installedVersion,
+      currentSha256: params.packageSha256 ?? '',
       remoteSha256: null,
+      currentVersion: params.installedVersion,
+      remoteVersion: null,
       error,
     };
   }
@@ -263,8 +271,10 @@ export function buildClawhubUpdateCheckResult(params: {
     updateAvailable: isClawhubVersionOutdated(params.installedVersion, remote),
     sourceKind: 'clawhub',
     sourceSummary: params.sourceDetail,
-    currentSha256: params.installedVersion,
-    remoteSha256: remote,
+    currentSha256: params.packageSha256 ?? '',
+    remoteSha256: null,
+    currentVersion: params.installedVersion,
+    remoteVersion: remote,
     error: null,
   };
 }

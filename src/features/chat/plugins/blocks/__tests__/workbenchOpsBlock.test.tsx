@@ -128,7 +128,7 @@ describe('WorkbenchOpsBlock undo semantics', () => {
 
     const button = screen.getByTestId('workbench-ops-undo');
     expect(button).toBeDisabled();
-    expect(button).toHaveTextContent('blocks.workbenchOps.undoExpired');
+    expect(button).toHaveTextContent('撤销窗口已过期');
     expect(mocks.revertRun).not.toHaveBeenCalled();
   });
 
@@ -148,7 +148,7 @@ describe('WorkbenchOpsBlock undo semantics', () => {
 
     await waitFor(() => {
       expect(button).toBeDisabled();
-      expect(button).toHaveTextContent('blocks.workbenchOps.undoExpired');
+      expect(button).toHaveTextContent('撤销窗口已过期');
     });
     expect(mocks.revertRun).not.toHaveBeenCalled();
   });
@@ -271,7 +271,8 @@ describe('WorkbenchOpsBlock undo semantics', () => {
 
     const button = screen.getByTestId('workbench-ops-undo');
     expect(button).toBeDisabled();
-    expect(button).toHaveTextContent('blocks.workbenchOps.undoExpired');
+    // ACR 4.0（A8）：undoExpired 文案已进 zh-CN/chatV2.json，i18n mock 会解析真实文案
+    expect(button).toHaveTextContent('撤销窗口已过期');
     expect(mocks.handleBridgeRequest).not.toHaveBeenCalled();
   });
 

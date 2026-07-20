@@ -2,14 +2,19 @@
  * PlanGateCard — Plan mode batch confirmation (Ask/Plan/Craft).
  * Distinct from ToolApprovalCard: approving binds writes to planId only.
  *
+ * 形态：输入栏上方的内联确认卡（非模态）。role="region"，不做全局焦点陷阱；
+ * 初始焦点落在「拒绝」按钮上，Escape 在卡片内按下时等同拒绝，卸载时恢复焦点。
+ * 视觉与 BlockingApprovalBar 对齐：warning 语义色、success 主操作、
+ * destructive 次操作、tabular-nums 倒计时（临近超时转警示色）。
+ *
  * 倒计时归零时前端主动发送 timeout 拒绝，与文案「N 秒后自动拒绝」语义一致
  * （后端权威超时仍然兜底，先到先得，重复响应由后端幂等处理）。
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { CheckCircle, XCircle, Warning, CircleNotch, Clock } from '@phosphor-icons/react';
+import { CheckCircle, XCircle, Warning, CircleNotch, Clock, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 
@@ -32,6 +37,8 @@ export interface PlanGateCardProps {
 
 /** 剩余秒数低于该阈值时倒计时文案转警示色 */
 const COUNTDOWN_URGENT_THRESHOLD = 10;
+/** 参数 JSON 超过此字符数时截断显示，可手动展开（与审批栏一致） */
+const ARGS_TRUNCATE_THRESHOLD = 120;
 
 export const PlanGateCard: React.FC<PlanGateCardProps> = ({
   request,
@@ -44,7 +51,8 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
   const [busy, setBusy] = useState(false);
   const [remaining, setRemaining] = useState(request.timeoutSeconds);
   const [timedOut, setTimedOut] = useState(false);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const [isArgsExpanded, setIsArgsExpanded] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
   const rejectButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const respondRef = useRef<(approved: boolean) => void>(() => undefined);
@@ -82,6 +90,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
   useEffect(() => {
     setRemaining(request.timeoutSeconds);
     setTimedOut(false);
+    setIsArgsExpanded(false);
     timeoutFiredRef.current = false;
   }, [request.toolCallId, request.timeoutSeconds]);
 
@@ -106,49 +115,37 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
     return () => window.clearTimeout(timer);
   }, [remaining, busy, request.timeoutSeconds, respond]);
 
+  // 非模态焦点管理：初始焦点移入卡片（拒绝按钮），卸载时恢复；
+  // 不注册全局键盘监听、不做 Tab 陷阱（用户可自由 Tab 出卡片）。
   useEffect(() => {
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const raf = window.requestAnimationFrame(() => {
       rejectButtonRef.current?.focus({ preventScroll: true });
     });
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        respondRef.current(false);
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const focusable = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])') ?? [],
-      );
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialogRef.current?.focus({ preventScroll: true });
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !dialogRef.current?.contains(active))) {
-        event.preventDefault();
-        last.focus({ preventScroll: true });
-      } else if (!event.shiftKey && (active === last || !dialogRef.current?.contains(active))) {
-        event.preventDefault();
-        first.focus({ preventScroll: true });
-      }
-    };
-    document.addEventListener('keydown', onKeyDown, true);
     return () => {
       window.cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', onKeyDown, true);
       queueMicrotask(() => {
         const target = restoreFocusRef?.current ?? previousFocusRef.current;
         if (target?.isConnected) target.focus({ preventScroll: true });
       });
     };
   }, [request.toolCallId, restoreFocusRef]);
+
+  // Escape 仅在焦点位于卡片内时生效（卡片级快捷键，非全局劫持）
+  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      respondRef.current(false);
+    }
+  }, []);
+
+  const argsText = useMemo(() => {
+    if (!request.arguments || Object.keys(request.arguments).length === 0) return null;
+    return JSON.stringify(request.arguments, null, 2);
+  }, [request.arguments]);
+  const argsNeedTruncation = !!argsText && argsText.length > ARGS_TRUNCATE_THRESHOLD;
 
   const titleId = `plan-gate-title-${request.planId}`;
   const descId = `plan-gate-desc-${request.planId}`;
@@ -157,71 +154,118 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
 
   return (
     <div
-      ref={dialogRef}
+      ref={cardRef}
       className={cn(
-        'rounded-lg border border-warning/40 bg-warning/5 p-3 space-y-3',
+        'rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 space-y-2',
         className,
       )}
-      role="alertdialog"
-      aria-modal="true"
+      role="region"
       aria-labelledby={titleId}
       aria-describedby={`${descId} ${countdownId}`}
       aria-busy={busy || undefined}
       tabIndex={-1}
+      onKeyDown={handleKeyDown}
       data-testid="plan-gate-card"
     >
-      <div className="flex items-start gap-2">
-        <Warning className="mt-0.5 shrink-0 text-warning" size={18} weight="fill" aria-hidden="true" />
-        <div className="min-w-0 flex-1 space-y-1">
-          <div id={titleId} className="text-sm font-medium">
-            {t('authority.planGate.title', '确认执行计划')}
-          </div>
-          <p
-            id={descId}
-            className="text-xs text-muted-foreground whitespace-pre-wrap break-words"
-          >
-            {request.summary || t('authority.planGate.fallbackSummary', '模型准备执行写操作')}
-          </p>
-          <div className="text-[11px] text-muted-foreground/80 truncate">
-            {t('authority.planGate.tool', '工具')}: {request.toolName}
-          </div>
-          <div
-            id={countdownId}
-            className={cn(
-              'inline-flex items-center gap-1 text-[11px] transition-colors duration-150',
-              isCountdownUrgent ? 'font-medium text-warning' : 'text-muted-foreground/70',
-            )}
-            role="status"
-            aria-live="polite"
-            data-testid="plan-gate-countdown"
-          >
-            <Clock size={11} aria-hidden="true" />
-            {timedOut
-              ? t('authority.planGate.timedOut', '已超时，自动拒绝')
-              : t('authority.planGate.countdown', '{{seconds}} 秒后自动拒绝', {
-                  seconds: remaining,
-                })}
-          </div>
+      {/* Row 1: 标题 + 倒计时（对齐审批栏：图标 + 名称居左，倒计时居右） */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Warning size={16} className="shrink-0 text-warning" weight="fill" aria-hidden="true" />
+        <span id={titleId} className="text-sm font-medium truncate">
+          {t('authority.planGate.title', '确认执行计划')}
+        </span>
+        <div
+          id={countdownId}
+          className={cn(
+            'ml-auto flex shrink-0 items-center gap-1 text-xs transition-colors duration-150',
+            isCountdownUrgent || timedOut ? 'font-medium text-warning' : 'text-muted-foreground',
+          )}
+          role="status"
+          aria-live="polite"
+          data-testid="plan-gate-countdown"
+        >
+          <Clock size={14} aria-hidden="true" />
+          {timedOut ? (
+            <span>{t('authority.planGate.timedOut', '已超时，自动拒绝')}</span>
+          ) : (
+            <span className="tabular-nums">
+              {t('authority.planGate.countdown', '{{seconds}} 秒后自动拒绝', {
+                seconds: remaining,
+              })}
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Row 2: 摘要 + 工具 chip */}
+      <div className="space-y-1">
+        <p
+          id={descId}
+          className="m-0 text-xs text-muted-foreground whitespace-pre-wrap break-words"
+        >
+          {request.summary || t('authority.planGate.fallbackSummary', '模型准备执行写操作')}
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="shrink-0">{t('authority.planGate.tool', '工具')}</span>
+          <code className="max-w-[16rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono">
+            {request.toolName}
+          </code>
+        </div>
+      </div>
+
+      {/* Row 3: 参数预览（可折叠，与审批栏一致） */}
+      {argsText && (
+        <div>
+          <pre className={cn(
+            'm-0 overflow-hidden rounded bg-muted px-2 py-1 text-xs font-mono text-muted-foreground',
+            isArgsExpanded ? 'max-h-40 overflow-y-auto' : 'max-h-16',
+          )}>
+            {isArgsExpanded || !argsNeedTruncation
+              ? argsText
+              : argsText.slice(0, ARGS_TRUNCATE_THRESHOLD) + ' …'}
+          </pre>
+          {argsNeedTruncation && (
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsArgsExpanded((prev) => !prev)}
+              className="mt-0.5 flex items-center gap-0.5 text-[11px] text-primary hover:underline"
+            >
+              {isArgsExpanded ? (
+                <>
+                  <CaretUp size={10} />
+                  {t('approval.collapseArgs', '收起')}
+                </>
+              ) : (
+                <>
+                  <CaretDown size={10} />
+                  {t('approval.expandArgs', '展开')}
+                </>
+              )}
+            </NotionButton>
+          )}
+        </div>
+      )}
+
+      {/* Row 4: 操作按钮（层级对齐审批栏：拒绝 outline destructive，确认 success 实底） */}
       <div className="flex items-center justify-end gap-2">
         <NotionButton
           ref={rejectButtonRef}
-          variant="ghost"
+          variant="outline"
           size="sm"
           disabled={busy || timedOut}
           onClick={() => void respond(false)}
           aria-label={t('authority.planGate.reject', '拒绝')}
+          className="text-destructive hover:text-destructive/80"
         >
           <XCircle size={14} className="mr-1" aria-hidden="true" />
           {t('authority.planGate.reject', '拒绝')}
         </NotionButton>
         <NotionButton
-          variant="primary"
           size="sm"
           disabled={busy || timedOut}
           onClick={() => void respond(true)}
           aria-label={t('authority.planGate.approve', '确认执行')}
+          className="bg-success text-success-foreground"
         >
           {busy && !timedOut ? (
             <CircleNotch size={14} className="mr-1 animate-spin" aria-hidden="true" />

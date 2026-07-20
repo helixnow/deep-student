@@ -18,6 +18,7 @@ import {
   shouldChatHandleOpenNote,
   type DstuOpenNoteDetail,
 } from '@/features/notes/openNoteEvent';
+import { isHiddenDraftSession } from './draftSession';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -150,6 +151,8 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     try {
       const session = await invoke<ChatSession | null>('chat_v2_get_session', { sessionId: sid });
       if (!session) return;
+      // 隐藏 draft 会话不进入左侧列表（外部 ensureActiveChatSession 激活 draft 时也会派发本事件）
+      if (isHiddenDraftSession(session)) return;
 
       setSessions((prev) => {
         if (prev.some((item) => item.id === session.id)) {

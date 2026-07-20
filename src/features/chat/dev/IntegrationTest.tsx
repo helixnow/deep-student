@@ -162,13 +162,13 @@ const TEST_SCENARIOS: TestScenario[] = [
     run: async (ctx) => {
       const state = ctx.store.getState();
 
-      // 打开 RAG 面板
-      state.setPanelState('rag', true);
-      ctx.assert(state.panelStates.rag === true, 'RAG 面板应为打开');
+      // 打开 MCP 面板（'rag' 幽灵面板 key 已移除，改用真实存在的面板验证）
+      state.setPanelState('mcp', true);
+      ctx.assert(state.panelStates.mcp === true, 'MCP 面板应为打开');
 
-      // 关闭 RAG 面板
-      state.setPanelState('rag', false);
-      ctx.assert(state.panelStates.rag === false, 'RAG 面板应为关闭');
+      // 关闭 MCP 面板
+      state.setPanelState('mcp', false);
+      ctx.assert(state.panelStates.mcp === false, 'MCP 面板应为关闭');
     },
   },
   {
@@ -310,19 +310,20 @@ export const IntegrationTest: React.FC = () => {
       {/* 头部 */}
       <header className="border-b border-border bg-card">
         <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
+          {/* 窄屏允许状态行换行，避免溢出 */}
+          <div className="flex flex-wrap items-center justify-between gap-y-2">
             <div>
               <h1 className="text-xl font-bold">{t('dev.integrationTest.title', 'Chat V2 Integration Test')}</h1>
               <p className="text-sm text-muted-foreground">
                 {t('dev.integrationTest.subtitle', 'Prompt 10: End-to-End Integration Verification')}
               </p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               {/* 连接状态 */}
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted-foreground">{t('dev.integrationTest.backendConnection', 'Backend Connection')}:</span>
                 {isReady ? (
-                  <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                  <span className="flex items-center gap-1 text-success">
                     <Check size={16} />
                     {t('dev.integrationTest.connected', 'Connected')}
                   </span>
@@ -346,10 +347,10 @@ export const IntegrationTest: React.FC = () => {
                   className={cn(
                     'px-2 py-0.5 rounded-full text-xs',
                     sessionStatus === 'idle'
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                      ? 'bg-success/10 text-success'
                       : sessionStatus === 'streaming'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                      : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                      ? 'bg-info/10 text-info'
+                      : 'bg-warning/10 text-warning'
                   )}
                 >
                   {sessionStatus}
@@ -429,13 +430,13 @@ export const IntegrationTest: React.FC = () => {
                         <CircleNotch size={16} className="animate-spin text-primary" />
                       )}
                       {result.status === 'pass' && (
-                        <Check size={16} className="text-green-500" />
+                        <Check size={16} className="text-success" />
                       )}
                       {result.status === 'fail' && (
                         <X size={16} className="text-destructive" />
                       )}
                       {result.status === 'skip' && (
-                        <Warning size={16} className="text-yellow-500" />
+                        <Warning size={16} className="text-warning" />
                       )}
                       <span className="text-xs truncate">{result.name}</span>
                     </div>
@@ -509,7 +510,7 @@ const CheckItem: React.FC<CheckItemProps> = ({ label, checked }) => {
         className={cn(
           'w-4 h-4 rounded border flex items-center justify-center',
           checked
-            ? 'bg-green-100 border-green-500 text-green-600 dark:bg-green-900 dark:text-green-400'
+            ? 'bg-success/10 border-success text-success'
             : 'border-muted-foreground/30'
         )}
       >

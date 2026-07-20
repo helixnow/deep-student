@@ -17,3 +17,16 @@ export { useLoadedSkills } from './useLoadedSkills';
 
 export { useSkillDefaults } from './useSkillDefaults';
 export type { UseSkillDefaultsReturn } from './useSkillDefaults';
+
+export {
+  useWindowEventRevision,
+  useSkillEnableOverrides,
+  useSkillTrust,
+  useSkillUsageRevision,
+  useSkillBundles,
+} from './useSkillOverrides';
+export type {
+  UseSkillEnableOverridesReturn,
+  UseSkillTrustReturn,
+  UseSkillBundlesReturn,
+} from './useSkillOverrides';

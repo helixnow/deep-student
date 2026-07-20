@@ -160,13 +160,41 @@ const JsonOutput: React.FC<{ data: unknown }> = ({ data }) => {
   );
 };
 
+/** 文本输出折叠阈值：超过后默认只显示头部，可一键展开/收起 */
+const TEXT_OUTPUT_COLLAPSE_CHARS = 1500;
+
 /**
- * 文本输出渲染
+ * 文本输出渲染（长文本默认折叠，块内展开，不弹层）
  */
 const TextOutput: React.FC<{ text: string }> = ({ text }) => {
+  const { t } = useTranslation('chatV2');
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text.length > TEXT_OUTPUT_COLLAPSE_CHARS;
+  const displayText = !isLong || expanded ? text : text.slice(0, TEXT_OUTPUT_COLLAPSE_CHARS) + '…';
+
   return (
-    <div className="text-sm text-foreground whitespace-pre-wrap break-words">
-      {text}
+    <div>
+      <div
+        className={cn(
+          'text-sm text-foreground whitespace-pre-wrap break-words',
+          isLong && expanded && 'max-h-96 overflow-auto'
+        )}
+      >
+        {displayText}
+      </div>
+      {isLong && (
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={() => setExpanded((prev) => !prev)}
+          aria-expanded={expanded}
+          className="mt-1 !h-auto !px-1.5 !py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          {expanded
+            ? t('blocks.mcpTool.collapseLongOutput')
+            : t('blocks.mcpTool.expandLongOutput', { count: text.length })}
+        </NotionButton>
+      )}
     </div>
   );
 };

@@ -27,6 +27,30 @@
   animation-delay: var(--canki-stagger, 0ms);
 }
 
+/* ============ 卡片删除退出（高度塌缩 + 淡出） ============ */
+
+@keyframes canki-kf-card-out {
+  from {
+    opacity: 1;
+    max-height: 640px;
+  }
+
+  to {
+    opacity: 0;
+    max-height: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    translate: 0 -4px;
+    scale: 0.98;
+  }
+}
+
+.canki-card-exit {
+  overflow: hidden;
+  pointer-events: none;
+  animation: canki-kf-card-out 200ms ease-in forwards;
+}
+
 /* ============ 生成中骨架占位（shimmer） ============ */
 
 @keyframes canki-kf-shimmer {
@@ -126,6 +150,12 @@
   .canki-card-enter,
   .canki-flip-in {
     animation: none;
+  }
+
+  /* 删除退出动画降级：立即隐藏（JS 侧在 reduce 下也会跳过动画延迟） */
+  .canki-card-exit {
+    animation: none;
+    opacity: 0;
   }
 
   .canki-shimmer {

@@ -1,10 +1,16 @@
 /**
- * TranslationPopover - 聊天里选中文字翻译的弹出卡片（SOTA 版）
+ * TranslationPopover - 聊天里选中文字翻译的内联卡片（P0-3 去 Portal / 去 dialog 改造）
  *
  * 当用户在 SelectionToolbar 点击"翻译"后，toolbar 消失，
- * 原位替换为此翻译卡片。
+ * 在选中消息下方展开此翻译卡片。
  *
- * 功能要点：
+ * 布局契约：
+ * - 非 Portal / 非 fixed / 非 dialog：卡片挂在消息 DOM 流内（消息下方），
+ *   随消息一起滚动；不再需要选区定位 / 箭头 / 滚动关闭 / 外点关闭
+ * - 可折叠：头部（语言选择 + 模型名 + 折叠/关闭）常显，正文经 .chat-collapse 过渡
+ * - 入场复用 .chat-msg-enter；动效走 --chat-motion-* token，自带 reduced-motion 降级
+ *
+ * 功能要点（与浮层版一致）：
  * - 自动检测语言方向（假名/谚文优先于汉字，避免日文被误判为中文），可手动切换 + 一键对调
  * - 双显示模式（在系统设置 → 模型 中切换）：
  *   - aligned：短语对照，流式 JSON 对象增量渲染（兼容跨行/美化 JSON），hover 同步高亮
@@ -12,7 +18,7 @@
  * - 模型来自系统设置的"翻译模型"（fallback 为对话模型 model2）
  * - 上下文消歧（前后各 200 字符传入 prompt，不参与翻译）
  * - LRU 缓存（同一段文字 + 同上下文 + 同模型 + 同语言对 = 即时命中）
- * - 取消语义：关闭弹窗 / 切换语言 / 点击外部 / 滚动 / popover 卸载 都会取消尚未完成的请求
+ * - 取消语义：关闭卡片 / 切换语言 / 卡片卸载 都会取消尚未完成的请求
  *
  * 流式协议（与 chat_popover.rs 对齐）：
  * - chunk 事件优先消费增量 `delta`（新协议只发 delta，省 IPC）；
@@ -25,15 +31,11 @@
  * - 调用 invoke('cancel_stream', { streamEventName }) 通知后端中止 SSE
  * - unlisten 移除 Tauri 事件监听
  *
- * 性能：
- * - chunk → UI 更新经 requestAnimationFrame 批处理（每帧至多一次 setState）
- * - ResizeObserver / window resize 的重定位同样经 rAF 节流
+ * 性能：chunk → UI 更新经 requestAnimationFrame 批处理（每帧至多一次 setState）
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, Check, ChatDots, X, ArrowsClockwise, ArrowsLeftRight } from '@phosphor-icons/react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CaretDown, Copy, Check, ChatDots, X, ArrowsClockwise, ArrowsLeftRight } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -44,13 +46,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { AppSelect } from '@/components/ui/app-menu/AppSelect';
-import { OverlayLayerProvider } from '@/components/shared/OverlayLayer';
-import { Z_INDEX } from '@/config/zIndex';
-import { useViewStore } from '@/stores/viewStore';
-import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { ApiConfig, ModelAssignments } from '@/types';
-import type { SelectionRect } from '../hooks/useTextSelection';
 import type {
   AlignedSegment,
   ChatTranslationEventPayload,
@@ -67,8 +63,6 @@ import { buildCacheKey, readCache, writeCache } from './translationCache';
 export interface TranslationPopoverProps {
   /** 要翻译的原文 */
   sourceText: string;
-  /** 选区位置（视口坐标） */
-  selectionRect: SelectionRect | null;
   /** 是否显示 */
   isVisible: boolean;
   /** 选区前的上下文（用于 prompt 消歧；不会参与翻译） */
@@ -81,22 +75,10 @@ export interface TranslationPopoverProps {
   onAddToInput?: (text: string) => void;
 }
 
-interface PopoverPlacement {
-  top: number;
-  left: number;
-  /** popover 相对选区的位置（决定箭头方向与动画 transform-origin） */
-  placement: 'above' | 'below';
-  /** 箭头中心相对 popover 左缘的偏移（px，已钳制在卡片圆角内） */
-  arrowLeft: number;
-}
-
 // ============================================================================
 // 常量
 // ============================================================================
 
-const POPOVER_GAP = 10;
-const VIEWPORT_PADDING = 12;
-const ARROW_SIZE = 10;
 /** 流式兜底超时：超过该时长没有收到任何新 chunk 视为失败 */
 const STREAM_STALL_TIMEOUT_MS = 90_000;
 
@@ -174,18 +156,6 @@ function toErrorMessage(err: unknown, fallback: string): string {
 }
 
 // ============================================================================
-// 判断事件目标是否属于弹层自身（含 AppSelect 的 portal 下拉）
-// ============================================================================
-
-function isInsideOverlay(target: EventTarget | null, root: HTMLElement | null): boolean {
-  if (!(target instanceof Node)) return false;
-  if (root?.contains(target)) return true;
-  // AppSelect 的下拉菜单 portal 到 document.body，不在 popover DOM 内，需要豁免
-  const el = target instanceof Element ? target : target.parentElement;
-  return !!el?.closest('[data-app-menu-id]');
-}
-
-// ============================================================================
 // 设置加载（model id + 显示名 + 显示模式）
 // ============================================================================
 
@@ -241,9 +211,9 @@ async function loadTranslationSettings(): Promise<ResolvedTranslationSettings> {
 const TranslationLoading: React.FC<{ label: string }> = ({ label }) => (
   <div className="px-3 py-3" role="status" aria-label={label}>
     <div className="space-y-2" aria-hidden>
-      <div className="h-3 w-[92%] rounded-md bg-muted/60 animate-pulse motion-reduce:animate-none" />
-      <div className="h-3 w-[74%] rounded-md bg-muted/60 animate-pulse motion-reduce:animate-none" />
-      <div className="h-3 w-[55%] rounded-md bg-muted/60 animate-pulse motion-reduce:animate-none" />
+      <div className="chat-shimmer h-3 w-[92%]" />
+      <div className="chat-shimmer h-3 w-[74%]" style={{ animationDelay: '0.15s' }} />
+      <div className="chat-shimmer h-3 w-[55%]" style={{ animationDelay: '0.3s' }} />
     </div>
     <div className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground">
       <PulseDot className="h-1.5 w-1.5 text-primary/70" />
@@ -258,7 +228,6 @@ const TranslationLoading: React.FC<{ label: string }> = ({ label }) => (
 
 export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
   sourceText,
-  selectionRect,
   isVisible,
   contextBefore = '',
   contextAfter = '',
@@ -266,7 +235,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
   onAddToInput,
 }) => {
   const { t } = useTranslation(['translation', 'chatV2']);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [copiedSource, setCopiedSource] = useState(false);
   const [copiedTranslation, setCopiedTranslation] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -276,8 +245,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   // aligned 模式最终走了"整段译文当单段"的降级路径 → UI 明示，不静默丢对照结构
   const [usedFallback, setUsedFallback] = useState(false);
-
-  const [popoverPosition, setPopoverPosition] = useState<PopoverPlacement | null>(null);
+  // 可折叠：头部常显，正文经 .chat-collapse 过渡
+  const [collapsed, setCollapsed] = useState(false);
 
   const [srcLang, setSrcLang] = useState('auto');
   const [tgtLang, setTgtLang] = useState('zh-CN');
@@ -609,7 +578,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     [sourceText, contextBefore, contextAfter, cancelActiveStream, clearStallTimer, t]
   );
 
-  // 自动触发：popover 打开 + 拿到 settings 后开译
+  // 自动触发：卡片打开 + 拿到 settings 后开译
   useEffect(() => {
     if (!isVisible || !sourceText) return;
 
@@ -638,8 +607,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     // 依赖 isVisible/sourceText：每次重新打开都重新跑（不依赖 doTranslate 引用变更）
   }, [isVisible, sourceText]);
 
-  // 关闭/卸载时清理：取消请求 + 清空状态
-  // （不清 popoverPosition：让退出动画在原地播放，重开时 useLayoutEffect 会同步重算）
+  // 关闭时清理：取消请求 + 清空状态
   useEffect(() => {
     if (!isVisible) {
       reqIdRef.current++;
@@ -652,6 +620,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
       setCopiedTranslation(false);
       setHoveredIndex(null);
       setUsedFallback(false);
+      setCollapsed(false);
     }
   }, [isVisible, cancelActiveStream]);
 
@@ -665,109 +634,22 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     };
   }, [cancelActiveStream]);
 
-  // 全局视图切换离开 chat-v2 时，强制关闭弹窗
-  const currentView = useViewStore((s) => s.currentView);
+  // ===== 焦点管理：打开时聚焦卡片（读屏/键盘可达） =====
   useEffect(() => {
-    if (isVisible && currentView !== 'chat-v2') {
-      onClose();
-    }
-  }, [isVisible, currentView, onClose]);
-
-  // ===== 焦点管理：打开时聚焦弹层（读屏/键盘可达），关闭时还原焦点 =====
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
-  const openedAtRef = useRef(0);
-  useEffect(() => {
-    if (isVisible) {
-      openedAtRef.current = Date.now();
-      previouslyFocusedRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const raf = requestAnimationFrame(() => {
-        popoverRef.current?.focus({ preventScroll: true });
-      });
-      return () => cancelAnimationFrame(raf);
-    }
-    const prev = previouslyFocusedRef.current;
-    previouslyFocusedRef.current = null;
-    if (prev && document.contains(prev)) {
-      prev.focus({ preventScroll: true });
-    }
+    if (!isVisible) return;
+    const raf = requestAnimationFrame(() => {
+      rootRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [isVisible]);
 
-  // ===== 定位（含箭头/翻转信息） =====
-
-  const updatePopoverPosition = useCallback(() => {
-    const popover = popoverRef.current;
-    if (!isVisible || !selectionRect || !popover) return;
-
-    const width = popover.offsetWidth || 520;
-    const height = popover.offsetHeight || 180;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const above = selectionRect.top - height - POPOVER_GAP;
-    const below = selectionRect.bottom + POPOVER_GAP;
-    const fitsAbove = above >= VIEWPORT_PADDING;
-    const fitsBelow = below + height <= viewportHeight - VIEWPORT_PADDING;
-    // 优先上方；上方放不下且下方放得下时翻转到下方
-    const placement: 'above' | 'below' = fitsAbove || !fitsBelow ? 'above' : 'below';
-    const preferredTop = placement === 'above' ? above : below;
-    const maxTop = Math.max(VIEWPORT_PADDING, viewportHeight - height - VIEWPORT_PADDING);
-    const top = Math.min(Math.max(preferredTop, VIEWPORT_PADDING), maxTop);
-    const preferredLeft = selectionRect.left + selectionRect.width / 2 - width / 2;
-    const maxLeft = Math.max(VIEWPORT_PADDING, viewportWidth - width - VIEWPORT_PADDING);
-    const left = Math.min(Math.max(preferredLeft, VIEWPORT_PADDING), maxLeft);
-    // 箭头始终指向选区中心（水平钳制在卡片圆角以内）
-    const anchorX = selectionRect.left + selectionRect.width / 2;
-    const arrowLeft = Math.min(Math.max(anchorX - left, 18), width - 18);
-
-    setPopoverPosition((current) =>
-      current?.top === top &&
-      current.left === left &&
-      current.placement === placement &&
-      current.arrowLeft === arrowLeft
-        ? current
-        : { top, left, placement, arrowLeft }
-    );
-  }, [isVisible, selectionRect]);
-
-  // rAF 节流：ResizeObserver / resize 高频触发时每帧至多重算一次
-  const positionRafRef = useRef<number | null>(null);
-  const schedulePositionUpdate = useCallback(() => {
-    if (positionRafRef.current !== null) return;
-    positionRafRef.current = requestAnimationFrame(() => {
-      positionRafRef.current = null;
-      updatePopoverPosition();
-    });
-  }, [updatePopoverPosition]);
-
-  useEffect(() => {
-    return () => {
-      if (positionRafRef.current !== null) {
-        cancelAnimationFrame(positionRafRef.current);
-        positionRafRef.current = null;
-      }
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!isVisible) return;
-    updatePopoverPosition();
-  }, [isVisible, updatePopoverPosition]);
-
-  useEffect(() => {
-    if (!isVisible || !popoverRef.current) return;
-    const observer = typeof ResizeObserver === 'undefined'
-      ? null
-      : new ResizeObserver(schedulePositionUpdate);
-    observer?.observe(popoverRef.current);
-    return () => observer?.disconnect();
-  }, [isVisible, schedulePositionUpdate]);
-
-  useEventRegistry(
-    isVisible
-      ? [{ target: 'window', type: 'resize', listener: schedulePositionUpdate as EventListener, options: { passive: true } }]
-      : [],
-    [isVisible, schedulePositionUpdate],
-  );
+  // Escape 关闭（仅当焦点在卡片内：内联卡片不劫持全局键盘）
+  const handleRootKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      onClose();
+    }
+  }, [onClose]);
 
   // ===== 语言切换 =====
 
@@ -796,54 +678,6 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     doTranslate({ src: nextSrc, tgt: nextTgt, mode: settings.mode, modelId: settings.modelId });
   }, [srcLang, tgtLang, settings.mode, settings.modelId, doTranslate]);
 
-  // ===== 关闭事件 =====
-
-  // Escape 关闭
-  useEffect(() => {
-    if (!isVisible) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isVisible, onClose]);
-
-  // Android 系统返回键 = 关闭浮层（自绘 popover，协调器 Radix 兜底覆盖不到）
-  const backCloseRef = useRef(onClose);
-  backCloseRef.current = onClose;
-  useEffect(() => {
-    if (!isVisible) return;
-    return registerBackHandler(() => {
-      backCloseRef.current();
-      return true;
-    }, BACK_PRIORITY.overlay);
-  }, [isVisible]);
-
-  // 外部点击关闭（pointerdown：移动端触摸滚动/拖选不产生 mousedown，与 ExplainPopover 一致）
-  useEffect(() => {
-    if (!isVisible) return;
-    const handlePointerDown = (e: PointerEvent) => {
-      if (isInsideOverlay(e.target, popoverRef.current)) return;
-      onClose();
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [isVisible, onClose]);
-
-  // 滚动关闭（忽略 popover / 语言下拉内部滚动）：选区 rect 是打开时的快照，
-  // 滚动后无法跟随，关闭是与 ExplainPopover 一致的策略；
-  // 打开初期设宽限期，避免触控选词后的惯性滚动立刻误关
-  useEffect(() => {
-    if (!isVisible) return;
-    const handleScroll = (e: Event) => {
-      if (isInsideOverlay(e.target, popoverRef.current)) return;
-      if (Date.now() - openedAtRef.current < 350) return;
-      onClose();
-    };
-    window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
-    return () => window.removeEventListener('scroll', handleScroll, { capture: true });
-  }, [isVisible, onClose]);
-
   // ===== 派生内容 =====
 
   // 完整原文文本（aligned 模式优先用拼接的分段以与译文对齐；否则回退到 sourceText）
@@ -863,7 +697,12 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
 
   const handleCopySource = useCallback(async () => {
     if (!fullSource) return;
-    await copyTextToClipboard(fullSource);
+    try {
+      await copyTextToClipboard(fullSource);
+    } catch (err) {
+      console.error('[TranslationPopover] Copy source failed:', err);
+      return;
+    }
     setCopiedSource(true);
     if (copiedSourceTimerRef.current) clearTimeout(copiedSourceTimerRef.current);
     copiedSourceTimerRef.current = setTimeout(() => setCopiedSource(false), 1500);
@@ -871,7 +710,12 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
 
   const handleCopyTranslation = useCallback(async () => {
     if (!fullTranslation) return;
-    await copyTextToClipboard(fullTranslation);
+    try {
+      await copyTextToClipboard(fullTranslation);
+    } catch (err) {
+      console.error('[TranslationPopover] Copy translation failed:', err);
+      return;
+    }
     setCopiedTranslation(true);
     if (copiedTranslationTimerRef.current) clearTimeout(copiedTranslationTimerRef.current);
     copiedTranslationTimerRef.current = setTimeout(() => setCopiedTranslation(false), 1500);
@@ -887,6 +731,10 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     doTranslate({ src: srcLang, tgt: tgtLang, mode: settings.mode, modelId: settings.modelId });
   }, [srcLang, tgtLang, settings.mode, settings.modelId, doTranslate]);
 
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => !prev);
+  }, []);
+
   const srcOptions = SOURCE_LANGUAGES.map((l) => ({ value: l.code, label: t(l.label) }));
   const tgtOptions = TARGET_LANGUAGES.map((l) => ({ value: l.code, label: t(l.label) }));
 
@@ -895,292 +743,263 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
 
   const canSwap = srcLang !== 'auto';
 
-  return createPortal(
-    <AnimatePresence>
-      {isVisible && selectionRect && (
-        // OverlayLayerProvider：声明 popover 是 Z_INDEX.popover 档；其内部任何使用
-        // useNestedOverlayZ() 的下拉/菜单（如 AppSelect 的语言列表）会自动抬升一档，
-        // 不再需要在调用点手写 z-index。
-        <OverlayLayerProvider baseZ={Z_INDEX.popover}>
-          <motion.div
-            ref={popoverRef}
-            data-translation-popover
-            data-wb-blur-surface
-            role="dialog"
-            aria-label={t('chatV2:selectionToolbar.translate')}
-            tabIndex={-1}
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.14 } }}
-            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className={cn(
-              'fixed w-[520px] max-w-[calc(100vw-24px)]',
-              'rounded-2xl border border-border/50',
-              'bg-popover/80 backdrop-blur-xl backdrop-saturate-150',
-              'shadow-floating ring-1 ring-border/40 outline-none'
-            )}
-            style={{
-              top: popoverPosition?.top ?? -9999,
-              left: popoverPosition?.left ?? -9999,
-              visibility: popoverPosition ? 'visible' : 'hidden',
-              zIndex: Z_INDEX.popover,
-              // 缩放动画从选区锚点方向展开（箭头位置 + 上/下侧）
-              transformOrigin: popoverPosition
-                ? `${popoverPosition.arrowLeft}px ${popoverPosition.placement === 'above' ? '100%' : '0%'}`
-                : undefined,
-            }}
-            onMouseDown={(e) => e.preventDefault()}
+  if (!isVisible) return null;
+
+  return (
+    <div
+      ref={rootRef}
+      data-translation-popover
+      role="group"
+      aria-label={t('chatV2:selectionToolbar.translate')}
+      tabIndex={-1}
+      onKeyDown={handleRootKeyDown}
+      className={cn(
+        'chat-msg-enter mt-2 w-full',
+        'rounded-[var(--chat-radius-md,12px)] border border-border/50',
+        'bg-muted/30',
+        'outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+      )}
+    >
+      {/* 头部：语言选择（含对调） + 模型名（只读） + 折叠 + 关闭 */}
+      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-1.5">
+        <div className="flex items-center gap-1 min-w-0">
+          <AppSelect
+            value={srcLang}
+            onValueChange={handleSrcLangChange}
+            options={srcOptions}
+            variant="ghost"
+            size="sm"
+            width={120}
+            className="text-xs font-medium"
+          />
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            disabled={!canSwap}
+            onClick={handleSwapLanguages}
+            aria-label={t('translation:chat_popover.swap_languages')}
+            title={
+              canSwap
+                ? t('translation:chat_popover.swap_languages')
+                : t('translation:chat_popover.cannot_swap_auto')
+            }
+            className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground"
           >
-            {/* 箭头：指向选区中心 */}
-            {popoverPosition && (
-              <span
-                aria-hidden
-                data-wb-blur-surface
-                className={cn(
-                  'absolute rotate-45 rounded-[2px]',
-                  'bg-popover/80 backdrop-blur-xl',
-                  popoverPosition.placement === 'above'
-                    ? 'border-b border-r border-border/50'
-                    : 'border-t border-l border-border/50'
-                )}
-                style={{
-                  width: ARROW_SIZE,
-                  height: ARROW_SIZE,
-                  left: popoverPosition.arrowLeft - ARROW_SIZE / 2,
-                  ...(popoverPosition.placement === 'above'
-                    ? { bottom: -ARROW_SIZE / 2 }
-                    : { top: -ARROW_SIZE / 2 }),
-                }}
-              />
-            )}
+            <ArrowsLeftRight size={12} />
+          </NotionButton>
+          <AppSelect
+            value={tgtLang}
+            onValueChange={handleTgtLangChange}
+            options={tgtOptions}
+            variant="ghost"
+            size="sm"
+            width={120}
+            className="text-xs font-medium"
+          />
+        </div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {settings.modelDisplayName && (
+            <span
+              className="text-xs text-muted-foreground/70 truncate max-w-[140px]"
+              title={t('translation:popover.model_hint', { name: settings.modelDisplayName })}
+            >
+              {settings.modelDisplayName}
+            </span>
+          )}
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={toggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? t('common:actions.expand') : t('common:actions.collapse')}
+            title={collapsed ? t('common:actions.expand') : t('common:actions.collapse')}
+            // ★ 低-11：24px 视觉不变，触屏伪元素扩命中区到 ≥44px（与 ExplainPopover 一致）
+            className="!h-6 !w-6 shrink-0 text-muted-foreground/50 hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+          >
+            <CaretDown
+              size={13}
+              className={cn(
+                'transition-transform duration-[var(--chat-motion-base,200ms)]',
+                collapsed && '-rotate-90'
+              )}
+            />
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={onClose}
+            aria-label={t('common:actions.close')}
+            className="!h-6 !w-6 shrink-0 text-muted-foreground/50 hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+          >
+            <X size={13} />
+          </NotionButton>
+        </div>
+      </div>
 
-            {/* 头部：语言选择（含对调） + 模型名（只读） + 关闭 */}
-            <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-1.5 border-b border-border/30">
-              <div className="flex items-center gap-1 min-w-0">
-                <AppSelect
-                  value={srcLang}
-                  onValueChange={handleSrcLangChange}
-                  options={srcOptions}
-                  variant="ghost"
-                  size="sm"
-                  width={120}
-                  className="text-xs font-medium"
-                />
+      {/* 正文（可折叠） */}
+      <div className="chat-collapse" data-open={collapsed ? 'false' : 'true'}>
+        <div className={cn(collapsed && 'pointer-events-none')} aria-hidden={collapsed}>
+          {/* 内容区 */}
+          <div className="max-h-[min(360px,50vh)] overflow-y-auto border-t border-border/30">
+            {error ? (
+              <div className="flex items-center gap-2 px-3 py-3">
+                <p className="text-xs text-destructive flex-1">{error}</p>
                 <NotionButton
                   variant="ghost"
                   size="icon"
                   iconOnly
-                  disabled={!canSwap}
-                  onClick={handleSwapLanguages}
-                  aria-label={t('translation:chat_popover.swap_languages')}
-                  title={
-                    canSwap
-                      ? t('translation:chat_popover.swap_languages')
-                      : t('translation:chat_popover.cannot_swap_auto')
-                  }
-                  className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground"
+                  onClick={handleRetry}
+                  aria-label={t('common:actions.retry')}
+                  title={t('common:actions.retry')}
+                  className="!h-6 !w-6 shrink-0"
                 >
-                  <ArrowsLeftRight size={12} />
-                </NotionButton>
-                <AppSelect
-                  value={tgtLang}
-                  onValueChange={handleTgtLangChange}
-                  options={tgtOptions}
-                  variant="ghost"
-                  size="sm"
-                  width={120}
-                  className="text-xs font-medium"
-                />
-              </div>
-              <div className="flex items-center gap-1.5 min-w-0">
-                {settings.modelDisplayName && (
-                  <span
-                    className="text-xs text-muted-foreground/70 truncate max-w-[140px]"
-                    title={t('translation:popover.model_hint', { name: settings.modelDisplayName })}
-                  >
-                    {settings.modelDisplayName}
-                  </span>
-                )}
-                <NotionButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={onClose}
-                  aria-label={t('common:actions.close')}
-                  className="!h-6 !w-6 shrink-0 text-muted-foreground/50 hover:text-foreground"
-                >
-                  <X size={13} />
+                  <ArrowsClockwise size={14} />
                 </NotionButton>
               </div>
-            </div>
-
-            {/* 内容区 */}
-            <div className="max-h-[min(280px,calc(100vh-160px))] overflow-y-auto">
-              {error ? (
-                <div className="flex items-center gap-2 px-3 py-3">
-                  <p className="text-xs text-destructive flex-1">{error}</p>
-                  <NotionButton
-                    variant="ghost"
-                    size="icon"
-                    iconOnly
-                    onClick={handleRetry}
-                    aria-label={t('common:actions.retry')}
-                    title={t('common:actions.retry')}
-                    className="!h-6 !w-6 shrink-0"
-                  >
-                    <ArrowsClockwise size={14} />
-                  </NotionButton>
-                </div>
-              ) : settings.mode === 'aligned' ? (
-                segments && segments.length > 0 ? (
-                  <>
-                    <div className="flex gap-0 mx-2 my-2 rounded-lg overflow-hidden border border-border/30">
-                      {/* 左：原文分段 */}
-                      <div className="flex-1 border-r border-border/30 px-1.5 py-1 text-sm leading-relaxed">
-                        {segments.map((seg, i) => (
-                          <motion.span
-                            key={`src-${i}`}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-                            className={cn(
-                              'inline px-0.5 py-0.5 rounded-sm cursor-default transition-colors duration-150',
-                              hoveredIndex === i && HIGHLIGHT_ACTIVE.bg,
-                              hoveredIndex === i && HIGHLIGHT_ACTIVE.text
-                            )}
-                            onMouseEnter={() => setHoveredIndex(i)}
-                            onMouseLeave={() => setHoveredIndex(null)}
-                          >
-                            {seg.src}
-                          </motion.span>
-                        ))}
-                      </div>
-                      {/* 右：译文分段（逐段渐入） */}
-                      <div className="flex-1 px-1.5 py-1 text-sm leading-relaxed">
-                        {segments.map((seg, i) => (
-                          <motion.span
-                            key={`tgt-${i}`}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-                            className={cn(
-                              'inline px-0.5 py-0.5 rounded-sm cursor-default transition-colors duration-150',
-                              hoveredIndex === i && HIGHLIGHT_ACTIVE.bg,
-                              hoveredIndex === i && HIGHLIGHT_ACTIVE.text
-                            )}
-                            onMouseEnter={() => setHoveredIndex(i)}
-                            onMouseLeave={() => setHoveredIndex(null)}
-                          >
-                            {seg.tgt}
-                          </motion.span>
-                        ))}
-                      </div>
-                    </div>
-                    {/* aligned 流式进行中：段计数进度（避免中段空白像卡死） */}
-                    {isLoading && (
-                      <div className="flex items-center gap-1.5 px-3 pb-2 text-xs text-muted-foreground">
-                        <PulseDot className="h-1.5 w-1.5 text-primary/70" />
-                        <span>
-                          {t('translation:chat_popover.segments_progress', { n: segments.length })}
+            ) : settings.mode === 'aligned' ? (
+              segments && segments.length > 0 ? (
+                <>
+                  <div className="flex gap-0 mx-2 my-2 rounded-lg overflow-hidden border border-border/30">
+                    {/* 左：原文分段 */}
+                    <div className="flex-1 border-r border-border/30 px-1.5 py-1 text-sm leading-relaxed">
+                      {segments.map((seg, i) => (
+                        <span
+                          key={`src-${i}`}
+                          className={cn(
+                            'chat-fade-in inline px-0.5 py-0.5 rounded-sm cursor-default transition-colors duration-150',
+                            hoveredIndex === i && HIGHLIGHT_ACTIVE.bg,
+                            hoveredIndex === i && HIGHLIGHT_ACTIVE.text
+                          )}
+                          onMouseEnter={() => setHoveredIndex(i)}
+                          onMouseLeave={() => setHoveredIndex(null)}
+                        >
+                          {seg.src}
                         </span>
-                      </div>
-                    )}
-                    {/* 降级明示：未拿到短语对照，展示的是整段译文 */}
-                    {!isLoading && usedFallback && (
-                      <div className="px-3 pb-2 text-xs text-muted-foreground/80">
-                        {t('translation:chat_popover.fallback_notice')}
-                      </div>
-                    )}
-                  </>
-                ) : isLoading ? (
-                  <TranslationLoading label={t('translation:popover.translating')} />
-                ) : null
-              ) : (
-                // streaming 单栏
-                streamingText ? (
-                  <div className="px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
-                    {streamingText}
-                    {isLoading && (
-                      <motion.span
-                        className="inline-block w-[2px] h-3.5 ml-0.5 bg-primary/60 align-middle"
-                        animate={{ opacity: [1, 0.2, 1] }}
-                        transition={{ duration: 1, repeat: Infinity, ease: 'easeInOut' }}
-                      />
-                    )}
+                      ))}
+                    </div>
+                    {/* 右：译文分段（逐段渐入） */}
+                    <div className="flex-1 px-1.5 py-1 text-sm leading-relaxed">
+                      {segments.map((seg, i) => (
+                        <span
+                          key={`tgt-${i}`}
+                          className={cn(
+                            'chat-fade-in inline px-0.5 py-0.5 rounded-sm cursor-default transition-colors duration-150',
+                            hoveredIndex === i && HIGHLIGHT_ACTIVE.bg,
+                            hoveredIndex === i && HIGHLIGHT_ACTIVE.text
+                          )}
+                          onMouseEnter={() => setHoveredIndex(i)}
+                          onMouseLeave={() => setHoveredIndex(null)}
+                        >
+                          {seg.tgt}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                ) : isLoading ? (
-                  <TranslationLoading label={t('translation:popover.translating')} />
-                ) : null
+                  {/* aligned 流式进行中：段计数进度（避免中段空白像卡死） */}
+                  {isLoading && (
+                    <div className="flex items-center gap-1.5 px-3 pb-2 text-xs text-muted-foreground">
+                      <PulseDot className="h-1.5 w-1.5 text-primary/70" />
+                      <span>
+                        {t('translation:chat_popover.segments_progress', { n: segments.length })}
+                      </span>
+                    </div>
+                  )}
+                  {/* 降级明示：未拿到短语对照，展示的是整段译文 */}
+                  {!isLoading && usedFallback && (
+                    <div className="px-3 pb-2 text-xs text-muted-foreground/80">
+                      {t('translation:chat_popover.fallback_notice')}
+                    </div>
+                  )}
+                </>
+              ) : isLoading ? (
+                <TranslationLoading label={t('translation:popover.translating')} />
+              ) : null
+            ) : (
+              // streaming 单栏
+              streamingText ? (
+                <div className="px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
+                  {streamingText}
+                  {isLoading && (
+                    <span
+                      aria-hidden="true"
+                      className="inline-block w-[2px] h-3.5 ml-0.5 bg-primary/60 align-middle animate-pulse motion-reduce:animate-none"
+                    />
+                  )}
+                </div>
+              ) : isLoading ? (
+                <TranslationLoading label={t('translation:popover.translating')} />
+              ) : null
+            )}
+          </div>
+
+          {/* 底部操作栏：流式中可见但禁用（明确"翻译中"），完成后可交互 */}
+          {hasContent && !error && (
+            <div className="flex items-center gap-1 px-2.5 pb-2 border-t border-border/30 pt-1.5">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={handleCopySource}
+                disabled={isLoading}
+                title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
+                className="gap-1.5 !px-2 text-xs"
+              >
+                <IconSwap
+                  active={copiedSource}
+                  a={<Copy size={13} />}
+                  b={<Check size={13} className="text-success" />}
+                />
+                <span>
+                  {copiedSource
+                    ? t('translation:popover.copied')
+                    : t('translation:popover.copy_source')}
+                </span>
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={handleCopyTranslation}
+                disabled={isLoading}
+                title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
+                className="gap-1.5 !px-2 text-xs"
+              >
+                <IconSwap
+                  active={copiedTranslation}
+                  a={<Copy size={13} />}
+                  b={<Check size={13} className="text-success" />}
+                />
+                <span>
+                  {copiedTranslation
+                    ? t('translation:popover.copied')
+                    : t('translation:popover.copy_translation')}
+                </span>
+              </NotionButton>
+              {onAddToInput && (
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleAddToInput}
+                  disabled={isLoading}
+                  title={isLoading ? t('translation:chat_popover.add_streaming_hint') : undefined}
+                  className="gap-1.5 !px-2 text-xs"
+                >
+                  <ChatDots size={13} />
+                  <span>{t('chatV2:selectionToolbar.addToChat')}</span>
+                </NotionButton>
+              )}
+              {isLoading && (
+                <span className="ml-auto inline-flex items-center gap-1.5 pr-1 text-xs text-muted-foreground">
+                  <PulseDot className="h-1.5 w-1.5 text-primary/70" />
+                  {t('translation:chat_popover.streaming')}
+                </span>
               )}
             </div>
-
-            {/* 底部操作栏：流式中可见但禁用（明确"翻译中"），完成后可交互 */}
-            {hasContent && !error && (
-              <div className="flex items-center gap-1 px-2.5 pb-2 border-t border-border/30 pt-1.5">
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCopySource}
-                  disabled={isLoading}
-                  title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                  className="gap-1.5 !px-2 text-xs"
-                >
-                  <IconSwap
-                    active={copiedSource}
-                    a={<Copy size={13} />}
-                    b={<Check size={13} className="text-success" />}
-                  />
-                  <span>
-                    {copiedSource
-                      ? t('translation:popover.copied')
-                      : t('translation:popover.copy_source')}
-                  </span>
-                </NotionButton>
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCopyTranslation}
-                  disabled={isLoading}
-                  title={isLoading ? t('translation:chat_popover.copy_streaming_hint') : undefined}
-                  className="gap-1.5 !px-2 text-xs"
-                >
-                  <IconSwap
-                    active={copiedTranslation}
-                    a={<Copy size={13} />}
-                    b={<Check size={13} className="text-success" />}
-                  />
-                  <span>
-                    {copiedTranslation
-                      ? t('translation:popover.copied')
-                      : t('translation:popover.copy_translation')}
-                  </span>
-                </NotionButton>
-                {onAddToInput && (
-                  <NotionButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleAddToInput}
-                    disabled={isLoading}
-                    title={isLoading ? t('translation:chat_popover.add_streaming_hint') : undefined}
-                    className="gap-1.5 !px-2 text-xs"
-                  >
-                    <ChatDots size={13} />
-                    <span>{t('chatV2:selectionToolbar.addToChat')}</span>
-                  </NotionButton>
-                )}
-                {isLoading && (
-                  <span className="ml-auto inline-flex items-center gap-1.5 pr-1 text-xs text-muted-foreground">
-                    <PulseDot className="h-1.5 w-1.5 text-primary/70" />
-                    {t('translation:chat_popover.streaming')}
-                  </span>
-                )}
-              </div>
-            )}
-          </motion.div>
-        </OverlayLayerProvider>
-      )}
-    </AnimatePresence>,
-    document.body
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 

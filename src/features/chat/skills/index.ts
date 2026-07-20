@@ -106,14 +106,12 @@ export type { BuiltinSkillCustomization } from './builtinStorage';
 
 // UI 组件
 export {
-  SkillCard,
   ActiveSkillBadge,
   ActiveSkillBadgeCompact,
   NoActiveSkillButton,
   SkillSelector,
 } from './components';
 export type {
-  SkillCardProps,
   ActiveSkillBadgeProps,
   NoActiveSkillProps,
   SkillSelectorProps,

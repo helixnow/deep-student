@@ -149,7 +149,7 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
     }
   }, [canDelete, isDeleting, deleteArmed, disarmDelete, onDelete, onClose]);
 
-  const barButtonClassName = 'flex-1 min-w-0 justify-center gap-1.5 !px-2 text-[13px]';
+  const barButtonClassName = 'flex-1 min-w-0 justify-center gap-1.5 !px-2 text-ui';
 
   return (
     <div
@@ -181,7 +181,7 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
             <IconSwap
               active={copied}
               a={<CopySimple className="h-4 w-4" />}
-              b={<Check className="h-4 w-4 text-green-500" />}
+              b={<Check className="h-4 w-4 text-success" />}
             />
             <span>{t('messageItem.actions.copy')}</span>
           </NotionButton>

@@ -92,7 +92,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
               <span className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
                 {getSessionTitleText(title, t('page.untitled'))}
               </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60 shrink-0">
+              <span className="text-2xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground/60 shrink-0">
                 {items.length}
               </span>
             </button>
@@ -110,7 +110,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
                       <Robot size={12} className="text-primary/40 mt-0.5 shrink-0" />
                     )}
                     <p
-                      className="text-xs text-muted-foreground line-clamp-2 leading-relaxed [&_mark]:bg-yellow-200/60 [&_mark]:dark:bg-yellow-500/30 [&_mark]:rounded-sm [&_mark]:px-0.5"
+                      className="text-xs text-muted-foreground line-clamp-2 leading-relaxed [&_mark]:bg-warning/30 [&_mark]:rounded-sm [&_mark]:px-0.5"
                       dangerouslySetInnerHTML={{ __html: item.snippet }}
                     />
                   </div>
@@ -119,7 +119,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
               {hasMore && (
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleExpanded(sessionId); }}
-                  className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                  className="flex items-center gap-1 px-2 py-0.5 text-2xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
                 >
                   <CaretDown size={12} className={cn('transition-transform', isExpanded && 'rotate-180')} />
                   {isExpanded

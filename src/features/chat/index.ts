@@ -130,6 +130,9 @@ export type {
 
 export { sessionManager } from './core/session';
 
+// 「引用到对话」无活动会话时的闭环入口（learning-hub / notes / workbench 调用）
+export { ensureActiveChatSession } from './pages/ensureActiveChatSession';
+
 export type {
   ISessionManager,
   CreateSessionOptions,
@@ -192,7 +195,6 @@ export {
   reloadSkills,
   loadSingleSkill,
   // UI 组件
-  SkillCard,
   ActiveSkillBadge,
   ActiveSkillBadgeCompact,
   NoActiveSkillButton,
@@ -214,7 +216,6 @@ export type {
   SkillResourceMetadata,
   SkillParseResult,
   SkillValidationResult,
-  SkillCardProps,
   ActiveSkillBadgeProps,
   NoActiveSkillProps,
   SkillSelectorProps,

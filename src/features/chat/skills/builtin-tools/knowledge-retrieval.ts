@@ -110,7 +110,7 @@ export const knowledgeRetrievalSkill: SkillDefinition = {
   embeddedTools: [
     {
       name: 'builtin-unified_search',
-      description: '统一搜索：同时搜索知识库文档、图片/PDF、用户记忆，合并返回最相关结果。这是默认的搜索工具，一次调用即可获取所有本地知识。\n\n**返回的 ID 字段说明**：每条结果包含 readResourceId（DSTU 格式，如 note_xxx/tb_xxx）、sourceId、resourceId（VFS UUID）。调用 resource_read 时传 readResourceId（优先）或 sourceId，不要传 resourceId（VFS UUID 格式）。调用 memory_read 时传记忆结果的 noteId 字段。\n\n引用方式：[知识库-N] 引用文本，[图片-N] 引用图片，[记忆-N] 引用记忆。pageIndex 不为空时可用 [知识库-N:图片]/[图片-N:图片] 渲染页面图片。',
+      description: '统一搜索：同时搜索知识库文档（文本向量）、图片/PDF 页面（VL 多模态向量）、用户记忆，合并返回最相关结果。这是默认的搜索工具，一次调用即可获取所有本地知识；扫描件、截图、手写笔记、整卷识别等视觉内容同样由本工具检索（已取代独立的 rag_search/multimodal_search）。\n\n**返回的 ID 字段说明**：每条结果包含 readResourceId（DSTU 格式，如 note_xxx/tb_xxx）、sourceId、resourceId（VFS UUID）。调用 resource_read 时传 readResourceId（优先）或 sourceId，不要传 resourceId（VFS UUID 格式）。调用 memory_read 时传记忆结果的 noteId 字段。\n\n引用方式：[知识库-N] 引用文本，[图片-N] 引用图片，[记忆-N] 引用记忆。pageIndex 不为空时可用 [知识库-N:图片]/[图片-N:图片] 渲染页面图片。',
       inputSchema: {
         type: 'object',
         properties: {

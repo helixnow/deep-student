@@ -63,20 +63,20 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
   return (
     <div
       className={cn(
-        'rounded-lg border border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20 p-4',
+        'rounded-lg border border-warning/30 bg-warning/10 p-4',
         'shadow-sm'
       )}
     >
       {/* 标题 */}
       <div className="flex items-center gap-2 mb-3">
-        <Warning size={20} className="text-amber-600 dark:text-amber-400" />
-        <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+        <Warning size={20} className="text-warning" />
+        <span className="text-sm font-medium text-warning">
           {t('chatV2:tool_limit.title')}
         </span>
       </div>
 
       {/* 内容 */}
-      <div className="text-sm text-amber-900/80 dark:text-amber-100/80 space-y-2">
+      <div className="text-sm text-warning/80 space-y-2">
         {paragraphs.map((paragraph, index) => {
           // 检查是否是列表项
           if (paragraph.includes('•')) {
@@ -86,9 +86,9 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
                 {items.map((item, itemIndex) => (
                   <li
                     key={itemIndex}
-                    className="flex items-start gap-2 text-amber-800/90 dark:text-amber-200/90"
+                    className="flex items-start gap-2 text-warning/90"
                   >
-                    <span className="text-amber-500 mt-0.5">•</span>
+                    <span className="text-warning mt-0.5">•</span>
                     <span>{item.replace(/^[•\s]+/, '')}</span>
                   </li>
                 ))}
@@ -115,8 +115,8 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
       )}
 
       {/* 🆕 继续执行按钮 + 快捷操作提示 */}
-      <div className="mt-4 pt-3 border-t border-amber-300/30 dark:border-amber-700/30 flex items-center justify-between">
-        <p className="text-xs text-amber-600 dark:text-amber-400">
+      <div className="mt-4 pt-3 border-t border-warning/30 flex items-center justify-between">
+        <p className="text-xs text-warning">
           {t('chatV2:tool_limit.hint')}
         </p>
         
@@ -126,7 +126,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
             size="sm"
             onClick={handleContinue}
             disabled={isDisabled}
-            className="bg-amber-500 hover:bg-amber-600 text-white"
+            className="bg-warning hover:bg-warning/90 text-white"
           >
             {isDisabled ? (
               <>

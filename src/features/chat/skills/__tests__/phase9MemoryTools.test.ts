@@ -14,7 +14,7 @@ describe("phase 9 memory tool contracts", () => {
     expect(vfsMemorySkill.allowedTools).toEqual(
       vfsMemorySkill.embeddedTools?.map((entry) => entry.name),
     );
-    expect(new Set(vfsMemorySkill.allowedTools).size).toBe(15);
+    expect(new Set(vfsMemorySkill.allowedTools).size).toBe(16);
     for (const name of [
       "builtin-memory_search",
       "builtin-memory_batch_move",

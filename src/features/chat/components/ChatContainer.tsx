@@ -21,7 +21,7 @@ import { Info } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { MessageList } from './MessageList';
 import { InputBarV2 } from './input-bar';
-import { ChatErrorBoundary } from './ChatErrorBoundary';
+import { ChatErrorBoundary, ErrorFallback } from './ChatErrorBoundary';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -243,33 +243,14 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     );
   }
 
-  // 适配器初始化错误
+  // 适配器初始化错误 —— 与错误边界 fallback 共用同一套错误视觉（ErrorFallback）
   if (adapterError) {
     return (
-      <div className={cn(
-        'flex flex-col items-center justify-center h-full p-4',
-        'text-center',
-        className
-      )}>
-        <div className="text-destructive mb-4">
-          <svg
-            className="w-12 h-12 mx-auto mb-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
-          <p className="text-sm font-medium">{t('error.loadFailed')}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {adapterError}
-          </p>
-        </div>
+      <div className={cn('flex flex-col h-full', className)}>
+        <ErrorFallback
+          title={t('error.loadFailed')}
+          error={adapterError}
+        />
       </div>
     );
   }
@@ -328,7 +309,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
   const renderDisclaimer = (className?: string) => shouldShowDisclaimer ? (
     <div className={cn('text-center px-4 py-1', className)}>
-      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/50 select-none">
+      {/* 字号走 caption 地板 token（12px，见 chat.css --chat-caption-font-size），
+          不再低于移动端最小可读字号 */}
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/50 select-none">
         <Info size={12} className="h-3 w-3" />
         {t('common:aiDisclaimer.chatHint')}
       </span>
@@ -363,7 +346,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   ) : null;
 
   return (
-    <ChatErrorBoundary>
+    // resetKey：切换会话自动走出错误态并 remount 子树；重试逻辑内建于边界（mountCycle remount）
+    <ChatErrorBoundary resetKey={sessionId}>
     <div
       className={cn(
         'chat-v2',
@@ -416,14 +400,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         </>
       )}
 
-      {/* 🗑️ Anki 面板已从 Chat V2 移除 */}
-
-      {/* 记忆提取对话框 */}
-      {(
-        <>
-          {/* ★ 图谱模块已废弃 - GraphSelectDialog 已移除 */}
-        </>
-      )}
     </div>
     </ChatErrorBoundary>
   );

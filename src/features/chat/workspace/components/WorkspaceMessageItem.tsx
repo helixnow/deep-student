@@ -179,15 +179,16 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
         isFromCurrentAgent ? 'bg-primary/5 border-primary/20' : 'bg-muted/30'
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      {/* 窄屏：发送者/目标行允许换行 + 收缩，避免长 id 溢出 */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-xs font-medium">{senderLabel}</span>
-          <span className="text-[10px] text-muted-foreground font-mono">{shortSenderId}</span>
+          <span className="text-2xs text-muted-foreground font-mono">{shortSenderId}</span>
           {shortTargetId && (
             <>
               <span className="text-xs text-muted-foreground">→</span>
               <span className="text-xs font-medium">{targetLabel}</span>
-              <span className="text-[10px] text-muted-foreground font-mono">{shortTargetId}</span>
+              <span className="text-2xs text-muted-foreground font-mono">{shortTargetId}</span>
             </>
           )}
           {!shortTargetId && message.messageType === 'broadcast' && (
@@ -254,7 +255,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                     e.stopPropagation();
                     setIsSubagentFullHeight(!isSubagentFullHeight);
                   }}
-                  className="!h-6 !w-6"
+                  className="!h-8 !w-8 lg:!h-6 lg:!w-6"
                   aria-label={isSubagentFullHeight ? t('subagent.collapse') : t('subagent.expand')}
                   title={isSubagentFullHeight ? t('subagent.collapse') : t('subagent.expand')}
                 >
@@ -273,7 +274,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                       e.stopPropagation();
                       onViewFullSession(subagentSessionId);
                     }}
-                    className="!h-6 !w-6"
+                    className="!h-8 !w-8 lg:!h-6 lg:!w-6"
                     aria-label={t('subagent.viewFull')}
                     title={t('subagent.viewFull')}
                   >
@@ -288,8 +289,9 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
           {!isSubagentCollapsed && (
             <div
               className={cn(
+                // 高度用视口相对值封顶，避免小屏嵌套滚动超出可视范围
                 "border-t border-border/50 overflow-hidden",
-                isSubagentFullHeight ? "h-[500px]" : "h-[250px]"
+                isSubagentFullHeight ? "h-[min(500px,70vh)]" : "h-[min(250px,40vh)]"
               )}
             >
               <ChatContainer
@@ -302,7 +304,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
           )}
 
           {/* 底部元信息 */}
-          <div className="flex items-center gap-2 px-2 py-1 border-t border-border/30 bg-muted/20 text-[10px] text-muted-foreground">
+          <div className="flex items-center gap-2 px-2 py-1 border-t border-border/30 bg-muted/20 text-2xs text-muted-foreground">
             <span className="font-mono">{subagentSessionId.slice(-12)}</span>
           </div>
         </div>

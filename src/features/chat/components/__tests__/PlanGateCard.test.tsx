@@ -97,7 +97,7 @@ describe('PlanGateCard', () => {
     expect(payload).not.toHaveProperty('global_bypass');
   });
 
-  it('exposes alertdialog a11y labels and live countdown', () => {
+  it('renders as a non-modal region with a11y labels and live countdown', () => {
     render(
       <PlanGateCard
         sessionId="sess_1"
@@ -111,15 +111,17 @@ describe('PlanGateCard', () => {
       />,
     );
 
-    const dialog = screen.getByRole('alertdialog', { name: '确认执行计划' });
-    expect(dialog).toHaveAttribute('aria-modal', 'true');
-    expect(dialog.getAttribute('aria-describedby')).toBeTruthy();
+    // 内联卡不再伪装成模态对话框：region 角色、无 aria-modal
+    const region = screen.getByRole('region', { name: '确认执行计划' });
+    expect(region).not.toHaveAttribute('aria-modal');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(region.getAttribute('aria-describedby')).toBeTruthy();
     expect(screen.getByTestId('plan-gate-countdown')).toHaveAttribute('aria-live', 'polite');
     expect(screen.getByRole('button', { name: /确认执行|Confirm/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /拒绝|Reject/i })).toBeInTheDocument();
   });
 
-  it('moves focus into the dialog, traps Tab, and rejects on Escape', async () => {
+  it('moves initial focus into the card without a global Tab trap, and rejects on Escape', async () => {
     render(
       <PlanGateCard
         sessionId="sess_1"
@@ -134,15 +136,14 @@ describe('PlanGateCard', () => {
     );
 
     const reject = screen.getByRole('button', { name: /拒绝|Reject/i });
-    const approve = screen.getByRole('button', { name: /确认执行|Confirm/i });
     await waitFor(() => expect(reject).toHaveFocus());
 
+    // 非模态：document 级 Tab 不被劫持（焦点保持原位，交给浏览器自然 Tab 序）
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
-    expect(approve).toHaveFocus();
-    fireEvent.keyDown(document, { key: 'Tab' });
     expect(reject).toHaveFocus();
 
-    fireEvent.keyDown(document, { key: 'Escape' });
+    // Escape 在卡片内按下时等同拒绝
+    fireEvent.keyDown(reject, { key: 'Escape' });
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith(
         'chat_v2_plan_gate_respond',

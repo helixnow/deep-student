@@ -12,6 +12,7 @@ import i18n from 'i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { reportFrontendError } from '@/logging/errorReporter';
 
 export type AdapterErrorLevel = 'user' | 'dev';
 
@@ -96,6 +97,17 @@ export function reportAdapterError(options: ReportAdapterErrorOptions): AdapterE
     options.cause !== undefined && options.cause !== null
       ? getErrorMessage(options.cause)
       : undefined;
+
+  void reportFrontendError(options.cause ?? options.message, {
+    kind: 'PLUGIN_ERROR',
+    component: 'chat-v2-adapter',
+    level: options.level === 'dev' ? 'WARN' : 'ERROR',
+    extra: {
+      code: options.code,
+      sessionId: options.sessionId,
+      retryable: Boolean(options.retryable),
+    },
+  }).catch(() => undefined);
 
   if (options.level === 'dev') {
     debugLog.error(LOG_PREFIX, options.code, options.message, causeMessage ?? '');

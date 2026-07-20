@@ -72,7 +72,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
 ## 限制
 
 - 最多 **20** 条自动化（list 返回 count/max/capacity）；name ≤ 100 字符；prompt / agent_prompt ≤ 4000 字符
-- schedule.time 必须为 **24 小时制 HH:MM**（如 \`21:00\`）；weekly 必须提供 **weekday**（0=周日 … 6=周六）；monthly 必须提供 **day_of_month**（1–31，短月份落到月末）；interval 必须提供 **interval_minutes**（5–1440）；once 必须提供 **date**（YYYY-MM-DD，不能是过去时点），触发一次后自动完成、不再重复
+- schedule.time 必须为 **24 小时制 HH:MM**（如 \`21:00\`）；weekly 必须提供 **weekday**（0=周日 … 6=周六）或多天集合 **weekdays**（如每周一三五 → \`[1,3,5]\`，两者同时提供以 weekdays 为准）；monthly 必须提供 **day_of_month**（1–31，短月份落到月末）；interval 必须提供 **interval_minutes**（5–1440）；once 必须提供 **date**（YYYY-MM-DD，不能是过去时点），触发一次后自动完成、不再重复
 - 非 interval 调度可提供 IANA \`timezone\`（如 \`Asia/Shanghai\`）；不支持 cron 表达式
 - 补偿策略：skip=错过后跳过，run_once=恢复后补跑一次，catch_up_all=按历史时点逐次追赶
 - agent_turn 失败/超时也会通知并记录运行历史（心跳类静默）
@@ -127,7 +127,14 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
                 type: 'integer',
                 minimum: 0,
                 maximum: 6,
-                description: 'weekly 必填：0=周日 … 6=周六',
+                description: 'weekly 单天：0=周日 … 6=周六（提供 weekdays 时可省略）',
+              },
+              weekdays: {
+                type: 'array',
+                items: { type: 'integer', minimum: 0, maximum: 6 },
+                minItems: 1,
+                description:
+                  'weekly 多天集合（0=周日 … 6=周六），如每周一三五 → [1,3,5]；与 weekday 同时提供时以本字段为准',
               },
               day_of_month: {
                 type: 'integer',
@@ -298,7 +305,13 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
               kind: { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly', 'interval', 'once'] },
               time: { type: 'string', description: '非 interval 必填：24 小时制 HH:MM' },
               date: { type: 'string', description: 'once 必填：目标日期 YYYY-MM-DD（不能是过去时点）' },
-              weekday: { type: 'integer', minimum: 0, maximum: 6, description: 'weekly 必填：0=周日…6=周六' },
+              weekday: { type: 'integer', minimum: 0, maximum: 6, description: 'weekly 单天：0=周日…6=周六（提供 weekdays 时可省略）' },
+              weekdays: {
+                type: 'array',
+                items: { type: 'integer', minimum: 0, maximum: 6 },
+                minItems: 1,
+                description: 'weekly 多天集合（0=周日…6=周六），与 weekday 同时提供时以本字段为准',
+              },
               day_of_month: { type: 'integer', minimum: 1, maximum: 31, description: 'monthly 必填' },
               interval_minutes: { type: 'integer', minimum: 5, maximum: 1440, description: 'interval 必填：间隔分钟数' },
               timezone: { type: 'string', description: '非 interval 可选 IANA 时区' },
@@ -356,7 +369,7 @@ headless 运行时**没有用户在场**，工具集被策略预过滤（fail-cl
           automation_id: { type: 'string', minLength: 1, description: '可选：只看某条自动化的运行记录' },
           status: {
             type: 'string',
-            enum: ['queued', 'running', 'retrying', 'success', 'error', 'timeout', 'spawn_error', 'cancelled', 'heartbeat_ok'],
+            enum: ['queued', 'running', 'retrying', 'success', 'error', 'timeout', 'spawn_error', 'cancelled', 'heartbeat_ok', 'skipped'],
             description: '可选：按运行状态过滤（在当前页内过滤），如 error=失败、running=执行中',
           },
           page: { type: 'integer', minimum: 1, default: 1, description: '页码，从 1 开始' },

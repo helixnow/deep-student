@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { ChatContainer } from '../components/ChatContainer';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
-import { ThreadContentShell } from '../components/ui/ThreadContentShell';
+import { ThreadEmptyStateShell } from '../components/ui/ThreadEmptyStateShell';
 import { SessionBrowser } from '../components/session-browser';
 import { getErrorMessage } from '@/utils/errorUtils';
 // Learning Hub 学习资源侧边栏
@@ -102,8 +102,12 @@ const getAppIcon = (type: ResourceType) => {
   }
 };
 const LAST_SESSION_KEY = 'chat-v2-last-session-id';
-const DESKTOP_SECONDARY_PANEL_TRANSITION_MS = 220;
-const DESKTOP_SECONDARY_PANEL_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+// 次级面板动效对齐 chat 动效 token（motion.css）：
+// - 时长 = --chat-motion-base（200ms）；JS 侧 setTimeout 需要数值，
+//   与下方 duration-[var(--chat-motion-base)] 保持同源语义（token 变更时同步此值）
+// - 缓动 = --chat-motion-ease（标准出口曲线）
+const DESKTOP_SECONDARY_PANEL_TRANSITION_MS = 200;
+const DESKTOP_SECONDARY_PANEL_EASING = 'var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1))';
 const DESKTOP_SECONDARY_PANEL_WIDTH = 'clamp(320px, 42vw, 720px)';
 
 // ============================================================================
@@ -365,6 +369,9 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   const groupDragDisabled = normalizedSearchQuery.length > 0;
 
   const sessionsForBrowser = useMemo(() => {
+    // ★ 性能：分组查找建 Map，避免每个 session 在 displayGroups 上线性 find
+    // （O(sessions×groups) → O(sessions+groups)）
+    const groupById = new Map(displayGroups.map((group) => [group.id, group]));
     return sessions.map((s) => ({
       ...s,
       groupName: s.groupId ? groupNameMap.get(s.groupId) : undefined,
@@ -373,7 +380,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         const direct = metadata.workspaceId ?? metadata.workspace_id
           ?? metadata.defaultRuntimeRootId ?? metadata.default_runtime_root_id;
         if (typeof direct === 'string' && direct.trim()) return direct;
-        const group = displayGroups.find(item => item.id === s.groupId);
+        const group = s.groupId ? groupById.get(s.groupId) : undefined;
         return group?.defaultRuntimeRootId ?? 'default';
       })(),
     }));
@@ -514,13 +521,23 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
 
     const unsubscribe = store.subscribe((state, prevState) => {
       if (state.title && state.title !== prevState.title) {
-        setSessions((prev) =>
-          prev.map((s) =>
+        setSessions((prev) => {
+          // ★ 性能：列表项已是目标标题时返回原引用，跳过整页重渲染
+          // 及其连带的会话列表排序/分组派生重算
+          const existing = prev.find((s) => s.id === currentSessionId);
+          if (
+            !existing ||
+            (existing.title === state.title &&
+              existing.description === (state.description ?? existing.description))
+          ) {
+            return prev;
+          }
+          return prev.map((s) =>
             s.id === currentSessionId
               ? { ...s, title: state.title, description: state.description ?? s.description }
               : s
-          )
-        );
+          );
+        });
       }
     });
     return unsubscribe;
@@ -689,6 +706,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     startEditSession, saveSessionTitle, cancelEditSession,
     moveSessionToGroup, deleteSession, archiveSession, togglePinSession, formatTime,
+    // B3: 移动端点会话条目后收起左抽屉并回到聊天中屏
+    //（浏览视图下打开抽屉选会话也能闭环；桌面端不渲染该侧栏，空操作无副作用）
+    onSessionActivated: () => {
+      setViewMode('sidebar');
+      setSessionSheetOpen(false);
+    },
   });
 
   // ===== 侧边栏内容 hook =====
@@ -785,7 +808,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
 
   const desktopSecondaryPanelShouldRender = !isSmallScreen && desktopSecondaryPanelSnapshotMode !== null;
   const desktopSecondaryPanelShellClassName = cn(
-    'h-full overflow-hidden will-change-transform transition-[transform,opacity] duration-200 motion-reduce:transition-none',
+    'h-full overflow-hidden will-change-transform transition-[transform,opacity] duration-[var(--chat-motion-base,200ms)] motion-reduce:transition-none',
     desktopSecondaryPanelOpen ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-full opacity-0'
   );
 
@@ -1010,29 +1033,22 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         </div>
       );
     }
-    // 加载完成仍无会话（自动创建失败等）：品牌空状态 + 快速开始引导
+    // 加载完成仍无会话（自动创建失败等）：与会话内空态共用 ThreadEmptyStateShell
+    // 统一内容模型（品牌 → 标题 → 描述 → CTA → hint）；无会话时不渲染建议 chips
+    // （建议 chips 依赖输入栏承接 CHAT_V2_SET_INPUT，此处尚无会话/输入栏）
     return (
-      <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-8">
-        <ThreadContentShell className="chat-thread-enter">
-          <section
-            data-slot="chat-page-empty-state"
-            className="flex flex-col items-center gap-5 text-center"
-          >
-            <div
-              aria-hidden="true"
-              className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-shell-panel)] border border-border/60 bg-card text-primary shadow-[var(--shadow-shell-soft)]"
-            >
-              <Chat size={26} weight="duotone" />
-            </div>
-            <div className="space-y-1.5">
-              <h2 className="text-balance text-xl font-medium text-foreground">
-                {t('page.welcome')}
-              </h2>
-              <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted-foreground">
-                {t('page.emptyPage.subtitle')}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-2">
+      <div
+        data-slot="chat-page-empty-state"
+        className="chat-thread-enter flex flex-1 items-center justify-center overflow-y-auto px-6 py-8"
+      >
+        <ThreadEmptyStateShell
+          title={t('page.welcome')}
+          brandIcon={<Chat size={26} weight="duotone" />}
+          description={t('page.emptyPage.subtitle')}
+          suggestions={null}
+          hint={t('page.emptyPage.hint')}
+          actions={
+            <>
               <NotionButton variant="primary" size="sm" onClick={() => void createSession()}>
                 <Plus size={14} />
                 {t('page.newChat')}
@@ -1043,12 +1059,9 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
                   {t('browser.title')}
                 </NotionButton>
               )}
-            </div>
-            <p className="text-xs text-muted-foreground/60">
-              {t('page.emptyPage.hint')}
-            </p>
-          </section>
-        </ThreadContentShell>
+            </>
+          }
+        />
       </div>
     );
   };
@@ -1150,8 +1163,9 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         onFocusCapture={handleSandboxOwnerActivation}
       >
       {/* 页面级错误隔离：SessionBrowser / GroupEditor / 次级面板等线程外区域的
-          运行时错误在此兜底，避免打穿到 App ViewLayer 白屏整页 */}
-      <ChatErrorBoundary className="flex-1">
+          运行时错误在此兜底，避免打穿到 App ViewLayer 白屏整页。
+          resetKey：切换会话时自动清除错误态并 remount 子树 */}
+      <ChatErrorBoundary className="flex-1" resetKey={currentSessionId}>
       {/* ===== 移动端布局：DeepSeek 风格推拉式侧边栏 ===== */}
       {isSmallScreen ? (
         <MobileSlidingLayout
@@ -1272,7 +1286,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           </div>
           {desktopSecondaryPanelShouldRender && (
             <div
-              className="h-full shrink-0 overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_hsl(var(--shadow-base)/0.08)] transition-[width] duration-200 motion-reduce:transition-none"
+              className="h-full shrink-0 overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_hsl(var(--shadow-base)/0.08)] transition-[width] duration-[var(--chat-motion-base,200ms)] motion-reduce:transition-none"
               style={{
                 width: desktopSecondaryPanelOpen ? DESKTOP_SECONDARY_PANEL_WIDTH : 0,
                 transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,

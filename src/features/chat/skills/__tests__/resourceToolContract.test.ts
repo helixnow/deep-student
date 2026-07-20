@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest';
 
 import { learningResourceSkill } from '../builtin-tools/learning-resource';
 import { knowledgeRetrievalSkill } from '../builtin-tools/knowledge-retrieval';
-import { BUILTIN_NAMESPACE, BUILTIN_TOOLS } from '@/mcp/builtinMcpServer';
+import {
+  BUILTIN_NAMESPACE,
+  getBuiltinToolsWithDynamicSchema,
+} from '@/mcp/builtinMcpServer';
 
 const REQUIRED_TYPES = ['note', 'textbook', 'file', 'image', 'exam', 'essay', 'translation', 'mindmap'] as const;
 
-function getBuiltinTool(name: string) {
-  return BUILTIN_TOOLS.find(t => t.name === `${BUILTIN_NAMESPACE}${name}`);
+// 🔧 2026-07: 废弃的静态 BUILTIN_TOOLS 数组已删除；
+// 本测试现在校验从 Skills SSOT 动态派生的服务器 Schema。
+const derivedTools = getBuiltinToolsWithDynamicSchema();
+
+function getDerivedTool(name: string) {
+  return derivedTools.find(t => t.name === `${BUILTIN_NAMESPACE}${name}`);
 }
 
 describe('resource tool contract consistency', () => {
@@ -28,14 +35,27 @@ describe('resource tool contract consistency', () => {
     expect(unifiedEnum).toEqual(expect.arrayContaining(REQUIRED_TYPES));
   });
 
-  it('deprecated builtin server schemas remain aligned for resource tools', () => {
-    const listEnum = (((getBuiltinTool('resource_list')?.inputSchema as any)?.properties?.type?.enum ?? []) as string[]);
-    const searchEnum = ((((getBuiltinTool('resource_search')?.inputSchema as any)?.properties?.types?.items?.enum ?? []) as string[]));
-    const unifiedEnum = ((((getBuiltinTool('unified_search')?.inputSchema as any)?.properties?.resource_types?.items?.enum ?? []) as string[]));
+  it('skills-derived builtin server schemas remain aligned for resource tools', () => {
+    const listEnum = (((getDerivedTool('resource_list')?.inputSchema as any)?.properties?.type?.enum ?? []) as string[]);
+    const searchEnum = ((((getDerivedTool('resource_search')?.inputSchema as any)?.properties?.types?.items?.enum ?? []) as string[]));
+    const unifiedEnum = ((((getDerivedTool('unified_search')?.inputSchema as any)?.properties?.resource_types?.items?.enum ?? []) as string[]));
 
     expect(listEnum).toEqual(expect.arrayContaining([...REQUIRED_TYPES, 'all']));
     expect(searchEnum).toEqual(expect.arrayContaining(REQUIRED_TYPES));
     expect(unifiedEnum).toEqual(expect.arrayContaining(REQUIRED_TYPES));
   });
-});
 
+  it('deprecated standalone retrieval tools are not exposed by the derived server schema', () => {
+    // rag_search / multimodal_search 已收敛进 unified_search，
+    // 动态派生的工具列表不应再暴露独立条目。
+    expect(getDerivedTool('rag_search')).toBeUndefined();
+    expect(getDerivedTool('multimodal_search')).toBeUndefined();
+    expect(getDerivedTool('unified_search')).toBeDefined();
+  });
+
+  it('unified_search schema top_k stays aligned with the documented cap of 30', () => {
+    const topK = (getDerivedTool('unified_search')?.inputSchema as any)?.properties?.top_k;
+    expect(topK?.maximum).toBe(30);
+    expect(topK?.minimum).toBe(1);
+  });
+});

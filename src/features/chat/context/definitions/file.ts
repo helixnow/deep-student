@@ -81,6 +81,15 @@ function escapeXmlAttr(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * ★ 截断显式提示（注入文本头部）：告知模型内容不完整、建议改用检索工具，
+ * 避免模型把前 100KB 当成完整文件作答。
+ */
+function buildTruncationNotice(name: string, size?: number): string {
+  const sizeHint = size ? ` (original size: ${formatFileSize(size)})` : '';
+  return `<truncation_notice name="${escapeXmlAttr(name)}">[NOTICE: The content of file "${name}" below is truncated to the first 100KB${sizeHint}. Do NOT assume it is complete; use retrieval/search tools to access the full content when needed.]</truncation_notice>`;
+}
+
 function buildPdfRefTag(sourceId: string, pageNumber: number): string {
   return `[PDF@${sourceId}:${pageNumber}]`;
 }
@@ -231,11 +240,14 @@ export const fileDefinition: ContextTypeDefinition = {
       if (isPdfFile(name, mimeType)) {
         const pdfModes = injectModes?.pdf;
         
-        // 注入模式是源内容契约，不随当前模型能力变化。默认使用原生解析文本和
-        // 页面原图；OCR 仅在用户显式选择时注入。
+        // 注入模式是源内容契约，不随当前模型能力变化。
+        // ★ P0 契约（2026-07）：ContextRef 创建时已显式写入 injectModes，
+        // 此处缺省分支仅覆盖历史消息回放等遗留数据；缺省值与 UI 默认对齐
+        // （DEFAULT_PDF_INJECT_MODES = ['text']），不再隐式双开 text+image，
+        // 避免「UI 显示只发文本、实际带图」的契约分裂。
         const hasPdfModes = pdfModes && pdfModes.length > 0;
         const isMultimodal = options?.isMultimodal !== false;
-        const includeImage = hasPdfModes ? pdfModes.includes('image') : true;
+        const includeImage = hasPdfModes ? pdfModes.includes('image') : false;
         const includeOcr = hasPdfModes ? pdfModes.includes('ocr') : false;
         const includeText = hasPdfModes ? pdfModes.includes('text') : true; // 默认包含文本
         
@@ -347,6 +359,8 @@ export const fileDefinition: ContextTypeDefinition = {
               const formatted = shouldWrapPdfText(displayContent)
                 ? formatPdfTextWithPageMarkers(name, sourceId, displayContent)
                 : displayContent;
+              // ★ 截断提示前置：让模型（和 RAW 请求查看者）第一时间知道内容不完整
+              blocks.push(createTextBlock(buildTruncationNotice(name, size)));
               blocks.push(createXmlTextBlock('attachment', formatted, attrs));
               blocks.push(createTextBlock(`[Note: File content truncated. Original size: ${formatFileSize(size)}]`));
             } else {
@@ -389,7 +403,12 @@ export const fileDefinition: ContextTypeDefinition = {
         truncated = true;
       }
 
-      const blocks: ContentBlock[] = [createXmlTextBlock('attachment', displayContent, attrs)];
+      const blocks: ContentBlock[] = [];
+      if (truncated) {
+        // ★ 截断提示前置 + 尾部保留原有 Note，模型不会把截断内容当完整文件
+        blocks.push(createTextBlock(buildTruncationNotice(name, size)));
+      }
+      blocks.push(createXmlTextBlock('attachment', displayContent, attrs));
       if (truncated) {
         blocks.push(createTextBlock(`[Note: File content truncated. Original size: ${formatFileSize(size)}]`));
       }

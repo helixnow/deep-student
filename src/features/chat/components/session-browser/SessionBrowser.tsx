@@ -23,6 +23,7 @@ import {
   Tag,
   FileText,
   CircleNotch,
+  DownloadSimple,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -35,6 +36,8 @@ import { SearchResultList } from './SearchResultList';
 import { TagFilterPanel, SessionTagBadges, AddTagInput } from './TagFilter';
 import { Input } from '@/components/ui/shad/Input';
 import { groupTaskSessions, summarizeTaskSession } from './taskCenter';
+import { exportSessionToFile } from './sessionExport';
+import { useSessionSearch } from './useSessionSearch';
 
 // ============================================================================
 // 类型定义
@@ -66,6 +69,9 @@ export interface BrowserGroupInfo {
 
 /** 浏览视图分组模式 */
 export type BrowseGroupMode = 'time' | 'group' | 'workspace';
+
+/** 从会话浏览器打开会话后跳转的目标视图（'sidebar' = 返回聊天侧栏视图） */
+export type SessionOpenTarget = 'sidebar' | 'browser';
 
 interface SessionBrowserProps {
   /** 会话列表 */
@@ -172,6 +178,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
     || Boolean(taskSummary.lastArtifact);
   const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [exporting, setExporting] = useState(false);
   // 触屏无 hover:重命名/删除按钮常显(与 FinderFileItem N-4 同范式)
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
@@ -235,6 +242,22 @@ const SessionCard: React.FC<SessionCardProps> = ({
     [onStartEdit, resetDeleteConfirmation]
   );
 
+  // 导出会话（Markdown）：chat_v2_export_session → 保存对话框
+  const handleExportClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (exporting) return;
+      resetDeleteConfirmation();
+      setExporting(true);
+      void exportSessionToFile({
+        sessionId: session.id,
+        title: sessionTitle === fallbackTitle ? undefined : sessionTitle,
+        format: 'markdown',
+      }).finally(() => setExporting(false));
+    },
+    [exporting, fallbackTitle, resetDeleteConfirmation, session.id, sessionTitle]
+  );
+
   useEffect(() => clearDeleteConfirmTimeout, [clearDeleteConfirmTimeout]);
 
   useEffect(() => {
@@ -265,7 +288,10 @@ const SessionCard: React.FC<SessionCardProps> = ({
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
             <PencilSimple size={isTouchPrimary ? 16 : 14} />
           </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn(isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7', confirmingDelete ? 'text-rose-500 bg-rose-500/10' : 'hover:text-rose-500 hover:bg-rose-500/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleExportClick} disabled={exporting} aria-label={t('browser.exportSession', '导出会话')} title={t('browser.exportSession', '导出会话')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
+            {exporting ? <CircleNotch size={isTouchPrimary ? 16 : 14} className="animate-spin" /> : <DownloadSimple size={isTouchPrimary ? 16 : 14} />}
+          </NotionButton>
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn(isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7', confirmingDelete ? 'text-danger bg-danger/10' : 'hover:text-danger hover:bg-danger/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
             {confirmingDelete ? <Trash size={isTouchPrimary ? 16 : 14} /> : <X size={isTouchPrimary ? 16 : 14} />}
           </NotionButton>
         </div>
@@ -294,7 +320,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
               className="flex-1 h-8"
               placeholder={t('page.sessionNamePlaceholder')}
             />
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onSaveEdit(); }} className="text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onSaveEdit(); }} className="text-success hover:bg-success/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
               <Check size={16} />
             </NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} aria-label={t('page.cancelEdit')} title={t('page.cancelEdit')}>
@@ -306,6 +332,8 @@ const SessionCard: React.FC<SessionCardProps> = ({
             {/* 标题 */}
             <h3 className={cn(
                 "text-sm font-medium text-foreground line-clamp-2 leading-relaxed group-hover:text-primary transition-colors",
+                // 触屏操作按钮常显（右上角约 112px 宽），标题预留空间避免被遮挡
+                isTouchPrimary && "pr-28",
                 sessionTitle === fallbackTitle && "text-muted-foreground italic"
             )}>
               {sessionTitle}
@@ -318,9 +346,9 @@ const SessionCard: React.FC<SessionCardProps> = ({
             {hasTaskSummary && <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className={cn(
                 'inline-flex items-center gap-1 rounded px-1.5 py-0.5',
-                taskSummary.status === 'running' && 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
-                taskSummary.status === 'blocked' && 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-                taskSummary.status === 'completed' && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                taskSummary.status === 'running' && 'bg-info/10 text-info',
+                taskSummary.status === 'blocked' && 'bg-warning/10 text-warning',
+                taskSummary.status === 'completed' && 'bg-success/10 text-success',
               )}>
                 {taskSummary.status === 'running' && <CircleNotch size={10} className="animate-spin" />}
                 {t(`browser.taskStatus.${taskSummary.status}`)}
@@ -411,6 +439,10 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   const [searchMode, setSearchMode] = useState<SearchMode>('title');
   const contentSearch = useContentSearch(300);
 
+  // 标题模式下的会话元信息搜索（chat_v2_search_sessions，命中标题/描述/标签），
+  // 补充纯前端的标题子串过滤
+  const sessionSearch = useSessionSearch(searchQuery, searchMode === 'title');
+
   // 标签系统
   const sessionTags = useSessionTags();
   const [showTagFilter, setShowTagFilter] = useState(false);
@@ -470,11 +502,36 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   const filteredSessions = useMemo(() => {
     let filtered = sessions;
 
-    // 标题搜索（仅标题模式）
+    // 标题搜索（仅标题模式）：
+    // 前端标题子串过滤即时响应，chat_v2_search_sessions 的结果（命中描述/标签）异步补充
     if (searchMode === 'title' && searchQuery.trim()) {
-      filtered = filtered.filter((s) =>
-        (s.title || '').toLowerCase().includes(searchQuery.toLowerCase())
+      const query = searchQuery.toLowerCase();
+      const titleMatched = filtered.filter((s) =>
+        (s.title || '').toLowerCase().includes(query)
       );
+
+      const seenIds = new Set(titleMatched.map((s) => s.id));
+      const sessionById = new Map(sessions.map((s) => [s.id, s]));
+      const backendExtra: SessionItem[] = [];
+      for (const hit of sessionSearch.results) {
+        if (seenIds.has(hit.id)) continue;
+        seenIds.add(hit.id);
+        // 优先复用列表里已有的会话对象（带 groupName 等展示字段），否则从后端结果映射
+        const known = sessionById.get(hit.id);
+        backendExtra.push(
+          known ?? {
+            id: hit.id,
+            mode: hit.mode,
+            title: hit.title,
+            description: hit.description,
+            createdAt: hit.createdAt,
+            updatedAt: hit.updatedAt,
+            groupId: hit.groupId,
+            metadata: hit.metadata,
+          }
+        );
+      }
+      filtered = [...titleMatched, ...backendExtra];
     }
 
     // 标签过滤
@@ -486,7 +543,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
     }
 
     return filtered;
-  }, [sessions, searchQuery, searchMode, sessionTags.selectedFilterTags, sessionTags.tagsBySession]);
+  }, [sessions, searchQuery, searchMode, sessionSearch.results, sessionTags.selectedFilterTags, sessionTags.tagsBySession]);
 
   // 按时间分组会话
   const timeGroupedSessions = useMemo(() => {
@@ -627,7 +684,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               >
                 <Tag size={14} />
                 {sessionTags.selectedFilterTags.size > 0 && (
-                  <span className="text-[10px] px-1 rounded-full bg-primary/10">{sessionTags.selectedFilterTags.size}</span>
+                  <span className="text-2xs px-1 rounded-full bg-primary/10">{sessionTags.selectedFilterTags.size}</span>
                 )}
               </NotionButton>
             )}
@@ -677,81 +734,99 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             </NotionButton>
           </div>
 
-          {/* 移动端搜索框 - 单独一行 */}
-          <div className="sm:hidden pb-2.5 space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
-                <Input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                  className="w-full h-9 pl-9 pr-3"
-                />
-              </div>
-              <button
-                onClick={() => setSearchMode(searchMode === 'title' ? 'content' : 'title')}
-                className={cn(
-                  'shrink-0 h-9 px-2.5 rounded-md text-[11px] font-medium transition-colors',
-                  searchMode === 'content' ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground'
-                )}
-              >
-                {searchMode === 'content' ? <FileText size={16} /> : <MagnifyingGlass size={16} />}
-              </button>
-            </div>
-          </div>
+          {/* （原 sm:hidden 移动端搜索行为死代码：非嵌入形态仅在 ≥768px 渲染，已移除；
+              移动端搜索/模式切换统一走下方 embeddedMode 分支） */}
         </div>
       )}
 
-      {/* 嵌入模式下的搜索框 + 分组滑块切换 */}
+      {/* 嵌入模式下的搜索框 + 模式切换 + 标签过滤 + 分组滑块切换
+          400px 窄屏改造：单行四组件挤压 → 拆两行。
+          第一行：搜索框（flex-1）+ 标题/内容模式切换 + 标签过滤；
+          第二行：分组滑块整行拉伸（三个 flex-1 分段，图标+文字，40px 高触控目标）。 */}
       {embeddedMode && (
         <div className="flex-shrink-0 px-3 pt-3 pb-2 space-y-2">
           <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
               <Input
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                className="w-full h-9 pl-9 pr-3"
+                className="w-full h-10 pl-9 pr-3"
               />
             </div>
-            {(
-              <div className="relative flex items-center h-8 rounded-lg bg-muted/50 p-0.5 shrink-0">
-                <button
-                  onClick={() => setGroupMode('time')}
-                  className={cn(
-                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-xs font-medium transition-colors',
-                    groupMode === 'time' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
-                  )}
-                  title={t('browser.groupByTime')}
-                >
-                  <CalendarBlank size={14} />
-                </button>
-                <button
-                  onClick={() => setGroupMode('group')}
-                  className={cn(
-                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-xs font-medium transition-colors',
-                    groupMode === 'group' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
-                  )}
-                  title={t('browser.groupByGroup')}
-                >
-                  <Stack size={14} />
-                </button>
-                <button
-                  onClick={() => setGroupMode('workspace')}
-                  className={cn(
-                    'relative z-10 flex items-center gap-1 px-2 h-full rounded-md text-xs font-medium transition-colors',
-                    groupMode === 'workspace' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
-                  )}
-                  title={t('browser.groupByWorkspace')}
-                >
-                  <Folder size={14} />
-                </button>
-              </div>
+            {/* 标题/内容搜索模式切换（补齐移动端与桌面的功能对等） */}
+            <button
+              onClick={() => setSearchMode(searchMode === 'title' ? 'content' : 'title')}
+              className={cn(
+                'shrink-0 h-10 min-w-10 px-2.5 rounded-md text-[11px] font-medium transition-colors inline-flex items-center justify-center',
+                searchMode === 'content' ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground'
+              )}
+              title={searchMode === 'content' ? t('search.contentMode') : t('search.titleMode')}
+              aria-label={searchMode === 'content' ? t('search.contentMode') : t('search.titleMode')}
+              aria-pressed={searchMode === 'content'}
+            >
+              {searchMode === 'content' ? <FileText size={16} /> : <MagnifyingGlass size={16} />}
+            </button>
+            {/* 标签过滤入口（补齐移动端与桌面的功能对等） */}
+            {sessionTags.allTags.length > 0 && (
+              <NotionButton
+                variant={showTagFilter || sessionTags.selectedFilterTags.size > 0 ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setShowTagFilter(!showTagFilter)}
+                className={cn('shrink-0 !h-10 min-w-10', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
+                aria-label={t('tags.filterTitle')}
+                title={t('tags.filterTitle')}
+              >
+                <Tag size={14} />
+                {sessionTags.selectedFilterTags.size > 0 && (
+                  <span className="text-2xs px-1 rounded-full bg-primary/10">{sessionTags.selectedFilterTags.size}</span>
+                )}
+              </NotionButton>
             )}
+          </div>
+          {/* 分组滑块独占一行：三分段等宽拉伸，40px 触控高度，图标+文字标签 */}
+          <div className="relative flex items-stretch h-10 rounded-lg bg-muted/50 p-0.5">
+            <button
+              onClick={() => setGroupMode('time')}
+              className={cn(
+                'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors min-w-0',
+                groupMode === 'time' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+              )}
+              title={t('browser.groupByTime')}
+              aria-label={t('browser.groupByTime')}
+              aria-pressed={groupMode === 'time'}
+            >
+              <CalendarBlank size={14} className="shrink-0" />
+              <span className="truncate">{t('browser.groupByTime')}</span>
+            </button>
+            <button
+              onClick={() => setGroupMode('group')}
+              className={cn(
+                'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors min-w-0',
+                groupMode === 'group' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+              )}
+              title={t('browser.groupByGroup')}
+              aria-label={t('browser.groupByGroup')}
+              aria-pressed={groupMode === 'group'}
+            >
+              <Stack size={14} className="shrink-0" />
+              <span className="truncate">{t('browser.groupByGroup')}</span>
+            </button>
+            <button
+              onClick={() => setGroupMode('workspace')}
+              className={cn(
+                'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors min-w-0',
+                groupMode === 'workspace' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+              )}
+              title={t('browser.groupByWorkspace')}
+              aria-label={t('browser.groupByWorkspace')}
+              aria-pressed={groupMode === 'workspace'}
+            >
+              <Folder size={14} className="shrink-0" />
+              <span className="truncate">{t('browser.groupByWorkspace')}</span>
+            </button>
           </div>
         </div>
       )}

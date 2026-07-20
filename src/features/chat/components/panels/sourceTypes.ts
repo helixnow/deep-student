@@ -116,9 +116,17 @@ export interface UnifiedSourceItem {
   citationType?: SourceCitationType;
   /**
    * 类型内序号（1-based，对应 citation `[类型-N]` 中的 N）
-   * 由 sourceAdapter 按跨块全局顺序统一分配
+   *
+   * 信任策略（与后端 Citation Ledger 契约一致）：
+   * - 后端提供 typeIndex/citationTag 时直接信任使用
+   * - 仅在缺失时由 sourceAdapter 按跨块全局顺序本地分配（防御式兼容旧数据）
    */
   typeIndex?: number;
+  /**
+   * 后端原始引用标记（如 `[知识库-2]`），由 Citation Ledger 生成。
+   * 存在时作为 typeIndex 的权威来源；仅作展示/解析用途，可缺失。
+   */
+  citationTag?: string;
   /** 多模态扩展信息（可选） */
   multimodal?: {
     /** 来源类型 */

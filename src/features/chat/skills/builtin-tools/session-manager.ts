@@ -22,6 +22,7 @@ const SESSION_MANAGER_TOOL_NAMES = [
   'builtin-session_get',
   'builtin-session_get_messages',
   'builtin-session_export',
+  'builtin-session_import',
   'builtin-group_list',
   'builtin-tag_list_all',
   'builtin-session_stats',
@@ -42,8 +43,8 @@ export const sessionManagerSkill: SkillDefinition = {
   id: 'session-manager',
   name: 'session-manager',
   description:
-    '会话管理能力组，让 AI 具备查询、阅读、导出、组织和维护用户会话的能力。当用户需要整理会话、搜索或总结历史对话、导出会话、批量打标签、查看会话统计时使用。',
-  version: '1.1.0',
+    '会话管理能力组，让 AI 具备查询、阅读、导出、导入、组织和维护用户会话的能力。当用户需要整理会话、搜索或总结历史对话、导出会话、导入会话 JSON、批量打标签、查看会话统计时使用。',
+  version: '1.2.0',
   author: 'Deep Student',
   priority: 5,
   location: 'builtin',
@@ -60,7 +61,7 @@ export const sessionManagerSkill: SkillDefinition = {
 
 ## 核心能力
 1. **查询与阅读** — 列出会话、按日期搜索、读取消息全文、查看统计
-2. **导出** — 返回单会话 Markdown，或把单会话原文创建为资源库笔记
+2. **导出与导入** — 返回单会话 Markdown 或创建为资源库笔记；把导出的会话 JSON 导入为新会话
 3. **组织** — 创建分组、移动会话、打标签、重命名
 4. **维护** — 归档旧会话、批量整理
 
@@ -93,6 +94,7 @@ export const sessionManagerSkill: SkillDefinition = {
 ## 工具与敏感度
 - \`session_list\`、\`session_search\`、\`session_get\`、\`session_get_messages\`、\`group_list\`、\`tag_list_all\`、\`session_stats\`：Low，只读。
 - \`session_export\`：Medium。即使 \`format=markdown\` 只返回文本，该工具按统一后端策略仍为 Medium；\`format=note\` 会创建资源库笔记。
+- \`session_import\`：Medium。把导出的会话 JSON（UI「导出会话」的 json 格式）导入为**新会话**，所有 ID 重映射，绝不覆盖既有会话。JSON 附件先用 workspace-tools 的 builtin-attachment_stage 物化，再传 root_id+relative_path；小体量也可直接传 json_content。
 - 单项组织写操作与恢复操作：Medium；归档和达到阈值的批量操作按上面的确认规则执行。
 
 ## 工作流程
@@ -321,6 +323,39 @@ export const sessionManagerSkill: SkillDefinition = {
           },
         },
         required: ['session_id', 'format'],
+      },
+    },
+    {
+      name: 'builtin-session_import',
+      description:
+        '把导出的会话 JSON 导入为一个新会话（Medium）。与 session_export 对偶：接受 UI「导出会话」json 格式（含 session/messages/blocks）。所有会话/消息/块 ID 全量重映射，导入结果是未分组、无标签的新会话，绝不覆盖既有会话。JSON 附件应先用 builtin-attachment_stage 物化到 temp root 后传 root_id+relative_path；小体量 JSON 可直接传 json_content（二选一）。返回新 sessionId、messageCount、blockCount。附件仅保留元数据引用，原始二进制不随 JSON 迁移。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          json_content: {
+            type: 'string',
+            minLength: 1,
+            description: '导出 JSON 的完整文本内容（与 root_id/relative_path 二选一，适合小体量）',
+          },
+          root_id: {
+            type: 'string',
+            enum: ['temp'],
+            default: 'temp',
+            description: '固定为 temp（attachment_stage 返回的 root_id）',
+          },
+          relative_path: {
+            type: 'string',
+            minLength: 1,
+            description: 'attachment_stage 返回的 relative_path（如 attachments/session_export.json），与 json_content 二选一',
+          },
+          title: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 120,
+            description: '可选：覆盖导入后的新会话标题；省略则沿用导出时的标题',
+          },
+        },
       },
     },
     {

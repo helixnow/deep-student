@@ -133,7 +133,7 @@ const CopyButton: React.FC<{ text: string; label: string }> = ({ text, label }) 
           resetTimerRef.current = setTimeout(() => setCopied(false), 1500);
         }
       }}
-      className="!h-auto !p-1 text-[10px] text-muted-foreground hover:text-foreground"
+      className="!h-auto min-h-8 lg:min-h-0 !p-1 text-2xs text-muted-foreground hover:text-foreground"
       aria-label={label}
       title={label}
     >
@@ -165,7 +165,7 @@ const StreamPane: React.FC<{
       <div className="mb-1 flex items-center justify-between">
         <span
           className={cn(
-            'text-[10px] font-semibold uppercase tracking-wider',
+            'text-2xs font-semibold uppercase tracking-wider',
             tone === 'stderr' ? 'text-destructive/80' : 'text-muted-foreground',
           )}
         >
@@ -188,7 +188,7 @@ const StreamPane: React.FC<{
           variant="ghost"
           size="sm"
           onClick={() => setShowAll(true)}
-          className="mt-0.5 !h-auto !p-1 text-[10px] text-muted-foreground hover:text-foreground"
+          className="mt-0.5 !h-auto min-h-8 lg:min-h-0 !p-1 text-2xs text-muted-foreground hover:text-foreground"
         >
           {t('shellOutput.showFull', {
             
@@ -197,7 +197,7 @@ const StreamPane: React.FC<{
         </NotionButton>
       )}
       {truncated && (
-        <div className="mt-0.5 text-[10px] text-muted-foreground">{truncatedLabel}</div>
+        <div className="mt-0.5 text-2xs text-muted-foreground">{truncatedLabel}</div>
       )}
     </div>
   );
@@ -272,8 +272,8 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
         )}
 
         {data.command_redacted && (
-          <div className="flex flex-wrap items-center gap-1.5 border-b border-border/20 px-2 py-1 text-[10px] text-muted-foreground">
-            <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border/20 px-2 py-1 text-2xs text-muted-foreground">
+            <span className="rounded bg-warning/10 px-1.5 py-0.5 font-mono text-warning">
               command:redacted
             </span>
             {data.command_hash && (
@@ -291,7 +291,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
               'inline-flex items-center gap-1 font-medium',
               statusTone === 'success' && 'text-success',
               statusTone === 'error' && 'text-destructive',
-              statusTone === 'warn' && 'text-amber-600 dark:text-amber-400',
+              statusTone === 'warn' && 'text-warning',
             )}
           >
             <StatusIcon size={13} weight="fill" />
@@ -355,7 +355,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
 
         {/* 失败解释 */}
         {failureHint && (
-          <div className="mx-2 mb-2 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          <div className="mx-2 mb-2 rounded bg-warning/10 border border-warning/60 px-2 py-1.5 text-[11px] text-warning">
             {failureHint}
           </div>
         )}
@@ -367,7 +367,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
               variant="ghost"
               size="sm"
               onClick={() => setShowMeta((v) => !v)}
-              className="!h-auto !p-0.5 !gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+              className="!h-auto min-h-8 lg:min-h-0 !p-0.5 !gap-1 text-2xs text-muted-foreground hover:text-foreground"
             >
               {showMeta ? <CaretDown size={10} /> : <CaretRight size={10} />}
               {t('shellOutput.policy')}
@@ -375,25 +375,25 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
             {showMeta && (
               <div className="mt-1 flex flex-wrap gap-1.5 pb-1">
                 {netPolicy && (
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                     {netPolicy.allow_network
                       ? t('shellOutput.netOn')
                       : t('shellOutput.netOff')}
                   </span>
                 )}
                 {envPolicy?.allowlist_mode && (
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                     {t('shellOutput.envAllowlist')}
                   </span>
                 )}
                 {envPolicy?.inherit_parent_env === true && (
-                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                  <span className="rounded bg-warning/10 px-1.5 py-0.5 text-2xs text-warning">
                     parent-env
                   </span>
                 )}
                 {inheritedEnvKeys && (
                   <span
-                    className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                    className="max-w-[18rem] truncate rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground"
                     title={inheritedEnvKeys.join(', ') || 'none'}
                   >
                     inherited:{inheritedEnvKeys.length}
@@ -401,32 +401,32 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
                   </span>
                 )}
                 {envExplicit > 0 && (
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                     {t('shellOutput.envExplicit', { count: envExplicit })}
                   </span>
                 )}
                 {sandbox?.backend && (
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                     sandbox:{sandbox.backend}
                   </span>
                 )}
                 {sandbox?.shell_kind && (
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                     shell:{sandbox.shell_kind}
                   </span>
                 )}
                 {sandbox?.output_encoding && (
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                     encoding:{sandbox.output_encoding}
                   </span>
                 )}
                 {typeof sandbox?.readable_roots === 'number' && (
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                     readable-roots:{sandbox.readable_roots}
                   </span>
                 )}
                 {sandbox?.enforced === false && (
-                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                  <span className="rounded bg-danger/10 px-1.5 py-0.5 text-2xs text-danger">
                     sandbox:unenforced
                   </span>
                 )}

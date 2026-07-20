@@ -9,8 +9,8 @@
  *   中零引用（App.tsx 中的 data-tour-id="analysis-main" 是 data 属性，
  *   不匹配类选择器），故整体删除。
  *
- *   文件保留为空壳：styles/index.css 仍然引用它，且
- *   tests/vitest/semanticTokenContract.test.ts 会读取本文件校验
+ *   文件保留为空壳：styles/index.css 已不再 import（2026-07 三轮），
+ *   保留仅因 tests/vitest/semanticTokenContract.test.ts 会读取本文件校验
  *   "不得包含硬编码颜色"。如未来需要恢复分析页样式，请基于
- *   shadcn 语义 token（hsl(var(--...))）重建。
+ *   shadcn 语义 token（hsl(var(--...))）重建，并恢复 index.css 的 import。
  */

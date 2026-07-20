@@ -21,6 +21,9 @@ import { skillRegistry } from './registry';
 
 const STORAGE_KEY = 'deep-student.skill-trust-overrides';
 
+/** 信任覆盖变更广播事件名（detail: { skillId, trust }） */
+export const SKILL_TRUST_CHANGED_EVENT = 'SKILL_TRUST_CHANGED';
+
 export type SkillTrustOverride = 'trusted' | 'untrusted';
 
 /** 新版存储条目：信任状态 + 授予时的内容指纹 */
@@ -106,30 +109,41 @@ export function getSkillTrustOverride(skillId: string): SkillTrustOverride | nul
   return normalizeEntry(readMap()[skillId])?.trust ?? null;
 }
 
+/** 后端 `chat_v2_set_skill_trust` 的返回（Rust SkillTrustState，snake_case 序列化）。 */
+export interface SkillTrustState {
+  skill_id: string;
+  trusted: boolean;
+  package_sha256: string | null;
+}
+
 /**
  * 设置或清除用户信任覆盖。trust 为 null 时删除覆盖，回退到路径推导。
  *
  * 授予 trusted 时记录当前包内容指纹（优先使用调用方传入的 skill，
  * 否则从 registry 按 id 查找），后续内容变化将使该信任自动失效。
+ *
+ * 返回后端持久化结果（含授予时绑定的整包 SHA-256），供 agent 正门
+ * （skill_trust_request）向审批链回执指纹；UI 调用方可忽略返回值。
  */
 export async function setSkillTrustOverride(
   skillId: string,
   trust: SkillTrustOverride | null,
   skill?: SkillDefinition,
-): Promise<void> {
+): Promise<SkillTrustState> {
   const target = skill ?? skillRegistry.get(skillId);
+  let backendState: SkillTrustState;
   if (trust === 'trusted') {
     const packageRoot = target?.packageRoot;
     if (!packageRoot || packageRoot.startsWith('builtin://')) {
       throw new Error(`Skill "${skillId}" has no local package root to trust`);
     }
-    await invoke('chat_v2_set_skill_trust', {
+    backendState = await invoke<SkillTrustState>('chat_v2_set_skill_trust', {
       skillId,
       packageRoot,
       trusted: true,
     });
   } else {
-    await invoke('chat_v2_set_skill_trust', {
+    backendState = await invoke<SkillTrustState>('chat_v2_set_skill_trust', {
       skillId,
       packageRoot: target?.packageRoot ?? null,
       trusted: false,
@@ -149,7 +163,8 @@ export async function setSkillTrustOverride(
     map[skillId] = { trust: 'untrusted', grantedAt: Date.now() };
   }
   writeMap(map);
-  window.dispatchEvent(new CustomEvent('SKILL_TRUST_CHANGED', { detail: { skillId, trust } }));
+  window.dispatchEvent(new CustomEvent(SKILL_TRUST_CHANGED_EVENT, { detail: { skillId, trust } }));
+  return backendState;
 }
 
 /** 结合路径默认与用户覆盖，得到最终 trustStatus。 */

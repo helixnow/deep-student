@@ -51,7 +51,7 @@ export const indexWebpageToolsSkill: SkillDefinition = {
 
 - \`builtin-index_status\`（Low）读取全局或指定资源的索引摘要。指定 resource_id 时，还返回资源级 indexState、分页 Unit 状态，以及最多 2000 字符的 OCR/extractedText 预览和截断标记。
 - \`builtin-index_rebuild\`（High）删除指定资源的旧文本/多模态向量及 SQLite 索引元数据，然后走 VfsFullIndexingService 完整重建。它会发出 \`vfs-index-progress\`；只有 status=indexed 的成功结果才代表完成。
-- \`builtin-webpage_save\`（Medium）把已抓取的完整正文写成 Markdown blob，保存 source URL/title metadata，创建 VFS file/resource，生成 Unit 并加入索引队列，同时发出 DSTU 创建事件。
+- \`builtin-webpage_save\`（Medium）把已抓取的完整正文写成 Markdown blob，保存 source URL/title metadata，创建 VFS file/resource，同步生成 Unit（indexState=units_synced），向量索引异步进行，同时发出 DSTU 创建事件。
 
 ## “为什么搜不到刚导入的 PDF”
 
@@ -64,9 +64,11 @@ export const indexWebpageToolsSkill: SkillDefinition = {
 1. 用 web_fetch 分页读取网页，持续使用 nextStartIndex，直到 hasMore=false。
 2. 拼接所有真实 content，移除每页末尾的 \`<truncated>...\` 提示；禁止只保存第一页或截断提示。
 3. 调用 webpage_save，传原始 url、完整 content 和可选 title/content_type/folder_id。
-4. indexQueued=true 只表示 Unit 已入队；需要确认向量完成时再用 index_status 检查。
+4. 成功返回 indexState=units_synced：只保证文本 Unit 已同步，向量索引异步进行中（vectorIndexPending=true）；需要确认向量完成时用 index_status 检查，不要凭保存成功宣称"已可检索"。
 
-网页正文最多 1,000,000 Unicode 字符且最多 4 MiB；URL 仅允许无内嵌凭据的绝对 HTTP/HTTPS 地址。相同 URL、标题和正文生成相同 Markdown 哈希，重复保存会返回 deduplicated=true，并复核索引 Unit，不新增副本。
+网页正文最多 1,000,000 Unicode 字符且最多 4 MiB；URL 仅允许无内嵌凭据的绝对 HTTP/HTTPS 地址。相同 URL、标题和正文生成相同 Markdown 哈希，返回的 disposition 区分三态：created=全新保存；restored=同内容曾被删除、现已恢复；deduplicated=命中活跃文件、不新增副本（此时 deduplicated=true）。
+
+index_rebuild 成功结果包含 blockId 与 progressEvent（vfs-index-progress）；前端可按 blockId 订阅 agent_rebuild_progress 事件渲染进度。
 
 错误统一包含 code/message/messageKey/messageFallback/hint/retryable。常见 code：INVALID_ARGUMENT、INCOMPLETE_WEB_FETCH、RESOURCE_NOT_FOUND、FOLDER_NOT_FOUND、DEPENDENCY_UNAVAILABLE、CANCELLED、INDEX_STATUS_FAILED、INDEX_REBUILD_FAILED、WEBPAGE_SAVE_FAILED。
 `,
@@ -106,7 +108,7 @@ export const indexWebpageToolsSkill: SkillDefinition = {
     {
       name: 'builtin-webpage_save',
       description:
-        '把 web_fetch 已完整抓取并拼接的 Markdown 正文保存到真实 VFS（Medium）：blob + source metadata + file/resource + Unit 索引 + DSTU 事件。不得传仍有 hasMore=true 的部分内容。',
+        '把 web_fetch 已完整抓取并拼接的 Markdown 正文保存到真实 VFS（Medium）：blob + source metadata + file/resource + Unit 同步 + DSTU 事件。返回 indexState=units_synced（向量索引异步，用 index_status 确认）和 disposition（created/restored/deduplicated）。不得传仍有 hasMore=true 的部分内容。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,

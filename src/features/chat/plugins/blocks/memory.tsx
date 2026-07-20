@@ -150,11 +150,10 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
         <div
           className={cn(
             'flex-shrink-0 flex items-center justify-center',
-            'w-6 h-6 rounded bg-amber-500/10',
-            'dark:bg-amber-500/20'
+            'w-6 h-6 rounded bg-warning/10'
           )}
         >
-          <Brain size={16} className="text-amber-600 dark:text-amber-400" />
+          <Brain size={16} className="text-warning" />
         </div>
 
         {/* 标题 */}
@@ -167,8 +166,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
           <span
             className={cn(
               'flex items-center gap-1 px-2 py-0.5 rounded-full',
-              'bg-amber-500/10 text-amber-600 text-xs',
-              'dark:bg-amber-500/20 dark:text-amber-400'
+              'bg-warning/10 text-warning text-xs'
             )}
           >
             <MemoryIcon size={12} />

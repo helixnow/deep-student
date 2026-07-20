@@ -22,6 +22,7 @@ import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPanel';
 import type { ChatStore } from '../../core/types';
 import type { ModelAssignments } from '@/types';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 // ============================================================================
 // 类型
@@ -294,9 +295,9 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   const subtitle = t('chat_host:model_panel.subtitle');
 
   const openModelSettings = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
     window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'models' } }));
+      dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'models' });
     }, 120);
     onClose();
   }, [onClose]);
@@ -349,9 +350,10 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
               <span className="truncate text-sm font-medium">{option.name}</span>
               {option.id === defaultModelId ? (
                 <CommonTooltip content={systemBadgeTooltip} position="top">
+                  {/* 移动端也常显（原 hidden sm:inline-flex 在 <640 隐藏，用户看不到系统默认标记） */}
                   <Badge
                     variant="outline"
-                    className="hidden h-4 px-1 py-0 text-[10px] font-medium shrink-0 cursor-help border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] sm:inline-flex"
+                    className="inline-flex h-4 px-1 py-0 text-2xs font-medium shrink-0 cursor-help border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]"
                   >
                     {systemBadge}
                   </Badge>
@@ -375,7 +377,9 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   };
 
   return (
-    <ComposerPanel.Root>
+    // fillHeight：移动端内联面板（heightMode='available'）给定固定高度，
+    // Root 需撑满才能让内部 flex-1 滚动区生效（与 McpPanel/SkillSelector 对齐）
+    <ComposerPanel.Root fillHeight>
       <ComposerPanel.Header
         icon={Sparkle}
         title={t('chat_host:model_panel.title')}
@@ -392,7 +396,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       />
 
       {!defaultModelId && !loading && (
-        <div className="rounded-md border border-amber-300/70 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+        <div className="rounded-md border border-warning/70 bg-warning/10 px-3 py-2 text-xs text-warning">
           <div>{t('chat_host:model_panel.missing_default_hint')}</div>
           <NotionButton
             variant="ghost"

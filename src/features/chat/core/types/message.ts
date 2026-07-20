@@ -227,6 +227,21 @@ export interface Message {
   /** 持久化稳定 ID（用于数据库关联） */
   persistentStableId?: string;
 
+  // ========== 分支 / 编辑血缘（对齐后端 BackendMessageForRestore） ==========
+
+  /**
+   * 父消息 ID（分支血缘）。
+   * 后端 chat_v2_branch_session / 编辑重发链路会写入该字段；
+   * 前端恢复时保留，用于渲染分支树与「从此处分支」定位。
+   */
+  parentId?: string;
+
+  /**
+   * 被本消息取代的旧消息 ID（编辑/重试语义）。
+   * 与 parentId 一样由后端维护，前端只读透传。
+   */
+  supersedes?: string;
+
   // ========== 多模型并行变体 (Variant) ==========
 
   /** 当前激活的变体 ID */

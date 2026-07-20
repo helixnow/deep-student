@@ -342,7 +342,13 @@
       "openConnectors": "Manage connectors",
       "connectorsHint": "Choose MCP / external tool connections",
       "modeDefaultDescription": "Default mode — run efficiently and finish the task.",
-      "approvalMemory": "Approval memory"
+      "approvalMemory": "Approval memory",
+      "compactContext": "Compact context",
+      "compactingContext": "Compacting context…",
+      "compactionComplete": "Context compaction complete",
+      "compactionNotNeeded": "Nothing eligible to compact",
+      "compactionSkipped": "Compaction skipped",
+      "compactionFailed": "Compaction failed, try again"
     },
     "pasteNotReady": "Initializing, please try again shortly",
     "retryStarted": "Processing restarted",
@@ -364,6 +370,29 @@
       "convert": "Convert to attachment",
       "dismiss": "Keep as text",
       "autoConverted": "Text too long ({{chars}} characters), converted to an attachment"
+    },
+    "flashcardHint": {
+      "document": "You can ask me to turn this document into flashcards",
+      "apkg": "Anki deck detected — you can ask me to import it into your card library",
+      "dismiss": "Got it"
+    },
+    "mediaHint": {
+      "audio": "AI can't listen to audio directly and only sees the file name; ask me to run the transcription tool to get the text",
+      "video": "AI can't watch videos directly and only sees the file name",
+      "dismiss": "Got it"
+    },
+    "mindmapHint": {
+      "notice": "Mind map file detected — you can ask me to import it as a mind map",
+      "dismiss": "Got it"
+    },
+    "errorAttachmentsExcluded": "{{count}} failed attachment(s) were not sent with the message: {{names}}",
+    "chip": {
+      "ready": "Ready",
+      "error": "Failed",
+      "pages_one": "{{count}} page",
+      "pages_other": "{{count}} pages",
+      "truncated": "Will truncate",
+      "truncatedTitle": "File exceeds 100KB; only the first 100KB will be injected. Ask AI to use retrieval tools for the full content"
     },
     "slashCommand": {
       "title": "Skill commands",
@@ -411,7 +440,17 @@
       "expandHint": "click to expand",
       "footnote": "This summary replaces earlier turns in the model's view. The original messages remain in the database.",
       "copy": "Copy summary",
-      "copied": "Copied"
+      "copied": "Copied",
+      "messageCount": "{{count}} messages compacted",
+      "tokenChange": "~{{before}} → {{after}} tokens",
+      "summaryPasses": "{{count}} incremental summary passes",
+      "undo": "Undo compaction",
+      "undoHint": "Restore the previous context view without deleting source messages or audit records",
+      "undone": "Undone",
+      "undoFailed": "Unable to undo: this may no longer be the active compaction.",
+      "locateOriginal": "Locate source",
+      "originalNotLoaded": "The source is hidden by the compacted view; undo compaction to restore it.",
+      "originalMissing": "The source message is no longer in this session (it may have been deleted)."
     },
     "generic": {
       "type": "Type",
@@ -577,14 +616,14 @@
       "loadedTools": "Loaded tools",
       "viewSourceFile": "View Source File",
       "openRuntimeSettings": "Authorize runtime folders",
-      "generatingArgs": "Generating arguments..."
+      "generatingArgs": "Generating arguments...",
+      "expandLongOutput": "Show all (~{{count}} chars)",
+      "collapseLongOutput": "Collapse long output"
     },
     "workbenchOps": {
       "title": "Desktop ops",
       "openTarget": "Open target window",
       "undo": "Undo",
-      "undone": "Undone",
-      "undoFailed": "Undo failed",
       "steps": "Steps",
       "done": "Done",
       "pending": "Not done",
@@ -592,7 +631,8 @@
       "noTarget": "No target window",
       "message": "Note",
       "applied": "Applied {{applied}}/{{total}}",
-      "undoExpired": "Undo expired (session ended or ledger cleared)",
+      "undoExpired": "Undo window expired",
+      "undoExpiredHint": "The undo window has expired: the undo token is no longer valid or the run ledger has been cleared, so this action can no longer be undone.",
       "undoApplied": "Reverted recoverable changes",
       "undoing": "Undoing…",
       "undoRetry": "Partially reverted, retry",
@@ -656,6 +696,18 @@
       "collapse": "Collapse",
       "showMore": "Load more ({{remaining}} remaining)",
       "showAll": "Show all ({{total}})",
+      "showMoreBig": "Load {{count}} more",
+      "selectCard": "Select card {{index}}",
+      "selectAll": "Select all cards",
+      "invertSelection": "Invert selection",
+      "selectedCount": "{{count}} selected",
+      "deleteSelected": "Delete selected",
+      "saveSelected": "Save selected",
+      "exportSelected": "Export selected",
+      "deckName": "Deck",
+      "deckNamePlaceholder": "Deck name",
+      "deckNameHint": "Used when saving, exporting, and syncing this batch of cards.",
+      "quoteText": "Card #{{index}} (id: {{id}})",
       "save": "Save",
       "addToLibrary": "Add to card library",
       "addedToLibrary": "Added to card library",
@@ -809,7 +861,8 @@
         "cancelFailed": "Failed to cancel",
         "retrySegmentsStarted": "Resubmitted {{count}} failed segments",
         "retrySegmentsPartial": "{{failed}} of {{total}} segments could not be resubmitted",
-        "retrySegmentsFailed": "All {{failed}} failed segments could not be resubmitted"
+        "retrySegmentsFailed": "All {{failed}} failed segments could not be resubmitted",
+        "exportNewCardsNote": "Cards imported into Anki from this package will appear as new cards (review progress is not carried in the file)."
       }
     }
   },
@@ -1185,6 +1238,32 @@
       "mixed": "Mixed Source"
     }
   },
+  "contextUsagePopover": {
+    "limit": "Context limit",
+    "compactionStatus": "Compaction",
+    "compactionActive": "Active",
+    "compactionTokens": "Before → after",
+    "compactDisabledStreaming": "Unavailable while generating"
+  },
+  "compaction": {
+    "manualSkipped": "Compaction skipped: {{reason}}",
+    "manualFailed": "Context compaction failed: {{reason}}. Please try again.",
+    "autoFailedTitle": "Auto-compaction failed",
+    "autoFailed": "Automatic context compaction failed; older history may be truncated ({{reason}})",
+    "contextTrimmedTitle": "Context window full",
+    "contextTrimmed": "Context is full — the earliest {{count}} messages were not included in this turn",
+    "reason": {
+      "sessionTooShort": "The session is too short to compact",
+      "usableTooSmall": "Not enough compactable content",
+      "lockBusy": "Another compaction is already running, try again later",
+      "streaming": "The session is still generating, try again later",
+      "summaryFailed": "Summary generation failed",
+      "cancelled": "Compaction was cancelled",
+      "staleLineage": "The session context changed, please retry",
+      "invalidResponse": "Unexpected backend response",
+      "unknown": "Unknown reason"
+    }
+  },
   "agentPanel": {
     "plan": "Plan",
     "environment": "Environment",
@@ -1394,6 +1473,7 @@
     "label": "Inject",
     "selectMode": "Select Mode",
     "allModes": "All",
+    "joiner": "+",
     "image": {
       "title": "Image Inject Mode",
       "image": "Image",
@@ -1725,7 +1805,8 @@
     "compareToggleHint": "Use multiple models to answer",
     "searchPlaceholder": "Search by name or model ID...",
     "noMatches": "No matching models",
-    "empty": "No models available"
+    "empty": "No models available",
+    "goToSettings": "Add models in Settings"
   },
   "workspace": {
     "title": "Workspace",
@@ -1845,6 +1926,7 @@
     "warning": {
       "inbox_full_rejected": "Agent {{agent}} inbox is full; new messages were rejected. Wait for it to finish and retry.",
       "run_agent_conflict_requeue_failed": "Agent {{agent}} is already running and some task messages could not be re-queued. Wait for completion, then retry manually.",
+      "run_agent_requeue_failed": "Some task messages for agent {{agent}} could not be re-queued. Retry the task manually later.",
       "retry_limit_exceeded": "Message retry limit reached ({{retry}}/{{max}})",
       "agent_cancelled": "Agent {{agent}} execution was cancelled"
     },
@@ -1894,7 +1976,8 @@
     },
     "wakeSuccess": "Wake request sent",
     "wakeNoop": "Wake had no effect (may already be awake)",
-    "wakeFailed": "Wake failed: {{msg}}"
+    "wakeFailed": "Wake failed: {{msg}}",
+    "toggleSize": "Toggle size"
   },
   "subagent": {
     "title": "Subagent",
@@ -1957,6 +2040,7 @@
     "chatComponentError": "Chat component error",
     "unknownErrorRefresh": "An unknown error occurred, please try refreshing the page",
     "retry": "Retry",
+    "reloadSession": "Reload session",
     "viewErrorDetails": "View error details"
   },
   "mindmapCitation": {
@@ -1997,6 +2081,7 @@
   },
   "templateTool": {
     "previewTitle": "Template Preview",
+    "renderIssues": "{{count}} render issue(s) found",
     "diffTitle": "Template Changes",
     "forkTitle": "Template Forked",
     "createTitle": "Template Created",

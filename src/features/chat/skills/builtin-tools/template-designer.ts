@@ -13,8 +13,8 @@ export const templateDesignerSkill: SkillDefinition = {
   id: 'template-designer',
   name: '模板设计师',
   description:
-    '制卡模板的设计与管理工具。支持列举、查看、校验、创建、更新、分叉、预览和删除模板，帮助用户高效定制符合需求的 Anki 制卡模板。适用于自定义模板设计、内置模板调整、模板结构校验与自动化回归。',
-  version: '1.2.0',
+    '制卡模板的设计与管理工具。支持列举、查看、校验、创建、更新、分叉、预览、删除模板和设置默认模板，帮助用户高效定制符合需求的 Anki 制卡模板。适用于自定义模板设计、内置模板调整、模板结构校验与自动化回归。',
+  version: '1.3.0',
   author: 'Deep Student',
   priority: 3,
   location: 'builtin',
@@ -54,6 +54,9 @@ export const templateDesignerSkill: SkillDefinition = {
 ### 危险操作
 - **builtin-template_delete**: 删除用户自定义模板（⚠️ 不可撤销，不可删除内置模板）
 
+### 设置类操作
+- **builtin-template_set_default**: 将指定模板设为默认制卡模板（影响后续制卡默认选择，需确认用户意图）
+
 ## 标准工作流
 
 ### 改造已有模板
@@ -87,6 +90,17 @@ export const templateDesignerSkill: SkillDefinition = {
 - **cssStyle**：模板样式
 - **generationPrompt**：指导 AI 生成卡片的提示词
 - **previewFront/previewBack**：示例预览
+- **previewDataJson**：预览用示例数据 JSON（key 对应字段名），多字段模板务必提供，否则预览会大面积空白
+
+## 应用内渲染子集（设计模板时必须知道）
+
+模板在本应用内的预览/复习渲染是 Anki 语法的一个安全子集，与导出到 Anki Desktop 后的行为有差异：
+
+- **\`<script>\` 会随模板保存、不会被剥除**，导出到 Anki 后正常运行；但在本应用内预览/复习时脚本**不会执行**（DOMPurify + iframe 沙箱），交互效果只能在 Anki 中验证
+- **\`@font-face\` 与外链资源（远程 CSS/JS/字体）会被剥除**，不要依赖外部 URL；样式请内联到 cssStyle
+- **\`{{tts ...}}\` 占位符在应用内被忽略**，不发声
+- **\`[sound:...]\` 在应用内只显示一个徽标，不播放音频**
+- **媒体文件不会随 .apkg 打包**：图片等资源建议用 base64 data URI 内联（小图为宜），否则导出后会丢失
 
 ## 注意事项
 
@@ -106,6 +120,7 @@ export const templateDesignerSkill: SkillDefinition = {
     'builtin-template_fork',
     'builtin-template_preview',
     'builtin-template_delete',
+    'builtin-template_set_default',
   ],
   embeddedTools: [
     {
@@ -231,6 +246,27 @@ export const templateDesignerSkill: SkillDefinition = {
                 type: 'string',
                 description: '可选：生成提示词',
               },
+              noteType: {
+                type: 'string',
+                description: '可选：Anki 笔记类型（如 Basic, Cloze）；Cloze 要求正面模板含 {{cloze:字段}}',
+              },
+              previewFront: {
+                type: 'string',
+                description: '可选：模板列表展示用的正面示例文案',
+              },
+              previewBack: {
+                type: 'string',
+                description: '可选：模板列表展示用的背面示例文案',
+              },
+              previewDataJson: {
+                type: 'string',
+                description: '可选：预览示例数据 JSON 字符串（key 对应字段名），多字段模板建议同步更新',
+              },
+              fieldExtractionRules: {
+                type: 'object',
+                description:
+                  '可选：字段提取规则映射（key 为字段名，value 含 field_type/is_required/description 等）；更新 fields 时必须与之一一对应',
+              },
             },
             required: ['expectedVersion'],
           },
@@ -268,7 +304,7 @@ export const templateDesignerSkill: SkillDefinition = {
     {
       name: 'builtin-template_preview',
       description:
-        '预览模板渲染效果。可基于已有模板 ID 或传入模板草稿，做占位符替换生成正面/背面预览。',
+        '预览模板渲染效果。可基于已有模板 ID 或传入模板草稿，做占位符替换生成正面/背面预览。未提供 sampleData 时自动使用模板库存的 previewDataJson 示例数据。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -297,6 +333,21 @@ export const templateDesignerSkill: SkillDefinition = {
           templateId: {
             type: 'string',
             description: '【必填】要删除的模板 ID',
+          },
+        },
+        required: ['templateId'],
+      },
+    },
+    {
+      name: 'builtin-template_set_default',
+      description:
+        '将指定模板设为默认制卡模板（影响后续制卡的默认模板选择）。模板必须存在且处于激活状态；templateId 必须来自 template_list 返回结果。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          templateId: {
+            type: 'string',
+            description: '【必填】要设为默认的模板 ID',
           },
         },
         required: ['templateId'],

@@ -130,7 +130,7 @@ const SIZE_CONFIG = {
     iconSize: 32,
     closeBtn: 'w-4 h-4',
     closeBtnPadding: 'p-0.5',
-    fontSize: 'text-[10px]',
+    fontSize: 'text-2xs',
   },
   md: {
     container: 'w-24 h-24',
@@ -219,7 +219,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
             {/* 渐变遮罩，为了显示文件名（仅在非sm尺寸） */}
             {size !== 'sm' && (
                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1 pt-4">
-                 <p className="text-white text-[10px] truncate text-center px-1">
+                 <p className="text-white text-2xs truncate text-center px-1">
                    {attachment.name}
                  </p>
                </div>
@@ -301,7 +301,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
 
       {/* 文件大小（大尺寸显示，非图片） */}
       {size === 'lg' && !showImagePreview && (
-        <div className="absolute bottom-1 left-0 right-0 text-[10px] text-muted-foreground text-center truncate px-2">
+        <div className="absolute bottom-1 left-0 right-0 text-2xs text-muted-foreground text-center truncate px-2">
           {formatFileSize(attachment.size)}
         </div>
       )}

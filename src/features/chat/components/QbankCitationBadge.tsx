@@ -76,6 +76,7 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
       onClick={handleClick}
       className={cn(
         '!inline-flex !h-auto !px-1.5 !py-0.5 mx-0.5',
+        'items-center gap-1 align-middle',
         'bg-emerald-500/10 hover:bg-emerald-500/20',
         'text-emerald-600 dark:text-emerald-400',
         'text-sm font-medium',
@@ -85,8 +86,11 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
       title={t('qbankCitation.openQbank', {
         title: title || sessionId,
       })}
+      aria-label={t('qbankCitation.openQbank', {
+        title: title || sessionId,
+      })}
     >
-      <BookOpen size={12} />
+      <BookOpen size={12} aria-hidden className="shrink-0" />
       <span className="truncate max-w-[150px]">
         {title || t('qbankCitation.qbank')}
       </span>

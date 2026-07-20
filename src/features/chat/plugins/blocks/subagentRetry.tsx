@@ -8,9 +8,10 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, Warning, CheckCircle } from '@phosphor-icons/react';
+import { ArrowClockwise, Warning, CheckCircle, XCircle } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
+import { useWorkspaceStore } from '../../workspace/workspaceStore';
 
 // ============================================================================
 // 类型定义
@@ -25,9 +26,12 @@ interface SubagentRetryInput {
 interface SubagentRetryOutput {
   message: string;
   timestamp: string;
+  /** events.ts 在 AGENT_COMPLETION（completed）时写入 true */
   resolved?: boolean;
   retry_count?: number;
   reason?: string;
+  /** events.ts 在 AGENT_COMPLETION（failed/cancelled/interrupted/closed）时写入 */
+  final_status?: string;
 }
 
 // ============================================================================
@@ -37,7 +41,7 @@ interface SubagentRetryOutput {
 const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   block,
 }) => {
-  const { t } = useTranslation(['chatV2']);
+  const { t } = useTranslation(['chatV2', 'workspace']);
 
   const input = block.toolInput as unknown as SubagentRetryInput | undefined;
   const output = block.toolOutput as unknown as SubagentRetryOutput | undefined;
@@ -49,9 +53,34 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   const reason = output?.reason ?? input?.reason;
   // max_retries_exceeded 是终局失败，必须渲染红色终态而非琥珀色"重试中"
   const isExhausted = reason === 'max_retries_exceeded';
-  const isFailed = isExhausted || block.status === 'error';
-  const isResolved = !isFailed && (output?.resolved === true || block.status === 'success');
-  const isRunning = !isFailed && !isResolved && block.status === 'running';
+  // 🆕 渲染自愈：events.ts 的写回登记是内存态（重启/监听器重建后丢失）。
+  // 块本身仍是 running 而 workspaceStore 已观察到该 agent 的运行终态时，
+  // 直接按 store 终态渲染，避免"永远重试中"的陈旧展示。
+  const storeAgentStatus = useWorkspaceStore((state) =>
+    state.agents.find((a) => a.sessionId === agentId)?.status
+  );
+  const selfHealedStatus =
+    block.status === 'running' && !output?.final_status && output?.resolved !== true
+      ? storeAgentStatus === 'completed'
+        ? 'completed'
+        : storeAgentStatus === 'failed'
+          ? 'failed'
+          : storeAgentStatus === 'cancelled'
+            ? 'cancelled'
+            : undefined
+      : undefined;
+  // 🆕 events.ts 的 AGENT_COMPLETION 写回的运行终态（自愈态优先级更低，仅兜底）
+  const finalStatus = output?.final_status
+    ?? (selfHealedStatus && selfHealedStatus !== 'completed' ? selfHealedStatus : undefined);
+  const isSelfHealedResolved = selfHealedStatus === 'completed';
+  // 取消/中断是"主动终止"，用中性终态而非红色失败
+  const isCancelled = !isExhausted
+    && (finalStatus === 'cancelled' || finalStatus === 'interrupted');
+  const isFailed = !isCancelled
+    && (isExhausted || finalStatus === 'failed' || finalStatus === 'closed' || block.status === 'error');
+  const isResolved = !isFailed && !isCancelled
+    && (output?.resolved === true || block.status === 'success' || isSelfHealedResolved);
+  const isRunning = !isFailed && !isCancelled && !isResolved && block.status === 'running';
 
   return (
     <div
@@ -60,9 +89,11 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         'transition-colors duration-200',
         isFailed
           ? 'bg-destructive/5 border-destructive/30'
-          : isResolved
-            ? 'bg-success/5 border-success/30'
-            : 'bg-warning/5 border-warning/30'
+          : isCancelled
+            ? 'bg-muted/30 border-border/50'
+            : isResolved
+              ? 'bg-success/5 border-success/30'
+              : 'bg-warning/5 border-warning/30'
       )}
     >
       <div className="flex items-start gap-3">
@@ -72,13 +103,17 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
             isFailed
               ? 'bg-destructive/10 text-destructive'
-              : isResolved
-                ? 'bg-success/10 text-success'
-                : 'bg-warning/10 text-warning'
+              : isCancelled
+                ? 'bg-muted/50 text-muted-foreground'
+                : isResolved
+                  ? 'bg-success/10 text-success'
+                  : 'bg-warning/10 text-warning'
           )}
         >
           {isFailed ? (
             <Warning size={16} />
+          ) : isCancelled ? (
+            <XCircle size={16} />
           ) : isResolved ? (
             <CheckCircle size={16} />
           ) : isRunning ? (
@@ -96,18 +131,22 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                 'text-sm font-medium',
                 isFailed
                   ? 'text-destructive'
-                  : isResolved
-                    ? 'text-success'
-                    : 'text-warning'
+                  : isCancelled
+                    ? 'text-muted-foreground'
+                    : isResolved
+                      ? 'text-success'
+                      : 'text-warning'
               )}
             >
               {isFailed
                 ? isExhausted
                   ? t('chatV2:workspace.subagentRetryExhaustedTitle')
                   : t('chatV2:workspace.subagentRetryFailed')
-                : isResolved
-                  ? t('chatV2:workspace.subagentRetryResolved')
-                  : t('chatV2:workspace.subagentRetryTitle')}
+                : isCancelled
+                  ? t('workspace:subagentRetry.finalCancelled')
+                  : isResolved
+                    ? t('chatV2:workspace.subagentRetryResolved')
+                    : t('chatV2:workspace.subagentRetryTitle')}
             </span>
             <span className="text-xs text-muted-foreground font-mono">
               {shortAgentId}

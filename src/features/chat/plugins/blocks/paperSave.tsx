@@ -124,6 +124,8 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
   const [retryError, setRetryError] = useState<string | null>(null);
   const [showSources, setShowSources] = useState(false);
   const [selectedSourceIdx, setSelectedSourceIdx] = useState<number | null>(null);
+  // 错误信息可点展开（触屏无 hover，title 提示不可见）
+  const [showFullError, setShowFullError] = useState(false);
 
   const sources = useMemo(() => paper.srcs ?? [], [paper.srcs]);
   const hasMultipleSources = sources.length > 1;
@@ -149,17 +151,17 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
   return (
     <div className="flex flex-col gap-1.5 py-2 first:pt-0 last:pb-0">
-      {/* 标题行 */}
-      <div className="flex items-center justify-between gap-2 min-w-0">
+      {/* 标题行（窄屏允许右侧状态簇换行，避免挤压标题） */}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <Icon
             className={cn(
               'w-3.5 h-3.5 shrink-0',
-              isDone && 'text-green-500',
+              isDone && 'text-success',
               isError && 'text-destructive',
               isActive && 'text-primary',
               isActive && paper.s !== 'downloading' && 'animate-pulse',
-              retryState === 'success' && 'text-green-500',
+              retryState === 'success' && 'text-success',
             )}
           />
           <span
@@ -176,7 +178,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 text-xs text-muted-foreground">
           {/* 当前源标签 */}
           {isActive && paper.src && (
             <span className="text-muted-foreground/60" title={t('blocks.paperSave.sourceTitle', { source: paper.src })}>
@@ -186,7 +188,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
           {/* 去重标识 */}
           {paper.dedup && (
-            <span className="text-amber-500" title={t('blocks.paperSave.dedupTitle')}>
+            <span className="text-warning" title={t('blocks.paperSave.dedupTitle')}>
               {t('blocks.paperSave.dedup')}
             </span>
           )}
@@ -206,13 +208,31 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
           {/* 完成 */}
           {(isDone || retryState === 'success') && (
-            <span className="text-green-500">{t('blocks.paperSave.saved')}</span>
+            <span className="text-success">{t('blocks.paperSave.saved')}</span>
           )}
 
           {/* 错误 + 重试按钮 */}
           {isError && retryState !== 'success' && (
             <>
-              <span className="text-destructive truncate max-w-[100px]" title={paper.err}>
+              {/* 错误信息可点展开（触屏无 hover，title 不可达）；展开态多行 break-words */}
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowFullError(v => !v)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setShowFullError(v => !v);
+                  }
+                }}
+                className={cn(
+                  'text-destructive cursor-pointer',
+                  showFullError
+                    ? 'min-w-0 max-w-full whitespace-normal break-words'
+                    : 'truncate max-w-[100px]'
+                )}
+                title={paper.err}
+              >
                 {paper.err || t('blocks.paperSave.stage.error')}
               </span>
               {retryState === 'loading' ? (
@@ -224,7 +244,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                     <span>{t('blocks.paperSave.retry')}</span>
                   </NotionButton>
                   {hasMultipleSources && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="!h-5 !w-5" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="relative !h-7 !w-7 after:absolute after:-inset-1.5 after:content-['']" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
                       <CaretDown className={cn('transition-transform', showSources && 'rotate-180')} size={12} />
                     </NotionButton>
                   )}
@@ -253,13 +273,20 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 handleRetry(src.url);
               }}
               className={cn(
+                '!h-auto !py-1',
                 selectedSourceIdx === si
                   ? 'border-primary text-primary bg-primary/10'
                   : 'border-border/50 hover:border-primary/50',
               )}
               title={src.url}
             >
-              {src.label}
+              {/* 触屏无 hover 看不到 title，URL 直接展示为可断行小字 */}
+              <span className="flex min-w-0 max-w-full flex-col items-start text-left">
+                <span>{src.label}</span>
+                <span className="max-w-full break-all text-2xs font-normal text-muted-foreground/70">
+                  {src.url}
+                </span>
+              </span>
             </NotionButton>
           ))}
         </div>
@@ -275,7 +302,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
         <div
           className={cn(
             'h-full rounded-full transition-all duration-500 ease-out',
-            (isDone || retryState === 'success') && 'bg-green-500',
+            (isDone || retryState === 'success') && 'bg-success',
             isError && retryState !== 'success' && 'bg-destructive',
             isActive && 'bg-primary',
             retryState === 'loading' && 'bg-primary animate-pulse',
@@ -376,10 +403,10 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
         {/* 全局状态图标 */}
         <div className="flex items-center gap-1.5">
           {isComplete && errorCount === 0 && (
-            <CheckCircle className="w-4 h-4 text-green-500" />
+            <CheckCircle className="w-4 h-4 text-success" />
           )}
           {isComplete && errorCount > 0 && (
-            <WarningCircle size={16} className="text-amber-500" />
+            <WarningCircle size={16} className="text-warning" />
           )}
           {!isComplete && !isError && (
             <CircleNotch size={16} className="text-primary animate-spin" />

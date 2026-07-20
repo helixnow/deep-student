@@ -12,6 +12,12 @@ import type {
   FsrsStats,
   ListAnkiCardsParams,
 } from '../types';
+import {
+  applyReviewCardEdit,
+  getReviewCardEditValues,
+  type EditableReviewCard,
+  type ReviewEditTemplate,
+} from '@/features/flashcards/reviewCardEditFields';
 import { getAppDataDir } from './systemApi';
 
 // ★ irec 向量索引缓存已移除（灵感图谱废弃，2025-01 清理）
@@ -164,30 +170,46 @@ export async function undoFsrsLastReview(
   return invoke('fsrs_undo_last_review', { cardStateId, expectedLogId });
 }
 
+/**
+ * 库内编辑保存：复用复习会话的字段别名映射（reviewCardEditFields），
+ * 把 front/back 编辑写回模板真正渲染的字段（如 Question/explanation），
+ * 而不是硬写 fields.Front/Back 导致模板卡编辑不生效。
+ */
 export async function updateAnkiLibraryCard(
   card: AnkiLibraryCard,
   patch: AnkiLibraryCardPatch,
+  template?: ReviewEditTemplate | null,
 ): Promise<void> {
-  const front = patch.front ?? card.front;
-  const back = patch.back ?? card.back;
-  const text = patch.text ?? card.text;
-  const fields = {
-    ...(card.fields ?? {}),
-    Front: front,
-    Back: back,
-    ...(text !== undefined ? { Text: text } : {}),
+  const editable: EditableReviewCard = {
+    ankiCardId: card.id,
+    front: card.front,
+    back: card.back,
+    text: card.text,
+    tags: card.tags,
+    images: card.images,
+    templateId: card.template_id ?? null,
+    extraFields: { ...(card.fields ?? {}), ...(card.extra_fields ?? {}) },
   };
+  const current = getReviewCardEditValues(editable, template);
+  const edit = applyReviewCardEdit(
+    editable,
+    {
+      front: patch.front ?? current.front,
+      back: patch.back ?? current.back,
+    },
+    template,
+  );
   await invoke<void>('update_anki_card', {
     card: {
       id: card.id,
       task_id: card.task_id,
-      front,
-      back,
-      text,
+      front: edit.front,
+      back: edit.back,
+      text: patch.text ?? edit.text,
       tags: patch.tags ?? card.tags,
       images: card.images,
-      fields,
-      extra_fields: { ...(card.extra_fields ?? {}) },
+      fields: { ...edit.extraFields },
+      extra_fields: { ...edit.extraFields },
       template_id: card.template_id ?? null,
       is_error_card: card.is_error_card ?? false,
       error_content: card.error_content ?? null,
@@ -197,6 +219,11 @@ export async function updateAnkiLibraryCard(
 
 export async function getFsrsStats(): Promise<FsrsStats> {
   return invoke<FsrsStats>('fsrs_get_stats');
+}
+
+/** 危险操作：清除该卡全部复习日志并重建全新调度状态（返回新 stateId）。 */
+export async function resetFsrsCardProgress(cardStateId: string): Promise<unknown> {
+  return invoke('fsrs_reset_card_progress', { cardStateId });
 }
 
 export async function updateAnkiCard(request: {

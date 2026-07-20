@@ -260,7 +260,7 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
             <span className="flex min-w-0 flex-col gap-0.5">
               <span>{followSystemLabel}</span>
               {defaultModelDisplay && (
-                <span className="text-[10.5px] text-muted-foreground">{defaultModelDisplay}</span>
+                <span className="text-2xs text-muted-foreground">{defaultModelDisplay}</span>
               )}
             </span>
           </AppMenuItem>
@@ -290,7 +290,7 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
                 >
                   <span className="truncate">{model.name}</span>
                   {model.id === defaultModelId && (
-                    <span className="ml-1 text-[10px] text-muted-foreground opacity-70">
+                    <span className="ml-1 text-2xs text-muted-foreground opacity-70">
                       {t('chat_host:model_panel.badges.system_default')}
                     </span>
                   )}

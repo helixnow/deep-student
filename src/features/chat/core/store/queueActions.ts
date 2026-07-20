@@ -59,6 +59,16 @@ export interface QueueActions {
    * 若该项 steered=true，发送成功后会更新 user message 的 _meta.steered。
    */
   maybeDequeue: () => Promise<void>;
+
+  /**
+   * 🔧 P0 定时器竞态修复（内部清理接口）：
+   * 取消 maybeDequeue 出队后的 300ms breather setTimeout。
+   * Store 销毁 / LRU 淘汰路径必须调用，否则 timer 在 destroy 后仍会 fire：
+   * set({ dequeuing: false }) 写入已摘除的 store，并可能级联触发
+   * maybeDequeue → sendMessage 把队首消息发到已清空回调的僵尸会话上（静默丢消息）。
+   * 由 createChatStore 组合进 disposeRuntimeTimers，一般不应被 UI 直接调用。
+   */
+  cancelDequeueBreather: () => void;
 }
 
 // ============================================================================
@@ -80,6 +90,12 @@ function genQueuedId(): string {
 // ============================================================================
 
 export function createQueueActions(set: SetState, getState: GetState): QueueActions {
+  // 🔧 P0 定时器竞态修复：跟踪出队 breather timer（每 store 实例一份闭包）。
+  // destroy/淘汰路径通过 cancelDequeueBreather 取消，避免 timer 在 store
+  // 摘除后仍写状态或触发新一轮出队。
+  let dequeueBreatherTimer: ReturnType<typeof setTimeout> | null = null;
+  let disposed = false;
+
   return {
     enqueueMessage: (content, attachments, contextRefs) => {
       const state = getState() as ChatStoreState;
@@ -187,6 +203,8 @@ export function createQueueActions(set: SetState, getState: GetState): QueueActi
         updateMessageMeta?: (messageId: string, meta: { steered?: boolean }) => void;
       };
 
+      // 🔧 P0：store 已进入销毁清理阶段时不再出队（防止销毁窗口内丢消息）
+      if (disposed) return;
       if (s0.sessionStatus !== 'idle') return;
       if (s0.queuedMessages.length === 0) return;
       if (s0.dequeuing) return;
@@ -204,7 +222,11 @@ export function createQueueActions(set: SetState, getState: GetState): QueueActi
       // After clearing, re-trigger maybeDequeue — covers the case where the
       // stream finished within the breather (idle transition fired but our
       // own `dequeuing=true` blocked the subscription's nudge).
-      setTimeout(() => {
+      // 🔧 P0：timer 记录到闭包并支持取消（destroy 后不得再写 store / 再触发出队）
+      if (dequeueBreatherTimer !== null) clearTimeout(dequeueBreatherTimer);
+      dequeueBreatherTimer = setTimeout(() => {
+        dequeueBreatherTimer = null;
+        if (disposed) return;
         set({ dequeuing: false });
         // Fire-and-forget; the guard will short-circuit if no longer applicable.
         const cur = getState() as ChatStoreState & {
@@ -263,6 +285,14 @@ export function createQueueActions(set: SetState, getState: GetState): QueueActi
             pendingContextRefsDirty: draftRefsDirty,
           });
         }
+      }
+    },
+
+    cancelDequeueBreather: () => {
+      disposed = true;
+      if (dequeueBreatherTimer !== null) {
+        clearTimeout(dequeueBreatherTimer);
+        dequeueBreatherTimer = null;
       }
     },
   };

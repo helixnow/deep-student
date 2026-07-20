@@ -24,6 +24,8 @@ export type {
   SessionState,
   SessionSettings,
   CreateSessionRequest,
+  // 🆕 P0 分支模型：store.branchSession / TauriAdapter.branchSession 返回值
+  BranchSessionResult,
 } from './types';
 
 // 辅助函数

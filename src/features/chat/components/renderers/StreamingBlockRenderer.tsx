@@ -4,10 +4,10 @@ import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown, containsHtmlTagLikeContent } from './flowTokenEligibility';
-import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
+import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
-import { splitMarkdownBlocks, type MarkdownBlock } from './splitMarkdownBlocks';
+import { createMarkdownBlockSplitter, type MarkdownBlock } from './splitMarkdownBlocks';
 import './streamingBlocks.css';
 
 // 模块级空数组：保持引用稳定，避免流式期间每个 token 都生成新数组
@@ -144,26 +144,8 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
 });
 
 // ─── Chain of Thought Parser ─────────────────────────────────────────────────
-
-type ParsedContent = {
-  thinkingContent: string;
-  mainContent: string;
-};
-
-function parseChainOfThought(content: string): ParsedContent | null {
-  if (!content) return null;
-  const tryMatch = (src: string, tag: 'thinking' | 'think') =>
-    src.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>\\s*`, 'i'));
-
-  let thinkingMatch = tryMatch(content, 'thinking');
-  if (!thinkingMatch) thinkingMatch = tryMatch(content, 'think');
-  if (thinkingMatch) {
-    const thinkingContent = (thinkingMatch[1] || '').trim();
-    const mainContent = content.replace(thinkingMatch[0], '').trim();
-    return { thinkingContent, mainContent };
-  }
-  return null;
-}
+// parseChainOfThought 已抽到 rendererUtils（预编译正则 + 无标签快速路径，
+// 消除流式期间每次 flush 对全量文本的重复扫描）
 
 // ─── StreamingBlockRenderer ──────────────────────────────────────────────────
 //
@@ -210,9 +192,11 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   const parsedContent = useMemo(() => parseChainOfThought(processedContent), [processedContent]);
   const mainContent = parsedContent ? parsedContent.mainContent : processedContent;
 
-  // 拆分为块
+  // 拆分为块（增量拆分器：append-only 增长时只重解析尾部，避免全流 O(n²)）
+  const splitterRef = useRef<ReturnType<typeof createMarkdownBlockSplitter> | null>(null);
+  if (!splitterRef.current) splitterRef.current = createMarkdownBlockSplitter();
   const blocks = useMemo(
-    () => splitMarkdownBlocks(mainContent, isStreaming),
+    () => splitterRef.current!(mainContent, isStreaming),
     [mainContent, isStreaming],
   );
 

@@ -350,7 +350,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           type="button"
           onClick={() => handleToggleModel(option)}
           disabled={disabled}
-          className={cn(indicatorClass, 'mt-0.5', disabled && 'cursor-not-allowed')}
+          // 伪元素扩大触控命中区（视觉保持 18/20px 方块）
+          className={cn(indicatorClass, 'mt-0.5 relative after:absolute after:-inset-2.5 after:content-[\'\']', disabled && 'cursor-not-allowed')}
         >
           {isSelected && <Check size={12} />}
         </button>
@@ -386,16 +387,17 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             />
             {isDefault && (
               <CommonTooltip content={systemBadgeTooltip} position="top">
+                {/* 移动端也常显（原 hidden sm:inline-flex 在 <640 隐藏系统默认标记） */}
                 <Badge 
                   variant="outline" 
-                  className="hidden h-4 px-1 py-0 text-[10px] font-medium shrink-0 border-primary/50 bg-primary/10 text-primary cursor-help sm:inline-flex"
+                  className="inline-flex h-4 px-1 py-0 text-2xs font-medium shrink-0 border-primary/50 bg-primary/10 text-primary cursor-help"
                 >
                   {systemBadge}
                 </Badge>
               </CommonTooltip>
             )}
           </div>
-          <div className={cn('w-full text-foreground break-all', isMobile ? 'text-[13px] leading-4' : 'text-xs leading-4')}>
+          <div className={cn('w-full text-foreground break-all', isMobile ? 'text-ui leading-4' : 'text-xs leading-4')}>
             {option.model || option.name}
           </div>
         </NotionButton>
@@ -412,7 +414,8 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
               }}
               disabled={disabled || savingDefault}
               className={cn(
-                'mt-0.5 !h-6 !w-6 opacity-60',
+                // 伪元素扩大触控命中区（视觉 24px）
+                'mt-0.5 !h-6 !w-6 opacity-60 relative after:absolute after:-inset-2 after:content-[\'\']',
                 'text-muted-foreground !hover:bg-transparent !active:bg-transparent hover:!text-muted-foreground',
                 (disabled || savingDefault) && 'cursor-not-allowed opacity-40'
               )}
@@ -455,7 +458,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                 )}
               </div>
               {selectedModels.length > 0 && (
-                <Badge variant="secondary" className="h-5 px-1.5 py-0 text-[10px]">
+                <Badge variant="secondary" className="h-5 px-1.5 py-0 text-2xs">
                   {t('chatV2:modelMention.selectedCount', {
                     count: selectedModels.length,
                   })}
@@ -464,7 +467,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
               {selectedModels.length >= 2 && !isRetryMode && (
                 <Badge
                   variant="default"
-                  className="h-5 px-1.5 py-0 text-[10px] bg-primary/20 text-primary border-primary/30"
+                  className="h-5 px-1.5 py-0 text-2xs bg-primary/20 text-primary border-primary/30"
                 >
                   {t('chatV2:modelMention.parallelMode')}
                 </Badge>
@@ -493,6 +496,30 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* 移动端隐藏头部时，重试模式的确认按钮不能随头部一起消失（否则选完模型无法触发重试） */}
+      {shouldHideHeader && isRetryMode && onRetry && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {selectedModels.length > 0
+              ? t('chatV2:modelMention.selectedCount', { count: selectedModels.length })
+              : t('chatV2:modelRetry.hint')}
+          </span>
+          <NotionButton
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              const modelIds = selectedModels.map((m) => m.id);
+              onRetry(modelIds);
+            }}
+            disabled={disabled || selectedModels.length === 0}
+            title={t('chatV2:modelMention.retry')}
+          >
+            <ArrowCounterClockwise size={14} />
+            {t('chatV2:modelRetry.retry')}
+          </NotionButton>
         </div>
       )}
 
@@ -556,7 +583,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                     {groupSelectedCount > 0 && (
                       <Badge
                         variant="default"
-                        className="ml-auto h-4 px-1 py-0 text-[9px] font-medium bg-primary/20 text-primary border-primary/30"
+                        className="ml-auto h-4 px-1 py-0 text-2xs font-medium bg-primary/20 text-primary border-primary/30"
                       >
                         {groupSelectedCount}
                       </Badge>

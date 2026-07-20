@@ -295,6 +295,9 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
         getState
       );
 
+      // 创建消息 Actions（含 cancelLockWatchdog 内部清理接口）
+      const messageActions = createMessageActions(set as SetState, getState);
+
       return {
         // ========== 初始状态 ==========
         ...createInitialState(sessionId),
@@ -310,7 +313,7 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
 
         // ========== 消息 Actions ==========
 
-        ...createMessageActions(set as SetState, getState),
+        ...messageActions,
         ...createBlockActions(set as SetState, getState),
         ...createStreamActions(set as SetState, getState),
         ...createSessionActions(set as SetState, getState, scheduleAutoSaveIfReady),
@@ -318,6 +321,15 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
 
         // ========== 队列 Actions ==========
         ...queueActions,
+
+        // ========== 🔧 P0 定时器竞态修复：运行时定时器统一清理 ==========
+        // SessionManager 的 destroy / LRU 淘汰路径在摘除 store 前调用，
+        // 取消所有仍可能 fire 的闭包定时器（出队 breather、操作锁看门狗），
+        // 防止它们在 store 摘除后写状态或触发新一轮出队（僵尸会话丢消息）。
+        disposeRuntimeTimers: () => {
+          queueActions.cancelDequeueBreather();
+          messageActions.cancelLockWatchdog();
+        },
 
         // ========== 辅助方法 ==========
         // 注：pendingApprovalRequest（兼容旧字段）由 createInitialState 初始化为 null，

@@ -38,6 +38,21 @@ export interface WorkspaceAgent {
   joinedAt: string;
   lastActiveAt: string;
   metadata?: Record<string, unknown>;
+  /** C12：inbox 未消费消息数（后端 workspace_list_agents 回传，查询失败为 0） */
+  pendingInboxCount?: number;
+}
+
+/**
+ * 契约 C8：后端 token 归集对象（camelCase）。
+ * 事件 payload 的外层键名是 snake_case 的 `token_usage`，值本身即此形状（可能为 null）。
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  source?: string;
+  reasoningTokens?: number;
+  cachedTokens?: number;
 }
 
 export interface AgentCompletionEnvelope {
@@ -50,7 +65,8 @@ export interface AgentCompletionEnvelope {
   finalOutput?: string;
   error?: string;
   completedAt?: string;
-  tokenUsage?: Record<string, number>;
+  /** C8：子代理本次运行的 token 用量（camelCase TokenUsage），后端读不到时缺省 */
+  tokenUsage?: TokenUsage;
 }
 
 export interface WorkspaceMessage {

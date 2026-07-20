@@ -240,7 +240,8 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
       "border rounded-[var(--chat-radius-md,12px)] overflow-hidden bg-card transition-shadow duration-200",
       status === 'running' && "ring-2 ring-primary/25"
     )}>
-      {/* 头部（可点击展开/收起；用 div 而非 button，避免内部操作按钮形成非法的 button 嵌套） */}
+      {/* 头部（可点击展开/收起；用 div 而非 button，避免内部操作按钮形成非法的 button 嵌套；
+          窄屏 flex-wrap 允许操作簇换行，避免被 overflow-hidden 裁切到不可达） */}
       <div
         role="button"
         tabIndex={0}
@@ -253,7 +254,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             onToggle();
           }
         }}
-        className="flex w-full items-center justify-between p-2.5 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+        className="flex w-full flex-wrap items-center justify-between gap-y-1 p-2.5 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0">
           {isExpanded ? (
@@ -278,7 +279,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <CircleNotch size={12} className="animate-spin text-info" />
           )}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           {/* 耗时指标：running 时实时计时，终态显示最终耗时（近似值） */}
           {elapsedLabel && (
             <span
@@ -299,7 +300,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
           <NotionButton
             variant="ghost"
             size="sm"
-            className={cn('h-6 px-2 text-xs', isDispatchOpen && 'bg-primary/10 text-primary')}
+            className={cn('h-8 lg:h-6 px-2 text-xs', isDispatchOpen && 'bg-primary/10 text-primary')}
             aria-expanded={isDispatchOpen}
             onClick={(e) => {
               e.stopPropagation();
@@ -320,7 +321,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs text-destructive"
+              className="h-8 lg:h-6 px-2 text-xs text-destructive"
               onClick={handleCancel}
             >
               {t('chatV2:workspace.cancel')}
@@ -329,7 +330,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
 
           {/* 高度切换按钮（仅展开时显示） */}
           {isExpanded && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-6 !w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-8 !w-8 lg:!h-6 lg:!w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
               {isFullHeight ? <ArrowsIn size={14} className="text-muted-foreground" /> : <ArrowsOut size={14} className="text-muted-foreground" />}
             </NotionButton>
           )}
@@ -339,7 +340,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs"
+              className="h-8 lg:h-6 px-2 text-xs"
               onClick={(e) => {
                 e.stopPropagation();
                 onViewFullSession();
@@ -446,8 +447,9 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
       {isExpanded && (
         <div
           className={cn(
+            // 高度用视口相对值封顶，避免小屏嵌套滚动超出可视范围
             "ui-fade-in border-t border-border/50 overflow-hidden transition-[height] duration-200",
-            isFullHeight ? "h-[500px]" : "h-[280px]"
+            isFullHeight ? "h-[min(500px,70vh)]" : "h-[min(280px,45vh)]"
           )}
         >
           <ChatContainer
@@ -460,7 +462,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
       )}
 
       {/* 底部元信息 */}
-      <div className="flex items-center gap-2 px-2.5 py-1 border-t border-border/30 bg-muted/20 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-2 px-2.5 py-1 border-t border-border/30 bg-muted/20 text-2xs text-muted-foreground">
         <span className="font-mono">{agentSessionId.slice(-12)}</span>
       </div>
     </div>

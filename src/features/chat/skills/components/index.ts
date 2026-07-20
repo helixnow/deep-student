@@ -4,10 +4,6 @@
  * 提供技能相关 UI 组件的统一入口
  */
 
-// SkillCard - 单个技能卡片
-export { SkillCard } from './SkillCard';
-export type { SkillCardProps } from './SkillCard';
-
 // ActiveSkillBadge - 激活状态徽章
 export {
   ActiveSkillBadge,

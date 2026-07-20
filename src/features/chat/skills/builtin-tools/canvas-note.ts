@@ -11,7 +11,7 @@ import type { SkillDefinition } from '../types';
 export const canvasNoteSkill: SkillDefinition = {
   id: 'canvas-note',
   name: 'canvas-note',
-  description: '智能笔记能力组，包含笔记读取、追加、替换、创建、列表、搜索、标签更新和软删除等工具。当用户需要查看、编辑、创建或管理笔记时使用；若用户要求“展示/演示/让我看你操作”等可见操作，必须同时加载 workbench-tools，先打开并聚焦已有笔记，再按授权执行可见编辑。',
+  description: '智能笔记能力组，包含笔记读取、追加、替换、创建、列表、搜索、标签更新、软删除以及笔记库 zip 导入等工具。当用户需要查看、编辑、创建、管理笔记或导入笔记库备份 zip 时使用；若用户要求“展示/演示/让我看你操作”等可见操作，必须同时加载 workbench-tools，先打开并聚焦已有笔记，再按授权执行可见编辑。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 3,
@@ -40,6 +40,9 @@ export const canvasNoteSkill: SkillDefinition = {
 - **builtin-note_search**: 在笔记中搜索
 - **builtin-note_update_tags**: 更新标签；必须先 note_read 并传入 updatedAt OCC 基线
 - **builtin-note_delete**: 软删除笔记到回收站；必须先 note_read 并传入 updatedAt，可通过 dstu-tools 恢复
+
+### 导入笔记库 zip
+- **builtin-notes_import**: 把用户提供的笔记库导出 zip 完整导入资源库（Medium）。流程：先加载 workspace-tools，用 builtin-attachment_stage 把 zip 附件物化到 temp root，再把返回的 root_id + relative_path 传给本工具，并按用户意愿选择 conflict_strategy（skip/overwrite/merge_keep_newer，默认 skip）。**禁止**用 shell unzip 手工拼装导入——那无法等价复刻冲突策略与附件还原逻辑。
 
 ## 使用建议
 
@@ -71,6 +74,7 @@ export const canvasNoteSkill: SkillDefinition = {
     'builtin-note_search',
     'builtin-note_update_tags',
     'builtin-note_delete',
+    'builtin-notes_import',
   ],
   embeddedTools: [
     {
@@ -200,6 +204,35 @@ export const canvasNoteSkill: SkillDefinition = {
           expected_updated_at: { type: 'string', minLength: 1, description: '【必填】最近一次完整 note_read 返回的 updatedAt OCC 基线' },
         },
         required: ['note_id', 'expected_updated_at'],
+      },
+    },
+    {
+      name: 'builtin-notes_import',
+      description:
+        '把笔记库导出 zip 完整导入资源库（Medium，写操作）。与设置页 UI 导入等价：完整还原学科/笔记/附件并按 conflict_strategy 处理冲突。入参是 builtin-attachment_stage 物化后的 staged zip（root_id=temp + relative_path），仅接受当前会话 temp root 内的文件。返回 subject_count/note_count/attachment_count/skipped_count/overwritten_count。不要用 shell unzip 手工拼装替代本工具。',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          root_id: {
+            type: 'string',
+            enum: ['temp'],
+            default: 'temp',
+            description: '固定为 temp（attachment_stage 返回的 root_id）',
+          },
+          relative_path: {
+            type: 'string',
+            minLength: 1,
+            description: '【必填】attachment_stage 返回的 relative_path（如 attachments/notes_backup.zip）',
+          },
+          conflict_strategy: {
+            type: 'string',
+            enum: ['skip', 'overwrite', 'merge_keep_newer'],
+            default: 'skip',
+            description: '冲突策略：skip 跳过已存在笔记（默认）；overwrite 覆盖；merge_keep_newer 保留更新时间较新的一方。overwrite 会覆盖用户现有笔记，使用前应向用户确认。',
+          },
+        },
+        required: ['relative_path'],
       },
     },
   ],

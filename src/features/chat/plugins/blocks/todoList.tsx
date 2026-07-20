@@ -73,7 +73,7 @@ const StatusIcon: React.FC<StatusIconProps> = ({ status, index }) => {
   switch (status) {
     case 'running':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))] text-[9px] font-bold flex-shrink-0">
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))] text-2xs font-bold flex-shrink-0">
           {index + 1}
         </span>
       );
@@ -273,7 +273,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
                       </span>
                       {/* 失败时显示错误信息 */}
                       {step.status === 'failed' && step.result && (
-                        <span className="block text-[10px] text-[color:hsl(var(--destructive))] opacity-65 mt-0.5">
+                        <span className="block text-2xs text-[color:hsl(var(--destructive))] opacity-65 mt-0.5">
                           {step.result}
                         </span>
                       )}
@@ -289,7 +289,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
 
             {/* 完成消息 */}
             {isAllDone && message && (
-              <div className="mt-1 text-[10px] text-[color:hsl(var(--success))]">
+              <div className="mt-1 text-2xs text-[color:hsl(var(--success))]">
                 {message}
               </div>
             )}

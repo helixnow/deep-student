@@ -46,7 +46,7 @@ describe('ToolApprovalCard', () => {
     const root = container.firstElementChild;
     expect(root).not.toBeNull();
     expect(root?.className).toContain('backdrop-blur-md');
-    expect(root?.className).toContain('bg-yellow-50/85');
+    expect(root?.className).toContain('bg-warning/10');
   });
 
   it('does not render a leading shield icon next to the approval title', () => {

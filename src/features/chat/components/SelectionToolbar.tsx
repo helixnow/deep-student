@@ -1,17 +1,19 @@
 /**
- * SelectionToolbar - 文本选中浮动工具栏
+ * SelectionToolbar - 文本选中操作条（轻量、非遮罩）
  *
- * 当用户在消息内容中选中文本时，在选区上方显示操作工具栏。
+ * 当用户在消息内容中选中文本时，在选区附近显示操作条。
  * 提供：复制、AI 解释、翻译、添加到聊天 四个操作。
  *
- * 视觉风格：毛玻璃胶囊形，带入场/出场动画。
- * 定位：Portal 渲染到 body，基于选区 rect 定位。
+ * 定位契约（P0-3 去 Portal 改造）：
+ * - 不再 createPortal 到 body、不再 fixed + z-[9999] 全局悬浮；
+ *   改为绝对定位挂在消息容器内（containerRef 指向的元素需为 position: relative）。
+ * - 选区 rect（视口坐标）在渲染前换算为容器局部坐标；随内容一起滚动，
+ *   滚动时由 useTextSelection 统一清除选区状态。
+ * - 入场动画复用 .chat-msg-enter（150ms fade+rise，自带 reduced-motion 降级）。
  */
 
 import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { Copy, Check, Sparkle, Translate, ChatDots } from '@phosphor-icons/react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -30,13 +32,15 @@ export interface SelectionToolbarProps {
   selectionRect: SelectionRect | null;
   /** 是否显示 */
   isVisible: boolean;
+  /** 定位容器（消息根元素，需 position: relative） */
+  containerRef: React.RefObject<HTMLElement | null>;
   /** 清除选择状态 */
   onClear: () => void;
   /** 发送消息回调 */
   onSendMessage?: (content: string) => void;
-  /** 解释回调（触发解释 popover） */
+  /** 解释回调（触发内联解释卡片） */
   onExplain?: (text: string) => void;
-  /** 翻译回调（触发翻译 popover） */
+  /** 翻译回调（触发内联翻译卡片） */
   onTranslate?: (text: string) => void;
   /** 添加到聊天输入框回调 */
   onAddToChat?: (text: string) => void;
@@ -50,8 +54,8 @@ export interface SelectionToolbarProps {
 const TOOLBAR_GAP = 8;
 /** 工具栏高度估算（用于翻转判断） */
 const TOOLBAR_HEIGHT = 40;
-/** 视口边距 */
-const VIEWPORT_PADDING = 12;
+/** 容器内边距（水平钳制） */
+const CONTAINER_PADDING = 4;
 
 // ============================================================================
 // 组件
@@ -61,6 +65,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   selectedText,
   selectionRect,
   isVisible,
+  containerRef,
   onClear,
   onExplain,
   onTranslate,
@@ -72,64 +77,63 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   const toolbarRef = useRef<HTMLDivElement>(null);
   // C-8: 触屏上默认放选区下方（避开系统选择气泡），并放大触控目标
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
-  const [position, setPosition] = useState<{ top: number; left: number; flipped: boolean }>({
-    top: 0,
-    left: 0,
-    flipped: false,
-  });
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  // ★ M3 修复：窄屏时限制工具栏最大宽度（超宽时允许换行），避免横向溢出容器
+  const [maxWidth, setMaxWidth] = useState<number | null>(null);
 
-  // 计算工具栏位置（useLayoutEffect：在绘制前定位，避免首帧闪现在视口左上角）
-  // P1-10: 用 visualViewport 度量——移动端软键盘弹出时 window.innerHeight
-  // 不缩小，会把工具栏定位到键盘底下；桌面端两者一致
+  // 计算工具栏位置（useLayoutEffect：在绘制前定位，避免首帧闪现）。
+  // 选区 rect 是视口坐标，换算为容器局部坐标后用 absolute 定位。
   useLayoutEffect(() => {
-    if (!selectionRect || !isVisible) return;
+    if (!selectionRect || !isVisible) {
+      setPosition(null);
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) return;
 
+    const containerRect = container.getBoundingClientRect();
     const toolbarWidth = toolbarRef.current?.offsetWidth || 200;
-    const toolbarHeight = isTouchPrimary ? 48 : TOOLBAR_HEIGHT;
+    const toolbarHeight = toolbarRef.current?.offsetHeight || (isTouchPrimary ? 48 : TOOLBAR_HEIGHT);
 
-    const vv = window.visualViewport;
-    const viewportTop = vv?.offsetTop ?? 0;
-    const viewportLeft = vv?.offsetLeft ?? 0;
-    const viewportBottom = viewportTop + (vv?.height ?? window.innerHeight);
-    const viewportRight = viewportLeft + (vv?.width ?? window.innerWidth);
+    // 局部坐标系下的选区
+    const localTop = selectionRect.top - containerRect.top;
+    const localBottom = selectionRect.bottom - containerRect.top;
+    const localCenterX = selectionRect.left + selectionRect.width / 2 - containerRect.left;
 
     let top: number;
-    let flipped: boolean;
-
     if (isTouchPrimary) {
-      // 触屏：默认下方（系统选择气泡通常占据选区上方）
-      top = selectionRect.bottom + TOOLBAR_GAP;
-      flipped = true;
-      if (top + toolbarHeight > viewportBottom - VIEWPORT_PADDING) {
-        top = selectionRect.top - toolbarHeight - TOOLBAR_GAP;
-        flipped = false;
+      // 触屏：默认下方（系统选择气泡通常占据选区上方）；
+      // ★ M3 修复：视口下方空间不足时翻转到选区上方
+      const viewportH = window.visualViewport?.height ?? window.innerHeight;
+      const fitsBelow = selectionRect.bottom + TOOLBAR_GAP + toolbarHeight
+        <= viewportH - CONTAINER_PADDING;
+      top = fitsBelow ? localBottom + TOOLBAR_GAP : localTop - toolbarHeight - TOOLBAR_GAP;
+      // 上方也出容器顶时回退下方（宁可被视口裁一截也不覆盖选区）
+      if (!fitsBelow && top < CONTAINER_PADDING) {
+        top = localBottom + TOOLBAR_GAP;
       }
     } else {
-      // 桌面：默认在选区上方
-      top = selectionRect.top - toolbarHeight - TOOLBAR_GAP;
-      flipped = false;
-      // 如果上方空间不足，翻转到下方
-      if (top < viewportTop + VIEWPORT_PADDING) {
-        top = selectionRect.bottom + TOOLBAR_GAP;
-        flipped = true;
+      // 桌面：默认在选区上方；容器顶部空间不足时翻转到下方
+      top = localTop - toolbarHeight - TOOLBAR_GAP;
+      if (top < CONTAINER_PADDING) {
+        top = localBottom + TOOLBAR_GAP;
       }
     }
 
-    // 极端情况（选区几乎占满视口）翻转后仍可能越界，最终钳制回视口内
-    top = Math.max(
-      viewportTop + VIEWPORT_PADDING,
-      Math.min(top, viewportBottom - toolbarHeight - VIEWPORT_PADDING)
-    );
+    // 水平居中于选区，并钳制在容器内
+    // ★ M3 修复：工具栏比容器还宽时靠左贴边 + 限宽换行，不再横向溢出
+    const availableWidth = containerRect.width - CONTAINER_PADDING * 2;
+    setMaxWidth(availableWidth);
+    let left = localCenterX - toolbarWidth / 2;
+    if (toolbarWidth >= availableWidth) {
+      left = CONTAINER_PADDING;
+    } else {
+      const maxLeft = containerRect.width - toolbarWidth - CONTAINER_PADDING;
+      left = Math.max(CONTAINER_PADDING, Math.min(left, maxLeft));
+    }
 
-    // 水平居中于选区
-    let left = selectionRect.left + selectionRect.width / 2 - toolbarWidth / 2;
-
-    // 防止超出视口左右边界
-    const maxLeft = viewportRight - toolbarWidth - VIEWPORT_PADDING;
-    left = Math.max(viewportLeft + VIEWPORT_PADDING, Math.min(left, maxLeft));
-
-    setPosition({ top, left, flipped });
-  }, [selectionRect, isVisible, isTouchPrimary]);
+    setPosition({ top, left });
+  }, [selectionRect, isVisible, isTouchPrimary, containerRef]);
 
   // 全局视图切换离开 chat-v2 时，强制关闭工具栏
   const currentView = useViewStore((s) => s.currentView);
@@ -238,91 +242,82 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     onClear();
   }, [selectedText, onAddToChat, onClear]);
 
-  // 动画变体
-  const motionVariants = {
-    initial: { opacity: 0, scale: 0.92, y: position.flipped ? -4 : 4 },
-    animate: { opacity: 1, scale: 1, y: 0 },
-    exit: { opacity: 0, scale: 0.95, transition: { duration: 0.1 } },
-  };
+  if (!isVisible || !selectionRect) return null;
 
   const touchTarget = isTouchPrimary;
 
-  return createPortal(
-    <AnimatePresence>
-      {isVisible && selectionRect && (
-        <motion.div
-          ref={toolbarRef}
-          data-selection-toolbar
-          data-wb-blur-surface
-          role="toolbar"
-          aria-label={t('selectionToolbar.ariaLabel')}
-          variants={motionVariants}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-          className={cn(
-            'fixed z-[9999] flex items-center',
-            'rounded-lg border border-border/50',
-            'bg-background/80 backdrop-blur-xl',
-            // 阴影走 shell token，暗色由 --shadow-base 透明度自适应
-            'shadow-[var(--shadow-shell-floating)]',
-            'dark:bg-background/90 dark:border-border/30',
-          )}
-          style={{
-            top: position.top,
-            left: position.left,
-          }}
-          // 阻止 mousedown 默认行为，防止清除选择
-          onMouseDown={(e) => e.preventDefault()}
-          onKeyDown={handleToolbarKeyDown}
-        >
-          {/* 复制 */}
-          <ToolbarButton
-            onClick={handleCopy}
-            icon={copied ? <Check size={touchTarget ? 16 : 14} className="text-success" /> : <Copy size={touchTarget ? 16 : 14} />}
-            label={copied ? t('selectionToolbar.copied') : t('selectionToolbar.copy')}
-            isFirst
-            touchTarget={touchTarget}
-          />
-
-          <Divider />
-
-          {/* AI 解释 */}
-          <ToolbarButton
-            onClick={handleExplain}
-            icon={<Sparkle size={touchTarget ? 16 : 14} />}
-            label={t('selectionToolbar.explain')}
-            disabled={!onExplain}
-            touchTarget={touchTarget}
-          />
-
-          <Divider />
-
-          {/* 翻译 */}
-          <ToolbarButton
-            onClick={handleTranslate}
-            icon={<Translate size={touchTarget ? 16 : 14} />}
-            label={t('selectionToolbar.translate')}
-            disabled={!onTranslate}
-            touchTarget={touchTarget}
-          />
-
-          <Divider />
-
-          {/* 添加到聊天 */}
-          <ToolbarButton
-            onClick={handleAddToChat}
-            icon={<ChatDots size={touchTarget ? 16 : 14} />}
-            label={t('selectionToolbar.addToChat')}
-            disabled={!onAddToChat}
-            isLast
-            touchTarget={touchTarget}
-          />
-        </motion.div>
+  return (
+    <div
+      ref={toolbarRef}
+      data-selection-toolbar
+      data-wb-blur-surface
+      role="toolbar"
+      aria-label={t('selectionToolbar.ariaLabel')}
+      className={cn(
+        'chat-msg-enter absolute z-10 flex items-center',
+        // ★ M3：极窄容器兜底允许换行
+        'flex-wrap',
+        'rounded-lg border border-border/50',
+        'bg-background/80 backdrop-blur-xl',
+        // 阴影走 shell token，暗色由 --shadow-base 透明度自适应
+        'shadow-[var(--shadow-shell-floating)]',
+        'dark:bg-background/90 dark:border-border/30',
       )}
-    </AnimatePresence>,
-    document.body
+      style={{
+        top: position?.top ?? 0,
+        left: position?.left ?? 0,
+        // ★ M3：限宽在容器内
+        maxWidth: maxWidth ?? undefined,
+        // 首帧未测量前隐藏，避免闪现在容器左上角
+        visibility: position ? 'visible' : 'hidden',
+      }}
+      // 阻止 mousedown 默认行为，防止清除选择
+      onMouseDown={(e) => e.preventDefault()}
+      onKeyDown={handleToolbarKeyDown}
+    >
+      {/* 复制 */}
+      <ToolbarButton
+        onClick={handleCopy}
+        icon={copied ? <Check size={touchTarget ? 16 : 14} className="text-success" /> : <Copy size={touchTarget ? 16 : 14} />}
+        label={copied ? t('selectionToolbar.copied') : t('selectionToolbar.copy')}
+        isFirst
+        touchTarget={touchTarget}
+      />
+
+      <Divider />
+
+      {/* AI 解释 */}
+      <ToolbarButton
+        onClick={handleExplain}
+        icon={<Sparkle size={touchTarget ? 16 : 14} />}
+        label={t('selectionToolbar.explain')}
+        disabled={!onExplain}
+        touchTarget={touchTarget}
+      />
+
+      <Divider />
+
+      {/* 翻译 */}
+      <ToolbarButton
+        onClick={handleTranslate}
+        icon={<Translate size={touchTarget ? 16 : 14} />}
+        label={t('selectionToolbar.translate')}
+        disabled={!onTranslate}
+        touchTarget={touchTarget}
+      />
+
+      <Divider />
+
+      {/* 添加到聊天 */}
+      <ToolbarButton
+        onClick={handleAddToChat}
+        icon={<ChatDots size={touchTarget ? 16 : 14} />}
+        label={t('selectionToolbar.addToChat')}
+        disabled={!onAddToChat}
+        isLast
+        touchTarget={touchTarget}
+      />
+    </div>
   );
 };
 
@@ -354,9 +349,12 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
     type="button"
     onClick={onClick}
     disabled={disabled}
+    // ★ M3：触屏改图标优先（隐藏文字标签，总宽从 ≥330px 降到 ~190px，窄屏不再溢出）
+    aria-label={label}
+    title={label}
     className={cn(
       'flex items-center gap-1.5',
-      touchTarget ? 'px-3 py-3 text-[13px]' : 'px-2.5 py-1.5 text-xs',
+      touchTarget ? 'min-h-11 min-w-11 justify-center px-3 text-ui' : 'px-2.5 py-1.5 text-xs',
       'font-medium text-foreground/80',
       'hover:bg-accent/60 hover:text-foreground',
       // 键盘 roving focus 的可见反馈（鼠标点击被容器 preventDefault 拦截，不会误触发）
@@ -368,7 +366,7 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
     )}
   >
     {icon}
-    <span>{label}</span>
+    {!touchTarget && <span>{label}</span>}
   </button>
 );
 

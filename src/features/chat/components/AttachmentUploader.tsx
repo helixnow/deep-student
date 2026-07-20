@@ -44,6 +44,7 @@ import {
   ATTACHMENT_ALLOWED_EXTENSIONS,
   ATTACHMENT_IMAGE_EXTENSIONS,
   ATTACHMENT_DOCUMENT_EXTENSIONS,
+  ATTACHMENT_MINDMAP_TEXT_EXTENSIONS,
   formatFileSize,
 } from '../core/constants';
 import { 
@@ -107,6 +108,8 @@ function getAttachmentType(
   const ext = getFileExtension(fileName);
   if (ATTACHMENT_IMAGE_EXTENSIONS.includes(ext)) return 'image';
   if (ATTACHMENT_DOCUMENT_EXTENSIONS.includes(ext)) return 'document';
+  // ★ opml/mm 为 XML 纯文本思维导图，按文档（文本注入）处理；xmind/mmap 落入 other
+  if (ATTACHMENT_MINDMAP_TEXT_EXTENSIONS.includes(ext)) return 'document';
   if (
     mimeType.includes('pdf') ||
     mimeType.includes('document') ||

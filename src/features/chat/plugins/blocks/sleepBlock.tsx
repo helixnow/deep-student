@@ -25,6 +25,7 @@ import {
   CheckCircle,
   CircleNotch,
   WarningCircle,
+  XCircle,
   UsersThree,
   Chat,
   Robot,
@@ -37,7 +38,9 @@ import { blockRegistry } from '../../registry/blockRegistry';
 import { ChatContainer } from '../../components/ChatContainer';
 import { cn } from '@/utils/cn';
 // 🆕 2026-01-21: 导入 workspace store，用于获取所有 worker 代理作为回退
-import { useWorkspaceStore } from '../../workspace/workspaceStore';
+// 🔧 parseAgentStatus：事件裸 string 状态统一经类型守卫解析，替代裸 cast
+import { useWorkspaceStore, parseAgentStatus } from '../../workspace/workspaceStore';
+import type { AgentStatus } from '../../workspace/types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { manualWake } from '../../workspace/api';
 import {
@@ -87,11 +90,14 @@ export interface SleepBlockOutput {
   awaken_message?: string;
 }
 
-/** 子代理信息（用于嵌入视图） */
+/** 子代理信息（用于嵌入视图）
+ * 🔧 status 直接复用工作区 AgentStatus 联合类型（含 queued/cancelled/interrupted/closed），
+ * 事件裸 string 一律经 parseAgentStatus 解析后写入，杜绝裸 cast 塞入未知值
+ */
 interface SubagentInfo {
   sessionId: string;
   skillId?: string;
-  status: 'idle' | 'running' | 'completed' | 'failed';
+  status: AgentStatus;
   lastMessage?: string;
 }
 
@@ -115,7 +121,7 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
   isCollapsed,
   onToggle,
 }) => {
-  const { t } = useTranslation('chatV2');
+  const { t } = useTranslation(['chatV2', 'workspace']);
   const [isFullHeight, setIsFullHeight] = useState(false);
 
   // 🔧 P25 修复：子代理嵌入视图首次渲染时主动预热 Store 和 Adapter
@@ -137,10 +143,17 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
     switch (agent.status) {
       case 'running':
         return <CircleNotch size={14} className="text-primary animate-spin" />;
+      case 'queued':
+        return <Clock size={14} className="text-primary" />;
       case 'completed':
         return <CheckCircle size={14} className="text-success" />;
       case 'failed':
         return <WarningCircle size={14} className="text-destructive" />;
+      case 'cancelled':
+      case 'interrupted':
+        return <XCircle size={14} className="text-warning" />;
+      case 'closed':
+        return <XCircle size={14} className="text-muted-foreground" />;
       default:
         return <Clock size={14} className="text-muted-foreground" />;
     }
@@ -150,10 +163,18 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
     switch (agent.status) {
       case 'running':
         return t('sleep.subagent.running');
+      case 'queued':
+        return t('workspace:sleep.subagent.queued');
       case 'completed':
         return t('sleep.subagent.completed');
       case 'failed':
         return t('sleep.subagent.failed');
+      case 'cancelled':
+        return t('workspace:sleep.subagent.cancelled');
+      case 'interrupted':
+        return t('workspace:sleep.subagent.interrupted');
+      case 'closed':
+        return t('workspace:sleep.subagent.closed');
       default:
         return t('sleep.subagent.idle');
     }
@@ -182,30 +203,39 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
           {statusIcon}
           <span className="text-xs text-muted-foreground">{statusText}</span>
         </div>
+        {/* 用 span 避免 button 嵌套（同 NoteToolPreview 范式），并放开强制尺寸保证触控目标 */}
         {!isCollapsed && (
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            iconOnly
+          <span
+            role="button"
+            tabIndex={0}
             onClick={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               setIsFullHeight(!isFullHeight);
             }}
-            className="!h-5 !w-5"
-            aria-label="toggle size"
+            onMouseDown={(e) => { e.stopPropagation(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.stopPropagation();
+                e.preventDefault();
+                setIsFullHeight(!isFullHeight);
+              }
+            }}
+            className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10 flex-shrink-0 after:absolute after:-inset-2 after:content-['']"
+            aria-label={t('sleep.toggleSize')}
           >
             {isFullHeight ? (
               <ArrowsIn size={14} className="text-muted-foreground" />
             ) : (
               <ArrowsOut size={14} className="text-muted-foreground" />
             )}
-          </NotionButton>
+          </span>
         )}
       </NotionButton>
 
-      {/* 嵌入聊天视图 - 无额外边框 */}
+      {/* 嵌入聊天视图 - 无额外边框；高度用视口相对值封顶，避免小屏嵌套滚动超出可视范围 */}
       {!isCollapsed && (
-        <div className={cn("overflow-hidden", isFullHeight ? "h-[450px]" : "h-[250px]")}>
+        <div className={cn("overflow-hidden", isFullHeight ? "h-[min(450px,60vh)]" : "h-[min(250px,40vh)]")}>
           <ChatContainer
             key={agent.sessionId}
             sessionId={agent.sessionId}
@@ -222,8 +252,13 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
 // 睡眠块主组件
 // ============================================================================
 
+/** 终态集合：等待进度摘要里计入"已完成"的状态 */
+const TERMINAL_AGENT_STATUSES: ReadonlySet<AgentStatus> = new Set([
+  'completed', 'failed', 'cancelled', 'interrupted', 'closed',
+]);
+
 const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, store }) => {
-  const { t } = useTranslation('chatV2');
+  const { t } = useTranslation(['chatV2', 'workspace']);
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [isWaking, setIsWaking] = useState(false);
@@ -281,7 +316,8 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
             };
             next.set(event.payload.session_id, {
               ...existing,
-              status: event.payload.status as SubagentInfo['status'],
+              // 🔧 裸 cast → 类型守卫：未知状态回退 'idle' 而不是污染联合类型
+              status: parseAgentStatus(event.payload.status),
             });
             return next;
           });
@@ -327,6 +363,9 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
         wake_reason: string;
       }>('workspace_coordinator_awakened', (event) => {
         console.log('[SleepBlock] Received coordinator_awakened event:', event.payload);
+        // 唤醒匹配：workspace_id 必须相等（已收紧）；sleepId 仅在 toolOutput 尚未落地的
+        // 窗口期未知，此时同一 workspace 的其它睡眠块唤醒事件仍可能被误接受——
+        // 该局限在 sleep_id 持久化后自然消失
         if (event.payload.workspace_id === workspaceId && (!sleepId || event.payload.sleep_id === sleepId)) {
           setRuntimeStatus('awakened');
           setRuntimeAwakenedBy(event.payload.awakened_by);
@@ -393,25 +432,25 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
       case 'awakened':
         return {
           icon: <Sun className="w-4 h-4" />,
-          bgColor: 'bg-green-50 dark:bg-green-900/20',
-          borderColor: 'border-green-200 dark:border-green-800',
-          textColor: 'text-green-700 dark:text-green-300',
+          bgColor: 'bg-success/10',
+          borderColor: 'border-success/30',
+          textColor: 'text-success',
           label: t('sleep.status.awakened'),
         };
       case 'timeout':
         return {
           icon: <Clock className="w-4 h-4" />,
-          bgColor: 'bg-amber-50 dark:bg-amber-900/20',
-          borderColor: 'border-amber-200 dark:border-amber-800',
-          textColor: 'text-amber-700 dark:text-amber-300',
+          bgColor: 'bg-warning/10',
+          borderColor: 'border-warning/30',
+          textColor: 'text-warning',
           label: t('sleep.status.timeout'),
         };
       case 'cancelled':
         return {
           icon: <WarningCircle size={16} />,
-          bgColor: 'bg-red-50 dark:bg-red-900/20',
-          borderColor: 'border-red-200 dark:border-red-800',
-          textColor: 'text-red-700 dark:text-red-300',
+          bgColor: 'bg-danger/10',
+          borderColor: 'border-danger/30',
+          textColor: 'text-danger',
           label: t('sleep.status.cancelled'),
         };
       default:
@@ -465,12 +504,19 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
         progress || {
           sessionId,
           skillId: wsAgent?.skillId,
-          status: (wsAgent?.status as SubagentInfo['status']) || 'idle',
+          // wsAgent.status 本就是 AgentStatus，SubagentInfo 复用同一联合类型后无需 cast
+          status: wsAgent?.status ?? 'idle',
         }
       );
     }
     return result;
   }, [awaitingAgents, workspaceWorkerSessionIds, subagentProgress, workspaceAgents]);
+
+  // 🆕 等待进度摘要：终态（completed/failed/cancelled/interrupted/closed）计入"已完成"
+  const terminalCount = useMemo(
+    () => agents.filter((a) => TERMINAL_AGENT_STATUSES.has(a.status)).length,
+    [agents]
+  );
 
   // 🆕 P33 UI优化：简化结构，减少嵌套
   return (
@@ -494,6 +540,12 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
         {agents.length > 0 && (
           <span className="text-xs text-muted-foreground">
             ({agents.length})
+          </span>
+        )}
+        {/* 🆕 等待进度摘要（仅睡眠中显示）：M/N 已完成 */}
+        {status === 'sleeping' && agents.length > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {t('workspace:sleep.progress', { done: terminalCount, total: agents.length })}
           </span>
         )}
         <div className="flex-1" />
@@ -532,11 +584,11 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
           ))}
 
           {/* 唤醒信息 + 元信息合并为底部栏 */}
-          <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/30 bg-muted/20 text-[10px] text-muted-foreground">
+          <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/30 bg-muted/20 text-2xs text-muted-foreground">
             {status === 'awakened' && awakenedBy && (
               <>
-                <Chat size={12} className="text-green-500" />
-                <span className="text-green-600 dark:text-green-400">
+                <Chat size={12} className="text-success" />
+                <span className="text-success">
                   {t('sleep.awakenedBy', { agent: awakenedBy.slice(-8) })}
                 </span>
                 {awakenMessage && <span className="truncate max-w-[150px]">{awakenMessage}</span>}

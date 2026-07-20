@@ -59,11 +59,13 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
     ragEnableReranking: storeRagEnableReranking,
     multimodalRagEnabled: storeMultimodalRagEnabled,
     multimodalTopK: storeMultimodalTopK,
+    multimodalEnableReranking: storeMultimodalEnableReranking,
   } = useStore(store, useShallow((s) => ({
     ragTopK: s.chatParams.ragTopK,
     ragEnableReranking: s.chatParams.ragEnableReranking,
     multimodalRagEnabled: s.chatParams.multimodalRagEnabled,
     multimodalTopK: s.chatParams.multimodalTopK,
+    multimodalEnableReranking: s.chatParams.multimodalEnableReranking,
   })));
   const isStreaming = sessionStatus === 'streaming';
 
@@ -74,6 +76,8 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
   const enableReranking = storeRagEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING;
   const multimodalEnabled = storeMultimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED;
   const multimodalTopK = storeMultimodalTopK ?? DEFAULT_MULTIMODAL_TOPK;
+  // 多模态精排：未显式设置时跟随全局 Rerank 开关（发送链路同样按此回退）
+  const multimodalEnableReranking = storeMultimodalEnableReranking ?? enableReranking;
 
   const ragTopKFieldId = useId();
   const multimodalTopKFieldId = useId();
@@ -110,6 +114,14 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
     },
     [store]
   );
+
+  // 切换多模态精排（首次切换即显式落库，此后不再跟随全局）
+  const toggleMultimodalReranking = useCallback(() => {
+    const params = store.getState().chatParams;
+    const globalDefault = params.ragEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING;
+    const current = params.multimodalEnableReranking ?? globalDefault;
+    store.getState().setChatParams({ multimodalEnableReranking: !current });
+  }, [store]);
 
   return (
     <div className="space-y-3">
@@ -171,7 +183,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
         {/* Rerank 开关 */}
         <div className="rounded-md border border-border bg-card p-2">
           <label className="flex items-center justify-between">
-            <span className="text-[13px] text-foreground">
+            <span className="text-ui text-foreground">
               {t('enhanced_rag:enable_reranking')}
             </span>
             <Switch
@@ -191,7 +203,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
           <label className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Image size={13} className="text-muted-foreground" />
-              <span className="text-[13px] text-foreground">
+              <span className="text-ui text-foreground">
                 {t('chat_host:rag.panel.multimodal_label')}
               </span>
             </div>
@@ -240,6 +252,24 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
                 <p className="text-[11px] leading-4 text-muted-foreground">
                   {t('chatV2:ragPanel.multimodalTopkHelper')}
                 </p>
+                {/* 多模态精排开关（默认跟随全局 Rerank） */}
+                <div className="mt-2 border-t border-border/50 pt-2">
+                  <label className="flex items-center justify-between">
+                    <span className="text-[12px] text-foreground">
+                      {t('chatV2:ragPanel.multimodalRerankLabel')}
+                    </span>
+                    <Switch
+                      size="sm"
+                      checked={multimodalEnableReranking}
+                      onCheckedChange={toggleMultimodalReranking}
+                      disabled={ragControlsDisabled || !multimodalEnabled}
+                      aria-label={t('chatV2:ragPanel.multimodalRerankLabel')}
+                    />
+                  </label>
+                  <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                    {t('chatV2:ragPanel.multimodalRerankHelper')}
+                  </p>
+                </div>
               </div>
             </div>
           </div>

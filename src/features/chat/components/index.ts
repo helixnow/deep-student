@@ -35,13 +35,11 @@ export {
   VariantStatusIcon,
   VariantSwitcher,
   VariantActions,
-  ParallelStreamingView,
 } from './Variant';
 export type {
   VariantStatusIconProps,
   VariantSwitcherProps,
   VariantActionsProps,
-  ParallelStreamingViewProps,
 } from './Variant';
 
 // 上下文引用显示组件

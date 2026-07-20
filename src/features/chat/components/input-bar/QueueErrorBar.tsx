@@ -21,30 +21,31 @@ export const QueueErrorBar: React.FC<Props> = React.memo(({
   return (
     <div
       role="alert"
-      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/5 border border-red-500/30 text-sm ui-rise-in"
+      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-danger/5 border border-danger/30 text-sm ui-rise-in"
     >
-      <Warning size={14} weight="fill" className="text-red-500 shrink-0" aria-hidden="true" />
-      <span className="flex-1 truncate text-red-500/90">
+      <Warning size={14} weight="fill" className="text-danger shrink-0" aria-hidden="true" />
+      <span className="flex-1 truncate text-danger/90">
         {t('chatV2:queue.error.tooltipPrefix')}{failedItem.error ?? t('chatV2:queue.error.unknown')}
       </span>
+      {/* ★ M5：触屏时按钮撑到 ≥44px 触控目标 */}
       <button
         type="button"
         onClick={onRetry}
-        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0"
+        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11"
       >
         {t('chatV2:queue.error.retry')}
       </button>
       <button
         type="button"
         onClick={onSkip}
-        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0"
+        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11"
       >
         {t('chatV2:queue.error.skip')}
       </button>
       <button
         type="button"
         onClick={onClearAll}
-        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0"
+        className="px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11"
       >
         {t('chatV2:queue.error.clearAll')}
       </button>

@@ -57,7 +57,14 @@ describe('phase 9 essay and orchestration contracts', () => {
     );
     const subagent = tool(workspaceToolsSkill, 'builtin-subagent_call');
     expect(subagent.inputSchema.additionalProperties).toBe(false);
-    expect(subagent.inputSchema.required).toEqual(['workspace_id', 'skill_id', 'task']);
+    expect(subagent.inputSchema.required).toEqual(['task']);
+    // C6: profile 是自由字符串（内建三型 + 自定义 profile），不再限定 enum
+    expect(subagent.inputSchema.properties.profile?.type).toBe('string');
+    expect(subagent.inputSchema.properties.profile?.enum).toBeUndefined();
+    // C7: 续跑参数存在，描述提及 resumed 返回键
+    expect(Object.keys(subagent.inputSchema.properties)).toContain('resume_agent_session_id');
+    expect(subagent.inputSchema.properties.resume_agent_session_id?.description).toContain('resumed');
+    expect(subagent.inputSchema.properties.wait?.default).toBe(true);
     expect(subagent.inputSchema.properties.skill_id?.description).toContain('subagent-worker');
     expect(subagent.inputSchema.properties.skill_id?.description).not.toContain("'translation'");
     expect(workspaceToolsSkill.content).toContain('Workspace 三件套');

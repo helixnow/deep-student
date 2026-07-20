@@ -24,13 +24,18 @@ import {
   CaretDown,
   CaretRight,
   ArrowSquareOut,
+  CheckCircle,
   FileText,
   FileXls,
   Eye,
 } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { ToolInputView, ToolOutputView, ShellOutputView, isTemplateVisualOutput } from './components';
-import { CompletionCard } from '../../components/CompletionCard';
+import {
+  CompletionCard,
+  extractCompletionData,
+  isAttemptCompletionTool,
+} from '../../components/CompletionCard';
 import { TodoListBlock } from './todoList';
 import { PaperSaveBlock } from './paperSave';
 import type { Block } from '../../core/types/block';
@@ -89,11 +94,11 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
     [name, t]
   );
 
-  // 状态图标和颜色 - 只在错误状态显示图标
+  // 状态图标和颜色：成功/失败终态均有明确图标，进行中由 shimmer 文案表达
   const StatusIcon = {
     pending: null,
     running: null,
-    success: null,
+    success: CheckCircle,
     error: WarningCircle,
   }[status] || null;
 
@@ -143,16 +148,19 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
 
       {/* 状态指示 */}
       <div className="flex items-center gap-2">
-        {/* 耗时 */}
-        {duration !== undefined && status === 'success' && (
-          <span className="text-xs text-muted-foreground">
+        {/* 耗时：成功/失败终态均展示，便于定位慢工具 */}
+        {duration !== undefined && (status === 'success' || status === 'error') && (
+          <span className="text-xs text-muted-foreground tabular-nums">
             {formatToolDurationShort(duration)}
           </span>
         )}
 
-        {/* 状态图标（仅错误状态显示，不做旋转动画） */}
+        {/* 终态图标（成功/失败），不做旋转动画 */}
         {StatusIcon && (
-          <StatusIcon className={cn('w-4 h-4', statusColor)} />
+          <StatusIcon
+            weight={status === 'success' ? 'fill' : 'regular'}
+            className={cn('w-4 h-4', statusColor)}
+          />
         )}
       </div>
     </div>
@@ -366,11 +374,6 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
 // ============================================================================
 // 主组件：MCP 工具块
 // ============================================================================
-
-/**
- * attempt_completion 工具名常量（文档 29 P1-4）
- */
-const ATTEMPT_COMPLETION_TOOL = 'attempt_completion';
 
 /** 稳定的空输入对象：避免每次渲染生成新 {} 导致依赖它的 effect/memo 失效 */
 const EMPTY_TOOL_INPUT: Record<string, unknown> = Object.freeze({});
@@ -606,8 +609,8 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     });
   }, [block.id, block.status, toolInput, toolName, toolOutput]);
 
-  // 🆕 文档 29 P1-4：检测 attempt_completion 工具
-  const isAttemptCompletion = toolName === ATTEMPT_COMPLETION_TOOL;
+  // 🆕 文档 29 P1-4：检测 attempt_completion 工具（识别规则与 CompletionCard 统一）
+  const isAttemptCompletion = isAttemptCompletionTool(toolName);
 
   // 🆕 检测 TodoList 工具（永续执行 Agent）
   const isTodoTool = TODO_TOOLS.includes(toolName);
@@ -634,28 +637,9 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   }
 
   // 如果是 attempt_completion 工具且已完成，显示 CompletionCard
+  // 提取逻辑统一走 CompletionCard 的 extractCompletionData（兼容嵌套 result 与 toolInput 回退）
   if (isAttemptCompletion && block.status === 'success' && toolOutput) {
-    // 后端 emit_end 发射的 result 结构：{ result: { completed, result, command, task_completed }, durationMs }
-    // 需要从嵌套的 result 对象中提取数据
-    const rawOutput = toolOutput as { result?: { result?: string; command?: string }; durationMs?: number };
-    const innerResult = rawOutput.result || (toolOutput as { result?: string; command?: string });
-    
-    // 优先从嵌套结构提取，回退到 toolInput
-    const resultText = (typeof innerResult === 'object' && innerResult !== null)
-      ? (innerResult.result || '')
-      : ((toolInput as { result?: string }).result || '');
-    const commandText = (typeof innerResult === 'object' && innerResult !== null)
-      ? innerResult.command
-      : (toolInput as { command?: string }).command;
-    
-    return (
-      <CompletionCard
-        data={{
-          result: resultText,
-          command: commandText,
-        }}
-      />
-    );
+    return <CompletionCard data={extractCompletionData(toolInput, toolOutput)} />;
   }
 
   // 计算执行耗时

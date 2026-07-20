@@ -826,7 +826,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
           iconOnly
           onClick={onClose}
           aria-label={t('common:actions.close')}
-          className="h-7 w-7 flex-shrink-0"
+          className="h-7 w-7 flex-shrink-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
         >
           <X size={14} />
         </NotionButton>

@@ -36,6 +36,12 @@ import { isMultiModelSelectEnabled } from '@/config/featureFlags';
 import { inferCapabilities, inferInputContextBudget } from '@/utils/modelCapabilities';
 import { deriveContextWindowUsage } from './contextWindowUsage';
 import { useSessionUsageSummary } from './useSessionUsageSummary';
+import { findActiveCompactionInfo, type ContextCompactionInfo } from './contextCompactionInfo';
+import {
+  compactionReasonI18nKey,
+  normalizeCompactSessionResponse,
+} from '../../utils/compactionFeedback';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
@@ -296,7 +302,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         lastAssistantUsage: (() => {
           const messageOrder = Array.isArray(s.messageOrder) ? s.messageOrder : [];
           const messageMap = s.messageMap instanceof Map ? s.messageMap : new Map();
-          for (let i = messageOrder.length - 1; i >= 0; i -= 1) {
+          // ★ 性能：selector 在流式期间每次 store flush 都会执行；
+          // 倒序扫描封顶 30 条——带 usage 的助手消息几乎总在末尾，
+          // 避免长会话（数百条）时每 32ms 全量倒扫
+          const scanFloor = Math.max(0, messageOrder.length - 30);
+          for (let i = messageOrder.length - 1; i >= scanFloor; i -= 1) {
             const message = messageMap.get(messageOrder[i]);
             if (message?.role === 'assistant' && message._meta?.usage) {
               return message._meta.usage;
@@ -517,7 +527,14 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       () => deriveContextWindowUsage(lastAssistantUsage, contextUsageLimitTokens),
       [contextUsageLimitTokens, lastAssistantUsage]
     );
-
+    const [isCompactingContext, setIsCompactingContext] = useState(false);
+    const [compactContextStatus, setCompactContextStatus] = useState<
+      'success' | 'not-needed' | 'skipped' | 'error' | null
+    >(null);
+    useEffect(() => {
+      setIsCompactingContext(false);
+      setCompactContextStatus(null);
+    }, [sessionId]);
     // ★ 1.2 本会话累计用量（每轮回复结束后刷新）
     const sessionUsage = useSessionUsageSummary(sessionId, lastAssistantUsage);
 
@@ -929,6 +946,92 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setPanelState,
     } = useInputBarV2(store, inputBarOptions);
 
+    // 手动压缩上下文（放在 useInputBarV2 之后：依赖其解构出的 isStreaming）
+    const handleCompactContext = useCallback(async () => {
+      const modelConfigId =
+        model2OverrideId || activeRuntimeModelInfo?.id || currentModelInfo?.id || modelId;
+      if (!sessionId || !modelConfigId || isCompactingContext || isStreaming) return;
+      setIsCompactingContext(true);
+      setCompactContextStatus(null);
+      try {
+        // 契约：新版返回 { status, reason? }；联调期间可能仍是旧 boolean，
+        // normalizeCompactSessionResponse 内部做降级兼容
+        const rawResult = await invoke<unknown>('chat_v2_compact_session', {
+          sessionId,
+          modelConfigId,
+          contextLimit: contextUsageLimitTokens || null,
+        });
+        const result = normalizeCompactSessionResponse(rawResult);
+        const reasonText = t(`chatV2:${compactionReasonI18nKey(result.reason)}`);
+
+        switch (result.status) {
+          case 'compacted':
+            setCompactContextStatus('success');
+            try {
+              await store.getState().loadSession(sessionId);
+            } catch (reloadError) {
+              console.error(
+                '[InputBarV2] Context compacted but session reload failed:',
+                reloadError
+              );
+            }
+            break;
+          case 'notNeeded':
+            setCompactContextStatus('not-needed');
+            break;
+          case 'skipped':
+            setCompactContextStatus('skipped');
+            showGlobalNotification(
+              'info',
+              t('chatV2:compaction.manualSkipped', { reason: reasonText }),
+              t('chatV2:inputBar.plusMenu.compactionSkipped'),
+            );
+            break;
+          case 'failed':
+            setCompactContextStatus('error');
+            showGlobalNotification(
+              'error',
+              t('chatV2:compaction.manualFailed', { reason: reasonText }),
+              t('chatV2:inputBar.plusMenu.compactionFailed'),
+            );
+            break;
+        }
+      } catch (error) {
+        console.error('[InputBarV2] Manual context compaction failed:', error);
+        setCompactContextStatus('error');
+        showGlobalNotification(
+          'error',
+          t('chatV2:compaction.manualFailed', {
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+          t('chatV2:inputBar.plusMenu.compactionFailed'),
+        );
+      } finally {
+        setIsCompactingContext(false);
+      }
+    }, [
+      activeRuntimeModelInfo?.id,
+      contextUsageLimitTokens,
+      currentModelInfo?.id,
+      isCompactingContext,
+      isStreaming,
+      model2OverrideId,
+      modelId,
+      sessionId,
+      store,
+      t,
+    ]);
+
+    // ★ 上下文用量弹层：懒读 store（弹层打开时才扫描 blocks），避免流式期间反复计算
+    const getCompactionInfo = useCallback((): ContextCompactionInfo | null => {
+      const state = store.getState();
+      return findActiveCompactionInfo({
+        messageOrder: state.messageOrder,
+        messageMap: state.messageMap,
+        blocks: state.blocks,
+      });
+    }, [store]);
+
     const handleOpenRuntimeModelPanel = useCallback((mode: 'single' | 'compare' = 'single') => {
       const currentState = store.getState();
       const isOpen = currentState.panelStates?.model === true;
@@ -992,13 +1095,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         {extraButtonsRight}
       </>
     ), [extraButtonsRight, ModeRightAccessory, store]);
-
-    // RAG 面板渲染函数
-    const renderRagPanel = useMemo(() => {
-      if (!modePlugin?.renderRagPanel) return undefined;
-      const RagPanel = modePlugin.renderRagPanel;
-      return () => <RagPanel store={store} onClose={() => setPanelState('rag', false)} />;
-    }, [modePlugin?.renderRagPanel, store, setPanelState]);
 
     // 🔧 模型选择面板渲染函数（统一 ModelPicker：单选/对比/重试）
     // hideHeader 供外部宿主（如命令面板）复用时隐藏内置头部；
@@ -1183,6 +1279,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         onClearAttachments={clearAttachments}
         onFilesUpload={onFilesUpload}
         onSetPanelState={setPanelState}
+        onCompactContext={handleCompactContext}
+        isCompactingContext={isCompactingContext}
+        compactContextStatus={compactContextStatus}
+        getCompactionInfo={getCompactionInfo}
         // UI 配置
         placeholder={placeholder}
         sendShortcut={sendShortcut}
@@ -1193,7 +1293,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         className={className}
         autoFocus={autoFocus}
         // 模式插件面板
-        renderRagPanel={renderRagPanel}
         renderModelPanel={renderModelPanel}
         renderAdvancedPanel={renderAdvancedPanel}
         renderMcpPanel={renderMcpPanel}

@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { AttachmentMeta, ImageInjectMode, PdfInjectMode, AttachmentInjectModes, PdfProcessingStatus } from '../../core/types/common';
 import { DEFAULT_IMAGE_INJECT_MODES, DEFAULT_PDF_INJECT_MODES } from '../../core/types/common';
+import { getMediaTypeForAttachment } from './injectModeUtils';
 import { logAttachment } from '../../debug/chatV2Logger';
 
 // ============================================================================
@@ -40,17 +41,17 @@ export interface AttachmentInjectModeSelectorProps {
 // ============================================================================
 
 /**
- * 判断附件是否为图片类型
+ * 判断附件是否为图片类型（SSOT：MIME OR 扩展名；type === 'image' 兜底）
  */
 function isImageAttachment(attachment: AttachmentMeta): boolean {
-  return attachment.type === 'image' || attachment.mimeType.startsWith('image/');
+  return attachment.type === 'image' || getMediaTypeForAttachment(attachment) === 'image';
 }
 
 /**
  * 判断附件是否为 PDF 类型
  */
 function isPdfAttachment(attachment: AttachmentMeta): boolean {
-  return attachment.mimeType === 'application/pdf' || attachment.name.toLowerCase().endsWith('.pdf');
+  return getMediaTypeForAttachment(attachment) === 'pdf';
 }
 
 
@@ -101,10 +102,10 @@ const ToggleTag: React.FC<ToggleTagProps> = memo(({
       disabled={disabled || processingNotReady}
       title={processingNotReady ? `${label}...` : title}
       className={cn(
-        '!h-auto !px-1.5 !py-0.5 text-[10px] !rounded',
+        '!h-auto !px-1.5 !py-0.5 text-2xs !rounded',
         'border',
         processingNotReady
-          ? 'bg-blue-50/50 text-blue-500/70 border-blue-200/40 dark:bg-blue-900/20 dark:text-blue-400/70 dark:border-blue-700/40 cursor-wait'
+          ? 'bg-info/10 text-info/70 border-info/40 cursor-wait'
           : selected
             ? 'bg-primary/15 text-primary border-primary/40 dark:bg-primary/20 dark:border-primary/50'
             : 'bg-muted/30 text-muted-foreground/70 border-transparent hover:bg-[var(--interactive-hover)] hover:text-muted-foreground',
@@ -162,7 +163,6 @@ const ImageModeSelector: React.FC<ImageModeSelectorProps> = memo(({
     }
     
     // ★ 调试日志：记录注入模式选择变化
-    console.log('[InjectMode] Image mode changed:', { before: selectedModes, after: newModes, toggledMode: mode });
     logAttachment('ui', 'inject_mode_change', {
       mediaType: 'image',
       before: selectedModes,
@@ -180,9 +180,11 @@ const ImageModeSelector: React.FC<ImageModeSelectorProps> = memo(({
     && processingStatus.stage !== 'error';
   const readyModes = new Set(processingStatus?.readyModes || []);
   
+  // ★ P1 收紧：不再乐观认定 image 模式立即可用。
+  // 后端初始 ready_modes=[]，image 是否就绪一律以 readyModes 为准，
+  // 与 injectModeUtils.getEffectiveReadyModes 的判定口径一致。
   const isModeReady = (mode: ImageInjectMode) => {
     if (!processingStatus) return true;
-    if (mode === 'image') return true;
     return readyModes.has(mode);
   };
 
@@ -252,7 +254,6 @@ const PdfModeSelector: React.FC<PdfModeSelectorProps> = memo(({
     }
     
     // ★ 调试日志：记录注入模式选择变化
-    console.log('[InjectMode] PDF mode changed:', { before: selectedModes, after: newModes, toggledMode: mode });
     logAttachment('ui', 'inject_mode_change', {
       mediaType: 'pdf',
       before: selectedModes,
@@ -368,11 +369,13 @@ export const AttachmentInjectModeSelector: React.FC<AttachmentInjectModeSelector
 
   // 上传中或错误状态时禁用（processing 状态允许选择已就绪的模式）
   const isDisabled = disabled || attachment.status === 'uploading' || attachment.status === 'error';
+  // ★ P1 收紧：processing 且尚无状态时不虚报任何 readyModes，
+  // 就绪与否以后端报告为准（与 SSOT getEffectiveReadyModes 一致）
   const fallbackStatus: PdfProcessingStatus | undefined = attachment.status === 'processing'
     ? {
         stage: 'pending',
         percent: 0,
-        readyModes: isImage ? ['image'] : [],
+        readyModes: [],
         mediaType: isPdf ? 'pdf' : 'image',
       }
     : undefined;

@@ -55,8 +55,8 @@ export function selectAvailableSkillUpdates(
  */
 export function formatSkillUpdateDrift(item: SkillUpdateCheckResult): string {
   if (item.sourceKind === 'clawhub') {
-    const current = (item.currentSha256 || '').trim() || '?';
-    const remote = (item.remoteSha256 || '').trim() || '?';
+    const current = (item.currentVersion ?? '').trim() || '?';
+    const remote = (item.remoteVersion ?? '').trim() || '?';
     return `${current} → ${remote}`;
   }
   const current = item.currentSha256 ? item.currentSha256.slice(0, 12) : '?';

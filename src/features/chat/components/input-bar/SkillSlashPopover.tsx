@@ -307,7 +307,8 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
         't-dropdown',
         isClosing && 'is-closing',
         open && 'is-open',
-        'absolute w-80 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
+        // ★ H2 修复：与 ModelMentionPopover 对齐——窄屏时收窄到视口内（固定 w-80 会在小屏溢出）
+        'absolute w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
         'bottom-full mb-3 left-0',
         className
       )}
@@ -359,16 +360,16 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <span className="truncate font-medium">{skill.name}</span>
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                   /{skill.id}
                 </span>
                 {skill.argumentHint && (
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground/70">
                     {skill.argumentHint}
                   </span>
                 )}
                 {skill.isActive && (
-                  <span className="ml-auto shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-primary">
+                  <span className="ml-auto shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-2xs leading-none text-primary">
                     {t('chatV2:inputBar.slashCommand.active')}
                   </span>
                 )}
@@ -387,19 +388,19 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
       </div>
 
       {/* 底部按键提示 */}
-      <div className="flex items-center gap-2 border-t border-border/50 px-3 py-1.5 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-2 border-t border-border/50 px-3 py-1.5 text-2xs text-muted-foreground">
         <span className="inline-flex items-center gap-0.5">
-          <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">↑</kbd>
-          <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">↓</kbd>
+          <kbd className="rounded bg-muted px-1 py-0.5 text-2xs">↑</kbd>
+          <kbd className="rounded bg-muted px-1 py-0.5 text-2xs">↓</kbd>
           <span className="ml-0.5">{t('chatV2:modelMention.navigate')}</span>
         </span>
         <span className="inline-flex items-center gap-0.5">
-          <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">Tab</kbd>
-          <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">↵</kbd>
+          <kbd className="rounded bg-muted px-1 py-0.5 text-2xs">Tab</kbd>
+          <kbd className="rounded bg-muted px-1 py-0.5 text-2xs">↵</kbd>
           <span className="ml-0.5">{t('chatV2:modelMention.confirm')}</span>
         </span>
         <span className="inline-flex items-center gap-0.5">
-          <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">Esc</kbd>
+          <kbd className="rounded bg-muted px-1 py-0.5 text-2xs">Esc</kbd>
           <span className="ml-0.5">{t('chatV2:modelMention.dismiss')}</span>
         </span>
       </div>

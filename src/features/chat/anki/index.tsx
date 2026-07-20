@@ -18,6 +18,7 @@ import {
   ankiApiAdapter,
   type SaveAnkiCardIdMapping,
 } from '@/services/ankiApiAdapter';
+import { ankiConnectClient } from '@/services/ankiConnectClient';
 import { Card3DPreview } from '@/components/Card3DPreview';
 
 // ============================================================================
@@ -237,6 +238,40 @@ export async function saveCardsToLibrary(
 }
 
 /**
+ * APKG 导出完成后的 AnkiConnect 自动导入（设置驱动的后置副作用）：
+ * - anki_connect_enabled 且 anki_connect_auto_import_enabled 时调用 importPackage
+ * - 导入成功且 anki_connect_delete_apkg_after_import 时由后端删除 APKG 文件
+ * - 导入失败且 anki_connect_open_folder_on_failure 时在文件管理器中定位该文件
+ */
+async function autoImportApkgIfEnabled(filePath: string): Promise<void> {
+  let settings: Awaited<ReturnType<typeof ankiConnectClient.loadSettings>>;
+  try {
+    settings = await ankiConnectClient.loadSettings();
+  } catch (error) {
+    console.warn('[anki] autoImportApkg: load settings failed', error);
+    return;
+  }
+  if (!settings.anki_connect_enabled || !settings.anki_connect_auto_import_enabled) return;
+  try {
+    const ok = await ankiConnectClient.importPackage(filePath, {
+      deleteAfter: settings.anki_connect_delete_apkg_after_import,
+    });
+    if (!ok) throw new Error('AnkiConnect importPackage returned false');
+    console.log('[anki] autoImportApkg success:', filePath);
+  } catch (error) {
+    console.error('[anki] autoImportApkg error:', error);
+    if (settings.anki_connect_open_folder_on_failure) {
+      try {
+        const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
+        await revealItemInDir(filePath);
+      } catch (revealError) {
+        console.warn('[anki] autoImportApkg: reveal folder failed', revealError);
+      }
+    }
+  }
+}
+
+/**
  * 导出卡片为 APKG 文件
  *
  * 使用 ChatV2AnkiAdapter 导出
@@ -311,6 +346,8 @@ export async function exportCardsAsApkg(
 
     if (filePath) {
       console.log('[anki] exportCardsAsApkg success:', filePath);
+      // 后置副作用：不阻塞导出结果返回
+      void autoImportApkgIfEnabled(filePath);
       return { success: true, filePath, skippedErrorCards: errorCardCount };
     } else {
       console.error('[anki] exportCardsAsApkg: no file path returned');
@@ -519,7 +556,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
             isError
               ? 'text-destructive text-sm'
               : isCancelled || isReadyButEmpty
-                ? 'text-amber-600 dark:text-amber-400 text-sm'
+                ? 'text-warning text-sm'
                 : 'text-muted-foreground text-sm'
           }
         >
@@ -542,7 +579,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
           className={
             isError
               ? 'text-destructive text-sm mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1'
-              : 'text-amber-700 dark:text-amber-300 text-sm mb-2 rounded-md border border-amber-400/40 bg-amber-100/60 dark:bg-amber-500/10 px-2 py-1'
+              : 'text-warning text-sm mb-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1'
           }
         >
           {bannerMessage}
@@ -603,7 +640,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
         <div className="text-xs text-muted-foreground truncate min-w-0">
           {cards.length > 0 && t('chatV2.totalCards', { count: cards.length })}
           {status === 'stored' && (
-            <span className="text-green-600 dark:text-green-400 ml-1 sm:ml-2">{t('chatV2.saved')}</span>
+            <span className="text-success ml-1 sm:ml-2">{t('chatV2.saved')}</span>
           )}
         </div>
         {cards.length > 0 && !disabled && (

@@ -76,7 +76,7 @@ function getAnkiConnectState(ankiConnect: AnkiCardsBlockData['ankiConnect']) {
       state: 'not_connected' as const,
       label: 'notConnected',
       variant: 'secondary' as const,
-      className: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+      className: 'border-warning/40 bg-warning/10 text-warning',
     };
   }
   return { state: 'unknown' as const, label: 'checking', variant: 'secondary' as const, className: '' };
@@ -327,8 +327,8 @@ export const ChatAnkiProgressCompact: React.FC<{
       className={cn(
         'mt-2 overflow-hidden rounded-lg border border-border/50 bg-muted/10 px-3 py-2',
         isError && 'border-destructive/40 bg-destructive/5',
-        isCompletedWithErrors && 'border-amber-500/40 bg-amber-500/5',
-        isCancelled && 'border-amber-500/40 bg-amber-100/30'
+        isCompletedWithErrors && 'border-warning/40 bg-warning/5',
+        isCancelled && 'border-warning/40 bg-warning/10'
       )}
       aria-live="polite"
       aria-busy={blockStatus === 'running'}
@@ -343,19 +343,19 @@ export const ChatAnkiProgressCompact: React.FC<{
             const isDone = status === 'done';
             const isTerminalActive = isActive && (isError || isCancelled || isCompleted);
             const dotClass = cn(
-              'flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full border text-[9px] sm:text-[10px] flex-shrink-0',
-              isDone && 'border-emerald-500 bg-emerald-500 text-white',
+              'flex h-4 w-4 sm:h-5 sm:w-5 items-center justify-center rounded-full border text-2xs sm:text-2xs flex-shrink-0',
+              isDone && 'border-success bg-success text-white',
               isActive && !isError && !isCancelled && 'border-primary bg-primary/10 text-primary',
               isActive && isError && 'border-destructive bg-destructive/10 text-destructive',
-              isActive && isCancelled && 'border-amber-500 bg-amber-500/10 text-amber-600',
+              isActive && isCancelled && 'border-warning bg-warning/10 text-warning',
               status === 'pending' && 'border-border bg-background/40 text-muted-foreground'
             );
             const labelClass = cn(
               'text-xs leading-none whitespace-nowrap',
-              isDone && 'text-emerald-600 dark:text-emerald-400',
+              isDone && 'text-success',
               isActive && !isError && !isCancelled && 'text-primary',
               isActive && isError && 'text-destructive',
-              isActive && isCancelled && 'text-amber-600',
+              isActive && isCancelled && 'text-warning',
               status === 'pending' && 'text-muted-foreground'
             );
 
@@ -381,7 +381,7 @@ export const ChatAnkiProgressCompact: React.FC<{
                   <div
                     className={cn(
                       'mx-0.5 sm:mx-2 h-px w-3 sm:w-6 flex-shrink-0',
-                      isDone ? 'bg-emerald-500/60' : isActive ? 'bg-primary/40' : 'bg-border'
+                      isDone ? 'bg-success/60' : isActive ? 'bg-primary/40' : 'bg-border'
                     )}
                     aria-hidden="true"
                   />
@@ -415,12 +415,12 @@ export const ChatAnkiProgressCompact: React.FC<{
               label={t('blocks.ankiCards.progress.ankiConnect.refresh')}
             />
           )}
-          {typeof percent === 'number' && (
+          {typeof smoothedPercent === 'number' && (
             <span
               className={cn('text-xs tabular-nums flex-shrink-0', isError ? 'text-destructive' : 'text-muted-foreground')}
               data-testid="chatanki-progress-percent"
             >
-              {percent}%
+              {smoothedPercent}%
             </span>
           )}
           <NotionButton
@@ -451,7 +451,7 @@ export const ChatAnkiProgressCompact: React.FC<{
           className={cn(
             'h-1.5 [&>div]:duration-500 [&>div]:ease-out',
             isError && '[&>div]:bg-destructive',
-            isCancelled && '[&>div]:bg-amber-500'
+            isCancelled && '[&>div]:bg-warning'
           )}
         />
       </div>
@@ -537,7 +537,7 @@ export const ChatAnkiProgressCompact: React.FC<{
         isLimitReached ? (
           // limitReached 是正常完成而非失败：绿色信息条 + 标题，避免被误读为错误
           <div
-            className="mt-1.5 flex items-start gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-xs leading-snug text-emerald-700 dark:text-emerald-400"
+            className="mt-1.5 flex items-start gap-1.5 rounded-md border border-success/30 bg-success/10 px-2 py-1.5 text-xs leading-snug text-success"
             data-testid="chatanki-progress-message"
           >
             <Check className="mt-0.5 h-3 w-3 flex-shrink-0" />
@@ -558,7 +558,7 @@ export const ChatAnkiProgressCompact: React.FC<{
       )}
 
       {visibleWarningMessages.length > 0 && (
-        <div className="mt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="chatanki-progress-warnings">
+        <div className="mt-1 text-xs text-warning" data-testid="chatanki-progress-warnings">
           {visibleWarningMessages.map((warning, index) => (
             <div key={`${warning}-${index}`} className="leading-snug">
               {warning}
@@ -568,7 +568,7 @@ export const ChatAnkiProgressCompact: React.FC<{
       )}
 
       {ankiConnectMeta.state === 'not_connected' && ankiConnect?.error && (
-        <div className="mt-1 text-xs leading-snug text-amber-700 dark:text-amber-400">
+        <div className="mt-1 text-xs leading-snug text-warning">
           {ankiConnect.error}
         </div>
       )}

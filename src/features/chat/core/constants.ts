@@ -48,6 +48,13 @@ export const EVENT_BRIDGE_MAX_PROCESSED_IDS = 200;
 /** 序列号间隙超时时间（毫秒），超时后跳过丢失的序列号 */
 export const EVENT_BRIDGE_GAP_TIMEOUT_MS = 3000;
 
+/**
+ * 孤儿终止事件（end/error 早于 start 到达）缓冲窗口（毫秒）。
+ * 窗口内等待对应 start；超时后按「late block」创建兜底块，
+ * 避免 gap 强制 flush 后检索结果凭空消失。
+ */
+export const EVENT_BRIDGE_ORPHAN_TERMINAL_TIMEOUT_MS = 2000;
+
 // ==================== 会话管理配置 ====================
 
 /** SessionManager 最大缓存会话数 */
@@ -211,11 +218,43 @@ export const ATTACHMENT_DOCUMENT_TYPES = [
   'text/rtf', // .rtf (alternate)
 ];
 
+/**
+ * ★ 代码/纯文本扩展名（SSOT 统一清单，后端解析链路使用同一份定义）
+ * 全部按纯文本注入（走 file 定义的文本注入分流）。
+ * 无扩展名文件（如 Makefile/Dockerfile 本体）不在扩展名校验范围内；
+ * 点开头文件（.gitignore/.env/.editorconfig）按「gitignore/env/editorconfig」扩展名匹配。
+ */
+export const ATTACHMENT_CODE_TEXT_EXTENSIONS = [
+  // 脚本 / 通用语言
+  'py', 'pyw', 'ipynb', 'rs', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs',
+  'java', 'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'hh', 'cs', 'go', 'rb', 'php',
+  'swift', 'kt', 'kts', 'scala',
+  // Shell / 批处理
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  // 数据 / 配置
+  'sql', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'properties', 'env', 'log',
+  // 文档标记
+  'tex', 'bib', 'rst', 'adoc',
+  // 前端框架单文件组件
+  'vue', 'svelte', 'astro',
+  // 其他语言
+  'lua', 'pl', 'pm', 'r', 'jl', 'dart',
+  // 构建 / 工程配置
+  'gradle', 'cmake', 'makefile', 'mk', 'dockerfile', 'gitignore', 'editorconfig',
+  // Schema / 合约
+  'proto', 'graphql', 'gql', 'prisma', 'sol',
+  // 汇编与其他
+  'asm', 's', 'vb', 'fs', 'fsx', 'ex', 'exs', 'erl', 'hrl', 'clj', 'cljs',
+  'hs', 'elm', 'nim', 'zig',
+];
+
 /** 允许的文档扩展名 - 与 useAttachmentSettings.ts 保持同步 */
 export const ATTACHMENT_DOCUMENT_EXTENSIONS = [
   'pdf', 'txt', 'md', 'json', 'csv', 'html', 'htm', 'xml',
   'docx', 'xlsx', 'xls', 'xlsb', 'ods', 'pptx',
   'epub', 'rtf',
+  // ★ 代码/纯文本清单归入文档类别（按纯文本注入）
+  ...ATTACHMENT_CODE_TEXT_EXTENSIONS,
 ];
 
 /** 允许的音频类型 */
@@ -259,7 +298,30 @@ export const ATTACHMENT_ARCHIVE_TYPES = [
   'application/x-7z-compressed',
 ];
 
-export const ATTACHMENT_ARCHIVE_EXTENSIONS = ['zip', 'rar', '7z'];
+// ★ apkg/colpkg：Anki 牌组包/集合包（zip 容器），作为会话资源供 chatanki_import_apkg 等工具消费。
+// 浏览器通常给不出专属 MIME（空或 application/octet-stream），依赖扩展名放行。
+export const ATTACHMENT_ARCHIVE_EXTENSIONS = ['zip', 'rar', '7z', 'apkg', 'colpkg'];
+
+/**
+ * ★ 思维导图格式：作为会话资源放行，可由 builtin-mindmap_import 工具导入。
+ * - xmind/mmap：二进制（zip 容器），不注入文本；
+ * - opml/mm：XML 纯文本（.mm 按 FreeMind 处理），可按文本注入。
+ * 浏览器通常给不出专属 MIME，依赖扩展名放行。
+ */
+export const ATTACHMENT_MINDMAP_EXTENSIONS = ['xmind', 'opml', 'mm', 'mmap'];
+
+/** 思维导图格式中为 XML 纯文本、可按文本注入的子集 */
+export const ATTACHMENT_MINDMAP_TEXT_EXTENSIONS = ['opml', 'mm'];
+
+/**
+ * ★ 按纯文本注入的扩展名汇总（文本文件字节数 ≈ 注入文本长度，
+ * 供「内容过长将截断」等 UI 预判使用）
+ */
+export const ATTACHMENT_TEXT_INJECT_EXTENSIONS = [
+  'txt', 'md', 'json', 'csv', 'html', 'htm', 'xml',
+  ...ATTACHMENT_CODE_TEXT_EXTENSIONS,
+  ...ATTACHMENT_MINDMAP_TEXT_EXTENSIONS,
+];
 
 /** 所有允许的附件类型 */
 export const ATTACHMENT_ALLOWED_TYPES = [
@@ -277,6 +339,7 @@ export const ATTACHMENT_ALLOWED_EXTENSIONS = [
   ...ATTACHMENT_AUDIO_EXTENSIONS,
   ...ATTACHMENT_VIDEO_EXTENSIONS,
   ...ATTACHMENT_ARCHIVE_EXTENSIONS,
+  ...ATTACHMENT_MINDMAP_EXTENSIONS,
 ];
 
 // ==================== 格式化工具 ====================

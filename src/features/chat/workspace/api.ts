@@ -76,8 +76,20 @@ export interface AgentInfo {
   role: string;
   status: string;
   skill_id?: string;
+  /** 后端 register_agent 持久化的 AgentProfile id（legacy 行为空） */
+  agent_profile_id?: string;
+  /** C12：该 agent 收件箱未消费消息数（后端查询失败为 0） */
+  pending_inbox_count?: number;
   joined_at: string;
   last_active_at: string;
+}
+
+/**
+ * 把后端回传的 agent_profile_id 还原成 store WorkspaceAgent.metadata 的
+ * `agent_profile.id` 形状（workspaceStatus 等 UI 按此读取 profile 标签）。
+ */
+export function agentMetadataFromInfo(a: AgentInfo): Record<string, unknown> | undefined {
+  return a.agent_profile_id ? { agent_profile: { id: a.agent_profile_id } } : undefined;
 }
 
 export interface MessageInfo {
@@ -330,6 +342,9 @@ export async function refreshWorkspaceSnapshot(
     status: parseAgentStatus(a.status),
     joinedAt: a.joined_at,
     lastActiveAt: a.last_active_at,
+    metadata: agentMetadataFromInfo(a),
+    // 🆕 C12: inbox 未消费消息数
+    pendingInboxCount: a.pending_inbox_count,
   }));
 
   const convertedMessages: WorkspaceMessage[] = messagesData.map((m) => ({

@@ -134,7 +134,18 @@ export interface McpServerConfig {
 export interface McpConfig {
   servers: McpServerConfig[];
   cacheTtlMs?: number;
+  /** mcp.performance.timeout_ms：前端工具调用超时上限（与调用方传入超时取更小者） */
+  toolTimeoutMs?: number;
+  /** mcp.performance.rate_limit_per_second：callTool 每秒滑动窗口限流（超限等待） */
+  rateLimitPerSecond?: number;
+  /** mcp.performance.cache_max_size：工具/提示/资源缓存的总条目上限（最旧淘汰） */
+  cacheMaxSize?: number;
 }
+
+// 与设置 UI 默认值保持一致（useSettingsConfig 读取回填时的缺省）
+const MCP_DEFAULT_TOOL_TIMEOUT_MS = 15_000;
+const MCP_DEFAULT_RATE_LIMIT_PER_SECOND = 10;
+const MCP_DEFAULT_CACHE_MAX_SIZE = 500;
 
 export interface McpStatusInfo {
   available: boolean;
@@ -307,6 +318,8 @@ class McpServiceImpl {
   private promptCacheByServer: Map<string, { at: number; prompts: PromptInfo[] }> = new Map();
   private resourceCacheByServer: Map<string, { at: number; resources: ResourceInfo[] }> = new Map();
   private listeners = new Set<Listener>();
+  // mcp.performance.rate_limit_per_second 滑动窗口：最近 1s 内 callTool 的时间戳
+  private rateLimitTimestamps: number[] = [];
   // 防止错误状态日志刷屏：记录上一次的错误摘要签名
   private lastErrorSummaryKey: string | null = null;
   // 标记是否正在销毁，防止 dispose() 触发的 onclose 引发重连
@@ -347,7 +360,38 @@ class McpServiceImpl {
     }
   }
   
+  /** mcp.performance.cache_max_size：总条目超限时按快照时间最旧淘汰，仅剩单快照仍超限则截断 */
+  private enforceCacheMaxSize(): void {
+    const max = this.cfg.cacheMaxSize ?? MCP_DEFAULT_CACHE_MAX_SIZE;
+    if (!Number.isFinite(max) || max <= 0) return;
+    const trim = <S extends { at: number }>(
+      cache: Map<string, S>,
+      items: (snap: S) => unknown[],
+      storageKeyPrefix: string,
+    ) => {
+      const total = () => Array.from(cache.values()).reduce((sum, snap) => sum + items(snap).length, 0);
+      while (total() > max && cache.size > 1) {
+        let oldestId: string | undefined;
+        let oldestAt = Infinity;
+        for (const [sid, snap] of cache.entries()) {
+          if (snap.at < oldestAt) { oldestAt = snap.at; oldestId = sid; }
+        }
+        if (!oldestId) break;
+        cache.delete(oldestId);
+        try { localStorage.removeItem(`${storageKeyPrefix}::${oldestId}`); } catch { /* best-effort */ }
+      }
+      if (total() > max && cache.size === 1) {
+        const snap = cache.values().next().value as S | undefined;
+        if (snap) items(snap).splice(max);
+      }
+    };
+    trim(this.toolCacheByServer, snap => snap.tools, this.CACHE_KEY_TOOLS);
+    trim(this.promptCacheByServer, snap => snap.prompts, this.CACHE_KEY_PROMPTS);
+    trim(this.resourceCacheByServer, snap => snap.resources, this.CACHE_KEY_RESOURCES);
+  }
+
   private saveCacheToStorage() {
+    this.enforceCacheMaxSize();
     try {
       for (const [serverId, snap] of this.toolCacheByServer.entries()) {
         localStorage.setItem(`${this.CACHE_KEY_TOOLS}::${serverId}`, JSON.stringify(snap));
@@ -370,12 +414,14 @@ class McpServiceImpl {
     this.toolCacheByServer.clear();
     this.promptCacheByServer.clear();
     this.resourceCacheByServer.clear();
+    this.rateLimitTimestamps = [];
     for (const s of cfg.servers) {
       const client = new Client({ name: 'dstu-frontend-mcp', version: '1.0.0' });
       this.servers.set(s.id, { cfg: s, client, connected: false });
     }
     // 初始化时加载持久化缓存
     this.loadCacheFromStorage();
+    this.enforceCacheMaxSize();
     // Removed shims - handle in transport config instead
     this.emitStatus();
     
@@ -1348,6 +1394,26 @@ class McpServiceImpl {
   }
 
   /**
+   * mcp.performance.rate_limit_per_second：滑动窗口限流，超限时等待令牌而非报错。
+   */
+  private async acquireRateLimitSlot(): Promise<void> {
+    const limit = this.cfg.rateLimitPerSecond ?? MCP_DEFAULT_RATE_LIMIT_PER_SECOND;
+    if (!Number.isFinite(limit) || limit <= 0) return;
+    for (;;) {
+      const now = Date.now();
+      while (this.rateLimitTimestamps.length > 0 && now - this.rateLimitTimestamps[0] >= 1000) {
+        this.rateLimitTimestamps.shift();
+      }
+      if (this.rateLimitTimestamps.length < limit) {
+        this.rateLimitTimestamps.push(now);
+        return;
+      }
+      const waitMs = Math.max(1, this.rateLimitTimestamps[0] + 1000 - now);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+  }
+
+  /**
    * 统一工具调用。toolName 可带 namespace；会自动路由到对应 server。
    * 连接断开时会自动重连并重试一次。
    */
@@ -1355,6 +1421,11 @@ class McpServiceImpl {
     ok: boolean; data?: any; error?: string; usage?: any;
   }> {
     const started = Date.now();
+    // mcp.performance.timeout_ms：前端侧超时上限，与调用方传入超时取更小者
+    const configuredTimeoutMs = this.cfg.toolTimeoutMs ?? MCP_DEFAULT_TOOL_TIMEOUT_MS;
+    const effectiveTimeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+      ? Math.min(timeoutMs, configuredTimeoutMs)
+      : timeoutMs;
     const rt = this.pickServerByTool(toolName, preferredServerId);
     if (!rt) return { ok: false, error: i18next.t('mcp:service.tool_not_found', { toolName }) };
     
@@ -1405,7 +1476,7 @@ class McpServiceImpl {
       const controller = new AbortController();
       const to = setTimeout(() => {
         controller.abort('timeout');
-      }, timeoutMs);
+      }, effectiveTimeoutMs);
       try {
         const result = await rt.client.callTool(
           { name: rawName, arguments: args ?? {} },
@@ -1458,6 +1529,9 @@ class McpServiceImpl {
         throw e; // 由外层处理
       }
     };
+
+    // mcp.performance.rate_limit_per_second：超限时等待令牌
+    await this.acquireRateLimitSlot();
 
     // 首次尝试
     try {
@@ -1759,6 +1833,8 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
 
   for (const item of list) {
     if (!item) continue;
+    // 尊重 enabled 标记：显式 false 的条目不建连、不广告；undefined 视为 true（兼容存量数据）
+    if (item.enabled === false) continue;
     // 注意：虽然 MCP 2025-11-25 规范推荐 Streamable HTTP，但为保持向后兼容
     // 默认仍为 'sse'。用户可显式设置 transportType: 'streamable_http' 来使用新标准。
     // 将来可考虑实现自动探测（先尝试 Streamable HTTP，失败回退 SSE）。
@@ -1928,6 +2004,50 @@ async function loadCacheTtlFromSettings(): Promise<number | undefined> {
   return undefined;
 }
 
+type McpPerformanceSettings = {
+  toolTimeoutMs?: number;
+  rateLimitPerSecond?: number;
+  cacheMaxSize?: number;
+};
+
+/** 加载 mcp.performance.* 安全策略设置（与 loadCacheTtlFromSettings 相同的读取模式） */
+async function loadMcpPerformanceFromSettings(): Promise<McpPerformanceSettings> {
+  const parsePositive = (raw: string | null | undefined): number | undefined => {
+    if (typeof raw !== 'string' || raw.trim().length === 0) return undefined;
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  };
+  if (isTauriEnvironment) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const [timeoutRaw, rateRaw, cacheMaxRaw] = await Promise.all([
+        invoke<string | null>('get_setting', { key: 'mcp.performance.timeout_ms' }).catch(() => null),
+        invoke<string | null>('get_setting', { key: 'mcp.performance.rate_limit_per_second' }).catch(() => null),
+        invoke<string | null>('get_setting', { key: 'mcp.performance.cache_max_size' }).catch(() => null),
+      ]);
+      return {
+        toolTimeoutMs: parsePositive(timeoutRaw),
+        rateLimitPerSecond: parsePositive(rateRaw),
+        cacheMaxSize: parsePositive(cacheMaxRaw),
+      };
+    } catch (err: unknown) {
+      debugLog.warn('[MCP] Failed to load MCP performance settings via Tauri invoke:', err);
+    }
+  }
+  try {
+    if (typeof window !== 'undefined') {
+      return {
+        toolTimeoutMs: parsePositive(window.localStorage.getItem('mcp.performance.timeout_ms')),
+        rateLimitPerSecond: parsePositive(window.localStorage.getItem('mcp.performance.rate_limit_per_second')),
+        cacheMaxSize: parsePositive(window.localStorage.getItem('mcp.performance.cache_max_size')),
+      };
+    }
+  } catch (e: unknown) {
+    console.warn('[MCP] Failed to read MCP performance settings from localStorage:', e);
+  }
+  return {};
+}
+
 export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): Promise<void> {
   if (bootstrapInFlight) {
     return bootstrapInFlight;
@@ -1937,6 +2057,7 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
     setupTauriBridge();
     const servers = await loadServersFromSettings();
     const cacheTtlMs = await loadCacheTtlFromSettings();
+    const performance = await loadMcpPerformanceFromSettings();
     const signature = JSON.stringify({
       servers: servers.map((s) => ({
         id: s.id,
@@ -1947,6 +2068,7 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
         args: s.args ?? [],
       })),
       cacheTtlMs: cacheTtlMs ?? 300_000,
+      performance,
     });
     const now = Date.now();
     if (
@@ -1957,7 +2079,7 @@ export async function bootstrapMcpFromSettings(options: BootstrapOptions = {}): 
       return;
     }
 
-    McpService.init({ servers, cacheTtlMs: cacheTtlMs ?? 300_000 });
+    McpService.init({ servers, cacheTtlMs: cacheTtlMs ?? 300_000, ...performance });
     if (servers.length === 0) {
       // 即使没有服务器，也触发 ready 事件让 UI 更新
       emitMcpDebugEvent('mcp-bootstrap-ready', { servers: [], toolsCount: 0 });

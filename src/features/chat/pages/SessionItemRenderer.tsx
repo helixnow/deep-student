@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { PencilSimple, Check, X, CircleNotch, PushPin, PushPinSlash, Archive, DotsThree, Trash, FolderSimple, Folder } from '@phosphor-icons/react';
+import { PencilSimple, Check, X, CircleNotch, PushPin, PushPinSlash, Archive, DotsThree, Trash, FolderSimple, Folder, Export, FileText, BracketsCurly } from '@phosphor-icons/react';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useSwipeGesture } from '@/hooks/mobile/useSwipeGesture';
 import { type DraggableProvided, type DraggableStateSnapshot } from '@hello-pangea/dnd';
@@ -26,6 +26,8 @@ import {
   useSessionSidebarIndicators,
 } from '../hooks/useSessionSidebarIndicators';
 import { getSessionTitleText } from '../utils/sessionTitle';
+import { exportSessionToFile } from '../components/session-browser/sessionExport';
+import type { SessionOpenTarget } from '../components/session-browser/SessionBrowser';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -69,6 +71,11 @@ export interface UseSessionItemRendererDeps {
   archiveSession: (sessionId: string) => Promise<void>;
   togglePinSession: (sessionId: string, pinned: boolean, metadata?: ChatSession['metadata']) => Promise<void>;
   formatTime: (isoString: string) => string;
+  /**
+   * B3: 点击会话行切换会话后的回调（移动端用于收起左侧抽屉回到聊天中屏）。
+   * 仅由行主体点击触发；行内菜单/滑动操作不触发。
+   */
+  onSessionActivated?: () => void;
 }
 
 export const resolveDragStyle = (
@@ -125,11 +132,24 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
   const baseOffsetRef = React.useRef(baseOffset);
   baseOffsetRef.current = baseOffset;
 
+  const gestureActive = enabled && gestureEnabled;
+
+  // 手势加固：useSwipeGesture 的 enabled 只在 touchstart 时检查一次，
+  // 起手后 dnd 长按拖拽成立（gestureEnabled 翻 false）时，迟到的跟手回调
+  // 仍会到达——在回调侧二次校验并丢弃，同时复位跟手位移与滑开态，
+  // 避免「行在 dnd 拖拽镜像下方继续 translateX」的双手势叠加。
+  React.useEffect(() => {
+    if (gestureActive) return;
+    setDragOffset(null);
+    setOpen(false);
+  }, [gestureActive]);
+
   const swipe = useSwipeGesture<HTMLDivElement>({
     axis: 'horizontal',
-    enabled: enabled && gestureEnabled,
+    enabled: gestureActive,
     threshold: SWIPE_OPEN_THRESHOLD,
     onSwipeMove: (dx) => {
+      if (!gestureActive) return;
       // 左滑为负；越过全开位置后有 16px 的橡皮筋余量
       const next = Math.max(
         -SWIPE_ACTIONS_TOTAL_WIDTH - 16,
@@ -139,6 +159,7 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
     },
     onSwipeEnd: ({ delta, isFling, direction }) => {
       setDragOffset(null);
+      if (!gestureActive) return;
       const passed = Math.abs(delta) > SWIPE_OPEN_THRESHOLD || isFling;
       if (!passed) return;
       if (direction < 0) setOpen(true);
@@ -219,7 +240,7 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
       <div
         style={{
           transform: translate !== 0 ? `translateX(${translate}px)` : undefined,
-          transition: isDragging ? 'none' : 'transform 200ms var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1))',
+          transition: isDragging ? 'none' : 'transform var(--chat-motion-base, 200ms) var(--chat-motion-ease, cubic-bezier(0.22, 1, 0.36, 1))',
         }}
         className="motion-reduce:!transition-none"
         onClickCapture={open ? (e) => {
@@ -244,6 +265,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
     startEditSession, saveSessionTitle, cancelEditSession,
     moveSessionToGroup, deleteSession,
     archiveSession, togglePinSession, formatTime,
+    onSessionActivated,
   } = deps;
 
   // 后台流式 / 未读回复 / 等待继续 指示器（与桌面 ModernSidebar 同一数据源）
@@ -321,14 +343,15 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
           role="alertdialog"
           aria-label={t('page.deleteSessionConfirm', '永久删除该会话？此操作不可恢复')}
         >
-          <span className="min-w-0 flex-1 truncate text-[13px] leading-4 text-destructive">
+          <span className="min-w-0 flex-1 truncate text-ui leading-4 text-destructive">
             {t('page.deleteSessionConfirm', '永久删除该会话？此操作不可恢复')}
           </span>
+          {/* 破坏性操作确认按钮：移动/平板保持较大触控目标，桌面 lg 起紧凑 */}
           <div className="flex shrink-0 items-center gap-1">
             <NotionButton
               variant="danger"
               size="sm"
-              className="!h-7 !px-2 text-[12px]"
+              className="!h-9 lg:!h-7 !px-2 text-[12px]"
               onClick={(e) => {
                 e.stopPropagation();
                 resetDeleteConfirmation();
@@ -342,7 +365,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               variant="ghost"
               size="icon"
               iconOnly
-              className="!h-7 !w-7"
+              className="!h-9 !w-9 lg:!h-7 lg:!w-7"
               aria-label={t('page.cancelEdit')}
               onClick={(e) => {
                 e.stopPropagation();
@@ -379,6 +402,8 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                 resetDeleteConfirmation();
                 markSessionSidebarIndicatorSeen(session.id);
                 setCurrentSessionId(session.id);
+                // B3: 移动端点会话条目后收起抽屉，直接回到聊天中屏
+                onSessionActivated?.();
               }
             }}
             onMouseEnter={() => beginSessionHoverPrefetch(session.id)}
@@ -472,7 +497,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                 <PushPin size={12} weight="fill" className="h-3 w-3 shrink-0 text-[color:var(--sidebar-muted)]" />
                 <span className="min-w-0 flex-1 truncate">{sessionTitle}</span>
               </div>
-              <div className="flex min-w-0 items-center gap-1.5 text-[13px] font-normal leading-4 text-muted-foreground">
+              <div className="flex min-w-0 items-center gap-1.5 text-ui font-normal leading-4 text-muted-foreground">
                 <span className="truncate">{groupLabel}</span>
                 <span aria-hidden="true">·</span>
                 <span className="shrink-0 tabular-nums">{formatTime(session.updatedAt)}</span>
@@ -500,7 +525,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
           ) : hasBlockingInteraction ? (
             <span
               data-testid="mobile-sidebar-blocking-indicator"
-              className="inline-flex min-h-5 items-center rounded-full border border-foreground/15 bg-foreground/[0.06] px-1.5 text-[10px] font-medium leading-none text-foreground/80"
+              className="inline-flex min-h-5 items-center rounded-full border border-foreground/15 bg-foreground/[0.06] px-1.5 text-2xs font-medium leading-none text-foreground/80"
             >
               {t('tool_limit.continue', '继续执行')}
             </span>
@@ -509,7 +534,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               <span className="h-2 w-2 rounded-full bg-[hsl(var(--ring))]" />
             </span>
           ) : !pinned && (
-            <span className="text-[13px] tabular-nums text-muted-foreground/80">
+            <span className="text-ui tabular-nums text-muted-foreground/80">
               {formatTime(session.updatedAt)}
             </span>
           )}
@@ -579,6 +604,29 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                 </AppMenuSubContent>
               </AppMenuSub>
             )}
+            <AppMenuSub>
+              <AppMenuSubTrigger icon={<Export size={16} />}>
+                {t('page.exportSession', '导出会话')}
+              </AppMenuSubTrigger>
+              <AppMenuSubContent>
+                <AppMenuItem
+                  icon={<FileText size={16} />}
+                  onClick={() => {
+                    void exportSessionToFile({ sessionId: session.id, title: sessionTitle, format: 'markdown' });
+                  }}
+                >
+                  Markdown
+                </AppMenuItem>
+                <AppMenuItem
+                  icon={<BracketsCurly size={16} />}
+                  onClick={() => {
+                    void exportSessionToFile({ sessionId: session.id, title: sessionTitle, format: 'json' });
+                  }}
+                >
+                  JSON
+                </AppMenuItem>
+              </AppMenuSubContent>
+            </AppMenuSub>
             <AppMenuItem
               icon={<Archive size={16} />}
               onClick={() => archiveSession(session.id)}
@@ -600,10 +648,10 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
     );
   };
 
-  // 处理从浏览器视图选择会话
-  const handleBrowserSelectSession = useCallback((sessionId: string) => {
+  // 处理从浏览器视图选择会话（默认回到侧栏聊天视图）
+  const handleBrowserSelectSession = useCallback((sessionId: string, target: SessionOpenTarget = 'sidebar') => {
     setCurrentSessionId(sessionId);
-    setViewMode('sidebar');
+    setViewMode(target);
   }, [setCurrentSessionId, setViewMode]);
 
   // 处理从浏览器视图重命名会话

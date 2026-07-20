@@ -7,7 +7,7 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useWorkspaceStore, isWorkerSessionId, parseAgentStatus } from '../workspaceStore';
-import { listAllWorkspaces, listAgents, listAgentSessions, listMessages, listDocuments, restoreExecutions } from '../api';
+import { listAllWorkspaces, listAgents, listAgentSessions, listMessages, listDocuments, restoreExecutions, agentMetadataFromInfo } from '../api';
 import type { WorkspaceAgent, WorkspaceMessage, WorkspaceDocument } from '../types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
@@ -138,6 +138,9 @@ export function useWorkspaceRestore(options: UseWorkspaceRestoreOptions = {}) {
             status: parseAgentStatus(a.status),
             joinedAt: a.joined_at,
             lastActiveAt: a.last_active_at,
+            metadata: agentMetadataFromInfo(a),
+            // 🆕 C12: inbox 未消费消息数
+            pendingInboxCount: a.pending_inbox_count,
           }));
         } catch (e: unknown) {
           console.warn('[useWorkspaceRestore] Failed to load agents:', e);

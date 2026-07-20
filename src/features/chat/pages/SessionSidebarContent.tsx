@@ -362,12 +362,13 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
             <span className={unified ? mobileDrawerRowTitleClassName : 'truncate'}>{label}</span>
             <span className="flex items-center gap-1.5 text-[color:var(--sidebar-muted)]">
-              <span className="flex items-center opacity-0 transition-opacity duration-150 ease-out focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none">
+              {/* 触屏无 hover：pointer-coarse 下常显；按钮用伪元素扩大命中区 */}
+              <span className="flex items-center opacity-0 transition-opacity duration-150 ease-out focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-100">
                 <NotionButton
                   variant="ghost"
                   size="icon"
                   iconOnly
-                  className="!h-5 !w-5 !p-0"
+                  className="relative !h-5 !w-5 !p-0 after:absolute after:-inset-2.5 after:content-['']"
                   aria-label={createSessionLabel}
                   title={createSessionLabel}
                   onClick={(event) => {
@@ -444,14 +445,15 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             aria-label={t('page.archiveGroupTitle', '归档分组')}
             className="mx-1 flex items-center gap-2 rounded-2xl border border-warning/40 bg-warning/10 px-3 py-2"
           >
-            <span className="min-w-0 flex-1 text-[13px] leading-4 text-foreground/90">
+            <span className="min-w-0 flex-1 text-ui leading-4 text-foreground/90">
               {t('page.archiveGroupConfirmInline', { name: group.name, defaultValue: '归档「{{name}}」？其中的会话不会被删除' })}
             </span>
             <div className="flex shrink-0 items-center gap-1">
+              {/* 破坏性操作确认按钮：移动/平板保持较大触控目标，桌面 lg 起紧凑 */}
               <NotionButton
                 variant="warning"
                 size="sm"
-                className="!h-7 !px-2 text-[12px]"
+                className="!h-9 lg:!h-7 !px-2 text-[12px]"
                 onClick={() => {
                   clearArchiveConfirm();
                   onArchiveGroup(group);
@@ -463,7 +465,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 variant="ghost"
                 size="icon"
                 iconOnly
-                className="!h-7 !w-7"
+                className="!h-9 !w-9 lg:!h-7 lg:!w-7"
                 aria-label={t('common:cancel', '取消')}
                 onClick={clearArchiveConfirm}
               >
@@ -537,7 +539,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
 
     if (isSearching && !hasAnySearchResult) {
       return (
-        <div className="px-3 py-6 text-center text-[13px] text-muted-foreground">
+        <div className="px-3 py-6 text-center text-ui text-muted-foreground">
           {t('browser.noResults', '未找到匹配的会话')}
         </div>
       );
@@ -586,7 +588,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 )
               )
             ) : !isSearching ? (
-              <div className="px-3 py-2 text-[13px] text-muted-foreground opacity-80">
+              <div className="px-3 py-2 text-ui text-muted-foreground opacity-80">
                 {t('page.studySessionsEmpty', '暂无课题')}
               </div>
             ) : null}
@@ -620,7 +622,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     size="sm"
                     onClick={() => { void loadMoreSessions(); }}
                     disabled={isLoadingMore}
-                    className="w-full justify-start gap-2 rounded-2xl px-3 text-[13px] font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+                    className="w-full justify-start gap-2 rounded-2xl px-3 text-ui font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
                   >
                     {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
                     <span>{t('page.loadMore')}</span>
@@ -639,7 +641,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             className={
               unified
                 ? mobileDrawerThreadRowClassName(false, 'group gap-2.5 text-muted-foreground')
-                : 'group inline-flex min-h-[2rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1 text-left text-[13px] font-normal leading-none text-[color:var(--sidebar-muted)] outline-none transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)] focus-visible:ring-2 focus-visible:ring-ring select-none'
+                : 'group inline-flex min-h-[2rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1 text-left text-ui font-normal leading-none text-[color:var(--sidebar-muted)] outline-none transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)] focus-visible:ring-2 focus-visible:ring-ring select-none'
             }
           >
             <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>

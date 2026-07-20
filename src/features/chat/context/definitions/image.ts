@@ -44,6 +44,33 @@ function getMediaType(mimeType?: string): string {
 }
 
 /**
+ * 判断是否为 SVG（MIME 或文件名后缀）
+ */
+function isSvgImage(mediaType: string, name: string): boolean {
+  return mediaType === 'image/svg+xml' || name.toLowerCase().endsWith('.svg');
+}
+
+/**
+ * Base64 → UTF-8 文本（SVG 源码提取用），失败返回 null
+ */
+function decodeBase64Utf8(base64: string): string | null {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch (error) {
+    console.warn('[ImageDef] Failed to decode SVG base64:', error);
+    return null;
+  }
+}
+
+/** SVG 源码注入上限（与文件文本注入 100KB 截断一致） */
+const MAX_SVG_TEXT_LENGTH = 100 * 1024;
+
+/**
  * 图片类型定义
  */
 export const imageDefinition: ContextTypeDefinition = {
@@ -75,6 +102,9 @@ export const imageDefinition: ContextTypeDefinition = {
       
       // 注入模式是源内容契约，不随当前模型能力变化。TM 也保留原图，交给
       // Rust context compiler 选择辅助 MM、OCR 或无视觉降级。
+      // ★ P0 契约（2026-07）：ContextRef 创建时已显式写入 injectModes，
+      // 此处缺省分支仅覆盖历史数据；缺省值与 UI 默认对齐
+      // （DEFAULT_IMAGE_INJECT_MODES = ['image']：仅原图，不含 OCR）。
       const hasImageModes = imageModes && imageModes.length > 0;
       const isMultimodal = options?.isMultimodal !== false;
       const includeImage = hasImageModes ? imageModes.includes('image') : true;
@@ -92,7 +122,28 @@ export const imageDefinition: ContextTypeDefinition = {
         if (base64) {
           const resolvedMimeType = (resolved.metadata as ImageMetadata | undefined)?.mimeType;
           const mediaType = extractedMediaType || getMediaType(resolvedMimeType);
-          blocks.push(createImageBlock(mediaType, base64));
+          if (isSvgImage(mediaType, name)) {
+            // ★ SVG 分流：不再作为 image block 直发（provider 普遍拒收
+            // media_type=image/svg+xml），改为解码 XML 源码按文本注入。
+            // 前端 chip 的图片预览走 previewUrl，不受此分流影响。
+            const svgText = decodeBase64Utf8(base64);
+            if (svgText && svgText.trim()) {
+              const clipped = svgText.length > MAX_SVG_TEXT_LENGTH
+                ? svgText.substring(0, MAX_SVG_TEXT_LENGTH)
+                : svgText;
+              blocks.push(createXmlTextBlock('svg_source', clipped, { name, type: 'image/svg+xml' }));
+              if (clipped.length < svgText.length) {
+                blocks.push(createTextBlock('[Note: SVG source truncated to the first 100KB.]'));
+              }
+            } else {
+              console.warn('[ImageDef] SVG decode failed, injecting placeholder:', resolved.sourceId);
+              blocks.push(createTextBlock(
+                `<image name="${name}" type="image/svg+xml">[SVG 源码解码失败，无法注入内容，仅提供文件名。]</image>`
+              ));
+            }
+          } else {
+            blocks.push(createImageBlock(mediaType, base64));
+          }
         } else {
           console.warn('[ImageDef] Image mode but invalid base64:', resolved.sourceId);
         }

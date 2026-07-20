@@ -14,6 +14,7 @@ import type { BlockingInteraction } from '../../core/types/store';
 import type { PdfPageRefsState } from './usePdfPageRefs';
 import type { DeepSeekReasoningOption, DeepSeekReasoningOptionValue } from '@/utils/deepseekReasoningControls';
 import type { ContextWindowUsage } from './contextWindowUsage';
+import type { ContextCompactionInfo } from './contextCompactionInfo';
 import type { SessionUsageSummary } from '@/api/llmUsageApi';
 
 // ============================================================================
@@ -203,6 +204,13 @@ export interface InputBarUIProps {
   /** 设置面板状态 */
   onSetPanelState: (panel: keyof PanelStates, open: boolean) => void;
 
+  /** 用户显式触发当前会话上下文压缩 */
+  onCompactContext?: () => void | Promise<void>;
+  isCompactingContext?: boolean;
+  compactContextStatus?: 'success' | 'not-needed' | 'skipped' | 'error' | null;
+  /** 懒读当前会话的 active compaction 元数据（上下文用量弹层展示用） */
+  getCompactionInfo?: () => ContextCompactionInfo | null;
+
   // ========== UI 配置 ==========
 
   /** 占位符文本 */
@@ -231,8 +239,6 @@ export interface InputBarUIProps {
 
   // ========== 模式插件面板渲染 ==========
 
-  /** 渲染 RAG 面板（模式插件提供） */
-  renderRagPanel?: () => React.ReactNode;
   /** 渲染模型选择面板（模式插件提供） */
   renderModelPanel?: (options?: { hideHeader?: boolean; onClose?: () => void }) => React.ReactNode;
   /** 渲染高级设置面板（模式插件提供） */

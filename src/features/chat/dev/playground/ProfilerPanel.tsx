@@ -80,22 +80,22 @@ interface MetricCardProps {
 const MetricCard: React.FC<MetricCardProps> = ({ label, value, hint, tone = 'neutral' }) => {
   const toneClass =
     tone === 'good'
-      ? 'text-emerald-600 dark:text-emerald-400'
+      ? 'text-success'
       : tone === 'warn'
-      ? 'text-amber-600 dark:text-amber-400'
+      ? 'text-warning'
       : tone === 'bad'
-      ? 'text-red-600 dark:text-red-400'
+      ? 'text-danger'
       : 'text-foreground';
   return (
     <div className="flex flex-col gap-0.5 rounded-md border border-border bg-card/60 px-2.5 py-2">
-      <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground font-medium">
         {label}
       </div>
       <div className={cn('text-base font-mono font-semibold tabular-nums', toneClass)}>
         {value}
       </div>
       {hint && (
-        <div className="text-[10px] text-muted-foreground/80 font-mono">{hint}</div>
+        <div className="text-2xs text-muted-foreground/80 font-mono">{hint}</div>
       )}
     </div>
   );
@@ -114,10 +114,10 @@ const MiniChart: React.FC<MiniChartProps> = ({ data, dataKey, color, label, unit
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between px-1">
-        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
           {label}
         </span>
-        <span className="text-[10px] text-muted-foreground/70 font-mono">
+        <span className="text-2xs text-muted-foreground/70 font-mono">
           {data.length > 0 ? `${data[data.length - 1][dataKey]}${unit ?? ''}` : '—'}
         </span>
       </div>
@@ -226,8 +226,8 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
           className={cn(
             'px-2 py-1 text-[11px] rounded flex items-center gap-1 transition-colors',
             enabled
-              ? 'bg-muted hover:bg-amber-500/10 hover:text-amber-600'
-              : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20',
+              ? 'bg-muted hover:bg-warning/10 hover:text-warning'
+              : 'bg-success/10 text-success hover:bg-success/20',
           )}
           title={enabled ? '暂停采集' : '恢复采集'}
         >
@@ -259,7 +259,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
           导出
         </button>
 
-        <div className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+        <div className="ml-auto flex items-center gap-1 text-2xs text-muted-foreground font-mono">
           <span className="px-1.5 py-0.5 rounded bg-muted">{metrics.preset ?? '—'}</span>
           <span>{metrics.eventCount} 事件</span>
         </div>
@@ -291,8 +291,8 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {tab === 'overview' ? (
           <>
-            {/* Metric cards */}
-            <div className="grid grid-cols-4 gap-1.5">
+            {/* Metric cards（窄屏两列） */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
               <MetricCard
                 label="首字耗时"
                 value={formatMs(metrics.ttftMs)}
@@ -360,7 +360,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
               </div>
             )}
 
-            <div className="text-[10px] text-muted-foreground/70 font-mono pt-1">
+            <div className="text-2xs text-muted-foreground/70 font-mono pt-1">
               控制台:{' '}
               <code className="px-1 py-0.5 bg-muted rounded">
                 window.__DEEP_STUDENT_STREAMING_PROFILER__.getSnapshot()
@@ -368,7 +368,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
             </div>
           </>
         ) : (
-          <div className="font-mono text-[10px] space-y-0.5">
+          <div className="font-mono text-2xs space-y-0.5">
             {recentEvents.length === 0 ? (
               <div className="text-muted-foreground text-center py-8">
                 暂无事件
@@ -377,12 +377,12 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
               recentEvents.map((ev) => {
                 const eventColor =
                   ev.type === 'target'
-                    ? 'text-amber-600 dark:text-amber-400'
+                    ? 'text-warning'
                     : ev.type === 'display'
-                    ? 'text-emerald-600 dark:text-emerald-400'
+                    ? 'text-success'
                     : ev.type === 'flush'
-                    ? 'text-sky-600 dark:text-sky-400'
-                    : 'text-red-500';
+                    ? 'text-info'
+                    : 'text-danger';
                 return (
                   <div
                     key={ev.id}

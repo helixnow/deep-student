@@ -6,9 +6,10 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import katex, { KatexOptions } from 'katex';
-import 'katex/contrib/mhchem';
-import { renderToStaticMarkup } from 'react-dom/server';
+// ★ 加载性能：katex 改为懒加载（lazyKatex），不再静态导入进 chat chunk；
+// KatexOptions 仅作类型使用，type-only import 不引入运行时代码
+import type { KatexOptions } from 'katex';
+import { getLoadedKatex, ensureKatexLoaded, scheduleKatexIdlePrefetch } from './lazyKatex';
 import { CodeBlock } from './CodeBlock';
 import { TableBlockShell } from '../ui/TableBlockShell';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
@@ -302,11 +303,16 @@ const fixCjkAdjacentBoldSyntaxSafely = (content: string): string => {
 };
 
 // 预处理函数：处理LaTeX和空行
+//
+// ★ 性能：本函数在流式期间对活跃块每次 flush（32ms）重跑一次。
+// 每个正则 pass 都是对全文的一次扫描；下方为各 pass 增加了 O(n) 的
+// includes() 触发探测——绝大多数内容不含对应语法（\( / $ / bmatrix / 反引号），
+// 单次廉价扫描即可跳过整个「扫描 + 回调 + 重建字符串」流程。
 const preprocessContent = (content: string, isStreaming = false): string => {
   if (!content) return '';
 
   // 行尾统一为 \n，确保后续按行的正则在 CRLF 输入下行为一致
-  let processedContent = content.replace(/\r\n/g, '\n');
+  let processedContent = content.includes('\r') ? content.replace(/\r\n/g, '\n') : content;
 
   // 流式期间自动闭合未配对的 markdown 标记（**bold / [link / `` ` `` 等）
   // 仅处理 markdown 半边，不动数学（$...$ / \begin{}），后者由 remark-math 优雅降级
@@ -320,59 +326,80 @@ const preprocessContent = (content: string, isStreaming = false): string => {
   // 需要预先转换为 $...$ / $$...$$ 以确保 KaTeX 正确渲染。
   // 跳过代码块内部的内容以避免误转换。
   const codeBlockPlaceholders: string[] = [];
-  processedContent = processedContent.replace(/```[\s\S]*?```|`[^`\n]+`/g, (match) => {
-    codeBlockPlaceholders.push(match);
-    return `\x00CB${codeBlockPlaceholders.length - 1}\x00`;
-  });
-  processedContent = fixCjkAdjacentBoldSyntaxSafely(processedContent);
-  processedContent = processedContent.replace(
-    /(?<!\\)\\\((.+?)(?<!\\)\\\)/g,
-    (match, math) => {
-      if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
-      return `$${math}$`;
-    },
-  );
-  processedContent = processedContent.replace(
-    /(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g,
-    (match, math) => {
-      if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
-      return `$$${math}$$`;
-    },
-  );
+  if (processedContent.includes('`')) {
+    processedContent = processedContent.replace(/```[\s\S]*?```|`[^`\n]+`/g, (match) => {
+      codeBlockPlaceholders.push(match);
+      return `\x00CB${codeBlockPlaceholders.length - 1}\x00`;
+    });
+  }
+  // CJK 紧邻加粗修复：仅在存在加粗语法时逐行处理
+  if (processedContent.includes('**') || processedContent.includes('__')) {
+    processedContent = fixCjkAdjacentBoldSyntaxSafely(processedContent);
+  }
+  const hasBackslash = processedContent.includes('\\');
+  if (hasBackslash && processedContent.includes('\\(')) {
+    processedContent = processedContent.replace(
+      /(?<!\\)\\\((.+?)(?<!\\)\\\)/g,
+      (match, math) => {
+        if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
+        return `$${math}$`;
+      },
+    );
+  }
+  if (hasBackslash && processedContent.includes('\\[')) {
+    processedContent = processedContent.replace(
+      /(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g,
+      (match, math) => {
+        if (CJK_CONSECUTIVE_RE.test(math) && !/\\[a-zA-Z]+/.test(math)) return match;
+        return `$$${math}$$`;
+      },
+    );
+  }
 
-  // 保护已有的 $$...$$ 和 $...$ 数学块，避免兜底正则误改块内圆括号
+  // 裸 LaTeX 圆括号兜底仅在内容可能含数学（\ 命令或 _{ ^{ 上下标）时才需要
+  const mayContainBareLatex =
+    processedContent.includes('\\') || /[_^]\{/.test(processedContent);
   const mathBlockPlaceholders: string[] = [];
-  processedContent = processedContent.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g, (match) => {
-    mathBlockPlaceholders.push(match);
-    return `\x00MB${mathBlockPlaceholders.length - 1}\x00`;
-  });
+  if (mayContainBareLatex) {
+    // 保护已有的 $$...$$ 和 $...$ 数学块，避免兜底正则误改块内圆括号
+    if (processedContent.includes('$')) {
+      processedContent = processedContent.replace(/\$\$[\s\S]+?\$\$|\$[^$\n]+?\$/g, (match) => {
+        mathBlockPlaceholders.push(match);
+        return `\x00MB${mathBlockPlaceholders.length - 1}\x00`;
+      });
+    }
 
-  // 兜底：检测普通圆括号包裹的裸 LaTeX 公式，如 (\lambda = \frac{h}{p})，
-  // 转换为 $\lambda = \frac{h}{p}$。仅在内容含已知数学命令或上下标时触发。
-  const BARE_LATEX_MATH_RE = /\\(?:frac|sqrt|sum|int|prod|lim|lambda|gamma|alpha|beta|theta|pi|sigma|omega|delta|epsilon|varepsilon|mu|nu|rho|tau|phi|varphi|psi|chi|eta|zeta|kappa|xi|infty|partial|nabla|cdot|times|approx|equiv|vec|hat|bar|tilde|overline|mathrm|mathbb|text|Gamma|Delta|Theta|Lambda|Sigma|Phi|Psi|Omega|hbar|ell|[lg]eq?|neq?|pm|mp|div|sim|propto|binom)\b/;
-  processedContent = processedContent.replace(
-    /(?<!\$)\(([^)]{1,300})\)(?!\$)/g,
-    (match, inner: string) => {
-      if (!BARE_LATEX_MATH_RE.test(inner) && !/[_^]\{/.test(inner)) return match;
-      if (CJK_CONSECUTIVE_RE.test(inner)) return match;
-      return `$${inner}$`;
-    },
-  );
+    // 兜底：检测普通圆括号包裹的裸 LaTeX 公式，如 (\lambda = \frac{h}{p})，
+    // 转换为 $\lambda = \frac{h}{p}$。仅在内容含已知数学命令或上下标时触发。
+    const BARE_LATEX_MATH_RE = /\\(?:frac|sqrt|sum|int|prod|lim|lambda|gamma|alpha|beta|theta|pi|sigma|omega|delta|epsilon|varepsilon|mu|nu|rho|tau|phi|varphi|psi|chi|eta|zeta|kappa|xi|infty|partial|nabla|cdot|times|approx|equiv|vec|hat|bar|tilde|overline|mathrm|mathbb|text|Gamma|Delta|Theta|Lambda|Sigma|Phi|Psi|Omega|hbar|ell|[lg]eq?|neq?|pm|mp|div|sim|propto|binom)\b/;
+    processedContent = processedContent.replace(
+      /(?<!\$)\(([^)]{1,300})\)(?!\$)/g,
+      (match, inner: string) => {
+        if (!BARE_LATEX_MATH_RE.test(inner) && !/[_^]\{/.test(inner)) return match;
+        if (CJK_CONSECUTIVE_RE.test(inner)) return match;
+        return `$${inner}$`;
+      },
+    );
 
-  // 还原数学块占位符（占位符有意使用 NUL 字节避免与正文冲突）
-  // eslint-disable-next-line no-control-regex
-  processedContent = processedContent.replace(/\x00MB(\d+)\x00/g, (_m, idx) => mathBlockPlaceholders[Number(idx)]);
+    // 还原数学块占位符（占位符有意使用 NUL 字节避免与正文冲突）
+    if (mathBlockPlaceholders.length > 0) {
+      // eslint-disable-next-line no-control-regex
+      processedContent = processedContent.replace(/\x00MB(\d+)\x00/g, (_m, idx) => mathBlockPlaceholders[Number(idx)]);
+    }
+  }
 
   // 专门处理 bmatrix 环境
-  processedContent = processedContent.replace(/\\begin{bmatrix}(.*?)\\end{bmatrix}/gs, (match, matrixContent) => {
-    // 移除每行末尾 \\ 之前和之后的空格
-    let cleanedMatrix = matrixContent.replace(/\s*\\\\\s*/g, ' \\\\ ');
-    // 移除 & 周围的空格
-    cleanedMatrix = cleanedMatrix.replace(/\s*&\s*/g, '&');
-    // 移除行首和行尾的空格
-    cleanedMatrix = cleanedMatrix.split(' \\\\ ').map((row: string) => row.trim()).join(' \\\\ ');
-    return `\\begin{bmatrix}${cleanedMatrix}\\end{bmatrix}`;
-  });
+  if (processedContent.includes('\\begin{bmatrix}')) {
+    processedContent = processedContent.replace(/\\begin{bmatrix}(.*?)\\end{bmatrix}/gs, (match, matrixContent) => {
+      // 移除每行末尾 \\ 之前和之后的空格
+      let cleanedMatrix = matrixContent.replace(/\s*\\\\\s*/g, ' \\\\ ');
+      // 移除 & 周围的空格
+      cleanedMatrix = cleanedMatrix.replace(/\s*&\s*/g, '&');
+      // 移除行首和行尾的空格
+      cleanedMatrix = cleanedMatrix.split(' \\\\ ').map((row: string) => row.trim()).join(' \\\\ ');
+      return `\\begin{bmatrix}${cleanedMatrix}\\end{bmatrix}`;
+    });
+  }
 
   // 处理空行：将多个连续的空行减少为最多一个空行
   processedContent = processedContent
@@ -387,13 +414,17 @@ const preprocessContent = (content: string, isStreaming = false): string => {
 
   // 代码块最后还原：确保上方的空行折叠 / 列表修补 / bmatrix 清理
   // 不会改写代码块内部内容（否则复制按钮拿到的代码与原文不一致）
-  // eslint-disable-next-line no-control-regex
-  processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
+  if (codeBlockPlaceholders.length > 0) {
+    // eslint-disable-next-line no-control-regex
+    processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
+  }
 
   // 若存在未闭合的 ```，自动补一个结尾
-  const fenceCount = (processedContent.match(/```/g) || []).length;
-  if (fenceCount % 2 === 1) {
-    processedContent += '\n```';
+  if (processedContent.includes('```')) {
+    const fenceCount = (processedContent.match(/```/g) || []).length;
+    if (fenceCount % 2 === 1) {
+      processedContent += '\n```';
+    }
   }
 
   return processedContent;
@@ -424,6 +455,65 @@ function setCachedKatex(latex: string, displayMode: boolean, html: string): void
   }
   katexHtmlCache.set(`${displayMode ? 'b' : 'i'}|${latex}`, html);
 }
+
+/**
+ * LazyMath：katex 懒加载下的数学节点渲染。
+ * - 缓存命中：直接输出 HTML（0 成本，不依赖 katex 模块）
+ * - katex 已加载：同步渲染并写缓存
+ * - katex 未加载：先渲染原文降级（与流式期间未闭合公式的表现一致），
+ *   触发加载并在完成后重渲染接管
+ */
+const LazyMath: React.FC<{
+  latex: string;
+  displayMode: boolean;
+  options: KatexOptions;
+}> = ({ latex, displayMode, options }) => {
+  const cached = getCachedKatex(latex, displayMode);
+  const katex = getLoadedKatex();
+  const [, forceRender] = useState(0);
+
+  const needsLoad = cached === undefined && !katex;
+  useEffect(() => {
+    if (!needsLoad) return;
+    let cancelled = false;
+    ensureKatexLoaded()
+      .then(() => {
+        if (!cancelled) forceRender((n) => n + 1);
+      })
+      .catch((error) => {
+        console.error('[MarkdownRenderer] KaTeX lazy load failed:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsLoad]);
+
+  if (cached !== undefined) {
+    return <span dangerouslySetInnerHTML={{ __html: cached }} />;
+  }
+
+  if (!katex) {
+    // 加载中降级：显示原文（KaTeX 到位后自动补渲）
+    return (
+      <span className="katex-loading" style={{ display: displayMode ? 'block' : 'inline' }}>
+        {latex}
+      </span>
+    );
+  }
+
+  try {
+    const html = katex.renderToString(latex, { ...options, displayMode });
+    setCachedKatex(latex, displayMode, html);
+    return <span dangerouslySetInnerHTML={{ __html: html }} />;
+  } catch (error: unknown) {
+    console.error('[MarkdownRenderer] KaTeX render failed:', error, 'latex=', latex);
+    return (
+      <span className="katex-error" style={{ display: displayMode ? 'block' : 'inline' }}>
+        {latex}
+      </span>
+    );
+  }
+};
 
 const disableIndentedCodePlugin = function disableIndentedCodePlugin(this: any) {
   const Parser = this?.Parser;
@@ -511,9 +601,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
 }) => {
   const shouldEnableCitations = enableCitations ?? !!(onCitationClick || resolveCitationImage);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // 🚀 性能优化：按需加载 KaTeX CSS
+  // 🚀 性能优化：按需加载 KaTeX CSS；JS 模块空闲期预取（避免首条公式原文闪烁）
   useEffect(() => {
     ensureKatexStyles();
+    scheduleKatexIdlePrefetch();
   }, []);
 
   // 注入引用徽章样式（P2-7：幂等注入，多实例共用同一 <style>，支持热更新）
@@ -625,27 +716,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   const renderMath = (value: string, displayMode: boolean) => {
     const latex = value?.trim() ?? '';
     if (!latex) return null;
-
-    // 🔧 性能优化：先查模块级缓存，命中则跳过 KaTeX 解析（流式重渲染场景常见）
-    const cached = getCachedKatex(latex, displayMode);
-    if (cached !== undefined) {
-      return <span dangerouslySetInnerHTML={{ __html: cached }} />;
-    }
-
-    try {
-      const html = katex.renderToString(latex, { ...katexOptions, displayMode });
-      setCachedKatex(latex, displayMode, html);
-      return (
-        <span dangerouslySetInnerHTML={{ __html: html }} />
-      );
-    } catch (error: unknown) {
-      console.error('[MarkdownRenderer] KaTeX render failed:', error, 'latex=', latex);
-      return (
-        <span className="katex-error" style={{ display: displayMode ? 'block' : 'inline' }}>
-          {latex}
-        </span>
-      );
-    }
+    // 缓存查询/懒加载/错误降级统一在 LazyMath 内处理
+    return <LazyMath latex={latex} displayMode={displayMode} options={katexOptions} />;
   };
 
   return (
@@ -858,23 +930,5 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   );
 });
 
-type RenderMarkdownStaticOptions = {
-  enableMath?: boolean;
-};
-
-export const renderMarkdownStatic = (
-  content: string,
-  _options: RenderMarkdownStaticOptions = {},
-): string => {
-  try {
-    return renderToStaticMarkup(
-      <MarkdownRenderer
-        content={content}
-        isStreaming={false}
-      />
-    );
-  } catch (error: unknown) {
-    console.error('[MarkdownRenderer] renderMarkdownStatic failed:', error);
-    return content ?? '';
-  }
-};
+// renderMarkdownStatic 已移除（无消费方）：它是文件内唯一的 react-dom/server
+// 依赖，删除后 renderToStaticMarkup 不再被打进 chat chunk。

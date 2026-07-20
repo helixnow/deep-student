@@ -15,7 +15,7 @@ import type {
 } from '../types/store';
 import { createDefaultChatParams, createDefaultPanelStates } from '../types/common';
 import type { ContextRef } from '../../context/types';
-import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
+import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
 import type { QueuedMessage } from '../types/queue';
 
 // ============================================================================
@@ -118,6 +118,9 @@ export interface StoreCallbacks {
 
   /** 🔧 P0 修复：继续执行消息回调 */
   _continueMessageCallback?: ((messageId: string, variantId?: string) => Promise<void>) | null;
+
+  /** 🆕 P0 分支模型：会话分支回调（chat_v2_branch_session 封装） */
+  _branchSessionCallback?: ((upToMessageId: string) => Promise<BranchSessionResult>) | null;
 }
 
 // Re-export BlockingInteraction from public types
@@ -332,5 +335,6 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     _retryAllVariantsCallback: null,
     _cancelVariantCallback: null,
     _continueMessageCallback: null,
+    _branchSessionCallback: null,
   };
 }

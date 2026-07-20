@@ -206,7 +206,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
           {isBuiltin ? (
             <span
               className={cn(
-                'shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px]',
+                'shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-2xs',
                 'border border-[color:var(--button-primary-border)]',
                 'bg-[color:var(--button-primary-surface)]',
                 'text-[color:var(--button-primary-foreground)]'
@@ -225,23 +225,24 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
           ) : null}
         </span>
         {isConnected && server.tools.length > 0 ? (
-          <span className="mt-0.5 flex items-center gap-1 overflow-hidden text-[10px] text-[color:var(--composer-panel-muted-foreground)]">
+          <span className="mt-0.5 flex items-center gap-1 overflow-hidden text-2xs text-[color:var(--composer-panel-muted-foreground)]">
+            {/* 允许工具名收缩省略，避免窄屏被生硬裁半 */}
             {displayTools.map((name, idx) => (
-              <span key={idx} className="shrink-0">{name}</span>
+              <span key={idx} className="min-w-0 truncate">{name}</span>
             ))}
             {remainingCount > 0 ? (
               <span className="shrink-0 opacity-70">+{remainingCount}</span>
             ) : null}
           </span>
         ) : (
-          <span className="mt-0.5 block text-[10px] text-[color:var(--composer-panel-muted-foreground)]">
+          <span className="mt-0.5 block text-2xs text-[color:var(--composer-panel-muted-foreground)]">
             {isConnected
               ? t('analysis:input_bar.mcp.no_tools')
               : t('common:status.disconnected')}
           </span>
         )}
         {isBuiltin ? (
-          <span className="mt-0.5 flex items-center gap-0.5 text-[9px] text-[color:var(--composer-panel-muted-foreground)] opacity-80">
+          <span className="mt-0.5 flex items-center gap-0.5 text-2xs text-[color:var(--composer-panel-muted-foreground)] opacity-80">
             <Gear size={8} />
             {t('analysis:input_bar.mcp.builtin_hint')}
           </span>
@@ -307,7 +308,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
         </div>
       </CustomScrollArea>
 
-      <p className="shrink-0 text-[10px] text-[color:var(--composer-panel-muted-foreground)]">
+      <p className="shrink-0 text-2xs text-[color:var(--composer-panel-muted-foreground)]">
         {t('analysis:input_bar.mcp.select_tools')}
       </p>
     </ComposerPanel.Root>

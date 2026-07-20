@@ -13,6 +13,7 @@ import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { PaperPlaneRight, Square, CircleNotch, Paperclip } from '@phosphor-icons/react';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useSessionStatus, useInputValue, useCanSend, useAttachments } from '../hooks/useChatStore';
 import type { ChatStore } from '../core/types';
 import { ATTACHMENT_MAX_COUNT } from '../core/constants';
@@ -57,6 +58,10 @@ export const InputBar: React.FC<InputBarProps> = ({
   maxAttachments = ATTACHMENT_MAX_COUNT,
 }) => {
   const { t } = useTranslation('chatV2');
+
+  // ★ L1 修复：与 InputBarUI 的 C-11 约定对齐——移动端软键盘没有 Shift+Enter，
+  // Enter 应为换行，发送只走按钮
+  const isMobile = useIsMobile();
 
   // Refs
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -151,8 +156,8 @@ export const InputBar: React.FC<InputBarProps> = ({
         return;
       }
 
-      // Enter 发送（非 Shift）
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter 发送（非 Shift；移动端 Enter=换行，见上方 isMobile 说明）
+      if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
         e.preventDefault();
         if (isStreaming) {
           handleStop();
@@ -161,7 +166,7 @@ export const InputBar: React.FC<InputBarProps> = ({
         }
       }
     },
-    [isStreaming, handleSend, handleStop]
+    [isStreaming, isMobile, handleSend, handleStop]
   );
 
   return (
@@ -215,11 +220,12 @@ export const InputBar: React.FC<InputBarProps> = ({
             className={cn(
               'w-full px-4 py-3 pr-12',
               'bg-muted/30 border border-border/50 rounded-2xl', // 更圆润
-              'resize-none overflow-hidden transition-all duration-200',
+              // ★ L1 修复：达到 maxHeight 后允许内部滚动，光标不再滑出可视区
+              'resize-none overflow-y-auto transition-all duration-200',
               'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 focus:bg-background',
               'placeholder:text-muted-foreground/70',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              'text-[15px] leading-relaxed' // 调整字号和行高
+              'text-md leading-relaxed' // 调整字号和行高
             )}
             style={{ minHeight: '48px', maxHeight: '200px' }}
           />
@@ -254,7 +260,7 @@ export const InputBar: React.FC<InputBarProps> = ({
       </div>
 
       {/* 快捷键提示 */}
-      <div className="mt-2 text-[10px] text-muted-foreground/60 text-center select-none">
+      <div className="mt-2 text-2xs text-muted-foreground/60 text-center select-none">
         {t('inputBar.shortcut')}
       </div>
     </div>

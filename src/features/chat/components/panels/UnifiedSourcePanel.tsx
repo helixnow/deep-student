@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState, useId, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   MagnifyingGlass,
@@ -8,7 +7,9 @@ import {
   Hammer,
   CaretRight,
   CaretLeft,
+  X,
   ArrowSquareOut,
+  GraduationCap,
   Image,
   ImageBroken,
   ArrowsOut,
@@ -17,7 +18,6 @@ import {
 } from '@phosphor-icons/react';
 import type { UnifiedSourceBundle, UnifiedSourceGroup, UnifiedSourceItem } from './sourceTypes';
 import { cn } from '@/utils/cn';
-import { Z_INDEX } from '@/config/zIndex';
 import { openUrl } from '@/utils/urlOpener';
 import { citationEvents, type CitationHighlightEvent } from '../../utils/citationEvents';
 import { useIsMobile } from '@/hooks/useBreakpoint';
@@ -57,21 +57,27 @@ const SNIPPET_MAX_LENGTH = 220;
 const EXPANDED_PAGE_SIZE = 24;
 /** 水平轮播：最多直接挂载的卡片数（超出显示"查看全部"卡） */
 const CAROUSEL_MAX_ITEMS = 30;
-/** hover 预览关闭的宽限时间（卡片 → 预览之间的鼠标移动） */
-const PREVIEW_CLOSE_DELAY_MS = 160;
+/** 折叠区 grid-rows 展开过渡时长（与 duration-300 对齐） */
+const COLLAPSE_ANIMATION_MS = 300;
+/** 展开过渡结束后仍未收到 transitionend 时的安全余量兜底 */
+const SCROLL_FALLBACK_MARGIN_MS = 120;
+/** 引用高亮的持续时间（与 usp-citation-pulse 动画时长一致） */
+const CITATION_HIGHLIGHT_MS = 2000;
 
-function groupIcon(group: CategoryKey) {
+function groupIcon(group: CategoryKey, size = 16) {
   switch (group) {
     case 'memory':
-      return <Brain size={16} />;
+      return <Brain size={size} />;
     case 'web_search':
-      return <MagnifyingGlass size={16} />;
+      return <MagnifyingGlass size={size} />;
+    case 'academic_search':
+      return <GraduationCap size={size} />;
     case 'tool':
-      return <Hammer size={16} />;
+      return <Hammer size={size} />;
     case 'multimodal':
-      return <Image size={16} />;
+      return <Image size={size} />;
     default:
-      return <BookOpen size={16} />;
+      return <BookOpen size={size} />;
   }
 }
 
@@ -92,10 +98,11 @@ const CATEGORY_PRIORITY: Record<CategoryKey, number> = {
   rag: 2,
   memory: 3,
   web_search: 4,
+  academic_search: 5,
 };
 
 /**
- * 带错误回退的缩略图（用于移动端列表项与 hover 预览）
+ * 带错误回退的缩略图（用于移动端列表项与卡片内联详情）
  */
 const SourceThumb: React.FC<{ item: UnifiedSourceItem; className?: string; iconSize?: number }> = ({
   item,
@@ -146,6 +153,13 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   const isMobile = useIsMobile();
   const bodyId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  /** 折叠区包装元素（用于等待 grid-rows 展开过渡结束后再滚动） */
+  const collapseWrapperRef = useRef<HTMLDivElement>(null);
+  /** open 的最新值（citation 事件处理器中读取，不进入订阅 effect 依赖） */
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   const categories = useMemo(() => {
     const map = new Map<CategoryKey, { group: CategoryKey; providers: UnifiedSourceGroup[]; count: number }>();
@@ -180,68 +194,46 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [visibleCount, setVisibleCount] = useState(EXPANDED_PAGE_SIZE);
 
-  // ========== hover 预览（可交互 portal 浮层） ==========
-  const [preview, setPreview] = useState<{ item: UnifiedSourceItem; anchor: DOMRect } | null>(null);
-  const previewElRef = useRef<HTMLDivElement | null>(null);
-  const previewCloseTimer = useRef<number | null>(null);
+  // ========== 卡片内联详情 ==========
+  // 取代旧的 hover portal 预览：portal 浮层 role="tooltip" 却含可交互按钮
+  // （a11y 角色不当），且 zIndex 借用 toast 档、滚动时易错位。
+  // 现改为点击卡片在面板内内联展开完整 snippet，随消息流滚动，无浮层问题。
+  const [detailItemId, setDetailItemId] = useState<string | null>(null);
+  const detailAreaId = useId();
 
-  const clearPreviewCloseTimer = useCallback(() => {
-    if (previewCloseTimer.current != null) {
-      window.clearTimeout(previewCloseTimer.current);
-      previewCloseTimer.current = null;
-    }
+  const toggleDetail = useCallback((item: UnifiedSourceItem) => {
+    setDetailItemId((prev) => (prev === item.id ? null : item.id));
   }, []);
 
-  const openPreview = useCallback((e: React.MouseEvent, item: UnifiedSourceItem) => {
-    clearPreviewCloseTimer();
-    setPreview({ item, anchor: e.currentTarget.getBoundingClientRect() });
-  }, [clearPreviewCloseTimer]);
+  const closeDetail = useCallback(() => setDetailItemId(null), []);
 
-  const scheduleClosePreview = useCallback(() => {
-    clearPreviewCloseTimer();
-    previewCloseTimer.current = window.setTimeout(() => {
-      setPreview(null);
-      previewCloseTimer.current = null;
-    }, PREVIEW_CLOSE_DELAY_MS);
-  }, [clearPreviewCloseTimer]);
+  /** 卡片整面可点开详情；点击卡片内部按钮/链接（打开、定位等）时不触发 */
+  const handleCardSurfaceClick = useCallback((e: React.MouseEvent, item: UnifiedSourceItem) => {
+    if ((e.target as HTMLElement).closest('button, a')) return;
+    toggleDetail(item);
+  }, [toggleDetail]);
 
-  const cancelClosePreview = useCallback(() => {
-    clearPreviewCloseTimer();
-  }, [clearPreviewCloseTimer]);
-
-  // 滚动/窗口变化时关闭预览，避免浮层错位（预览内部的滚动除外）
+  // 切换分类 / 展开模式 / 折叠面板时收起详情
   useEffect(() => {
-    if (!preview) return;
-    const handleScroll = (e: Event) => {
-      const target = e.target;
-      if (previewElRef.current && target instanceof Node && previewElRef.current.contains(target)) {
-        return;
-      }
-      setPreview(null);
-    };
-    const handleResize = () => setPreview(null);
-    window.addEventListener('scroll', handleScroll, true);
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, [preview]);
-
-  // 切换分类 / 展开模式 / 折叠面板时关闭预览
-  useEffect(() => {
-    setPreview(null);
+    setDetailItemId(null);
   }, [activeCategory, isExpanded, open]);
 
-  // 卸载时清理预览定时器
-  useEffect(() => clearPreviewCloseTimer, [clearPreviewCloseTimer]);
-
-  // ========== 状态健壮性：data 变化时重置瞬时状态 ==========
+  // ========== 状态健壮性 ==========
+  // data 变化（流式追加来源等）只重置瞬时态，不打断用户的展开浏览
   useEffect(() => {
-    setPreview(null);
+    setDetailItemId(null);
     setLocalHighlightId(null);
-    setVisibleCount(EXPANDED_PAGE_SIZE);
   }, [data]);
+
+  // 展开态按 messageId 维度管理：组件被复用渲染另一条消息时，
+  // 不能把上一条消息的 open/isExpanded/分页状态带过去
+  useEffect(() => {
+    setOpen(false);
+    setIsExpanded(false);
+    setVisibleCount(EXPANDED_PAGE_SIZE);
+    setDetailItemId(null);
+    setLocalHighlightId(null);
+  }, [messageId]);
 
   useEffect(() => {
     setVisibleCount(EXPANDED_PAGE_SIZE);
@@ -260,7 +252,9 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   const scrollByAmount = useCallback((direction: 'left' | 'right') => {
     const container = scrollContainerRef.current;
     if (!container) return;
-    const cardWidth = 224 + 8; // w-56 = 224px + gap
+    // 按实际卡宽计算步长（桌面 w-56=224 / 移动 w-44=176），避免硬编码在移动端过冲
+    const firstCard = container.querySelector<HTMLElement>('.usp-item-card');
+    const cardWidth = (firstCard?.getBoundingClientRect().width ?? 224) + 8; // + gap
     const scrollAmount = cardWidth * 2; // 每次滚动 2 张卡片
     container.scrollBy({
       left: direction === 'left' ? -scrollAmount : scrollAmount,
@@ -292,6 +286,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     return result;
   }, [categories]);
 
+  // 当前内联详情对应的来源项（卡片点击后展开；数据流式更新后 id 失效则自动关闭）
+  const detailItem = useMemo(() => {
+    if (!detailItemId) return null;
+    return allSources.find(item => item.id === detailItemId) ?? null;
+  }, [detailItemId, allSources]);
+
   // 引用契约查找表：`${citationType}:${typeIndex}` → item
   // typeIndex 由 sourceAdapter 按跨块全局顺序分配，与 `[类型-N]` 契约一致
   const citationLookup = useMemo(() => {
@@ -307,6 +307,32 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   // 监听引用点击事件（按 messageId 过滤，多消息面板互不干扰）
   useEffect(() => {
     const timers: { scroll?: ReturnType<typeof setTimeout>; clear?: ReturnType<typeof setTimeout> } = {};
+    let removeTransitionListener: (() => void) | null = null;
+
+    const cleanupScrollWait = () => {
+      if (timers.scroll) {
+        clearTimeout(timers.scroll);
+        timers.scroll = undefined;
+      }
+      if (removeTransitionListener) {
+        removeTransitionListener();
+        removeTransitionListener = null;
+      }
+    };
+
+    /** 目标 item 在其分类内的顺位（用于判断轮播截断/分页是否覆盖到它） */
+    const findCategoryItemIndex = (target: UnifiedSourceItem): number => {
+      const category = categories.find(c => c.group === target.origin);
+      if (!category) return -1;
+      let idx = 0;
+      for (const provider of category.providers) {
+        for (const item of provider.items || []) {
+          if (item.id === target.id) return idx;
+          idx += 1;
+        }
+      }
+      return -1;
+    };
 
     const handleCitationEvent = (event: CitationHighlightEvent) => {
       if (event.messageId && messageId && event.messageId !== messageId) {
@@ -315,10 +341,11 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       const target = citationLookup.get(`${event.type}:${event.index}`);
       if (!target) return;
 
-      // 清理之前的定时器（防止快速点击时定时器堆积）
-      if (timers.scroll) clearTimeout(timers.scroll);
+      // 清理之前的滚动等待/定时器（防止快速点击时堆积）
+      cleanupScrollWait();
       if (timers.clear) clearTimeout(timers.clear);
 
+      const wasOpen = openRef.current;
       setOpen(true);
       setLocalHighlightId(target.id);
 
@@ -326,24 +353,68 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
         setActiveCategory(target.origin);
       }
 
-      // 延迟滚动到卡片位置（等待 DOM 更新）
-      timers.scroll = setTimeout(() => {
+      // 轮播截断 / 分页未覆盖目标时：预先切到展开网格并把分页推进到目标位置，
+      // 否则目标卡不在 DOM，高亮滚动会静默失败
+      const itemIdx = findCategoryItemIndex(target);
+      if (itemIdx >= CAROUSEL_MAX_ITEMS) {
+        setIsExpanded(true);
+      }
+      if (itemIdx >= 0) {
+        setVisibleCount(c =>
+          itemIdx >= c ? Math.ceil((itemIdx + 1) / EXPANDED_PAGE_SIZE) * EXPANDED_PAGE_SIZE : c
+        );
+      }
+
+      const scrollToCard = () => {
         const card = cardRefs.current.get(target.id);
         if (card) {
           card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          return;
         }
-      }, 150);
+        // 兜底：目标仍不在 DOM（如轮播截断且分类切换后 DOM 尚未提交），
+        // 强制展开网格后重试一次
+        setIsExpanded(true);
+        timers.scroll = setTimeout(() => {
+          cardRefs.current.get(target.id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }, 100);
+      };
 
-      // 2秒后清除高亮
+      if (wasOpen) {
+        // 面板已展开：等一小拍让分类/分页切换后的 DOM 生效即可滚动
+        timers.scroll = setTimeout(scrollToCard, 50);
+      } else {
+        // 折叠 → 展开：等 grid-rows 展开过渡真正结束（transitionend）再滚动，
+        // 否则 300ms 折叠动画未完成时 scrollIntoView 会打空
+        let fired = false;
+        const fire = () => {
+          if (fired) return;
+          fired = true;
+          cleanupScrollWait();
+          scrollToCard();
+        };
+        const wrapper = collapseWrapperRef.current;
+        if (wrapper) {
+          const onTransitionEnd = (e: TransitionEvent) => {
+            if (e.target !== wrapper || e.propertyName !== 'grid-template-rows') return;
+            fire();
+          };
+          wrapper.addEventListener('transitionend', onTransitionEnd);
+          removeTransitionListener = () => wrapper.removeEventListener('transitionend', onTransitionEnd);
+        }
+        // 安全余量兜底：motion-reduce 无过渡 / transitionend 丢失时也能滚到位
+        timers.scroll = setTimeout(fire, COLLAPSE_ANIMATION_MS + SCROLL_FALLBACK_MARGIN_MS);
+      }
+
+      // 与 usp-citation-pulse 动画同步：2 秒后清除高亮
       timers.clear = setTimeout(() => {
         setLocalHighlightId(null);
-      }, 2000);
+      }, CITATION_HIGHLIGHT_MS);
     };
 
     const unsubscribe = citationEvents.subscribe(handleCitationEvent);
     return () => {
       unsubscribe();
-      if (timers.scroll) clearTimeout(timers.scroll);
+      cleanupScrollWait();
       if (timers.clear) clearTimeout(timers.clear);
     };
   }, [citationLookup, categories, messageId]);
@@ -351,6 +422,13 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   const activeCategoryProviders = useMemo(() => {
     return categories.find(c => c.group === activeCategory)?.providers ?? [];
   }, [categories, activeCategory]);
+
+  /** 分组显示名：common 命名空间优先，chatV2 补充（academic_search 等新分组），最后回退原值 */
+  const groupLabelOf = useCallback((group: string) => {
+    return t(`common:chat.sources.groupLabels.${group}`, {
+      defaultValue: t(`chatV2:sourcePanel.groupLabels.${group}`, { defaultValue: group }),
+    });
+  }, [t]);
 
   const resolveProviderLabel = useCallback((providerLabel?: string, providerId?: string) => {
     const candidate = providerLabel || providerId || '';
@@ -444,17 +522,19 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
 
   const expandedRemaining = Math.max(0, totalItemsInCategory - visibleCount);
 
-  // 监听滚动状态
+  // 监听滚动状态（capture 监听 img load：缩略图加载完成后内容宽度变化，重算轮播箭头）
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container || isExpanded) return;
 
     checkScrollability();
     container.addEventListener('scroll', checkScrollability);
+    container.addEventListener('load', checkScrollability, true);
     window.addEventListener('resize', checkScrollability);
 
     return () => {
       container.removeEventListener('scroll', checkScrollability);
+      container.removeEventListener('load', checkScrollability, true);
       window.removeEventListener('resize', checkScrollability);
     };
   }, [checkScrollability, isExpanded, carouselEntries]);
@@ -522,7 +602,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   }, [getItemResourceLocator]);
 
   /**
-   * 来源项操作按钮（卡片底部 / 移动端列表 / hover 预览共用）
+   * 来源项操作按钮（卡片底部 / 移动端列表 / 内联详情共用）
    */
   const renderItemAction = useCallback((item: UnifiedSourceItem, compact: boolean) => {
     const btnClass = compact ? 'text-primary !h-6 text-xs' : 'text-primary';
@@ -628,7 +708,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
         window.cancelAnimationFrame(rafId);
       }
     };
-  }, [open]);
+  }, [open, isExpanded, activeCategory]);
 
   // 无来源、无检索中、无错误时不渲染（early return 必须在所有 hooks 之后）
   if (!groups.length && !isRetrieving && !errors.length) {
@@ -667,7 +747,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   const renderErrorBar = () => {
     if (!errors.length) return null;
     const scopes = Array.from(new Set(errors.map(e => e.origin)))
-      .map(origin => t(`common:chat.sources.groupLabels.${origin}`, { defaultValue: origin }))
+      .map(origin => groupLabelOf(origin))
       .join(' / ');
     const detail = errors.find(e => e.message)?.message;
     return (
@@ -684,22 +764,29 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     );
   };
 
+  // 骨架与真卡同结构同尺寸（标题行 + 两行摘要 + 底部操作行），防止加载完成时 CLS
   const renderSkeletonCards = (count: number, fullWidth = false) => (
     Array.from({ length: count }).map((_, i) => (
       <div
         key={`usp-skeleton-${i}`}
         className={cn(
-          'rounded-lg border border-border/50 bg-card p-2.5',
+          'usp-skeleton-card rounded-lg border border-border/50 bg-card p-2.5',
           fullWidth ? 'w-full' : 'w-56 flex-shrink-0'
         )}
         aria-hidden
       >
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-1.5">
           <Skeleton className="w-5 h-5 rounded-full" />
           <Skeleton className="h-3.5 w-28" />
         </div>
-        <Skeleton className="h-3 w-full mb-1.5" />
-        <Skeleton className="h-3 w-3/4" />
+        <div className="h-8 mb-1.5">
+          <Skeleton className="h-3 w-full mb-1.5" />
+          <Skeleton className="h-3 w-3/4" />
+        </div>
+        <div className="flex items-center justify-between pt-1.5 border-t border-border/50">
+          <Skeleton className="h-2.5 w-12" />
+          <Skeleton className="h-2.5 w-10" />
+        </div>
       </div>
     ))
   );
@@ -722,8 +809,8 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           highlighted={isHighlighted}
           expanded={expandedMode}
           onLocate={canLocate ? handleLocateResource : undefined}
-          onMouseEnter={(e) => openPreview(e, entry.item)}
-          onMouseLeave={scheduleClosePreview}
+          onClick={toggleDetail}
+          className={cn('cursor-pointer', detailItemId === entry.item.id && 'border-primary/50')}
         />
       );
     }
@@ -734,14 +821,14 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       <div
         ref={registerCardRef(entry.item.id)}
         className={cn(
-          'usp-item-card rounded-lg border bg-card p-2.5 hover:bg-[var(--interactive-hover)] transition-all cursor-default group',
+          'usp-item-card rounded-lg border bg-card p-2.5 hover:bg-[var(--interactive-hover)] transition-all cursor-pointer group',
           !expandedMode && 'w-56 flex-shrink-0',
-          isHighlighted && 'shadow-[inset_0_0_0_2px_hsl(var(--primary)),0_10px_15px_-3px_rgb(0_0_0/0.1)]'
+          isHighlighted && 'usp-citation-pulse',
+          detailItemId === entry.item.id && 'border-primary/50'
         )}
         key={entry.key}
         role="listitem"
-        onMouseEnter={(e) => openPreview(e, entry.item)}
-        onMouseLeave={scheduleClosePreview}
+        onClick={(e) => handleCardSurfaceClick(e, entry.item)}
       >
         <div className="flex items-center justify-between mb-1.5">
           <div className="flex items-center gap-2 overflow-hidden">
@@ -758,8 +845,8 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           {snippetText}
         </div>
         <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">
-            {t(`common:chat.sources.groupLabels.${entry.item.origin}`, { defaultValue: entry.item.origin })}
+          <span className="text-2xs text-muted-foreground uppercase tracking-wider opacity-70">
+            {groupLabelOf(entry.item.origin)}
           </span>
           {renderItemAction(entry.item, true)}
         </div>
@@ -791,6 +878,49 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     );
   };
 
+  /** 卡片内联详情：点击卡片在面板内展开完整 snippet，随消息流滚动（桌面/移动共用） */
+  const renderInlineDetail = () => {
+    if (!detailItem) return null;
+    return (
+      <div
+        id={detailAreaId}
+        className="usp-inline-detail rounded-lg border border-primary/30 bg-card p-3 flex flex-col text-sm"
+        role="region"
+        aria-label={detailItem.title}
+      >
+        <div className="font-semibold mb-2 flex items-center gap-2 border-b pb-2 shrink-0">
+          {groupIcon(detailItem.origin)}
+          <span className="truncate flex-1" title={detailItem.title}>{detailItem.title}</span>
+          {renderScore(detailItem)}
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="!w-6 !h-6 shrink-0"
+            onClick={closeDetail}
+            aria-label={t('common:actions.close')}
+          >
+            <X size={14} />
+          </NotionButton>
+        </div>
+        {detailItem.origin === 'multimodal' && (
+          <SourceThumb item={detailItem} className="w-full h-32 mb-2 shrink-0" iconSize={20} />
+        )}
+        <CustomScrollArea className="max-h-60 min-h-0" fullHeight={false} hideTrackWhenIdle={false}>
+          <div className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
+            {detailItem.snippet || t('common:chat.sources.multimodal.noSnippet')}
+          </div>
+        </CustomScrollArea>
+        <div className="flex items-center justify-between pt-2 mt-2 border-t border-border/50 shrink-0">
+          <span className="text-2xs text-muted-foreground uppercase tracking-wider opacity-70">
+            {groupLabelOf(detailItem.origin)}
+          </span>
+          {renderItemAction(detailItem, true)}
+        </div>
+      </div>
+    );
+  };
+
   // ========== 移动端：inline 折叠 + 垂直/水平列表 ==========
 
   const renderMobileSourceItem = (entry: Extract<FlatEntry, { type: 'item' }>) => {
@@ -800,9 +930,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       <div
         key={entry.key}
         ref={registerCardRef(entry.item.id)}
+        // 点击整卡展开内联详情（与桌面对齐；内部按钮/链接不触发）
+        onClick={(e) => handleCardSurfaceClick(e, entry.item)}
         className={cn(
-          'p-3 rounded-lg border bg-card hover:bg-[var(--interactive-hover)] transition-all',
-          isHighlighted && 'ring-1 ring-primary/30'
+          'usp-item-card p-3 rounded-lg border bg-card hover:bg-[var(--interactive-hover)] transition-all cursor-pointer',
+          isHighlighted && 'usp-citation-pulse',
+          detailItemId === entry.item.id && 'border-primary/50'
         )}
       >
         <div className="flex items-center gap-2 mb-2">
@@ -818,12 +951,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             <SourceThumb item={entry.item} className="w-12 h-12 flex-shrink-0" />
           )}
           <div className="text-sm text-muted-foreground line-clamp-3 flex-1 min-w-0">
-            {entry.item.snippet}
+            {sanitizeSnippet(entry.item.snippet)}
           </div>
         </div>
         <div className="flex items-center justify-between pt-2 border-t border-border/50">
           <span className="text-xs text-muted-foreground uppercase tracking-wider opacity-70">
-            {t(`common:chat.sources.groupLabels.${entry.item.origin}`, { defaultValue: entry.item.origin })}
+            {groupLabelOf(entry.item.origin)}
           </span>
           {renderItemAction(entry.item, false)}
         </div>
@@ -858,6 +991,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
 
         {/* 可折叠的内容区 */}
         <div
+          ref={collapseWrapperRef}
           className={cn(
             'usp-collapse-wrapper grid w-full transition-all duration-300 ease-in-out motion-reduce:transition-none',
             open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
@@ -944,7 +1078,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       variant="ghost"
                       size="icon"
                       iconOnly
-                      className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-7 !h-7 rounded-full bg-background/90 border shadow-md"
+                      className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-9 !h-9 rounded-full bg-background/90 border shadow-md"
                       onClick={() => scrollByAmount('left')}
                       aria-label={t('common:actions.scrollLeft')}
                     >
@@ -958,7 +1092,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       variant="ghost"
                       size="icon"
                       iconOnly
-                      className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-7 !h-7 rounded-full bg-background/90 border shadow-md"
+                      className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-9 !h-9 rounded-full bg-background/90 border shadow-md"
                       onClick={() => scrollByAmount('right')}
                       aria-label={t('common:actions.scrollRight')}
                     >
@@ -986,15 +1120,18 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       return (
                         <div
                           ref={registerCardRef(entry.item.id)}
+                          // 点击展开内联详情（移动端此前完全没有查看全文的入口）
+                          onClick={(e) => handleCardSurfaceClick(e, entry.item)}
                           className={cn(
-                            'usp-item-card w-44 flex-shrink-0 rounded-lg border bg-card p-2 transition-all cursor-default',
-                            isHighlighted && 'shadow-[inset_0_0_0_2px_hsl(var(--primary))]'
+                            'usp-item-card w-44 flex-shrink-0 rounded-lg border bg-card p-2 transition-all cursor-pointer',
+                            isHighlighted && 'shadow-[inset_0_0_0_2px_hsl(var(--primary))]',
+                            detailItemId === entry.item.id && 'border-primary/50'
                           )}
                           key={entry.key}
                           role="listitem"
                         >
                           <div className="flex items-center gap-1.5 mb-1">
-                            <span className="flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-[10px] font-semibold">
+                            <span className="flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-2xs font-semibold">
                               {entry.displayNumber}
                             </span>
                             <span className="text-muted-foreground shrink-0">{groupIcon(entry.item.origin)}</span>
@@ -1003,12 +1140,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                           {entry.item.origin === 'multimodal' && resolveMultimodalImageSrc(entry.item) ? (
                             <div className="flex items-start gap-1.5">
                               <SourceThumb item={entry.item} className="w-9 h-9 flex-shrink-0" iconSize={14} />
-                              <div className="text-[10px] text-muted-foreground line-clamp-2 h-6 flex-1 min-w-0">
+                              <div className="text-2xs text-muted-foreground line-clamp-2 h-6 flex-1 min-w-0">
                                 {snippetText}
                               </div>
                             </div>
                           ) : (
-                            <div className="text-[10px] text-muted-foreground line-clamp-2 h-6">
+                            <div className="text-2xs text-muted-foreground line-clamp-2 h-6">
                               {snippetText}
                             </div>
                           )}
@@ -1029,6 +1166,9 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                   </CustomScrollArea>
                 </div>
                 )}
+
+                {/* 卡片内联详情：移动端与桌面同一能力（点击卡片查看完整 snippet） */}
+                {renderInlineDetail()}
               </div>
             </div>
           </div>
@@ -1037,7 +1177,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     );
   }
 
-  // ========== 桌面端：折叠面板 + 轮播/展开网格 + 可交互 hover 预览 ==========
+  // ========== 桌面端：折叠面板 + 轮播/展开网格 + 卡片内联详情 ==========
   return (
     <div
       ref={panelRef}
@@ -1065,6 +1205,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       </div>
 
       <div
+        ref={collapseWrapperRef}
         className={cn(
           'usp-collapse-wrapper grid w-full transition-all duration-300 ease-in-out motion-reduce:transition-none motion-reduce:duration-0',
           open ? 'grid-rows-[1fr] opacity-100 translate-y-0' : 'grid-rows-[0fr] opacity-0 -translate-y-1 pointer-events-none'
@@ -1206,54 +1347,8 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                 </CustomScrollArea>
               </div>
 
-              {/* 可交互 Hover 预览（portal 浮层，滚动/切分类时关闭） */}
-              {preview && createPortal(
-                (() => {
-                  const { item, anchor } = preview;
-                  const showBelow = anchor.top < 360;
-                  const top = showBelow ? anchor.bottom + 10 : anchor.top - 10;
-                  const left = Math.min(window.innerWidth - 340, Math.max(10, anchor.left));
-                  const transform = showBelow ? 'none' : 'translateY(-100%)';
-                  const isMultimodalItem = item.origin === 'multimodal';
-
-                  return (
-                    <div
-                      ref={previewElRef}
-                      className="fixed w-80 max-h-96 p-4 bg-popover text-popover-foreground rounded-xl shadow-lg ring-1 ring-border/40 border-transparent text-sm pointer-events-auto ui-zoom-fade-in flex flex-col"
-                      style={{
-                        zIndex: Z_INDEX.toast,
-                        top,
-                        left,
-                        transform
-                      }}
-                      role="tooltip"
-                      onMouseEnter={cancelClosePreview}
-                      onMouseLeave={scheduleClosePreview}
-                    >
-                      <div className="font-semibold mb-2 flex items-center gap-2 border-b pb-2 shrink-0">
-                        {groupIcon(item.origin)}
-                        <span className="truncate">{item.title}</span>
-                        {renderScore(item)}
-                      </div>
-                      {isMultimodalItem && (
-                        <SourceThumb item={item} className="w-full h-32 mb-2 shrink-0" iconSize={20} />
-                      )}
-                      <CustomScrollArea className="flex-1 min-h-0" hideTrackWhenIdle={false}>
-                        <div className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
-                          {item.snippet || t('common:chat.sources.multimodal.noSnippet')}
-                        </div>
-                      </CustomScrollArea>
-                      <div className="flex items-center justify-between pt-2 mt-2 border-t border-border/50 shrink-0">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">
-                          {t(`common:chat.sources.groupLabels.${item.origin}`, { defaultValue: item.origin })}
-                        </span>
-                        {renderItemAction(item, true)}
-                      </div>
-                    </div>
-                  );
-                })(),
-                document.body
-              )}
+              {/* 卡片内联详情：点击卡片在面板内展开完整 snippet，随消息流滚动 */}
+              {renderInlineDetail()}
             </div>
           </div>
         </div>

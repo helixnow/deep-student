@@ -1,7 +1,8 @@
 /**
- * Skills Management - 全屏技能编辑器
+ * Skills Management - 页面内全区技能编辑器
  *
- * 从卡片位置扩展到全屏的编辑器，使用 CodeMirror 编辑指令内容
+ * 从卡片位置扩展到覆盖整个技能页面的内联编辑视图（absolute 于页面容器内，
+ * 不逃出 OS 窗口），使用 CodeMirror 编辑指令内容
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -19,7 +20,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
 import TagInput from '../ui/shad/TagInput';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { X } from '@phosphor-icons/react';
-import { Z_INDEX } from '@/config/zIndex';
 import { HorizontalResizable } from '../shared/Resizable';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/lib/utils';
@@ -345,8 +345,8 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
         <motion.div
           ref={containerRef}
           layoutId={layoutId}
-          className="fixed inset-0 bg-background overflow-hidden"
-          style={{ zIndex: Z_INDEX.fullscreenContent, willChange: 'transform' }}
+          className="absolute inset-0 z-30 bg-background overflow-hidden"
+          style={{ willChange: 'transform' }}
           initial={{ opacity: layoutId ? 1 : 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: layoutId ? 1 : 0 }}

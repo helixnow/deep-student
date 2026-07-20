@@ -233,11 +233,11 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
       return (
         <div className="space-y-3">
           <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 font-medium">
+            <div className="flex items-center gap-1.5 text-xs text-success font-medium">
               <FilePlus size={12} />
               {t('timeline.noteTool.addedContent')}
             </div>
-            <div className="p-3 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 max-h-32 overflow-auto">
+            <div className="p-3 rounded-md bg-success/10 border border-success/30 max-h-32 overflow-auto">
               <StreamingMarkdownRenderer content={addedContent} isStreaming={false} />
             </div>
           </div>
@@ -260,32 +260,33 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
       return (
         <div className="space-y-3">
           {searchPattern && (
-            <div className="flex items-center gap-2 text-xs">
+            // 窄屏适配：长搜索/替换串允许换行，code 内部长 token 强制断行避免撑破容器
+            <div className="flex flex-wrap items-start gap-2 text-xs">
               <span className="text-muted-foreground">{t('timeline.noteTool.search')}:</span>
-              <code className="px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 font-mono">
+              <code className="min-w-0 max-w-full break-all px-1.5 py-0.5 rounded bg-danger/10 text-danger font-mono">
                 {searchPattern}
               </code>
               <span className="text-muted-foreground">→</span>
-              <code className="px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-300 font-mono">
+              <code className="min-w-0 max-w-full break-all px-1.5 py-0.5 rounded bg-success/10 text-success font-mono">
                 {replaceWith || t('timeline.noteTool.emptyString')}
               </code>
             </div>
           )}
           {beforePreview && afterPreview && (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="space-y-1">
-                <div className="text-xs text-red-600 dark:text-red-400 font-medium">
+                <div className="text-xs text-danger font-medium">
                   {t('timeline.noteTool.before')}
                 </div>
-                <div className="p-2 rounded-md bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 max-h-32 overflow-auto text-xs">
+                <div className="p-2 rounded-md bg-danger/10 border border-danger/30 max-h-32 overflow-auto text-xs">
                   <StreamingMarkdownRenderer content={beforePreview} isStreaming={false} />
                 </div>
               </div>
               <div className="space-y-1">
-                <div className="text-xs text-green-600 dark:text-green-400 font-medium">
+                <div className="text-xs text-success font-medium">
                   {t('timeline.noteTool.after')}
                 </div>
-                <div className="p-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 max-h-32 overflow-auto text-xs">
+                <div className="p-2 rounded-md bg-success/10 border border-success/30 max-h-32 overflow-auto text-xs">
                   <StreamingMarkdownRenderer content={afterPreview} isStreaming={false} />
                 </div>
               </div>
@@ -298,20 +299,20 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
     // note_set: 显示设置前后对比
     if (toolType === 'note_set' && (beforePreview || afterPreview)) {
       return (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div className="space-y-1">
-            <div className="text-xs text-red-600 dark:text-red-400 font-medium">
+            <div className="text-xs text-danger font-medium">
               {t('timeline.noteTool.before')}
             </div>
-            <div className="p-2 rounded-md bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 max-h-32 overflow-auto text-xs">
+            <div className="p-2 rounded-md bg-danger/10 border border-danger/30 max-h-32 overflow-auto text-xs">
               <StreamingMarkdownRenderer content={beforePreview || t('timeline.noteTool.empty')} isStreaming={false} />
             </div>
           </div>
           <div className="space-y-1">
-            <div className="text-xs text-green-600 dark:text-green-400 font-medium">
+            <div className="text-xs text-success font-medium">
               {t('timeline.noteTool.after')}
             </div>
-            <div className="p-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 max-h-32 overflow-auto text-xs">
+            <div className="p-2 rounded-md bg-success/10 border border-success/30 max-h-32 overflow-auto text-xs">
               <StreamingMarkdownRenderer content={afterPreview || t('timeline.noteTool.empty')} isStreaming={false} />
             </div>
           </div>

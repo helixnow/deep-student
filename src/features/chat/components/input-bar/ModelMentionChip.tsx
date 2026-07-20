@@ -117,11 +117,12 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
       title={model.name}
       data-model-id={model.id}
     >
-      <span className="text-primary/70 text-[10px] leading-none">@</span>
+      <span className="text-primary/70 text-2xs leading-none">@</span>
       {/* 🔧 样式统一：与技能标签保持一致 */}
       <span className="truncate max-w-[80px]">{displayName}</span>
+      {/* ★ M5：16px 删除按钮触屏命中区用伪元素扩到 ≥44px（chip 本体不可点，重叠无害） */}
       {!disabled && (
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={`${t('common:actions.remove')} ${model.name}`}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-['']" aria-label={`${t('common:actions.remove')} ${model.name}`}>
           <X size={10} weight="bold" />
         </NotionButton>
       )}

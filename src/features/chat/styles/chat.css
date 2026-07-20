@@ -4,6 +4,51 @@
  * 作用域：所有样式限定在 .chat-v2 内
  * 暗色模式：使用 :root.dark .chat-v2 或 .dark .chat-v2 选择器
  *
+ * ============================================================================
+ * ★ Chat V2 设计 Token 契约（2026-07 设计基座 · 供所有并行分区遵循）
+ * ============================================================================
+ *
+ * 【宽度】单一来源 = src/styles/shadcn-variables.css `--chat-thread-max-w`（44rem）
+ *   - 组件侧一律用 Tailwind `max-w-thread` 或 `var(--chat-thread-max-w)`；
+ *   - 助手阅读宽 `--chat-content-max-width` 已并轨为 thread 契约的别名，
+ *     不要再引入 ch 基准的平行宽度体系。
+ *
+ * 【圆角】映射全局 shell 半径阶梯（单一来源 shadcn-variables.css），
+ *   chat 不维护平行像素体系：
+ *   - --chat-radius-xs   ≈6px   行内 code、微章
+ *   - --chat-radius-sm   ≈8px   小控件、chip
+ *   - --chat-radius-md   12px   用户气泡、卡片（= --radius-shell-control）
+ *   - --chat-radius-lg   16px   面板、composer、空态建议 chip（= --radius-shell-toolbar）
+ *   - --chat-radius-pill 24px   胶囊按钮
+ *   - --chat-radius-full 999px  圆点 / 头像
+ *   内容块（代码块/表格）用全局 --chat-block-radius（12px）。
+ *
+ * 【间距】--chat-spacing-xs/sm/md/lg = 4/8/16/24px；组件内部微调可用
+ *   Tailwind 标准刻度，跨组件对齐处必须引 token。
+ *
+ * 【字号】
+ *   - 助手正文     --chat-md-font-size          1rem（阅读节奏见下方 md 组）
+ *   - 用户气泡     --chat-user-font-size        0.9375rem（15px）
+ *   - 紧凑正文     --chat-md-compact-font-size  0.9375rem
+ *   - 辅助说明     0.875rem（14px，等待文案 .chat-wait-text 同值）
+ *   - caption 地板 --chat-caption-font-size     0.75rem（12px）——
+ *     任何可读文本不得低于此值（免责声明、时间戳等）。
+ *
+ * 【动效】单一来源 = styles/motion.css（:root 作用域）：
+ *   - --chat-motion-fast 150ms / --chat-motion-base 200ms / --chat-motion-slow 300ms
+ *   - --chat-motion-ease（标准出口曲线）/ --chat-motion-ease-material（退场兜底）
+ *   - --chat-motion-rise-distance 4px（入场位移）
+ *   - --chat-motion-shimmer-dur 1.6s（骨架 / TextShimmer 循环周期）
+ *   工具类：.chat-msg-enter / .chat-fade-in / .chat-collapse / .chat-shimmer /
+ *   .chat-wait-text / .chat-wait-dots（语义与名字冻结，只许补充取值）。
+ *
+ * 【错误态】统一走 ChatErrorBoundary 的 ErrorFallback（Warning 图标 + 标题 +
+ *   描述 + 重试按钮），不要再手写错误视觉。
+ * 【空态】统一走 ThreadEmptyStateShell 内容模型
+ *   （brandIcon → title → description → suggestions → actions → hint）。
+ *
+ * ============================================================================
+ *
  * ★ 2026-07 死代码清理：
  *   旧版 .chat-container / .chat-header / .chat-history / .send-button /
  *   .message-* / .tool-event-* / .notion-collapsible-* / .save-button-* /
@@ -27,7 +72,12 @@
   --chat-bg-primary: hsl(var(--card));
   --chat-bg-secondary: hsl(var(--muted));
   --chat-border-color: hsl(var(--border));
-  --chat-user-message-text: hsl(var(--primary-foreground));
+
+  /* 用户气泡文字色 —— 2026-07 三轮取值修正：现行气泡为 muted 底
+     （chat-beautify.css .user-message-bubble），文字应为 foreground；
+     旧值 primary-foreground 属于已删除的 primary 渐变气泡时代，
+     在 muted 底上不可读。名字与语义不变，亮暗色同值（随主题变量自适应）。 */
+  --chat-user-message-text: hsl(var(--foreground));
 
   /* 间距系统 */
   --chat-spacing-xs: 0.25rem;
@@ -46,10 +96,18 @@
   --chat-md-list-item-gap: 0.42rem;
   --chat-md-compact-gap: 0.75rem;
   --chat-md-table-gap: 2.75rem;
-  --chat-content-max-width: 76ch;
+
+  /* 助手阅读宽 —— 2026-07 三轮并轨：原 76ch 遗留双轨已迁移到 thread 宽度
+     契约（单一来源 shadcn-variables.css --chat-thread-max-w: 44rem），
+     消息列 / 输入栏 / 空态 / 助手正文共享同一最大宽度 */
+  --chat-content-max-width: var(--chat-thread-max-w, 44rem);
   --chat-md-compact-font-size: 0.9375rem;
   --chat-md-compact-line-height: 1.6;
   --chat-thinking-font-size: var(--chat-md-compact-font-size);
+
+  /* 用户气泡正文字号（15px）与 caption 字号地板（12px，可读文本最小值） */
+  --chat-user-font-size: 0.9375rem;
+  --chat-caption-font-size: 0.75rem;
 
   /* 边框圆角 —— 2026-07 二轮收敛：映射到全局 shell 半径阶梯（单一来源
      src/styles/shadcn-variables.css），chat 不再维护平行像素体系。
@@ -69,12 +127,7 @@
   --chat-touch-target: 44px;
 }
 
-/* 暗色模式下用户消息文字使用深色，与亮色背景形成对比 */
-:root.dark .chat-v2,
-html.dark .chat-v2,
-.dark .chat-v2 {
-  --chat-user-message-text: hsl(var(--foreground));
-}
+/* 暗色模式覆写：用户气泡文字色已亮暗同源（foreground），无需单独覆写 */
 
 /* ============================================================================
    文本选择 - Text Selection (SOTA 方案)

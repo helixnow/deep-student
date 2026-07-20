@@ -28,7 +28,7 @@ describe('MessageItem failure actions source', () => {
     expect(messageItemSource).toContain('const shouldShowReconnectInline = !isUser && Boolean(streamReconnectState);');
     expect(messageItemSource).toContain("t('messageItem.reconnect.inline'");
     expect(messageItemSource).toContain('if (shouldShowReconnectInline && streamReconnectState)');
-    expect(messageItemSource).toContain('TextShimmer className="text-[15px] leading-relaxed tracking-wide text-foreground"');
+    expect(messageItemSource).toContain('TextShimmer className="text-md leading-relaxed tracking-wide text-foreground"');
     expect(messageItemSource).toContain('{reconnectInlineText}');
     expect(messageItemSource).not.toContain('reconnect...(');
     expect(messageItemSource).not.toContain('PulseDot className="w-1.5 h-1.5 text-foreground/60"');

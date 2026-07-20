@@ -246,6 +246,14 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
   // - currentSessionId 立即更新（侧边栏高亮立即响应）
   // - deferredSessionId 延迟更新（ChatContainer 重渲染在后台进行）
   const loadSessions = useCallback(async () => {
+    // ★ 性能（首屏瀑布消除）：启动 draft 会话的获取/创建不依赖列表结果，
+    // 与列表加载并行发起。原实现串行等待列表返回后才发起 draft 请求，
+    // 首屏可交互时间多付一跳后端往返。
+    const draftSessionPromise = getOrCreateHiddenDraftSession();
+    // 列表加载失败走 catch 分支时，这里的错误由下方 await 统一处理；
+    // 提前挂一个空 catch 防止 unhandled rejection 噪音
+    draftSessionPromise.catch(() => {});
+
     try {
       // 并行获取：所有已分组会话 + 未分组首页 + 计数
       const [groupedResult, ungroupedResult, totalCount, ungroupedCount] = await Promise.all([
@@ -280,7 +288,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       let sessionToSelect: string | null = null;
 
       try {
-        const draftSession = await getOrCreateHiddenDraftSession();
+        const draftSession = await draftSessionPromise;
         sessionToSelect = draftSession.id;
       } catch (e) {
         console.warn('[ChatV2Page] Failed to create startup draft session:', e);

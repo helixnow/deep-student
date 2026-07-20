@@ -3,7 +3,7 @@
 .skill-tap-tabs {
   display: flex;
   gap: 2px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border, #e5e5e5) 60%, transparent);
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
   padding: 0 12px;
 }
 
@@ -16,7 +16,7 @@
   padding: 0 12px;
   border: 0;
   background: transparent;
-  color: var(--muted-foreground, #737373);
+  color: hsl(var(--muted-foreground));
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -24,12 +24,12 @@
 }
 
 .skill-tap-tab:hover {
-  color: var(--foreground, #171717);
+  color: hsl(var(--foreground));
   background: color-mix(in srgb, var(--interactive-hover, #f5f5f5) 80%, transparent);
 }
 
 .skill-tap-tab[aria-selected='true'] {
-  color: var(--foreground, #171717);
+  color: hsl(var(--foreground));
 }
 
 .skill-tap-tab[aria-selected='true']::after {
@@ -40,7 +40,7 @@
   bottom: 0;
   height: 2px;
   border-radius: 2px 2px 0 0;
-  background: var(--foreground, #171717);
+  background: hsl(var(--foreground));
 }
 
 .skill-tap-tab:disabled {
@@ -61,23 +61,23 @@
 }
 
 .clawhub-verify-badge--ok {
-  background: color-mix(in srgb, #16a34a 14%, transparent);
-  color: #15803d;
+  background: hsl(var(--success) / 0.14);
+  color: hsl(var(--success));
 }
 
 .clawhub-verify-badge--fail {
-  background: color-mix(in srgb, #dc2626 14%, transparent);
-  color: #b91c1c;
+  background: hsl(var(--danger) / 0.14);
+  color: hsl(var(--danger));
 }
 
 .clawhub-verify-badge--pending {
-  background: color-mix(in srgb, #d97706 14%, transparent);
-  color: #b45309;
+  background: hsl(var(--warning) / 0.14);
+  color: hsl(var(--warning));
 }
 
 .clawhub-verify-badge--unknown {
-  background: color-mix(in srgb, #737373 14%, transparent);
-  color: #525252;
+  background: hsl(var(--muted-foreground) / 0.14);
+  color: hsl(var(--muted-foreground));
 }
 
 .clawhub-filter-row {
@@ -92,7 +92,7 @@
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: var(--muted-foreground, #737373);
+  color: hsl(var(--muted-foreground));
   cursor: pointer;
   user-select: none;
 }
@@ -100,27 +100,5 @@
 .clawhub-filter-row input[type='checkbox'] {
   width: 13px;
   height: 13px;
-  accent-color: var(--foreground, #171717);
-}
-
-@media (prefers-color-scheme: dark) {
-  .clawhub-verify-badge--ok {
-    background: color-mix(in srgb, #22c55e 18%, transparent);
-    color: #4ade80;
-  }
-
-  .clawhub-verify-badge--fail {
-    background: color-mix(in srgb, #ef4444 18%, transparent);
-    color: #f87171;
-  }
-
-  .clawhub-verify-badge--pending {
-    background: color-mix(in srgb, #f59e0b 18%, transparent);
-    color: #fbbf24;
-  }
-
-  .clawhub-verify-badge--unknown {
-    background: color-mix(in srgb, #a3a3a3 16%, transparent);
-    color: #a3a3a3;
-  }
+  accent-color: hsl(var(--foreground));
 }

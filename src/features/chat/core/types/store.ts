@@ -17,7 +17,7 @@ import type {
   createDefaultPanelStates,
 } from './common';
 import type { ContextRef } from '../../context/types';
-import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
+import type { EditMessageResult, RetryMessageResult, BranchSessionResult } from '../../adapters/types';
 import type { QueuedMessage } from './queue';
 
 // 重新导出共享类型
@@ -237,10 +237,55 @@ export interface SkillWorkshopRuntimeApprovalScope {
   rememberDisabled?: boolean;
 }
 
+/** skill_remove / skill_trust_request（技能生命周期治理，never-remember） */
+export interface SkillLifecycleRuntimeApprovalScope {
+  kind: 'skill_lifecycle';
+  toolSource?: string;
+  toolName?: string;
+  /** skill_remove：目标目录摘要；skill_trust_request：申请理由摘要 */
+  sourceSummary?: string;
+  /** skill_trust_request：inspect 现扫整包 SHA-256 前 12 位 */
+  expectedSha256Prefix?: string;
+  /** skill_trust_request：agent 声明的扫描风险等级 */
+  declaredRiskLevel?: 'low' | 'medium' | 'high' | string;
+  skillId?: string;
+  /** 生命周期工具不覆盖已有目录；保留字段仅为审批卡渲染联合类型对齐 */
+  overwriteExisting?: boolean;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
+/** custom_agent_apply / custom_agent_remove（自定义子代理 persona 治理，never-remember） */
+export interface CustomAgentRuntimeApprovalScope {
+  kind: 'custom_agent';
+  toolSource?: string;
+  toolName?: string;
+  /** apply：propose 返回的变更摘要（新旧字节数/首行标题）；remove：目标文件摘要 */
+  sourceSummary?: string;
+  /** apply：审阅内容 SHA-256 前 12 位 */
+  expectedSha256Prefix?: string;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
+/** mcp_server_update / mcp_server_remove（MCP server 配置治理，never-remember） */
+export interface McpManageRuntimeApprovalScope {
+  kind: 'mcp_manage';
+  toolSource?: string;
+  toolName?: string;
+  /** update：server + 变更字段名列表；remove：server + transport 摘要 */
+  sourceSummary?: string;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
 export type RuntimeApprovalScope =
   | ShellRuntimeApprovalScope
   | SkillInstallRuntimeApprovalScope
-  | SkillWorkshopRuntimeApprovalScope;
+  | SkillWorkshopRuntimeApprovalScope
+  | SkillLifecycleRuntimeApprovalScope
+  | CustomAgentRuntimeApprovalScope
+  | McpManageRuntimeApprovalScope;
 
 export interface ToolApprovalBlockingInteraction {
   kind: 'tool_approval';
@@ -551,6 +596,28 @@ export interface ChatStore {
 
   /** 自动出队下一项（满足 canDequeue 时执行） */
   maybeDequeue(): Promise<void>;
+
+  /**
+   * 🔧 P0 定时器竞态修复（内部清理接口）：
+   * 取消队列出队 breather timer（永久禁用后续出队）。
+   * 由 disposeRuntimeTimers 统一调用，UI 不应直接使用。
+   */
+  cancelDequeueBreather(): void;
+
+  /**
+   * 🔧 P0 定时器竞态修复（内部清理接口）：
+   * 取消 deleteMessage 操作锁看门狗 timer。
+   * 由 disposeRuntimeTimers 统一调用，UI 不应直接使用。
+   */
+  cancelLockWatchdog(): void;
+
+  /**
+   * 🔧 P0 定时器竞态修复：运行时定时器统一清理。
+   * SessionManager destroy / LRU 淘汰在摘除 store 前调用。
+   * 声明为可选：既有测试的 Partial mock 不强制实现；
+   * createChatStore 创建的 store 总是提供实现。
+   */
+  disposeRuntimeTimers?(): void;
 
   // ========== 块 Actions ==========
 
@@ -930,6 +997,29 @@ export interface ChatStore {
    */
   setUpdateSessionSettingsCallback(
     callback: ((settings: { title?: string }) => Promise<void>) | null
+  ): void;
+
+  /**
+   * 🆕 P0 分支模型：从当前会话分支出新会话
+   *
+   * 以 upToMessageId（含）为截断点复制历史到新会话（后端事务执行）。
+   * 优先走 TauriAdapter 注入的回调；回调未注入时（如适配器尚未 setup）
+   * 直接 invoke `chat_v2_branch_session` 兜底。
+   *
+   * 声明为可选方法：既有测试用 Partial mock 构造 store，不强制其实现。
+   * createChatStore 创建的 store 总是提供该实现。
+   *
+   * @param upToMessageId 分支截断点消息 ID
+   * @returns 新分支会话（含 id，供 UI 导航）
+   */
+  branchSession?(upToMessageId: string): Promise<BranchSessionResult>;
+
+  /**
+   * 🆕 P0 分支模型：设置分支回调函数（TauriAdapter 注入）
+   * @param callback 分支回调，参数为 upToMessageId
+   */
+  setBranchSessionCallback?(
+    callback: ((upToMessageId: string) => Promise<BranchSessionResult>) | null
   ): void;
 
   /** 从后端响应恢复状态（适配器调用） */

@@ -24,16 +24,18 @@ export const AnkiCardSkeleton: React.FC<{
   hint?: string;
   className?: string;
 }> = ({ hint, className }) => (
+  // 有 hint 文案时对读屏可见（role=status），只有装饰性 shimmer 时才整体 aria-hidden，
+  // 避免 aria-hidden 容器内嵌可见 hint 的矛盾。
   <div
     className={cn(
       'canki-skeleton canki-card-enter rounded-lg border border-border/60 bg-card p-3',
       className,
     )}
-    aria-hidden="true"
+    {...(hint ? { role: 'status' } : { 'aria-hidden': true })}
     data-testid="chatanki-card-skeleton"
   >
-    <div className="canki-shimmer h-3.5 w-3/5 rounded" />
-    <div className="canki-shimmer mt-2 h-3 w-2/5 rounded" />
+    <div className="canki-shimmer h-3.5 w-3/5 rounded" aria-hidden="true" />
+    <div className="canki-shimmer mt-2 h-3 w-2/5 rounded" aria-hidden="true" />
     {hint ? <div className="mt-2 text-xs text-muted-foreground">{hint}</div> : null}
   </div>
 );
@@ -86,10 +88,10 @@ export const AnkiCompletionSummary: React.FC<{
   exportPending,
 }) => (
   <div
-    className="ui-rise-in mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-emerald-500/25 bg-emerald-500/5 py-1.5 pl-3 pr-1.5"
+    className="ui-rise-in mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-success/25 bg-success/5 py-1.5 pl-3 pr-1.5"
     data-testid="chatanki-completion-summary"
   >
-    <CheckCircle size={16} weight="fill" className="flex-shrink-0 text-emerald-500" />
+    <CheckCircle size={16} weight="fill" className="flex-shrink-0 text-success" />
     <span className="text-xs font-medium text-foreground">{summaryText}</span>
     {durationText ? (
       <span className="text-xs text-muted-foreground">{durationText}</span>

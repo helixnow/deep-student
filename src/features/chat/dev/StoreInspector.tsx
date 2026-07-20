@@ -48,15 +48,15 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, name, depth = 0 }) => {
   }, [data]);
 
   const renderValue = useCallback(() => {
-    if (data === null) return <span className="text-orange-500">null</span>;
+    if (data === null) return <span className="text-warning">null</span>;
     if (data === undefined) return <span className="text-gray-500">undefined</span>;
 
     if (typeof data === 'string') {
       const displayValue = data.length > 100 ? data.slice(0, 100) + '...' : data;
-      return <span className="text-green-600 dark:text-green-400">"{displayValue}"</span>;
+      return <span className="text-success">"{displayValue}"</span>;
     }
     if (typeof data === 'number') {
-      return <span className="text-blue-600 dark:text-blue-400">{data}</span>;
+      return <span className="text-info">{data}</span>;
     }
     if (typeof data === 'boolean') {
       return <span className="text-purple-600 dark:text-purple-400">{String(data)}</span>;
@@ -75,7 +75,7 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, name, depth = 0 }) => {
       return <span className="text-muted-foreground">Object({Object.keys(data).length})</span>;
     }
     if (typeof data === 'function') {
-      return <span className="text-yellow-600 dark:text-yellow-400">ƒ {(data as (...args: any[]) => any).name || 'anonymous'}()</span>;
+      return <span className="text-warning">ƒ {(data as (...args: any[]) => any).name || 'anonymous'}()</span>;
     }
 
     return <span>{String(data)}</span>;
@@ -248,8 +248,8 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
             className={cn(
               'px-1.5 py-0.5 text-xs rounded',
               guards.canSend
-                ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                ? 'bg-success/10 text-success'
+                : 'bg-danger/10 text-danger'
             )}
           >
             {guards.canSend ? 'canSend' : '!canSend'}
@@ -258,7 +258,7 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
             className={cn(
               'px-1.5 py-0.5 text-xs rounded',
               guards.canAbort
-                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                ? 'bg-warning/10 text-warning'
                 : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
             )}
           >
@@ -285,7 +285,7 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
             title="Copy JSON"
           >
             {copied ? (
-              <Check size={14} className="text-green-500" />
+              <Check size={14} className="text-success" />
             ) : (
               <Copy size={14} />
             )}

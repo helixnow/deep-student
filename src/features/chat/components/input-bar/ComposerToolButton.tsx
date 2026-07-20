@@ -43,7 +43,9 @@ export interface ComposerToolButtonProps {
   'data-testid'?: string;
 }
 
-export const ComposerToolButton: React.FC<ComposerToolButtonProps> = ({
+// React.memo：输入栏每个按键都会重渲染，工具按钮 props 稳定时跳过
+// NotionButton + Tooltip 子树的重复协调
+export const ComposerToolButton: React.FC<ComposerToolButtonProps> = React.memo(({
   icon: IconComponent,
   label,
   tooltipContent,
@@ -107,7 +109,7 @@ export const ComposerToolButton: React.FC<ComposerToolButtonProps> = ({
               'absolute -right-2 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1',
               'border border-[color:var(--button-primary-border)]',
               'bg-[color:var(--button-primary-surface)]',
-              'text-[10px] font-semibold text-[color:var(--button-primary-foreground)]',
+              'text-2xs font-semibold text-[color:var(--button-primary-foreground)]',
               'shadow-sm'
             )}
             aria-hidden="true"
@@ -138,6 +140,8 @@ export const ComposerToolButton: React.FC<ComposerToolButtonProps> = ({
       {button}
     </CommonTooltip>
   );
-};
+});
+
+ComposerToolButton.displayName = 'ComposerToolButton';
 
 export default ComposerToolButton;

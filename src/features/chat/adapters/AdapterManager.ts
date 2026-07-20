@@ -18,6 +18,7 @@
 import type { StoreApi } from 'zustand';
 import { ChatV2TauriAdapter } from './TauriAdapter';
 import type { ChatStore } from '../core/types';
+import { readBlockingInteraction } from '../core/types/queue';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -587,7 +588,8 @@ export class AdapterManagerImpl {
       const state = entry.store.getState();
       const isRuntimeBusy =
         state.sessionStatus !== 'idle' ||
-        state.pendingBlockingInteraction !== null ||
+        // 🔧 P0-3 读路径收敛：经 readBlockingInteraction 单一入口读取
+        readBlockingInteraction(state) !== null ||
         state.activeBlockIds.size > 0;
 
       if (isRuntimeBusy) {

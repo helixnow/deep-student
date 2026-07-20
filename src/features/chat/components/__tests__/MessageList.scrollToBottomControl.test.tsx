@@ -12,9 +12,14 @@ let latestVirtualizerOptions: any = null;
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (_key: string, options?: { defaultValue?: string; count?: number }) =>
-      options?.defaultValue ?? _key,
+    t: (_key: string, options?: { defaultValue?: string; count?: number }) => {
+      // 断言依赖的可见文案（真实文案在 i18n 资源里，这里给出稳定桩值）
+      if (_key === 'messageList.scrollToBottom') return 'Scroll to bottom';
+      return options?.defaultValue ?? _key;
+    },
   }),
+  // MessageItem 经 fileManager/errorUtils 传递引入 src/i18n.ts，需要 initReactI18next 桩
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
 vi.mock('@tanstack/react-virtual', () => ({

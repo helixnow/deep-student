@@ -5,7 +5,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
-import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
+import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import './streaming.css';
@@ -40,33 +40,11 @@ interface StreamingMarkdownRendererProps {
   messageId?: string;
 }
 
-type ParsedContent = {
-  thinkingContent: string;
-  mainContent: string;
-}
-
 // 模块级空数组：保持引用稳定，避免每个 token 生成新数组击穿下游 memo。
 const EMPTY_REMARK_PLUGINS: any[] = [];
 
-// 解析思维链内容：同时支持 <thinking>…</thinking> 与 <think>…</think>
-// 🔔 V2 兼容性说明：V2 架构中 thinking 已是独立块，此解析主要用于：
-// 1. 兼容旧架构的遗留数据
-// 2. 处理某些 AI 模型在正文中输出 thinking 标签的情况
-// 正常 V2 流程中，content 块不应包含 thinking 标签
-const parseChainOfThought = (content: string): ParsedContent | null => {
-  if (!content) return null;
-  const tryMatch = (src: string, tag: 'thinking' | 'think') =>
-    src.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>\\s*`, 'i'));
-
-  let thinkingMatch = tryMatch(content, 'thinking');
-  if (!thinkingMatch) thinkingMatch = tryMatch(content, 'think');
-  if (thinkingMatch) {
-    const thinkingContent = (thinkingMatch[1] || '').trim();
-    const mainContent = content.replace(thinkingMatch[0], '').trim();
-    return { thinkingContent, mainContent };
-  }
-  return null;
-};
+// parseChainOfThought 已抽到 rendererUtils（预编译正则 + 无标签快速路径，
+// 消除流式期间每次 flush 对全量文本的重复扫描）
 
 // 流式内容预处理函数
 //

@@ -222,7 +222,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       <IconSwap
         active={copied}
         a={<CopySimple className="w-4 h-4" />}
-        b={<Check className="w-4 h-4 text-green-500" />}
+        b={<Check className="w-4 h-4 text-success" />}
       />
     </NotionButton>
   ) : null;
@@ -322,7 +322,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           <IconSwap
             active={copied}
             a={<CopySimple className="w-4 h-4" />}
-            b={<Check className="w-4 h-4 text-green-500" />}
+            b={<Check className="w-4 h-4 text-success" />}
           />
         </NotionButton>
         {actionsMenu}

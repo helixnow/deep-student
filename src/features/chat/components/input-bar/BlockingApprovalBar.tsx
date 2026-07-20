@@ -66,6 +66,16 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   // 同步互斥锁：state 更新是异步的，快速双击会让两次点击都读到 isResponding=false，
   // 用 ref 在同一事件循环内立即拦截第二次提交（从遗留 ToolApprovalCard 收敛而来）
   const respondingRef = useRef(false);
+  // ★ L6：触屏没有 hover/键盘路径，触摸交互也能暂停倒计时；
+  // 触摸没有可靠的"离开"信号，用定时器兜底恢复
+  const touchPauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (touchPauseTimerRef.current !== null) {
+        clearTimeout(touchPauseTimerRef.current);
+      }
+    };
+  }, []);
   const isCountdownPaused = hoverPaused || interactPaused;
 
   const isResolved = Boolean(interaction.resolvedStatus);
@@ -76,11 +86,12 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   const shellScope = interaction.runtimeScope?.kind === 'shell' ? interaction.runtimeScope : null;
   const skillApprovalScope =
     interaction.runtimeScope?.kind === 'skill_install' ||
-    interaction.runtimeScope?.kind === 'skill_workshop'
+    interaction.runtimeScope?.kind === 'skill_workshop' ||
+    interaction.runtimeScope?.kind === 'skill_lifecycle'
       ? interaction.runtimeScope
       : null;
   const skillApprovalRisk =
-    skillApprovalScope?.kind === 'skill_install'
+    skillApprovalScope?.kind === 'skill_install' || skillApprovalScope?.kind === 'skill_lifecycle'
       ? (skillApprovalScope.declaredRiskLevel ?? skillApprovalScope.riskLevel)
       : skillApprovalScope?.riskLevel;
   const rememberDisabled = Boolean(interaction.runtimeScope?.rememberDisabled)
@@ -287,6 +298,18 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       onMouseEnter={() => setHoverPaused(true)}
       onMouseLeave={() => setHoverPaused(false)}
       onKeyDownCapture={() => setInteractPaused(true)}
+      // ★ L6：触摸按下暂停倒计时（WCAG 2.2.1），15s 后自动恢复
+      onPointerDownCapture={(event) => {
+        if (event.pointerType !== 'touch') return;
+        setInteractPaused(true);
+        if (touchPauseTimerRef.current !== null) {
+          clearTimeout(touchPauseTimerRef.current);
+        }
+        touchPauseTimerRef.current = setTimeout(() => {
+          setInteractPaused(false);
+          touchPauseTimerRef.current = null;
+        }, 15000);
+      }}
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
           setInteractPaused(false);
@@ -302,7 +325,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       <div className="flex flex-wrap items-center gap-2">
         <ShieldCheck size={16} className="shrink-0 text-warning" />
         <span className="text-sm font-medium truncate">{displayToolName}</span>
-        <Badge className={cn('text-[10px] px-1.5 py-0', SENSITIVITY_COLORS[interaction.sensitivity])}>
+        <Badge className={cn('text-2xs px-1.5 py-0', SENSITIVITY_COLORS[interaction.sensitivity])}>
           {t(`approval.sensitivity.${interaction.sensitivity}`, interaction.sensitivity)}
         </Badge>
         {resolution ? (
@@ -333,7 +356,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             <Clock size={14} aria-hidden="true" />
             <span aria-hidden="true" className="tabular-nums">{remainingSeconds}s</span>
             {isCountdownPaused && (
-              <span aria-hidden="true" className="text-[10px]">
+              <span aria-hidden="true" className="text-2xs">
                 {t('approval.countdownPaused')}
               </span>
             )}
@@ -484,7 +507,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
           {skillApprovalRisk && (
             <Badge
               className={cn(
-                'text-[10px] px-1.5 py-0',
+                'text-2xs px-1.5 py-0',
                 SENSITIVITY_COLORS[skillApprovalRisk],
               )}
             >

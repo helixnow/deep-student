@@ -104,7 +104,8 @@ export const AuthorityModeSegment: React.FC<AuthorityModeSegmentProps> = ({
               disabled={disabled || pending || !sessionId}
               onClick={() => void setMode(m)}
               className={cn(
-                'px-2 py-1 text-[11px] rounded-[5px] transition-colors',
+                // ★ M5：触屏时撑到 ≥44px 触控目标（桌面视觉密度不变）
+                'px-2 py-1 text-[11px] rounded-[5px] transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3',
                 mode === m
                   ? 'bg-background text-foreground shadow-sm font-medium'
                   : 'text-muted-foreground hover:text-foreground',
@@ -135,7 +136,8 @@ export const AuthorityModeSegment: React.FC<AuthorityModeSegmentProps> = ({
                 disabled={disabled || pending || !sessionId}
                 onClick={() => void setPreset(preset)}
                 className={cn(
-                  'rounded-[5px] px-2 py-0.5 text-[10px] transition-colors',
+                  // ★ M5：触屏时撑到 ≥44px 触控目标
+                  'rounded-[5px] px-2 py-0.5 text-2xs transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3',
                   active
                     ? 'bg-background font-medium text-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground',
@@ -153,7 +155,7 @@ export const AuthorityModeSegment: React.FC<AuthorityModeSegmentProps> = ({
       {showSwitchToPlanHint && mode === 'ask' && (
         <button
           type="button"
-          className="text-[11px] text-amber-700 dark:text-amber-400 underline-offset-2 hover:underline text-left"
+          className="text-[11px] text-warning underline-offset-2 hover:underline text-left"
           onClick={() => void setMode('plan')}
           disabled={disabled || pending}
           aria-label={t('authority.switchToPlan', '切换到想一想')}

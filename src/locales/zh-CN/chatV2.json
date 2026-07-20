@@ -342,7 +342,13 @@
       "openConnectors": "管理连接器",
       "connectorsHint": "选择 MCP / 外部工具连接",
       "modeDefaultDescription": "当前为默认模式，可高效执行并完成任务。",
-      "approvalMemory": "审批记忆"
+      "approvalMemory": "审批记忆",
+      "compactContext": "压缩上下文",
+      "compactingContext": "正在压缩上下文…",
+      "compactionComplete": "上下文压缩完成",
+      "compactionNotNeeded": "暂无可压缩内容",
+      "compactionSkipped": "本次未压缩",
+      "compactionFailed": "压缩失败，请重试"
     },
     "pasteNotReady": "正在初始化，请稍后再试",
     "retryStarted": "已重新启动处理",
@@ -364,6 +370,28 @@
       "convert": "转为附件",
       "dismiss": "保留文本",
       "autoConverted": "文本过长（{{chars}} 字符），已自动转为附件"
+    },
+    "flashcardHint": {
+      "document": "可以让我把这份文档做成闪卡",
+      "apkg": "检测到 Anki 牌组，可以让我导入到卡片库",
+      "dismiss": "知道了"
+    },
+    "mediaHint": {
+      "audio": "AI 无法直接收听音频，仅能看到文件名；可以让我调用转写工具获取文字内容",
+      "video": "AI 无法直接观看视频，仅能看到文件名",
+      "dismiss": "知道了"
+    },
+    "mindmapHint": {
+      "notice": "检测到思维导图文件，可以让我导入为思维导图",
+      "dismiss": "知道了"
+    },
+    "errorAttachmentsExcluded": "{{count}} 个失败附件未随消息发送：{{names}}",
+    "chip": {
+      "ready": "已就绪",
+      "error": "失败",
+      "pages": "{{count}} 页",
+      "truncated": "将截断",
+      "truncatedTitle": "文件超过 100KB，注入时仅保留前 100KB 内容；如需完整内容可让 AI 使用检索工具"
     },
     "slashCommand": {
       "title": "技能命令",
@@ -411,7 +439,17 @@
       "expandHint": "点击展开",
       "footnote": "此摘要替代了更早的对话内容在模型视图中的位置。原始消息仍保存在数据库中。",
       "copy": "复制摘要",
-      "copied": "已复制"
+      "copied": "已复制",
+      "messageCount": "压缩 {{count}} 条消息",
+      "tokenChange": "约 {{before}} → {{after}} tokens",
+      "summaryPasses": "{{count}} 轮增量摘要",
+      "undo": "撤销压缩",
+      "undoHint": "恢复到上一个压缩视图；不会删除原始消息或审计记录",
+      "undone": "已撤销",
+      "undoFailed": "无法撤销：这可能已不是当前生效的压缩。",
+      "locateOriginal": "定位原文",
+      "originalNotLoaded": "原文当前未显示；可撤销压缩以恢复原始上下文视图。",
+      "originalMissing": "原文消息不在当前会话中（可能已被删除）。"
     },
     "generic": {
       "type": "类型",
@@ -577,14 +615,14 @@
       "loadedTools": "已加载工具",
       "viewSourceFile": "查看源文件",
       "openRuntimeSettings": "去授权运行目录",
-      "generatingArgs": "生成参数中..."
+      "generatingArgs": "生成参数中...",
+      "expandLongOutput": "展开全部（约 {{count}} 字）",
+      "collapseLongOutput": "收起长输出"
     },
     "workbenchOps": {
       "title": "桌面操作",
       "openTarget": "打开目标窗",
       "undo": "撤销",
-      "undone": "已撤销",
-      "undoFailed": "撤销失败",
       "steps": "执行步骤",
       "done": "已完成",
       "pending": "未执行",
@@ -592,7 +630,8 @@
       "noTarget": "无目标窗口",
       "message": "说明",
       "applied": "已应用 {{applied}}/{{total}}",
-      "undoExpired": "撤销已失效（会话结束或账本已清空）",
+      "undoExpired": "撤销窗口已过期",
+      "undoExpiredHint": "撤销窗口已过期：撤销令牌已失效或操作账本已被清理，本次操作无法再撤销。",
       "undoApplied": "已撤销可恢复更改",
       "undoing": "正在撤销…",
       "undoRetry": "部分撤销，重试",
@@ -656,6 +695,18 @@
       "collapse": "收起",
       "showMore": "加载更多（剩余 {{remaining}} 张）",
       "showAll": "显示全部（{{total}} 张）",
+      "showMoreBig": "再加载 {{count}} 张",
+      "selectCard": "选择第 {{index}} 张卡片",
+      "selectAll": "全选卡片",
+      "invertSelection": "反选",
+      "selectedCount": "已选 {{count}} 张",
+      "deleteSelected": "删除所选",
+      "saveSelected": "保存所选",
+      "exportSelected": "导出所选",
+      "deckName": "牌组",
+      "deckNamePlaceholder": "牌组名称",
+      "deckNameHint": "保存、导出、同步这批卡片时使用该牌组。",
+      "quoteText": "卡片#{{index}}（id: {{id}}）",
       "save": "保存",
       "addToLibrary": "加入卡片库",
       "addedToLibrary": "已加入卡片库",
@@ -809,7 +860,8 @@
         "cancelFailed": "取消失败",
         "retrySegmentsStarted": "已重新提交 {{count}} 个失败分段",
         "retrySegmentsPartial": "共 {{total}} 个分段，其中 {{failed}} 个重试提交失败",
-        "retrySegmentsFailed": "{{failed}} 个失败分段均未能重新提交"
+        "retrySegmentsFailed": "{{failed}} 个失败分段均未能重新提交",
+        "exportNewCardsNote": "导出的卡片导入 Anki 后将作为新卡（复习进度不随包携带）。"
       }
     }
   },
@@ -1185,6 +1237,32 @@
       "mixed": "混合来源"
     }
   },
+  "contextUsagePopover": {
+    "limit": "上下文上限",
+    "compactionStatus": "压缩状态",
+    "compactionActive": "已生效",
+    "compactionTokens": "压缩前后",
+    "compactDisabledStreaming": "生成中不可压缩"
+  },
+  "compaction": {
+    "manualSkipped": "本次未压缩：{{reason}}",
+    "manualFailed": "上下文压缩失败：{{reason}}，请稍后重试",
+    "autoFailedTitle": "自动压缩失败",
+    "autoFailed": "自动压缩失败，较早的历史可能被截断（{{reason}}）",
+    "contextTrimmedTitle": "上下文已满",
+    "contextTrimmed": "上下文已满，最早的 {{count}} 条消息未参与本轮对话",
+    "reason": {
+      "sessionTooShort": "会话消息太少，无需压缩",
+      "usableTooSmall": "可压缩的内容太少",
+      "lockBusy": "另一个压缩任务正在进行，请稍后再试",
+      "streaming": "会话正在生成中，稍后再试",
+      "summaryFailed": "摘要生成失败",
+      "cancelled": "压缩已取消",
+      "staleLineage": "会话上下文已变化，请重试",
+      "invalidResponse": "返回结果异常",
+      "unknown": "未知原因"
+    }
+  },
   "agentPanel": {
     "plan": "计划",
     "environment": "环境信息",
@@ -1394,6 +1472,7 @@
     "label": "注入",
     "selectMode": "选择模式",
     "allModes": "全部",
+    "joiner": "+",
     "image": {
       "title": "图片注入模式",
       "image": "图片",
@@ -1725,7 +1804,8 @@
     "compareToggleHint": "同时使用多个模型回答",
     "searchPlaceholder": "搜索名称或模型 ID...",
     "noMatches": "未找到匹配的模型",
-    "empty": "暂无可用模型"
+    "empty": "暂无可用模型",
+    "goToSettings": "去设置添加模型"
   },
   "workspace": {
     "title": "工作区",
@@ -1845,6 +1925,7 @@
     "warning": {
       "inbox_full_rejected": "子代理 {{agent}} 收件箱已满，新消息被拒绝，请等待其完成后重试",
       "run_agent_conflict_requeue_failed": "子代理 {{agent}} 正在运行，部分任务消息未能重新入队，请等待完成后手动重试",
+      "run_agent_requeue_failed": "子代理 {{agent}} 的部分任务消息未能重新入队，请稍后手动重试该任务",
       "retry_limit_exceeded": "消息重试次数已达上限（{{retry}}/{{max}}）",
       "agent_cancelled": "子代理 {{agent}} 的执行已被取消"
     },
@@ -1894,7 +1975,8 @@
     },
     "wakeSuccess": "已发送唤醒请求",
     "wakeNoop": "唤醒未生效（可能已被唤醒）",
-    "wakeFailed": "唤醒失败: {{msg}}"
+    "wakeFailed": "唤醒失败: {{msg}}",
+    "toggleSize": "切换尺寸"
   },
   "subagent": {
     "title": "子代理",
@@ -1957,6 +2039,7 @@
     "chatComponentError": "聊天组件出现错误",
     "unknownErrorRefresh": "发生了未知错误，请尝试刷新页面",
     "retry": "重试",
+    "reloadSession": "重新加载会话",
     "viewErrorDetails": "查看错误详情"
   },
   "mindmapCitation": {
@@ -1997,6 +2080,7 @@
   },
   "templateTool": {
     "previewTitle": "模板预览",
+    "renderIssues": "发现 {{count}} 个渲染问题",
     "diffTitle": "模板变更对比",
     "forkTitle": "模板已分叉",
     "createTitle": "模板已创建",

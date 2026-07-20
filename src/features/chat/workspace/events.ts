@@ -14,6 +14,7 @@ import type {
   WorkspaceDocument,
   AgentCompletionEnvelope,
   AgentStatus,
+  TokenUsage,
 } from './types';
 import { isLegacyFrontendWorkerStartEnabled } from './runtimeMode';
 // 🆕 P25: 导入子代理事件日志函数
@@ -123,7 +124,8 @@ export interface WorkspaceAgentCompletionEvent {
   final_output?: string;
   error?: string;
   completed_at?: string;
-  token_usage?: Record<string, number>;
+  /** C8：camelCase TokenUsage 对象（promptTokens/completionTokens/totalTokens/...），可能为 null */
+  token_usage?: TokenUsage | null;
 }
 
 /** 🆕 主代理唤醒事件 payload */
@@ -187,6 +189,122 @@ interface WorkerAdapterLeaseRecord {
 /** WORKER_READY 预热持有的唯一 Adapter lease，终态事件负责释放。 */
 const workerAdapterLeases = new Map<string, WorkerAdapterLeaseRecord>();
 const workerStartAttempts = new Map<string, WorkerStartAttempt>();
+
+/**
+ * 🔧 修复"重试块永远停留在重试中"：
+ * SUBAGENT_RETRY 创建的块此前无人写终态（全仓无 output.resolved 写入方）。
+ * 这里记录每个 agent 最近一次"重试中"块，AGENT_COMPLETION 到达时据此写回终态。
+ */
+interface SubagentRetryBlockRecord {
+  blockId: string;
+  messageId: string;
+  /** 块所在的 coordinator 会话（chat_v2_upsert_streaming_block 需要） */
+  coordinatorSessionId: string;
+  content: string;
+  toolInput: Record<string, unknown>;
+  toolOutput: Record<string, unknown>;
+}
+
+const pendingSubagentRetryBlocks = new Map<string, SubagentRetryBlockRecord>();
+
+/**
+ * 内存 Map 丢失后的回退（监听器重建/应用重启后会话重新加载的场景）：
+ * 在已加载的 coordinator 会话 store 里扫描该 agent 仍处 running 的
+ * subagent_retry 块，重建终态写回所需的记录。找不到（会话未加载）时放弃，
+ * 由 subagentRetry.tsx 的渲染自愈兜底（依据 workspaceStore 的 agent 终态）。
+ */
+async function recoverRetryBlockRecords(
+  agentSessionId: string,
+): Promise<SubagentRetryBlockRecord[]> {
+  const agents = useWorkspaceStore.getState().agents;
+  const coordinator = agents.find((a) => a.role === 'coordinator');
+  if (!coordinator) return [];
+  try {
+    const { sessionManager } = await import('../core/session/sessionManager');
+    const coordStore = sessionManager.peek?.(coordinator.sessionId);
+    if (!coordStore) return [];
+    const state = coordStore.getState();
+    const records: SubagentRetryBlockRecord[] = [];
+    for (const messageId of state.messageOrder) {
+      const msg = state.messageMap.get(messageId);
+      if (!msg) continue;
+      for (const blockId of msg.blockIds) {
+        const blk = state.blocks.get(blockId);
+        if (!blk || blk.type !== 'subagent_retry' || blk.status !== 'running') continue;
+        const input = (blk.toolInput ?? {}) as Record<string, unknown>;
+        if (input.agentSessionId !== agentSessionId) continue;
+        records.push({
+          blockId,
+          messageId,
+          coordinatorSessionId: coordinator.sessionId,
+          content: blk.content ?? '',
+          toolInput: input,
+          toolOutput: (blk.toolOutput ?? {}) as Record<string, unknown>,
+        });
+      }
+    }
+    return records;
+  } catch (e: unknown) {
+    console.warn('[Workspace Events] Failed to recover subagent_retry records:', e);
+    return [];
+  }
+}
+
+/**
+ * 依据运行时完成事件把 subagent_retry 块写成终态：
+ * - completed → output.resolved = true，块状态 'success'
+ * - failed/cancelled/interrupted/closed → output.final_status，块状态 'error'
+ *
+ * 先写后端持久化；若该消息已在内存 store 加载则同步更新内存块，
+ * 拿不到 store 时只写后端，下次加载生效。
+ */
+async function finalizeSubagentRetryBlock(
+  record: SubagentRetryBlockRecord,
+  completion: AgentCompletionEnvelope,
+): Promise<void> {
+  const isCompleted = completion.status === 'completed';
+  const blockStatus = isCompleted ? 'success' : 'error';
+  const toolOutput: Record<string, unknown> = {
+    ...record.toolOutput,
+    ...(isCompleted
+      ? { resolved: true }
+      : { final_status: completion.status }),
+  };
+
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('chat_v2_upsert_streaming_block', {
+      blockId: record.blockId,
+      messageId: record.messageId,
+      sessionId: record.coordinatorSessionId,
+      blockType: 'subagent_retry',
+      content: record.content,
+      status: blockStatus,
+      toolName: 'subagent_retry',
+      toolInputJson: JSON.stringify(record.toolInput),
+      toolOutputJson: JSON.stringify(toolOutput),
+    });
+    console.log(
+      `[Workspace Events] [SUBAGENT_RETRY] Finalized block ${record.blockId} as ${blockStatus} (agent completion: ${completion.status})`
+    );
+  } catch (e: unknown) {
+    console.error('[Workspace Events] Failed to persist subagent_retry final state:', e);
+  }
+
+  // 内存同步：仅当该块已加载时更新（peek 不触碰 LRU）
+  try {
+    const { sessionManager } = await import('../core/session/sessionManager');
+    const coordStore = sessionManager.peek?.(record.coordinatorSessionId);
+    if (coordStore?.getState().blocks.has(record.blockId)) {
+      coordStore.getState().updateBlock(record.blockId, {
+        status: blockStatus,
+        toolOutput,
+      });
+    }
+  } catch (e: unknown) {
+    console.warn('[Workspace Events] Failed to sync subagent_retry block in memory:', e);
+  }
+}
 
 function isWorkerStartAttemptActive(
   sessionId: string,
@@ -606,12 +724,25 @@ export async function initWorkspaceEventListeners(): Promise<void> {
         finalOutput: payload.final_output,
         error: payload.error,
         completedAt: payload.completed_at,
-        tokenUsage: payload.token_usage,
+        tokenUsage: payload.token_usage ?? undefined,
       };
       processedWorkerReadyEvents.delete(payload.agent_session_id);
       releaseWorkerAdapterLease(payload.agent_session_id, listenerGeneration, payload.workspace_id);
       if (useWorkspaceStore.getState().currentWorkspaceId === payload.workspace_id) {
         store.applyAgentCompletion(completion);
+      }
+      // 🔧 该 agent 存在未终结的 subagent_retry 块 → 按完成状态写回终态。
+      // Map 未命中时回退扫描已加载会话（覆盖监听器重建后 Map 丢失的窗口）。
+      const retryRecord = pendingSubagentRetryBlocks.get(payload.agent_session_id);
+      if (retryRecord) {
+        pendingSubagentRetryBlocks.delete(payload.agent_session_id);
+        void finalizeSubagentRetryBlock(retryRecord, completion);
+      } else {
+        void recoverRetryBlockRecords(payload.agent_session_id).then((records) => {
+          for (const record of records) {
+            void finalizeSubagentRetryBlock(record, completion);
+          }
+        });
       }
       addSubagentEventLog(
         'runtime_completion',
@@ -751,7 +882,7 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       const isExhausted = reason === 'max_retries_exceeded';
       
       // 🆕 P38: 直接通过后端持久化 subagent_retry 块
-      // 由于前端 Store 访问较复杂，改为通过后端查询最后助手消息并创建块
+      // 由于前端 Store 访问较复杂，改为通过后端查询目标消息并创建块
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         // 🔧 复用项目统一的块 ID 生成工具（与 blockActions 的 generateId('blk') 一致）
@@ -762,36 +893,88 @@ export async function initWorkspaceEventListeners(): Promise<void> {
         if (coordinator) {
           const coordinatorSessionId = coordinator.sessionId;
           const blockId = generateId('blk_retry');
-          
-          // 查询最后的助手消息 ID（通过后端）
+
+          // 🔧 目标消息选择：优先在已加载的 coordinator 会话里查找
+          // 引用了该 agent_session_id 的 subagent_embed 块所在消息，
+          // 把重试块挂到发起该子代理的那条消息旁，而不是无脑挂最后一条助手消息
+          let embedMessageId: string | undefined;
+          try {
+            const { sessionManager } = await import('../core/session/sessionManager');
+            const coordStore = sessionManager.peek?.(coordinatorSessionId);
+            if (coordStore) {
+              const state = coordStore.getState();
+              for (let i = state.messageOrder.length - 1; i >= 0 && !embedMessageId; i--) {
+                const msg = state.messageMap.get(state.messageOrder[i]);
+                if (!msg) continue;
+                const hit = msg.blockIds.some((bid) => {
+                  const blk = state.blocks.get(bid);
+                  if (!blk || blk.type !== 'subagent_embed') return false;
+                  const outputText = blk.toolOutput ? JSON.stringify(blk.toolOutput) : '';
+                  return (
+                    outputText.includes(agent_session_id)
+                    || (blk.content ?? '').includes(agent_session_id)
+                  );
+                });
+                if (hit) embedMessageId = msg.id;
+              }
+            }
+          } catch (lookupError: unknown) {
+            console.warn('[Workspace Events] subagent_embed lookup failed, falling back:', lookupError);
+          }
+
+          // 查询后端消息列表：既用于回退到最后助手消息，
+          // 也用于校验内存命中的消息确实已持久化（避免把块挂到不存在的消息上）
           const sessionData = await invoke<{ messages: Array<{ id: string; role: string }> }>(
             'chat_v2_load_session',
             { sessionId: coordinatorSessionId }
           );
+          const verifiedEmbedMessageId = embedMessageId
+            && sessionData.messages.some((m) => m.id === embedMessageId)
+            ? embedMessageId
+            : undefined;
+          // 局限：会话未加载进内存（或 embed 块尚未持久化）时无法定位发起消息，
+          // 维持旧行为回退到最后一条助手消息
           const lastAssistantMsg = sessionData.messages
             .filter(m => m.role === 'assistant')
             .pop();
-          
-          if (lastAssistantMsg) {
+          const targetMessageId = verifiedEmbedMessageId ?? lastAssistantMsg?.id;
+
+          if (targetMessageId) {
+            const retryContent = message;
+            const retryToolInput = { agentSessionId: agent_session_id };
+            const retryToolOutput = {
+              message,
+              reason,
+              retry_count,
+              timestamp: new Date().toISOString(),
+            };
             await invoke('chat_v2_upsert_streaming_block', {
               blockId,
-              messageId: lastAssistantMsg.id,
+              messageId: targetMessageId,
               sessionId: coordinatorSessionId,
               blockType: 'subagent_retry',
-              content: message,
+              content: retryContent,
               // 🔧 终局失败落 error 状态，UI 才能渲染红色终态而非琥珀色"重试中"
               status: isExhausted ? 'error' : 'running',
               toolName: 'subagent_retry',
               // 🔧 P1 修复：toolInput 只放任务上下文；reason/retry_count 属于结果语义，写入 toolOutput
-              toolInputJson: JSON.stringify({ agentSessionId: agent_session_id }),
-              toolOutputJson: JSON.stringify({
-                message,
-                reason,
-                retry_count,
-                timestamp: new Date().toISOString(),
-              }),
+              toolInputJson: JSON.stringify(retryToolInput),
+              toolOutputJson: JSON.stringify(retryToolOutput),
             });
-            console.log(`[Workspace Events] [SUBAGENT_RETRY] Persisted block ${blockId} to message ${lastAssistantMsg.id}`);
+            console.log(`[Workspace Events] [SUBAGENT_RETRY] Persisted block ${blockId} to message ${targetMessageId}`);
+
+            // 🔧 记录"重试中"块，AGENT_COMPLETION 到达时写回终态；
+            // 终局失败（max_retries_exceeded）已是终态，无需登记
+            if (!isExhausted) {
+              pendingSubagentRetryBlocks.set(agent_session_id, {
+                blockId,
+                messageId: targetMessageId,
+                coordinatorSessionId,
+                content: retryContent,
+                toolInput: retryToolInput,
+                toolOutput: retryToolOutput,
+              });
+            }
           }
         }
       } catch (e: unknown) {
@@ -878,6 +1061,8 @@ export async function cleanupWorkspaceEventListeners(): Promise<void> {
   workerStartAttempts.clear();
   // 🔧 P34 修复：清空已处理唤醒事件 Set
   processedAwakenedEvents.clear();
+  // 🔧 清空待终结的 subagent_retry 块登记（新一代监听器重新登记）
+  pendingSubagentRetryBlocks.clear();
   console.log('[Workspace Events] Event listeners cleaned up');
 }
 

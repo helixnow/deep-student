@@ -44,8 +44,10 @@ describe('ClawHub search UI state machine helpers', () => {
       updateAvailable: true,
       sourceKind: 'clawhub',
       sourceSummary: 'clawhub:sonoscli@1.0.0',
-      currentSha256: '1.0.0',
-      remoteSha256: '1.1.0',
+      currentSha256: 'abc123',
+      remoteSha256: null,
+      currentVersion: '1.0.0',
+      remoteVersion: '1.1.0',
       error: null,
     };
     const rateLimited: SkillUpdateCheckResult = {
@@ -58,7 +60,7 @@ describe('ClawHub search UI state machine helpers', () => {
       ...outdated,
       skillId: 'latest',
       updateAvailable: false,
-      remoteSha256: '1.0.0',
+      remoteVersion: '1.0.0',
     };
 
     expect(isOutdatedUpdateRow(outdated)).toBe(true);
@@ -74,8 +76,10 @@ describe('ClawHub search UI state machine helpers', () => {
         updateAvailable: true,
         sourceKind: 'clawhub',
         sourceSummary: 'clawhub:sonoscli@1.0.0',
-        currentSha256: '1.0.0',
-        remoteSha256: '1.2.0',
+        currentSha256: 'abc123',
+        remoteSha256: null,
+        currentVersion: '1.0.0',
+        remoteVersion: '1.2.0',
         error: null,
       }),
     ).toBe('1.0.0 → 1.2.0');

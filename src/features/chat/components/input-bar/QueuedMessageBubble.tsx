@@ -43,7 +43,7 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
         'transition-colors duration-200',
         'ui-rise-in',
         'hover:bg-neutral-200/60 dark:hover:bg-neutral-700/80',
-        failed && 'border-red-500/40',
+        failed && 'border-danger/40',
       )}
       title={tooltip}
       aria-label={t('chatV2:queue.bubble.iconLabel')}
@@ -52,7 +52,7 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
       <div className="flex-1 min-w-0 line-clamp-2 text-sm text-foreground/90 break-words">
         {failed && (
           <span
-            className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 align-middle"
+            className="inline-block w-1.5 h-1.5 rounded-full bg-danger mr-1.5 align-middle"
             aria-hidden="true"
           />
         )}
@@ -65,11 +65,12 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
           </span>
         )}
       </div>
+      {/* ★ M5：触屏（pointer:coarse）时按钮撑到 ≥44px 触控目标（气泡本体可点，不用外扩伪元素避免重叠误触） */}
       {allowSteer && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onSteer(); }}
-          className="flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-foreground/5 shrink-0"
+          className="flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:justify-center"
           aria-label={t('chatV2:queue.bubble.steer')}
         >
           <ArrowCircleRight size={14} weight="regular" />
@@ -79,7 +80,7 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="p-1 rounded hover:bg-foreground/5 shrink-0"
+        className="p-1 rounded hover:bg-foreground/5 shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:justify-center"
         aria-label={t('chatV2:queue.bubble.delete')}
       >
         <Trash size={14} className="text-muted-foreground" weight="regular" />

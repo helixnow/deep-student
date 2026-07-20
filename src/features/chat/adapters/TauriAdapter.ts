@@ -55,6 +55,7 @@ import type {
   SessionSettings,
   EditMessageResult,
   RetryMessageResult,
+  BranchSessionResult,
 } from './types';
 import {
   buildSendContextRefs,
@@ -83,7 +84,6 @@ import { SKILL_INSTRUCTION_TYPE_ID } from '../skills/types';
 import { groupCache } from '../core/store/groupCache';
 import { BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { getAvailableSearchEngines } from '@/mcp/searchEngineAvailability';
-import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import {
   LOAD_SKILLS_TOOL_SCHEMA,
   getLoadedSkills,
@@ -100,38 +100,58 @@ import {
 import { buildAttachmentRequestAudit } from '../debug/attachmentRequestAudit';
 // 🆕 2026-02-16: 工具调用生命周期调试
 import { resetRound as resetToolCallRound } from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
+import { isTauriRuntimeAvailable } from './tauri/runtime';
+import {
+  LOG_PREFIX,
+  adapterConsole as console,
+  buildStreamStartDiagData,
+  emitChatAnkiDebugLifecycle,
+} from './tauri/diagnostics';
+import { normalizeStreamTerminalError } from './tauri/errors';
+import {
+  blockEventChannel,
+  sessionEventChannel,
+  matchesLlmRequestBodySession,
+  isSessionEventForSession,
+} from './tauri/sessionEvents';
+import {
+  compactionReasonI18nKey,
+  createContextTrimThrottle,
+  parseCompactionFailedReason,
+  parseContextTrimmedPayload,
+} from '../utils/compactionFeedback';
+import {
+  LOAD_SESSION_TAIL_LIMIT,
+  FULL_HISTORY_IDLE_TIMEOUT_MS,
+  FULL_HISTORY_MAX_RETRIES,
+  FULL_HISTORY_RETRY_BASE_MS,
+  HISTORY_BACKFILL_PAGE_SIZE,
+  HISTORY_BACKFILL_MAX_PAGES,
+  isRetryableTerminalAnkiBlock,
+  getCanvasNoteIdFromModeState,
+  type NormalizedChatModelSelection,
+} from './tauri/requestHelpers';
+import {
+  STREAM_COMPLETE_SETTLE_DELAY_MS,
+  ABORT_TIMEOUT_MS,
+  type StreamExpectation,
+  createStreamExpectation,
+  withStreamExpectationMessageId,
+  syncStreamExpectationState,
+  shouldClearStreamExpectation,
+  isStaleByExpectationTimestamp as isStaleByExpectationTimestampPure,
+  isStaleByStreamGeneration as isStaleByStreamGenerationPure,
+  isTargetingCurrentStreamMessage as isTargetingCurrentStreamMessagePure,
+  canAdoptRetryReboundStreamStart as canAdoptRetryReboundStreamStartPure,
+  shouldIgnoreStreamLifecycleEvent,
+  buildStreamReconnectMeta,
+  clearStreamReconnectMetaPatch,
+  streamErrorMetaPatch,
+} from './tauri/streamLifecycle';
 
-// ============================================================================
-// 日志前缀
-// ============================================================================
-
-function isTauriRuntimeAvailable(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    (Boolean((window as any).__TAURI_INTERNALS__) ||
-      Boolean((window as any).__TAURI_IPC__))
-  );
-}
-
-const LOG_PREFIX = '[ChatV2:TauriAdapter]';
-const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
-
-/**
- * 会话加载尾部窗口：首屏只取最近 N 条消息，超出部分在首帧后空闲期补齐。
- * 与 MessageList 直渲阈值（80）同量级，保证补齐前的可视内容已充足。
- */
-const LOAD_SESSION_TAIL_LIMIT = 80;
-const FULL_HISTORY_IDLE_TIMEOUT_MS = 1_000;
-const FULL_HISTORY_MAX_RETRIES = 2;
-const FULL_HISTORY_RETRY_BASE_MS = 500;
-/**
- * 历史补页批量：与后端 chat_v2_load_messages_page 的默认 limit 对齐。
- * 补页阶段按窗口渐进拉取，替代旧的"idle 后全量二次拉取"反模式；
- * 全量路径仅在分页命令 invoke 失败时作为 fallback。
- */
-const HISTORY_BACKFILL_PAGE_SIZE = 100;
-/** 补页页数上限（100 页 = 1 万条消息），防御异常长会话拖垮主线程 */
-const HISTORY_BACKFILL_MAX_PAGES = 100;
+// ★ context_trimmed 提示节流：模块级（按 sessionId 隔离），
+// 适配器重建（会话切换/重连）也不会重置窗口导致刷屏
+const contextTrimThrottle = createContextTrimThrottle();
 
 /** chat_v2_load_messages_page 响应（messages/blocks 结构与 load_session 一致） */
 interface LoadMessagesPageResponseType {
@@ -140,32 +160,6 @@ interface LoadMessagesPageResponseType {
   totalMessageCount: number;
   offset: number;
   limit: number;
-}
-// Block and session lifecycle events use separate Tauri channels. Keep a
-// short quiet window before success cleanup so the block-channel tail can be
-// processed and flushed first without adding perceptible completion latency.
-const STREAM_COMPLETE_SETTLE_DELAY_MS = 32;
-
-function isRetryableTerminalAnkiBlock(
-  status: unknown,
-  output: Record<string, unknown>,
-): boolean {
-  const finalStatus = String(output.finalStatus ?? '').trim().toLowerCase();
-  const progress = output.progress as Record<string, unknown> | undefined;
-  const progressStage = String(progress?.stage ?? '').trim().toLowerCase();
-  return (
-    status === 'error' ||
-    ['error', 'failed', 'completed_with_errors'].includes(finalStatus) ||
-    progressStage === 'completed_with_errors'
-  );
-}
-
-function getCanvasNoteIdFromModeState(modeState: Record<string, unknown> | null): string | undefined {
-  if (!modeState || typeof modeState !== 'object') {
-    return undefined;
-  }
-  const raw = modeState['canvasNoteId'];
-  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
 }
 
 interface LlmRequestBodyEventPayload {
@@ -180,16 +174,6 @@ interface LlmRequestBodyEventPayload {
 interface BuildSendOptionsSnapshot {
   state?: ChatStore;
   pendingContextRefs?: ContextRef[];
-}
-
-interface NormalizedChatModelSelection {
-  /** Stable/base chat model, usually the session default assignment. */
-  modelId: string;
-  /** Runtime override picked in the current conversation, when present. */
-  model2OverrideId?: string;
-  /** The model that should be used for this backend request. */
-  effectiveModelId: string;
-  modelDisplayName?: string;
 }
 
 // ============================================================================
@@ -242,11 +226,7 @@ export class ChatV2TauriAdapter {
   /** 🆕 并发控制：防止 retrySetupListeners 重入 */
   private isRetryingListeners = false;
   /** 当前会话预期流式消息（用于过滤 stale session 事件） */
-  private streamExpectation: {
-    messageId: string;
-    startedAt: number;
-    streamGeneration: number | null;
-  } | null = null;
+  private streamExpectation: StreamExpectation | null = null;
   /** 最近一次已接受的后端流代次，防止同 messageId retry 被旧终态结束。 */
   private lastStreamGenerationByMessageId = new Map<string, number>();
   private pendingStreamCompletion: {
@@ -329,11 +309,7 @@ export class ChatV2TauriAdapter {
   private beginStreamExpectation(messageId: string): void {
     if (!messageId) return;
     this.cancelPendingStreamCompletion();
-    this.streamExpectation = {
-      messageId,
-      startedAt: Date.now(),
-      streamGeneration: null,
-    };
+    this.streamExpectation = createStreamExpectation(messageId);
   }
 
   private setStreamExpectationMessageId(messageId: string): void {
@@ -342,14 +318,7 @@ export class ChatV2TauriAdapter {
       this.beginStreamExpectation(messageId);
       return;
     }
-    this.streamExpectation = {
-      ...this.streamExpectation,
-      messageId,
-      streamGeneration:
-        this.streamExpectation.messageId === messageId
-          ? this.streamExpectation.streamGeneration
-          : null,
-    };
+    this.streamExpectation = withStreamExpectationMessageId(this.streamExpectation, messageId);
   }
 
   private syncStreamExpectationFromEvent(
@@ -358,33 +327,20 @@ export class ChatV2TauriAdapter {
     streamGeneration?: number,
   ): void {
     if (!messageId) return;
-    if (!this.streamExpectation || this.streamExpectation.messageId !== messageId) {
-      this.streamExpectation = {
-        messageId,
-        startedAt: timestamp ?? Date.now(),
-        streamGeneration: streamGeneration ?? null,
-      };
-    } else {
-      this.streamExpectation = {
-        ...this.streamExpectation,
-        ...(typeof timestamp === 'number'
-          && Number.isFinite(timestamp)
-          && timestamp > this.streamExpectation.startedAt
-          ? { startedAt: timestamp }
-          : {}),
-        ...(streamGeneration !== undefined ? { streamGeneration } : {}),
-      };
-    }
+    this.streamExpectation = syncStreamExpectationState(
+      this.streamExpectation,
+      messageId,
+      timestamp,
+      streamGeneration,
+    );
     if (streamGeneration !== undefined) {
       this.lastStreamGenerationByMessageId.set(messageId, streamGeneration);
     }
   }
 
   private clearStreamExpectation(messageId?: string): void {
-    if (!this.streamExpectation) return;
-    if (!messageId || this.streamExpectation.messageId === messageId) {
-      this.streamExpectation = null;
-    }
+    if (!shouldClearStreamExpectation(this.streamExpectation, messageId)) return;
+    this.streamExpectation = null;
   }
 
   private cancelPendingStreamCompletion(): void {
@@ -421,10 +377,10 @@ export class ChatV2TauriAdapter {
       chunkBuffer.flushSession(this.sessionId);
       this.clearStreamExpectation(payload.messageId);
       this.store.completeStream('success');
-      this.store.updateMessageMeta(payload.messageId, {
-        terminalError: undefined,
-        streamReconnect: undefined,
-      });
+      this.store.updateMessageMeta(
+        payload.messageId,
+        clearStreamReconnectMetaPatch({ clearTerminalError: true }),
+      );
       handleStreamComplete(this.store, {
         messageId: payload.messageId,
         usage: payload.usage,
@@ -461,45 +417,23 @@ export class ChatV2TauriAdapter {
   }
 
   private isStaleByExpectationTimestamp(payload: SessionEventPayload): boolean {
-    if (!payload.messageId || !this.streamExpectation) return false;
-    if (this.streamExpectation.messageId !== payload.messageId) return false;
-    if (typeof payload.timestamp !== 'number' || !Number.isFinite(payload.timestamp)) return false;
-    return payload.timestamp < this.streamExpectation.startedAt - 500;
+    return isStaleByExpectationTimestampPure(this.streamExpectation, payload);
   }
 
   private isStaleByStreamGeneration(payload: SessionEventPayload): boolean {
-    if (!payload.messageId || payload.streamGeneration === undefined) return false;
-    const lastAcceptedGeneration = this.lastStreamGenerationByMessageId.get(payload.messageId);
-
-    if (payload.eventType === 'stream_start') {
-      if (
-        this.streamExpectation?.messageId === payload.messageId
-        && this.streamExpectation.streamGeneration === null
-        && lastAcceptedGeneration !== undefined
-      ) {
-        return payload.streamGeneration <= lastAcceptedGeneration;
-      }
-      return lastAcceptedGeneration !== undefined
-        && payload.streamGeneration < lastAcceptedGeneration;
-    }
-
-    if (!this.streamExpectation || this.streamExpectation.messageId !== payload.messageId) {
-      return lastAcceptedGeneration !== undefined
-        && payload.streamGeneration <= lastAcceptedGeneration;
-    }
-
-    // A frontend retry expectation is created before the backend start event
-    // returns its new generation. Any generation-bearing terminal that arrives
-    // in this window belongs to the previous run.
-    if (this.streamExpectation.streamGeneration === null) return true;
-    return payload.streamGeneration !== this.streamExpectation.streamGeneration;
+    return isStaleByStreamGenerationPure(
+      this.streamExpectation,
+      this.lastStreamGenerationByMessageId,
+      payload,
+    );
   }
 
   private isTargetingCurrentStreamMessage(messageId?: string): boolean {
-    if (!messageId) return false;
-    const currentStreamingMessageId = this.getCurrentState().currentStreamingMessageId;
-    const expectedMessageId = this.streamExpectation?.messageId ?? null;
-    return messageId === currentStreamingMessageId || messageId === expectedMessageId;
+    return isTargetingCurrentStreamMessagePure(
+      messageId,
+      this.getCurrentState().currentStreamingMessageId,
+      this.streamExpectation?.messageId ?? null,
+    );
   }
 
   private canAdoptRetryReboundStreamStart(
@@ -508,48 +442,39 @@ export class ChatV2TauriAdapter {
     currentStreamingMessageId: string | null,
     expectedMessageId: string | null,
   ): boolean {
-    if (!incomingMessageId) return false;
-    if (!currentStreamingMessageId || !expectedMessageId) return false;
-    if (currentStreamingMessageId !== expectedMessageId) return false;
-    if (incomingMessageId === currentStreamingMessageId) return false;
-
-    const lock = state.messageOperationLock;
-    if (!lock || lock.operation !== 'retry' || lock.messageId !== currentStreamingMessageId) {
-      return false;
-    }
-
     // 仅当当前流式消息仍是“清空待重试”状态时允许重绑，
     // 避免把普通 stale 事件误接入到现有流。
-    const currentMsg = state.messageMap.get(currentStreamingMessageId);
-    if (!currentMsg || currentMsg.role !== 'assistant') {
-      return false;
-    }
-    return (currentMsg.blockIds?.length ?? 0) === 0;
+    const currentMsg = currentStreamingMessageId
+      ? state.messageMap.get(currentStreamingMessageId)
+      : undefined;
+    return canAdoptRetryReboundStreamStartPure(
+      incomingMessageId,
+      currentStreamingMessageId,
+      expectedMessageId,
+      state.messageOperationLock,
+      currentMsg,
+    );
   }
 
   private claimAnkiEventOwnership(source: string): void {
     ChatV2TauriAdapter.ankiEventOwnerAdapterId = this.adapterInstanceId;
-    try {
-      window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-        level: 'info',
-        phase: 'bridge:event',
-        summary: `anki_event ownership claimed by adapter#${this.adapterInstanceId} (${source})`,
-        detail: { adapterId: this.adapterInstanceId, sessionId: this.sessionId, source },
-      }}));
-    } catch { /* debug only */ }
+    emitChatAnkiDebugLifecycle({
+      level: 'info',
+      phase: 'bridge:event',
+      summary: `anki_event ownership claimed by adapter#${this.adapterInstanceId} (${source})`,
+      detail: { adapterId: this.adapterInstanceId, sessionId: this.sessionId, source },
+    });
   }
 
   private releaseAnkiEventOwnershipIfHeld(source: string): void {
     if (ChatV2TauriAdapter.ankiEventOwnerAdapterId !== this.adapterInstanceId) return;
     ChatV2TauriAdapter.ankiEventOwnerAdapterId = null;
-    try {
-      window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-        level: 'debug',
-        phase: 'bridge:event',
-        summary: `anki_event ownership released by adapter#${this.adapterInstanceId} (${source})`,
-        detail: { adapterId: this.adapterInstanceId, sessionId: this.sessionId, source },
-      }}));
-    } catch { /* debug only */ }
+    emitChatAnkiDebugLifecycle({
+      level: 'debug',
+      phase: 'bridge:event',
+      summary: `anki_event ownership released by adapter#${this.adapterInstanceId} (${source})`,
+      detail: { adapterId: this.adapterInstanceId, sessionId: this.sessionId, source },
+    });
   }
 
   /**
@@ -591,14 +516,14 @@ export class ChatV2TauriAdapter {
    * 监听器，再抛出首个失败原因，保证"要么全部注册成功、要么零残留"。
    */
   private async registerEventListenersWithRollback(): Promise<UnlistenFn[]> {
-    const blockEventChannel = `chat_v2_event_${this.sessionId}`;
-    const sessionEventChannel = `chat_v2_session_${this.sessionId}`;
+    const blockChannel = blockEventChannel(this.sessionId);
+    const sessionChannel = sessionEventChannel(this.sessionId);
 
     const results = await Promise.allSettled([
-      listen<BackendEvent>(blockEventChannel, (event) => {
+      listen<BackendEvent>(blockChannel, (event) => {
         this.handleBlockEvent(event.payload);
       }),
-      listen<SessionEventPayload>(sessionEventChannel, (event) => {
+      listen<SessionEventPayload>(sessionChannel, (event) => {
         this.handleSessionEvent(event.payload);
       }),
       listen<unknown>('anki_generation_event', (event) => {
@@ -905,6 +830,10 @@ export class ChatV2TauriAdapter {
       this.store.setUpdateSessionSettingsCallback((settings) =>
         this.executeUpdateSessionSettings(settings)
       );
+      // 🆕 P0 分支模型：注入分支回调（store.branchSession → chat_v2_branch_session）
+      this.store.setBranchSessionCallback?.((upToMessageId) =>
+        this.branchSession(upToMessageId)
+      );
       this.unregisterStreamingBlockSaver?.();
       this.unregisterStreamingBlockSaver = streamingBlockSaver.registerSaveCallback(
         this.sessionId,
@@ -1203,6 +1132,13 @@ export class ChatV2TauriAdapter {
       this.store.setUpdateSessionSettingsCallback(null);
     } catch (error) {
       console.error(LOG_PREFIX, 'Error clearing updateSessionSettings callback:', getErrorMessage(error));
+    }
+
+    // 🆕 P0 分支模型：清除分支回调
+    try {
+      this.store.setBranchSessionCallback?.(null);
+    } catch (error) {
+      console.error(LOG_PREFIX, 'Error clearing branchSession callback:', getErrorMessage(error));
     }
 
     try {
@@ -1938,21 +1874,24 @@ export class ChatV2TauriAdapter {
               }}));
             } catch { /* debug only */ }
           }
-        }
-        if (isChatAnkiTool || isAnkiCardsEvent) {
-          try {
-            window.dispatchEvent(new CustomEvent('chatanki-debug-tool-block', { detail: {
-              type: event.type,
-              phase: event.phase,
-              toolName: toolName || event.type,
-              blockId: event.blockId,
-              toolInput: (event.payload as any)?.toolInput,
-              toolOutput: event.result,
-              result: event.result,
-              error: event.error,
-              payload: event.payload,
-            }}));
-          } catch { /* */ }
+
+          // ★ 性能：chunk 阶段复用上方 1/10 采样（shouldLogChunk），避免流式期间
+          // 每个 chunk 都同步 dispatch 一次 window 事件；start/end/error 全量派发
+          if (shouldLogChunk) {
+            try {
+              window.dispatchEvent(new CustomEvent('chatanki-debug-tool-block', { detail: {
+                type: event.type,
+                phase: event.phase,
+                toolName: toolName || event.type,
+                blockId: event.blockId,
+                toolInput: (event.payload as any)?.toolInput,
+                toolOutput: event.result,
+                result: event.result,
+                error: event.error,
+                payload: event.payload,
+              }}));
+            } catch { /* */ }
+          }
         }
 
         if (isTemplateDesignerToolName(toolName)) {
@@ -2024,8 +1963,7 @@ export class ChatV2TauriAdapter {
    */
   private handleLlmRequestBody(payload: LlmRequestBodyEventPayload): void {
     if (!this.isSessionRuntimeOwner()) return;
-    const prefix = `chat_v2_event_${this.sessionId}`;
-    if (payload.streamEvent !== prefix && !payload.streamEvent.startsWith(`${prefix}_`)) {
+    if (!matchesLlmRequestBodySession(payload.streamEvent, this.sessionId)) {
       return;
     }
 
@@ -2082,18 +2020,16 @@ export class ChatV2TauriAdapter {
    */
   private handleSessionEvent(payload: SessionEventPayload): void {
     if (!this.isSessionRuntimeOwner()) return;
-    if (payload.sessionId !== this.sessionId) {
+    if (!isSessionEventForSession(payload.sessionId, this.sessionId)) {
       return;
     }
     console.log(LOG_PREFIX, 'Session event:', payload.eventType, payload);
-    try {
-      window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-        level: payload.eventType === 'stream_error' ? 'error' : 'debug',
-        phase: 'backend:event',
-        summary: `session_event ${payload.eventType} msg=${payload.messageId ?? 'null'}`,
-        detail: payload,
-      }}));
-    } catch { /* debug only */ }
+    emitChatAnkiDebugLifecycle({
+      level: payload.eventType === 'stream_error' ? 'error' : 'debug',
+      phase: 'backend:event',
+      summary: `session_event ${payload.eventType} msg=${payload.messageId ?? 'null'}`,
+      detail: payload,
+    });
 
     try {
       switch (payload.eventType) {
@@ -2233,7 +2169,7 @@ export class ChatV2TauriAdapter {
           const streamStoreApi = this.storeApi ?? sessionManager.get(this.sessionId);
 
           // 🔧 P31 全链路诊断
-          const diagData = {
+          const diagData = buildStreamStartDiagData({
             messageId: payload.messageId,
             messageExists,
             hasStoreApi: !!this.storeApi,
@@ -2244,7 +2180,7 @@ export class ChatV2TauriAdapter {
             sessionStatus: currentState.sessionStatus,
             sessionId: payload.sessionId,
             thisSessionId: this.sessionId,
-          };
+          });
           console.log(LOG_PREFIX, '[P31] stream_start check:', diagData);
           
           // 调用全局调试日志
@@ -2327,10 +2263,11 @@ export class ChatV2TauriAdapter {
 
         case 'stream_reconnect':
           if (
-            !payload.messageId
-            || !this.isTargetingCurrentStreamMessage(payload.messageId)
-            || this.isStaleByStreamGeneration(payload)
-            || this.isStaleByExpectationTimestamp(payload)
+            shouldIgnoreStreamLifecycleEvent(payload, {
+              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
+              expectation: this.streamExpectation,
+              lastStreamGenerationByMessageId: this.lastStreamGenerationByMessageId,
+            })
           ) {
             console.warn(LOG_PREFIX, 'Ignore stale stream_reconnect:', {
               messageId: payload.messageId,
@@ -2340,20 +2277,18 @@ export class ChatV2TauriAdapter {
             });
             break;
           }
-          this.store.updateMessageMeta(payload.messageId, {
-            streamReconnect: {
-              retryAttempt: payload.retryAttempt ?? 1,
-              retryMax: payload.retryMax ?? 5,
-            },
+          this.store.updateMessageMeta(payload.messageId!, {
+            streamReconnect: buildStreamReconnectMeta(payload),
           });
           break;
 
         case 'stream_complete':
           if (
-            !payload.messageId
-            || !this.isTargetingCurrentStreamMessage(payload.messageId)
-            || this.isStaleByStreamGeneration(payload)
-            || this.isStaleByExpectationTimestamp(payload)
+            shouldIgnoreStreamLifecycleEvent(payload, {
+              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
+              expectation: this.streamExpectation,
+              lastStreamGenerationByMessageId: this.lastStreamGenerationByMessageId,
+            })
           ) {
             console.warn(LOG_PREFIX, 'Ignore stale stream_complete:', {
               messageId: payload.messageId,
@@ -2377,10 +2312,11 @@ export class ChatV2TauriAdapter {
 
         case 'stream_error': {
           if (
-            !payload.messageId
-            || !this.isTargetingCurrentStreamMessage(payload.messageId)
-            || this.isStaleByStreamGeneration(payload)
-            || this.isStaleByExpectationTimestamp(payload)
+            shouldIgnoreStreamLifecycleEvent(payload, {
+              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
+              expectation: this.streamExpectation,
+              lastStreamGenerationByMessageId: this.lastStreamGenerationByMessageId,
+            })
           ) {
             console.warn(LOG_PREFIX, 'Ignore stale stream_error:', {
               messageId: payload.messageId,
@@ -2396,17 +2332,11 @@ export class ChatV2TauriAdapter {
           chunkBuffer.flushSession(this.sessionId);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
           this.store.completeStream('error');
-          const streamError = payload.error
-            ? formatUserFacingError(
-                payload.error,
-                'chatV2:error.loadFailed',
-                'Load failed',
-              )
-            : i18n.t('chatV2:error.loadFailed', { defaultValue: 'Load failed' });
-          this.store.updateMessageMeta(payload.messageId, {
-            terminalError: streamError,
-            streamReconnect: undefined,
-          });
+          const streamError = normalizeStreamTerminalError(payload.error);
+          this.store.updateMessageMeta(
+            payload.messageId!,
+            streamErrorMetaPatch(streamError),
+          );
           handleStreamAbort(this.store).catch((err) => {
             reportAdapterError({
               code: 'stream_cleanup_failed',
@@ -2434,10 +2364,11 @@ export class ChatV2TauriAdapter {
 
         case 'stream_cancelled':
           if (
-            !payload.messageId
-            || !this.isTargetingCurrentStreamMessage(payload.messageId)
-            || this.isStaleByStreamGeneration(payload)
-            || this.isStaleByExpectationTimestamp(payload)
+            shouldIgnoreStreamLifecycleEvent(payload, {
+              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
+              expectation: this.streamExpectation,
+              lastStreamGenerationByMessageId: this.lastStreamGenerationByMessageId,
+            })
           ) {
             console.warn(LOG_PREFIX, 'Ignore stale stream_cancelled:', {
               messageId: payload.messageId,
@@ -2456,9 +2387,10 @@ export class ChatV2TauriAdapter {
           // 用户主动取消时，abortStream 可能已经重置了状态
           // completeStream 内部会检查状态，如果已经是 idle 则不会重复处理
           this.store.completeStream('cancelled');
-          this.store.updateMessageMeta(payload.messageId, {
-            streamReconnect: undefined,
-          });
+          this.store.updateMessageMeta(
+            payload.messageId!,
+            clearStreamReconnectMetaPatch(),
+          );
           // 用户取消时也清空多变体 ID
           this.store.setPendingParallelModelIds(null);
           handleStreamAbort(this.store).catch((err) => {
@@ -2510,6 +2442,39 @@ export class ChatV2TauriAdapter {
           // 变体删除事件 - 后端已完成删除，前端同步状态
           this.handleVariantDeleted(payload);
           break;
+
+        case 'compaction_failed': {
+          // 自动压缩失败：仅提示（不打断输入/滚动），历史可能被 FIFO 截断兜底
+          const reason = parseCompactionFailedReason(payload.payload);
+          const reasonText = i18n.t(`chatV2:${compactionReasonI18nKey(reason)}`);
+          showGlobalNotification(
+            'warning',
+            i18n.t('chatV2:compaction.autoFailed', {
+              reason: reasonText,
+              defaultValue: `自动压缩失败，较早的历史可能被截断（${reasonText}）`,
+            }),
+            i18n.t('chatV2:compaction.autoFailedTitle', { defaultValue: '自动压缩失败' }),
+          );
+          break;
+        }
+
+        case 'context_trimmed': {
+          // FIFO 截断实际丢弃消息：温和提示 + 同会话 30s 合并节流
+          const trimmed = parseContextTrimmedPayload(payload.payload);
+          if (!trimmed) break;
+          const decision = contextTrimThrottle.record(this.sessionId, trimmed);
+          if (!decision.notify) break;
+          showGlobalNotification(
+            'info',
+            i18n.t('chatV2:compaction.contextTrimmed', {
+              count: decision.droppedMessages,
+              defaultValue: `上下文已满，最早的 ${decision.droppedMessages} 条消息未参与本轮对话`,
+            }),
+            i18n.t('chatV2:compaction.contextTrimmedTitle', { defaultValue: '上下文已满' }),
+            { borderTone: 'neutral' },
+          );
+          break;
+        }
 
         default:
           console.warn(LOG_PREFIX, 'Unknown session event type:', payload.eventType);
@@ -3129,9 +3094,6 @@ export class ChatV2TauriAdapter {
    */
   private async executeAbort(): Promise<void> {
     console.log(LOG_PREFIX, 'Execute abort (backend only)...');
-
-    // 超时时间（毫秒）- 文档规定 10 秒
-    const ABORT_TIMEOUT_MS = 10_000;
 
     // 🔧 2026-01-15: 超时机制已移除
 
@@ -4005,6 +3967,35 @@ export class ChatV2TauriAdapter {
       console.log(LOG_PREFIX, 'Session archived');
     } catch (error) {
       console.error(LOG_PREFIX, 'Archive session failed:', getErrorMessage(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 🆕 P0 分支模型：从当前会话分支出新会话
+   *
+   * 封装 `chat_v2_branch_session`：以 upToMessageId（含）为截断点复制消息、
+   * 块与会话状态到新会话，并由后端维护 parentId 血缘与资源引用计数。
+   *
+   * 通过 setBranchSessionCallback 注入 store，UI 应经由
+   * store.branchSession(upToMessageId) 调用而非直接 invoke。
+   *
+   * @param upToMessageId 分支截断点消息 ID（新会话包含该消息及之前的历史）
+   * @returns 新分支会话（含 id，供 UI 导航）
+   */
+  async branchSession(upToMessageId: string): Promise<BranchSessionResult> {
+    console.log(LOG_PREFIX, 'Branching session:', this.sessionId, 'upTo:', upToMessageId);
+
+    try {
+      const newSession = await invoke<BranchSessionResult>('chat_v2_branch_session', {
+        sourceSessionId: this.sessionId,
+        upToMessageId,
+      });
+
+      console.log(LOG_PREFIX, 'Session branched:', newSession.id);
+      return newSession;
+    } catch (error) {
+      console.error(LOG_PREFIX, 'Branch session failed:', getErrorMessage(error));
       throw error;
     }
   }
@@ -4904,7 +4895,8 @@ export class ChatV2TauriAdapter {
       // 多模态知识库检索配置（由用户开关逐轮快照到请求中）
       multimodalRagEnabled: chatParams.multimodalRagEnabled ?? false,
       multimodalTopK: chatParams.multimodalTopK,
-      multimodalEnableReranking: chatParams.multimodalEnableReranking,
+      // 多模态精排未显式设置时跟随全局 Rerank 开关（与 RagPanel 的 UI 默认一致）
+      multimodalEnableReranking: chatParams.multimodalEnableReranking ?? chatParams.ragEnableReranking,
       multimodalLibraryIds: chatParams.multimodalLibraryIds,
 
       // 🆕 图片压缩策略（不设置时后端使用智能默认策略）

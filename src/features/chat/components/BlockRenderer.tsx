@@ -13,6 +13,7 @@ import { Warning, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { reportFrontendError } from '@/logging/errorReporter';
 import { blockRegistry } from '../registry';
 import type { Block, ChatStore } from '../core/types';
 import { useBlock, useIsBlockActive } from '../hooks/useChatStore';
@@ -79,8 +80,18 @@ class BlockErrorBoundary extends Component<BlockErrorBoundaryProps, BlockErrorBo
       'blockId:', this.props.block.id,
       'type:', this.props.block.type,
       'error:', getErrorMessage(error),
+      error,
       'componentStack:', errorInfo.componentStack
     );
+    void reportFrontendError(error, {
+      kind: 'REACT_ERROR_BOUNDARY',
+      component: 'chat-block-renderer',
+      extra: {
+        blockId: this.props.block.id,
+        blockType: this.props.block.type,
+        componentStack: errorInfo.componentStack,
+      },
+    }).catch(() => undefined);
   }
 
   handleReset = (): void => {

@@ -90,7 +90,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
         {/* 头部：标题 + 来源 */}
         <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-border">
           <div className="font-semibold text-sm text-foreground">{t('tokenUsage.title')}</div>
-          <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-medium leading-none', sourceBadgeClass)}>
+          <span className={cn('px-2 py-0.5 rounded-full text-2xs font-medium leading-none', sourceBadgeClass)}>
             {sourceLabel}
           </span>
         </div>
@@ -202,10 +202,10 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
         >
           <span className="font-semibold text-foreground">{formatTokenCount(usage.totalTokens)}</span>
           <span className="flex items-center gap-0.5 text-primary">
-            <span className="text-[9px] opacity-70">↑</span>{formatTokenCount(usage.promptTokens)}
+            <span className="text-2xs opacity-70">↑</span>{formatTokenCount(usage.promptTokens)}
           </span>
           <span className="flex items-center gap-0.5 text-info">
-            <span className="text-[9px] opacity-70">↓</span>{formatTokenCount(usage.completionTokens)}
+            <span className="text-2xs opacity-70">↓</span>{formatTokenCount(usage.completionTokens)}
           </span>
         </div>
       </CommonTooltip>

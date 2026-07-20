@@ -363,8 +363,10 @@ interface TimelineNodeProps {
   isFirst?: boolean;
   isLast?: boolean;
   isActive?: boolean;
+  /** @deprecated 圆点已改为纯装饰（★ 低-9 修复），展开交互收敛到标题按钮 */
   isClickable?: boolean;
   isExpanded?: boolean;
+  /** @deprecated 同上：交互收敛到标题按钮，此回调不再被圆点消费 */
   onToggle?: () => void;
   /** Disclosure pattern: id of the panel this dot/trigger controls. */
   contentId?: string;
@@ -381,16 +383,12 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
   isFirst = false,
   isLast = false,
   isActive = false,
-  isClickable = false,
   isExpanded = false,
-  onToggle,
-  contentId,
   icon,
   hideDot,
   stickyIcon,
   children,
 }) => {
-  const { t } = useTranslation('chatV2');
   return (
     <div className="relative flex pb-3">
       {/* 左侧时间线轨道 - 固定宽度确保对齐，使用绝对定位确保连接线贯穿整个节点 */}
@@ -415,32 +413,18 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
           </div>
         ) : hideDot ? (
           <div className="w-2 h-2 flex-shrink-0 z-10" aria-hidden="true" />
-        ) : isClickable ? (
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={onToggle}
+        ) : (
+          /* ★ 低-9 修复：8px 圆点不再作为交互按钮（触控目标远小于 44px），
+             改为纯装饰点；展开/收起交互由节点标题按钮承担 */
+          <div
+            aria-hidden="true"
             className={cn(
-              'timeline-node-dot !rounded-full flex-shrink-0 z-10 !p-0 hover:!bg-transparent',
+              'timeline-node-dot rounded-full flex-shrink-0 z-10',
               isActive
                 ? 'bg-primary ring-2 ring-primary/30'
                 : isExpanded
                   ? 'bg-primary/70 ring-2 ring-primary/20'
                   : 'bg-muted-foreground/50'
-            )}
-            aria-label={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}
-            aria-expanded={isExpanded}
-            aria-controls={contentId}
-            title={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}
-          />
-        ) : (
-          <div
-            className={cn(
-              'timeline-node-dot rounded-full flex-shrink-0 z-10',
-              isActive
-                ? 'bg-primary ring-2 ring-primary/30'
-                : 'bg-muted-foreground/50'
             )}
           />
         )}

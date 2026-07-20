@@ -7,6 +7,7 @@ import type {
 } from '../types';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
+import { COMPOSER_PANEL_KEYS } from '../types/common';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { sessionSwitchPerf } from '../../debug/sessionSwitchPerf';
@@ -20,6 +21,7 @@ import {
   markWorkbenchBlockRestored,
   remapWorkbenchBlockType,
 } from '@/features/chat/utils/workbenchBlockRemap';
+import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -86,6 +88,10 @@ function convertBackendMessage(msg: LoadSessionResponseType['messages'][number])
     blockIds: msg.blockIds, // 直接使用后端返回的 blockIds
     timestamp: msg.timestamp,
     persistentStableId: msg.persistentStableId,
+    // 🔧 P0 分支模型补齐：后端已返回 parentId/supersedes，此前恢复时被丢弃，
+    // 导致分支血缘在刷新/切换会话后不可见。前端只读透传。
+    parentId: msg.parentId,
+    supersedes: msg.supersedes,
     attachments: msg.attachments,
     // 🔧 修复：后端 serde(rename = "_meta") 序列化，字段名是 _meta
     // 🆕 统一用户消息处理：确保 contextSnapshot 被正确恢复
@@ -602,7 +608,15 @@ export function createRestoreActions(
             ...(state?.chatParams ?? {}),
           };
           const features = new Map(Object.entries(state?.features ?? {}));
-          const panelStates = state?.panelStates ?? createDefaultPanelStates();
+          // 只接收当前已知的面板 key，过滤旧持久化数据中已下线的幽灵面板
+          // （'rag'/'search'/'learn' 等），避免恢复出无渲染路径的 true 状态
+          const persistedPanelStates = (state?.panelStates ?? {}) as Record<string, unknown>;
+          const panelStates = createDefaultPanelStates();
+          COMPOSER_PANEL_KEYS.forEach((panel) => {
+            if (typeof persistedPanelStates[panel] === 'boolean') {
+              panelStates[panel] = persistedPanelStates[panel] as boolean;
+            }
+          });
           const modeState = state?.modeState ?? null;
           const inputValue = state?.inputValue ?? '';
 
@@ -1069,6 +1083,9 @@ export function createRestoreActions(
             ]);
             finalStreamingVariantIds = new Set(liveState.streamingVariantIds);
           }
+
+          // 🔧 P1 内存泄漏修复：恢复会话会直接置空 attachments，先释放 blob: 预览 URL
+          revokeAttachmentBlobUrls(getState().attachments);
 
           set({
             sessionId: session.id,

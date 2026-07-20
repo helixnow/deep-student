@@ -312,7 +312,12 @@ async function ensureSystemOcrLastPriority(): Promise<void> {
  * 调用后端 get_api_configurations 获取模型列表，用与设置页相同的过滤谓词
  * 筛选各槽位所需的模型类型，取按供应商排序后的第一个，持久化保存。
  *
- * 仅当 model2_config_id 为空时才触发（由 readinessGate 控制调用时机）。
+ * 调用方：
+ * - readinessGate.resolveChatReadiness：发送消息前发现 model2 缺失时兜底触发；
+ * - 设置页（Settings / useSettingsVendorState / vendorModelService）：
+ *   保存 API Key、增删模型后主动触发，保持各槽位与可用模型同步。
+ *
+ * 函数本身幂等：已分配且仍可用的槽位会被跳过，可安全重复调用。
  */
 export async function autoAssignAllModels(): Promise<AutoAssignResult> {
   try {

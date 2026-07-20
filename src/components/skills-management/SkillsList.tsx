@@ -145,6 +145,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
         return (
           <motion.div
             key={skill.id}
+            data-agent-entity={`skills:${skill.id}`}
             layoutId={`skill-card-${skill.id}`}
             ref={(el) => {
               cardRefs.current[skill.id] = el;
@@ -155,7 +156,8 @@ export const SkillsList: React.FC<SkillsListProps> = ({
             }}
             className={cn(
               'study-shell-secondary-card group relative flex flex-col p-4',
-              'transition-[border-color,box-shadow] duration-200',
+              // ui-press：触控按压反馈（独立 scale 属性，不干扰 framer layout transform）
+              'ui-press transition-[border-color,box-shadow] duration-200',
               isSelected && 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]',
               isEditing && 'opacity-0 pointer-events-none'
             )}

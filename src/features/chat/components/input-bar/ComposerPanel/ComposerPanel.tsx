@@ -106,7 +106,7 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
             aria-hidden="true"
           />
         ) : null)}
-        <span className="shrink-0 text-[13px] font-semibold text-[color:var(--composer-panel-foreground)]">
+        <span className="shrink-0 text-ui font-semibold text-[color:var(--composer-panel-foreground)]">
           {title}
         </span>
         {showCount ? (
@@ -115,7 +115,7 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
               'inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full px-1',
               'border border-[color:var(--button-primary-border)]',
               'bg-[color:var(--button-primary-surface)]',
-              'text-[10px] font-semibold leading-none tabular-nums',
+              'text-2xs font-semibold leading-none tabular-nums',
               'text-[color:var(--button-primary-foreground)]'
             )}
             aria-hidden="true"
@@ -192,7 +192,8 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
         disabled={disabled}
         aria-label={ariaLabel ?? placeholder}
         className={cn(
-          'h-8 w-full pl-7 text-xs',
+          // coarse 指针下 16px 字号避免 iOS WebView 聚焦自动放大，同时抬高到 40px 触控高度
+          'h-8 w-full pl-7 text-xs [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:text-[16px]',
           'border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]',
           'placeholder:text-[color:var(--composer-panel-placeholder)]',
           'focus-visible:border-[color:var(--composer-panel-focus-border)]',
@@ -209,7 +210,7 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
               iconOnly
               onClick={() => onChange('')}
               aria-label="Clear search"
-              className="!h-5 !w-5"
+              className="!h-5 !w-5 relative after:absolute after:-inset-3 after:content-['']"
             >
               <X size={12} />
             </NotionButton>
@@ -315,7 +316,7 @@ const Section: React.FC<ComposerPanelSectionProps> = ({
                 'ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1',
                 'border border-[color:var(--button-primary-border)]',
                 'bg-[color:var(--button-primary-surface)]',
-                'text-[9px] font-semibold tabular-nums',
+                'text-2xs font-semibold tabular-nums',
                 'text-[color:var(--button-primary-foreground)]'
               )}
               aria-hidden="true"

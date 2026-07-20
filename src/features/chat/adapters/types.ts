@@ -62,9 +62,9 @@ export interface SendOptions {
   multimodalRagEnabled?: boolean;
   /** 多模态检索数量（Top-K），默认 10 */
   multimodalTopK?: number;
-  /** 多模态检索启用精排 */
+  /** 多模态检索启用精排（UI 入口：RagPanel 多模态区；未显式设置时跟随 ragEnableReranking） */
   multimodalEnableReranking?: boolean;
-  /** 多模态检索知识库 ID 过滤 */
+  /** 多模态检索知识库 ID 过滤（暂无前端选择入口，预留给库级过滤 UI） */
   multimodalLibraryIds?: string[];
 
   // 工具选项
@@ -264,7 +264,9 @@ export type SessionEventType =
   | 'save_complete'
   | 'save_error'
   | 'summary_updated'
-  | 'variant_deleted';
+  | 'variant_deleted'
+  | 'compaction_failed'
+  | 'context_trimmed';
 
 /**
  * 会话级事件 Payload
@@ -327,6 +329,13 @@ export interface SessionEventPayload {
 
   /** 新的激活变体 ID（variant_deleted 事件携带） */
   newActiveVariantId?: string;
+
+  /**
+   * 事件附加数据（camelCase 序列化）：
+   * - compaction_failed: `{ reason: string }`
+   * - context_trimmed: `{ droppedMessages: number, estimatedDroppedTokens?: number }`
+   */
+  payload?: Record<string, unknown>;
 }
 
 // ============================================================================
@@ -478,6 +487,35 @@ export interface RetryMessageResult {
   deletedVariantIds?: string[];
   /** 错误信息（success=false 时） */
   error?: string;
+}
+
+// ============================================================================
+// 会话分支结果 - 与后端 chat_v2_branch_session 返回的 ChatSession 对齐
+// ============================================================================
+
+/**
+ * 会话分支操作的返回结果（后端 ChatSession 的前端只读投影）
+ *
+ * 由 TauriAdapter.branchSession / store.branchSession 返回，
+ * UI 拿到 newSessionId 后自行导航到新会话。
+ */
+export interface BranchSessionResult {
+  /** 新分支会话 ID（sess_xxx） */
+  id: string;
+  /** 会话模式 */
+  mode: string;
+  /** 会话标题（后端通常复制源会话标题） */
+  title?: string;
+  /** 会话简介 */
+  description?: string;
+  /** 分组 ID */
+  groupId?: string;
+  /** 创建时间（ISO 8601） */
+  createdAt?: string;
+  /** 更新时间（ISO 8601） */
+  updatedAt?: string;
+  /** 扩展元数据 */
+  metadata?: Record<string, unknown>;
 }
 
 // ============================================================================

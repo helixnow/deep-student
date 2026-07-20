@@ -19,7 +19,9 @@ function TextShimmerComponent({
   children,
   as: Component = "span",
   className,
-  duration = 2,
+  // 缺省周期对齐 chat 动效 token --chat-motion-shimmer-dur（1.6s，motion.css）；
+  // framer-motion 需要数值，无法直接读 CSS 变量，token 变更时同步此值
+  duration = 1.6,
   spread = 2,
   baseColor,
   shimmerColor,

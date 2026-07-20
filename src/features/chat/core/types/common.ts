@@ -67,16 +67,14 @@ export type BlockType =
 
 /**
  * 输入框面板状态
+ *
+ * 注意：历史上的 'rag' / 'search' / 'learn' 三个面板 key 已彻底移除
+ * （对应独立面板 UI 早已下线，仅剩无渲染路径的幽灵状态）。
+ * 旧持久化数据中的同名残留 key 会在会话恢复时被过滤（见 restoreActions）。
  */
 export interface PanelStates {
-  /** RAG 知识库面板 */
-  rag: boolean;
   /** MCP 工具面板 */
   mcp: boolean;
-  /** 搜索引擎面板 */
-  search: boolean;
-  /** 学习模式面板 */
-  learn: boolean;
   /** 模型选择面板 */
   model: boolean;
   /** 高级设置面板 */
@@ -88,10 +86,7 @@ export interface PanelStates {
 }
 
 export const COMPOSER_PANEL_KEYS = [
-  'rag',
   'mcp',
-  'search',
-  'learn',
   'model',
   'advanced',
   'attachment',
@@ -103,10 +98,7 @@ export const COMPOSER_PANEL_KEYS = [
  */
 export function createDefaultPanelStates(): PanelStates {
   return {
-    rag: false,
     mcp: false,
-    search: false,
-    learn: false,
     model: false,
     advanced: false,
     attachment: false,

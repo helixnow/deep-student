@@ -244,35 +244,35 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
       return {
         label: t('approval.resolution.rejected'),
         icon: X,
-        className: 'text-red-700 dark:text-red-400',
+        className: 'text-danger',
       };
     }
     if (resolvedStatus === 'timeout') {
       return {
         label: t('approval.resolution.timeout'),
         icon: Clock,
-        className: 'text-yellow-700 dark:text-yellow-400',
+        className: 'text-warning',
       };
     }
     if (resolvedStatus === 'expired') {
       return {
         label: t('approval.resolution.expired'),
         icon: Warning,
-        className: 'text-orange-700 dark:text-orange-400',
+        className: 'text-warning',
       };
     }
     return {
       label: t('approval.resolution.error'),
       icon: Warning,
-      className: 'text-red-700 dark:text-red-400',
+      className: 'text-danger',
     };
   }, [resolvedStatus, t]);
 
   // 敏感等级颜色映射
   const sensitivityColors: Record<string, string> = {
     low: 'bg-success/10 text-success',
-    medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-    high: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+    medium: 'bg-warning/10 text-warning',
+    high: 'bg-danger/10 text-danger',
   };
 
   // 卡片仍处于等待用户操作的状态（已决/已发送后不再显示倒计时）
@@ -285,8 +285,8 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
         'border-2 backdrop-blur-md supports-[backdrop-filter]:backdrop-blur-md',
         // 高风险操作用醒目的红色边框区分（低/中风险保持黄色警示）
         request.sensitivity === 'high'
-          ? 'border-red-400 dark:border-red-800 bg-yellow-50/85 dark:bg-yellow-950/45'
-          : 'border-yellow-400 dark:border-yellow-600 bg-yellow-50/85 dark:bg-yellow-950/45',
+          ? 'border-danger/50 bg-warning/10'
+          : 'border-warning/50 bg-warning/10',
         className
       )}
     >
@@ -356,7 +356,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
             {shellFlags.map((flag) => (
               <span
                 key={flag}
-                className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                className="rounded bg-warning/10 px-1.5 py-0.5 text-warning"
               >
                 {flag}
               </span>
@@ -406,7 +406,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               size="sm"
               onClick={() => setIsReasonOpen((prev) => !prev)}
               disabled={isResponding || isTimedOutLocally}
-              className="text-red-600 hover:text-red-700 dark:text-red-400"
+              className="text-danger hover:text-danger"
             >
               <X size={16} className="mr-1" />
               {t('approval.reject')}
@@ -468,7 +468,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   size="sm"
                   onClick={handleRejectImmediately}
                   disabled={isResponding || isTimedOutLocally}
-                  className="shrink-0 text-xs text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
+                  className="shrink-0 text-xs text-muted-foreground hover:text-danger"
                 >
                   {t('approval.rejectDirectly')}
                 </NotionButton>
@@ -477,7 +477,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   size="sm"
                   onClick={handleRejectWithReason}
                   disabled={isResponding || isTimedOutLocally}
-                  className="shrink-0 text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+                  className="shrink-0 text-xs text-danger hover:text-danger"
                 >
                   {t('approval.rejectSend')}
                 </NotionButton>

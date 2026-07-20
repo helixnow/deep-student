@@ -1196,3 +1196,17 @@
 .chat-v2 .markdown-img-fallback svg {
   flex-shrink: 0;
 }
+
+/* ============================================================================
+   KaTeX 块级公式 - 超宽公式横向滚动（★ 消息区-中5 修复）
+   .katex-display 不在 chat 全宽例外清单内，长公式会撑破消息气泡；
+   chat 作用域内补横向滚动，不动全局 app.css
+   ============================================================================ */
+
+.chat-v2 .markdown-content .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  /* 滚动条贴公式太近，留一点呼吸空间 */
+  padding-bottom: 0.25em;
+}

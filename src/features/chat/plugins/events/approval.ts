@@ -11,7 +11,7 @@
 import type { EventHandler } from '../../registry/eventRegistry';
 import { eventRegistry } from '../../registry/eventRegistry';
 import type { ChatStore } from '../../core/types';
-import type { ShellRuntimeApprovalScope } from '../../core/types/store';
+import type { RuntimeApprovalScope } from '../../core/types/store';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18n from 'i18next';
 // 🆕 2026-02-17: 工具调用生命周期追踪
@@ -54,7 +54,8 @@ interface ApprovalRequestPayload {
   permissionPreset?: 'cautious' | 'relaxed';
   description: string;
   timeoutSeconds: number;
-  runtimeScope?: ShellRuntimeApprovalScope;
+  // shell / skill_install / skill_workshop / skill_lifecycle 等 scope 联合类型
+  runtimeScope?: RuntimeApprovalScope;
 }
 
 type ApprovalResolutionStatus = 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';

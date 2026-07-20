@@ -10,7 +10,7 @@ import type { SkillDefinition } from '../types';
 export const mindmapToolsSkill: SkillDefinition = {
   id: 'mindmap-tools',
   name: 'mindmap-tools',
-  description: '思维导图创建与编辑能力。当用户明确要求创建思维导图、知识导图、脑图时使用。',
+  description: '思维导图创建、编辑与文件导入能力。当用户明确要求创建思维导图、知识导图、脑图，或要求把上传的 XMind/OPML/FreeMind/MindManager/Markdown 等文件导入为思维导图时使用。',
   version: '1.0.0',
   author: 'Deep Student',
   location: 'builtin',
@@ -24,6 +24,15 @@ export const mindmapToolsSkill: SkillDefinition = {
 你现在拥有创建和编辑思维导图的能力。
 
 ## 工作流程
+
+### 从附件导入思维导图
+
+当用户上传了思维导图文件（.xmind / .opml / .mm / .mmap / .md / .txt / .json）并要求导入时：
+
+1. **调用 \`builtin-mindmap_import\`**：传入附件的 resourceId（file_/att_ 格式，来自会话上下文引用）
+2. 工具会在后端解析文件（标题/备注/层级/关联线），转换为知识导图落库
+3. 返回结果包含 \`importStats\`（节点数、被丢弃的图片/概要数）——**如实向用户汇报丢弃项**
+4. 使用返回的 \`versionId\` 以 \`[思维导图:mv_xxx:标题]\` 格式引用
 
 ### 创建思维导图
 
@@ -90,6 +99,18 @@ export const mindmapToolsSkill: SkillDefinition = {
 }
 \`\`\`
 
+**示例 — 修改关联线（跨分支连线）**：顶层 \`associations\` 字段整体替换全部关联线
+（传 \`[]\` 清除；只改关联线时 \`operations\` 传空数组 \`[]\`）：
+\`\`\`json
+{
+  "mindmap_id": "mm_xxx",
+  "operations": [],
+  "associations": [
+    { "source": "n1-2", "target": "n3-1", "label": "相互依赖" }
+  ]
+}
+\`\`\`
+
 ## 工具说明
 
 ### builtin-mindmap_create
@@ -149,6 +170,22 @@ export const mindmapToolsSkill: SkillDefinition = {
   - \`sourceId\`: 资源业务 ID（如 note_xxx, file_xxx, mm_xxx 等，通过 resource_list/resource_search 获取）
   - \`type\`: 资源类型（note / file / mindmap / table 等）
   - \`name\`: 显示名称（快照，用于离线显示）
+
+**关联线（associations）**：content 顶层可选字段，表示跨分支的自由连线（非父子边）：
+
+\`\`\`json
+{
+  "version": "1.0",
+  "root": { ... },
+  "associations": [
+    { "source": "n1-2", "target": "n3-1", "label": "相互依赖" }
+  ]
+}
+\`\`\`
+
+- \`source\` / \`target\`: 端点节点 ID（必填，必须是导图中存在的节点）
+- \`label\`: 连线标签（可选）
+- \`id\`: 可选，缺省由后端自动生成；指向不存在节点的关联线会被过滤
 
 ### 关联资源到节点
 
@@ -236,6 +273,7 @@ export const mindmapToolsSkill: SkillDefinition = {
     'builtin-mindmap_edit_nodes',
     'builtin-mindmap_versions',
     'builtin-mindmap_diff_versions',
+    'builtin-mindmap_import',
   ],
   embeddedTools: [
     {
@@ -360,6 +398,20 @@ export const mindmapToolsSkill: SkillDefinition = {
                 description: '元数据',
                 properties: {
                   createdAt: { type: 'string', description: '创建时间' },
+                },
+              },
+              associations: {
+                type: 'array',
+                description: '跨分支关联线列表（可选）。每条连线连接两个已存在的节点；指向不存在节点的连线会被后端过滤。',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', description: '连线 ID（可选，缺省自动生成）' },
+                    source: { type: 'string', description: '【必填】源节点 ID' },
+                    target: { type: 'string', description: '【必填】目标节点 ID' },
+                    label: { type: 'string', description: '连线标签（可选）' },
+                  },
+                  required: ['source', 'target'],
                 },
               },
             },
@@ -567,8 +619,48 @@ export const mindmapToolsSkill: SkillDefinition = {
               required: ['type'],
             },
           },
+          associations: {
+            type: 'array',
+            description:
+              '可选：整体替换导图的跨分支关联线列表。传 [] 清除所有关联线；不传则保持现状。端点必须是导图中已存在的节点 ID，非法连线会被过滤。',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: '连线 ID（可选，缺省自动生成）' },
+                source: { type: 'string', description: '【必填】源节点 ID' },
+                target: { type: 'string', description: '【必填】目标节点 ID' },
+                label: { type: 'string', description: '连线标签（可选）' },
+              },
+              required: ['source', 'target'],
+            },
+          },
         },
         required: ['mindmap_id', 'operations'],
+      },
+    },
+    {
+      name: 'builtin-mindmap_import',
+      description:
+        '把当前会话上传的思维导图附件导入为知识导图。支持格式：XMind（.xmind，Zen/XMind 8）、OPML（.opml）、FreeMind/Freeplane（.mm）、MindManager（.mmap）、Markdown 大纲（.md）、纯文本缩进大纲（.txt）、本应用 JSON（.json）。解析标题/备注/层级/关联线；样式与图片会被丢弃并在返回的 importStats 中报告。返回 mindmap id、versionId 与导入统计。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          resourceId: {
+            type: 'string',
+            minLength: 1,
+            description:
+              '【必填】当前会话可访问的思维导图文件资源 ID；支持 file_、att_ 以及映射到文件的 res_。',
+          },
+          title: {
+            type: 'string',
+            description: '导图标题（可选，缺省取文件内根主题或文件名）',
+          },
+          targetFolderId: {
+            type: 'string',
+            description: '存放文件夹 ID（可选，缺省放在根目录）',
+          },
+        },
+        required: ['resourceId'],
       },
     },
     {

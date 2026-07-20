@@ -30,7 +30,6 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionAlertDialog } from '../ui/NotionDialog';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -41,6 +40,7 @@ import { showGlobalNotification } from '../UnifiedNotification';
 import { useMobileHeader, MobileSlidingLayout, ScreenPosition } from '@/components/layout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { fileManager } from '@/utils/fileManager';
+import { unifiedConfirm } from '@/utils/unifiedDialogs';
 
 // Skills 模块
 import {
@@ -69,13 +69,20 @@ import {
 } from '@/features/chat/skills/clawhubUi';
 import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
+import {
+  isSkillDisabled,
+  setSkillDisabled,
+} from '@/features/chat/skills/skillEnableStorage';
+import {
+  registerSkillsAgentSurface,
+  type SkillsAgentSnapshot,
+} from '@/features/workbench/apps/system/agentSurfaceRegistry';
 
 // 子组件
 import { SkillsList } from './SkillsList';
 import { SkillEditorModal, type SkillFormData } from './SkillEditorModal';
 import { SkillFullscreenEditor } from './SkillFullscreenEditor';
 import './SkillFullscreenEditor.css';
-import { SkillDeleteConfirm } from './SkillDeleteConfirm';
 import { SkillTapBrowser } from './SkillTapBrowser';
 
 // ============================================================================
@@ -84,6 +91,8 @@ import { SkillTapBrowser } from './SkillTapBrowser';
 
 interface SkillsManagementPageProps {
   className?: string;
+  /** Workbench 窗口 id：提供时注册 skills agent 观察/操作面（ACR 4.0 A3） */
+  workbenchWindowId?: string;
 }
 
 // ============================================================================
@@ -121,11 +130,64 @@ const RISK_BADGE_CLASSES: Record<string, string> = {
 };
 
 // ============================================================================
+// 行内确认横幅容器：出现时焦点移入，Esc 取消并归还焦点（非模态、无遮罩）
+// ============================================================================
+
+interface InlineConfirmSectionProps {
+  label: string;
+  className?: string;
+  onCancel: () => void;
+  children: React.ReactNode;
+}
+
+const InlineConfirmSection: React.FC<InlineConfirmSectionProps> = ({
+  label,
+  className,
+  onCancel,
+  children,
+}) => {
+  const sectionRef = useRef<HTMLElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    sectionRef.current?.focus();
+    return () => {
+      // 归还焦点给触发元素（若其仍在文档中）
+      const el = restoreFocusRef.current;
+      if (el && el.isConnected) el.focus();
+    };
+  }, []);
+
+  return (
+    <section
+      ref={sectionRef}
+      tabIndex={-1}
+      role="group"
+      aria-label={label}
+      className={cn('outline-none', className)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      {children}
+    </section>
+  );
+};
+
+// ============================================================================
 // 组件
 // ============================================================================
 
 export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   className,
+  workbenchWindowId,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
 
@@ -152,10 +214,9 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const [editingSkill, setEditingSkill] = useState<SkillDefinition | null>(null);
   const [editorLocation, setEditorLocation] = useState<SkillLocation>('global');
 
-  // 删除确认状态
+  // 删除确认状态（列表顶部行内确认横幅，非模态）
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [skillToDelete, setSkillToDelete] = useState<SkillDefinition | null>(null);
-  // 移动端行内删除确认进行中标记（桌面端由 SkillDeleteConfirm 自管理）
   const [inlineDeleting, setInlineDeleting] = useState(false);
 
   // 导入覆盖确认状态
@@ -616,6 +677,15 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       return;
     }
 
+    // 移动端逐个弹保存对话框体验差：两击确认并提示「导出源」一包打包的替代路径
+    if (isSmallScreen && userSkills.length > 1) {
+      const confirmed = unifiedConfirm(
+        t('skills:management.export_all_mobile_confirm', { count: userSkills.length }),
+        { key: 'skills-export-all-mobile', level: 'info' },
+      );
+      if (!confirmed) return;
+    }
+
     let exportedCount = 0;
     for (const skill of userSkills) {
       const content = serializeSkillToMarkdown(
@@ -658,7 +728,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         t('skills:management.export_all_success', { count: exportedCount })
       );
     }
-  }, [allSkills, t]);
+  }, [allSkills, t, isSmallScreen]);
 
   // 导出为 tap 结构 zip：所有非内置技能一包带走（README + 每技能一个顶层目录）
   const handleExportTap = useCallback(async () => {
@@ -957,7 +1027,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     setZipOverwriteOpen(false);
   }, []);
 
-  // 移动端行内删除确认（桌面端由 SkillDeleteConfirm 模态自管理加载态）
+  // 行内删除确认（桌面端与移动端共用列表顶部确认横幅）
   const handleInlineConfirmDelete = useCallback(async () => {
     setInlineDeleting(true);
     try {
@@ -981,11 +1051,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     setSkillToDelete(null);
   }, []);
 
-  // 移动端行内确认横幅渲染在列表顶部：打开时把列表滚回顶部保证可见
+  // 行内确认横幅渲染在列表顶部：打开时把列表滚回顶部保证可见
   const listViewportRef = useRef<HTMLDivElement>(null);
   const anyInlineConfirmOpen =
     updateConfirmOpen || zipConfirmOpen ||
-    (isSmallScreen && (deleteConfirmOpen || importOverwriteOpen || zipOverwriteOpen));
+    deleteConfirmOpen || importOverwriteOpen || zipOverwriteOpen;
   useEffect(() => {
     if (!anyInlineConfirmOpen) return;
     listViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1101,6 +1171,80 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       return a.name.localeCompare(b.name, 'zh');
     });
   }, [allSkills, locationFilter, searchQuery, t]);
+
+  // ========== ACR skills agent 观察/操作面（ACR 4.0 A3） ==========
+  // 快照走 ref：注册 effect 只依赖 windowId，避免每次渲染反复挂/卸。
+  // enabled 在 snapshot() 时经 isSkillDisabled 现算——启停写在 localStorage，
+  // 切换不触发本组件重渲，读取时才是最新事实。
+  const agentSkillsRef = useRef<SkillDefinition[]>(allSkills);
+  agentSkillsRef.current = allSkills;
+  const agentDefaultIdsRef = useRef<string[]>(defaultSkillIds);
+  agentDefaultIdsRef.current = defaultSkillIds;
+  const agentUiStateRef = useRef({
+    searchQuery,
+    locationFilter,
+    selectedSkillId,
+    editorOpen,
+    loading: isLoading,
+  });
+  agentUiStateRef.current = {
+    searchQuery,
+    locationFilter,
+    selectedSkillId,
+    editorOpen,
+    loading: isLoading,
+  };
+  const agentHandleEditRef = useRef(handleEdit);
+  agentHandleEditRef.current = handleEdit;
+
+  useEffect(() => {
+    if (!workbenchWindowId) return undefined;
+    const findSkill = (skillId: string) =>
+      agentSkillsRef.current.find((skill) => skill.id === skillId);
+    return registerSkillsAgentSurface(workbenchWindowId, {
+      snapshot: (): SkillsAgentSnapshot => {
+        const ui = agentUiStateRef.current;
+        const defaults = new Set(agentDefaultIdsRef.current);
+        return {
+          searchQuery: ui.searchQuery,
+          locationFilter: ui.locationFilter,
+          selectedSkillId: ui.selectedSkillId,
+          editorOpen: ui.editorOpen,
+          loading: ui.loading,
+          skills: agentSkillsRef.current.slice(0, 80).map((skill) => ({
+            id: skill.id,
+            name: skill.name,
+            description: skill.description,
+            location: skill.location,
+            builtin: skill.isBuiltin === true,
+            enabled: !isSkillDisabled(skill.id),
+            defaultEnabled: defaults.has(skill.id),
+          })),
+          totalSkills: agentSkillsRef.current.length,
+        };
+      },
+      search: (query) => {
+        setSearchQuery(query);
+        return true;
+      },
+      focusSkill: (skillId) => {
+        if (!findSkill(skillId)) return false;
+        setSelectedSkillId(skillId);
+        return true;
+      },
+      openSkill: (skillId) => {
+        const skill = findSkill(skillId);
+        if (!skill) return false;
+        agentHandleEditRef.current(skill);
+        return true;
+      },
+      setEnabled: (skillId, enabled) => {
+        if (!findSkill(skillId)) return false;
+        setSkillDisabled(skillId, !enabled);
+        return true;
+      },
+    });
+  }, [workbenchWindowId]);
 
   // ========== 渲染主内容 ==========
   const renderMainContent = () => (
@@ -1291,7 +1435,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('skills:selector.searchPlaceholder')}
-              className="h-8 border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3 text-xs"
+              className={cn(
+                'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
+                // 移动端加高到触控目标标准，桌面保持紧凑
+                isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs',
+              )}
 />
           </div>
 
@@ -1304,7 +1452,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               'flex items-center gap-1 overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
               isSmallScreen && '-mx-1 px-1',
             )}
-            itemClassName="!h-auto !px-2.5 !py-1 text-[11px] font-medium whitespace-nowrap"
+            itemClassName={isSmallScreen
+              // 移动端加大纵向点击区，接近触控目标标准（对齐制卡任务页做法）
+              ? '!h-auto !px-3 !py-2 text-[12px] font-medium whitespace-nowrap'
+              : '!h-auto !px-2.5 !py-1 text-[11px] font-medium whitespace-nowrap'}
             options={locationTabs
               .filter((tab) => tab.id === 'all' || locationCounts[tab.id] > 0)
               .map((tab) => {
@@ -1345,7 +1496,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         )}
         {renderUpdateConfirm()}
         {renderZipImportConfirm()}
-        {renderMobileInlineConfirms()}
+        {renderInlineConfirms()}
         <SkillsList
           skills={filteredSkills}
           selectedSkillId={selectedSkillId}
@@ -1388,11 +1539,19 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   );
 
   // ========== 渲染上游更新确认（列表顶部内联横幅，非模态） ==========
+  const handleCancelUpdates = useCallback(() => {
+    setPendingUpdates([]);
+    setUpdateConfirmOpen(false);
+  }, []);
+
   const renderUpdateConfirm = () => {
     if (!updateConfirmOpen || pendingUpdates.length === 0) return null;
     return (
-      <section
-        aria-label={t('skills:management.update_confirm_title')}
+      <InlineConfirmSection
+        label={t('skills:management.update_confirm_title')}
+        onCancel={() => {
+          if (!updating) handleCancelUpdates();
+        }}
         className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
       >
         <div className="text-[13px] font-medium text-foreground">
@@ -1436,10 +1595,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           <NotionButton
             variant="ghost"
             size="sm"
-            onClick={() => {
-              setPendingUpdates([]);
-              setUpdateConfirmOpen(false);
-            }}
+            onClick={handleCancelUpdates}
             disabled={updating}
             className="h-7 px-2.5 text-xs"
           >
@@ -1455,7 +1611,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             {updating ? t('skills:management.update_applying') : t('skills:management.update_apply')}
           </NotionButton>
         </div>
-      </section>
+      </InlineConfirmSection>
     );
   };
 
@@ -1467,8 +1623,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     const isHighRisk = riskLevel === 'high';
 
     return (
-      <section
-        aria-label={t('skills:management.import_confirm_title')}
+      <InlineConfirmSection
+        label={t('skills:management.import_confirm_title')}
+        onCancel={() => {
+          if (!zipInstalling) handleCancelZipInstall();
+        }}
         className={cn(
           'mb-4 space-y-3 rounded-lg border p-3',
           isHighRisk
@@ -1606,18 +1765,20 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 : t('skills:management.import_confirm_install')}
           </NotionButton>
         </div>
-      </section>
+      </InlineConfirmSection>
     );
   };
 
-  // ========== 移动端行内二次确认（替代模态 AlertDialog；列表顶部内联横幅） ==========
-  const renderMobileInlineConfirms = () => {
-    if (!isSmallScreen) return null;
+  // ========== 行内二次确认（替代模态 AlertDialog；列表顶部内联横幅，桌面/移动通用） ==========
+  const renderInlineConfirms = () => {
     return (
       <>
         {deleteConfirmOpen && skillToDelete && (
-          <section
-            aria-label={t('skills:management.delete')}
+          <InlineConfirmSection
+            label={t('skills:management.delete')}
+            onCancel={() => {
+              if (!inlineDeleting) handleCancelInlineDelete();
+            }}
             className="mb-4 space-y-2.5 rounded-lg border border-red-300/50 bg-red-50/50 p-3 dark:border-red-700/40 dark:bg-red-900/10"
           >
             <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
@@ -1629,12 +1790,19 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 name: getLocalizedSkillName(skillToDelete.id, skillToDelete.name, t),
               })}
             </p>
-            <div className="flex items-center gap-2 rounded-md bg-muted/50 p-2 text-xs">
-              <Trash size={14} className="flex-shrink-0 text-muted-foreground" />
-              <span className="min-w-0 truncate font-medium">
-                {getLocalizedSkillName(skillToDelete.id, skillToDelete.name, t)}
-              </span>
-              <span className="flex-shrink-0 text-[10px] text-muted-foreground">({skillToDelete.id})</span>
+            <div className="rounded-md bg-muted/50 p-2 text-xs">
+              <div className="flex items-center gap-2">
+                <Trash size={14} className="flex-shrink-0 text-muted-foreground" />
+                <span className="min-w-0 truncate font-medium">
+                  {getLocalizedSkillName(skillToDelete.id, skillToDelete.name, t)}
+                </span>
+                <span className="flex-shrink-0 text-[10px] text-muted-foreground">({skillToDelete.id})</span>
+              </div>
+              {skillToDelete.description && (
+                <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+                  {getLocalizedSkillDescription(skillToDelete.id, skillToDelete.description, t)}
+                </p>
+              )}
             </div>
             <div className="flex items-center justify-end gap-2">
               <NotionButton
@@ -1656,12 +1824,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 {inlineDeleting ? t('common:actions.deleting') : t('common:actions.delete')}
               </NotionButton>
             </div>
-          </section>
+          </InlineConfirmSection>
         )}
 
         {importOverwriteOpen && pendingImport && (
-          <section
-            aria-label={t('skills:management.import_overwrite_title')}
+          <InlineConfirmSection
+            label={t('skills:management.import_overwrite_title')}
+            onCancel={handleCancelOverwrite}
             className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
           >
             <div className="text-[13px] font-medium text-foreground">
@@ -1688,12 +1857,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 {t('skills:management.import_overwrite')}
               </NotionButton>
             </div>
-          </section>
+          </InlineConfirmSection>
         )}
 
         {zipOverwriteOpen && pendingZipImport && (
-          <section
-            aria-label={t('skills:management.import_zip_overwrite_title')}
+          <InlineConfirmSection
+            label={t('skills:management.import_zip_overwrite_title')}
+            onCancel={handleCancelZipOverwrite}
             className="mb-4 space-y-2.5 rounded-lg border border-amber-300/50 bg-amber-50/50 p-3 dark:border-amber-700/40 dark:bg-amber-900/10"
           >
             <div className="text-[13px] font-medium text-foreground">
@@ -1720,7 +1890,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 {t('skills:management.import_overwrite')}
               </NotionButton>
             </div>
-          </section>
+          </InlineConfirmSection>
         )}
       </>
     );
@@ -1764,8 +1934,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           {renderMainContent()}
         </MobileSlidingLayout>
 
-        {/* 删除/覆盖确认已改为列表顶部行内横幅（renderMobileInlineConfirms），
-            移动端不再挂载模态 AlertDialog */}
+        {/* 删除/覆盖确认已改为列表顶部行内横幅（renderInlineConfirms），不再挂载模态 AlertDialog */}
       </div>
     );
   }
@@ -1776,6 +1945,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         {renderMainContent()}
 
+        {/* 桌面端编辑器：页面容器内的内联全区编辑视图（absolute 于本页面内，不逃出 OS 窗口）。
+            删除/覆盖确认与移动端共用列表顶部行内横幅（renderInlineConfirms），无模态 */}
         <SkillFullscreenEditor
           open={editorOpen}
           onClose={() => setEditorOpen(false)}
@@ -1785,44 +1956,6 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           originRect={editOriginRect}
           theme={isDarkMode ? 'dark' : 'light'}
 />
-
-        <SkillDeleteConfirm
-          skill={skillToDelete}
-          open={deleteConfirmOpen}
-          onOpenChange={setDeleteConfirmOpen}
-          onConfirm={handleConfirmDelete}
-/>
-
-        <NotionAlertDialog
-          open={importOverwriteOpen}
-          onOpenChange={setImportOverwriteOpen}
-          title={t('skills:management.import_overwrite_title')}
-          description={t(
-            'skills:management.import_overwrite_confirm',
-            { name: pendingImport?.skill.name }
-          )}
-          confirmText={t('skills:management.import_overwrite')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="warning"
-          onConfirm={handleConfirmOverwrite}
-          onCancel={handleCancelOverwrite}
-/>
-
-        <NotionAlertDialog
-          open={zipOverwriteOpen}
-          onOpenChange={setZipOverwriteOpen}
-          title={t('skills:management.import_zip_overwrite_title')}
-          description={t(
-            'skills:management.import_zip_overwrite_confirm',
-            { name: pendingZipImport?.name }
-          )}
-          confirmText={t('skills:management.import_overwrite')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="warning"
-          onConfirm={handleConfirmZipOverwrite}
-          onCancel={handleCancelZipOverwrite}
-/>
-
       </div>
     </LayoutGroup>
   );

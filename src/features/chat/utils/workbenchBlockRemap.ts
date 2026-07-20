@@ -8,6 +8,13 @@
  *   前端撤销优先认账本里实际存在的 id（toolCallId 或 block.id）
  *
  * 见 docs/dev/acr/DESIGN.md §3；docs/dev/acr/STANDARDS.md §4。
+ *
+ * ACR 4.0（A8）核对：本轮新增面无需扩展映射——
+ * - desktop 虚拟目标仍走 workbench_act/observe（workbench_* 前缀已覆盖），
+ *   target.typeId='desktop' 由工具卡 extractTarget 原样呈现；
+ * - 'reviewing' 状态与 placementHint 属 presence 层字段，经 presenceStore
+ *   订阅进入工具卡 data-presence-status，不经过块类型 remap；
+ * - 未新增会产出前端平面 AcrReceipt 的域委托工具（ACR_FRONTEND_DELEGATED_TOOLS 不变）。
  */
 
 import type { BlockType } from '@/features/chat/core/types/block';

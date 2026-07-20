@@ -8,6 +8,7 @@
  * - mcp_tool / image_gen / paper_save / workbench_ops
  * - tool_limit / todo_list / template_preview / ask_user / compaction_summary
  * - workspace_status / sleep / subagent_embed / subagent_retry
+ * - workspace_injection / workspace_send
  * - anki_cards
  * - rag / memory / web_search / academic_search / multimodal_rag
  */
@@ -33,6 +34,12 @@ import './todoList';
 
 // 🆕 工作区状态块（多 Agent 协作）
 import './workspaceStatus';
+
+// 🆕 C11: 工作区消息注入块（主代理插话可见化）
+import './workspaceInjection';
+
+// 🆕 缺口 2: workspace_send 投递卡片块
+import './workspaceSend';
 
 // 🆕 睡眠块和子代理嵌入块（主代理睡眠/唤醒机制）
 import './sleepBlock';
@@ -90,6 +97,12 @@ export { PaperSaveBlock } from './paperSave';
 
 // 🆕 工作区状态块组件
 export { WorkspaceStatusBlockComponent } from './workspaceStatus';
+
+// 🆕 C11: 工作区消息注入块组件
+export { WorkspaceInjectionBlockComponent } from './workspaceInjection';
+
+// 🆕 workspace_send 投递卡片块组件
+export { WorkspaceSendBlockComponent } from './workspaceSend';
 
 // 🆕 睡眠块和子代理嵌入块组件
 export { default as SleepBlockComponent } from './sleepBlock';

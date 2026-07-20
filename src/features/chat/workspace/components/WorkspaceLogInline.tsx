@@ -82,7 +82,7 @@ const MessageTypeBadge: React.FC<MessageTypeBadgeProps> = ({ type }) => {
   const { t } = useTranslation('chatV2');
   const config = messageTypeConfig[type];
   return (
-    <span className={cn('px-1.5 py-0.5 text-[10px] font-medium rounded inline-flex items-center gap-0.5', config.className)}>
+    <span className={cn('px-1.5 py-0.5 text-2xs font-medium rounded inline-flex items-center gap-0.5', config.className)}>
       <span>{config.icon}</span>
       <span>{t(config.i18nKey)}</span>
     </span>
@@ -137,7 +137,7 @@ const LogMessageItem: React.FC<LogMessageItemProps> = ({ message, agents }) => {
     <div className="py-2 border-b border-border/30 last:border-0">
       {/* 头部信息 */}
       <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <span className="text-[10px] text-muted-foreground font-mono">{time}</span>
+        <span className="text-2xs text-muted-foreground font-mono">{time}</span>
         <MessageTypeBadge type={message.messageType} />
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           {senderInfo?.role === 'coordinator' ? (
@@ -158,7 +158,7 @@ const LogMessageItem: React.FC<LogMessageItemProps> = ({ message, agents }) => {
             </>
           )}
           {!message.targetSessionId && message.messageType === 'broadcast' && (
-            <span className="text-[10px] text-muted-foreground/70">({t('chatV2:workspace.messageType.broadcast')})</span>
+            <span className="text-2xs text-muted-foreground/70">({t('chatV2:workspace.messageType.broadcast')})</span>
           )}
         </div>
       </div>
@@ -343,7 +343,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
               ))}
             </div>
             {filteredMessages.length > maxMessages && (
-              <div className="px-3 py-1.5 text-center text-[10px] text-muted-foreground border-t border-border/30">
+              <div className="px-3 py-1.5 text-center text-2xs text-muted-foreground border-t border-border/30">
                 {t('workspace.log.moreMessages', {
                   count: filteredMessages.length - maxMessages,
                 })}

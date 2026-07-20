@@ -21,8 +21,8 @@
 /**
  * 模型信息接口
  *
- * 兼容 ChatParamsPanel.tsx 中的 ModelConfig 接口。
- * 所有字段都与 ModelConfig 兼容，额外添加了 aliases 字段用于别名匹配。
+ * 字段与模型配置（原 ChatParamsPanel 的 ModelConfig，该组件已于 2026-07 移除）兼容，
+ * 额外添加了 aliases 字段用于别名匹配。
  *
  * 使用说明：
  * - 如果直接传入 ModelConfig[]，功能正常但不支持别名匹配
