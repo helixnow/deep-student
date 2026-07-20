@@ -52,9 +52,20 @@ impl CustomModeManager {
 
         let config = if self.config_path.exists() {
             match fs::read_to_string(&self.config_path) {
-                Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+                Ok(content) => match serde_json::from_str(&content) {
+                    Ok(config) => config,
+                    Err(e) => {
+                        // JSON 损坏：备份坏文件后从空配置开始，避免后续保存直接覆盖用户数据
+                        log::warn!(
+                            "[CustomModes] 配置文件 JSON 损坏（{}），备份原文件后从空配置开始",
+                            e
+                        );
+                        self.backup_corrupted_file();
+                        CustomModesConfig::default()
+                    }
+                },
                 Err(e) => {
-                    eprintln!("⚠️ [CustomModes] 读取配置失败: {}", e);
+                    log::warn!("[CustomModes] 读取配置失败: {}", e);
                     CustomModesConfig::default()
                 }
             }
@@ -66,7 +77,23 @@ impl CustomModeManager {
         config
     }
 
+    /// 将损坏的配置文件重命名为 .bak 备份（保留现场供用户手动恢复）
+    fn backup_corrupted_file(&self) {
+        let backup_path = self.config_path.with_extension("json.bak");
+        // Windows 上 rename 无法覆盖已存在的目标文件，先移除旧备份
+        let _ = fs::remove_file(&backup_path);
+        match fs::rename(&self.config_path, &backup_path) {
+            Ok(()) => log::warn!(
+                "[CustomModes] 损坏的配置已备份至: {}",
+                backup_path.display()
+            ),
+            Err(e) => log::warn!("[CustomModes] 备份损坏配置失败: {}", e),
+        }
+    }
+
     /// 保存配置（内部版本，调用者需已持有锁）
+    ///
+    /// 采用「写临时文件 + rename」的原子替换，避免进程崩溃/断电时留下半截 JSON。
     fn save_config_inner(
         &self,
         config: &CustomModesConfig,
@@ -75,7 +102,25 @@ impl CustomModeManager {
         let content =
             serde_json::to_string_pretty(config).map_err(|e| format!("序列化失败: {}", e))?;
 
-        fs::write(&self.config_path, content).map_err(|e| format!("写入文件失败: {}", e))?;
+        if let Some(parent) = self.config_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {}", e))?;
+        }
+
+        let tmp_path = self.config_path.with_extension("json.tmp");
+        fs::write(&tmp_path, content.as_bytes())
+            .map_err(|e| format!("写入临时文件失败: {}", e))?;
+
+        if let Err(first_err) = fs::rename(&tmp_path, &self.config_path) {
+            // Windows 上 rename 无法覆盖已存在的目标文件，移除后重试一次
+            let _ = fs::remove_file(&self.config_path);
+            if let Err(e) = fs::rename(&tmp_path, &self.config_path) {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(format!(
+                    "写入配置文件失败: {}（首次替换失败: {}）",
+                    e, first_err
+                ));
+            }
+        }
 
         // 更新缓存
         **cache = Some(config.clone());
@@ -98,6 +143,11 @@ impl CustomModeManager {
 
     /// 创建自定义模式
     pub fn create_mode(&self, input: CreateModeInput) -> Result<GradingMode, String> {
+        let name = input.name.trim().to_string();
+        validate_mode_name(&name)?;
+        validate_score_dimensions(&input.score_dimensions)?;
+        validate_total_max_score(input.total_max_score)?;
+
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let mut config = self.load_config_inner(&mut cache);
 
@@ -105,14 +155,14 @@ impl CustomModeManager {
         let id = format!("custom_{}", uuid::Uuid::new_v4().simple());
 
         // 检查名称是否重复
-        if config.modes.iter().any(|m| m.name == input.name) {
-            return Err(format!("模式名称已存在: {}", input.name));
+        if config.modes.iter().any(|m| m.name == name) {
+            return Err(format!("模式名称已存在: {}", name));
         }
 
         let now = chrono::Utc::now().to_rfc3339();
         let mode = GradingMode {
             id: id.clone(),
-            name: input.name,
+            name,
             description: input.description,
             system_prompt: input.system_prompt,
             score_dimensions: input.score_dimensions,
@@ -131,6 +181,18 @@ impl CustomModeManager {
 
     /// 更新自定义模式
     pub fn update_mode(&self, input: UpdateModeInput) -> Result<GradingMode, String> {
+        // 校验提供的字段（未提供的字段保持原值，不校验）
+        let new_name = input.name.as_ref().map(|n| n.trim().to_string());
+        if let Some(ref name) = new_name {
+            validate_mode_name(name)?;
+        }
+        if let Some(ref dims) = input.score_dimensions {
+            validate_score_dimensions(dims)?;
+        }
+        if let Some(total) = input.total_max_score {
+            validate_total_max_score(total)?;
+        }
+
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let mut config = self.load_config_inner(&mut cache);
 
@@ -141,7 +203,7 @@ impl CustomModeManager {
             .ok_or_else(|| format!("模式不存在: {}", input.id))?;
 
         // 先检查名称是否与其他模式重复（在借用 mode 之前）
-        if let Some(ref name) = input.name {
+        if let Some(ref name) = new_name {
             if config
                 .modes
                 .iter()
@@ -154,7 +216,7 @@ impl CustomModeManager {
         // 现在可以安全地借用 mode
         let mode = &mut config.modes[mode_idx];
 
-        if let Some(name) = input.name {
+        if let Some(name) = new_name {
             mode.name = name;
         }
         if let Some(desc) = input.description {
@@ -184,6 +246,14 @@ impl CustomModeManager {
         &self,
         input: SaveBuiltinOverrideInput,
     ) -> Result<GradingMode, String> {
+        if input.builtin_id.trim().is_empty() {
+            return Err("预置模式 ID 不能为空".to_string());
+        }
+        let name = input.name.trim().to_string();
+        validate_mode_name(&name)?;
+        validate_score_dimensions(&input.score_dimensions)?;
+        validate_total_max_score(input.total_max_score)?;
+
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let mut config = self.load_config_inner(&mut cache);
 
@@ -191,7 +261,7 @@ impl CustomModeManager {
         if let Some(idx) = config.modes.iter().position(|m| m.id == input.builtin_id) {
             // 更新现有覆盖
             let mode = &mut config.modes[idx];
-            mode.name = input.name;
+            mode.name = name;
             mode.description = input.description;
             mode.system_prompt = input.system_prompt;
             mode.score_dimensions = input.score_dimensions;
@@ -208,7 +278,7 @@ impl CustomModeManager {
             let now = chrono::Utc::now().to_rfc3339();
             let mode = GradingMode {
                 id: input.builtin_id.clone(),
-                name: input.name,
+                name,
                 description: input.description,
                 system_prompt: input.system_prompt,
                 score_dimensions: input.score_dimensions,
@@ -274,6 +344,50 @@ impl CustomModeManager {
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         *cache = None;
     }
+}
+
+// ============================================================================
+// 输入校验
+// ============================================================================
+//
+// 说明：管理器方法的错误类型为 String（对外签名不可变），命令层（mod.rs）统一
+// 通过 AppError::internal 包装后返回给前端，此处保证错误文案明确、可直接展示。
+
+/// 校验模式名称：非空
+fn validate_mode_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("模式名称不能为空".to_string());
+    }
+    Ok(())
+}
+
+/// 校验评分维度：至少一个维度、维度名非空且不重复、维度满分为正数
+fn validate_score_dimensions(dimensions: &[ScoreDimension]) -> Result<(), String> {
+    if dimensions.is_empty() {
+        return Err("至少需要一个评分维度".to_string());
+    }
+    let mut seen = std::collections::HashSet::new();
+    for dim in dimensions {
+        let dim_name = dim.name.trim();
+        if dim_name.is_empty() {
+            return Err("评分维度名称不能为空".to_string());
+        }
+        if !seen.insert(dim_name.to_string()) {
+            return Err(format!("评分维度名称重复: {}", dim_name));
+        }
+        if !dim.max_score.is_finite() || dim.max_score <= 0.0 {
+            return Err(format!("评分维度「{}」的满分必须为正数", dim_name));
+        }
+    }
+    Ok(())
+}
+
+/// 校验总分满分：有限正数
+fn validate_total_max_score(total_max_score: f32) -> Result<(), String> {
+    if !total_max_score.is_finite() || total_max_score <= 0.0 {
+        return Err("总分满分必须为正数".to_string());
+    }
+    Ok(())
 }
 
 /// 创建模式输入

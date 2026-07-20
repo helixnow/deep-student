@@ -10,8 +10,6 @@ import {
 } from '../essay-grading/essayGradingApi';
 import {
   essayDstuAdapter,
-  type EssayGradingSession,
-  type DstuGradingRound,
   type EssayDstuModeConfig,
 } from '@/dstu/adapters/essayDstuAdapter';
 import { useEssayGradingStream } from '../essay-grading/useEssayGradingStream';
@@ -19,9 +17,7 @@ import { ocrExtractText, TauriAPI } from '../utils/tauriApi';
 import { getErrorMessage } from '../utils/errorUtils';
 import { fileManager } from '../utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
-import { CustomScrollArea } from './custom-scroll-area';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
-import { NotionAlertDialog } from './ui/NotionDialog';
 
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
@@ -73,6 +69,38 @@ function essayDirtySnapshot(input: {
   ]);
 }
 
+/** 批改配置上下文（内容之外影响批改结果的参数） */
+interface GradingContext {
+  topicText: string;
+  uploadedImages: UploadedImage[];
+  topicImages: UploadedImage[];
+  modeId: string;
+  modelId: string;
+  essayType: string;
+  gradeLevel: string;
+  customPrompt: string;
+}
+
+/**
+ * "已批改内容"快照：内容（正文/题目/图片）+ 批改配置（模式/模型/文体/学段/Prompt）。
+ * 任一变化都允许发起新一轮批改（例如同一篇作文换模式重新批阅是合法操作）。
+ */
+function essayGradedSnapshot(inputText: string, context: GradingContext): string {
+  return JSON.stringify([
+    essayDirtySnapshot({
+      inputText,
+      topicText: context.topicText,
+      uploadedImages: context.uploadedImages,
+      topicImages: context.topicImages,
+    }),
+    context.modeId,
+    context.modelId,
+    context.essayType,
+    context.gradeLevel,
+    context.customPrompt,
+  ]);
+}
+
 interface EssayGradingWorkbenchProps {
   onBack?: () => void;
   /** DSTU 模式配置（必需），由 Learning Hub 管理会话 */
@@ -81,17 +109,23 @@ interface EssayGradingWorkbenchProps {
   isActive?: boolean;
 }
 
-export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ onBack, dstuMode, isActive }) => {
+export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ dstuMode, isActive }) => {
   const { t } = useTranslation(['essay_grading', 'common']);
 
   // 流式批改管线
   const gradingStream = useEssayGradingStream();
+  // ★ 解构出稳定的函数引用（hook 内部均为 useCallback），
+  // 避免下游 useCallback 依赖整个 gradingStream 对象（每次渲染都是新对象）导致回调频繁重建
+  const {
+    startGrading,
+    cancelGrading,
+    retryGrading,
+    resetState: resetGradingState,
+    setGradingResult,
+  } = gradingStream;
 
   // DSTU 模式：从会话初始化状态
   const initialSession = dstuMode.session;
-
-  // Tab 状态（始终为 grading，历史由 Learning Hub 管理）
-  const activeTab = 'grading' as const;
 
   // 会话状态
   const [currentSession, setCurrentSession] = useState<GradingSession | null>(null);
@@ -100,13 +134,53 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
 
   // 输入状态（从 DSTU 初始化，确保默认值防止 undefined）
   const [inputText, setInputText] = useState(initialSession?.inputText ?? '');
-  const [essayType, setEssayType] = useState(initialSession?.essayType ?? 'other');
-  const [gradeLevel, setGradeLevel] = useState(initialSession?.gradeLevel ?? 'high_school');
+  const [essayType, setEssayTypeRaw] = useState(initialSession?.essayType || 'other');
+  const [gradeLevel, setGradeLevelRaw] = useState(initialSession?.gradeLevel || 'high_school');
   const [customPrompt, setCustomPrompt] = useState(initialSession?.customPrompt ?? '');
+  // 设置面板显隐的单一来源（所有断点共用；essay:openSettings 事件 toggle 它）
   const [showPromptEditor, setShowPromptEditor] = useState(false);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const lastGradedInputRef = useRef<string>('');
+  // ★ 上一轮已批改内容的完整快照（正文 + 题目 + 图片），用于"未修改不允许新轮次"判定
+  const lastGradedSnapshotRef = useRef<string>('');
   const draftRestoredRef = useRef(false);
+  // ★ 挂载时从 localStorage 恢复的草稿内容；DSTU 会话异步恢复完成后据此让草稿（更新的未保存编辑）优先于轮次正文
+  const restoredDraftRef = useRef<{ inputText: string; topicText: string } | null>(null);
+
+  // 包装 setEssayType / setGradeLevel：用户修改时持久化到全局设置（启动时恢复）
+  const setEssayType = useCallback((type: string) => {
+    setEssayTypeRaw(type);
+    TauriAPI.saveSetting('essay_grading.essay_type', type).catch(() => {
+      console.warn('[EssayGrading] Failed to persist essayType');
+    });
+  }, []);
+  const setGradeLevel = useCallback((level: string) => {
+    setGradeLevelRaw(level);
+    TauriAPI.saveSetting('essay_grading.grade_level', level).catch(() => {
+      console.warn('[EssayGrading] Failed to persist gradeLevel');
+    });
+  }, []);
+
+  // 启动时恢复持久化的 essayType / gradeLevel（仅在会话未提供时）
+  useEffect(() => {
+    if (initialSession?.essayType) return;
+    let cancelled = false;
+    TauriAPI.getSetting('essay_grading.essay_type')
+      .then(saved => {
+        if (!cancelled && saved) setEssayTypeRaw(saved);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [initialSession?.essayType]);
+  useEffect(() => {
+    if (initialSession?.gradeLevel) return;
+    let cancelled = false;
+    TauriAPI.getSetting('essay_grading.grade_level')
+      .then(saved => {
+        if (!cancelled && saved) setGradeLevelRaw(saved);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [initialSession?.gradeLevel]);
 
   // ★ 图片存储状态（保存原图用于预览和多模态批改）
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
@@ -180,7 +254,15 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
 
   // 模型选择状态
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [modelId, setModelId] = useState(''); // 空字符串表示使用默认模型
+  const [modelId, setModelIdRaw] = useState(''); // 空字符串表示使用默认模型
+
+  // 包装 setModelId：用户切换模型时持久化到全局设置（启动时经 loadModels 校验恢复）
+  const setModelId = useCallback((id: string) => {
+    setModelIdRaw(id);
+    TauriAPI.saveSetting('essay_grading.model_id', id).catch(() => {
+      console.warn('[EssayGrading] Failed to persist modelId');
+    });
+  }, []);
 
   // 历史状态已移除 - 由 Learning Hub 管理
 
@@ -193,13 +275,19 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   const currentRoundNumber = currentRound?.round_number ?? (rounds.length + 1);
   const totalRounds = rounds.length;
 
-  // 加载模型列表
+  // 加载模型列表（并恢复持久化的模型选择；已被删除的模型回落到默认模型）
   const loadModels = useCallback(async () => {
     try {
       const loadedModels = await EssayGradingAPI.getModels();
       setModels(loadedModels);
-      setModelId(prev => {
-        if (prev) return prev;
+      let savedModelId: string | null = null;
+      try {
+        savedModelId = await TauriAPI.getSetting('essay_grading.model_id');
+      } catch {}
+      setModelIdRaw(prev => {
+        // 当前选择仍有效则保持；否则依次尝试持久化值 → 默认模型 → 第一个模型
+        if (prev && loadedModels.some(m => m.id === prev)) return prev;
+        if (savedModelId && loadedModels.some(m => m.id === savedModelId)) return savedModelId;
         const defaultModel = loadedModels.find(m => m.is_default);
         if (defaultModel) return defaultModel.id;
         if (loadedModels.length > 0) return loadedModels[0].id;
@@ -209,6 +297,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       console.error('[EssayGrading] Failed to load models:', error);
       showGlobalNotification('error', t('essay_grading:errors.load_models_failed'));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 加载批阅模式（提取为 useCallback 以便在保存后重新调用）
@@ -292,7 +381,21 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
           const session = await EssayGradingAPI.getSession(initialSession.id);
           if (session) {
             setCurrentSession(session);
-            await loadSessionRounds(session.id);
+            const restoredText = await loadSessionRounds(session.id);
+            // ★ 修正脏检查基准：恢复后的正文以最新轮次为准（可能与 initialSession.inputText 不同），
+            // 否则从会话恢复后会被误判为"有未保存修改"
+            persistedDirtySnapshotRef.current = essayDirtySnapshot({
+              inputText: restoredText ?? (initialSession.inputText ?? ''),
+              topicText: '',
+              uploadedImages: [],
+              topicImages: [],
+            });
+            // ★ 草稿优先：挂载时恢复的草稿是比最后一轮更新的未保存编辑，
+            // 不应被 loadSessionRounds 回填的轮次正文覆盖
+            const draft = restoredDraftRef.current;
+            if (draft?.inputText && draft.inputText !== restoredText) {
+              setInputText(draft.inputText);
+            }
           }
         } catch (error: unknown) {
           console.error('[EssayGrading] Failed to restore from DSTU:', error);
@@ -308,25 +411,48 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   const draftKey = effectiveSessionId ? `essay_draft_${effectiveSessionId}` : 'essay_draft_new';
 
   // ★ S-012: debounce 保存草稿到 localStorage（1s）
+  // 草稿为 JSON 结构 {inputText, topicText}（图片 base64 体积过大，不进草稿）
+  // 恢复完成前不写入/删除，避免挂载初期把待恢复的草稿冲掉
   useEffect(() => {
-    if (!inputText) return;
+    if (!draftRestoredRef.current) return;
     const timer = setTimeout(() => {
       try {
-        localStorage.setItem(draftKey, inputText);
+        if (!inputText && !topicText) {
+          // 用户主动清空后移除草稿，防止下次进入被"恢复"回已删除内容
+          localStorage.removeItem(draftKey);
+        } else {
+          localStorage.setItem(draftKey, JSON.stringify({ inputText, topicText }));
+        }
       } catch (e: unknown) {
         console.warn('[EssayGrading] S-012: Failed to save draft', e);
       }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [inputText, draftKey]);
+  }, [inputText, topicText, draftKey]);
 
-  // ★ S-012: 组件初始化时恢复草稿（仅在输入为空时）
+  // ★ S-012: 组件初始化时恢复草稿（仅在对应输入为空时；兼容旧版纯文本草稿）
   useEffect(() => {
     if (draftRestoredRef.current) return;
     draftRestoredRef.current = true;
-    const draft = localStorage.getItem(draftKey);
-    if (draft && !inputText) {
-      setInputText(draft);
+    const raw = localStorage.getItem(draftKey);
+    if (!raw) return;
+    let draftText = raw;
+    let draftTopic = '';
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        const record = parsed as { inputText?: unknown; topicText?: unknown };
+        draftText = typeof record.inputText === 'string' ? record.inputText : '';
+        draftTopic = typeof record.topicText === 'string' ? record.topicText : '';
+      }
+    } catch {
+      // 旧格式：整个值即正文文本
+    }
+    const applyText = Boolean(draftText && !inputText);
+    if (applyText) setInputText(draftText);
+    if (draftTopic) setTopicText(prev => prev || draftTopic);
+    if (applyText || draftTopic) {
+      restoredDraftRef.current = { inputText: applyText ? draftText : '', topicText: draftTopic };
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
@@ -346,8 +472,37 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     }
   }, [currentSession?.id, initialSession?.id]);
 
-  // 加载会话轮次
-  const loadSessionRounds = useCallback(async (sessionId: string) => {
+  // ★ 当前批改配置上下文的实时镜像（每次渲染同步），供异步回调同步读取，
+  // 避免 loadSessionRounds / markInputAsGraded 直接依赖大量状态导致回调不稳定
+  const gradingContextRef = useRef<GradingContext>({
+    topicText,
+    uploadedImages,
+    topicImages,
+    modeId,
+    modelId,
+    essayType,
+    gradeLevel,
+    customPrompt,
+  });
+  gradingContextRef.current = {
+    topicText,
+    uploadedImages,
+    topicImages,
+    modeId,
+    modelId,
+    essayType,
+    gradeLevel,
+    customPrompt,
+  };
+
+  // 标记"某段正文已被批改过"：同时更新文本基准与完整快照（内容 + 批改配置）
+  const markInputAsGraded = useCallback((text: string) => {
+    lastGradedInputRef.current = text;
+    lastGradedSnapshotRef.current = essayGradedSnapshot(text, gradingContextRef.current);
+  }, []);
+
+  // 加载会话轮次；返回恢复到输入框的最新轮次正文（无轮次时返回 null）
+  const loadSessionRounds = useCallback(async (sessionId: string): Promise<string | null> => {
     try {
       const sessionRounds = await EssayGradingAPI.getRounds(sessionId);
       setRounds(sessionRounds);
@@ -356,41 +511,53 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
         setCurrentRoundIndex(sessionRounds.length - 1);
         const latestRound = sessionRounds[sessionRounds.length - 1];
         setInputText(latestRound.input_text);
-        gradingStream.setGradingResult(latestRound.grading_result);
-        lastGradedInputRef.current = latestRound.input_text;
+        setGradingResult(latestRound.grading_result);
+        markInputAsGraded(latestRound.input_text);
+        return latestRound.input_text;
       }
+      return null;
     } catch (error: unknown) {
       console.error('[EssayGrading] Failed to load rounds:', error);
+      return null;
     }
-  }, [gradingStream]);
+  }, [setGradingResult, markInputAsGraded]);
 
-  // 切换轮次
+  // 切换轮次（批改中禁止切换，避免覆盖流式结果）
+  const handleSelectRound = useCallback((index: number) => {
+    if (isGrading) return;
+    if (index < 0 || index >= rounds.length || index === currentRoundIndex) return;
+    setCurrentRoundIndex(index);
+    const round = rounds[index];
+    setInputText(round.input_text);
+    setGradingResult(round.grading_result);
+    markInputAsGraded(round.input_text);
+  }, [isGrading, currentRoundIndex, rounds, setGradingResult, markInputAsGraded]);
+
   const handlePrevRound = useCallback(() => {
-    if (currentRoundIndex > 0) {
-      const newIndex = currentRoundIndex - 1;
-      setCurrentRoundIndex(newIndex);
-      const round = rounds[newIndex];
-      setInputText(round.input_text);
-      gradingStream.setGradingResult(round.grading_result);
-      lastGradedInputRef.current = round.input_text;
-    }
-  }, [currentRoundIndex, rounds, gradingStream]);
+    handleSelectRound(currentRoundIndex - 1);
+  }, [handleSelectRound, currentRoundIndex]);
 
   const handleNextRound = useCallback(() => {
-    if (currentRoundIndex < rounds.length - 1) {
-      const newIndex = currentRoundIndex + 1;
-      setCurrentRoundIndex(newIndex);
-      const round = rounds[newIndex];
-      setInputText(round.input_text);
-      gradingStream.setGradingResult(round.grading_result);
-      lastGradedInputRef.current = round.input_text;
-    }
-  }, [currentRoundIndex, rounds, gradingStream]);
+    handleSelectRound(currentRoundIndex + 1);
+  }, [handleSelectRound, currentRoundIndex]);
 
   // ★ OCR 版本计数器（用于时序控制，防止旧请求覆盖新结果）
   const ocrVersionRef = useRef(0);
   // ★ 活跃图片 ID 集合（同步可读，用于 async 回调中判断图片是否已被删除）
   const activeImageIdsRef = useRef(new Set<string>());
+  // ★ OCR 重试 setTimeout 句柄集合：卸载时统一清理，防止卸载后 setState 泄漏
+  const ocrRetryTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
+
+  useEffect(() => {
+    const retryTimers = ocrRetryTimersRef.current;
+    const activeImageIds = activeImageIdsRef.current;
+    return () => {
+      retryTimers.forEach(timer => clearTimeout(timer));
+      retryTimers.clear();
+      // 清空活跃集合：在途 OCR Promise 回调据此跳过 setState
+      activeImageIds.clear();
+    };
+  }, []);
 
   // ★ 文件拖拽处理（两阶段：即时显示缩略图 + 异步 OCR）
   const handleFilesDropped = useCallback(async (files: File[]) => {
@@ -495,7 +662,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
                 : p
               )
             );
-            setTimeout(() => {
+            const retryTimer = setTimeout(() => {
+              ocrRetryTimersRef.current.delete(retryTimer);
               if (!activeImageIdsRef.current.has(img.id)) {
                 running--;
                 processNext();
@@ -503,6 +671,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
               }
               executeOcrForImage(img, retryCount + 1);
             }, OCR_RETRY_DELAY_MS);
+            ocrRetryTimersRef.current.add(retryTimer);
             return;
           }
 
@@ -595,6 +764,49 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     setTopicImages(prev => prev.filter(img => img.id !== imageId));
   }, []);
 
+  // 批改完成后的统一收尾：成功反馈、清草稿、刷新轮次、DSTU 回写、脏检查基准更新
+  // ★ 抽取为独立回调：首次批改与"重试成功"共用（此前重试成功不会触发任何持久化收尾）
+  const finalizeCompletedGrading = useCallback(async (sessionId: string) => {
+    showGlobalNotification('success', t('essay_grading:toast.grading_success'));
+    // ★ S-012: 批改完成后清除草稿
+    try {
+      localStorage.removeItem(`essay_draft_${sessionId}`);
+      localStorage.removeItem('essay_draft_new');
+    } catch {}
+    // 刷新轮次
+    await loadSessionRounds(sessionId);
+
+    // DSTU 模式：通知 Learning Hub 新轮次已添加
+    if (dstuMode.onRoundAdd) {
+      const latestRounds = await EssayGradingAPI.getRounds(sessionId);
+      const latestRound = latestRounds[latestRounds.length - 1];
+      if (latestRound) {
+        await dstuMode.onRoundAdd({
+          id: latestRound.id,
+          round_number: latestRound.round_number,
+          input_text: latestRound.input_text,
+          grading_result: latestRound.grading_result,
+          overall_score: latestRound.overall_score,
+          dimension_scores_json: latestRound.dimension_scores_json,
+          created_at: new Date(latestRound.created_at).getTime(),
+        });
+      }
+    }
+
+    // DSTU 模式：保存会话状态
+    if (dstuMode.onSessionSave) {
+      const fullSessionResult = await essayDstuAdapter.getFullSession(sessionId);
+      if (fullSessionResult.ok && fullSessionResult.value) {
+        // ★ M-047 修复：使用当前本地 modeId，而非依赖 getFullSession 可能过期的值
+        await dstuMode.onSessionSave({
+          ...fullSessionResult.value,
+          modeId: gradingContextRef.current.modeId,
+        });
+      }
+    }
+    persistedDirtySnapshotRef.current = currentDirtySnapshotRef.current;
+  }, [t, loadSessionRounds, dstuMode]);
+
   // 开始批改
   const handleGrade = useCallback(async () => {
     // ★ M-052: 离线时阻止批改并提示用户
@@ -609,14 +821,27 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     }
 
     const safeInputText = inputText ?? '';
-    // A6-13: 允许纯图作文提交（有作文原图时即使文本为空也放行，由多模态模型读图批改）
-    if (!safeInputText.trim() && uploadedImages.length === 0) {
+    // A6-13: 纯图批改 —— 有正文文字或有作文原图（多模态读图）任一即可放行
+    const hasText = safeInputText.trim().length > 0;
+    const hasEssayImages = uploadedImages.length > 0;
+    if (!hasText && !hasEssayImages) {
       showGlobalNotification('warning', t('essay_grading:errors.empty_text'));
       return;
     }
 
-    // 内容未修改时阻止重复提交
-    if (rounds.length > 0 && safeInputText === lastGradedInputRef.current) {
+    // 内容或批改配置未修改时阻止重复提交
+    // （正文 / 题目 / 作文图 / 题目图 / 模式 / 模型 / 文体 / 学段 / Prompt 任一变化即放行）
+    const submitSnapshot = essayGradedSnapshot(safeInputText, {
+      topicText,
+      uploadedImages,
+      topicImages,
+      modeId,
+      modelId,
+      essayType,
+      gradeLevel,
+      customPrompt,
+    });
+    if (rounds.length > 0 && submitSnapshot === lastGradedSnapshotRef.current) {
       showGlobalNotification('warning', t('essay_grading:errors.unchanged_text'));
       return;
     }
@@ -681,7 +906,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
         ? topicImages.map(img => img.base64)
         : undefined;
 
-      const outcome = await gradingStream.startGrading({
+      const outcome = await startGrading({
         session_id: sessionId,
         stream_session_id: streamSessionId,
         round_number: nextRoundNumber,
@@ -699,55 +924,48 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       });
 
       if (outcome === 'completed') {
-        showGlobalNotification('success', t('essay_grading:toast.grading_success'));
         lastGradedInputRef.current = safeInputText;
-        // ★ S-012: 批改完成后清除草稿
-        try {
-          localStorage.removeItem(`essay_draft_${sessionId}`);
-          localStorage.removeItem('essay_draft_new');
-        } catch {}
-        // 刷新轮次
-        await loadSessionRounds(sessionId);
-        
-        // DSTU 模式：通知 Learning Hub 新轮次已添加
-        if (dstuMode.onRoundAdd) {
-          const latestRounds = await EssayGradingAPI.getRounds(sessionId);
-          const latestRound = latestRounds[latestRounds.length - 1];
-          if (latestRound) {
-            await dstuMode.onRoundAdd({
-              id: latestRound.id,
-              round_number: latestRound.round_number,
-              input_text: latestRound.input_text,
-              grading_result: latestRound.grading_result,
-              overall_score: latestRound.overall_score,
-              dimension_scores_json: latestRound.dimension_scores_json,
-              created_at: new Date(latestRound.created_at).getTime(),
-            });
-          }
-        }
-        
-        // DSTU 模式：保存会话状态
-        if (dstuMode.onSessionSave) {
-          const fullSessionResult = await essayDstuAdapter.getFullSession(sessionId);
-          if (fullSessionResult.ok && fullSessionResult.value) {
-            // ★ M-047 修复：使用当前本地 modeId，而非依赖 getFullSession 可能过期的值
-            await dstuMode.onSessionSave({
-              ...fullSessionResult.value,
-              modeId,
-            });
-          }
-        }
-        persistedDirtySnapshotRef.current = currentDirtySnapshotRef.current;
+        lastGradedSnapshotRef.current = submitSnapshot;
+        await finalizeCompletedGrading(sessionId);
       } else if (outcome === 'cancelled') {
+        // ★ 取消后回退轮次索引：批改开始时已乐观指向"新轮次"，但该轮次并未产生
+        setCurrentRoundIndex(rounds.length > 0 ? rounds.length - 1 : 0);
         showGlobalNotification('info', t('essay_grading:toast.grading_cancelled'));
       }
     } catch (error: unknown) {
+      // ★ 失败后同样回退轮次索引，避免指向不存在的轮次
+      setCurrentRoundIndex(rounds.length > 0 ? rounds.length - 1 : 0);
       const errorMsg = getErrorMessage(error);
       if (!errorMsg.includes(t('essay_grading:toast.grading_already'))) {
         showGlobalNotification('error', t('essay_grading:toast.grading_failed', { error: errorMsg }));
       }
     }
-  }, [inputText, modeId, modelId, essayType, gradeLevel, customPrompt, currentSession, initialSession?.id, rounds, isGrading, t, gradingStream, loadSessionRounds, dstuMode, uploadedImages, topicImages, topicText]);
+  }, [inputText, modeId, modelId, essayType, gradeLevel, customPrompt, currentSession, initialSession?.id, rounds, isGrading, t, startGrading, finalizeCompletedGrading, uploadedImages, topicImages, topicText]);
+
+  // 重试批改（错误后由 ResultPanel 触发）
+  // ★ 修复：此前重试成功后不会执行任何收尾（无成功反馈、轮次不刷新、DSTU 不回写），现与正常批改共用收尾逻辑
+  const handleRetry = useCallback(() => {
+    void (async () => {
+      try {
+        const outcome = await retryGrading();
+        if (outcome === 'completed') {
+          const sessionId = currentSession?.id ?? initialSession?.id;
+          if (sessionId) {
+            await finalizeCompletedGrading(sessionId);
+          } else {
+            showGlobalNotification('success', t('essay_grading:toast.grading_success'));
+          }
+        } else if (outcome === 'cancelled') {
+          showGlobalNotification('info', t('essay_grading:toast.grading_cancelled'));
+        }
+      } catch (error: unknown) {
+        const errorMsg = getErrorMessage(error);
+        if (!errorMsg.includes(t('essay_grading:toast.grading_already'))) {
+          showGlobalNotification('error', t('essay_grading:toast.grading_failed', { error: errorMsg }));
+        }
+      }
+    })();
+  }, [retryGrading, currentSession?.id, initialSession?.id, finalizeCompletedGrading, t]);
 
   // A6-29: Ctrl/Cmd+Enter 提交批改快捷键（对齐翻译工作台）
   // ★ 标签页保活：非活跃实例不注册，避免多个作文标签页同时响应同一按键
@@ -770,13 +988,16 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   );
 
   // P1-19: 监听命令面板 LEARNING_GRADE_ESSAY 事件
+  // ★ isActive 过滤：显式指定 targetResourceId 时按资源匹配；广播（无 target）时仅活跃标签页响应
   const handleGradeEvent = useCallback((evt: Event) => {
     const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
-    if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) {
+    if (detail?.targetResourceId && dstuMode.resourceId) {
+      if (detail.targetResourceId !== dstuMode.resourceId) return;
+    } else if (isActive === false) {
       return;
     }
     handleGrade();
-  }, [handleGrade, dstuMode.resourceId]);
+  }, [handleGrade, dstuMode.resourceId, isActive]);
 
   useEventRegistry(
     [{ target: 'window', type: 'LEARNING_GRADE_ESSAY', listener: handleGradeEvent }],
@@ -790,7 +1011,12 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   useEffect(() => {
     const handleSuggestionsEvent = (evt: Event) => {
       const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
-      if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) return;
+      if (detail?.targetResourceId && dstuMode.resourceId) {
+        if (detail.targetResourceId !== dstuMode.resourceId) return;
+      } else if (isActive === false) {
+        // ★ 广播事件仅活跃标签页响应，避免非活跃实例触发批改
+        return;
+      }
       const currentText = inputText ?? '';
       const hasResultForInput = Boolean(gradingResult) && lastGradedInputRef.current === currentText;
       if (hasResultForInput) {
@@ -803,7 +1029,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     return () => {
       window.removeEventListener('LEARNING_ESSAY_SUGGESTIONS', handleSuggestionsEvent);
     };
-  }, [gradingResult, handleGrade, inputText, t, dstuMode.resourceId]);
+  }, [gradingResult, handleGrade, inputText, t, dstuMode.resourceId, isActive]);
 
 
   // 保存 Prompt
@@ -875,31 +1101,54 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     }
   }, [inputText, gradingResult, currentRoundNumber, t]);
 
-  // 清空（有内容时弹出确认）
+  // 清空输入与结果
+  // ★ 语义为"直接执行清空"：两步确认（点击后变红色"确认清空？"态、3 秒自动还原）由 InputPanel 内联实现
   const handleClear = useCallback(() => {
-    const hasContent = (inputText ?? '').trim().length > 0 || (gradingResult ?? '').length > 0;
+    if (isGrading) {
+      // 批改中清空会中断流式监听且状态不一致，直接阻止
+      showGlobalNotification('warning', t('essay_grading:toast.clear_blocked_grading'));
+      return;
+    }
+    const hasContent =
+      (inputText ?? '').trim().length > 0 ||
+      (gradingResult ?? '').length > 0 ||
+      topicText.trim().length > 0 ||
+      uploadedImages.length > 0 ||
+      topicImages.length > 0;
     if (!hasContent) return; // 没有内容，无需清空
-    setShowClearConfirm(true);
-  }, [inputText, gradingResult]);
 
-  const handleConfirmClear = useCallback(() => {
-    setShowClearConfirm(false);
-    setInputText('');
-    setUploadedImages([]);
-    gradingStream.resetState();
-  }, [gradingStream]);
-
-  // 新建会话
-  const handleNewSession = useCallback(() => {
-    setCurrentSession(null);
-    setRounds([]);
-    setCurrentRoundIndex(0);
+    // 同步失活所有图片，在途 OCR 回调据此丢弃结果
+    activeImageIdsRef.current.clear();
     setInputText('');
     setUploadedImages([]);
     setTopicText('');
     setTopicImages([]);
-    gradingStream.resetState();
-  }, [gradingStream]);
+    resetGradingState();
+    // 清空后草稿一并移除，避免下次进入被"恢复"回来
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {}
+    showGlobalNotification('success', t('essay_grading:toast.cleared'));
+  }, [isGrading, inputText, gradingResult, topicText, uploadedImages.length, topicImages.length, resetGradingState, draftKey, t]);
+
+  // ★ 应用批改建议：在正文中查找 original 首次出现并替换为 replacement
+  const handleApplySuggestion = useCallback((change: { original: string; replacement: string }) => {
+    if (isGrading) {
+      showGlobalNotification('warning', t('essay_grading:toast.suggestion_blocked_grading'));
+      return;
+    }
+    const original = change.original ?? '';
+    const currentText = inputText ?? '';
+    const index = original ? currentText.indexOf(original) : -1;
+    if (index === -1) {
+      showGlobalNotification('warning', t('essay_grading:toast.suggestion_not_found'));
+      return;
+    }
+    setInputText(
+      currentText.slice(0, index) + (change.replacement ?? '') + currentText.slice(index + original.length)
+    );
+    showGlobalNotification('success', t('essay_grading:toast.suggestion_applied'));
+  }, [isGrading, inputText, t]);
 
   // 字符统计（统一使用 Unicode 字符口径，避免 UTF-16 length 偏差）
   const inputTextStats = useMemo(() => calculateEssayTextStats(inputText ?? ''), [inputText]);
@@ -927,7 +1176,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
           setGradeLevel={setGradeLevel}
           isGrading={isGrading}
           onFilesDropped={handleFilesDropped}
-            ocrMaxFiles={OCR_MAX_FILES}
+          ocrMaxFiles={OCR_MAX_FILES}
           customPrompt={customPrompt}
           setCustomPrompt={setCustomPrompt}
           showPromptEditor={showPromptEditor}
@@ -936,7 +1185,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
           onRestoreDefaultPrompt={handleRestoreDefaultPrompt}
           onClear={handleClear}
           onGrade={handleGrade}
-          onCancelGrading={() => gradingStream.cancelGrading()}
+          onCancelGrading={() => { void cancelGrading(); }}
           inputCharCount={inputCharCount}
           inputTextStats={inputTextStats}
           gradingResult={gradingResult}
@@ -945,7 +1194,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
           onExportResult={handleExportResult}
           error={gradingStream.error}
           canRetry={gradingStream.canRetry}
-          onRetry={() => gradingStream.retryGrading().catch(console.error)}
+          onRetry={handleRetry}
           isPartialResult={isPartialResult}
           currentRound={currentRoundNumber}
           uploadedImages={uploadedImages}
@@ -956,25 +1205,16 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
           onTopicFilesDropped={handleTopicFilesDropped}
           onRemoveTopicImage={handleRemoveTopicImage}
           onModesChange={loadModes}
+          onApplySuggestion={handleApplySuggestion}
           roundNavigation={totalRounds > 0 ? {
             currentIndex: currentRoundIndex,
             total: totalRounds,
             onPrev: handlePrevRound,
             onNext: handleNextRound,
+            onSelect: handleSelectRound,
           } : undefined}
         />
       </div>
-
-      <NotionAlertDialog
-        open={showClearConfirm}
-        onOpenChange={setShowClearConfirm}
-        title={t('essay_grading:clear_confirm.title')}
-        description={t('essay_grading:clear_confirm.message')}
-        confirmText={t('essay_grading:clear_confirm.confirm')}
-        cancelText={t('common:cancel')}
-        confirmVariant="danger"
-        onConfirm={handleConfirmClear}
-      />
     </div>
   );
 };

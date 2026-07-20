@@ -8,6 +8,7 @@
  */
 
 import type { GradeCode } from './types';
+import type { ErrorType } from './markerTypes';
 
 export type MarkerType = 'del' | 'ins' | 'replace' | 'note' | 'good' | 'err' | 'text' | 'pending';
 
@@ -21,13 +22,17 @@ export interface StreamingMarker {
   newText?: string;
   // note
   comment?: string;
-  // err
-  errorType?: 'grammar' | 'spelling' | 'logic' | 'expression' | 'article' | 'preposition' | 'word_form' | 'sentence_structure' | 'word_choice' | 'punctuation' | 'tense' | 'agreement';
+  // err（词汇表见 markerTypes.ErrorType，与后端 MARKER_INSTRUCTIONS 一致）
+  errorType?: ErrorType;
   explanation?: string;
   // 标记是否完整
   isComplete: boolean;
 }
 
+/**
+ * 评分解析结果（类型真相源）。
+ * markerParser 的 ParsedScore 从这里 re-export，ScoreCard 等消费方应从本模块导入。
+ */
 export interface ParsedScore {
   total: number;
   maxTotal: number;
@@ -56,7 +61,8 @@ export interface PolishItem {
  * 结束引号判定：后续是空白+下一个属性，或字符串结束。
  */
 function extractAttributeValue(attrs: string, attrName: string): string | undefined {
-  const attrStartRegex = new RegExp(`${attrName}\\s*=\\s*(['"])`, 'i');
+  // (?:^|\s) 边界防止匹配到其他属性名的后缀（如 old 误匹配 bold）
+  const attrStartRegex = new RegExp(`(?:^|\\s)${attrName}\\s*=\\s*(['"])`, 'i');
   const startMatch = attrStartRegex.exec(attrs);
   if (!startMatch || startMatch.index == null) return undefined;
 
@@ -87,34 +93,145 @@ export interface StreamingParseResult {
   modelEssay: string | null;
 }
 
+// ============================================================================
+// 不完整标记检测
+// ============================================================================
+
 /**
- * 检查文本末尾是否有不完整的标记
+ * wire 协议的已知标签名（不含 polish-item/original/polished：
+ * 它们只出现在 section 内部，进入本检测前 section 已被剥离）
+ */
+const KNOWN_TAG_NAMES = [
+  'del',
+  'ins',
+  'replace',
+  'note',
+  'good',
+  'err',
+  'score',
+  'dim',
+  'section-polish',
+  'section-model-essay',
+];
+
+/**
+ * 判断以 '<' 开头的片段是否可能是一个已知标记的开始。
+ * 正文中的裸 '<'（如 "a < b"、"<3"）返回 false，不进入 pending。
+ */
+function couldBeMarkerStart(fragment: string): boolean {
+  let rest = fragment.slice(1);
+  if (rest.startsWith('/')) rest = rest.slice(1);
+
+  const nameMatch = rest.match(/^[a-zA-Z-]*/);
+  const name = (nameMatch ? nameMatch[0] : '').toLowerCase();
+  const boundaryChar = rest.charAt(name.length);
+
+  if (boundaryChar === '') {
+    // 标签名可能在 chunk 边界被截断（如 "<sec"），按前缀判断
+    return KNOWN_TAG_NAMES.some((tag) => tag.startsWith(name));
+  }
+  // 名字后已有边界字符时必须精确匹配已知标签名
+  if (/[\s>/]/.test(boundaryChar)) return KNOWN_TAG_NAMES.includes(name);
+  return false;
+}
+
+/**
+ * 向前回溯的最大距离：超过该距离仍未闭合的标签视为模型输出错误而非 chunk 边界，
+ * 不再无限扩大 pending 区（同时限定回溯扫描的开销）。
+ */
+const MAX_PENDING_LOOKBEHIND = 3000;
+
+/**
+ * 检查文本末尾是否有不完整的标记，返回 pending 起始位置（-1 表示无）。
+ *
+ * 从尾部向前扫描 '<'：
+ * - 正文裸 '<'（如 "a < b"）不是标记开始，跳过；
+ * - 未闭合的已知开始标签把 pending 起点前移到该标签处；
+ * - 完整闭合的结束标签直接跳到其配对的开始标签之前继续扫描，
+ *   这样外层未闭合标签内已完成的内层标记（如流式中的 <score><dim>…</dim><dim…）
+ *   不会截断 pending 判定。
  */
 function findIncompleteMarkerStart(text: string): number {
-  // 从后向前查找最后一个 <
-  const lastOpenBracket = text.lastIndexOf('<');
-  if (lastOpenBracket === -1) return -1;
+  const lower = text.toLowerCase();
+  let best = -1;
+  let searchEnd = text.length;
 
-  const afterBracket = text.slice(lastOpenBracket);
+  while (searchEnd > 0) {
+    const openPos = text.lastIndexOf('<', searchEnd - 1);
+    if (openPos === -1) break;
+    if (text.length - openPos > MAX_PENDING_LOOKBEHIND) break;
+    searchEnd = openPos;
 
-  // < 后面没有 >，标记不完整
-  if (!afterBracket.includes('>')) return lastOpenBracket;
+    const fragment = text.slice(openPos);
+    // 正文裸 '<'：跳过，继续向前找
+    if (!couldBeMarkerStart(fragment)) continue;
 
-  // 自闭合标签 (<replace ... />) — 检查其后是否还有未闭合标记
-  if (afterBracket.includes('/>')) {
-    const closePos = text.indexOf('/>', lastOpenBracket) + 2;
-    const tail = text.slice(closePos);
-    const tailResult = findIncompleteMarkerStart(tail);
-    return tailResult !== -1 ? tailResult + closePos : -1;
+    const headEnd = fragment.indexOf('>');
+    if (headEnd === -1) {
+      // 结束标签片段（如 "</de"）：其配对的开始标签在更前面，继续向前扫描，
+      // 由那个未闭合的开始标签决定 pending 起点，避免开始标签留在确认区导致原始标签泄漏
+      if (fragment.startsWith('</')) continue;
+      // 开始标签头尚未接收完整
+      best = openPos;
+      continue;
+    }
+
+    const head = fragment.slice(0, headEnd + 1);
+    // 自闭合标签（<replace .../>）自身完整，继续检查更前面的内容
+    if (/\/\s*>$/.test(head)) continue;
+
+    if (head.startsWith('</')) {
+      // 完整的结束标签：跳到其配对的开始标签之前（协议无同名嵌套，取最近的同名开始标签）
+      const closeNameMatch = head.match(/^<\/([a-zA-Z][a-zA-Z-]*)/);
+      const tagName = closeNameMatch ? closeNameMatch[1].toLowerCase() : '';
+      const pairedOpen = tagName ? lower.lastIndexOf(`<${tagName}`, openPos) : -1;
+      if (pairedOpen === -1) break; // 孤儿结束标签，此前内容视为已稳定
+      searchEnd = pairedOpen;
+      continue;
+    }
+
+    // 普通开始标签：检查对应结束标签是否已到达
+    const openNameMatch = head.match(/^<([a-zA-Z][a-zA-Z-]*)/);
+    if (openNameMatch) {
+      const closeTag = `</${openNameMatch[1].toLowerCase()}>`;
+      if (lower.indexOf(closeTag, openPos) === -1) {
+        best = openPos;
+        continue;
+      }
+    }
+    // 该开始标签已被后方结束标签闭合，之前的内容视为已稳定
+    break;
   }
 
-  // 开始标签 — 检查是否有对应的结束标签
-  const tagMatch = afterBracket.match(/^<(\w+)/);
-  if (tagMatch) {
-    const closeTag = `</${tagMatch[1]}>`;
-    if (!afterBracket.includes(closeTag)) return lastOpenBracket;
-  }
-  return -1;
+  return best;
+}
+
+// ============================================================================
+// 完整标记解析（正则预编译，避免每次调用重建）
+// ============================================================================
+
+const DEL_REGEX = /<del(?:\s+([\s\S]*?))?>([\s\S]*?)<\/del>/gi;
+const INS_REGEX = /<ins>([\s\S]*?)<\/ins>/gi;
+const REPLACE_REGEX = /<replace\s+([\s\S]*?)\/>/gi;
+// 畸形容错：<replace ...>（缺 '/'）成对形式与仅开始标签形式。
+// 成对形式的内文限定为不含 '<'，避免与远处的孤儿 </replace> 误配而吞掉中间的合法标记
+const REPLACE_MALFORMED_PAIRED_REGEX = /<replace\b([^>]*[^/\s])\s*>([^<]*)<\/replace>/gi;
+const REPLACE_MALFORMED_OPEN_REGEX = /<replace\b([^>]*)>/gi;
+const NOTE_REGEX = /<note\s+([\s\S]*?)>([\s\S]*?)<\/note>/gi;
+const GOOD_REGEX = /<good>([\s\S]*?)<\/good>/gi;
+const ERR_REGEX = /<err\s+([\s\S]*?)>([\s\S]*?)<\/err>/gi;
+
+function buildReplaceMarker(attrs: string): StreamingMarker {
+  const oldText = extractAttributeValue(attrs, 'old');
+  const newText = extractAttributeValue(attrs, 'new');
+  return {
+    type: 'replace',
+    content: `${oldText ?? ''} → ${newText ?? ''}`,
+    oldText,
+    newText,
+    reason: extractAttributeValue(attrs, 'reason'),
+    isComplete: true,
+  };
 }
 
 /**
@@ -122,9 +239,7 @@ function findIncompleteMarkerStart(text: string): number {
  */
 function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remaining: string } {
   const markers: StreamingMarker[] = [];
-  let remaining = text;
-  const lastIndex = 0;
-  
+
   // 收集所有匹配
   interface MatchInfo {
     index: number;
@@ -137,8 +252,8 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
   // 解析各类标记
   // del
   let match;
-  const delRegex = /<del(?:\s+([\s\S]*?))?>([\s\S]*?)<\/del>/gi;
-  while ((match = delRegex.exec(text)) !== null) {
+  DEL_REGEX.lastIndex = 0;
+  while ((match = DEL_REGEX.exec(text)) !== null) {
     allMatches.push({
       index: match.index,
       length: match[0].length,
@@ -152,8 +267,8 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
   }
   
   // ins
-  const insRegex = /<ins>([\s\S]*?)<\/ins>/gi;
-  while ((match = insRegex.exec(text)) !== null) {
+  INS_REGEX.lastIndex = 0;
+  while ((match = INS_REGEX.exec(text)) !== null) {
     allMatches.push({
       index: match.index,
       length: match[0].length,
@@ -165,28 +280,41 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
     });
   }
   
-  // replace
-  const replaceRegex = /<replace\s+([\s\S]*?)\/>/gi;
-  while ((match = replaceRegex.exec(text)) !== null) {
-    const oldText = extractAttributeValue(match[1] || '', 'old');
-    const newText = extractAttributeValue(match[1] || '', 'new');
+  // replace（规范的自闭合形式）
+  REPLACE_REGEX.lastIndex = 0;
+  while ((match = REPLACE_REGEX.exec(text)) !== null) {
     allMatches.push({
       index: match.index,
       length: match[0].length,
-      marker: {
-        type: 'replace',
-        content: `${oldText ?? ''} → ${newText ?? ''}`,
-        oldText,
-        newText,
-        reason: extractAttributeValue(match[1] || '', 'reason'),
-        isComplete: true,
-      },
+      marker: buildReplaceMarker(match[1] || ''),
     });
+  }
+
+  // replace 畸形容错 1：<replace old new reason>原文</replace>（缺 '/' 的成对形式）
+  REPLACE_MALFORMED_PAIRED_REGEX.lastIndex = 0;
+  while ((match = REPLACE_MALFORMED_PAIRED_REGEX.exec(text)) !== null) {
+    const attrs = match[1] || '';
+    const marker = buildReplaceMarker(attrs);
+    // 属性缺失时不产出标记，安全降级为原样文本
+    if (marker.oldText === undefined && marker.newText === undefined) continue;
+    allMatches.push({ index: match.index, length: match[0].length, marker });
+  }
+
+  // replace 畸形容错 2：<replace old new reason>（缺 '/' 且无结束标签）
+  REPLACE_MALFORMED_OPEN_REGEX.lastIndex = 0;
+  while ((match = REPLACE_MALFORMED_OPEN_REGEX.exec(text)) !== null) {
+    const attrs = match[1] || '';
+    // 规范自闭合形式已由 REPLACE_REGEX 处理
+    if (attrs.trimEnd().endsWith('/')) continue;
+    const marker = buildReplaceMarker(attrs);
+    if (marker.oldText === undefined && marker.newText === undefined) continue;
+    // 若同起点存在更长的成对畸形匹配，排序阶段"同起点更长优先"会让本匹配被跳过
+    allMatches.push({ index: match.index, length: match[0].length, marker });
   }
   
   // note
-  const noteRegex = /<note\s+([\s\S]*?)>([\s\S]*?)<\/note>/gi;
-  while ((match = noteRegex.exec(text)) !== null) {
+  NOTE_REGEX.lastIndex = 0;
+  while ((match = NOTE_REGEX.exec(text)) !== null) {
     allMatches.push({
       index: match.index,
       length: match[0].length,
@@ -200,8 +328,8 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
   }
   
   // good
-  const goodRegex = /<good>([\s\S]*?)<\/good>/gi;
-  while ((match = goodRegex.exec(text)) !== null) {
+  GOOD_REGEX.lastIndex = 0;
+  while ((match = GOOD_REGEX.exec(text)) !== null) {
     allMatches.push({
       index: match.index,
       length: match[0].length,
@@ -214,8 +342,8 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
   }
   
   // err (supports both attribute orders: type/explanation or explanation/type)
-  const errRegex = /<err\s+([\s\S]*?)>([\s\S]*?)<\/err>/gi;
-  while ((match = errRegex.exec(text)) !== null) {
+  ERR_REGEX.lastIndex = 0;
+  while ((match = ERR_REGEX.exec(text)) !== null) {
     const attrs = match[1] || '';
     const extractedType = extractAttributeValue(attrs, 'type');
     allMatches.push({
@@ -231,13 +359,15 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
     });
   }
   
-  // 按位置排序
-  allMatches.sort((a, b) => a.index - b.index);
+  // 按位置排序；同起点时优先更长的匹配（与 markerParser 语义一致：外层标记优先于嵌套/局部匹配）
+  allMatches.sort((a, b) => a.index - b.index || b.length - a.length);
   
   // 构建结果，处理重叠
   let processedTo = 0;
   for (const matchInfo of allMatches) {
-    // 跳过已处理的部分
+    // 跳过与已处理区间重叠的匹配（如嵌套在 note 内部的 good）。
+    // 被跳过匹配中超出已处理区间的尾部内容仍会落入后续的普通文本切片，
+    // 交错场景下最多降级为原样文本显示，不会丢失内容。
     if (matchInfo.index < processedTo) {
       continue;
     }
@@ -255,48 +385,58 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
   }
   
   // 剩余文本
-  remaining = text.slice(processedTo);
+  const remaining = text.slice(processedTo);
   
   return { markers, remaining };
 }
 
+// ============================================================================
+// 评分解析
+// ============================================================================
+
+const SCORE_REGEX = /<score\b([^>]*)>([\s\S]*?)<\/score>/i;
+// 评语惰性匹配到 </dim>，允许评语中出现 '<'（如 "a < b"）
+const DIM_REGEX = /<dim\b([^>]*)>([\s\S]*?)<\/dim>/gi;
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(value, max));
+
 /**
- * 解析评分
+ * 解析评分。
+ * - <score> 与 <dim> 属性均支持任意顺序（逐属性提取）
+ * - 超满分统一 clamp 到 max（与后端一致），total 与 dim 都 clamp
+ *
+ * 供 markerParser.parseScore 复用（统一实现，避免双份逻辑漂移）。
  */
-function parseScoreFromText(text: string): ParsedScore | null {
-  const scoreRegex = /<score\s+(?:total="([^"]+)"\s+max="([^"]+)"|max="([^"]+)"\s+total="([^"]+)")[^>]*>([\s\S]*?)<\/score>/i;
-  const dimRegex = /<dim\s+name="([^"]+)"\s+score="([^"]+)"\s+max="([^"]+)"[^>]*>([^<]*)<\/dim>/gi;
-  
-  const scoreMatch = text.match(scoreRegex);
+export function parseScoreFromText(text: string): ParsedScore | null {
+  const scoreMatch = text.match(SCORE_REGEX);
   if (!scoreMatch) return null;
   
-  const totalStr = scoreMatch[1] ?? scoreMatch[4];
-  const maxStr = scoreMatch[2] ?? scoreMatch[3];
-  const dimsContent = scoreMatch[5] ?? '';
+  const scoreAttrs = scoreMatch[1] ?? '';
+  const dimsContent = scoreMatch[2] ?? '';
   
-  const total = parseFloat(totalStr ?? '');
-  const maxTotal = parseFloat(maxStr ?? '');
+  const total = parseFloat(extractAttributeValue(scoreAttrs, 'total') ?? '');
+  const maxTotal = parseFloat(extractAttributeValue(scoreAttrs, 'max') ?? '');
   
   if (!Number.isFinite(maxTotal) || maxTotal <= 0 || !Number.isFinite(total)) return null;
-  // A6-12: LLM 返回的总分超过模式满分时（常见于把 0-9/0-150 等小满分模式当成百分制打分，
-  // 如雅思模式返回 85），不再直接 clamp（会把 85 截成 9 而丢失相对水平），改按「百分制」语义
-  // 比例换算到模式满分；仍兜底夹在 [0, maxTotal]。total 未超分时保持原值。
-  const safeTotal = total > maxTotal
-    ? Math.max(0, Math.min((total / 100) * maxTotal, maxTotal))
-    : Math.max(0, total);
+  // 超满分/负分统一 clamp 到 [0, maxTotal]，与后端 clamp 行为一致
+  const safeTotal = clamp(total, 0, maxTotal);
   
-  // 解析维度评分
+  // 解析维度评分（属性任意顺序）
   const dimensions: DimensionScore[] = [];
   let dimMatch;
-  while ((dimMatch = dimRegex.exec(dimsContent)) !== null) {
-    const score = parseFloat(dimMatch[2]);
-    const maxScore = parseFloat(dimMatch[3]);
-    if (!isNaN(score) && !isNaN(maxScore)) {
+  DIM_REGEX.lastIndex = 0;
+  while ((dimMatch = DIM_REGEX.exec(dimsContent)) !== null) {
+    const dimAttrs = dimMatch[1] ?? '';
+    const name = extractAttributeValue(dimAttrs, 'name');
+    const score = parseFloat(extractAttributeValue(dimAttrs, 'score') ?? '');
+    const maxScore = parseFloat(extractAttributeValue(dimAttrs, 'max') ?? '');
+    if (name && !isNaN(score) && !isNaN(maxScore) && maxScore > 0) {
       dimensions.push({
-        name: dimMatch[1],
-        score,
+        name,
+        score: clamp(score, 0, maxScore),
         maxScore,
-        comment: dimMatch[4]?.trim() || undefined,
+        comment: dimMatch[2]?.trim() || undefined,
       });
     }
   }
@@ -318,11 +458,15 @@ function parseScoreFromText(text: string): ParsedScore | null {
 }
 
 /**
- * 移除评分标签
+ * 移除评分标签（宽松匹配：不要求属性顺序/存在性，畸形 score 标签也不会泄漏到正文）
  */
 export function removeScoreTag(text: string): string {
-  return text.replace(/<score\s+(?:total="[^"]+"\s+max="[^"]+"|max="[^"]+"\s+total="[^"]+")[^>]*>[\s\S]*?<\/score>/gi, '').trim();
+  return text.replace(/<score\b[^>]*>[\s\S]*?<\/score>/gi, '').trim();
 }
+
+// ============================================================================
+// 代码块与 Markdown 清理
+// ============================================================================
 
 /**
  * 移除代码块中的内容，用占位符替换
@@ -330,6 +474,10 @@ export function removeScoreTag(text: string): string {
  */
 function extractCodeBlocks(text: string): { cleanText: string; codeBlocks: Map<string, string> } {
   const codeBlocks = new Map<string, string>();
+  // 早退：无代码块围栏时跳过替换扫描
+  if (!text.includes('```')) {
+    return { cleanText: text, codeBlocks };
+  }
   let counter = 0;
   
   // 匹配 ```...``` 代码块
@@ -346,6 +494,7 @@ function extractCodeBlocks(text: string): { cleanText: string; codeBlocks: Map<s
  * 恢复代码块内容
  */
 function restoreCodeBlocks(markers: StreamingMarker[], codeBlocks: Map<string, string>): StreamingMarker[] {
+  if (codeBlocks.size === 0) return markers;
   return markers.map(marker => {
     if (marker.type === 'text' && marker.content) {
       let content = marker.content;
@@ -384,6 +533,16 @@ function cleanMarkdownSyntax(text: string): string {
     .replace(/^[\t ]*\d+\.\s+/gm, '');
 }
 
+// ============================================================================
+// 流式解析主函数
+// ============================================================================
+
+/**
+ * 单槽结果缓存：同一帧内多个组件用相同输入调用时直接复用结果，
+ * 避免长文全量重解析的重复开销（结果视为不可变，可安全共享引用）。
+ */
+let lastParseCache: { text: string; isComplete: boolean; result: StreamingParseResult } | null = null;
+
 /**
  * 流式解析主函数
  * 
@@ -391,6 +550,19 @@ function cleanMarkdownSyntax(text: string): string {
  * @param isComplete 流式是否已完成
  */
 export function parseStreamingContent(text: string, isComplete: boolean): StreamingParseResult {
+  if (
+    lastParseCache &&
+    lastParseCache.isComplete === isComplete &&
+    lastParseCache.text === text
+  ) {
+    return lastParseCache.result;
+  }
+  const result = doParseStreamingContent(text, isComplete);
+  lastParseCache = { text, isComplete, result };
+  return result;
+}
+
+function doParseStreamingContent(text: string, isComplete: boolean): StreamingParseResult {
   // 1. 提取代码块，避免解析代码块内的标记
   const { cleanText, codeBlocks } = extractCodeBlocks(text);
   
@@ -450,17 +622,21 @@ export function parseStreamingContent(text: string, isComplete: boolean): Stream
 // Section extractors
 // ============================================================================
 
+const POLISH_SECTION_REGEX = /<section-polish>([\s\S]*?)<\/section-polish>/i;
+const POLISH_ITEM_REGEX = /<polish-item>\s*<original>([\s\S]*?)<\/original>\s*<polished>([\s\S]*?)<\/polished>\s*<\/polish-item>/gi;
+const MODEL_ESSAY_REGEX = /<section-model-essay>([\s\S]*?)<\/section-model-essay>/i;
+
 /**
  * 提取 <section-polish> 中的润色项
  */
 function extractPolishItems(text: string): PolishItem[] {
-  const sectionMatch = text.match(/<section-polish>([\s\S]*?)<\/section-polish>/i);
+  const sectionMatch = text.match(POLISH_SECTION_REGEX);
   if (!sectionMatch) return [];
   const content = sectionMatch[1];
   const items: PolishItem[] = [];
-  const itemRegex = /<polish-item>\s*<original>([\s\S]*?)<\/original>\s*<polished>([\s\S]*?)<\/polished>\s*<\/polish-item>/gi;
   let m;
-  while ((m = itemRegex.exec(content)) !== null) {
+  POLISH_ITEM_REGEX.lastIndex = 0;
+  while ((m = POLISH_ITEM_REGEX.exec(content)) !== null) {
     items.push({ original: m[1].trim(), polished: m[2].trim() });
   }
   return items;
@@ -470,19 +646,25 @@ function extractPolishItems(text: string): PolishItem[] {
  * 提取 <section-model-essay> 中的范文文本
  */
 function extractModelEssay(text: string): string | null {
-  const match = text.match(/<section-model-essay>([\s\S]*?)<\/section-model-essay>/i);
+  const match = text.match(MODEL_ESSAY_REGEX);
   return match ? match[1].trim() : null;
 }
 
 /**
  * 移除 section 标签（用于批注正文视图，避免 section 内容出现在主文中）
+ * 开闭标签按标签名配对（反向引用 \1），避免 <section-polish>...</section-model-essay>
+ * 这类交错标签被误配整段删除。
  */
 export function removeSectionTags(text: string): string {
+  // 早退：无 section 标签时跳过三趟替换
+  if (!/<\/?section-/i.test(text)) return text.trim();
   return text
-    // 完整闭合的 section 标签（合并两种 section 类型为单次 pass）
-    .replace(/<section-(?:polish|model-essay)>[\s\S]*?<\/section-(?:polish|model-essay)>/gi, '')
+    // 完整闭合的 section 标签，开闭标签名必须一致
+    .replace(/<section-(polish|model-essay)>[\s\S]*?<\/section-\1>/gi, '')
     // 流式中未闭合的 section 开始标签（含已接收的部分内容）
-    .replace(/<section-(?:polish|model-essay)>[\s\S]*$/gi, '')
+    .replace(/<section-(?:polish|model-essay)>[\s\S]*$/i, '')
+    // 交错/畸形残留的孤儿结束标签
+    .replace(/<\/section-(?:polish|model-essay)>/gi, '')
     .trim();
 }
 

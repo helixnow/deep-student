@@ -46,10 +46,20 @@ pub struct ChatTranslationRequest {
 }
 
 /// 流事件 payload（独立于 standalone 翻译事件，结构更精简）
+///
+/// 协议演进（向后兼容，只增不改名）：
+/// - `chunk.delta`：增量文本，前端自行拼接。当前实现只发 delta，
+///   避免旧协议"每个 chunk 回传全量 accumulated"造成的 O(n²) IPC 拷贝。
+/// - `chunk.accumulated`：旧协议的全量累积字段，保留为可选仅供兼容；
+///   为 `None` 时不参与序列化（旧前端若收不到该字段会退回 delta 拼接）。
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ChatTranslationEvent {
-    Chunk { delta: String, accumulated: String },
+    Chunk {
+        delta: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        accumulated: Option<String>,
+    },
     Complete,
     Error { message: String },
     Cancelled,
@@ -225,10 +235,10 @@ async fn run_chat_translation(
         ChatTranslationMode::Plain => build_plain_prompts(&request),
     };
 
-    // 3. 流式调用 + 转发事件
+    // 3. 流式调用 + 转发事件（只发增量 delta；全量文本由前端拼接）
     let window_for_chunk = window.clone();
     let event_for_chunk = event_name.clone();
-    let mut accumulated = String::new();
+    let mut accumulated_chars: usize = 0; // 仅用于日志统计，不再拼接/回传全量文本
     let stream_result = stream_translate(
         &config,
         &api_key,
@@ -237,13 +247,13 @@ async fn run_chat_translation(
         &event_name,
         state.llm_manager.clone(),
         |chunk| {
-            accumulated.push_str(&chunk);
+            accumulated_chars += chunk.chars().count();
             emit_event(
                 &window_for_chunk,
                 &event_for_chunk,
                 ChatTranslationEvent::Chunk {
                     delta: chunk,
-                    accumulated: accumulated.clone(),
+                    accumulated: None,
                 },
             );
         },
@@ -255,8 +265,7 @@ async fn run_chat_translation(
             emit_event(&window, &event_name, ChatTranslationEvent::Complete);
             info!(
                 "[ChatTranslation] complete event={} chars={}",
-                event_name,
-                accumulated.chars().count()
+                event_name, accumulated_chars
             );
             Ok(())
         }

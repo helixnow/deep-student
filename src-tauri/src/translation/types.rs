@@ -20,8 +20,9 @@ pub struct TranslationRequest {
     pub session_id: String,
 
     /// 风格控制（可选）
+    /// "formal" | "casual" | "auto"（匹配原文语气） | null
     #[serde(default)]
-    pub formality: Option<String>, // "formal" | "casual" | null
+    pub formality: Option<String>,
 
     /// 术语表（可选，键值对：源词 -> 目标词）
     #[serde(default)]
@@ -59,11 +60,26 @@ pub struct TranslationStreamData {
     /// 本次增量内容（A6-11: 前端按 chunk 自行累加，不再回传全量 accumulated 以避免 IPC O(n²)）
     pub chunk: String,
 
-    /// 当前字符数
+    /// 本次增量内容（与 `chunk` 相同；新协议字段，前端应逐步迁移到 delta）
+    pub delta: String,
+
+    /// 当前字符数（增量维护，非全量扫描）
     pub char_count: usize,
 
-    /// 估算的单词数
+    /// 估算的单词数（增量维护；CJK 文本按空白分词意义有限，仅供参考）
     pub word_count: usize,
+
+    /// 检测到的源语言（仅 src_lang == "auto" 且启发式检测成功时携带）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detected_lang: Option<String>,
+
+    /// 当前分段序号（从 1 开始；仅长文本分段翻译时携带）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub segment_index: Option<usize>,
+
+    /// 分段总数（仅长文本分段翻译时携带）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub segment_total: Option<usize>,
 }
 
 /// SSE 事件负载 - 完成
@@ -81,6 +97,10 @@ pub struct TranslationStreamComplete {
 
     /// 创建时间
     pub created_at: String,
+
+    /// 检测到的源语言（仅 src_lang == "auto" 且启发式检测成功时携带）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detected_lang: Option<String>,
 }
 
 /// SSE 事件负载 - 错误
@@ -90,8 +110,16 @@ pub struct TranslationStreamError {
     #[serde(rename = "type")]
     pub event_type: String, // "error"
 
-    /// 错误消息
+    /// 用户可读错误消息
     pub message: String,
+
+    /// 机器可读错误码（如 "http_401" / "rate_limited" / "timeout_idle" / "stream_incomplete"）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+
+    /// 该错误是否可重试（后端已做有限次自动重试后仍失败时为用户手动重试提示）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retriable: Option<bool>,
 }
 
 /// SSE 事件负载 - 取消

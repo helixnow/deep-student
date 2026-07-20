@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { ocrExtractText, TauriAPI } from '../utils/tauriApi';
@@ -9,13 +9,15 @@ import {
 import { getErrorMessage } from '../utils/errorUtils';
 import { showGlobalNotification } from './UnifiedNotification';
 // 独立翻译流式管线
-import { useTranslationStream } from '../translation/useTranslationStream';
+import {
+  useTranslationStream,
+  TRANSLATION_STREAM_UNMOUNTED_ERROR,
+} from '../translation/useTranslationStream';
 import * as TTS from '../utils/tts';
 import { fileManager } from '../utils/fileManager';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
-import { WarningCircle, ArrowClockwise, WifiSlash } from '@phosphor-icons/react';
+import { WarningCircle, ArrowClockwise, WifiSlash, Info, Translate } from '@phosphor-icons/react';
 import { NotionButton } from './ui/NotionButton';
-import { NotionAlertDialog } from './ui/NotionDialog';
 
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 
@@ -28,6 +30,39 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 
 /** Maximum characters allowed for source text input */
 const TRANSLATION_MAX_CHARS = 50000;
+
+/** localStorage key：工作台偏好（自动翻译/同步滚动/默认语向/正式度） */
+const WORKBENCH_PREFS_KEY = 'translation.workbench.prefs';
+
+const IS_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent || '');
+const MOD_KEY_LABEL = IS_MAC ? '⌘' : 'Ctrl';
+
+interface WorkbenchPrefs {
+  autoTranslate?: boolean;
+  syncScroll?: boolean;
+  srcLang?: string;
+  tgtLang?: string;
+  formality?: 'formal' | 'casual' | 'auto';
+}
+
+function loadWorkbenchPrefs(): WorkbenchPrefs {
+  try {
+    const raw = localStorage.getItem(WORKBENCH_PREFS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as WorkbenchPrefs) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveWorkbenchPrefs(patch: Partial<WorkbenchPrefs>) {
+  try {
+    localStorage.setItem(WORKBENCH_PREFS_KEY, JSON.stringify({ ...loadWorkbenchPrefs(), ...patch }));
+  } catch {
+    // localStorage 不可用时静默降级（偏好不持久化，不影响功能）
+  }
+}
 
 function translationDirtySnapshot(session: {
   sourceText?: string;
@@ -62,6 +97,48 @@ function cleanOcrText(text: string): string {
     .replace(/[ \t]+/g, ' ')               // collapse multiple spaces/tabs
     .replace(/\n{3,}/g, '\n\n')            // limit consecutive blank lines
     .trim();
+}
+
+/**
+ * 轻量语言检测启发式（auto 模式的检测回显）。
+ *
+ * 后端事件协议已预留 detected_lang 扩展字段（useTranslationStream 会优先采用），
+ * 本函数仅作前端回显兜底：按字符 script 判断主导语言，拉丁文本只有在命中
+ * 常见英文功能词时才回显英语，无法可靠判断时返回 null（不显示提示）。
+ */
+function detectLanguageHeuristic(text: string): string | null {
+  const sample = text.slice(0, 400);
+  if (!sample.trim()) return null;
+  let han = 0, kana = 0, hangul = 0, cyrillic = 0, arabic = 0, thai = 0, devanagari = 0, greek = 0, latin = 0;
+  for (const ch of sample) {
+    const code = ch.codePointAt(0) ?? 0;
+    if ((code >= 0x4e00 && code <= 0x9fff) || (code >= 0x3400 && code <= 0x4dbf)) han++;
+    else if (code >= 0x3040 && code <= 0x30ff) kana++;
+    else if (code >= 0xac00 && code <= 0xd7af) hangul++;
+    else if (code >= 0x0400 && code <= 0x04ff) cyrillic++;
+    else if (code >= 0x0600 && code <= 0x06ff) arabic++;
+    else if (code >= 0x0e00 && code <= 0x0e7f) thai++;
+    else if (code >= 0x0900 && code <= 0x097f) devanagari++;
+    else if (code >= 0x0370 && code <= 0x03ff) greek++;
+    else if ((code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a) || (code >= 0xc0 && code <= 0x24f)) latin++;
+  }
+  const total = han + kana + hangul + cyrillic + arabic + thai + devanagari + greek + latin;
+  if (total < 4) return null;
+  if (kana >= 2) return 'ja';
+  if (hangul >= 2) return 'ko';
+  if (han >= Math.max(2, total * 0.3)) return 'zh-CN';
+  if (cyrillic > total * 0.5) return 'ru';
+  if (arabic > total * 0.5) return 'ar';
+  if (thai > total * 0.5) return 'th';
+  if (devanagari > total * 0.5) return 'hi';
+  if (greek > total * 0.5) return 'el';
+  if (latin > total * 0.6) {
+    const lower = ` ${sample.toLowerCase()} `;
+    const hits = [' the ', ' and ', ' is ', ' of ', ' to ', ' in ', ' that ', ' it ']
+      .filter((w) => lower.includes(w)).length;
+    if (hits >= 2) return 'en';
+  }
+  return null;
 }
 
 /**
@@ -104,17 +181,22 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   // 独立翻译流式管线
   const translationStream = useTranslationStream();
 
-  // 布局状态
-  const [isMaximized, setIsMaximized] = useState(false);
-  const [isSourceCollapsed, setIsSourceCollapsed] = useState(false);
+  // 持久化偏好（只在首次渲染读取一次）
+  const prefsRef = useRef<WorkbenchPrefs | null>(null);
+  if (prefsRef.current === null) {
+    prefsRef.current = loadWorkbenchPrefs();
+  }
+  const prefs = prefsRef.current;
 
-  // 左栏状态（从 session 初始化）
+  // 左栏状态（session 优先，其次持久化偏好）
   const [sourceText, setSourceText] = useState(initialSession?.sourceText || '');
-  const [srcLang, setSrcLang] = useState(initialSession?.srcLang || 'auto');
-  const [tgtLang, setTgtLang] = useState(initialSession?.tgtLang || 'zh-CN');
+  const [srcLang, setSrcLang] = useState(initialSession?.srcLang || prefs.srcLang || 'auto');
+  const [tgtLang, setTgtLang] = useState(initialSession?.tgtLang || prefs.tgtLang || 'zh-CN');
   const [customPrompt, setCustomPrompt] = useState('');
   const [showPromptEditor, setShowPromptEditor] = useState(false);
-  const [formality, setFormality] = useState<'formal' | 'casual' | 'auto'>(initialSession?.formality || 'auto');
+  const [formality, setFormality] = useState<'formal' | 'casual' | 'auto'>(
+    initialSession?.formality || prefs.formality || 'auto'
+  );
   const [domain, setDomain] = useState<string>(initialSession?.domain || 'general');
   const [glossary, setGlossary] = useState<Array<[string, string]>>(initialSession?.glossary || []);
 
@@ -126,14 +208,27 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   const isSpeakingRef = useRef(false);
   const speakIdRef = useRef(0);
 
-  const [isSyncScroll, setIsSyncScroll] = useState(true);
-  const [isAutoTranslate, setIsAutoTranslate] = useState(false);
-  // A6-16: 清空确认改为声明式 NotionAlertDialog（替换 window.confirm）
+  const [isSyncScroll, setIsSyncScrollState] = useState(prefs.syncScroll ?? true);
+  const [isAutoTranslate, setIsAutoTranslateState] = useState(prefs.autoTranslate ?? false);
+  // 清空确认：内联确认条（不使用模态框）
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // 错误状态管理
   const [translationError, setTranslationError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
+
+  // 偏好持久化：开关走包装 setter，语向/正式度统一走 effect
+  const setIsSyncScroll = useCallback((value: boolean) => {
+    setIsSyncScrollState(value);
+    saveWorkbenchPrefs({ syncScroll: value });
+  }, []);
+  const setIsAutoTranslate = useCallback((value: boolean) => {
+    setIsAutoTranslateState(value);
+    saveWorkbenchPrefs({ autoTranslate: value });
+  }, []);
+  useEffect(() => {
+    saveWorkbenchPrefs({ srcLang, tgtLang, formality });
+  }, [srcLang, tgtLang, formality]);
 
   // 网络状态监听
   // NOTE: 'online'/'offline' are standard browser events on window — not a custom event violation.
@@ -173,6 +268,14 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   const isTranslating = translationStream.isTranslating;
   const setTranslatedText = translationStream.setTranslatedText;
   const streamError = translationStream.error;
+  const isPartialResult = translationStream.isPartialResult;
+
+  // 检测语言回显：优先后端事件（协议扩展点），否则前端启发式
+  const heuristicDetectedLang = useMemo(
+    () => (srcLang === 'auto' ? detectLanguageHeuristic(sourceText) : null),
+    [srcLang, sourceText]
+  );
+  const detectedLang = translationStream.detectedLang ?? heuristicDetectedLang;
 
   const persistedDirtySnapshotRef = useRef(translationDirtySnapshot(initialSession ?? {}));
   const currentDirtySnapshotRef = useRef(persistedDirtySnapshotRef.current);
@@ -205,12 +308,6 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     persistedDirtySnapshotRef.current = translationDirtySnapshot(session);
   }, []);
 
-  // 使用 ref 跟踪最新的翻译文本，避免 stale closure 问题
-  const translatedTextRef = useRef(translatedText);
-  useEffect(() => {
-    translatedTextRef.current = translatedText;
-  }, [translatedText]);
-
   // 同步流式管线的错误状态到本地
   useEffect(() => {
     if (streamError) {
@@ -219,57 +316,82 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   }, [streamError]);
 
   // 初始化会话数据（编辑已有记录时）
+  // 无条件赋值（含空字符串），确保父级会话被清空/刷新时本地状态一致
   useEffect(() => {
-    if (initialSession?.id) {
-      // 同步原文
-      if (initialSession.sourceText) {
-        setSourceText(initialSession.sourceText);
-      }
-      // 同步译文
-      if (initialSession.translatedText) {
-        setTranslatedText(initialSession.translatedText);
-      }
-      // 同步语言设置
-      if (initialSession.srcLang) {
-        setSrcLang(initialSession.srcLang);
-      }
-      if (initialSession.tgtLang) {
-        setTgtLang(initialSession.tgtLang);
-      }
-      // 同步正式度
-      if (initialSession.formality) {
-        setFormality(initialSession.formality);
-      }
-      // 同步领域
-      setDomain(initialSession.domain || 'general');
-      // 同步术语表
-      setGlossary(initialSession.glossary || []);
-      // 同步质量评分
-      if (initialSession.quality !== undefined) {
-        setTranslationQuality(initialSession.quality);
-      }
-    }
+    if (!initialSession?.id) return;
+    setSourceText(initialSession.sourceText ?? '');
+    setTranslatedText(initialSession.translatedText ?? '');
+    setSrcLang(initialSession.srcLang || 'auto');
+    setTgtLang(initialSession.tgtLang || 'zh-CN');
+    setFormality(initialSession.formality || 'auto');
+    setDomain(initialSession.domain || 'general');
+    setGlossary(initialSession.glossary || []);
+    setTranslationQuality(initialSession.quality ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSession?.id]);
 
-  // 加载自定义 Prompt
+  // ★ A6-06：最近一次已执行翻译的参数签名；恢复历史会话时已有译文视为"已翻译过"
+  // 签名结构与 buildTranslationSig 对齐：[source, src, tgt, customPrompt, formality, domain, glossary]
+  const lastTranslatedSigRef = useRef<string | null>(
+    initialSession?.translatedText
+      ? JSON.stringify([
+          initialSession.sourceText || '',
+          initialSession.srcLang || 'auto',
+          initialSession.tgtLang || 'zh-CN',
+          '',
+          initialSession.formality || 'auto',
+          initialSession.domain || 'general',
+          initialSession.glossary || [],
+        ])
+      : null
+  );
+  // 恢复会话时签名中的 customPrompt 占位为 ''，待异步加载出真实 prompt 后补齐，
+  // 避免「打开历史 → prompt 加载完成 → 签名失配 → 自动翻译误触发」
+  const restoredSigPendingPromptRef = useRef<boolean>(Boolean(initialSession?.translatedText));
+
+  const syncRestoredSigWithPrompt = useCallback((prompt: string) => {
+    if (!restoredSigPendingPromptRef.current) return;
+    if (!initialSession?.translatedText) return;
+    lastTranslatedSigRef.current = JSON.stringify([
+      initialSession.sourceText || '',
+      initialSession.srcLang || 'auto',
+      initialSession.tgtLang || 'zh-CN',
+      prompt,
+      initialSession.formality || 'auto',
+      initialSession.domain || 'general',
+      initialSession.glossary || [],
+    ]);
+  }, [initialSession]);
+
+  // 加载自定义 Prompt（带 stale 守卫，防止旧请求覆盖新 session 的 prompt）
   useEffect(() => {
+    let cancelled = false;
     const loadPrompt = async () => {
       // 优先使用 session 中的自定义提示词
       if (initialSession?.customPrompt) {
         setCustomPrompt(initialSession.customPrompt);
+        syncRestoredSigWithPrompt(initialSession.customPrompt);
         return;
       }
       try {
         const saved = await TauriAPI.getSetting('translation.prompt');
-        setCustomPrompt(saved || t('translation:prompt_editor.default_prompt'));
+        if (cancelled) return;
+        const value = saved || t('translation:prompt_editor.default_prompt');
+        setCustomPrompt(value);
+        syncRestoredSigWithPrompt(value);
       } catch (error: unknown) {
+        if (cancelled) return;
         console.error('[Translation] Failed to load prompt:', error);
-        setCustomPrompt(t('translation:prompt_editor.default_prompt'));
+        const fallback = t('translation:prompt_editor.default_prompt');
+        setCustomPrompt(fallback);
+        syncRestoredSigWithPrompt(fallback);
       }
     };
     loadPrompt();
-  }, [t, initialSession?.customPrompt]);
+    return () => {
+      cancelled = true;
+    };
+  }, [t, initialSession?.customPrompt, syncRestoredSigWithPrompt]);
 
   // 字符统计
   const sourceCharCount = sourceText.length;
@@ -277,7 +399,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   const isSourceOverLimit = sourceCharCount > TRANSLATION_MAX_CHARS;
 
   // Guarded setter: warn & truncate when source text exceeds limit
+  // 编辑原文同时清除旧错误（恢复自动翻译）并收起清空确认条
   const handleSetSourceText = useCallback((text: string) => {
+    setTranslationError(null);
+    setShowClearConfirm(false);
     if (text.length > TRANSLATION_MAX_CHARS) {
       showGlobalNotification('warning', t('translation:errors.text_too_long', {
         max: TRANSLATION_MAX_CHARS.toLocaleString(),
@@ -288,12 +413,16 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     setSourceText(text);
   }, [t]);
 
+  // 拖拽文件读取的序号守卫：快速连续拖入多个文件时只保留最后一次结果
+  const fileReadSeqRef = useRef(0);
+
   // 拖拽文件处理
   const handleFilesDropped = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
 
     const file = files[0]; // 只处理第一个文件
     const fileName = file.name.toLowerCase();
+    const seq = ++fileReadSeqRef.current;
 
     // ★ 大小校验兜底：浏览器拖拽/点击选择路径不经过原生路径校验，
     // 避免超大文件被 FileReader 整体读入内存
@@ -310,12 +439,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         showGlobalNotification('info', t('translation:toast.ocr_processing'));
         const reader = new FileReader();
         reader.onload = async (e) => {
+          if (seq !== fileReadSeqRef.current) return; // 已被更新的拖拽覆盖
           try {
             const dataUrl = e.target?.result as string;
             const extracted = await ocrExtractText({ imageBase64: dataUrl });
+            if (seq !== fileReadSeqRef.current) return;
             handleSetSourceText(cleanOcrText(extracted));
             showGlobalNotification('success', t('translation:toast.ocr_success'));
           } catch (error: unknown) {
+            if (seq !== fileReadSeqRef.current) return;
             const msg = getErrorMessage(error);
             if (msg === 'OCR_TIMEOUT') {
               showGlobalNotification('warning', t('translation:toast.ocr_failed', { error: t('translation:errors.ocr_timeout_retry') }));
@@ -324,12 +456,17 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
             }
           }
         };
+        reader.onerror = () => {
+          if (seq !== fileReadSeqRef.current) return;
+          showGlobalNotification('error', t('translation:errors.ocr_failed'));
+        };
         reader.readAsDataURL(file);
       } else if (fileName.match(/\.(pdf|docx|txt|md)$/)) {
         // 文档：解析文本
         showGlobalNotification('info', t('translation:toast.parse_processing'));
         const reader = new FileReader();
         reader.onload = async (e) => {
+          if (seq !== fileReadSeqRef.current) return;
           try {
             const dataUrl = e.target?.result as string;
             const base64Content = dataUrl.split(',')[1];
@@ -338,11 +475,17 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               fileName: file.name,
               base64Content,
             });
+            if (seq !== fileReadSeqRef.current) return;
             handleSetSourceText(extracted);
             showGlobalNotification('success', t('translation:toast.parse_success'));
           } catch (error: unknown) {
+            if (seq !== fileReadSeqRef.current) return;
             showGlobalNotification('error', t('translation:toast.parse_failed', { error: getErrorMessage(error) }));
           }
+        };
+        reader.onerror = () => {
+          if (seq !== fileReadSeqRef.current) return;
+          showGlobalNotification('error', t('translation:errors.parse_failed'));
         };
         reader.readAsDataURL(file);
       } else {
@@ -357,21 +500,6 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   const buildTranslationSig = useCallback(
     () => JSON.stringify([sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary]),
     [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary]
-  );
-
-  // ★ A6-06：最近一次已执行翻译的参数签名；恢复历史会话时已有译文视为"已翻译过"
-  const lastTranslatedSigRef = useRef<string | null>(
-    initialSession?.translatedText
-      ? JSON.stringify([
-          initialSession.sourceText || '',
-          initialSession.srcLang || 'auto',
-          initialSession.tgtLang || 'zh-CN',
-          '',
-          initialSession.formality || 'auto',
-          initialSession.domain || 'general',
-          initialSession.glossary || [],
-        ])
-      : null
   );
 
   // 翻译（使用流式管线）
@@ -400,9 +528,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
     // ★ A6-06：登记本次翻译的参数签名（手动/自动触发都登记），自动翻译据此避免对同一内容重复触发
     lastTranslatedSigRef.current = buildTranslationSig();
+    restoredSigPendingPromptRef.current = false;
 
     try {
-      const outcome = await translationStream.startTranslation({
+      const result = await translationStream.startTranslation({
         text: sourceText,
         src_lang: srcLang,
         tgt_lang: tgtLang,
@@ -412,25 +541,25 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         domain: domain !== 'general' ? domain : undefined,
       });
 
-      if (outcome === 'completed') {
+      if (result.outcome === 'completed') {
         // 翻译成功，清除错误状态
         setTranslationError(null);
         // 翻译完成后保存会话到 DSTU
         if (dstuMode.onSessionSave) {
           try {
             const now = Date.now();
-            // 使用 ref 获取最新的翻译文本，避免 stale closure 问题
-            const latestTranslatedText = translatedTextRef.current;
+            // 直接使用 settle 结果携带的权威最终文本，规避 state→ref 晚一帧的竞态
             const sessionToSave: TranslationSession = {
               id: currentSessionIdRef.current || generateTranslationId(),
               sourceText,
-              translatedText: latestTranslatedText,
+              translatedText: result.translatedText,
               srcLang,
               tgtLang,
               formality,
               customPrompt: customPrompt || undefined,
-              domain: domain !== 'general' ? domain : undefined,
-              glossary: glossary.length > 0 ? glossary : undefined,
+              // domain / glossary 完整传入（含默认值），确保 DSTU metadata 落盘与清空生效
+              domain,
+              glossary,
               createdAt: initialSession?.createdAt || now,
               updatedAt: now,
             };
@@ -443,11 +572,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
             showGlobalNotification('error', t('translation:toast.save_failed'));
           }
         }
-      } else if (outcome === 'cancelled') {
+      } else if (result.outcome === 'cancelled') {
         showGlobalNotification('info', t('translation:toast.translate_cancelled'));
       }
     } catch (error: unknown) {
       const errorMsg = getErrorMessage(error);
+      // 组件卸载导致的终止：静默忽略
+      if (errorMsg.includes(TRANSLATION_STREAM_UNMOUNTED_ERROR)) {
+        return;
+      }
       console.error('[Translation] Failed:', error);
       // 设置错误状态以便 UI 显示
       setTranslationError(errorMsg);
@@ -459,6 +592,11 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       setIsRetrying(false);
     }
   }, [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline, buildTranslationSig, markTranslationPersisted]);
+
+  // 取消流式翻译（按钮 / Esc 快捷键共用；hook 内先本地 settle，反馈即时）
+  const handleCancelTranslation = useCallback(() => {
+    void translationStream.cancelTranslation();
+  }, [translationStream.cancelTranslation]);
 
   // 重试翻译
   const handleRetryTranslation = useCallback(() => {
@@ -493,20 +631,20 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     }
   }, [translatedText, t]);
 
-  // 交换源语言和目标语言
+  // 交换源语言和目标语言（auto 模式下若已有检测结果，用检测语言交换 —— 对齐 DeepL）
   const handleSwapLanguages = useCallback(() => {
-    if (srcLang === 'auto') {
+    const effectiveSrcLang = srcLang === 'auto' ? detectedLang : srcLang;
+    if (!effectiveSrcLang) {
       showGlobalNotification('warning', t('translation:errors.cannot_swap_auto'));
       return;
     }
-    const tempLang = srcLang;
     setSrcLang(tgtLang);
-    setTgtLang(tempLang);
+    setTgtLang(effectiveSrcLang);
     // 同时交换文本
     const tempText = sourceText;
     setSourceText(translatedText);
     setTranslatedText(tempText);
-  }, [srcLang, tgtLang, sourceText, translatedText, t, setTranslatedText]);
+  }, [srcLang, tgtLang, sourceText, translatedText, detectedLang, t, setTranslatedText]);
 
   // 自动翻译逻辑（智能 debounce：短文本快速触发，长文本延迟触发）
   // deps 包含所有影响翻译结果的参数，修改设置时也会重新触发
@@ -553,8 +691,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
           tgtLang,
           formality,
           customPrompt: customPrompt || undefined,
-          domain: domain !== 'general' ? domain : undefined,
-          glossary: glossary.length > 0 ? glossary : undefined,
+          domain,
+          glossary,
           quality: translationQuality ?? undefined,
           createdAt: initialSession?.createdAt || now,
           updatedAt: now,
@@ -699,8 +837,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
           tgtLang,
           formality,
           customPrompt: customPrompt || undefined,
-          domain: domain !== 'general' ? domain : undefined,
-          glossary: glossary.length > 0 ? glossary : undefined,
+          domain,
+          glossary,
           quality: rating,
           createdAt: initialSession?.createdAt || now,
           updatedAt: now,
@@ -729,20 +867,33 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         }
         return;
       }
-      // Ctrl/Cmd + Shift + S: 交换语言
+      // Ctrl/Cmd + Shift + S: 交换语言（auto 模式下用检测结果交换，handleSwapLanguages 自守卫）
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
         e.preventDefault();
         e.stopPropagation();
-        if (srcLang !== 'auto') {
-          handleSwapLanguages();
-        }
+        handleSwapLanguages();
         return;
       }
-      // Esc: 取消编辑
-      if (e.key === 'Escape' && isEditingTranslation) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleCancelEdit();
+      // Esc: 依次处理 —— 收起清空确认 → 取消流式翻译 → 取消编辑
+      if (e.key === 'Escape') {
+        if (showClearConfirm) {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowClearConfirm(false);
+          return;
+        }
+        if (isTranslating) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleCancelTranslation();
+          return;
+        }
+        if (isEditingTranslation) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleCancelEdit();
+          return;
+        }
         return;
       }
       // 注：已移除 Cmd+K 清空快捷键（与命令面板冲突）
@@ -751,44 +902,65 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sourceText, isTranslating, srcLang, isEditingTranslation, handleTranslate, handleSwapLanguages, handleCancelEdit, isActive]);
+  }, [sourceText, isTranslating, isEditingTranslation, showClearConfirm, handleTranslate, handleSwapLanguages, handleCancelEdit, handleCancelTranslation, isActive]);
 
-  // A6-16: 清空逻辑拆分 —— 有内容时弹声明式确认框，否则直接清空
+  // 清空逻辑：有内容时展开内联确认条，否则直接清空
+  // 清空同时重置错误/编辑/评分/自动翻译签名，避免「清空后粘贴相同文本不再自动翻译」
   const doClear = useCallback(() => {
     setSourceText('');
     setTranslatedText('');
     setTranslationQuality(null);
+    setTranslationError(null);
+    setIsEditingTranslation(false);
+    setEditedTranslation('');
+    lastTranslatedSigRef.current = null;
+    restoredSigPendingPromptRef.current = false;
   }, [setTranslatedText]);
 
   const handleClearRequest = useCallback(() => {
-    if (sourceText) {
+    if (sourceText || translatedText) {
       setShowClearConfirm(true);
     } else {
       doClear();
     }
-  }, [sourceText, doClear]);
+  }, [sourceText, translatedText, doClear]);
 
   const handleConfirmClear = useCallback(() => {
     setShowClearConfirm(false);
     doClear();
   }, [doClear]);
 
+  // 取消残留的部分译文：清除文本（保留原文），或仅关闭提示
+  const handleDiscardPartial = useCallback(() => {
+    setTranslatedText('');
+  }, [setTranslatedText]);
+
+  const detectedLangName = detectedLang
+    ? t(`translation:languages.${detectedLang}`, { defaultValue: detectedLang })
+    : null;
+
+  const shortcutHints: Array<{ combo: string; label: string; visible: boolean }> = [
+    { combo: `${MOD_KEY_LABEL}+Enter`, label: t('translation:workbench_ui.shortcut_translate'), visible: true },
+    { combo: `${MOD_KEY_LABEL}+Shift+S`, label: t('translation:workbench_ui.shortcut_swap'), visible: true },
+    { combo: 'Esc', label: t('translation:workbench_ui.shortcut_cancel'), visible: isTranslating },
+  ];
+
   return (
-      <div className="w-full h-full flex-1 min-h-0 bg-[hsl(var(--background))] flex flex-col overflow-hidden">
+      <div className="w-full h-full flex-1 min-h-0 bg-background flex flex-col overflow-hidden">
         <MacTopSafeDragZone className="translate-top-safe-drag-zone" />
 
         {/* 离线状态提示 */}
         {!isOnline && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-600 dark:text-yellow-400">
+          <div className="flex items-center gap-2 px-4 py-2 bg-warning/10 border-b border-warning/20 text-warning">
             <WifiSlash size={16} className="shrink-0" />
             <span className="text-sm">{t('translation:errors.offline')}</span>
           </div>
         )}
 
-        {/* 翻译错误提示 */}
+        {/* 翻译错误提示（内联错误条 + 重试） */}
         {translationError && !isTranslating && (
-          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-red-500/10 border-b border-red-500/20">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400 min-w-0">
+          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/20">
+            <div className="flex items-center gap-2 text-destructive min-w-0">
               <WarningCircle size={16} className="shrink-0" />
               <span className="text-sm truncate">{translationError}</span>
             </div>
@@ -797,7 +969,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               size="sm"
               onClick={handleRetryTranslation}
               disabled={isRetrying || !isOnline}
-              className="shrink-0 text-red-600 dark:text-red-400 hover:bg-red-500/10"
+              className="shrink-0 text-destructive hover:bg-destructive/10"
             >
               <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
               {t('common:retry')}
@@ -805,13 +977,55 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
           </div>
         )}
 
+        {/* 取消翻译后的部分结果提示（内联信息条） */}
+        {isPartialResult && !isTranslating && !translationError && (
+          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20">
+            <div className="flex items-center gap-2 text-info min-w-0">
+              <Info size={16} className="shrink-0" />
+              <span className="text-sm truncate">{t('translation:workbench_ui.cancelled_partial')}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={handleDiscardPartial}
+                className="text-info hover:bg-info/10"
+              >
+                {t('translation:workbench_ui.discard_partial')}
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={translationStream.acknowledgePartialResult}
+                className="text-muted-foreground"
+              >
+                {t('translation:workbench_ui.dismiss')}
+              </NotionButton>
+            </div>
+          </div>
+        )}
+
+        {/* 清空确认（内联确认条，替换模态框） */}
+        {showClearConfirm && (
+          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/20">
+            <div className="flex items-center gap-2 text-destructive min-w-0">
+              <WarningCircle size={16} className="shrink-0" />
+              <span className="text-sm truncate">{t('translation:confirm.clear')}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <NotionButton variant="ghost" size="sm" onClick={() => setShowClearConfirm(false)}>
+                {t('common:cancel')}
+              </NotionButton>
+              <NotionButton variant="danger" size="sm" onClick={handleConfirmClear}>
+                {t('common:clear')}
+              </NotionButton>
+            </div>
+          </div>
+        )}
+
         {/* Main Content */}
         <div className="flex-1 min-h-0 flex flex-col relative">
           <TranslationMain
-              isMaximized={isMaximized}
-              setIsMaximized={setIsMaximized}
-              isSourceCollapsed={isSourceCollapsed}
-              setIsSourceCollapsed={setIsSourceCollapsed}
               srcLang={srcLang}
               setSrcLang={setSrcLang}
               tgtLang={tgtLang}
@@ -821,9 +1035,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               sourceMaxChars={TRANSLATION_MAX_CHARS}
               isSourceOverLimit={isSourceOverLimit}
               translatedText={translatedText}
-              setTranslatedText={setTranslatedText}
               isTranslating={isTranslating}
-              translationProgress={0}
               customPrompt={customPrompt}
               setCustomPrompt={setCustomPrompt}
               showPromptEditor={showPromptEditor}
@@ -850,7 +1062,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               onSavePrompt={handleSavePrompt}
               onRestoreDefaultPrompt={handleRestoreDefaultPrompt}
               onTranslate={handleTranslate}
-              onCancelTranslation={() => translationStream.cancelTranslation()}
+              onCancelTranslation={handleCancelTranslation}
               onClear={handleClearRequest}
               onEditTranslation={handleEditTranslation}
               onSaveEditedTranslation={handleSaveEditedTranslation}
@@ -862,17 +1074,27 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 />
         </div>
 
-        {/* A6-16: 清空确认（替换 window.confirm） */}
-        <NotionAlertDialog
-          open={showClearConfirm}
-          onOpenChange={setShowClearConfirm}
-          title={t('translation:confirm.clear_title')}
-          description={t('translation:confirm.clear')}
-          confirmText={t('common:clear')}
-          cancelText={t('common:cancel')}
-          confirmVariant="danger"
-          onConfirm={handleConfirmClear}
-        />
+        {/* 底部状态条：检测语言回显 + 快捷键提示（桌面） */}
+        <div className="hidden md:flex items-center justify-between gap-3 px-4 py-1 border-t border-border/50 text-xs text-muted-foreground select-none shrink-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {srcLang === 'auto' && detectedLangName && (
+              <span className="flex items-center gap-1.5 truncate">
+                <Translate size={12} className="shrink-0" />
+                {t('translation:workbench_ui.detected_language', { language: detectedLangName })}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {shortcutHints.filter((hint) => hint.visible).map((hint) => (
+              <span key={hint.combo} className="flex items-center gap-1">
+                <kbd className="rounded-sm border border-border/60 bg-muted/40 px-1 leading-tight font-sans">
+                  {hint.combo}
+                </kbd>
+                {hint.label}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
   );
 };

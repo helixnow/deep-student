@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { InputPanel } from './InputPanel';
 import { ResultPanel } from './ResultPanel';
 import { SettingsDrawer } from './SettingsDrawer';
@@ -64,6 +64,8 @@ interface GradingMainProps {
   /** 重试回调 */
   onRetry?: () => void;
   isPartialResult?: boolean;
+  /** 采纳批改建议：应用一处修改到原文 */
+  onApplySuggestion?: (change: { original: string; replacement: string }) => void;
 
   // Round Props
   currentRound: number;
@@ -75,8 +77,13 @@ interface GradingMainProps {
     total: number;
     onPrev: () => void;
     onNext: () => void;
+    onSelect?: (index: number) => void;
   };
 }
+
+/** 桌面端内联设置列宽度（≥1024 略宽于 768-1024） */
+const SETTINGS_WIDTH_LG = 340;
+const SETTINGS_WIDTH_MD = 320;
 
 export const GradingMain: React.FC<GradingMainProps> = ({
   inputText,
@@ -120,6 +127,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   canRetry,
   onRetry,
   isPartialResult,
+  onApplySuggestion,
   currentRound,
   onModesChange,
   roundNavigation,
@@ -128,112 +136,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const resultRef = React.useRef<HTMLDivElement>(null);
 
-  // 桌面端设置抽屉状态
-  const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
-  
-  // 判断屏幕类型
-  const isMediumScreen = !isSmallScreen && !isLg; // 768px - 1024px
-
-  // ========== 移动端滑动布局状态 ==========
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-
-  const stateRef = useRef({
-    isDragging: false,
-    startX: 0,
-    startY: 0,
-    currentTranslate: 0,
-    axisLocked: null as 'horizontal' | 'vertical' | null,
-  });
-
-  // 监听容器宽度
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !isSmallScreen) return;
-
-    const updateWidth = () => setContainerWidth(container.clientWidth);
-    updateWidth();
-
-    const ro = new ResizeObserver(updateWidth);
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [isSmallScreen]);
-
-  // 设置面板宽度
-  const settingsPanelWidth = Math.max(containerWidth - 60, 280);
-
-  // 计算基础偏移
-  const getBaseTranslate = useCallback(() => {
-    return showPromptEditor ? -settingsPanelWidth : 0;
-  }, [showPromptEditor, settingsPanelWidth]);
-
-  // 拖拽处理
-  const handleDragStart = useCallback((clientX: number, clientY: number) => {
-    stateRef.current = {
-      isDragging: true,
-      startX: clientX,
-      startY: clientY,
-      currentTranslate: getBaseTranslate(),
-      axisLocked: null,
-    };
-    setIsDragging(true);
-    setDragOffset(0);
-  }, [getBaseTranslate]);
-
-  const handleDragMove = useCallback((clientX: number, clientY: number, preventDefault: () => void) => {
-    if (!stateRef.current.isDragging) return;
-
-    const deltaX = clientX - stateRef.current.startX;
-    const deltaY = clientY - stateRef.current.startY;
-
-    if (stateRef.current.axisLocked === null && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-      if (Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-        stateRef.current.axisLocked = 'horizontal';
-      } else {
-        stateRef.current.axisLocked = 'vertical';
-        stateRef.current.isDragging = false;
-        setIsDragging(false);
-        return;
-      }
-    }
-
-    if (stateRef.current.axisLocked === 'vertical') return;
-    if (stateRef.current.axisLocked === 'horizontal') preventDefault();
-
-    const minTranslate = -settingsPanelWidth;
-    const maxTranslate = 0;
-    let newTranslate = stateRef.current.currentTranslate + deltaX;
-    newTranslate = Math.max(minTranslate, Math.min(maxTranslate, newTranslate));
-
-    setDragOffset(newTranslate - getBaseTranslate());
-  }, [settingsPanelWidth, getBaseTranslate]);
-
-  const handleDragEnd = useCallback(() => {
-    if (!stateRef.current.isDragging) {
-      stateRef.current.axisLocked = null;
-      return;
-    }
-
-    const threshold = settingsPanelWidth * 0.3;
-    const offset = dragOffset;
-
-    if (Math.abs(offset) > threshold) {
-      if (offset > 0 && showPromptEditor) {
-        setShowPromptEditor(false);
-      } else if (offset < 0 && !showPromptEditor) {
-        setShowPromptEditor(true);
-      }
-    }
-
-    stateRef.current.isDragging = false;
-    stateRef.current.axisLocked = null;
-    setIsDragging(false);
-    setDragOffset(0);
-  }, [dragOffset, showPromptEditor, settingsPanelWidth, setShowPromptEditor]);
-
-  // 移动端：设置面板打开时注册 Android 返回键处理（返回 = 关闭面板）
+  // 移动端设置区展开时注册 Android 返回键（返回 = 收起内联设置区块）。
+  // 桌面端设置列是普通文档流列，不属于 overlay，不劫持返回键。
   useEffect(() => {
     if (!isSmallScreen || !showPromptEditor) return;
     return registerBackHandler(() => {
@@ -242,376 +146,162 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [isSmallScreen, showPromptEditor, setShowPromptEditor]);
 
-  // 绑定触摸事件
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !isSmallScreen) return;
+  // ========== 共享面板（各断点复用同一份 props，状态源唯一：showPromptEditor） ==========
+  const inputPanel = (
+    <InputPanel
+      ref={inputRef}
+      inputText={inputText}
+      setInputText={setInputText}
+      modeId={modeId}
+      setModeId={setModeId}
+      modes={modes}
+      modelId={modelId}
+      setModelId={setModelId}
+      models={models}
+      essayType={essayType}
+      setEssayType={setEssayType}
+      gradeLevel={gradeLevel}
+      setGradeLevel={setGradeLevel}
+      isGrading={isGrading}
+      onFilesDropped={onFilesDropped}
+      ocrMaxFiles={ocrMaxFiles}
+      customPrompt={customPrompt}
+      setCustomPrompt={setCustomPrompt}
+      showPromptEditor={showPromptEditor}
+      setShowPromptEditor={setShowPromptEditor}
+      onSavePrompt={onSavePrompt}
+      onRestoreDefaultPrompt={onRestoreDefaultPrompt}
+      onClear={onClear}
+      onGrade={onGrade}
+      onCancelGrading={onCancelGrading}
+      charCount={inputCharCount}
+      textStats={inputTextStats}
+      currentRound={currentRound}
+      roundNavigation={roundNavigation}
+      onOpenSettings={() => setShowPromptEditor(!showPromptEditor)}
+      uploadedImages={uploadedImages}
+      onRemoveImage={onRemoveImage}
+      topicText={topicText}
+      setTopicText={setTopicText}
+      topicImages={topicImages}
+      onTopicFilesDropped={onTopicFilesDropped}
+      onRemoveTopicImage={onRemoveTopicImage}
+    />
+  );
 
-    const onTouchStart = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      handleDragStart(touch.clientX, touch.clientY);
-    };
+  const resultPanel = (
+    <ResultPanel
+      ref={resultRef}
+      gradingResult={gradingResult}
+      isGrading={isGrading}
+      charCount={resultCharCount}
+      onCopyResult={onCopyResult}
+      onExportResult={onExportResult}
+      error={error}
+      canRetry={canRetry}
+      onRetry={onRetry}
+      isPartialResult={isPartialResult}
+      onApplySuggestion={onApplySuggestion}
+      currentRound={currentRound}
+      roundNavigation={roundNavigation}
+    />
+  );
 
-    const onTouchMove = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      handleDragMove(touch.clientX, touch.clientY, () => e.preventDefault());
-    };
+  const settingsPanel = (
+    <SettingsDrawer
+      isOpen={showPromptEditor}
+      onClose={() => setShowPromptEditor(false)}
+      modeId={modeId}
+      setModeId={setModeId}
+      modes={modes}
+      modelId={modelId}
+      setModelId={setModelId}
+      models={models}
+      customPrompt={customPrompt}
+      setCustomPrompt={setCustomPrompt}
+      onSavePrompt={onSavePrompt}
+      onRestoreDefaultPrompt={onRestoreDefaultPrompt}
+      isGrading={isGrading}
+      onModesChange={onModesChange}
+      essayType={essayType}
+      setEssayType={setEssayType}
+      gradeLevel={gradeLevel}
+      setGradeLevel={setGradeLevel}
+      variant="panel"
+    />
+  );
 
-    const onTouchEnd = () => handleDragEnd();
+  // ========== 设置区（内联，无抽屉 / 无遮罩 / 无 absolute 滑板） ==========
+  // 移动端：主分栏上方高度过渡展开的内联区块，推挤内容而非遮挡。
+  // 关闭态经 visibility 过渡转为 hidden，退出焦点链与无障碍树。
+  const mobileSettingsSection = (
+    <div
+      className={cn(
+        'shrink-0 overflow-hidden bg-background',
+        'transition-[height,visibility] duration-[var(--panel-open-dur,250ms)] ease-[var(--panel-ease,ease-out)] motion-reduce:transition-none',
+        showPromptEditor ? 'visible h-[min(60vh,420px)] border-b border-border/40' : 'invisible h-0',
+      )}
+      aria-hidden={!showPromptEditor}
+    >
+      {/* 内层固定高度：高度过渡期间内容不回流 */}
+      <div className="h-[min(60vh,420px)]">{settingsPanel}</div>
+    </div>
+  );
 
-    container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: false });
-    container.addEventListener('touchend', onTouchEnd);
-    container.addEventListener('touchcancel', onTouchEnd);
-
-    return () => {
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onTouchEnd);
-      container.removeEventListener('touchcancel', onTouchEnd);
-    };
-  }, [isSmallScreen, handleDragStart, handleDragMove, handleDragEnd]);
-
-  // ========== 移动端：滑动布局 ==========
-  if (isSmallScreen) {
-    const translateX = getBaseTranslate() + dragOffset;
-
-    return (
+  // 桌面端：右侧文档流内联列，width/visibility 过渡展开收起；
+  // 内层固定宽度并右对齐（ml-auto），过渡期间内容不挤压、呈滑入观感；
+  // 主分栏 flex-1 自动平滑让位。
+  const settingsWidth = isLg ? SETTINGS_WIDTH_LG : SETTINGS_WIDTH_MD;
+  const desktopSettingsColumn = (
+    <div
+      className={cn(
+        'h-full min-h-0 shrink-0 overflow-hidden',
+        'transition-[width,visibility] duration-[var(--panel-open-dur,250ms)] ease-[var(--panel-ease,ease-out)] motion-reduce:transition-none',
+        showPromptEditor ? 'visible' : 'invisible',
+      )}
+      style={{ width: showPromptEditor ? settingsWidth : 0 }}
+      aria-hidden={!showPromptEditor}
+    >
       <div
-        ref={containerRef}
-        className="relative h-full min-h-0 flex-1 overflow-hidden bg-background select-none"
-        style={{ touchAction: 'pan-y pinch-zoom' }}
-        // 自带横向滑动手势（滑出设置面板），豁免三屏布局手势避免冲突
-        data-no-screen-swipe
+        className="h-full min-h-0 ml-auto border-l border-border/40 bg-background"
+        style={{ width: settingsWidth }}
       >
-        {/* 滑动内容容器：主界面(100%) + 设置面板(settingsPanelWidth) */}
-        <div
-          className="flex h-full"
-          style={{
-            width: `calc(100% + ${settingsPanelWidth}px)`,
-            transform: `translateX(${translateX}px)`,
-            transition: isDragging ? 'none' : 'transform var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1))',
-          }}
-        >
-          {/* 主界面：批改内容 */}
-          <div
-            className="h-full flex-shrink-0 flex flex-col"
-            style={{ width: containerWidth || '100vw' }}
-          >
-            <VerticalResizable
-              initial={0.4}
-              minTop={0.2}
-              minBottom={0.3}
-              className="bg-background"
-              top={
-                <InputPanel
-                  ref={inputRef}
-                  inputText={inputText}
-                  setInputText={setInputText}
-                  modeId={modeId}
-                  setModeId={setModeId}
-                  modes={modes}
-                  modelId={modelId}
-                  setModelId={setModelId}
-                  models={models}
-                  essayType={essayType}
-                  setEssayType={setEssayType}
-                  gradeLevel={gradeLevel}
-                  setGradeLevel={setGradeLevel}
-                  isGrading={isGrading}
-                  onFilesDropped={onFilesDropped}
-                  ocrMaxFiles={ocrMaxFiles}
-                  customPrompt={customPrompt}
-                  setCustomPrompt={setCustomPrompt}
-                  showPromptEditor={showPromptEditor}
-                  setShowPromptEditor={setShowPromptEditor}
-                  onSavePrompt={onSavePrompt}
-                  onRestoreDefaultPrompt={onRestoreDefaultPrompt}
-                  onClear={onClear}
-                  onGrade={onGrade}
-                  onCancelGrading={onCancelGrading}
-                  charCount={inputCharCount}
-                  textStats={inputTextStats}
-                  currentRound={currentRound}
-                  roundNavigation={roundNavigation}
-                  onOpenSettings={() => setShowPromptEditor(true)}
-                  uploadedImages={uploadedImages}
-                  onRemoveImage={onRemoveImage}
-                  topicText={topicText}
-                  setTopicText={setTopicText}
-                  topicImages={topicImages}
-                  onTopicFilesDropped={onTopicFilesDropped}
-                  onRemoveTopicImage={onRemoveTopicImage}
-                />
-              }
-              bottom={
-                <ResultPanel
-                  ref={resultRef}
-                  gradingResult={gradingResult}
-                  isGrading={isGrading}
-                  charCount={resultCharCount}
-                  onCopyResult={onCopyResult}
-                  onExportResult={onExportResult}
-                  error={error}
-                  canRetry={canRetry}
-                  onRetry={onRetry}
-                  isPartialResult={isPartialResult}
-                  currentRound={currentRound}
-                  roundNavigation={roundNavigation}
-                />
-              }
-            />
-          </div>
-
-          {/* 右侧：设置面板（复用 SettingsDrawer，内联编辑模式） */}
-          <div
-            className="h-full flex-shrink-0 bg-background border-l"
-            style={{ width: settingsPanelWidth }}
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchMove={(e) => e.stopPropagation()}
-            onTouchEnd={(e) => e.stopPropagation()}
-          >
-            <SettingsDrawer
-              isOpen={showPromptEditor}
-              onClose={() => setShowPromptEditor(false)}
-              modeId={modeId}
-              setModeId={setModeId}
-              modes={modes}
-              modelId={modelId}
-              setModelId={setModelId}
-              models={models}
-              customPrompt={customPrompt}
-              setCustomPrompt={setCustomPrompt}
-              onSavePrompt={onSavePrompt}
-              onRestoreDefaultPrompt={onRestoreDefaultPrompt}
-              isGrading={isGrading}
-              onModesChange={onModesChange}
-              variant="panel"
-            />
-          </div>
-        </div>
+        {settingsPanel}
       </div>
-    );
-  }
+    </div>
+  );
 
-  // ========== 中等屏幕（768px-1024px）：上下布局 + 设置抽屉 ==========
-  if (isMediumScreen) {
-    return (
-      <div className="relative h-full min-h-0 flex-1 overflow-hidden bg-background">
-        {/* 主内容区 */}
-        <div 
-          className={cn(
-            "h-full min-h-0 transition-all duration-300 ease-out",
-            showSettingsDrawer ? "mr-[320px]" : "mr-0"
-          )}
-        >
-          <VerticalResizable
-            initial={0.45}
-            minTop={0.25}
-            minBottom={0.35}
-            className="bg-background"
-            top={
-              <InputPanel
-                ref={inputRef}
-                inputText={inputText}
-                setInputText={setInputText}
-                modeId={modeId}
-                setModeId={setModeId}
-                modes={modes}
-                modelId={modelId}
-                setModelId={setModelId}
-                models={models}
-                essayType={essayType}
-                setEssayType={setEssayType}
-                gradeLevel={gradeLevel}
-                setGradeLevel={setGradeLevel}
-                isGrading={isGrading}
-                onFilesDropped={onFilesDropped}
-                ocrMaxFiles={ocrMaxFiles}
-                customPrompt={customPrompt}
-                setCustomPrompt={setCustomPrompt}
-                showPromptEditor={false}
-                setShowPromptEditor={() => setShowSettingsDrawer(true)}
-                onSavePrompt={onSavePrompt}
-                onRestoreDefaultPrompt={onRestoreDefaultPrompt}
-                onClear={onClear}
-                onGrade={onGrade}
-                onCancelGrading={onCancelGrading}
-                charCount={inputCharCount}
-                textStats={inputTextStats}
-                currentRound={currentRound}
-                roundNavigation={roundNavigation}
-                onOpenSettings={() => setShowSettingsDrawer(true)}
-                uploadedImages={uploadedImages}
-                onRemoveImage={onRemoveImage}
-                topicText={topicText}
-                setTopicText={setTopicText}
-                topicImages={topicImages}
-                onTopicFilesDropped={onTopicFilesDropped}
-                onRemoveTopicImage={onRemoveTopicImage}
-              />
-            }
-            bottom={
-              <ResultPanel
-                ref={resultRef}
-                gradingResult={gradingResult}
-                isGrading={isGrading}
-                charCount={resultCharCount}
-                onCopyResult={onCopyResult}
-                onExportResult={onExportResult}
-                error={error}
-                canRetry={canRetry}
-                onRetry={onRetry}
-                isPartialResult={isPartialResult}
-                currentRound={currentRound}
-                roundNavigation={roundNavigation}
-              />
-            }
-          />
-        </div>
-
-        {/* 设置抽屉遮罩 */}
-        {showSettingsDrawer && (
-          <div 
-            className="absolute inset-0 bg-black/20 z-10"
-            onClick={() => setShowSettingsDrawer(false)}
-          />
-        )}
-
-        {/* 设置抽屉 */}
-        <div 
-          className={cn(
-            "absolute top-0 right-0 h-full w-[320px] z-20 transition-transform duration-300 ease-out",
-            showSettingsDrawer ? "translate-x-0" : "translate-x-full"
-          )}
-        >
-          <SettingsDrawer
-            isOpen={showSettingsDrawer}
-            onClose={() => setShowSettingsDrawer(false)}
-            modeId={modeId}
-            setModeId={setModeId}
-            modes={modes}
-            modelId={modelId}
-            setModelId={setModelId}
-            models={models}
-            customPrompt={customPrompt}
-            setCustomPrompt={setCustomPrompt}
-            onSavePrompt={onSavePrompt}
-            onRestoreDefaultPrompt={onRestoreDefaultPrompt}
-            isGrading={isGrading}
-            onModesChange={onModesChange}
-            variant="drawer"
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // ========== 桌面大屏（≥1024px）：左右分栏 + 可折叠设置抽屉 ==========
-  // 计算设置抽屉宽度
-  const settingsDrawerWidth = 320;
-  
+  // ========== 统一布局：所有断点共用一个结构 ==========
+  // 小屏：设置区块在上（高度过渡）+ 上下分栏；
+  // 中屏：上下分栏 + 右侧内联设置列；大屏：左右分栏 + 右侧内联设置列。
   return (
-    <div className="relative h-full min-h-0 flex-1 overflow-hidden bg-background flex">
-      {/* 主内容区：左右分栏 */}
-      <div 
-        className={cn(
-          "flex-1 min-w-0 min-h-0 h-full transition-all duration-300 ease-out"
-        )}
-        style={{
-          marginRight: showSettingsDrawer ? settingsDrawerWidth : 0
-        }}
-      >
-          <HorizontalResizable
-            initial={0.5}
-            minLeft={0.35}
-            minRight={0.35}
-            className="bg-background"
-            left={
-              <InputPanel
-                ref={inputRef}
-                inputText={inputText}
-                setInputText={setInputText}
-                modeId={modeId}
-                setModeId={setModeId}
-                modes={modes}
-                modelId={modelId}
-                setModelId={setModelId}
-                models={models}
-                essayType={essayType}
-                setEssayType={setEssayType}
-                gradeLevel={gradeLevel}
-                setGradeLevel={setGradeLevel}
-                isGrading={isGrading}
-                onFilesDropped={onFilesDropped}
-                ocrMaxFiles={ocrMaxFiles}
-                customPrompt={customPrompt}
-                setCustomPrompt={setCustomPrompt}
-                showPromptEditor={false}
-                setShowPromptEditor={() => setShowSettingsDrawer(true)}
-                onSavePrompt={onSavePrompt}
-                onRestoreDefaultPrompt={onRestoreDefaultPrompt}
-                onClear={onClear}
-                onGrade={onGrade}
-                onCancelGrading={onCancelGrading}
-                charCount={inputCharCount}
-                textStats={inputTextStats}
-                currentRound={currentRound}
-                roundNavigation={roundNavigation}
-                onOpenSettings={() => setShowSettingsDrawer(true)}
-                uploadedImages={uploadedImages}
-                onRemoveImage={onRemoveImage}
-                topicText={topicText}
-                setTopicText={setTopicText}
-                topicImages={topicImages}
-                onTopicFilesDropped={onTopicFilesDropped}
-                onRemoveTopicImage={onRemoveTopicImage}
-              />
-            }
-            right={
-              <ResultPanel
-                ref={resultRef}
-                gradingResult={gradingResult}
-                isGrading={isGrading}
-                charCount={resultCharCount}
-                onCopyResult={onCopyResult}
-                onExportResult={onExportResult}
-                error={error}
-                canRetry={canRetry}
-                onRetry={onRetry}
-                isPartialResult={isPartialResult}
-                currentRound={currentRound}
-                roundNavigation={roundNavigation}
-              />
-            }
-          />
-      </div>
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      {isSmallScreen && mobileSettingsSection}
 
-      {/* 设置抽屉 */}
-      <div 
-        className={cn(
-          "absolute top-0 right-0 h-full transition-transform duration-300 ease-out shadow-lg",
-          showSettingsDrawer ? "translate-x-0" : "translate-x-full"
-        )}
-        style={{ width: settingsDrawerWidth }}
-      >
-        <SettingsDrawer
-          isOpen={showSettingsDrawer}
-          onClose={() => setShowSettingsDrawer(false)}
-          modeId={modeId}
-          setModeId={setModeId}
-          modes={modes}
-          modelId={modelId}
-          setModelId={setModelId}
-          models={models}
-          customPrompt={customPrompt}
-          setCustomPrompt={setCustomPrompt}
-          onSavePrompt={onSavePrompt}
-          onRestoreDefaultPrompt={onRestoreDefaultPrompt}
-          isGrading={isGrading}
-          onModesChange={onModesChange}
-          variant="drawer"
-        />
+      <div className="flex flex-1 min-h-0">
+        <div className="flex-1 min-w-0 h-full">
+          {isLg ? (
+            <HorizontalResizable
+              initial={0.5}
+              minLeft={0.3}
+              minRight={0.3}
+              className="bg-background"
+              left={inputPanel}
+              right={resultPanel}
+            />
+          ) : (
+            <VerticalResizable
+              initial={isSmallScreen ? 0.4 : 0.45}
+              minTop={isSmallScreen ? 0.2 : 0.25}
+              minBottom={isSmallScreen ? 0.3 : 0.35}
+              className="bg-background"
+              top={inputPanel}
+              bottom={resultPanel}
+            />
+          )}
+        </div>
+
+        {!isSmallScreen && desktopSettingsColumn}
       </div>
     </div>
   );

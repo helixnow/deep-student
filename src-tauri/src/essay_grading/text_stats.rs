@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +29,32 @@ const CN_PUNCTUATION: &[char] = &[
     '，', '。', '！', '？', '；', '：', '、', '（', '）', '【', '】', '《', '》', '〈', '〉', '「',
     '」', '『', '』', '〔', '〕', '“', '”', '‘', '’', '—', '–', '…', '．', '·',
 ];
+
+/// 与前端 textStats.ts 中 JS 正则 `\s` 完全一致的空白字符集。
+///
+/// 注意与 Rust `char::is_whitespace`（Unicode White_Space 属性）的两处差异：
+/// - JS `\s` 包含 U+FEFF（BOM / 零宽不换行空格），White_Space 不包含；
+/// - JS `\s` 不包含 U+0085（NEL），White_Space 包含。
+/// 统计口径以前端为准，保证 UI 字数与 prompt 注入的统计块一致。
+fn is_frontend_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n'
+            | '\u{000B}'
+            | '\u{000C}'
+            | '\r'
+            | ' '
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+            | '\u{FEFF}'
+    )
+}
 
 fn is_ascii_punctuation(c: char) -> bool {
     matches!(
@@ -65,15 +93,25 @@ fn is_ascii_punctuation(c: char) -> bool {
     )
 }
 
-pub fn calculate_text_stats(text: &str) -> EssayTextStats {
-    let han_re = Regex::new(r"\p{Han}").expect("valid han regex");
-    let en_word_re = Regex::new(r"[A-Za-z]+(?:['’-][A-Za-z]+)*").expect("valid english word regex");
-    let punct_re = Regex::new(r"\p{P}").expect("valid punctuation regex");
-    let paragraph_re = Regex::new(r"\r?\n\s*\r?\n").expect("valid paragraph split regex");
+static HAN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\p{Han}").expect("valid han regex"));
+static EN_WORD_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"[A-Za-z]+(?:['’-][A-Za-z]+)*").expect("valid english word regex")
+});
+static PUNCT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\p{P}").expect("valid punctuation regex"));
+/// 段落分隔正则：空白类使用与前端 JS `\s` 一致的显式字符集（见 is_frontend_whitespace）
+static PARAGRAPH_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\r?\n[\t\n\x0B\x0C\r \u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]*\r?\n",
+    )
+    .expect("valid paragraph split regex")
+});
 
-    let han_chars = han_re.find_iter(text).count();
-    let english_words = en_word_re.find_iter(text).count();
-    let punctuation_total = punct_re.find_iter(text).count();
+pub fn calculate_text_stats(text: &str) -> EssayTextStats {
+    let han_chars = HAN_RE.find_iter(text).count();
+    let english_words = EN_WORD_RE.find_iter(text).count();
+    let punctuation_total = PUNCT_RE.find_iter(text).count();
 
     let mut cn_punctuation = 0usize;
     let mut en_punctuation = 0usize;
@@ -82,7 +120,7 @@ pub fn calculate_text_stats(text: &str) -> EssayTextStats {
 
     for ch in text.chars() {
         total_chars += 1;
-        if !ch.is_whitespace() {
+        if !is_frontend_whitespace(ch) {
             non_whitespace_chars += 1;
         }
         if CN_PUNCTUATION.contains(&ch) {
@@ -98,9 +136,9 @@ pub fn calculate_text_stats(text: &str) -> EssayTextStats {
     } else {
         normalized_line_text.split('\n').count()
     };
-    let paragraph_count = paragraph_re
+    let paragraph_count = PARAGRAPH_RE
         .split(text)
-        .map(str::trim)
+        .map(|p| p.trim_matches(is_frontend_whitespace))
         .filter(|p| !p.is_empty())
         .count();
 
@@ -162,5 +200,57 @@ mod tests {
         let text = "第一段\r\n\r\n   \r\n第二段";
         let stats = calculate_text_stats(text);
         assert_eq!(stats.paragraph_count, 2);
+    }
+
+    /// 前端 JS `\s` 包含 U+FEFF（BOM），因此 BOM 不计入非空白字符
+    #[test]
+    fn bom_is_whitespace_like_frontend() {
+        let text = "\u{FEFF}你好";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.total_chars, 3);
+        assert_eq!(stats.non_whitespace_chars, 2);
+        assert_eq!(stats.han_chars, 2);
+    }
+
+    /// 前端 JS `\s` 不包含 U+0085（NEL），因此 NEL 计入非空白字符
+    #[test]
+    fn nel_is_not_whitespace_like_frontend() {
+        let text = "a\u{0085}b";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.non_whitespace_chars, 3);
+    }
+
+    /// 空行中夹杂 BOM 时仍视为段落分隔（与前端 /\r?\n\s*\r?\n/ 一致）
+    #[test]
+    fn paragraph_split_treats_bom_blank_line_as_separator() {
+        let text = "第一段\n\u{FEFF}\n第二段";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.paragraph_count, 2);
+    }
+
+    /// 英文缩写与连字符按单词整体计数（与前端 EN_WORD_RE 一致）
+    #[test]
+    fn english_words_count_contractions_and_hyphens() {
+        let text = "state-of-the-art isn't don’t two words";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.english_words, 5);
+    }
+
+    /// 中英文标点分别归类，且互不重复计数
+    #[test]
+    fn cn_and_en_punctuation_are_disjoint() {
+        let text = "你好，世界。Hello, world!";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.cn_punctuation, 2);
+        assert_eq!(stats.en_punctuation, 2);
+        assert_eq!(stats.punctuation_total, 4);
+    }
+
+    /// 尾部空段不计入段落数
+    #[test]
+    fn trailing_blank_lines_do_not_add_paragraphs() {
+        let text = "唯一段落\n\n\n";
+        let stats = calculate_text_stats(text);
+        assert_eq!(stats.paragraph_count, 1);
     }
 }

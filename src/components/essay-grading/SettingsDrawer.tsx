@@ -1,16 +1,15 @@
 /**
- * SettingsDrawer - 作文批改统一设置抽屉
+ * SettingsDrawer - 作文批改内联设置面板
  *
- * 扁平化设计：直接在设置面板中切换和编辑批阅模式，
- * 无需层层跳转到"管理模式 → 上下文菜单 → 编辑表单"。
+ * 信息架构（高频在上，低频折叠）：
+ * 1. 批阅模式：快速切换芯片 + 当前模式摘要卡（满分/维度）
+ * 2. 模型选择
+ * 3. 文体/年级（父级透传 essayType/gradeLevel 时渲染）
+ * 4. [折叠] 模式管理：编辑/复制/新建/重置/删除（内联二段式确认）+ 内联编辑表单
+ *    - sticky 表单头、维度拖拽排序、维度/总分内联校验
+ * 5. [折叠] 自定义提示词：保存后就地成功反馈，不再强制关闭面板
  *
- * 功能：
- * - 快速切换批阅模式
- * - 内联编辑当前模式（维度/分值/提示词）
- * - 复制/重置/删除等操作
- * - 新建自定义模式
- * - 模型选择
- * - 自定义提示词编辑器
+ * 定位/显隐由父级 GradingMain 负责，本组件只渲染可滚动的内联面板内容。
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,7 +25,6 @@ import {
   Trash,
   Copy,
   Check,
-  DotsThree,
   DotsSixVertical,
   WarningCircle,
   Pencil,
@@ -49,15 +47,8 @@ import {
   resetBuiltinMode,
 } from '@/essay-grading/essayGradingApi';
 import { cn } from '@/lib/utils';
-import {
-  AppMenu,
-  AppMenuContent,
-  AppMenuItem,
-  AppMenuSeparator,
-  AppMenuTrigger,
-} from '@/components/ui/app-menu';
 import { Badge } from '@/components/ui/shad/Badge';
-import { unifiedConfirm } from '@/utils/unifiedDialogs';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
@@ -80,9 +71,15 @@ interface SettingsDrawerProps {
   onModesChange?: () => void;
   // 布局变体
   variant?: 'drawer' | 'panel';
+  // 文体/年级（父级透传时渲染选择 UI）
+  essayType?: string;
+  setEssayType?: (v: string) => void;
+  gradeLevel?: string;
+  setGradeLevel?: (v: string) => void;
 }
 
 type SettingsViewMode = 'view' | 'edit' | 'create';
+type ConfirmableAction = 'delete' | 'reset';
 
 interface FormData {
   name: string;
@@ -91,6 +88,60 @@ interface FormData {
   score_dimensions: ScoreDimension[];
   total_max_score: number;
 }
+
+const EMPTY_FORM: FormData = {
+  name: '',
+  description: '',
+  system_prompt: '',
+  score_dimensions: [],
+  total_max_score: 100,
+};
+
+const ESSAY_TYPE_OPTIONS = ['narrative', 'argumentative', 'expository', 'other'] as const;
+const GRADE_LEVEL_OPTIONS = ['middle_school', 'high_school', 'college', 'other'] as const;
+
+/** 滚动容器选择器（OverlayScrollbars 视口 / 原生降级） */
+const SCROLL_VIEWPORT_SELECTOR = '[data-overlayscrollbars-viewport], .scroll-area--native';
+
+/** 选择芯片（模式/文体/年级共用视觉） */
+const choiceChipClassName = (active: boolean) =>
+  cn(
+    '!px-2.5 !py-1 !h-auto text-xs ui-state-colors',
+    active
+      ? 'bg-primary/10 text-primary border border-primary/30'
+      : 'bg-muted/50 text-foreground/70 border border-transparent hover:bg-[var(--interactive-hover)] hover:text-foreground'
+  );
+
+/** 内联折叠区（chevron 旋转，内容 rise-in） */
+const CollapsibleSection: React.FC<{
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  badge?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ title, isOpen, onToggle, badge, children }) => (
+  <section>
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={isOpen}
+      className="flex w-full items-center justify-between gap-2 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground/70 transition-colors duration-150 hover:text-foreground motion-reduce:transition-none"
+    >
+      <span className="flex items-center gap-2">
+        {title}
+        {badge}
+      </span>
+      <CaretRight
+        size={12}
+        className={cn(
+          'transition-transform duration-200 motion-reduce:transition-none',
+          isOpen && 'rotate-90'
+        )}
+      />
+    </button>
+    {isOpen && <div className="pb-4">{children}</div>}
+  </section>
+);
 
 export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   isOpen,
@@ -108,44 +159,79 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
   isGrading = false,
   onModesChange,
   variant = 'drawer',
+  essayType,
+  setEssayType,
+  gradeLevel,
+  setGradeLevel,
 }) => {
-  const { t } = useTranslation(['essay_grading', 'settings', 'common']);
+  const { t } = useTranslation(['essay_grading', 'settings']);
   const [viewMode, setViewMode] = useState<SettingsViewMode>('view');
   const [editingMode, setEditingMode] = useState<GradingMode | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
+  const [formData, setFormData] = useState<FormData>(EMPTY_FORM);
+  // 折叠区展开状态
+  const [editorExpanded, setEditorExpanded] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
+  // 二段式确认（删除/重置），3 秒自动复位
+  const [pendingConfirm, setPendingConfirm] = useState<ConfirmableAction | null>(null);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 提示词保存的就地成功反馈
+  const [promptJustSaved, setPromptJustSaved] = useState(false);
+  const promptSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 维度拖拽排序
+  const [dragArmedIndex, setDragArmedIndex] = useState<number | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const systemPromptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // 表单状态
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    description: '',
-    system_prompt: '',
-    score_dimensions: [],
-    total_max_score: 100,
-  });
-
-  // 获取当前选中的批阅模式
   const currentMode = modes.find(m => m.id === modeId);
-
-  // 获取默认模型
   const defaultModel = models.find(m => m.is_default);
-
   const isEditing = viewMode === 'edit' || viewMode === 'create';
 
-  // 清除成功消息
-  useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(null), 3000);
-      return () => clearTimeout(timer);
+  const clearConfirmTimer = useCallback(() => {
+    if (confirmTimerRef.current) {
+      clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
     }
-  }, [successMessage]);
+  }, []);
 
+  // 面板关闭时重置所有瞬态：编辑态/表单/校验/确认/折叠区
+  useEffect(() => {
+    if (isOpen) return;
+    setViewMode('view');
+    setEditingMode(null);
+    setFormData(EMPTY_FORM);
+    setError(null);
+    setShowValidation(false);
+    setEditorExpanded(false);
+    setPromptExpanded(false);
+    setPendingConfirm(null);
+    setPromptJustSaved(false);
+    setDragArmedIndex(null);
+    setDragIndex(null);
+    setDragOverIndex(null);
+    clearConfirmTimer();
+  }, [isOpen, clearConfirmTimer]);
+
+  // 卸载时清理定时器
+  useEffect(() => () => {
+    clearConfirmTimer();
+    if (promptSavedTimerRef.current) clearTimeout(promptSavedTimerRef.current);
+  }, [clearConfirmTimer]);
+
+  // 切换当前模式时复位待确认状态，避免误删新选中的模式
+  useEffect(() => {
+    setPendingConfirm(null);
+    clearConfirmTimer();
+  }, [modeId, clearConfirmTimer]);
+
+  // 系统提示词 textarea 自适应高度（保持外层滚动位置）
   useEffect(() => {
     const textarea = systemPromptTextareaRef.current;
     if (!textarea || !isEditing) return;
-    const scrollParent = textarea.closest('.scroll-area__viewport') as HTMLElement | null;
+    const scrollParent = textarea.closest(SCROLL_VIEWPORT_SELECTOR) as HTMLElement | null;
     const savedScroll = scrollParent ? scrollParent.scrollTop : 0;
     textarea.style.height = 'auto';
     textarea.style.height = `${textarea.scrollHeight}px`;
@@ -154,7 +240,6 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
 
   // ========== 模式编辑操作 ==========
 
-  // 开始编辑当前模式
   const handleStartEdit = useCallback((mode: GradingMode) => {
     setFormData({
       name: mode.name,
@@ -166,9 +251,10 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
     setEditingMode(mode);
     setViewMode('edit');
     setError(null);
+    setShowValidation(false);
+    setEditorExpanded(true);
   }, []);
 
-  // 开始创建新模式
   const handleStartCreate = useCallback(() => {
     setFormData({
       name: '',
@@ -184,9 +270,10 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
     setEditingMode(null);
     setViewMode('create');
     setError(null);
+    setShowValidation(false);
+    setEditorExpanded(true);
   }, [t]);
 
-  // 复制模式为新模式
   const handleCopyMode = useCallback((mode: GradingMode) => {
     setFormData({
       name: `${mode.name} ${t('settings:gradingMode.copySuffix')}`,
@@ -198,82 +285,103 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
     setEditingMode(null);
     setViewMode('create');
     setError(null);
+    setShowValidation(false);
+    setEditorExpanded(true);
   }, [t]);
 
-  // 取消编辑
   const handleCancelEdit = useCallback(() => {
     setViewMode('view');
     setEditingMode(null);
     setError(null);
+    setShowValidation(false);
   }, []);
 
-  // 保存模式
+  // ========== 表单校验 ==========
+
+  const calculatedTotal = formData.score_dimensions.reduce(
+    (sum, dim) => sum + (dim.max_score || 0),
+    0
+  );
+
+  const nameInvalid = !formData.name.trim();
+  const dimensionIssues = formData.score_dimensions.map(dim => ({
+    name: !dim.name.trim(),
+    score: !(Number(dim.max_score) > 0),
+  }));
+  const dimensionsInvalid = dimensionIssues.some(issue => issue.name || issue.score);
+  const totalInvalid = !(Number(formData.total_max_score) > 0);
+  const formInvalid = nameInvalid || dimensionsInvalid || totalInvalid;
+  const totalMismatch = formData.score_dimensions.length > 0
+    && Number(formData.total_max_score) !== calculatedTotal;
+
+  const validationMessage = !showValidation
+    ? null
+    : nameInvalid
+      ? t('settings:gradingMode.errorNameRequired')
+      : dimensionsInvalid
+        ? t('essay_grading:settings_panel.validation.dimension_invalid')
+        : totalInvalid
+          ? t('essay_grading:settings_panel.validation.total_positive')
+          : null;
+
   const handleSave = useCallback(async () => {
-    if (!formData.name.trim()) {
-      setError(t('settings:gradingMode.errorNameRequired'));
+    if (formInvalid) {
+      setShowValidation(true);
       return;
     }
 
     setIsLoading(true);
     setError(null);
 
+    const payload = {
+      name: formData.name.trim(),
+      description: formData.description.trim(),
+      system_prompt: formData.system_prompt,
+      score_dimensions: formData.score_dimensions.map(dim => ({
+        ...dim,
+        name: dim.name.trim(),
+      })),
+      total_max_score: formData.total_max_score,
+    };
+
     try {
       if (viewMode === 'create') {
-        const input: CreateModeInput = {
-          name: formData.name.trim(),
-          description: formData.description.trim(),
-          system_prompt: formData.system_prompt,
-          score_dimensions: formData.score_dimensions,
-          total_max_score: formData.total_max_score,
-        };
+        const input: CreateModeInput = payload;
         await createCustomMode(input);
-        setSuccessMessage(t('settings:gradingMode.successCreated'));
+        showGlobalNotification('success', t('settings:gradingMode.successCreated'));
       } else if (viewMode === 'edit' && editingMode) {
         if (editingMode.is_builtin) {
           const input: SaveBuiltinOverrideInput = {
             builtin_id: editingMode.id,
-            name: formData.name.trim(),
-            description: formData.description.trim(),
-            system_prompt: formData.system_prompt,
-            score_dimensions: formData.score_dimensions,
-            total_max_score: formData.total_max_score,
+            ...payload,
           };
           await saveBuiltinOverride(input);
-          setSuccessMessage(t('settings:gradingMode.successSaved'));
+          showGlobalNotification('success', t('settings:gradingMode.successSaved'));
         } else {
-          await updateCustomMode({
-            id: editingMode.id,
-            name: formData.name.trim(),
-            description: formData.description.trim(),
-            system_prompt: formData.system_prompt,
-            score_dimensions: formData.score_dimensions,
-            total_max_score: formData.total_max_score,
-          });
-          setSuccessMessage(t('settings:gradingMode.successUpdated'));
+          await updateCustomMode({ id: editingMode.id, ...payload });
+          showGlobalNotification('success', t('settings:gradingMode.successUpdated'));
         }
       }
 
       onModesChange?.();
       setViewMode('view');
       setEditingMode(null);
+      setShowValidation(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('settings:gradingMode.errorOperationFailed'));
     } finally {
       setIsLoading(false);
     }
-  }, [viewMode, formData, editingMode, onModesChange, t]);
+  }, [formInvalid, viewMode, formData, editingMode, onModesChange, t]);
 
-  // 重置预置模式
-  const handleResetBuiltin = useCallback(async (mode: GradingMode) => {
-    if (!mode.is_builtin) return;
-    if (!unifiedConfirm(t('settings:gradingMode.confirmReset', { name: mode.name }))) return;
+  // ========== 重置 / 删除（二段式内联确认） ==========
 
+  const executeResetBuiltin = useCallback(async (mode: GradingMode) => {
     setIsLoading(true);
     setError(null);
-
     try {
       await resetBuiltinMode(mode.id);
-      setSuccessMessage(t('settings:gradingMode.successReset'));
+      showGlobalNotification('success', t('settings:gradingMode.successReset'));
       onModesChange?.();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('settings:gradingMode.errorResetFailed'));
@@ -282,20 +390,12 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
     }
   }, [onModesChange, t]);
 
-  // 删除自定义模式
-  const handleDelete = useCallback(async (mode: GradingMode) => {
-    if (mode.is_builtin) {
-      setError(t('settings:gradingMode.errorBuiltinCannotDelete'));
-      return;
-    }
-    if (!unifiedConfirm(t('settings:gradingMode.confirmDelete', { name: mode.name }))) return;
-
+  const executeDelete = useCallback(async (mode: GradingMode) => {
     setIsLoading(true);
     setError(null);
-
     try {
       await deleteCustomMode(mode.id);
-      setSuccessMessage(t('settings:gradingMode.successDeleted'));
+      showGlobalNotification('success', t('settings:gradingMode.successDeleted'));
       onModesChange?.();
 
       if (mode.id === modeId) {
@@ -308,6 +408,23 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
       setIsLoading(false);
     }
   }, [modes, modeId, setModeId, onModesChange, t]);
+
+  /** 第一次点击进入待确认态（3 秒自动复位），第二次点击执行 */
+  const handleConfirmableClick = useCallback((action: ConfirmableAction, mode: GradingMode) => {
+    if (pendingConfirm === action) {
+      clearConfirmTimer();
+      setPendingConfirm(null);
+      if (action === 'delete') void executeDelete(mode);
+      else void executeResetBuiltin(mode);
+      return;
+    }
+    clearConfirmTimer();
+    setPendingConfirm(action);
+    confirmTimerRef.current = setTimeout(() => {
+      setPendingConfirm(null);
+      confirmTimerRef.current = null;
+    }, 3000);
+  }, [pendingConfirm, clearConfirmTimer, executeDelete, executeResetBuiltin]);
 
   // ========== 评分维度操作 ==========
 
@@ -345,20 +462,56 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
     }));
   }, []);
 
-  const calculatedTotal = formData.score_dimensions.reduce(
-    (sum, dim) => sum + (dim.max_score || 0),
-    0
-  );
+  const handleReorderDimension = useCallback((from: number, to: number) => {
+    if (from === to) return;
+    setFormData(prev => {
+      const dims = [...prev.score_dimensions];
+      const [moved] = dims.splice(from, 1);
+      dims.splice(to, 0, moved);
+      return { ...prev, score_dimensions: dims };
+    });
+  }, []);
 
-  // 切换模式时退出编辑状态
+  const clearDragState = useCallback(() => {
+    setDragArmedIndex(null);
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }, []);
+
+  // ========== 其他交互 ==========
+
   const handleModeSwitch = useCallback((newModeId: string) => {
     setModeId(newModeId);
     if (viewMode !== 'view') {
       setViewMode('view');
       setEditingMode(null);
       setError(null);
+      setShowValidation(false);
     }
   }, [setModeId, viewMode]);
+
+  // 保存提示词：就地成功反馈，不关闭面板
+  const handleSavePrompt = useCallback(() => {
+    onSavePrompt();
+    setPromptJustSaved(true);
+    if (promptSavedTimerRef.current) clearTimeout(promptSavedTimerRef.current);
+    promptSavedTimerRef.current = setTimeout(() => {
+      setPromptJustSaved(false);
+      promptSavedTimerRef.current = null;
+    }, 2000);
+  }, [onSavePrompt]);
+
+  const showEssayProfile = Boolean(setEssayType || setGradeLevel);
+
+  const errorBanner = error ? (
+    <div
+      role="alert"
+      className="ui-drop-in mb-3 flex items-start gap-2 rounded-md bg-destructive/10 p-2.5 text-xs leading-relaxed text-destructive"
+    >
+      <WarningCircle size={14} className="mt-0.5 flex-shrink-0" />
+      {error}
+    </div>
+  ) : null;
 
   return (
     <div className={cn(
@@ -366,346 +519,529 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
       variant === 'drawer' && "border-l border-border/40"
     )}>
       {/* 头部 */}
-      <div className="flex h-[41px] items-center justify-between px-4 border-b border-border/30">
+      <div className="flex h-[41px] flex-shrink-0 items-center justify-between border-b border-border/30 px-4">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
           <GearSix size={14} />
           <span>{t('essay_grading:settings.title')}</span>
         </div>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="w-7 h-7 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]" aria-label="close">
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={onClose}
+          className="h-7 w-7 text-muted-foreground/60 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+          aria-label={t('essay_grading:settings_panel.close')}
+          title={t('essay_grading:settings_panel.close')}
+        >
           <X size={16} />
         </NotionButton>
       </div>
 
       {/* 内容区 */}
-      <CustomScrollArea className="flex-1" viewportClassName="p-4">
-        {/* 消息提示 */}
-        {error && (
-          <div className="mb-3 p-3 bg-destructive/10 text-destructive rounded-md flex items-center gap-2 text-sm">
-            <WarningCircle size={16} className="flex-shrink-0" />
-            {error}
-          </div>
-        )}
-        {successMessage && (
-          <div className="mb-3 p-3 bg-green-500/10 text-green-600 rounded-md flex items-center gap-2 text-sm">
-            <Check size={16} className="flex-shrink-0" />
-            {successMessage}
-          </div>
-        )}
+      <CustomScrollArea className="flex-1" viewportClassName="pb-4">
+        <div className="divide-y divide-border/30">
 
-        {/* ====== 模式区块 ====== */}
-        <div className="mb-6 pb-4 border-b border-border/30">
-          {/* 区块头部：标题 + 操作按钮 */}
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide">
-              {isEditing
-                ? (viewMode === 'create'
-                  ? t('essay_grading:mode.create')
-                  : t('essay_grading:mode.edit'))
-                : t('essay_grading:mode.current')
-              }
+          {/* ====== 1. 批阅模式（高频） ====== */}
+          <section className="px-4 pb-4 pt-4">
+            <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
+              {t('essay_grading:settings_panel.section_mode')}
             </h3>
-            <div className="flex items-center gap-1">
-              {isEditing ? (
-                /* 编辑态：取消 + 完成 */
-                <>
-                  <NotionButton variant="ghost" size="sm" onClick={handleCancelEdit} className="h-7 px-2 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]">
-                    {t('essay_grading:actions.cancel')}
-                  </NotionButton>
-                  <NotionButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={isLoading}
-                    className="text-primary hover:text-primary hover:bg-primary/10 h-7 px-2 text-xs"
-                  >
-                    {isLoading ? t('settings:gradingMode.saving') : t('settings:gradingMode.done')}
-                  </NotionButton>
-                </>
-              ) : (
-                /* 查看态：编辑 + 更多操作 */
-                <>
-                  {currentMode && (
-                    <NotionButton variant="ghost" size="sm" onClick={() => handleStartEdit(currentMode)} className="h-7 px-2 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]">
-                      <Pencil size={12} />
-                      {t('settings:gradingMode.menuEdit')}
-                    </NotionButton>
-                  )}
-                  {currentMode && (
-                    <AppMenu>
-                      <AppMenuTrigger asChild>
-                        <NotionButton variant="ghost" size="icon" iconOnly className="w-7 h-7 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)]" aria-label="more">
-                          <DotsThree size={16} />
-                        </NotionButton>
-                      </AppMenuTrigger>
-                      <AppMenuContent align="end" width={128}>
-                        <AppMenuItem icon={<Copy size={16} />} onClick={() => handleCopyMode(currentMode)}>
-                          {t('settings:gradingMode.menuCopy')}
-                        </AppMenuItem>
-                        {currentMode.is_builtin ? (
-                          <>
-                            <AppMenuSeparator />
-                            <AppMenuItem icon={<ArrowCounterClockwise size={16} />} onClick={() => handleResetBuiltin(currentMode)}>
-                              {t('settings:gradingMode.menuReset')}
-                            </AppMenuItem>
-                          </>
-                        ) : (
-                          <>
-                            <AppMenuSeparator />
-                            <AppMenuItem icon={<Trash size={16} />} onClick={() => handleDelete(currentMode)} destructive>
-                              {t('settings:gradingMode.menuDelete')}
-                            </AppMenuItem>
-                          </>
-                        )}
-                      </AppMenuContent>
-                    </AppMenu>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* 模式快速切换按钮 + 新建 */}
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {modes.map((mode) => (
-              <NotionButton
-                key={mode.id}
-                variant="ghost" size="sm"
-                onClick={() => handleModeSwitch(mode.id)}
-                className={cn(
-                  "!px-2.5 !py-1 !h-auto text-xs",
-                  mode.id === modeId
-                    ? "bg-primary/10 text-primary border border-primary/30"
-                    : "bg-muted/50 text-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
-                )}
-              >
-                {mode.name}
-              </NotionButton>
-            ))}
-            {!isEditing && (
-              <NotionButton variant="ghost" size="sm" onClick={handleStartCreate} className="!px-2 !py-1 !h-auto text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 border border-dashed border-muted-foreground/30 hover:border-primary/30">
-                <Plus size={12} />
-                {t('essay_grading:mode.create')}
-              </NotionButton>
-            )}
-          </div>
-
-          {/* 模式内容：查看态 or 编辑态 */}
-          {isEditing ? (
-            /* ========== 内联编辑表单 ========== */
-            <div className="space-y-5 ui-rise-in">
-              {/* 基本信息 */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground/60">
-                  {t('settings:gradingMode.labelBasicInfo')}
-                </label>
-                <Input
-                  value={formData.name}
-                  onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder={t('settings:gradingMode.placeholderModeName')}
-                  className="text-sm font-medium px-2 h-8 border-border/30 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30"
-/>
-                <Textarea
-                  value={formData.description}
-                  onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder={t('settings:gradingMode.placeholderDescription')}
-                  rows={2}
-                  className="w-full text-sm px-2 py-1.5 rounded-md border border-border/30 bg-transparent text-muted-foreground focus:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 resize-none leading-relaxed"
-/>
-              </div>
-
-              {/* 评分维度 */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-muted-foreground/60">
-                    {t('settings:gradingMode.labelDimensions')}
-                  </label>
-                  <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">
-                    {t('settings:gradingMode.currentTotal', { total: calculatedTotal })}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  {formData.score_dimensions.map((dim, index) => (
-                    <div
-                      key={index}
-                      className="group flex items-center gap-1.5 p-1.5 rounded-md hover:bg-[var(--interactive-hover)] transition-colors"
-                    >
-                      <DotsSixVertical size={14} className="text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0" />
-                      <Input
-                        value={dim.name}
-                        onChange={e => handleUpdateDimension(index, 'name', e.target.value)}
-                        placeholder={t('settings:gradingMode.placeholderDimensionName')}
-                        className="flex-1 min-w-0 h-7 text-sm border-0 bg-transparent focus-visible:ring-0 px-1 font-medium"
-/>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <span className="text-[10px] text-muted-foreground/50">{t('settings:gradingMode.labelScore')}</span>
-                        <Input
-                          type="number"
-                          value={dim.max_score}
-                          onChange={e => handleUpdateDimension(index, 'max_score', Number(e.target.value))}
-                          className="w-[3.5rem] h-7 text-sm text-right border-0 bg-muted/30 focus-visible:ring-0 rounded-sm px-1.5 text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          min={0}
-                          style={{ maxWidth: '3.5rem' }}
-/>
-                      </div>
-                      <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveDimension(index)} className="!h-6 !w-6 text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 flex-shrink-0" aria-label="remove">
-                        <Trash size={12} />
-                      </NotionButton>
-                    </div>
-                  ))}
-                </div>
-                <NotionButton variant="ghost" size="sm" onClick={handleAddDimension} className="!justify-start !px-1 !py-1.5 !h-auto text-xs text-muted-foreground hover:text-primary w-full group">
-                  <div className="w-4 h-4 rounded-full border border-dashed border-muted-foreground/50 group-hover:border-primary flex items-center justify-center">
-                    <Plus size={10} />
-                  </div>
-                  {t('settings:gradingMode.addDimension')}
+            <div className="flex flex-wrap gap-1.5">
+              {modes.map((mode) => (
+                <NotionButton
+                  key={mode.id}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleModeSwitch(mode.id)}
+                  aria-pressed={mode.id === modeId}
+                  className={choiceChipClassName(mode.id === modeId)}
+                >
+                  {mode.name}
                 </NotionButton>
-              </div>
-
-              {/* 总分设置 */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground/60">
-                  {t('settings:gradingMode.labelTotalScore')}
-                </label>
-                <div className="flex items-center gap-3 bg-muted/20 p-2.5 rounded-lg border border-border/30">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium">{t('settings:gradingMode.maxScoreLimit')}</div>
-                    <div className="text-[10px] text-muted-foreground truncate">{t('settings:gradingMode.maxScoreLimitDesc')}</div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Input
-                      type="number"
-                      value={formData.total_max_score}
-                      onChange={e => setFormData(prev => ({
-                        ...prev,
-                        total_max_score: Number(e.target.value)
-                      }))}
-                      className="w-[4rem] h-7 text-sm text-center bg-background rounded-md border border-[hsl(var(--border))] text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      min={1}
-                      style={{ maxWidth: '4rem' }}
-/>
-                    {formData.total_max_score !== calculatedTotal && (
-                      <NotionButton variant="ghost" size="sm" onClick={() => setFormData(prev => ({ ...prev, total_max_score: calculatedTotal }))} className="!h-auto !p-0 text-[10px] text-primary hover:underline whitespace-nowrap">
-                        {t('settings:gradingMode.useCalculatedTotal', { total: calculatedTotal })}
-                      </NotionButton>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* 系统提示词 */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground/60">
-                  {t('essay_grading:system_prompt_label')}
-                </label>
-                <div className="relative">
-                  <Textarea
-                    value={formData.system_prompt}
-                    onChange={e => {
-                      setFormData(prev => ({ ...prev, system_prompt: e.target.value }));
-                      const target = e.target;
-                      const scrollParent = target.closest('.scroll-area__viewport') as HTMLElement | null;
-                      const savedScroll = scrollParent ? scrollParent.scrollTop : 0;
-                      target.style.height = 'auto';
-                      target.style.height = `${target.scrollHeight}px`;
-                      if (scrollParent) scrollParent.scrollTop = savedScroll;
-                    }}
-                    ref={el => {
-                      systemPromptTextareaRef.current = el;
-                      if (el && !el.style.height) {
-                        el.style.height = 'auto';
-                        el.style.height = `${el.scrollHeight}px`;
-                      }
-                    }}
-                    placeholder={t('settings:gradingMode.placeholderSystemPrompt')}
-                    className="w-full min-h-[160px] overflow-hidden text-sm font-mono leading-relaxed border-border/30 resize-none p-3 focus-visible:ring-1 focus-visible:ring-primary/30"
-/>
-                  <div className="absolute right-2 bottom-2 text-[10px] text-muted-foreground/50 bg-background/50 px-1 rounded backdrop-blur-sm pointer-events-none">
-                    {t('settings:gradingMode.markdownSupported')}
-                  </div>
-                </div>
-                {/* ★ A6-10：移除 {{essay}} 占位符提示——后端从不替换该占位符，作文内容是拼接在 user prompt 中的 */}
-              </div>
+              ))}
             </div>
-          ) : currentMode ? (
-            /* ========== 只读模式信息 ========== */
-            <div className="space-y-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm text-foreground/90">{currentMode.name}</span>
+
+            {/* 当前模式摘要卡 */}
+            {currentMode && (
+              <div className="ui-state-colors mt-3 space-y-2 rounded-md border border-primary/30 bg-primary/10 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-foreground/90">{currentMode.name}</span>
                   {currentMode.is_builtin && (
-                    <Badge variant="secondary" className="text-[10px] px-1 h-4 font-normal text-muted-foreground bg-muted/80">
+                    <Badge variant="secondary" className="h-4 bg-muted/80 px-1 text-[10px] font-normal text-muted-foreground">
                       {t('settings:gradingMode.badgeBuiltin')}
                     </Badge>
                   )}
+                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                    {t('settings:gradingMode.maxScore', { score: currentMode.total_max_score })}
+                  </span>
                 </div>
-                <div className="text-xs text-muted-foreground/70 mt-1 leading-relaxed">{currentMode.description}</div>
-              </div>
-              <div className="text-xs">
-                <span className="text-muted-foreground/60">{t('essay_grading:mode.total_score')}：</span>
-                <span className="font-medium text-foreground/80">{currentMode.total_max_score}</span>
-              </div>
-              {currentMode.score_dimensions && currentMode.score_dimensions.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="text-xs text-muted-foreground/60">{t('essay_grading:mode.dimensions')}：</div>
+                {currentMode.description && (
+                  <div className="text-xs leading-relaxed text-muted-foreground/80">
+                    {currentMode.description}
+                  </div>
+                )}
+                {currentMode.score_dimensions.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {currentMode.score_dimensions.map((dim, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-muted/50 text-foreground/70"
+                        className="inline-flex items-center rounded border border-border/40 bg-background/60 px-1.5 py-0.5 text-[11px] text-foreground/70"
                       >
                         {dim.name}
-                        <span className="ml-1 text-muted-foreground/50">({dim.max_score})</span>
+                        <span className="ml-1 tabular-nums text-muted-foreground/60">{dim.max_score}</span>
                       </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ====== 2. 模型选择（高频） ====== */}
+          {models.length > 0 && (
+            <section className="px-4 pb-4 pt-4">
+              <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                {t('essay_grading:model.title')}
+              </h3>
+              <UnifiedModelSelector
+                models={models}
+                value={modelId || defaultModel?.id || ''}
+                onChange={setModelId}
+                disabled={isGrading}
+                placeholder={t('essay_grading:model.select')}
+              />
+            </section>
+          )}
+
+          {/* ====== 3. 文体 / 年级（高频，父级透传时渲染） ====== */}
+          {showEssayProfile && (
+            <section className="space-y-3 px-4 pb-4 pt-4">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                {t('essay_grading:settings_panel.section_essay_info')}
+              </h3>
+              {setEssayType && (
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground/60">
+                    {t('essay_grading:essay_type.label')}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ESSAY_TYPE_OPTIONS.map(option => (
+                      <NotionButton
+                        key={option}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEssayType(option)}
+                        aria-pressed={essayType === option}
+                        className={choiceChipClassName(essayType === option)}
+                      >
+                        {t(`essay_grading:essay_type.${option}`)}
+                      </NotionButton>
                     ))}
                   </div>
                 </div>
               )}
-            </div>
-          ) : null}
-        </div>
+              {setGradeLevel && (
+                <div className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground/60">
+                    {t('essay_grading:grade_level.label')}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {GRADE_LEVEL_OPTIONS.map(option => (
+                      <NotionButton
+                        key={option}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setGradeLevel(option)}
+                        aria-pressed={gradeLevel === option}
+                        className={choiceChipClassName(gradeLevel === option)}
+                      >
+                        {t(`essay_grading:grade_level.${option}`)}
+                      </NotionButton>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
-        {/* 模型选择 */}
-        {models.length > 0 && (
-          <div className="mb-6 pb-4 border-b border-border/30">
-            <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide mb-3">
-              {t('essay_grading:model.title')}
-            </h3>
-            <UnifiedModelSelector
-              models={models}
-              value={modelId || defaultModel?.id || ''}
-              onChange={setModelId}
-              disabled={isGrading}
-              placeholder={t('essay_grading:model.select')}
-/>
-          </div>
-        )}
+          {/* ====== 4. 模式管理（低频，折叠） ====== */}
+          <CollapsibleSection
+            title={t('essay_grading:settings_panel.section_mode_editor')}
+            isOpen={editorExpanded}
+            onToggle={() => setEditorExpanded(prev => !prev)}
+            badge={isEditing ? (
+              <span className="inline-flex items-center rounded bg-primary/10 px-1 py-px text-[10px] font-normal normal-case tracking-normal text-primary">
+                {t('essay_grading:settings_panel.editing_badge')}
+              </span>
+            ) : undefined}
+          >
+            {isEditing ? (
+              /* ---------- 内联编辑表单 ---------- */
+              <div>
+                {/* sticky 表单头：标题 + 取消/完成 + 校验与错误反馈 */}
+                <div className="sticky top-0 z-10 border-b border-border/30 bg-background px-4 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-medium text-foreground/80">
+                      {viewMode === 'create'
+                        ? t('essay_grading:settings_panel.create_mode')
+                        : t('essay_grading:mode.edit')}
+                    </span>
+                    <div className="flex flex-shrink-0 items-center gap-1">
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCancelEdit}
+                        className="h-7 px-2 text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                      >
+                        {t('essay_grading:actions.cancel')}
+                      </NotionButton>
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleSave}
+                        disabled={isLoading}
+                        className="h-7 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
+                      >
+                        {isLoading ? t('settings:gradingMode.saving') : t('settings:gradingMode.done')}
+                      </NotionButton>
+                    </div>
+                  </div>
+                  {validationMessage && (
+                    <div role="alert" className="ui-drop-in mt-1.5 flex items-center gap-1.5 text-xs text-destructive">
+                      <WarningCircle size={14} className="flex-shrink-0" />
+                      {validationMessage}
+                    </div>
+                  )}
+                  {error && (
+                    <div role="alert" className="ui-drop-in mt-1.5 flex items-center gap-1.5 text-xs text-destructive">
+                      <WarningCircle size={14} className="flex-shrink-0" />
+                      {error}
+                    </div>
+                  )}
+                </div>
 
-        {/* 提示词编辑器 - 编辑模式时隐藏以避免与系统提示词混淆 */}
-        {!isEditing && (
-          <div className="mb-4">
-            <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wide mb-3">
-              {t('essay_grading:prompt_editor.title')}
-            </h3>
-            <div className="space-y-4 flex flex-col">
+                <div className="ui-rise-in space-y-5 px-4 pt-3">
+                  {/* 基本信息 */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground/60">
+                      {t('settings:gradingMode.labelBasicInfo')}
+                    </label>
+                    <Input
+                      value={formData.name}
+                      onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder={t('settings:gradingMode.placeholderModeName')}
+                      className={cn(
+                        "h-8 border-border/30 bg-transparent px-2 text-sm font-medium focus-visible:ring-1 focus-visible:ring-primary/30",
+                        showValidation && nameInvalid && "border-destructive/50 focus-visible:ring-destructive/30"
+                      )}
+                    />
+                    <Textarea
+                      value={formData.description}
+                      onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder={t('settings:gradingMode.placeholderDescription')}
+                      rows={2}
+                      className="w-full resize-none rounded-md border border-border/30 bg-transparent px-2 py-1.5 text-sm leading-relaxed text-muted-foreground focus:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30"
+                    />
+                  </div>
+
+                  {/* 评分维度 */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-muted-foreground/60">
+                        {t('settings:gradingMode.labelDimensions')}
+                      </label>
+                      <span className="rounded-full bg-muted/50 px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
+                        {t('settings:gradingMode.currentTotal', { total: calculatedTotal })}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {formData.score_dimensions.map((dim, index) => {
+                        const issue = dimensionIssues[index];
+                        const isDropTarget = dragOverIndex === index && dragIndex !== null && dragIndex !== index;
+                        return (
+                          <div
+                            key={index}
+                            draggable={dragArmedIndex === index}
+                            onDragStart={e => {
+                              if (dragArmedIndex !== index) {
+                                e.preventDefault();
+                                return;
+                              }
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', String(index));
+                              setDragIndex(index);
+                            }}
+                            onDragOver={e => {
+                              if (dragIndex === null) return;
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = 'move';
+                              if (dragOverIndex !== index) setDragOverIndex(index);
+                            }}
+                            onDrop={e => {
+                              e.preventDefault();
+                              if (dragIndex !== null) handleReorderDimension(dragIndex, index);
+                              clearDragState();
+                            }}
+                            onDragEnd={clearDragState}
+                            className={cn(
+                              "ui-rise-in group flex items-center gap-1.5 rounded-md p-1.5 transition-colors duration-150 hover:bg-[var(--interactive-hover)] motion-reduce:transition-none",
+                              dragIndex === index && "opacity-40",
+                              isDropTarget && "bg-primary/5 ring-1 ring-primary/30"
+                            )}
+                          >
+                            <button
+                              type="button"
+                              onPointerDown={() => setDragArmedIndex(index)}
+                              onPointerUp={() => setDragArmedIndex(null)}
+                              aria-label={t('essay_grading:settings_panel.drag_reorder')}
+                              title={t('essay_grading:settings_panel.drag_reorder')}
+                              className="flex-shrink-0 cursor-grab text-muted-foreground/30 opacity-0 transition-opacity duration-150 hover:text-muted-foreground active:cursor-grabbing group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-70"
+                            >
+                              <DotsSixVertical size={14} />
+                            </button>
+                            <Input
+                              value={dim.name}
+                              onChange={e => handleUpdateDimension(index, 'name', e.target.value)}
+                              placeholder={t('settings:gradingMode.placeholderDimensionName')}
+                              className={cn(
+                                "h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-medium focus-visible:ring-0",
+                                showValidation && issue.name && "rounded-sm ring-1 ring-destructive/50"
+                              )}
+                            />
+                            <div className="flex flex-shrink-0 items-center gap-1">
+                              <span className="text-[10px] text-muted-foreground/50">{t('settings:gradingMode.labelScore')}</span>
+                              <Input
+                                type="number"
+                                value={dim.max_score}
+                                onChange={e => handleUpdateDimension(index, 'max_score', Number(e.target.value))}
+                                className={cn(
+                                  "h-7 w-[3.5rem] rounded-sm border-0 bg-muted/30 px-1.5 text-right text-sm text-foreground focus-visible:ring-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                                  showValidation && issue.score && "ring-1 ring-destructive/50"
+                                )}
+                                min={0}
+                                style={{ maxWidth: '3.5rem' }}
+                              />
+                            </div>
+                            <NotionButton
+                              variant="ghost"
+                              size="icon"
+                              iconOnly
+                              onClick={() => handleRemoveDimension(index)}
+                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/30 opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70"
+                              aria-label={t('essay_grading:settings_panel.remove_dimension')}
+                              title={t('essay_grading:settings_panel.remove_dimension')}
+                            >
+                              <Trash size={12} />
+                            </NotionButton>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleAddDimension}
+                      className="group !h-auto w-full !justify-start !px-1 !py-1.5 text-xs text-muted-foreground hover:text-primary"
+                    >
+                      <div className="flex h-4 w-4 items-center justify-center rounded-full border border-dashed border-muted-foreground/50 group-hover:border-primary">
+                        <Plus size={10} />
+                      </div>
+                      {t('settings:gradingMode.addDimension')}
+                    </NotionButton>
+                  </div>
+
+                  {/* 总分设置 */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground/60">
+                      {t('settings:gradingMode.labelTotalScore')}
+                    </label>
+                    <div className="space-y-2 rounded-lg border border-border/30 bg-muted/20 p-2.5">
+                      <div className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-medium">{t('settings:gradingMode.maxScoreLimit')}</div>
+                          <div className="truncate text-[10px] text-muted-foreground">{t('settings:gradingMode.maxScoreLimitDesc')}</div>
+                        </div>
+                        <Input
+                          type="number"
+                          value={formData.total_max_score}
+                          onChange={e => setFormData(prev => ({
+                            ...prev,
+                            total_max_score: Number(e.target.value)
+                          }))}
+                          className={cn(
+                            "h-7 w-[4rem] flex-shrink-0 rounded-md border border-[hsl(var(--border))] bg-background text-center text-sm text-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                            showValidation && totalInvalid && "border-destructive/50"
+                          )}
+                          min={1}
+                          style={{ maxWidth: '4rem' }}
+                        />
+                      </div>
+                      {/* 总分与维度之和不一致：内联警告 + 一键同步 */}
+                      {totalMismatch && (
+                        <div className="ui-drop-in flex items-center justify-between gap-2 rounded-md bg-warning/10 px-2 py-1.5">
+                          <span className="flex min-w-0 items-center gap-1.5 text-xs text-warning">
+                            <WarningCircle size={14} className="flex-shrink-0" />
+                            <span className="min-w-0">
+                              {t('essay_grading:settings_panel.validation.total_mismatch', {
+                                total: formData.total_max_score,
+                                sum: calculatedTotal,
+                              })}
+                            </span>
+                          </span>
+                          <NotionButton
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setFormData(prev => ({ ...prev, total_max_score: calculatedTotal }))}
+                            className="!h-auto flex-shrink-0 !px-1.5 !py-0.5 text-[11px] text-primary hover:bg-primary/10"
+                          >
+                            {t('essay_grading:settings_panel.validation.sync_total', { sum: calculatedTotal })}
+                          </NotionButton>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 系统提示词 */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground/60">
+                      {t('essay_grading:system_prompt_label')}
+                    </label>
+                    <div className="relative">
+                      <Textarea
+                        value={formData.system_prompt}
+                        onChange={e => setFormData(prev => ({ ...prev, system_prompt: e.target.value }))}
+                        ref={el => {
+                          systemPromptTextareaRef.current = el;
+                          if (el && !el.style.height) {
+                            el.style.height = 'auto';
+                            el.style.height = `${el.scrollHeight}px`;
+                          }
+                        }}
+                        placeholder={t('settings:gradingMode.placeholderSystemPrompt')}
+                        className="min-h-[160px] w-full resize-none overflow-hidden border-border/30 p-3 font-mono text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-primary/30"
+                      />
+                      <div data-wb-blur-surface className="pointer-events-none absolute bottom-2 right-2 rounded bg-background/50 px-1 text-[10px] text-muted-foreground/50 backdrop-blur-sm">
+                        {t('settings:gradingMode.markdownSupported')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* ---------- CRUD 操作入口 ---------- */
+              <div className="ui-rise-in space-y-1 px-4">
+                {errorBanner}
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => currentMode && handleStartEdit(currentMode)}
+                  disabled={!currentMode}
+                  className="!h-8 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                >
+                  <Pencil size={14} className="text-muted-foreground/60" />
+                  {t('essay_grading:settings_panel.edit_current')}
+                </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => currentMode && handleCopyMode(currentMode)}
+                  disabled={!currentMode}
+                  className="!h-8 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                >
+                  <Copy size={14} className="text-muted-foreground/60" />
+                  {t('essay_grading:settings_panel.copy_current')}
+                </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleStartCreate}
+                  className="!h-8 w-full !justify-start !px-2 text-xs text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                >
+                  <Plus size={14} className="text-muted-foreground/60" />
+                  {t('essay_grading:settings_panel.create_mode')}
+                </NotionButton>
+                {currentMode?.is_builtin && (
+                  <NotionButton
+                    variant={pendingConfirm === 'reset' ? 'destructive' : 'ghost'}
+                    size="sm"
+                    onClick={() => handleConfirmableClick('reset', currentMode)}
+                    disabled={isLoading}
+                    className={cn(
+                      "!h-8 w-full !justify-start !px-2 text-xs",
+                      pendingConfirm !== 'reset' && "text-foreground/80 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                    )}
+                  >
+                    <ArrowCounterClockwise size={14} className={pendingConfirm === 'reset' ? undefined : "text-muted-foreground/60"} />
+                    {pendingConfirm === 'reset'
+                      ? t('essay_grading:settings_panel.confirm_reset')
+                      : t('settings:gradingMode.menuReset')}
+                  </NotionButton>
+                )}
+                {currentMode && !currentMode.is_builtin && (
+                  <NotionButton
+                    variant={pendingConfirm === 'delete' ? 'destructive' : 'ghost'}
+                    size="sm"
+                    onClick={() => handleConfirmableClick('delete', currentMode)}
+                    disabled={isLoading}
+                    className={cn(
+                      "!h-8 w-full !justify-start !px-2 text-xs",
+                      pendingConfirm !== 'delete' && "text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
+                    )}
+                  >
+                    <Trash size={14} />
+                    {pendingConfirm === 'delete'
+                      ? t('essay_grading:settings_panel.confirm_delete')
+                      : t('settings:gradingMode.menuDelete')}
+                  </NotionButton>
+                )}
+              </div>
+            )}
+          </CollapsibleSection>
+
+          {/* ====== 5. 自定义提示词（低频，折叠） ====== */}
+          <CollapsibleSection
+            title={t('essay_grading:prompt_editor.title')}
+            isOpen={promptExpanded}
+            onToggle={() => setPromptExpanded(prev => !prev)}
+          >
+            <div className="ui-rise-in space-y-3 px-4">
               <Textarea
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
                 placeholder={t('essay_grading:prompt_editor.placeholder')}
-                className="flex-1 min-h-[240px] resize-none w-full text-sm border-border/40 focus:border-border/60"
-/>
-              <div className="flex gap-2 justify-end">
-                <NotionButton variant="ghost" size="sm" onClick={onRestoreDefaultPrompt} className="text-sm text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]">
+                className="min-h-[200px] w-full resize-none border-border/40 text-sm focus:border-border/60"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={onRestoreDefaultPrompt}
+                  className="text-xs text-muted-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground"
+                >
                   <ArrowCounterClockwise size={14} />
                   {t('essay_grading:prompt_editor.restore_default')}
                 </NotionButton>
-                <NotionButton variant="primary" size="sm" onClick={() => { onSavePrompt(); onClose(); }} className="text-sm bg-primary/10 text-primary hover:bg-primary/20">
-                  <FloppyDisk size={14} />
-                  {t('essay_grading:prompt_editor.save')}
+                {/* 保存后就地反馈：勾选图标 + 文案短暂切换，不关闭面板 */}
+                <NotionButton
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSavePrompt}
+                  className={cn(
+                    "ui-state-colors text-xs",
+                    promptJustSaved
+                      ? "bg-success/10 text-success hover:bg-success/10"
+                      : "bg-primary/10 text-primary hover:bg-primary/20"
+                  )}
+                >
+                  {promptJustSaved ? <Check size={14} /> : <FloppyDisk size={14} />}
+                  {promptJustSaved
+                    ? t('essay_grading:settings_panel.prompt_saved_short')
+                    : t('essay_grading:prompt_editor.save')}
                 </NotionButton>
               </div>
             </div>
-          </div>
-        )}
+          </CollapsibleSection>
+        </div>
       </CustomScrollArea>
     </div>
   );
