@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-07-08",
-  "purpose": "统一维护供应商协议能力、默认协议与 OpenAI-compatible Responses 支持声明，供前后端共享默认路由决策。约定：supports_openai_responses=true 仅解锁可选协议，默认路由由 default_protocol 决定（qwen/doubao 等 Responses 端点为模型白名单制，不应默认切换）。遗留说明：后端 build_provider_adapter 目前只按 model_adapter 路由、尚不消费供应商级 api_protocol=anthropic_messages，因此除 minimax 既有声明外暂不为 deepseek/zhipu/moonshot/qwen/siliconflow 等新增 anthropic_messages（避免「界面可选、后端无实现」，见 r5 §1.3）；待后端接入后再补充并配套「协议→base URL 路径」派生规则。",
+  "updated_at": "2026-07-20",
+  "purpose": "统一维护供应商协议能力、默认协议与 OpenAI-compatible Responses 支持声明，供前后端共享路由决策。supports_openai_responses=true 仅解锁可选协议，默认路由由 default_protocol 决定。后端已按 effective_api_protocol 选择传输适配器；但同一供应商不同协议若使用不同根路径，仍需用户配置对应 Base URL。",
   "providers": [
     {
       "provider_type": "openai",
@@ -146,10 +146,10 @@
         "openai_chat_completions",
         "openai_responses"
       ],
-      "default_protocol": "openai_chat_completions",
+      "default_protocol": "openai_responses",
       "official": true,
       "supports_openai_responses": true,
-      "notes": "xAI 主推 Responses（Chat Completions 已标 legacy，2026-07 调研 04 要点 1），但后端 grok 适配器暂未接入 Responses 通道，默认保持 chat_completions、Responses 作为可选项。Anthropic 端点已完全弃用（调研 04 要点 2），禁止声明 anthropic_messages。"
+      "notes": "xAI 主推 Responses，Chat Completions 已标 legacy；后端先应用 Grok 参数适配，再由 Responses transport 转换请求。Anthropic 端点已弃用。"
     },
     {
       "provider_type": "xai",
@@ -157,10 +157,10 @@
         "openai_chat_completions",
         "openai_responses"
       ],
-      "default_protocol": "openai_chat_completions",
+      "default_protocol": "openai_responses",
       "official": true,
       "supports_openai_responses": true,
-      "notes": "grok 的别名条目（后端 adapters 注册 xai 别名，前端 URL 推断归一为 grok），内容与 grok 保持一致。"
+      "notes": "grok 的别名条目，默认与 grok 一致使用 Responses。"
     },
     {
       "provider_type": "ernie",

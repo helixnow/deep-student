@@ -1,0 +1,327 @@
+# Android 构建（reusable）
+#
+# release.yml / rebuild-release.yml / rebuild-android.yml 共用的唯一
+# Android 构建实现。调用方需 `secrets: inherit`。
+#
+# 审查 F1 修复：此前 rebuild-release.yml 缺失 "Prepare Android project"
+# 步骤（注入 RECORD_AUDIO / POST_NOTIFICATIONS 权限、adjustResize、受控
+# MainActivity），重建出的 APK 会静默回归。收敛为单一实现后不可能再漂移。
+#
+# fail-closed：签名 keystore secrets 缺失时在构建开始前立即失败（此前
+# 要等 2 小时编译完成才在 Sign APK 步骤炸出来）。本 job 失败不阻塞桌面
+# 发布（release.yml 的既有产品策略），但发布清单会诚实标记 Android 状态,
+# 不会产出错误的更新元数据。
+
+name: Build Android (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: '构建代码来源（tag / branch / commit SHA）'
+        required: true
+        type: string
+      version:
+        description: '产物命名用版本号（如 0.9.42）'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      NODE_OPTIONS: '--max-old-space-size=4096'
+    steps:
+      # ── 签名 secrets 预检（fail-closed, 在 2 小时编译之前）──
+      - name: Preflight — require Android signing secrets (fail-closed)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          MISSING=""
+          for VAR in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD; do
+            if [ -z "${!VAR}" ]; then
+              MISSING="${MISSING} ${VAR}"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Android release build refuses to run without signing secrets (fail-closed)."
+            echo "::error::Missing secrets:${MISSING}"
+            echo "::error::Note: this job failing does NOT block the desktop release; the publish manifest will honestly mark Android as unavailable."
+            exit 1
+          fi
+          echo "✅ All required Android signing secrets are present"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      - name: Free disk space
+        run: |
+          echo "=== Disk usage BEFORE cleanup ==="
+          df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/share/swift \
+            /usr/local/lib/android/sdk/ndk \
+            /usr/local/share/powershell \
+            /usr/local/share/chromium \
+            /usr/local/graalvm \
+            /usr/local/lib/node_modules \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /opt/hostedtoolcache/go \
+            /opt/hostedtoolcache/Python \
+            /opt/hostedtoolcache/Ruby
+          sudo docker image prune --all --force
+          echo "=== Disk usage AFTER cleanup ==="
+          df -h /
+
+      - name: Add swap space
+        run: |
+          SWAPFILE=/swapfile
+
+          if swapon --show --noheadings | grep -q .; then
+            echo "Swap already enabled on runner; skipping allocation"
+          else
+            if ! sudo fallocate -l 8G "$SWAPFILE"; then
+              echo "::warning::fallocate failed; retrying swap creation with dd"
+              sudo dd if=/dev/zero of="$SWAPFILE" bs=1M count=8192 status=progress
+            fi
+
+            sudo chmod 600 "$SWAPFILE"
+            sudo mkswap "$SWAPFILE"
+
+            if sudo swapon "$SWAPFILE"; then
+              echo "Swap enabled at $SWAPFILE"
+            else
+              echo "::warning::Failed to enable swap on this runner; continuing without extra swap"
+              sudo rm -f "$SWAPFILE"
+            fi
+          fi
+
+          echo "=== Memory + Swap ==="
+          free -h
+          swapon --show || true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK & NDK
+        run: |
+          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+            "ndk;27.0.12077973" "build-tools;35.0.0" "platforms;android-35" | tail -3
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.0.12077973" >> $GITHUB_ENV
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android
+
+      - name: Setup protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Print build tool manifest
+        run: |
+          echo "=== Android build tool manifest ==="
+          echo "node            : $(node --version)"
+          echo "npm             : $(npm --version)"
+          echo "rustc           : $(rustc --version)"
+          echo "cargo           : $(cargo --version)"
+          echo "tauri-cli       : $(npx --no-install tauri --version 2>/dev/null || echo 'from package-lock.json')"
+          echo "java            : $(java -version 2>&1 | head -1)"
+          echo "ndk             : 27.0.12077973 (pinned)"
+          echo "build-tools     : 35.0.0 (pinned) / platforms: android-35 (pinned)"
+          echo "actions         : checkout v7.0.0 / setup-node v6.5.0 / setup-java v4.8.0 / rust-toolchain stable / setup-protoc v3.0.0 / rust-cache v2.9.1 / upload-artifact v7.0.1 (all SHA-pinned)"
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Initialize Android project
+        run: npx tauri android init
+
+      # 与 scripts/build_android.sh 的 inject_android_permissions /
+      # inject_android_soft_input_mode / sync_main_activity 保持一致。
+      # tauri android init 生成的是裸模板：缺麦克风权限（语音输入不可用）、
+      # 缺 adjustResize（键盘避让行为随 ROM 漂移）、缺受控 MainActivity
+      # （A-5 返回键接管 + SA-1 安全区注入）。CI 里缺失即硬失败，防止官方 APK 静默回归。
+      - name: Prepare Android project (permissions / soft input / MainActivity)
+        run: |
+          MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+          test -f "$MANIFEST" || { echo "::error::AndroidManifest.xml not found at $MANIFEST"; exit 1; }
+
+          # POST_NOTIFICATIONS：Android 13+ 系统通知必需（审阅 33 P1-2，与 capabilities/mobile.json 的 notification:default 配套）
+          for PERMISSION in android.permission.RECORD_AUDIO android.permission.MODIFY_AUDIO_SETTINGS android.permission.POST_NOTIFICATIONS; do
+            PERM_LINE="<uses-permission android:name=\"$PERMISSION\" />"
+            if ! grep -qF "$PERMISSION" "$MANIFEST"; then
+              sed -i "/<manifest/a\\    $PERM_LINE" "$MANIFEST"
+            fi
+            grep -qF "$PERMISSION" "$MANIFEST" || { echo "::error::failed to inject $PERMISSION"; exit 1; }
+            echo "✅ permission present: $PERMISSION"
+          done
+
+          if ! grep -qF 'android:windowSoftInputMode' "$MANIFEST"; then
+            sed -i 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$MANIFEST"
+          fi
+          grep -qF 'android:windowSoftInputMode="adjustResize"' "$MANIFEST" || { echo "::error::failed to inject windowSoftInputMode=adjustResize"; exit 1; }
+          echo "✅ windowSoftInputMode=adjustResize present"
+
+          SRC="src-tauri/mobile/android/MainActivity.kt"
+          DST="src-tauri/gen/android/app/src/main/java/com/deepstudent/app/MainActivity.kt"
+          test -f "$SRC" || { echo "::error::managed MainActivity.kt missing at $SRC"; exit 1; }
+          test -d "$(dirname "$DST")" || { echo "::error::generated Android java dir missing at $(dirname "$DST")"; exit 1; }
+          cp "$SRC" "$DST"
+          cmp -s "$SRC" "$DST" || { echo "::error::MainActivity.kt sync verification failed"; exit 1; }
+          echo "✅ MainActivity.kt synced from managed copy"
+
+      - name: Copy custom Android icons
+        run: |
+          ICONS_SRC="src-tauri/icons/android"
+          RES_DST="src-tauri/gen/android/app/src/main/res"
+          if [ -d "$ICONS_SRC" ]; then
+            for density in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+              if [ -d "$ICONS_SRC/$density" ]; then
+                mkdir -p "$RES_DST/$density"
+                cp -f "$ICONS_SRC/$density/"* "$RES_DST/$density/"
+              fi
+            done
+            if [ -d "$ICONS_SRC/mipmap-anydpi-v26" ]; then
+              mkdir -p "$RES_DST/mipmap-anydpi-v26"
+              cp -f "$ICONS_SRC/mipmap-anydpi-v26/"* "$RES_DST/mipmap-anydpi-v26/"
+            fi
+            if [ -f "$ICONS_SRC/values/ic_launcher_background.xml" ]; then
+              mkdir -p "$RES_DST/values"
+              cp -f "$ICONS_SRC/values/ic_launcher_background.xml" "$RES_DST/values/"
+            fi
+            rm -f "$RES_DST/drawable-v24/ic_launcher_foreground.xml"
+            rm -f "$RES_DST/drawable/ic_launcher_background.xml"
+            echo "✅ Custom Android icons copied from $ICONS_SRC"
+            find "$RES_DST" -name "ic_launcher*" -type f | head -20
+          else
+            echo "⚠️ No custom Android icons found at $ICONS_SRC, using defaults"
+          fi
+
+      - name: Bundle pdfium for Android
+        run: |
+          JNILIBS_DIR="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
+          mkdir -p "$JNILIBS_DIR"
+          if [ -f "src-tauri/resources/pdfium/libpdfium_android_arm64.so" ]; then
+            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
+            echo "✅ Bundled pdfium for arm64: $(ls -lh "$JNILIBS_DIR/libpdfium.so" | awk '{print $5}')"
+          else
+            echo "⚠️ Android pdfium .so not found, downloading..."
+            bash scripts/download-pdfium.sh android-arm64
+            cp src-tauri/resources/pdfium/libpdfium_android_arm64.so "$JNILIBS_DIR/libpdfium.so"
+            echo "✅ Downloaded and bundled pdfium for arm64"
+          fi
+
+      - name: Configure NDK toolchain
+        run: |
+          NDK_PREBUILT="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
+          for TOOL in aarch64-linux-android21-clang aarch64-linux-android21-clang++ llvm-ar; do
+            test -x "${NDK_PREBUILT}/bin/${TOOL}" || { echo "::error::missing NDK tool ${TOOL}"; exit 1; }
+          done
+
+          echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+          echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++" >> $GITHUB_ENV
+          echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
+
+          echo "✅ NDK toolchain configured: ${NDK_PREBUILT}"
+
+      - name: Build Android APK
+        env:
+          SILICONFLOW_BUILTIN_TEXT_KEY: ${{ secrets.SILICONFLOW_BUILTIN_TEXT_KEY }}
+          SILICONFLOW_BUILTIN_VISION_KEY: ${{ secrets.SILICONFLOW_BUILTIN_VISION_KEY }}
+          SILICONFLOW_BUILTIN_EMBED_KEY: ${{ secrets.SILICONFLOW_BUILTIN_EMBED_KEY }}
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          set +e
+          echo "Starting Android build with 120 minute timeout"
+          timeout --signal=TERM --kill-after=60s 120m npx tauri android build --target aarch64 -- --locked
+          status=$?
+          set -e
+
+          if [ "$status" -eq 124 ]; then
+            echo "::error::Android build timed out after 120 minutes"
+          elif [ "$status" -ne 0 ]; then
+            echo "::error::Android build failed with exit code ${status}"
+          fi
+
+          exit "$status"
+
+      - name: Sign APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 -d > /tmp/release.keystore
+          if [ ! -s /tmp/release.keystore ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 decoded to an empty keystore"
+            exit 1
+          fi
+
+          UNSIGNED_APK=$(find src-tauri/gen/android -name "*-unsigned.apk" -type f | head -1)
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "::error::未找到未签名的 APK"
+            find src-tauri/gen/android -name "*.apk" -type f
+            exit 1
+          fi
+          echo "找到 APK: $UNSIGNED_APK"
+
+          BUILD_TOOLS=$(ls -d "${ANDROID_HOME}/build-tools/"* | sort -V | tail -1)
+
+          "${BUILD_TOOLS}/zipalign" -v 4 "$UNSIGNED_APK" /tmp/aligned.apk
+
+          "${BUILD_TOOLS}/apksigner" sign \
+            --ks /tmp/release.keystore \
+            --ks-key-alias "${ANDROID_KEY_ALIAS:-deepstudent}" \
+            --ks-pass "pass:${ANDROID_KEYSTORE_PASSWORD}" \
+            --key-pass "pass:${ANDROID_KEY_PASSWORD}" \
+            --in /tmp/aligned.apk \
+            --out /tmp/signed.apk
+
+          "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
+
+          VERSION="${{ inputs.version }}"
+          mkdir -p android-output
+          cp /tmp/signed.apk "android-output/Deep.Student_${VERSION}_arm64.apk"
+
+          rm -f /tmp/release.keystore
+
+          echo "✅ APK 签名完成: Deep.Student_${VERSION}_arm64.apk"
+          ls -lh android-output/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-arm64
+          path: android-output/*.apk

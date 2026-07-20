@@ -25,6 +25,7 @@ module.exports = {
 				mono: ['var(--font-mono)'],
 			},
 			fontSize: {
+				'2xs': 'var(--font-size-2xs)',
 				'xs': 'var(--font-size-xs)',
 				'sm': 'var(--font-size-sm)',
 				'base': 'var(--font-size-base)',
@@ -33,6 +34,8 @@ module.exports = {
 				'xl': 'var(--font-size-xl)',
 				'2xl': 'var(--font-size-2xl)',
 				'3xl': 'var(--font-size-3xl)',
+				// 桌面 UI 控件标准字号（13px，介于 sm 与 base 之间）
+				'ui': 'var(--font-size-ui)',
 				// 2026-07 mobile 基建追加：caption 层（时间戳/辅助说明），
 				// 移动端最小可读字号。Token 见 src/styles/shadcn-variables.css
 				'caption': 'var(--m-text-caption)',
@@ -88,20 +91,21 @@ module.exports = {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))',
 				},
+				// 语义状态色带 <alpha-value>，支持 bg-warning/10、border-danger/40 等透明度修饰符
 				info: {
-					DEFAULT: 'hsl(var(--info))',
+					DEFAULT: 'hsl(var(--info) / <alpha-value>)',
 					foreground: 'hsl(var(--info-foreground))',
 				},
 				success: {
-					DEFAULT: 'hsl(var(--success))',
+					DEFAULT: 'hsl(var(--success) / <alpha-value>)',
 					foreground: 'hsl(var(--success-foreground))',
 				},
 				warning: {
-					DEFAULT: 'hsl(var(--warning))',
+					DEFAULT: 'hsl(var(--warning) / <alpha-value>)',
 					foreground: 'hsl(var(--warning-foreground))',
 				},
 				danger: {
-					DEFAULT: 'hsl(var(--danger))',
+					DEFAULT: 'hsl(var(--danger) / <alpha-value>)',
 					foreground: 'hsl(var(--danger-foreground))',
 				},
 				neutral: {
@@ -136,6 +140,17 @@ module.exports = {
 			// Token 定义见 src/styles/shadcn-variables.css `--chat-thread-max-w`
 			maxWidth: {
 				thread: 'var(--chat-thread-max-w)',
+			},
+			// z-index 阶梯（token 定义见 src/styles/theme-colors.css），供 z-modal / z-tooltip 等类使用
+			zIndex: {
+				dropdown: 'var(--z-dropdown)',
+				sticky: 'var(--z-sticky)',
+				overlay: 'var(--z-overlay)',
+				modal: 'var(--z-modal)',
+				popover: 'var(--z-popover)',
+				toast: 'var(--z-toast)',
+				tooltip: 'var(--z-tooltip)',
+				debug: 'var(--z-debug)',
 			},
 			// 2026-07 chat 二轮追加：标准出口曲线（transitions-dev --ease-standard 的
 			// Tailwind 出口），供 tsx 组件写 `transition ... ease-standard duration-150/200`

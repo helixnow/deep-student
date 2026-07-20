@@ -1,12 +1,37 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-07-08",
-  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-07-08 刷新：新增 GPT-5.4/5.5、Claude Opus 4.7/4.8、Sonnet 5、Fable 5、DeepSeek V4、Qwen3.6/3.7、Kimi K2.6/K2.7、GLM-5.x、MiniMax M3、Grok 4.3、ERNIE 5.1/X1.1；移除已退役的 Hunyuan 2.0（老平台 2026-09-30 停服，TokenHub 新模型 ID 为 hy3 系）。",
+  "updated_at": "2026-07-20",
+  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-07-20 刷新：新增 GPT-5.6、Kimi K3、Grok 4.5、Mistral Medium 3.5/Small 4、MiniMax M2.7，并修正 Claude 5、Doubao Evolving 等上下文能力。",
   "records": [
     {
       "vendor": "OpenAI",
       "series": "GPT-5",
       "models": [
+        {
+          "model_id": "gpt-5.6",
+          "release_date": "2026-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1050000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "tools", "tool_choice", "response_format"],
+            "notes": "2026-07 主线旗舰；优先使用 Responses API，Chat Completions 使用 max_completion_tokens。"
+          },
+          "quirks": [
+            "上下文为 1.05M，不能回退到 GPT-5 家族的旧 400K 默认值。"
+          ]
+        },
         {
           "model_id": "gpt-5.5",
           "release_date": "2026-06",
@@ -400,7 +425,7 @@
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
-            "max_context_tokens": 200000,
+            "max_context_tokens": 1000000,
             "max_output_tokens": 128000
           },
           "param_format": {
@@ -426,8 +451,8 @@
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
-            "max_context_tokens": 200000,
-            "max_output_tokens": 64000
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 128000
           },
           "param_format": {
             "family": "anthropic_messages_native",
@@ -1601,8 +1626,34 @@
     },
     {
       "vendor": "Kimi / Moonshot",
-      "series": "K2.6/K2.7",
+      "series": "K3/K2.6/K2.7",
       "models": [
+        {
+          "model_id": "kimi-k3",
+          "release_date": "2026-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages", "reasoning_effort"],
+            "optional_fields": ["max_completion_tokens", "tools", "tool_choice", "stream"],
+            "notes": "K3 推理不可关闭，固定 reasoning_effort=max；不得发送 K2.x thinking 对象。"
+          },
+          "quirks": [
+            "若沿用 K2.5+ thinking:{type} 会被服务端拒绝。",
+            "模型发现和能力推断必须在通用 kimi/moonshot 256K 规则之前命中 1M。"
+          ]
+        },
         {
           "model_id": "kimi-k2.6",
           "release_date": "2026-05",
@@ -1740,8 +1791,34 @@
     },
     {
       "vendor": "xAI",
-      "series": "Grok 4.3",
+      "series": "Grok 4.5/4.3",
       "models": [
+        {
+          "model_id": "grok-4.5",
+          "release_date": "2026-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 500000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "xai_openai_responses_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "stream", "max_output_tokens", "tools", "tool_choice", "response_format", "search_parameters"],
+            "notes": "当前旗舰；推理不可关闭，优先使用 Responses API。"
+          },
+          "quirks": [
+            "不得把 reasoning_effort=none 作为关闭推理开关。",
+            "上下文为 500K，不能沿用 Grok 4.3 的 1M 或旧 Grok 4 的 256K。"
+          ]
+        },
         {
           "model_id": "grok-4.3",
           "release_date": "2026-05",
@@ -1923,6 +2000,56 @@
           },
           "quirks": [
             "不要把 Mistral Small/Medium 的旧字段直接套到 Large 3。"
+          ]
+        },
+        {
+          "model_id": "mistral-medium-3-5",
+          "release_date": "2026-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "mistral_openai_compatible",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["reasoning_effort", "max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "response_format"],
+            "notes": "mistral-medium-latest 当前对应 Medium 3.5；reasoning_effort 支持 none/low/medium/high。"
+          },
+          "quirks": [
+            "推理开启后 content 可返回 ThinkChunk/TextChunk 数组，流式与非流式都必须归一化。"
+          ]
+        },
+        {
+          "model_id": "mistral-small-4",
+          "release_date": "2026-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "mistral_openai_compatible",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["reasoning_effort", "max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "response_format"],
+            "notes": "mistral-small-latest 当前对应 Small 4 hybrid reasoning。"
+          },
+          "quirks": [
+            "不要沿用 Magistral 的 prompt_mode；使用 reasoning_effort。"
           ]
         },
         {
@@ -2233,7 +2360,7 @@
     },
     {
       "vendor": "MiniMax",
-      "series": "M3",
+      "series": "M3/M2.7",
       "models": [
         {
           "model_id": "minimax-m3",
@@ -2259,6 +2386,31 @@
           "quirks": [
             "国内主域名为 api.minimaxi.com、国际为 api.minimax.io，Key 不互通（调研 08 §1.2）。",
             "官方推荐 Anthropic 协议接入，但本应用后端暂按 OpenAI 通道处理。"
+          ]
+        },
+        {
+          "model_id": "minimax-m2.7",
+          "release_date": "2026-07",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 32768
+          },
+          "param_format": {
+            "family": "minimax_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["reasoning_split", "max_tokens", "temperature", "tools", "tool_choice", "stream"],
+            "notes": "M2.7 推理模型；继续兼容 reasoning_details/reasoning_content 响应。"
+          },
+          "quirks": [
+            "M2.x 不使用 M3 的 adaptive/disabled thinking 开关。"
           ]
         }
       ]

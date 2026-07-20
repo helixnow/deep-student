@@ -1,0 +1,570 @@
+# 发布（reusable）：GitHub Release + R2 镜像 + CDN 刷新 + 官网重建
+#
+# release.yml / rebuild-release.yml 共用的唯一发布实现。
+# 调用方需 `secrets: inherit`，并保证四个平台 artifact 已上传：
+#   macos-aarch64-apple-darwin / macos-x86_64-apple-darwin /
+#   windows-x86_64 / linux-x86_64 /（可选）android-arm64
+#
+# 发布状态机（draft-first, fail-closed）：
+#   1. Release 由 release.yml 以 draft 创建（对外不可见）；本 workflow
+#      开头校验 Release 存在并记录 draft/published 状态。
+#   2. 发布清单校验 fail-closed：四个桌面平台的 updater 产物 + updater
+#      signature + 安装包必须全部存在、命名含版本号、签名可解码，缺任何
+#      一项立即失败 —— 绝不"找到几个发几个"。
+#   3. 资产先上传到 draft（--clobber 幂等，rerun 覆盖同名资产），再镜像
+#      到 R2 版本化路径（immutable key，公开前上传安全）。
+#   4. 二次核对 GitHub Release 资产清单与期望清单一致后，一次性把
+#      draft 翻转为 published。任何失败都停在 draft，不产生空公开 Release。
+#   5. published 之后才更新 R2 latest.json 指针 + CDN 刷新，保证更新器
+#      指针永远不指向不可下载的资产。
+#   rebuild 路径（Release 已 published）：资产覆盖上传，翻转步骤幂等空跑。
+#
+# Android 诚实性：Android 不阻塞桌面发布（产品策略），但清单必须如实
+# 表达 —— 调用方声明 android_result=success 而 APK 缺失时 fail-closed；
+# APK 缺失时 latest.json 不写 apk_url，只记录诚实的 android.status。
+#
+# 审查 F5 修复：R2 资产带 max-age=31536000, immutable，而 rebuild 会用
+# 同名文件覆盖同一 key —— 此前只能靠手动跑 purge-cache.yml，忘了就是
+# 用户一年内拿旧文件。现在发布尾部自动 purge 本次上传的全部 URL。
+
+name: Publish Release (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: '发布的 tag（如 v0.9.42）'
+        required: true
+        type: string
+      version:
+        description: '版本号（如 0.9.42）'
+        required: true
+        type: string
+      android_result:
+        description: >-
+          Android 构建 job 的结论（success / failure / skipped / cancelled）。
+          留空表示调用方未声明（如 rebuild-release.yml），此时 Android 状态
+          仅由 APK artifact 是否存在决定。
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  R2_BUCKET: deepstudent
+  KEEP_VERSIONS: 10
+  # 固定发布工具链版本（升级需显式改这里，禁止隐式 latest 漂移）
+  WRANGLER_VERSION: '4.112.0'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      # checkout 工作流自身 ref（默认分支）：提供 scripts/ci/*。
+      # 不 checkout 发布 tag —— 旧 tag 可能没有这些脚本；tag 上唯一需要
+      # 的文件 .release-channel 单独用 git show 读取。
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Print release tool manifest
+        run: |
+          echo "=== Release tool manifest (pinned) ==="
+          echo "wrangler          : ${WRANGLER_VERSION} (via scripts/ci/*, WRANGLER_VERSION)"
+          echo "actions/checkout  : v7.0.0 (SHA-pinned)"
+          echo "gh                : $(gh --version | head -1)"
+          echo "jq                : $(jq --version)"
+          echo "runner            : ${ImageOS:-unknown} ${ImageVersion:-unknown}"
+
+      - name: Read release channel from tag
+        id: channel
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          git fetch --no-tags --depth 1 origin "refs/tags/${TAG}" || true
+          CHANNEL=$(git show FETCH_HEAD:.release-channel 2>/dev/null | tr -d '[:space:]' || echo "stable")
+          if [[ "$CHANNEL" != "experimental" ]]; then CHANNEL="stable"; fi
+          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
+          echo "📢 Release channel: ${CHANNEL}"
+
+      # ── 发布状态机入口校验：Release 必须已由 release.yml 创建 ──
+      # draft Release 无法用 releases/tags/:tag 查到，必须列表匹配。
+      - name: Resolve release state (draft-first gate)
+        id: release_state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          RELEASE_ROW=$(gh api --paginate "repos/${GH_REPO}/releases" \
+            --jq ".[] | select(.tag_name == \"${TAG}\") | \"\(.id)\t\(.draft)\"" | head -1)
+
+          if [[ -z "$RELEASE_ROW" ]]; then
+            echo "::error::Release ${TAG} not found (neither draft nor published)."
+            echo "::error::The release must be created as a draft by release.yml before publishing; refusing to create an ad-hoc public release here."
+            exit 1
+          fi
+
+          RELEASE_ID="${RELEASE_ROW%%$'\t'*}"
+          IS_DRAFT="${RELEASE_ROW##*$'\t'}"
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+          echo "is_draft=${IS_DRAFT}" >> "$GITHUB_OUTPUT"
+
+          if [[ "$IS_DRAFT" == "true" ]]; then
+            echo "🔒 Release ${TAG} is a draft (id=${RELEASE_ID}) — stays hidden until all gates pass"
+          else
+            echo "ℹ️ Release ${TAG} is already published (id=${RELEASE_ID}) — rebuild mode, assets will be overwritten in place"
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: artifacts
+
+      - name: Display artifact structure
+        run: find artifacts -type f | head -50
+
+      - name: Normalize artifact filenames
+        run: |
+          find artifacts -type f -name '* *' | while IFS= read -r f; do
+            DIR=$(dirname "$f")
+            OLD=$(basename "$f")
+            NEW=$(echo "$OLD" | tr ' ' '.')
+            mv "$f" "$DIR/$NEW"
+            echo "  Renamed: $OLD → $NEW"
+          done
+
+      # ── 发布清单校验（fail-closed）+ latest.json 生成 ──
+      # 期望平台/文件/updater signature 缺一即失败；latest.json 必须恰好
+      # 包含 4 个桌面平台 entry，绝不允许部分平台静默缺席。
+      - name: Validate release manifest and generate latest.json (fail-closed)
+        id: manifest
+        env:
+          ANDROID_RESULT: ${{ inputs.android_result }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          REPO="${{ github.repository }}"
+          TAG="${{ inputs.tag_name }}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          CHANNEL="${{ steps.channel.outputs.channel }}"
+
+          # fail() 会在命令替换的子 shell 里被调用，计数器无法传回父 shell，
+          # 所以用文件收集失败项；::error:: 必须走 stderr，避免污染被捕获的
+          # stdout（函数用 stdout 返回文件路径）。
+          FAILURES_FILE=$(mktemp)
+          fail() {
+            echo "::error::manifest: $1" >&2
+            echo "$1" >> "$FAILURES_FILE"
+          }
+
+          # 恰好匹配一个文件，且文件名包含版本号、无空格
+          find_exactly_one() {
+            local DIR="$1" PATTERN="$2" LABEL="$3"
+            local MATCHES
+            MATCHES=$(find "$DIR" -name "$PATTERN" ! -name "*.sig" 2>/dev/null | sort)
+            local COUNT
+            COUNT=$(printf '%s' "$MATCHES" | grep -c . || true)
+            if [[ "$COUNT" -eq 0 ]]; then
+              fail "${LABEL}: no file matching '${PATTERN}' under ${DIR}"
+              return 1
+            elif [[ "$COUNT" -gt 1 ]]; then
+              fail "${LABEL}: ambiguous — ${COUNT} files match '${PATTERN}' under ${DIR}: $(echo "$MATCHES" | tr '\n' ' ')"
+              return 1
+            fi
+            local FILE
+            FILE=$(echo "$MATCHES" | head -1)
+            local NAME
+            NAME=$(basename "$FILE")
+            if [[ "$NAME" != *"$VERSION"* ]]; then
+              fail "${LABEL}: filename '${NAME}' does not contain version ${VERSION}"
+              return 1
+            fi
+            if [[ "$NAME" == *" "* ]]; then
+              fail "${LABEL}: filename '${NAME}' still contains spaces after normalization"
+              return 1
+            fi
+            if [[ ! -s "$FILE" ]]; then
+              fail "${LABEL}: file '${NAME}' is empty"
+              return 1
+            fi
+            printf '%s' "$FILE"
+          }
+
+          # updater signature 必须存在、非空、可 base64 解码（tauri minisign）
+          check_updater_sig() {
+            local ARCHIVE="$1" LABEL="$2"
+            local SIG="${ARCHIVE}.sig"
+            if [[ ! -s "$SIG" ]]; then
+              fail "${LABEL}: updater signature missing or empty: $(basename "$ARCHIVE").sig"
+              return 1
+            fi
+            if ! tr -d '\r\n' < "$SIG" | base64 -d > /dev/null 2>&1; then
+              fail "${LABEL}: updater signature is not valid base64: $(basename "$SIG")"
+              return 1
+            fi
+            local SIG_LEN
+            SIG_LEN=$(tr -d '\r\n' < "$SIG" | wc -c | tr -d ' ')
+            if [[ "$SIG_LEN" -lt 100 ]]; then
+              fail "${LABEL}: updater signature suspiciously short (${SIG_LEN} chars): $(basename "$SIG")"
+              return 1
+            fi
+            printf '%s' "$SIG"
+          }
+
+          PLATFORMS="{}"
+          add_platform() {
+            local KEY="$1" ARCHIVE="$2" SIG_FILE="$3"
+            local NAME SIGNATURE
+            NAME=$(basename "$ARCHIVE")
+            SIGNATURE=$(cat "$SIG_FILE")
+            PLATFORMS=$(echo "$PLATFORMS" | jq \
+              --arg url "https://github.com/$REPO/releases/download/$TAG/$NAME" \
+              --arg sig "$SIGNATURE" \
+              --arg key "$KEY" \
+              '. + {($key): {"url": $url, "signature": $sig}}')
+          }
+
+          # ── macOS aarch64（updater 包 + sig + dmg 全部必需）──
+          DIR="artifacts/macos-aarch64-apple-darwin"
+          [[ -d "$DIR" ]] || fail "darwin-aarch64: artifact directory missing: ${DIR}"
+          if [[ -d "$DIR" ]]; then
+            TAR=$(find_exactly_one "$DIR" "*_aarch64.app.tar.gz" "darwin-aarch64 updater archive") || true
+            if [[ -n "${TAR:-}" ]]; then
+              SIG=$(check_updater_sig "$TAR" "darwin-aarch64") || true
+              if [[ -n "${SIG:-}" ]]; then
+                add_platform "darwin-aarch64" "$TAR" "$SIG"
+              fi
+            fi
+            find_exactly_one "$DIR" "*.dmg" "darwin-aarch64 dmg installer" > /dev/null || true
+          fi
+
+          # ── macOS x86_64 ──
+          DIR="artifacts/macos-x86_64-apple-darwin"
+          [[ -d "$DIR" ]] || fail "darwin-x86_64: artifact directory missing: ${DIR}"
+          if [[ -d "$DIR" ]]; then
+            TAR=$(find_exactly_one "$DIR" "*_x86_64.app.tar.gz" "darwin-x86_64 updater archive") || true
+            if [[ -n "${TAR:-}" ]]; then
+              SIG=$(check_updater_sig "$TAR" "darwin-x86_64") || true
+              if [[ -n "${SIG:-}" ]]; then
+                add_platform "darwin-x86_64" "$TAR" "$SIG"
+              fi
+            fi
+            find_exactly_one "$DIR" "*.dmg" "darwin-x86_64 dmg installer" > /dev/null || true
+          fi
+
+          # ── Windows x86_64 ──
+          DIR="artifacts/windows-x86_64"
+          [[ -d "$DIR" ]] || fail "windows-x86_64: artifact directory missing: ${DIR}"
+          if [[ -d "$DIR" ]]; then
+            EXE=$(find_exactly_one "$DIR" "*-setup.exe" "windows-x86_64 NSIS installer") || true
+            if [[ -n "${EXE:-}" ]]; then
+              SIG=$(check_updater_sig "$EXE" "windows-x86_64") || true
+              if [[ -n "${SIG:-}" ]]; then
+                add_platform "windows-x86_64" "$EXE" "$SIG"
+              fi
+            fi
+          fi
+
+          # ── Linux x86_64（updater 包 + sig + AppImage/deb/rpm 全部必需）──
+          DIR="artifacts/linux-x86_64"
+          [[ -d "$DIR" ]] || fail "linux-x86_64: artifact directory missing: ${DIR}"
+          if [[ -d "$DIR" ]]; then
+            TAR=$(find_exactly_one "$DIR" "*_x86_64.AppImage.tar.gz" "linux-x86_64 updater archive") || true
+            if [[ -n "${TAR:-}" ]]; then
+              SIG=$(check_updater_sig "$TAR" "linux-x86_64") || true
+              if [[ -n "${SIG:-}" ]]; then
+                add_platform "linux-x86_64" "$TAR" "$SIG"
+              fi
+            fi
+            find_exactly_one "$DIR" "*.AppImage" "linux-x86_64 AppImage" > /dev/null || true
+            find_exactly_one "$DIR" "*.deb" "linux-x86_64 deb" > /dev/null || true
+            find_exactly_one "$DIR" "*.rpm" "linux-x86_64 rpm" > /dev/null || true
+          fi
+
+          # ── Android 诚实性（不阻塞桌面, 但绝不撒谎）──
+          ANDROID_STATUS=""
+          APK=$(find artifacts/android-arm64 -name "*.apk" 2>/dev/null | head -1 || true)
+          if [[ -n "$APK" ]]; then
+            APK_NAME=$(basename "$APK")
+            if [[ "$APK_NAME" != *"$VERSION"* ]]; then
+              fail "android: APK filename '${APK_NAME}' does not contain version ${VERSION}"
+            elif [[ ! -s "$APK" ]]; then
+              fail "android: APK file '${APK_NAME}' is empty"
+            else
+              ANDROID_STATUS="available"
+            fi
+          else
+            case "${ANDROID_RESULT}" in
+              success)
+                # 调用方声称成功却没有产物 —— 状态不一致, fail-closed
+                fail "android: build reported success but no APK artifact found (android-arm64)"
+                ;;
+              failure)  ANDROID_STATUS="failed-pending-rebuild" ;;
+              cancelled|skipped) ANDROID_STATUS="skipped" ;;
+              *)        ANDROID_STATUS="absent" ;;
+            esac
+          fi
+
+          # ── 四个桌面平台必须全部到齐 ──
+          PLATFORM_COUNT=$(echo "$PLATFORMS" | jq 'length')
+          for KEY in darwin-aarch64 darwin-x86_64 windows-x86_64 linux-x86_64; do
+            if [[ "$(echo "$PLATFORMS" | jq --arg k "$KEY" 'has($k)')" != "true" ]]; then
+              fail "latest.json is missing required platform entry: ${KEY}"
+            fi
+          done
+
+          FAILURES=$(grep -c . "$FAILURES_FILE" || true)
+          if [[ "$FAILURES" -gt 0 ]]; then
+            echo "::error::Release manifest validation failed with ${FAILURES} error(s) — refusing to publish a partial release (release stays draft)."
+            exit 1
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg notes "Deep Student v$VERSION 更新" \
+            --arg pub_date "$DATE" \
+            --arg channel "$CHANNEL" \
+            --arg android_status "$ANDROID_STATUS" \
+            --argjson platforms "$PLATFORMS" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, channel: $channel,
+              platforms: $platforms, android: {status: $android_status}}' \
+            > latest.json
+
+          echo "android_status=${ANDROID_STATUS}" >> "$GITHUB_OUTPUT"
+          echo "✅ Release manifest validated (${PLATFORM_COUNT} desktop platforms, android: ${ANDROID_STATUS})"
+          echo "✅ latest.json 已生成:"
+          cat latest.json
+
+      - name: Collect release files
+        run: |
+          mkdir -p release-files
+          cp latest.json release-files/
+
+          find artifacts -name "*.app.tar.gz" -exec cp {} release-files/ \;
+          find artifacts -name "*.app.tar.gz.sig" -exec cp {} release-files/ \;
+          find artifacts -name "*.dmg" -exec cp {} release-files/ \;
+          find artifacts -name "*.exe" -exec cp {} release-files/ \;
+          find artifacts -name "*.exe.sig" -exec cp {} release-files/ \;
+          find artifacts -name "*.AppImage" -exec cp {} release-files/ \;
+          find artifacts -name "*.AppImage.tar.gz" -exec cp {} release-files/ \;
+          find artifacts -name "*.AppImage.tar.gz.sig" -exec cp {} release-files/ \;
+          find artifacts -name "*.deb" -exec cp {} release-files/ \;
+          find artifacts -name "*.rpm" -exec cp {} release-files/ \;
+          find artifacts -name "*.apk" -exec cp {} release-files/ \;
+
+          ls release-files/ | sort > expected-assets.txt
+          echo "📦 Release files (expected upload manifest):"
+          ls -lh release-files/
+
+      # ── 资产上传到 draft（--clobber 幂等; rerun 覆盖同名资产）──
+      # 不在这里翻转 draft 状态 —— 公开是最后一步的一次性动作。
+      - name: Upload assets to GitHub Release (draft-safe, idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          echo "⬆️ Uploading $(wc -l < expected-assets.txt | tr -d ' ') asset(s) to release ${TAG}..."
+          gh release upload "${TAG}" release-files/* --clobber
+          echo "✅ Assets uploaded to release ${TAG} (still draft unless already published)"
+
+      # ── R2 镜像上传（版本化 immutable key, 公开前上传安全）─────────
+      - name: Upload to Cloudflare R2
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ] || [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN not configured — R2 mirror is a required release channel (fail-closed; release stays draft)."
+            exit 1
+          fi
+
+          TAG="${{ inputs.tag_name }}"
+          FAILED_FILES=""
+
+          echo "📤 Uploading release ${TAG} to R2..."
+          for FILE in release-files/*; do
+            NAME=$(basename "$FILE")
+            [ "$NAME" = "latest.json" ] && continue
+            case "$NAME" in
+              *.sig)  CT="application/pgp-signature" ;;
+              *.dmg)  CT="application/x-apple-diskimage" ;;
+              *.deb)  CT="application/vnd.debian.binary-package" ;;
+              *.rpm)  CT="application/x-rpm" ;;
+              *.apk)  CT="application/vnd.android.package-archive" ;;
+              *)      CT="application/octet-stream" ;;
+            esac
+            echo "  ⬆️ ${NAME} (${CT})"
+
+            if ! bash scripts/ci/r2-put.sh \
+              "${R2_BUCKET}/releases/${TAG}/${NAME}" \
+              "$FILE" \
+              "$CT" \
+              "public, max-age=31536000, immutable"; then
+              FAILED_FILES="${FAILED_FILES}${NAME}\n"
+            fi
+          done
+
+          if [ -n "$FAILED_FILES" ]; then
+            echo "❌ R2 upload finished with failures:"
+            printf "%b" "$FAILED_FILES"
+            exit 1
+          fi
+
+          echo "✅ R2 upload complete"
+
+      # ── 上传结果二次核对：GitHub Release 资产 == 期望清单 ──────────
+      - name: Verify uploaded assets against expected manifest (fail-closed)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          RELEASE_ID="${{ steps.release_state.outputs.release_id }}"
+          gh api --paginate "repos/${GH_REPO}/releases/${RELEASE_ID}/assets" \
+            --jq '.[] | select(.size > 0) | .name' | sort > uploaded-assets.txt
+
+          echo "Expected assets:" && cat expected-assets.txt
+          echo "Uploaded assets (non-empty):" && cat uploaded-assets.txt
+
+          MISSING=$(comm -23 expected-assets.txt uploaded-assets.txt)
+          if [ -n "$MISSING" ]; then
+            echo "::error::These expected assets are missing or empty on the GitHub Release:"
+            echo "$MISSING"
+            exit 1
+          fi
+          echo "✅ All expected assets present on the GitHub Release"
+
+      # ── 一次性公开：draft → published ─────────────────────────────
+      # 只有版本校验/迁移门禁/全平台构建/签名清单/资产核对全部通过才会
+      # 走到这里。已 published（rebuild 路径）时为幂等空跑。
+      - name: Publish release (flip draft → published, one-shot)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          RELEASE_ID="${{ steps.release_state.outputs.release_id }}"
+          IS_DRAFT="${{ steps.release_state.outputs.is_draft }}"
+
+          if [[ "$IS_DRAFT" != "true" ]]; then
+            echo "ℹ️ Release ${TAG} was already published — assets refreshed in place, nothing to flip"
+            exit 0
+          fi
+
+          gh api --method PATCH "repos/${GH_REPO}/releases/${RELEASE_ID}" \
+            -F draft=false \
+            -f make_latest=legacy > /dev/null
+          echo "🚀 Release ${TAG} is now PUBLIC (draft → published)"
+
+      # ── published 之后才更新 R2 latest.json 更新器指针 ──────────────
+      - name: Generate R2 latest.json
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          R2_BASE="https://download.deepstudent.cn/releases/${TAG}"
+
+          if [ ! -f latest.json ]; then
+            echo "::error::latest.json missing — manifest step must have produced it"
+            exit 1
+          fi
+
+          # APK 链接只在清单校验确认 android=available 时写入（诚实表达）
+          ANDROID_STATUS="${{ steps.manifest.outputs.android_status }}"
+          APK_URL=""
+          if [ "$ANDROID_STATUS" = "available" ]; then
+            APK_NAME=$(ls release-files/*.apk 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+            if [ -z "$APK_NAME" ]; then
+              echo "::error::android status is 'available' but no APK in release-files — inconsistent state"
+              exit 1
+            fi
+            APK_URL="${R2_BASE}/${APK_NAME}"
+            echo "📱 APK: ${APK_URL}"
+          else
+            echo "ℹ️ Android status: ${ANDROID_STATUS} — no apk_url will be written"
+          fi
+
+          jq --arg base "$R2_BASE" --arg apk "$APK_URL" '
+            .platforms |= with_entries(
+              .value.url = ($base + "/" + (.value.url | split("/") | last))
+            )
+            | if $apk != "" then .apk_url = $apk | .android.url = $apk else . end
+          ' latest.json > r2-latest.json
+
+          echo "R2 latest.json:"
+          cat r2-latest.json
+
+          bash scripts/ci/r2-put.sh \
+            "${R2_BUCKET}/releases/latest.json" \
+            "r2-latest.json" \
+            "application/json" \
+            "public, max-age=300"
+          echo "✅ R2 latest.json uploaded"
+
+      # ── CDN 刷新（F5）────────────────────────────────────────
+      # R2 资产是 immutable 一年缓存；rebuild 用同名文件覆盖同一 key 时，
+      # 不 purge 就意味着 CDN 用户长达一年拿旧文件。
+      - name: Purge Cloudflare CDN cache
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          TAG="${{ inputs.tag_name }}"
+          BASE_URL="https://download.deepstudent.cn/releases/${TAG}"
+          {
+            for FILE in release-files/*; do
+              echo "${BASE_URL}/$(basename "$FILE")"
+            done
+            echo "https://download.deepstudent.cn/releases/latest.json"
+          } > /tmp/purge-urls.txt
+          bash scripts/ci/purge-cdn.sh /tmp/purge-urls.txt
+
+      - name: Cleanup old R2 versions
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash scripts/ci/r2-cleanup-old-versions.sh
+
+      # ── 触发官网重构建 ─────────────────────────────────────────
+      - name: Trigger website rebuild
+        continue-on-error: true
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK" ]; then
+            echo "⚠️ VERCEL_DEPLOY_HOOK not configured, skipping"
+            exit 0
+          fi
+          RESP=$(curl -s -X POST "$VERCEL_DEPLOY_HOOK")
+          echo "🌐 Website rebuild triggered: $RESP"
+
+      # ── 确保 autorelease 标签已同步 (publish 阶段兜底) ──────────
+      - name: Sync autorelease label
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          echo "🏷️ Ensuring autorelease label is 'tagged' for release ${VERSION}..."
+
+          PR_NUM=$(gh pr list --state merged --label "autorelease: pending" \
+            --json number,title \
+            --jq ".[] | select(.title | test(\"release ${VERSION}\")) | .number" \
+            | head -1 || true)
+
+          if [[ -z "$PR_NUM" ]]; then
+            echo "  ℹ️ No PR with 'autorelease: pending' found for ${VERSION} (already tagged or manual release)"
+            exit 0
+          fi
+
+          echo "  🔧 PR #${PR_NUM}: autorelease: pending → autorelease: tagged"
+          gh pr edit "$PR_NUM" \
+            --remove-label "autorelease: pending" \
+            --add-label "autorelease: tagged" || true

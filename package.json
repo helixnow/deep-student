@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json",
     "analyze": "ANALYZE=1 npm run build",
     "prebuild": "npm run version:generate && npm run licenses:check && npm run typecheck",
     "build": "vite build",

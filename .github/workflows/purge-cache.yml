@@ -1,3 +1,10 @@
+# 手动刷新 Cloudflare CDN 缓存（兜底工具）
+#
+# 正常发布/重建/热修流程已自动 purge（见 reusable-publish.yml /
+# rebuild-android.yml / hotfix-linux-release.yml / upload-r2.yml）。
+# 本 workflow 保留为手动兜底：secrets 缺失导致自动 purge 跳过、或
+# 需要刷新任意额外 URL 时使用。
+
 name: Purge Cloudflare Cache (Manual)
 
 on:
@@ -17,12 +24,17 @@ on:
         description: "额外要刷新的 URL（可选，支持逗号/空格/换行分隔）"
         required: false
 
+permissions:
+  contents: read
+
 jobs:
   purge:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 15
     steps:
+      # workflow ref 的 checkout：提供 scripts/ci/purge-cdn.sh
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
       - name: Validate required secrets
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN}" ]; then
@@ -32,49 +44,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      - name: Resolve Cloudflare zone id
-        id: cf_zone
-        env:
-          INPUT_ZONE_ID: ${{ github.event.inputs.zone_id }}
-          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          if [ -n "${INPUT_ZONE_ID}" ]; then
-            echo "✅ Using zone_id from workflow input"
-            echo "zone_id=${INPUT_ZONE_ID}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ -n "${CLOUDFLARE_ZONE_ID}" ]; then
-            echo "✅ Using CLOUDFLARE_ZONE_ID from secrets"
-            echo "zone_id=${CLOUDFLARE_ZONE_ID}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "🔎 CLOUDFLARE_ZONE_ID missing, auto-discovering by domain..."
-          ZONE_ID=""
-          for DOMAIN in "deepstudent.cn" "download.deepstudent.cn"; do
-            RESP=$(curl -fsS \
-              "https://api.cloudflare.com/client/v4/zones?name=${DOMAIN}&status=active&per_page=1" \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              -H "Content-Type: application/json")
-            ZONE_ID=$(echo "$RESP" | jq -r '.result[0].id // empty')
-            if [ -n "$ZONE_ID" ]; then
-              echo "✅ Found zone id for ${DOMAIN}"
-              break
-            fi
-          done
-
-          if [ -z "$ZONE_ID" ]; then
-            echo "❌ Could not resolve Cloudflare zone id automatically"
-            exit 1
-          fi
-
-          echo "zone_id=${ZONE_ID}" >> "$GITHUB_OUTPUT"
-
       - name: Build purge URL list
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           TAG="${{ github.event.inputs.tag }}"
           INCLUDE_LATEST="${{ github.event.inputs.include_latest }}"
@@ -84,7 +57,7 @@ jobs:
           : > /tmp/purge-urls.txt
 
           echo "📦 Fetching release assets for tag: ${TAG}"
-          ASSETS=$(gh api "repos/${{ github.repository }}/releases/tags/${TAG}" -q '.assets[].name')
+          ASSETS=$(gh api "repos/${GH_REPO}/releases/tags/${TAG}" -q '.assets[].name')
           if [ -z "$ASSETS" ]; then
             echo "❌ No assets found for tag ${TAG}"
             exit 1
@@ -119,23 +92,6 @@ jobs:
 
       - name: Purge Cloudflare cache by URL
         env:
-          CLOUDFLARE_ZONE_ID: ${{ steps.cf_zone.outputs.zone_id }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          COUNT=$(wc -l < /tmp/purge-urls.txt | tr -d ' ')
-          echo "🧹 Purging ${COUNT} URL(s)..."
-          PAYLOAD=$(jq -Rn '[inputs | select(length > 0)] | {files: .}' < /tmp/purge-urls.txt)
-
-          RESP=$(curl -fsS -X POST \
-            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "$PAYLOAD")
-
-          echo "$RESP" | jq .
-          if [ "$(echo "$RESP" | jq -r '.success // false')" != "true" ]; then
-            echo "❌ Cloudflare purge failed"
-            exit 1
-          fi
-
-          echo "✅ Cloudflare purge completed"
+          CLOUDFLARE_ZONE_ID: ${{ github.event.inputs.zone_id || secrets.CLOUDFLARE_ZONE_ID }}
+        run: bash scripts/ci/purge-cdn.sh /tmp/purge-urls.txt

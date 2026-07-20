@@ -92,13 +92,13 @@ export default tseslint.config(
       // 4. 禁止使用 window.alert - 必须使用统一通知系统
       'no-alert': 'error',
 
-      // 5. 跨模块事件监听应通过集中注册（useEventRegistry / registry）
-      // 仅对新增代码做约束，历史代码逐步迁移，因此先使用 warn。
+      // 5. 跨模块事件监听应通过集中注册（@/events / useEventRegistry）
+      // 全仓历史欠账先 warn；已迁移文件（如 App.tsx）在下方单独升为 error。
       'no-restricted-syntax': [
         'warn',
         {
           selector: "CallExpression[callee.property.name='addEventListener'][callee.object.name=/^(window|document)$/]",
-          message: '❌ 禁止直接使用 window/document.addEventListener。请使用 useEventRegistry 或集中事件 registry。'
+          message: '❌ 禁止裸 window/document.addEventListener。请使用 @/events（dispatchAppEvent / useAppEvent / addAppEventListener）或 useEventRegistry。'
         }
       ],
 
@@ -137,17 +137,37 @@ export default tseslint.config(
     }
   },
 
-  // 事件监听白名单目录：允许底层/调试模块直接绑定原生事件
+  // 事件监听白名单：registry 实现与调试/底层模块可直接绑定原生事件
   {
     files: [
       'src/debug-panel/**/*.{ts,tsx}',
       'src/components/dev/**/*.{ts,tsx}',
       'src/chat-v2/dev/**/*.{ts,tsx}',
+      'src/dev/**/*.{ts,tsx}',
       'src/events/**/*.{ts,tsx}',
-      'src/hooks/useEventRegistry.ts'
+      'src/app-events/**/*.{ts,tsx}',
+      'src/hooks/useEventRegistry.ts',
+      'src/mcp-debug/**/*.{ts,tsx}',
+      'src/utils/testBridge.ts',
+      'src/utils/testSnapshot.ts',
+      'src/main.tsx'
     ],
     rules: {
       'no-restricted-syntax': 'off'
+    }
+  },
+
+  // 已迁移壳层：禁止再引入裸 window/document listener
+  {
+    files: ['src/App.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='addEventListener'][callee.object.name=/^(window|document)$/]",
+          message: '❌ App.tsx 已迁移至 @/events / useEventRegistry，禁止新增裸 window/document.addEventListener。'
+        }
+      ]
     }
   },
 

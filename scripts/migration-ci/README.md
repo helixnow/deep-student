@@ -1,7 +1,9 @@
 # Migration CI tooling
 
 Layered database-migration gating used by `.github/workflows/ci.yml`,
-`.github/workflows/migration-nightly.yml` and `.github/workflows/release.yml`.
+`.github/workflows/migration-nightly.yml` and
+`.github/workflows/reusable-migration-gate.yml` (called by both `release.yml`
+and `rebuild-release.yml`, so manual rebuilds cannot bypass the gate).
 Kept in its own directory so it never collides with the static checkers in
 `scripts/` (e.g. `scripts/check-migrations.mjs`, owned by the migration
 static-gate work).
@@ -12,7 +14,7 @@ static-gate work).
 |------|-------|-----------|
 | PR / branch push | `ci.yml` → `migration-gate` | `node scripts/check-migrations.mjs` (static gate), production `data_governance` migration tests with a **non-zero test-count check**, representative fixture upgrades (skips loudly when the fixture secret is unavailable, e.g. fork PRs) |
 | main / nightly | `migration-nightly.yml` | Full fixture upgrades + fault-injection + scale entrypoints. Missing fixture secret ⇒ explicit non-blocking skip |
-| Release | `release.yml` → `migration-compatibility-gate` | Everything above but **fail-closed**: missing fixtures or expired E2E waivers block the release. Emits the machine-readable `migration-compatibility-report` artifact |
+| Release / Rebuild | `reusable-migration-gate.yml` (via `release.yml` and `rebuild-release.yml`) | Everything above but **fail-closed**: missing fixtures or expired E2E waivers block the release. Emits the machine-readable `migration-compatibility-report` artifact |
 
 ## Tools
 

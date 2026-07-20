@@ -4,11 +4,14 @@
 # 分层设计（详见 scripts/migration-ci/README.md）：
 #   PR/branch push : ci.yml migration-gate（静态 + 生产测试 + 代表性 fixture）
 #   main/nightly   : 本 workflow —— 全量 fixture 升级 + 故障注入 + 规模入口
-#   release        : release.yml migration-compatibility-gate（fail-closed）
+#   release/rebuild: reusable-migration-gate.yml（fail-closed）
 #
 # fixture 来自私有归档 secret（MIGRATION_FIXTURE_URL / _SHA256 / _TOKEN）。
 # secret 缺失时本层显式 skip（带 ::warning:: 与 job summary 记录），不视为失败；
 # release 层则 fail-closed，绝不允许无 fixture 出包。
+#
+# 失败通知（审查 F16）：定时任务红了没人盯 Actions 页 —— 任一 gate 失败时
+# 自动创建/评论 issue（label: migration-nightly-failure）。
 # ============================================================================
 
 name: Migration Nightly
@@ -56,21 +59,23 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22'
 
       - name: Static migration gate
         run: node scripts/check-migrations.mjs
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
-          key: sync-tests
+          shared-key: tests
 
       - name: Install system dependencies
         run: |
@@ -135,7 +140,7 @@ jobs:
 
       - name: Upload nightly report
         if: steps.fixtures.outputs.fixtures_available == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: migration-nightly-full-report
           path: ${{ runner.temp }}/migration-reports/
@@ -154,14 +159,16 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
-          key: sync-tests
+          shared-key: tests
 
       - name: Install system dependencies
         run: |
@@ -199,8 +206,48 @@ jobs:
 
       - name: Upload scale report
         if: steps.fixtures.outputs.fixtures_available == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: migration-nightly-scale-report
           path: ${{ runner.temp }}/migration-reports/
           retention-days: 30
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 失败通知：nightly 红了自动开 issue（已有未关闭的则追加评论）
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  notify-failure:
+    name: Notify Failure
+    needs: [full-fixture-gate, scale-fixture-gate]
+    if: always() && (needs.full-fixture-gate.result == 'failure' || needs.scale-fixture-gate.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Create or comment failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FULL_RESULT: ${{ needs.full-fixture-gate.result }}
+          SCALE_RESULT: ${{ needs.scale-fixture-gate.result }}
+        run: |
+          LABEL="migration-nightly-failure"
+          TITLE="Migration nightly failed"
+          BODY="Migration nightly run failed on \`${GITHUB_REF_NAME}\`.
+
+          - full-fixture-gate: ${FULL_RESULT}
+          - scale-fixture-gate: ${SCALE_RESULT}
+          - run: ${RUN_URL}"
+
+          gh label create "$LABEL" --description "Automated migration nightly failure reports" --color D93F0B 2>/dev/null || true
+
+          EXISTING=$(gh issue list --state open --label "$LABEL" --json number --jq '.[0].number // empty')
+          if [[ -n "$EXISTING" ]]; then
+            echo "Commenting on existing issue #${EXISTING}"
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            echo "Creating new failure issue"
+            gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
+          fi

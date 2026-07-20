@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { defineConfig, normalizePath, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
@@ -70,6 +71,60 @@ function workbenchInteractionTracePlugin(): Plugin {
   };
 }
 
+function removeSourceMaps(directory: string): void {
+  if (!fs.existsSync(directory)) return;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      removeSourceMaps(entryPath);
+    } else if (entry.name.endsWith('.map')) {
+      fs.rmSync(entryPath, { force: true });
+    }
+  }
+}
+
+function runSentryCli(args: string[]): void {
+  if (process.platform === 'win32') {
+    execFileSync('cmd.exe', ['/d', '/s', '/c', 'sentry-cli', ...args], { stdio: 'inherit' });
+    return;
+  }
+  execFileSync('sentry-cli', args, { stdio: 'inherit' });
+}
+
+/**
+ * 上传必须发生在 Vite build 完成、Tauri 开始打包 frontendDist 之前。
+ * 无论上传成功与否都删除 .map；失败会让 beforeBuildCommand 失败，避免泄漏源码。
+ */
+function sentrySourceMapUploadPlugin(): Plugin {
+  return {
+    name: 'upload-sentry-sourcemaps-before-tauri-package',
+    apply: 'build',
+    enforce: 'post',
+    closeBundle() {
+      const distDir = path.resolve(process.cwd(), 'dist');
+      const required = ['SENTRY_AUTH_TOKEN', 'SENTRY_ORG', 'SENTRY_PROJECT'];
+      const missing = required.filter(key => !process.env[key]);
+      if (missing.length > 0) {
+        removeSourceMaps(distDir);
+        throw new Error(`Source map upload requested but missing: ${missing.join(', ')}`);
+      }
+      try {
+        const release =
+          process.env.SENTRY_RELEASE ||
+          execFileSync(
+            process.execPath,
+            [path.resolve(process.cwd(), 'scripts/generate-version.mjs'), '--print-sentry-release'],
+            { encoding: 'utf8' },
+          ).trim();
+        runSentryCli(['sourcemaps', 'inject', distDir]);
+        runSentryCli(['sourcemaps', 'upload', '--release', release, distDir]);
+      } finally {
+        removeSourceMaps(distDir);
+      }
+    },
+  };
+}
+
 // PDF.js 资源路径配置（用于支持非拉丁字符、JPEG 2000 图片、标准字体）
 const require = createRequire(import.meta.url);
 const pdfjsDistPath = path.dirname(require.resolve('pdfjs-dist/package.json'));
@@ -115,6 +170,7 @@ export default defineConfig(({ command, mode }) => ({
       brotliSize: false,
       open: false,
     }),
+    process.env.SENTRY_UPLOAD_SOURCEMAPS === '1' && sentrySourceMapUploadPlugin(),
   ].filter(Boolean) as any,
   define: {
     __VUE_OPTIONS_API__: false,
@@ -277,8 +333,12 @@ export default defineConfig(({ command, mode }) => ({
   
   // 配置Web Worker构建选项
   build: {
-    // 显式禁用 source map，防止生产包意外暴露源码；请勿移除此行
-    sourcemap: false,
+    // 仅在发布流水线明确准备上传时生成 hidden source map。
+    // 上传脚本成功后会删除 .map，避免源码随 Tauri 安装包分发。
+    sourcemap:
+      mode === 'production' && process.env.SENTRY_UPLOAD_SOURCEMAPS === '1'
+        ? 'hidden'
+        : false,
     target: 'esnext', // 支持 top-level await 和其他现代 ES 特性
     rollupOptions: {
       external: [],
