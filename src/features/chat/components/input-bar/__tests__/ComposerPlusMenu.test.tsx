@@ -48,6 +48,58 @@ describe('ComposerPlusMenu', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
   });
 
+  it('toggles knowledge base proactive retrieval from its submenu', async () => {
+    const onKnowledgeBaseProactiveChange = vi.fn();
+    render(
+      <ComposerPlusMenu
+        open
+        onOpenChange={() => undefined}
+        attachmentCount={0}
+        iconButtonClass=""
+        onAddAttachment={() => undefined}
+        onOpenResourceLibrary={() => undefined}
+        knowledgeBaseProactive={false}
+        onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('plus-menu-knowledge-base'));
+    expect(await screen.findByTestId('plus-menu-knowledge-base-panel')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('plus-menu-kb-proactive'));
+    await waitFor(() => {
+      expect(onKnowledgeBaseProactiveChange).toHaveBeenCalledWith(true);
+    });
+  });
+
+  it('keeps sibling submenus mutually exclusive when opened by click', async () => {
+    render(
+      <ComposerPlusMenu
+        open
+        onOpenChange={() => undefined}
+        attachmentCount={0}
+        iconButtonClass=""
+        onAddAttachment={() => undefined}
+        onOpenResourceLibrary={() => undefined}
+        sessionId="sess_1"
+        authorityMode="craft"
+        onAuthorityModeChange={() => undefined}
+        knowledgeBaseProactive={false}
+        onKnowledgeBaseProactiveChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('plus-menu-mode'));
+    expect(await screen.findByTestId('plus-menu-mode-panel')).toBeInTheDocument();
+
+    // 打开知识库子菜单后，模式子菜单应自动收合
+    fireEvent.click(screen.getByTestId('plus-menu-knowledge-base'));
+    expect(await screen.findByTestId('plus-menu-knowledge-base-panel')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByTestId('plus-menu-mode-panel')).not.toBeInTheDocument();
+    });
+  });
+
   it('opens connectors via submenu action', async () => {
     const onOpenMcpPanel = vi.fn();
     const onOpenChange = vi.fn();

@@ -348,6 +348,10 @@ export interface InputBarUIProps {
   onPermissionPresetChange?: (preset: 'cautious' | 'relaxed') => void | Promise<void>;
   authorityAskBlockedHint?: boolean;
 
+  /** 知识库主动检索开关（加号菜单 → 知识库） */
+  knowledgeBaseProactive?: boolean;
+  onKnowledgeBaseProactiveChange?: (enabled: boolean) => void | Promise<void>;
+
   // ========== PDF 页码引用（精准提问） ==========
 
   /** 当前选中的 PDF 页码引用 */

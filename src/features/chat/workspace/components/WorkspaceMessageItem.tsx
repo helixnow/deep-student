@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -247,7 +247,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
             {/* 高度切换 + 查看完整会话按钮 */}
             {!isSubagentCollapsed && (
               <div className="flex items-center gap-1">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -264,9 +264,9 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                   ) : (
                     <ArrowsOut size={14} className="text-muted-foreground" />
                   )}
-                </NotionButton>
+                </DsButton>
                 {onViewFullSession && (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
@@ -279,7 +279,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                     title={t('subagent.viewFull')}
                   >
                     <ArrowSquareOut size={14} className="text-muted-foreground" />
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
             )}

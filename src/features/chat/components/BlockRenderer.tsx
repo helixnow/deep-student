@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { Warning, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { blockRegistry } from '../registry';
 import type { Block, ChatStore } from '../core/types';
@@ -137,10 +137,10 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
         <span className="text-xs text-muted-foreground font-mono">
           [{block.type}]
         </span>
-        <NotionButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10">
+        <DsButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10">
           <ArrowCounterClockwise size={12} />
           {t('error.retry')}
-        </NotionButton>
+        </DsButton>
       </div>
       <div className="text-xs text-muted-foreground bg-background/50 rounded p-2 font-mono break-all">
         {error || t('error.unknownError')}

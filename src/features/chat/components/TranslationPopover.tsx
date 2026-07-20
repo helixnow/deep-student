@@ -42,7 +42,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { nanoid } from 'nanoid';
 import { cn } from '@/utils/cn';
 import { IconSwap } from '@/components/ui/IconSwap';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { AppSelect } from '@/components/ui/app-menu/AppSelect';
@@ -772,7 +772,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
             width={120}
             className="text-xs font-medium"
           />
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -787,7 +787,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
             className="!h-6 !w-6 shrink-0 text-muted-foreground/60 hover:text-foreground"
           >
             <ArrowsLeftRight size={12} />
-          </NotionButton>
+          </DsButton>
           <AppSelect
             value={tgtLang}
             onValueChange={handleTgtLangChange}
@@ -807,7 +807,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
               {settings.modelDisplayName}
             </span>
           )}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -825,8 +825,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 collapsed && '-rotate-90'
               )}
             />
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -835,7 +835,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
             className="!h-6 !w-6 shrink-0 text-muted-foreground/50 hover:text-foreground relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
           >
             <X size={13} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -847,7 +847,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
             {error ? (
               <div className="flex items-center gap-2 px-3 py-3">
                 <p className="text-xs text-destructive flex-1">{error}</p>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -857,7 +857,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                   className="!h-6 !w-6 shrink-0"
                 >
                   <ArrowsClockwise size={14} />
-                </NotionButton>
+                </DsButton>
               </div>
             ) : settings.mode === 'aligned' ? (
               segments && segments.length > 0 ? (
@@ -938,7 +938,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
           {/* 底部操作栏：流式中可见但禁用（明确"翻译中"），完成后可交互 */}
           {hasContent && !error && (
             <div className="flex items-center gap-1 px-2.5 pb-2 border-t border-border/30 pt-1.5">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleCopySource}
@@ -956,8 +956,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                     ? t('translation:popover.copied')
                     : t('translation:popover.copy_source')}
                 </span>
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleCopyTranslation}
@@ -975,9 +975,9 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                     ? t('translation:popover.copied')
                     : t('translation:popover.copy_translation')}
                 </span>
-              </NotionButton>
+              </DsButton>
               {onAddToInput && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleAddToInput}
@@ -987,7 +987,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 >
                   <ChatDots size={13} />
                   <span>{t('chatV2:selectionToolbar.addToChat')}</span>
-                </NotionButton>
+                </DsButton>
               )}
               {isLoading && (
                 <span className="ml-auto inline-flex items-center gap-1.5 pr-1 text-xs text-muted-foreground">

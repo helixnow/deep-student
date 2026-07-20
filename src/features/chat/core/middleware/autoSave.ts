@@ -69,8 +69,12 @@ class AutoSaveMiddlewareImpl implements AutoSaveMiddleware {
 
     // 如果距离上次保存不足 throttleMs，设置延迟保存
     if (timeSinceLastSave < this.config.throttleMs) {
-      // 取消之前的待执行保存
-      this.cancelPendingSave(sessionId);
+      // 🚀 性能：已有待执行定时器时直接复用。其目标触发时刻同为
+      // lastSaveTime + throttleMs，无需每次调用都 cancel + setTimeout
+      // （高频调度期间的定时器抖动是无谓开销）
+      if (this.pendingTimers.has(sessionId)) {
+        return;
+      }
 
       // 计算需要延迟的时间
       const delay = this.config.throttleMs - timeSinceLastSave;

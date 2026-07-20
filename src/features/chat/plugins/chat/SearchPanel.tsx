@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { Globe, X, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import type { ChatStore } from '../../core/types';
 
@@ -128,9 +128,9 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
             </span>
           )}
         </div>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
           <X size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 说明文字 */}
@@ -152,7 +152,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
           availableSearchEngines.map((engine) => {
             const isSelected = selectedEngineSet.has(engine.id);
             return (
-              <NotionButton
+              <DsButton
                 key={engine.id}
                 variant="ghost"
                 size="sm"
@@ -182,7 +182,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-sm">{engine.label}</span>
                 </div>
-              </NotionButton>
+              </DsButton>
             );
           })
         )}
@@ -191,9 +191,9 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
       {/* 底部操作 */}
       {availableSearchEngines.length > 0 && (
         <div className="flex items-center justify-between">
-          <NotionButton variant="ghost" size="sm" onClick={handleToggleAll} disabled={!ready || isStreaming} className="text-muted-foreground hover:underline">
+          <DsButton variant="ghost" size="sm" onClick={handleToggleAll} disabled={!ready || isStreaming} className="text-muted-foreground hover:underline">
             {allSelected ? t('common:deselect_all') : t('common:select_all')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 

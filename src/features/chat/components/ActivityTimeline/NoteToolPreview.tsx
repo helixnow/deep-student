@@ -8,7 +8,7 @@
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -326,7 +326,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
   return (
     <div className={cn('rounded-lg border border-border bg-card/50', className)}>
       {/* 头部 */}
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={hasExpandableContent ? () => setIsExpanded(!isExpanded) : undefined}
@@ -396,7 +396,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
             isExpanded ? <CaretDown size={14} /> : <CaretRight size={14} />
           )}
         </div>
-      </NotionButton>
+      </DsButton>
 
       {/* 展开内容 */}
       <AnimatePresence initial={false}>
@@ -420,7 +420,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
               {/* 视图切换（仅在有 before/after 时显示） */}
               {output?.beforePreview && output?.afterPreview && toolType !== 'note_read' && (
                 <div className="flex items-center gap-1 p-0.5 rounded-md bg-muted/50 w-fit">
-                  <NotionButton
+                  <DsButton
                     variant={viewMode === 'diff' ? 'default' : 'ghost'}
                     size="sm"
                     onClick={() => setViewMode('diff')}
@@ -428,8 +428,8 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
                   >
                     <ArrowsLeftRight size={12} />
                     {t('timeline.noteTool.diffView')}
-                  </NotionButton>
-                  <NotionButton
+                  </DsButton>
+                  <DsButton
                     variant={viewMode === 'preview' ? 'default' : 'ghost'}
                     size="sm"
                     onClick={() => setViewMode('preview')}
@@ -437,7 +437,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
                   >
                     <Eye size={12} />
                     {t('timeline.noteTool.previewView')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
               )}
 

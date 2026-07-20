@@ -1230,7 +1230,7 @@ async fn handle_callback_request(
             .into_owned()
             .collect();
 
-    // Validate state before consuming provider errors as well. OpenCode accepts an error before
+    // Validate state before consuming provider errors as well. Some providers accept an error before
     // checking state, allowing any local process to cancel a pending login.
     if params.get("state").map(String::as_str) != Some(expected_state.as_str()) {
         return Ok(html_response(StatusCode::BAD_REQUEST, false));

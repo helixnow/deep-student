@@ -16,7 +16,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   WarningCircle,
   ArrowCounterClockwise,
@@ -223,10 +223,10 @@ const ImageGenError: React.FC<ImageGenErrorProps> = ({
 
       {/* 重试按钮 */}
       {onRetry && (
-        <NotionButton variant="ghost" size="sm" onClick={onRetry} className="mt-3 text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={onRetry} className="mt-3 text-primary hover:bg-primary/10">
           <ArrowCounterClockwise size={14} />
           <span>{t('blocks.imageGen.retry')}</span>
-        </NotionButton>
+        </DsButton>
       )}
       {!onRetry && retryUnavailableHint && (
         <div className="mt-3 text-xs text-muted-foreground">
@@ -389,10 +389,10 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
 
       {resourceId && resourceHash && (
         <div className="flex items-center justify-end gap-2 border-t border-border/30 px-3 py-2">
-          <NotionButton variant="ghost" size="sm" onClick={handleUseForFollowup} className="text-primary hover:bg-primary/10">
+          <DsButton variant="ghost" size="sm" onClick={handleUseForFollowup} className="text-primary hover:bg-primary/10">
             <ChatDots size={14} />
             <span>{t('blocks.imageGen.useForFollowup')}</span>
-          </NotionButton>
+          </DsButton>
         </div>
       )}
     </div>

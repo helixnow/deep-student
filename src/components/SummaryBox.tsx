@@ -6,7 +6,7 @@ import { StreamingMarkdownRenderer } from '../features/chat/components/renderers
 import './SummaryBox.css';
 import ChatCollapsible from './shared/ChatCollapsible';
 import { Badge } from './ui/shad/Badge';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 interface SummaryBoxProps {
   chatHistory: ChatMessage[];
@@ -108,7 +108,7 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
       headerRight={(
         <div className="summary-actions">
           {!isGenerating && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="sb-btn sb-btn-ghost"
@@ -116,10 +116,10 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
               title={t('summaryBox.generateSummary')}
             >
               {summaryRequested ? t('summaryBox.regenerate') : t('summaryBox.generateSummary')}
-            </NotionButton>
+            </DsButton>
           )}
           {onClose && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="sb-btn sb-btn-icon"
@@ -128,7 +128,7 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
               aria-label={t('summaryBox.closeSummary')}
             >
               ✕
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}

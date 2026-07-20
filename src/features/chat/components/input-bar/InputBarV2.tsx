@@ -284,6 +284,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setAuthorityMode,
       setPermissionPreset,
       setAuthorityAskBlockedHint,
+      knowledgeBaseProactive,
+      setFeature,
       liveAuthorityBlockedBlockId,
     } = useStore(
       store,
@@ -334,6 +336,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         setAuthorityMode: s.setAuthorityMode,
         setPermissionPreset: s.setPermissionPreset,
         setAuthorityAskBlockedHint: s.setAuthorityAskBlockedHint,
+        // 🆕 知识库主动检索开关（features 与 messageMap 同理做 Map 防御，
+        // 恢复/测试路径可能给到普通对象）
+        knowledgeBaseProactive:
+          s.features instanceof Map ? (s.features.get('kbProactive') ?? false) : false,
+        setFeature: s.setFeature,
         liveAuthorityBlockedBlockId: (() => {
           if (!s.currentStreamingMessageId) return null;
           const messageMap = s.messageMap instanceof Map ? s.messageMap : new Map();
@@ -359,6 +366,12 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           }) ?? null;
         })(),
       }))
+    );
+
+    // 🆕 知识库主动检索开关（持久化到会话 features）
+    const handleKnowledgeBaseProactiveChange = useCallback(
+      (enabled: boolean) => setFeature('kbProactive', enabled),
+      [setFeature],
     );
 
     const handledAuthorityBlockRef = useRef<string | null>(null);
@@ -1224,7 +1237,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     }, [activeSkillIds, handleToggleSkill, setPanelState, handleRefreshSkills, isStreaming, sessionId]);
 
     // ★ 技能斜杠命令：消息开头的 /skill-id 令牌在发送前解析为显式激活
-    //（对标 OpenClaw /skill、Codex $Skill；最多叠加 5 个，遇到非技能令牌即停）
+    //（最多叠加 5 个，遇到非技能令牌即停）
     const sendMessageWithSkillCommands = useCallback(async () => {
       const rawInput = store.getState().inputValue;
       const parsed = parseLeadingSkillCommands(rawInput);
@@ -1344,6 +1357,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         permissionPreset={permissionPreset}
         onPermissionPresetChange={(preset) => setPermissionPreset(preset)}
         authorityAskBlockedHint={authorityAskBlockedHint}
+        // 🆕 知识库主动检索
+        knowledgeBaseProactive={knowledgeBaseProactive}
+        onKnowledgeBaseProactiveChange={handleKnowledgeBaseProactiveChange}
         // ★ PDF 页码引用
         pdfPageRefs={pdfPageRefs}
         onRemovePdfPageRef={removePdfPageRef}

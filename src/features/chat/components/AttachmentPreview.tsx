@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   X,
   CircleNotch,
@@ -276,7 +276,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
 
       {/* 删除按钮 (悬浮在右上角) */}
       {!readonly && onRemove && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -296,7 +296,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
           title={t('attachmentPreview.remove')}
         >
           <X className={config.closeBtn} />
-        </NotionButton>
+        </DsButton>
       )}
 
       {/* 文件大小（大尺寸显示，非图片） */}

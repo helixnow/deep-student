@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -38,10 +38,10 @@ import { blockRegistry } from '../../registry/blockRegistry';
 import { ChatContainer } from '../../components/ChatContainer';
 import { cn } from '@/utils/cn';
 import {
-  NotionDialog,
-  NotionDialogHeader,
-  NotionDialogTitle,
-} from '@/components/ui/NotionDialog';
+  DsDialog,
+  DsDialogHeader,
+  DsDialogTitle,
+} from '@/components/ui/DsDialog';
 // 🆕 缺口 4: 完整视图打开的调试埋点
 import { logViewFullSession } from '../../debug/subagentTestPlugin';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -549,7 +549,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       status === 'running' && "ring-2 ring-primary/30"
     )}>
       {/* 头部：可点击折叠 */}
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={() => setIsCollapsed(!isCollapsed)}
@@ -693,7 +693,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             {isFullHeight ? <ArrowsIn size={14} className="text-muted-foreground" /> : <ArrowsOut size={14} className="text-muted-foreground" />}
           </span>
         )}
-      </NotionButton>
+      </DsButton>
 
       {/* 任务摘要（折叠时显示） */}
       {isCollapsed && taskSummary && (
@@ -814,17 +814,17 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         <span className="font-mono">{sessionId.slice(-12)}</span>
       </div>
 
-      {/* 🆕 缺口 4: 完整视图模态（NotionDialog 渲染到 portal，ESC/遮罩关闭走默认行为）
-          注意：NotionDialog 桌面态内联 maxHeight 上限为 min(85vh, 720px)，
+      {/* 🆕 缺口 4: 完整视图模态（DsDialog 渲染到 portal，ESC/遮罩关闭走默认行为）
+          注意：DsDialog 桌面态内联 maxHeight 上限为 min(85vh, 720px)，
           这里用同值的 h 类名把内容撑满该上限 */}
-      <NotionDialog
+      <DsDialog
         open={isFullViewOpen}
         onOpenChange={setIsFullViewOpen}
         maxWidth="max-w-[min(960px,92vw)]"
         className="h-[min(85vh,720px)]"
       >
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2 pr-8">
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2 pr-8">
             <Robot size={16} className="text-primary flex-shrink-0" />
             <span className="truncate" title={taskSummary || skillId || sessionId}>
               {cardTitle}
@@ -833,8 +833,8 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
               {statusIcon}
               <span className="text-xs font-normal text-muted-foreground">{statusText}</span>
             </span>
-          </NotionDialogTitle>
-        </NotionDialogHeader>
+          </DsDialogTitle>
+        </DsDialogHeader>
         <div className="flex-1 min-h-0">
           <ChatContainer
             key={`full-${sessionId}`}
@@ -843,7 +843,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             className="h-full"
           />
         </div>
-      </NotionDialog>
+      </DsDialog>
     </div>
   );
 });

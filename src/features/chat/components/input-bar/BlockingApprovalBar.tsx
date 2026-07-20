@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { ShieldCheck, Clock, CaretDown, CaretUp, ChatCircleText, Check, X, Warning } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -532,7 +532,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               : argsText.slice(0, ARGS_TRUNCATE_THRESHOLD) + ' …'}
           </pre>
           {needsTruncation && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setIsArgsExpanded((prev) => !prev)}
@@ -549,7 +549,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
                   {t('approval.expandArgs')}
                 </>
               )}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}
@@ -570,7 +570,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       <div className="flex items-center gap-2">
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {/* 拒绝：首次点击展开理由输入行，不立即发送 */}
-          <NotionButton
+          <DsButton
             variant="outline"
             size="sm"
             onClick={() => setIsReasonOpen((prev) => !prev)}
@@ -578,11 +578,11 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             className="text-destructive hover:text-destructive/80"
           >
             {t('approval.reject')}
-          </NotionButton>
+          </DsButton>
 
           {/* 🆕 本会话允许该工具 */}
           {!rememberDisabled && (
-            <NotionButton
+            <DsButton
               variant="outline"
               size="sm"
               onClick={() => handleResponse('allow_session')}
@@ -592,11 +592,11 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               {shellScope
                 ? t('approval.allowScope')
                 : t('approval.allowSession')}
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 批准 */}
-          <NotionButton
+          <DsButton
             size="sm"
             onClick={() => handleResponse('approve')}
             disabled={disabled}
@@ -604,7 +604,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             className="bg-success text-success-foreground"
           >
             {t('approval.approve')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
       )}
@@ -634,7 +634,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
               'focus:outline-none focus:ring-1 focus:ring-[color:var(--input-shell-focus)]'
             )}
           />
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={handleRejectImmediately}
@@ -642,8 +642,8 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             className="shrink-0 text-xs text-muted-foreground hover:text-destructive"
           >
             {t('approval.rejectDirectly')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="outline"
             size="sm"
             onClick={handleRejectWithReason}
@@ -651,7 +651,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             className="shrink-0 text-xs text-destructive hover:text-destructive/80"
           >
             {t('approval.rejectSend')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
     </div>

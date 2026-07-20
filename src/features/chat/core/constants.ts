@@ -305,7 +305,7 @@ export const ATTACHMENT_ARCHIVE_EXTENSIONS = ['zip', 'rar', '7z', 'apkg', 'colpk
 /**
  * ★ 思维导图格式：作为会话资源放行，可由 builtin-mindmap_import 工具导入。
  * - xmind/mmap：二进制（zip 容器），不注入文本；
- * - opml/mm：XML 纯文本（.mm 按 FreeMind 处理），可按文本注入。
+ * - opml/mm：XML 纯文本（.mm 按 处理），可按文本注入。
  * 浏览器通常给不出专属 MIME，依赖扩展名放行。
  */
 export const ATTACHMENT_MINDMAP_EXTENSIONS = ['xmind', 'opml', 'mm', 'mmap'];

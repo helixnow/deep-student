@@ -21,7 +21,7 @@ import {
   CaretUp,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   isRuntimeRootBlockedError,
   openToolPermissionSettings,
@@ -60,7 +60,7 @@ export const RuntimeSection: React.FC<RuntimeSectionProps> = ({ items, environme
 
   return (
     <div className="px-2 py-1">
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={() => setExpanded((value) => !value)}
@@ -82,7 +82,7 @@ export const RuntimeSection: React.FC<RuntimeSectionProps> = ({ items, environme
           <span>{t('agentPanel.activityCount', { count: items.length })}</span>
           {expanded ? <CaretUp size={11} /> : <CaretDown size={11} />}
         </span>
-      </NotionButton>
+      </DsButton>
 
       <AnimatePresence initial={false}>
         {expanded && (
@@ -231,7 +231,7 @@ export const RuntimeSection: React.FC<RuntimeSectionProps> = ({ items, environme
 
                 if (canJumpToSettings) {
                   return (
-                    <NotionButton
+                    <DsButton
                       key={item.id}
                       variant="ghost"
                       size="sm"
@@ -240,7 +240,7 @@ export const RuntimeSection: React.FC<RuntimeSectionProps> = ({ items, environme
                       title={`${item.error || item.label} — ${t('agentPanel.goAuthorize')}`}
                     >
                       {content}
-                    </NotionButton>
+                    </DsButton>
                   );
                 }
 

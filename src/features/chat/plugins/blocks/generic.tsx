@@ -12,7 +12,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Question, CircleNotch, CaretDown, Copy, Check } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
@@ -58,7 +58,7 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
   return (
     <div className="mt-2 rounded-md border border-border/30 overflow-hidden">
       <div className="flex items-center bg-muted/30">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setExpanded((prev) => !prev)}
@@ -70,8 +70,8 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
             className={cn('transition-transform duration-200 flex-shrink-0', !expanded && '-rotate-90')}
           />
           <span>{label}</span>
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -81,7 +81,7 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
           title={t('blocks.generic.copy')}
         >
           {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-        </NotionButton>
+        </DsButton>
       </div>
       {expanded && (
         <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words bg-background/50 p-2 text-xs text-muted-foreground">

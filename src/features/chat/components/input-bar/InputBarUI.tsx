@@ -5,7 +5,7 @@
  * 保留原有 UI/UX/动效，删除所有业务逻辑和旧架构依赖。
  */
 
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
@@ -34,6 +34,7 @@ import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore'
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
+import { TextSwap } from '@/components/ui/TextSwap';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -46,7 +47,7 @@ import {
   AppMenuSeparator,
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -77,6 +78,7 @@ import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerInlinePanel } from './ComposerInlinePanel';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
 import { ComposerToolButton } from './ComposerToolButton';
+import { ThinkingDepthSlider } from './ThinkingDepthSlider';
 import { ContextUsagePopover } from './ContextUsagePopover';
 import { ThreadContentShell } from '../ui/ThreadContentShell';
 import type { AttachmentInjectModes } from '../../core/types/common';
@@ -91,6 +93,7 @@ import {
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import type { DeepSeekReasoningOption } from '@/utils/deepseekReasoningControls';
 import { useKeyboardInset, isEditableElement } from '@/hooks/useKeyboardHeight';
 
 // ============================================================================
@@ -195,6 +198,37 @@ function clampPercent(value?: number): number {
 function getCompactThinkingLabel(label?: string): string | undefined {
   const compact = label?.replace(/^(推理|Reasoning)\s*[:：]\s*/i, '').trim();
   return compact || label;
+}
+
+function ResizingThinkingLabel({ text }: { text: string }) {
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const [labelWidth, setLabelWidth] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const width = Math.ceil(measureRef.current?.getBoundingClientRect().width ?? 0);
+    if (width > 0) setLabelWidth(width);
+  }, [text]);
+
+  return (
+    <span
+      data-testid="thinking-runtime-state-label"
+      className="relative inline-block whitespace-nowrap text-left text-[color:var(--text-muted)] opacity-70"
+    >
+      <span
+        className="t-resize inline-block whitespace-nowrap"
+        style={labelWidth ? { width: labelWidth } : undefined}
+      >
+        <TextSwap text={text} />
+      </span>
+      <span
+        ref={measureRef}
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute left-0 top-0 whitespace-nowrap"
+      >
+        {text}
+      </span>
+    </span>
+  );
 }
 
 function ContextWindowUsageRing({
@@ -586,6 +620,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   permissionPreset = 'cautious',
   onPermissionPresetChange,
   authorityAskBlockedHint = false,
+  knowledgeBaseProactive = false,
+  onKnowledgeBaseProactiveChange,
   // ★ PDF 页码引用
   pdfPageRefs,
   onRemovePdfPageRef,
@@ -1330,12 +1366,16 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const tooltipDisabled = isMobile;
   const attachmentCount = attachments.length;
   const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
+  const resolveThinkingDepthLabel = useCallback(
+    (option: DeepSeekReasoningOption) => t(option.labelKey, option.defaultLabel),
+    [t]
+  );
   const selectedThinkingDepthOption =
     !thinkingUnsupported && enableThinking && thinkingDepthValue && thinkingDepthOptions?.length
       ? thinkingDepthOptions.find((o) => o.value === thinkingDepthValue)
       : undefined;
   const resolvedThinkingTriggerLabel = selectedThinkingDepthOption
-    ? selectedThinkingDepthOption.defaultLabel
+    ? resolveThinkingDepthLabel(selectedThinkingDepthOption)
     : compactThinkingStateLabel;
   const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle', '模型');
   const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel', '选择模型');
@@ -1571,7 +1611,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   const bottomGapValue = keyboardInsetPx > 0
     ? `calc(max(${safeAreaExpr}, ${keyboardInsetPx}px) + ${bottomGapPx}px)`
     : `calc(${safeAreaExpr} + ${bottomGapPx}px)`;
-  const measuredInputHeight = inputContainerRef.current?.offsetHeight || inputContainerHeight || 96;
+  // ★ 性能修复：渲染期不再实读 offsetHeight（每次渲染强制 layout），
+  // 改读 ResizeObserver / adjustTextareaHeight 维护的缓存高度；
+  // 首帧（observer 未回调）回退到初始占位高度或 96
+  const measuredInputHeight = inputContainerHeight || 96;
   const dockedHeightWithGap = Math.max(0, Math.round(measuredInputHeight + bottomGapPx + keyboardInsetPx));
   const dockedHeightVarValue = `${dockedHeightWithGap}px`;
 
@@ -1616,6 +1659,29 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     });
   }, []);
 
+  // ★ 性能修复：ghost 的样式（font/padding/border 等）运行期基本不变，只有
+  // width 会随窗口/面板尺寸变化。抽出为独立同步函数：首次测量时执行一次，
+  // 之后仅在容器 resize 时（挂在下方 ResizeObserver 回调里）重新同步；
+  // 按键路径只更新 ghost.textContent + 读 scrollHeight，
+  // 不再每次按键 getComputedStyle + 逐条复制样式
+  const ghostStylesSyncedRef = useRef(false);
+  const syncGhostStyles = useCallback(() => {
+    const textarea = textareaRef.current;
+    const ghost = ghostRef.current;
+    if (!textarea || !ghost) return;
+    const styles = window.getComputedStyle(textarea);
+    ghost.style.width = styles.width;
+    ghost.style.padding = styles.padding;
+    ghost.style.border = styles.border;
+    ghost.style.boxSizing = styles.boxSizing;
+    ghost.style.font = styles.font;
+    ghost.style.lineHeight = styles.lineHeight;
+    ghost.style.letterSpacing = styles.letterSpacing;
+    ghost.style.whiteSpace = 'pre-wrap';
+    ghost.style.wordWrap = 'break-word';
+    ghostStylesSyncedRef.current = true;
+  }, []);
+
   // 调整 textarea 高度
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
@@ -1623,16 +1689,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     const maxHeight = INPUT_BAR_CONFIG.heights.textareaMax;
     const minHeight = INPUT_BAR_CONFIG.heights.textareaMin;
     if (textarea && ghost) {
-      const styles = window.getComputedStyle(textarea);
-      ghost.style.width = styles.width;
-      ghost.style.padding = styles.padding;
-      ghost.style.border = styles.border;
-      ghost.style.boxSizing = styles.boxSizing;
-      ghost.style.font = styles.font;
-      ghost.style.lineHeight = styles.lineHeight;
-      ghost.style.letterSpacing = styles.letterSpacing;
-      ghost.style.whiteSpace = 'pre-wrap';
-      ghost.style.wordWrap = 'break-word';
+      if (!ghostStylesSyncedRef.current) {
+        syncGhostStyles();
+      }
       ghost.textContent = textarea.value + '\u200b';
       const contentHeight = Math.max(ghost.scrollHeight, minHeight);
       const targetViewportHeight = Math.min(contentHeight, maxHeight);
@@ -1653,7 +1712,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     } else {
       setTextareaViewportHeight(minHeight);
     }
-  }, []);
+  }, [syncGhostStyles]);
 
   const { inputToolSlot: voiceInputToolSlot } = useVoiceInputIntegration({
     targetId: sessionId ? `chat-v2-input:${sessionId}` : 'chat-v2-input',
@@ -2395,11 +2454,17 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       const initialHeight = el.offsetHeight;
       lastMeasuredHeightRef.current = initialHeight;
       setInputContainerHeight(initialHeight);
+      // ★ ghost 样式兜底同步一次（覆盖 observer 启动前窗口已 resize 的窗口期）
+      syncGhostStyles();
 
       // 启动 ResizeObserver
       observer = new ResizeObserver((entries) => {
         const entry = entries[0];
         const h = Math.round(entry?.contentRect?.height || el.offsetHeight);
+
+        // ★ 容器尺寸变化（含宽度变化）时重新同步 ghost 样式，
+        // 保证 ghost.width 跟随 textarea 实际宽度（resize 低频，成本可接受）
+        syncGhostStyles();
 
         // 🔧 限频：只有高度变化超过阈值才更新状态
         const delta = Math.abs(h - lastMeasuredHeightRef.current);
@@ -2415,7 +2480,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       isDisposed = true;
       if (observer) observer.disconnect();
     };
-  }, []);
+  }, [syncGhostStyles]);
 
   // ⌨️ P0-2 键盘统一契约：把输入栏整体停靠高度与键盘 inset 写到 document root，
   // 供消息列表（输入栏的兄弟节点，读不到 inline style 变量）计算底部避让：
@@ -2482,6 +2547,16 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     }
   }, [onUpdateAttachment, t]);
 
+  // ★ 性能修复：memo 子组件（AttachmentPreviewChips / AttachmentInjectModeSelector）
+  // 的回调用 useCallback 稳定引用，避免内联箭头每次渲染换新引用击穿 memo
+  const handleRetryAttachmentChip = useCallback((attachment: AttachmentMeta) => {
+    void handleRetryAttachment(attachment);
+  }, [handleRetryAttachment]);
+
+  const handleInjectModesChange = useCallback((attachmentId: string, modes: AttachmentInjectModes) => {
+    onUpdateAttachment(attachmentId, { injectModes: modes });
+  }, [onUpdateAttachment]);
+
   const handleClearAllAttachments = () => {
     attachments.forEach(att => {
       if (att.sourceId) {
@@ -2510,17 +2585,17 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             <span className="truncate">{t('analysis:input_bar.attachments.title')} ({attachments.length})</span>
           </div>
           <div className="flex shrink-0 items-center">
-            <NotionButton
+            <DsButton
               variant="outline"
               size="sm"
               className="!h-11 min-w-11"
               onClick={() => fileInputRef.current?.click()}
             >
               + {t('analysis:input_bar.attachments.add')}
-            </NotionButton>
+            </DsButton>
             <AppMenu>
               <AppMenuTrigger asChild>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -2529,7 +2604,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                   data-testid="attachment-panel-more"
                 >
                   <DotsThree size={20} weight="bold" />
-                </NotionButton>
+                </DsButton>
               </AppMenuTrigger>
               <AppMenuContent align="end" width={200}>
                 <AppMenuItem
@@ -2560,7 +2635,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                 )}
               </AppMenuContent>
             </AppMenu>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -2569,7 +2644,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               aria-label={t('common:actions.close')}
             >
               <X size={16} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       ) : (
@@ -2579,32 +2654,32 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             <span>{t('analysis:input_bar.attachments.title')} ({attachments.length})</span>
           </div>
           <div className="flex items-center gap-2">
-            <NotionButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+            <DsButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
               + {t('analysis:input_bar.attachments.add')}
-            </NotionButton>
+            </DsButton>
             {/* 资源库按钮 - 桌面端在右侧打开 Learning Hub 面板，移动端打开右侧滑屏 */}
-            <NotionButton
+            <DsButton
               variant="outline"
               size="sm"
               onClick={handleOpenResourceLibrary}
             >
               <FolderOpen size={12} weight="bold" />
               {t('chatV2:inputBar.resourceLibrary')}
-            </NotionButton>
+            </DsButton>
             {isMobileEnv && (
-              <NotionButton variant="outline" size="sm" onClick={handleCameraClick}>
+              <DsButton variant="outline" size="sm" onClick={handleCameraClick}>
                 <Camera size={12} weight="bold" />
                 {t('chatV2:inputBar.camera')}
-              </NotionButton>
+              </DsButton>
             )}
             {attachments.length > 0 && (
-              <NotionButton variant="danger" size="sm" onClick={handleClearAllAttachments}>
+              <DsButton variant="danger" size="sm" onClick={handleClearAllAttachments}>
                 {t('analysis:input_bar.attachments.clear_all')}
-              </NotionButton>
+              </DsButton>
             )}
-            <NotionButton variant="ghost" size="sm" onClick={toggleAttachmentPanel}>
+            <DsButton variant="ghost" size="sm" onClick={toggleAttachmentPanel}>
               {t('common:actions.close')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -2728,16 +2803,16 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                   <span className="flex items-center gap-1">{statusIcon}</span>
                   {/* ★ P0 修复：错误状态时显示重试按钮（使用正确的 sourceId） */}
                   {attachment.status === 'error' && attachment.sourceId && (
-                    <NotionButton
+                    <DsButton
                       variant="outline"
                       size="sm"
                       onClick={() => { void handleRetryAttachment(attachment); }}
                       className="text-info"
                     >
                       {t('common:retry')}
-                    </NotionButton>
+                    </DsButton>
                   )}
-                  <NotionButton variant="danger" size="sm" onClick={() => {
+                  <DsButton variant="danger" size="sm" onClick={() => {
                     logAttachment('ui', 'attachment_remove', {
                       attachmentId: attachment.id,
                       sourceId: attachment.sourceId,
@@ -2759,7 +2834,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                     onRemoveAttachment(attachment.id);
                   }}>
                     {t('analysis:input_bar.attachments.remove')}
-                  </NotionButton>
+                  </DsButton>
                 </div>
                 {/* 第二行：注入模式选择器（仅图片和 PDF 显示，PDF 在处理中也显示） */}
                 {showInjectModeSelector && (attachment.status === 'ready' || isMediaProcessing) && (
@@ -2767,9 +2842,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                     <span className="text-[11px] text-muted-foreground">{t('chatV2:injectMode.label')}:</span>
                     <AttachmentInjectModeSelector
                       attachment={attachment}
-                      onInjectModesChange={(attachmentId: string, modes: AttachmentInjectModes) => {
-                        onUpdateAttachment(attachmentId, { injectModes: modes });
-                      }}
+                      onInjectModesChange={handleInjectModesChange}
                       disabled={attachment.status !== 'ready' && !isMediaProcessing}
                       processingStatus={mediaProgress}
                     />
@@ -2804,7 +2877,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         case 'model':
           inlineContent = renderModelPanel ? renderModelPanel() : null;
           inlineHeightMode = 'available';
-          inlineMaxHeight = 440;
+          // 📱 模型列表通常较长：上限放宽到 520px（实际仍受 85vh/键盘 clamp 约束），
+          // 配合 ModelPicker 紧凑搜索框给列表更多可视空间
+          inlineMaxHeight = 520;
           inlineAriaLabel = runtimeModelTitle;
           break;
         case 'mcp':
@@ -2972,22 +3047,22 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <span className="min-w-0 truncate">
                 {t('chatV2:inputBar.longPaste.notice', { chars: longPasteCandidate.text.length })}
               </span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="!h-6 shrink-0 !px-2 !text-xs text-primary"
                 onClick={convertLongPasteToAttachment}
               >
                 {t('chatV2:inputBar.longPaste.convert')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="!h-6 shrink-0 !px-2 !text-xs"
                 onClick={() => setLongPasteCandidate(null)}
               >
                 {t('chatV2:inputBar.longPaste.dismiss')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 
@@ -3002,14 +3077,14 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                   ? t('chatV2:inputBar.flashcardHint.apkg')
                   : t('chatV2:inputBar.flashcardHint.document')}
               </span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="!h-6 shrink-0 !px-2 !text-xs"
                 onClick={() => setFlashcardHintDismissed(true)}
               >
                 {t('chatV2:inputBar.flashcardHint.dismiss')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 
@@ -3024,14 +3099,14 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                   ? t('chatV2:inputBar.mediaHint.audio')
                   : t('chatV2:inputBar.mediaHint.video')}
               </span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="!h-6 shrink-0 !px-2 !text-xs"
                 onClick={() => setMediaHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mediaHint.dismiss')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 
@@ -3044,14 +3119,14 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               <span className="min-w-0 truncate">
                 {t('chatV2:inputBar.mindmapHint.notice')}
               </span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="!h-6 shrink-0 !px-2 !text-xs"
                 onClick={() => setMindmapHintDismissed(true)}
               >
                 {t('chatV2:inputBar.mindmapHint.dismiss')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 
@@ -3087,7 +3162,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           <AttachmentPreviewChips
             attachments={attachments}
             onRemove={onRemoveAttachment}
-            onRetry={(attachment) => { void handleRetryAttachment(attachment); }}
+            onRetry={handleRetryAttachmentChip}
             disabled={isStreaming}
           />
 
@@ -3335,6 +3410,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               permissionPreset={permissionPreset}
               onPermissionPresetChange={onPermissionPresetChange}
               authorityAskBlockedHint={authorityAskBlockedHint}
+              knowledgeBaseProactive={knowledgeBaseProactive}
+              onKnowledgeBaseProactiveChange={onKnowledgeBaseProactiveChange}
               renderSkillPanel={renderSkillPanelMenuVariant}
               activeSkillCount={activeSkillIds?.length ?? 0}
               hasLoadedSkills={!!hasLoadedSkills}
@@ -3465,18 +3542,16 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                             size={15}
                             showTooltip={false}
                             variant="mono"
-                            className="shrink-0 opacity-80"
+                            className="shrink-0 text-[color:var(--text-primary)] opacity-90"
                           />
                         ) : (
-                          <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0 opacity-90" />
+                          <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0 text-[color:var(--text-primary)] opacity-90" />
                         )}
-                        <span data-testid="thinking-runtime-state-label" className="min-w-0 max-w-[5.75rem] truncate">
-                          {thinkingRuntimeTriggerLabel}
-                        </span>
+                        <ResizingThinkingLabel text={thinkingRuntimeTriggerLabel} />
                         <CaretDown size={13} weight="bold" className="shrink-0 opacity-55" />
                       </button>
                     </AppMenuTrigger>
-                    <AppMenuContent align="start" width={hasRuntimeModelMenu ? 232 : 176}>
+                    <AppMenuContent align="end" width={hasRuntimeModelMenu ? 232 : 176}>
                       {hasThinkingUnsupportedMenu ? (
                         <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
                           <AppMenuItem disabled>
@@ -3484,25 +3559,34 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                           </AppMenuItem>
                         </AppMenuGroup>
                       ) : hasThinkingDepthMenu ? (
-                        <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
-                          {thinkingDepthOptions.map((option) => (
-                            <AppMenuItem
-                              key={option.value}
-                              checked={!!enableThinking && thinkingDepthValue === option.value}
-                              onClick={() => onSetThinkingDepth(option.value)}
-                            >
-                              {option.defaultLabel}
-                            </AppMenuItem>
-                          ))}
-                          {thinkingCanDisable && (
-                            <>
-                              <AppMenuSeparator />
-                              <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
-                                {t('chatV2:inputBar.thinkingOff', '关闭')}
+                        thinkingCanDisable ? (
+                          <AppMenuGroup>
+                            <ThinkingDepthSlider
+                              options={thinkingDepthOptions}
+                              value={thinkingDepthValue}
+                              enabled={!!enableThinking}
+                              onChange={(next) => onSetThinkingDepth(next)}
+                              offLabel={t('chatV2:inputBar.thinkingOff', '关闭')}
+                              efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient', '更高效')}
+                              smartLabel={t('chatV2:inputBar.thinkingDepthSmart', '更智能')}
+                              resolveOptionLabel={resolveThinkingDepthLabel}
+                              ariaLabel={t('chatV2:inputBar.thinkingDepthMenu', '选择推理深度')}
+                            />
+                          </AppMenuGroup>
+                        ) : (
+                          // 不可关闭推理的模型：滑块必带"关闭"档，退回菜单列表以保留 thinkingCanDisable 语义
+                          <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
+                            {thinkingDepthOptions.map((option) => (
+                              <AppMenuItem
+                                key={option.value}
+                                checked={!!enableThinking && thinkingDepthValue === option.value}
+                                onClick={() => onSetThinkingDepth(option.value)}
+                              >
+                                {resolveThinkingDepthLabel(option)}
                               </AppMenuItem>
-                            </>
-                          )}
-                        </AppMenuGroup>
+                            ))}
+                          </AppMenuGroup>
+                        )
                       ) : hasThinkingToggleMenu ? (
                         <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
                           <AppMenuItem checked={!!enableThinking} onClick={handleTurnThinkingOn}>
@@ -3682,7 +3766,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
             {/* 发送/停止按钮 - 极简圆形风格 */}
             {showStop ? (
-              <NotionButton
+              <DsButton
                 data-testid="btn-stop"
                 variant="default"
                 size="icon"
@@ -3704,7 +3788,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                 ) : (
                   <CircleNotch size={14} weight="bold" className="animate-spin motion-reduce:animate-none" />
                 )}
-              </NotionButton>
+              </DsButton>
             ) : (
               <CommonTooltip
                 content={disabledSend ? sendBlockedReason : undefined}

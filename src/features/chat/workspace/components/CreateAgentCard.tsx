@@ -9,7 +9,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -173,7 +173,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
             {t('chatV2:workspace.createAgent.description')}
           </p>
         </div>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -184,7 +184,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
           title={t('chatV2:workspace.createAgent.cancel')}
         >
           <X size={14} className="text-muted-foreground" />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 技能选择 */}
@@ -193,7 +193,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
         <CustomScrollArea className="max-h-44 rounded-[var(--chat-radius-sm,8px)] border border-border/60 p-1.5">
           <div className="space-y-0.5">
             {builtinSkills.map((skill) => (
-              <NotionButton
+              <DsButton
                 key={skill.id}
                 variant="ghost"
                 size="sm"
@@ -218,7 +218,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
                     {getLocalizedSkillDescription(skill.id, skill.description, t)}
                   </p>
                 </div>
-              </NotionButton>
+              </DsButton>
             ))}
             {builtinSkills.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">
@@ -263,10 +263,10 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
 
       {/* 操作区 */}
       <div className="flex items-center justify-end gap-2">
-        <NotionButton variant="ghost" size="sm" onClick={handleClose} disabled={creating}>
+        <DsButton variant="ghost" size="sm" onClick={handleClose} disabled={creating}>
           {t('chatV2:workspace.createAgent.cancel')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="primary"
           size="sm"
           onClick={handleCreate}
@@ -276,7 +276,7 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
           {creating
             ? t('chatV2:workspace.createAgent.creating')
             : t('chatV2:workspace.createAgent.create')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

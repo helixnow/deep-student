@@ -12,7 +12,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { BlockRendererWithStore } from './BlockRenderer';
 import { ContextRefsDisplay, hasContextRefs } from './ContextRefsDisplay';
 import type { ContextRef } from '../context/types';
@@ -52,6 +52,7 @@ import { useTextSelection } from '../hooks/useTextSelection';
 import { SelectionToolbar } from './SelectionToolbar';
 import { TranslationPopover } from './TranslationPopover';
 import { ExplainPopover } from './ExplainPopover';
+import { generateCardsFromSelection } from '../services/selectionCardGeneration';
 
 // ============================================================================
 // 辅助函数
@@ -330,6 +331,18 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       detail: { content: text, autoSend: false },
     }));
   }, []);
+
+  // 选中文本后的操作回调：划词制卡
+  const handleSelectionMakeCards = useCallback((text: string) => {
+    const sessionId = store.getState().sessionId;
+    void generateCardsFromSelection({
+      selectedText: text,
+      sessionId,
+      contextBefore: textSelection.contextBefore,
+      contextAfter: textSelection.contextAfter,
+      t,
+    });
+  }, [store, textSelection.contextBefore, textSelection.contextAfter, t]);
   
   // 🧮 Token 汇总：多变体判断不依赖并行视图开关
   const hasMultipleVariants = variants.length > 1;
@@ -1171,7 +1184,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 </p>
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleRetryFromFailureBar}
@@ -1180,7 +1193,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 >
                   <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingFailure && 'animate-spin')} />
                   {t('messageItem.failure.retry')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           )}
@@ -1199,10 +1212,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {t('messageItem.actions.retryDeleteConfirm', { count: retryConfirmCount })}
               </span>
               <div className="ml-auto flex items-center gap-1">
-                <NotionButton variant="ghost" size="sm" onClick={handleRetryConfirmCancel}>
+                <DsButton variant="ghost" size="sm" onClick={handleRetryConfirmCancel}>
                   {t('common:actions.cancel')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={performRetry}
@@ -1211,7 +1224,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 >
                   <ArrowCounterClockwise className="w-3.5 h-3.5" />
                   {t('messageItem.actions.retryConfirmAction')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           )}
@@ -1248,7 +1261,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {!isSmallScreen && (
                   <div className="flex items-center gap-1 min-w-0">
                     {!isUser && !isMultiVariant && singleVariantModelId && (
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         onClick={() => {
@@ -1264,7 +1277,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         title={t('messageItem.modelRetry.clickToRetry')}
                       >
                         {getModelDisplayName(message._meta?.modelDisplayName || singleVariantModelId)}
-                      </NotionButton>
+                      </DsButton>
                     )}
                     {!isMultiVariant && (
                       <MessageActions
@@ -1287,7 +1300,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     )}
                     {!isUser && isMultiVariant && (
                       <div className="flex items-center gap-1">
-                        <NotionButton
+                        <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
@@ -1296,8 +1309,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           title={t('messageItem.actions.copy')}
                         >
                           {multiCopied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
@@ -1307,8 +1320,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           title={t('messageItem.actions.branch')}
                         >
                           <GitBranch className="w-4 h-4" />
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
@@ -1318,8 +1331,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           title={t('variant.retryAll')}
                         >
                           <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingAllVariants && 'animate-spin')} />
-                        </NotionButton>
-                        <NotionButton
+                        </DsButton>
+                        <DsButton
                           variant="ghost"
                           size="icon"
                           iconOnly
@@ -1330,7 +1343,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           title={t('messageItem.actions.delete')}
                         >
                           <Trash className={cn('w-4 h-4', isDeletingMultiMessage && 'animate-pulse')} />
-                        </NotionButton>
+                        </DsButton>
                       </div>
                     )}
                     {message.timestamp && (
@@ -1436,6 +1449,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         onExplain={handleSelectionExplain}
         onTranslate={handleSelectionTranslate}
         onAddToChat={handleSelectionAddToChat}
+        onMakeCards={handleSelectionMakeCards}
       />
 
       {/* 🆕 翻译/解释内联卡片（P0-3: DOM 流内展开在消息下方，与消息列对齐） */}

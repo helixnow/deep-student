@@ -17,7 +17,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Check, X, Clock, Warning, CaretDown, CaretUp } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import { cn } from '@/lib/utils';
@@ -78,7 +78,7 @@ const ArgumentsPreview: React.FC<{
         {displayText}
       </pre>
       {needsTruncation && (
-        <NotionButton variant="ghost" size="sm" onClick={onToggle} className="mt-1 text-primary hover:underline">
+        <DsButton variant="ghost" size="sm" onClick={onToggle} className="mt-1 text-primary hover:underline">
           {isExpanded ? (
             <>
               <CaretUp size={12} />
@@ -90,7 +90,7 @@ const ArgumentsPreview: React.FC<{
               {t('approval.expandArgs')}
             </>
           )}
-        </NotionButton>
+        </DsButton>
       )}
     </>
   );
@@ -401,7 +401,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
             <div className="flex-1" />
 
             {/* 拒绝按钮：首次点击展开理由输入行，不立即发送 */}
-            <NotionButton
+            <DsButton
               variant="outline"
               size="sm"
               onClick={() => setIsReasonOpen((prev) => !prev)}
@@ -410,11 +410,11 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
             >
               <X size={16} className="mr-1" />
               {t('approval.reject')}
-            </NotionButton>
+            </DsButton>
 
             {/* 🆕 三档分级中间档：本会话允许该工具（重复任务不再反复弹卡） */}
             {request.permissionPreset === 'relaxed' && request.sensitivity === 'medium' && (
-              <NotionButton
+              <DsButton
                 variant="outline"
                 size="sm"
                 onClick={() => handleResponse(true, undefined, false, true)}
@@ -422,11 +422,11 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                 className="text-success hover:text-success/80"
               >
                 {t('approval.allowSession')}
-              </NotionButton>
+              </DsButton>
             )}
 
             {/* 批准按钮（仅此次） */}
-            <NotionButton
+            <DsButton
               size="sm"
               onClick={() => handleResponse(true)}
               disabled={isResponding || isTimedOutLocally}
@@ -435,7 +435,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
             >
               <Check size={16} className="mr-1" />
               {t('approval.approve')}
-            </NotionButton>
+            </DsButton>
 
             {/* 拒绝理由输入（内联展开，非模态） */}
             {isReasonOpen && (
@@ -463,7 +463,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                     isResponding && 'opacity-50 cursor-not-allowed'
                   )}
                 />
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleRejectImmediately}
@@ -471,8 +471,8 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   className="shrink-0 text-xs text-muted-foreground hover:text-danger"
                 >
                   {t('approval.rejectDirectly')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   variant="outline"
                   size="sm"
                   onClick={handleRejectWithReason}
@@ -480,7 +480,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   className="shrink-0 text-xs text-danger hover:text-danger"
                 >
                   {t('approval.rejectSend')}
-                </NotionButton>
+                </DsButton>
               </div>
             )}
           </>

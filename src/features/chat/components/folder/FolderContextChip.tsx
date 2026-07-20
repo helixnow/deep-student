@@ -18,7 +18,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder, X } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { VfsFolder } from '@/dstu/types/folder';
 
 // ============================================================================
@@ -98,9 +98,9 @@ export const FolderContextChip: React.FC<FolderContextChipProps> = ({
       )}
 
       {/* 删除按钮 */}
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); if (!disabled) onRemove(); }} disabled={disabled} className="!h-5 !w-5 !p-0 !rounded-full hover:bg-amber-500/20" aria-label={t('common:actions.remove')}>
+      <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); if (!disabled) onRemove(); }} disabled={disabled} className="!h-5 !w-5 !p-0 !rounded-full hover:bg-amber-500/20" aria-label={t('common:actions.remove')}>
         <X size={14} className="text-muted-foreground hover:text-foreground" />
-      </NotionButton>
+      </DsButton>
     </div>
   );
 };

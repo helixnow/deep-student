@@ -20,7 +20,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';  // 用于 ContextRefItem 获取 locale
 import { ArrowsOut, CircleNotch } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
@@ -441,7 +441,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
       
       {/* 展开/折叠按钮 */}
       {needsCollapse && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setIsExpanded(!isExpanded)}
@@ -453,7 +453,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
           ) : (
             <span>{t('contextRefs.showMore', { count: hiddenCount })}</span>
           )}
-        </NotionButton>
+        </DsButton>
       )}
 
       {/* ★ 图片预览器 */}

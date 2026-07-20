@@ -837,7 +837,7 @@
 }
 
 .summary-panel .panel-body,
-.summary-panel .notion-collapsible-body,
+.summary-panel .card-collapsible-body,
 .summary-panel__body {
   padding: 0;
   background: transparent;
@@ -848,7 +848,7 @@
 }
 
 [data-theme="dark"] .summary-panel .panel-body,
-[data-theme="dark"] .summary-panel .notion-collapsible-body,
+[data-theme="dark"] .summary-panel .card-collapsible-body,
 [data-theme="dark"] .summary-panel__body {
   padding: 0;
   background: transparent;

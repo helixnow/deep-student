@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Warning, Info, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
@@ -79,9 +79,9 @@ export const AttachmentValidationNotice: React.FC<AttachmentValidationNoticeProp
         </div>
         
         {onClose && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="text-gray-400 hover:text-gray-600 flex-shrink-0" aria-label={t('attachmentValidation.close_notice')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="text-gray-400 hover:text-gray-600 flex-shrink-0" aria-label={t('attachmentValidation.close_notice')}>
             <X size={16} />
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </div>

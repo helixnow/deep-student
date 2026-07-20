@@ -10,6 +10,8 @@ export const QUICK_ASSISTANT_OPEN_TARGET_EVENT = 'quick-assistant://open-target'
 export interface QuickAssistantOpenTarget {
   kind: 'session' | 'resource' | 'view';
   id?: string;
+  /** 资源目标的 DSTU 路径（openResource 处理器按路径打开，非根目录资源不能用 /{id}） */
+  path?: string;
   view?: string;
 }
 
@@ -64,9 +66,9 @@ export async function initializeQuickAssistantMainBridge(): Promise<() => void> 
       }
       return;
     }
-    if (target.kind === 'resource' && target.id) {
+    if (target.kind === 'resource' && (target.path || target.id)) {
       window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
-        detail: { view: 'learning-hub', openResource: `/${target.id}` },
+        detail: { view: 'learning-hub', openResource: target.path || `/${target.id}` },
       }));
       return;
     }

@@ -25,7 +25,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Upload, WarningCircle, X } from '@phosphor-icons/react';
 import type { ChatStore, AttachmentMeta } from '../core/types';
 import { useAttachments } from '../hooks/useChatStore';
@@ -503,9 +503,9 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
         <div className="mt-2 flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm">
           <WarningCircle size={16} className="flex-shrink-0" />
           <span className="flex-1">{uploadError}</span>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={clearError} className="!h-5 !w-5 !p-0 hover:bg-destructive/20" aria-label={t('common:close')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={clearError} className="!h-5 !w-5 !p-0 hover:bg-destructive/20" aria-label={t('common:close')}>
             <X size={16} />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
     </div>

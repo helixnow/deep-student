@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { getSidebarStudyRowClassName } from './sessionSidebarStyles';
 import { beginSessionHoverPrefetch, cancelSessionHoverPrefetch } from '../core/session/sessionPrefetch';
@@ -316,7 +316,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
     }));
   }, []);
 
-  // 渲染单个会话项 - Notion 风格
+  // 渲染单个会话项 - 简洁风格
   const renderSessionItem = (session: ChatSession, drag?: SessionDragState) => {
     const sessionTitle = getSessionTitleText(session.title, t('page.untitled'));
     const pinned = !!session.metadata?.pinned;
@@ -348,7 +348,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
           </span>
           {/* 破坏性操作确认按钮：移动/平板保持较大触控目标，桌面 lg 起紧凑 */}
           <div className="flex shrink-0 items-center gap-1">
-            <NotionButton
+            <DsButton
               variant="danger"
               size="sm"
               className="!h-9 lg:!h-7 !px-2 text-[12px]"
@@ -360,8 +360,8 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             >
               <Trash size={13} />
               <span>{t('common:delete', '删除')}</span>
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -373,7 +373,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               }}
             >
               <X size={13} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       );
@@ -443,7 +443,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               placeholder={t('page.sessionNamePlaceholder')}
             />
             <div className="flex items-center justify-end gap-1.5">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={(e) => {
@@ -455,8 +455,8 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               >
                 <X size={14} />
                 <span>{t('page.cancelEdit')}</span>
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="primary"
                 size="sm"
                 onClick={(e) => {
@@ -477,7 +477,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                     <span>{t('page.saveSessionName')}</span>
                   </>
                 )}
-              </NotionButton>
+              </DsButton>
             </div>
             <div className="flex items-center justify-between text-[11px] leading-none">
               <span className="text-muted-foreground/80">
@@ -539,7 +539,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             </span>
           )}
           {isTouchPrimary && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -549,7 +549,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               aria-label={t('page.sessionActions', '会话操作')}
             >
               <DotsThree size={18} className="text-muted-foreground/70" />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}

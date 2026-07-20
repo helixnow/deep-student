@@ -51,7 +51,7 @@
  *
  * ★ 2026-07 死代码清理：
  *   旧版 .chat-container / .chat-header / .chat-history / .send-button /
- *   .message-* / .tool-event-* / .notion-collapsible-* / .save-button-* /
+ *   .message-* / .tool-event-* / .card-collapsible-* / .save-button-* /
  *   .memory-summary-* 等 DOM 结构已被 Tailwind 化的 ChatContainer /
  *   MessageList / MessageItem / InputBarV2 取代，对应规则已删除
  *   （grep 验证零引用）。仅保留 markdownTypographyContract 测试锁定的
@@ -132,7 +132,7 @@
 /* ============================================================================
    文本选择 - Text Selection (SOTA 方案)
    ----------------------------------------------------------------------------
-   对标 DeepSeek / ChatGPT / Claude Web / Notion 的最佳实践：
+   对标 DeepSeek / ChatGPT / Claude Web  的最佳实践：
 
    核心原则：
    ❶ 中间结构性 div 不参与选区渲染（user-select: none）

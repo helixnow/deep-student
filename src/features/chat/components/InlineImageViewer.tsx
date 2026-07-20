@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { openUrl } from '@/utils/urlOpener';
 import {
   X,
@@ -497,9 +497,9 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
         <div
           className={cn(topHotzoneHeightClassName, 'flex items-start justify-end px-3 py-3 sm:px-4 sm:py-4')}
         >
-          <NotionButton variant="ghost" size="icon" iconOnly data-no-drag onPointerDown={stopSurfaceGesture} onClick={onClose} className="pointer-events-auto h-11 w-11 !rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--shell-toolbar-floating-surface)] text-[color:var(--text-secondary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)] sm:h-12 sm:w-12" aria-label={t('chatV2:blocks.imageGen.close')} title={t('chatV2:blocks.imageGen.close')}>
+          <DsButton variant="ghost" size="icon" iconOnly data-no-drag onPointerDown={stopSurfaceGesture} onClick={onClose} className="pointer-events-auto h-11 w-11 !rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--shell-toolbar-floating-surface)] text-[color:var(--text-secondary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)] sm:h-12 sm:w-12" aria-label={t('chatV2:blocks.imageGen.close')} title={t('chatV2:blocks.imageGen.close')}>
             <X size={18} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -544,16 +544,16 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
         <div className="pointer-events-none flex h-full items-center justify-between px-3 sm:px-5">
           <div className="pointer-events-none flex h-full w-16 items-center justify-start sm:w-20">
             {canNavigatePrev && (
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={(e) => { e.stopPropagation(); onPrev?.(); }} className="pointer-events-auto h-12 w-12 !rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--shell-toolbar-floating-surface)] text-[color:var(--text-secondary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)] sm:h-14 sm:w-14" aria-label={t('common:imageViewer.prev')} title={t('common:imageViewer.prev')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={(e) => { e.stopPropagation(); onPrev?.(); }} className="pointer-events-auto h-12 w-12 !rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--shell-toolbar-floating-surface)] text-[color:var(--text-secondary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)] sm:h-14 sm:w-14" aria-label={t('common:imageViewer.prev')} title={t('common:imageViewer.prev')}>
                 <CaretLeft size={24} weight="bold" />
-              </NotionButton>
+              </DsButton>
             )}
           </div>
           <div className="pointer-events-none flex h-full w-16 items-center justify-end sm:w-20">
             {canNavigateNext && (
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={(e) => { e.stopPropagation(); onNext?.(); }} className="pointer-events-auto h-12 w-12 !rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--shell-toolbar-floating-surface)] text-[color:var(--text-secondary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)] sm:h-14 sm:w-14" aria-label={t('common:imageViewer.next')} title={t('common:imageViewer.next')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={(e) => { e.stopPropagation(); onNext?.(); }} className="pointer-events-auto h-12 w-12 !rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--shell-toolbar-floating-surface)] text-[color:var(--text-secondary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)] sm:h-14 sm:w-14" aria-label={t('common:imageViewer.next')} title={t('common:imageViewer.next')}>
                 <CaretRight size={24} weight="bold" />
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         </div>
@@ -574,29 +574,29 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
                 color: 'var(--text-secondary)',
               }}
             >
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1 / 1.2)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1 / 1.2)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
                 <MagnifyingGlassMinus size={16} />
-              </NotionButton>
+              </DsButton>
               <span className="min-w-[44px] px-2 py-1 text-center text-[11px] font-medium tracking-[0.02em] text-[color:var(--text-secondary)]">
                 {Math.round(scale * 100)}%
               </span>
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1.2)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1.2)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
                 <MagnifyingGlassPlus size={16} />
-              </NotionButton>
+              </DsButton>
               <div className="mx-1 h-4 w-px bg-[color:var(--shell-workspace-border)]" />
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => setRotation((prev) => (prev + 90) % 360)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.rotate')} title={t('common:imageViewer.rotate')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => setRotation((prev) => (prev + 90) % 360)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.rotate')} title={t('common:imageViewer.rotate')}>
                 <ArrowClockwise size={16} />
-              </NotionButton>
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleResetView} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
+              </DsButton>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleResetView} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
                 <House size={16} />
-              </NotionButton>
+              </DsButton>
               <div className="mx-1 h-4 w-px bg-[color:var(--shell-workspace-border)]" />
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleDownload} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.download')} title={t('chatV2:blocks.imageGen.download')}>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleDownload} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.download')} title={t('chatV2:blocks.imageGen.download')}>
                 <Download size={16} />
-              </NotionButton>
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleOpenInNewTab} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.openInNewTab')} title={t('chatV2:blocks.imageGen.openInNewTab')}>
+              </DsButton>
+              <DsButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleOpenInNewTab} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.openInNewTab')} title={t('chatV2:blocks.imageGen.openInNewTab')}>
                 <ArrowSquareOut size={16} />
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         </div>

@@ -9,7 +9,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { ShadowDomPreview } from '@/components/ShadowDomPreview';
 import { TemplateRenderService } from '@/services/templateRenderService';
 import type { TemplateRenderIssue } from '@/services/ankiTemplateEngine';
@@ -117,6 +117,7 @@ function buildAnkiTemplate(data: {
     id: data.id || 'preview',
     name: data.name || '',
     description: '',
+    version: '1.0.0',
     preview_front: '',
     preview_back: '',
     preview_data_json: data.previewDataJson || undefined,
@@ -252,12 +253,12 @@ const DiffView: React.FC<DiffViewProps> = ({ before, after, sampleData }) => {
 
       {/* 正面/背面切换 */}
       <div className="flex gap-1 mb-2">
-        <NotionButton variant={side === 'front' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('front')} className={cn(side === 'front' && 'bg-primary/15 text-primary')}>
+        <DsButton variant={side === 'front' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('front')} className={cn(side === 'front' && 'bg-primary/15 text-primary')}>
           {t('templateTool.front')}
-        </NotionButton>
-        <NotionButton variant={side === 'back' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('back')} className={cn(side === 'back' && 'bg-primary/15 text-primary')}>
+        </DsButton>
+        <DsButton variant={side === 'back' ? 'default' : 'ghost'} size="sm" onClick={() => setSide('back')} className={cn(side === 'back' && 'bg-primary/15 text-primary')}>
           {t('templateTool.back')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* Before / After 并排（窄屏纵向堆叠，避免每列被压到不可读） */}
@@ -388,12 +389,12 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
         </div>
 
         {/* 切换原始 JSON */}
-        <NotionButton variant="ghost" size="sm" onClick={() => setShowRawJson(!showRawJson)}>
+        <DsButton variant="ghost" size="sm" onClick={() => setShowRawJson(!showRawJson)}>
           <FileJs size={12} />
           {showRawJson
             ? t('templateTool.hideJson')
             : t('templateTool.showJson')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 模板元数据摘要 */}

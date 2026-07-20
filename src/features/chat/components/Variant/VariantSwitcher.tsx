@@ -10,7 +10,7 @@
 import React, { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { VariantStatusIcon } from './VariantStatusIcon';
 import type { Variant, VariantStatus } from '../../core/types/message';
 
@@ -164,7 +164,7 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
         const isDisabled = disabled || !isSwitchable;
 
         return (
-          <NotionButton
+          <DsButton
             key={variant.id}
             ref={(el) => {
               if (el) {
@@ -202,7 +202,7 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
             <span className="truncate max-w-[100px]">
               {getModelDisplayName(variant.modelId)}
             </span>
-          </NotionButton>
+          </DsButton>
         );
       })}
     </div>

@@ -15,7 +15,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CircleNotch, WarningCircle, Layout, CaretDown } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { TemplateToolOutput, isTemplateVisualOutput } from './components';
@@ -87,7 +87,7 @@ const TemplatePreviewBlock: React.FC<BlockComponentProps> = React.memo(({ block,
   // 非可视化输出回退：折叠 JSON（不再静默消失）
   return (
     <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={toggleRaw}
@@ -100,7 +100,7 @@ const TemplatePreviewBlock: React.FC<BlockComponentProps> = React.memo(({ block,
         />
         <Layout size={14} className="flex-shrink-0" />
         <span className="text-sm">{t('blocks.templatePreview.nonVisualFallback')}</span>
-      </NotionButton>
+      </DsButton>
       {rawExpanded && (
         <div className="border-t border-border/30 px-3 py-2">
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-background/50 p-2 text-xs text-muted-foreground">

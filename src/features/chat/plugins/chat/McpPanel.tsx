@@ -12,7 +12,7 @@ import { useStore, type StoreApi } from 'zustand';
 import { Wrench, HardDrives, WarningCircle, Lock, Gear, ArrowClockwise } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer, BUILTIN_NAMESPACE } from '@/mcp/builtinMcpServer';
@@ -252,7 +252,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
   };
 
   const headerActions = (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="icon"
       iconOnly
@@ -263,7 +263,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
       className={cn(loading && 'animate-spin')}
     >
       <ArrowClockwise size={16} />
-    </NotionButton>
+    </DsButton>
   );
 
   return (

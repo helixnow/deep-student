@@ -13,6 +13,7 @@ import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Archive,
+  Books,
   Camera,
   Check,
   CircleNotch,
@@ -39,7 +40,7 @@ import {
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 
@@ -79,6 +80,9 @@ export interface ComposerPlusMenuProps {
   onOpenMcpPanel?: () => void;
   mcpEnabled?: boolean;
   selectedMcpServerCount?: number;
+  /** 知识库主动检索开关（开启后注入系统提示词，要求模型优先检索本地知识库） */
+  knowledgeBaseProactive?: boolean;
+  onKnowledgeBaseProactiveChange?: (enabled: boolean) => void | Promise<void>;
 }
 
 // React.memo：输入栏每个按键都会重渲染，"+"菜单（AppMenu/Radix 子树）
@@ -113,6 +117,8 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   onOpenMcpPanel,
   mcpEnabled = false,
   selectedMcpServerCount = 0,
+  knowledgeBaseProactive = false,
+  onKnowledgeBaseProactiveChange,
 }) => {
   const { t } = useTranslation(['analysis', 'chatV2', 'skills', 'common']);
 
@@ -154,6 +160,14 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
     [onPermissionPresetChange],
   );
 
+  const handleKnowledgeBaseProactiveChange = useCallback(
+    (checked: boolean) => {
+      if (!onKnowledgeBaseProactiveChange) return;
+      void onKnowledgeBaseProactiveChange(checked);
+    },
+    [onKnowledgeBaseProactiveChange],
+  );
+
   const handleOpenConnectors = useCallback(() => {
     onOpenChange(false);
     onOpenMcpPanel?.();
@@ -174,6 +188,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
   }, [compactContextDisabled, isCompactingContext, onCompactContext]);
 
   const showMode = Boolean(sessionId && onAuthorityModeChange);
+  const showKnowledgeBase = Boolean(onKnowledgeBaseProactiveChange);
   const showSkills = Boolean(renderSkillPanel);
   const showConnectors = Boolean(renderMcpPanel && onOpenMcpPanel);
   // 📱 P1-1：移动端单层扁平列表（无 AppMenuSub 飞出层），触控行高 ≥44px
@@ -226,7 +241,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
               position={tooltipPosition}
               disabled={tooltipDisabled || open}
             >
-              <NotionButton
+              <DsButton
                 data-testid="btn-toggle-attachments"
                 variant="ghost"
                 size="icon"
@@ -240,7 +255,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                 aria-expanded={open}
               >
                 <Plus size={18} weight="bold" className={cn(open && 'rotate-45 transition-transform')} />
-              </NotionButton>
+              </DsButton>
             </CommonTooltip>
           </span>
         </AppMenuTrigger>
@@ -330,6 +345,27 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                       title={t('chatV2:authority.permissionPreset.hints.relaxed')}
                     >
                       {t('chatV2:authority.permissionPreset.modes.relaxed', '放开')}
+                    </AppMenuSwitchItem>
+                  </AppMenuGroup>
+                </>
+              )}
+
+              {/* 知识库开关直出 */}
+              {showKnowledgeBase && (
+                <>
+                  <AppMenuSeparator />
+                  <AppMenuGroup
+                    label={t('chatV2:inputBar.plusMenu.knowledgeBase', '知识库')}
+                    data-testid="plus-menu-knowledge-base-panel"
+                  >
+                    <AppMenuSwitchItem
+                      className={mobileItemClass}
+                      checked={knowledgeBaseProactive}
+                      onCheckedChange={handleKnowledgeBaseProactiveChange}
+                      data-testid="plus-menu-kb-proactive"
+                      title={t('chatV2:inputBar.plusMenu.kbProactiveHint', '开启后要求模型回答前优先检索你的笔记、教材等本地资料')}
+                    >
+                      {t('chatV2:inputBar.plusMenu.kbProactive', '主动检索')}
                     </AppMenuSwitchItem>
                   </AppMenuGroup>
                 </>
@@ -456,6 +492,40 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                         {t('chatV2:inputBar.plusMenu.approvalMemory', '审批记忆')}
                       </span>
                     </span>
+                  </AppMenuSwitchItem>
+                </AppMenuSubContent>
+              </AppMenuSub>
+            )}
+
+            {showKnowledgeBase && (
+              <AppMenuSub openOnClick>
+                <AppMenuSubTrigger
+                  icon={<Books className="w-4 h-4" weight="bold" />}
+                  data-testid="plus-menu-knowledge-base"
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate">
+                      {t('chatV2:inputBar.plusMenu.knowledgeBase', '知识库')}
+                    </span>
+                    {knowledgeBaseProactive && (
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+                    )}
+                  </span>
+                </AppMenuSubTrigger>
+                <AppMenuSubContent
+                  className="w-[min(280px,calc(100vw-24px))]"
+                  data-testid="plus-menu-knowledge-base-panel"
+                >
+                  <AppMenuLabel className="!whitespace-normal !normal-case !tracking-normal text-[12px] leading-snug text-muted-foreground px-2 py-1.5">
+                    {t('chatV2:inputBar.plusMenu.kbProactiveHint', '开启后要求模型回答前优先检索你的笔记、教材等本地资料')}
+                  </AppMenuLabel>
+                  <AppMenuSeparator />
+                  <AppMenuSwitchItem
+                    checked={knowledgeBaseProactive}
+                    onCheckedChange={handleKnowledgeBaseProactiveChange}
+                    data-testid="plus-menu-kb-proactive"
+                  >
+                    {t('chatV2:inputBar.plusMenu.kbProactive', '主动检索')}
                   </AppMenuSwitchItem>
                 </AppMenuSubContent>
               </AppMenuSub>

@@ -137,12 +137,6 @@ export function createSkillActions(
       try {
         const state = get();
 
-        // 检查是否已激活
-        if (state.activeSkillIds.includes(skillId)) {
-          console.log(LOG_PREFIX, `Skill already activated, skipping: ${skillId}`);
-          return true;
-        }
-
         // 动态导入避免循环依赖
         const { skillRegistry } = await import('../../skills/registry');
         // 检查 skill 是否存在
@@ -155,6 +149,22 @@ export function createSkillActions(
             showGlobalNotification('warning', i18n.t('skills:errors.skillNotFoundNotification', { id: skillId }));
           } catch { /* notification optional */ }
           return false;
+        }
+
+        const { getSkillRuntimeAdmission } = await import('../../skills/runtimeAdmission');
+        const admission = getSkillRuntimeAdmission(skill);
+        if (!admission.allowed) {
+          console.warn(LOG_PREFIX, `Skill activation rejected: ${skillId}`, admission);
+          try {
+            const { showGlobalNotification } = await import('@/components/UnifiedNotification');
+            showGlobalNotification('warning', admission.message ?? `Skill "${skillId}" cannot be activated`);
+          } catch { /* notification optional */ }
+          return false;
+        }
+
+        if (state.activeSkillIds.includes(skillId)) {
+          console.log(LOG_PREFIX, `Skill already activated, skipping: ${skillId}`);
+          return true;
         }
 
         // 结构化状态优先：先更新 activeSkillIds，skill refs 仅作兼容/UI 缓存

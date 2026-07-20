@@ -21,7 +21,7 @@ import {
   CaretDown,
   CaretRight,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
@@ -122,7 +122,7 @@ const CopyButton: React.FC<{ text: string; label: string }> = ({ text, label }) 
   }, []);
   if (!text) return null;
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       onClick={async () => {
@@ -138,7 +138,7 @@ const CopyButton: React.FC<{ text: string; label: string }> = ({ text, label }) 
       title={label}
     >
       {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
-    </NotionButton>
+    </DsButton>
   );
 };
 
@@ -184,7 +184,7 @@ const StreamPane: React.FC<{
         {visibleText}
       </pre>
       {isClamped && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setShowAll(true)}
@@ -194,7 +194,7 @@ const StreamPane: React.FC<{
             
             kb: (displayText.length / 1024).toFixed(0),
           })}
-        </NotionButton>
+        </DsButton>
       )}
       {truncated && (
         <div className="mt-0.5 text-2xs text-muted-foreground">{truncatedLabel}</div>
@@ -363,7 +363,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
         {/* 策略摘要（折叠） */}
         {(envPolicy || netPolicy || sandbox) && (
           <div className="border-t border-border/20 px-2 py-1">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setShowMeta((v) => !v)}
@@ -371,7 +371,7 @@ export const ShellOutputView: React.FC<ShellOutputViewProps> = ({ output, classN
             >
               {showMeta ? <CaretDown size={10} /> : <CaretRight size={10} />}
               {t('shellOutput.policy')}
-            </NotionButton>
+            </DsButton>
             {showMeta && (
               <div className="mt-1 flex flex-wrap gap-1.5 pb-1">
                 {netPolicy && (

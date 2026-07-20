@@ -110,6 +110,7 @@ export function createSessionActions(
             newFeatures.set(key, enabled);
             return { features: newFeatures };
           });
+          scheduleAutoSaveIfReady();
         },
 
         toggleFeature: (key: string): void => {
@@ -118,6 +119,7 @@ export function createSessionActions(
             newFeatures.set(key, !s.features.get(key));
             return { features: newFeatures };
           });
+          scheduleAutoSaveIfReady();
         },
 
         getFeature: (key: string): boolean => {

@@ -22,7 +22,7 @@ import {
   CaretUp,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { dstu } from '@/dstu/api';
@@ -468,7 +468,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                 {t('agentPanel.previewTruncated')}
               </span>
             )}
-            <NotionButton
+            <DsButton
               variant="ghost"
               onClick={closePreview}
               // ★ 触控目标：视觉不变，触屏伪元素扩命中区到 ≥44px
@@ -476,7 +476,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
               aria-label={t('agentPanel.previewClose')}
             >
               <CaretUp size={9} />
-            </NotionButton>
+            </DsButton>
           </div>
           {preview?.loading ? (
             <div className="flex items-center gap-1.5 px-2.5 py-2">

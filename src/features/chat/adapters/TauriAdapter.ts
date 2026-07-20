@@ -78,9 +78,8 @@ import {
 import { collectSchemaToolIds } from '../tools/collector';
 import { McpService } from '@/mcp/mcpService';
 import { skillRegistry } from '../skills/registry';
-import { resolveEffectiveTrustStatus } from '../skills/skillTrustStorage';
-import { isSkillDisabled } from '../skills/skillEnableStorage';
-import { SKILL_INSTRUCTION_TYPE_ID } from '../skills/types';
+import { getSkillRuntimeAdmissionWithDependencies } from '../skills/runtimeAdmission';
+import { SKILL_INSTRUCTION_TYPE_ID, type SkillDefinition } from '../skills/types';
 import { groupCache } from '../core/store/groupCache';
 import { BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { getAvailableSearchEngines } from '@/mcp/searchEngineAvailability';
@@ -88,8 +87,8 @@ import {
   LOAD_SKILLS_TOOL_SCHEMA,
   getLoadedSkills,
   generateAvailableSkillsPrompt,
-  escapeXmlAttr,
 } from '../skills/progressiveDisclosure';
+import { PROACTIVE_KB_SYSTEM_PROMPT } from '../skills/builtin-tools/knowledge-retrieval';
 // 🆕 工作区状态（用于传递 workspaceId 到后端）
 import { useWorkspaceStore, resolveWorkspaceIdForSession } from '../workspace/workspaceStore';
 import { inferCapabilities, inferInputContextBudget } from '@/utils/modelCapabilities';
@@ -153,6 +152,11 @@ import {
 // 适配器重建（会话切换/重连）也不会重置窗口导致刷屏
 const contextTrimThrottle = createContextTrimThrottle();
 
+/** rawRequests 中保留完整请求体的最近轮次数（更早轮次 body 置为占位符防止内存无上限增长） */
+const MAX_FULL_RAW_REQUEST_ROUNDS = 10;
+/** 被截断轮次的 body 占位符 */
+const RAW_REQUEST_BODY_TRUNCATED = '[truncated]';
+
 /** chat_v2_load_messages_page 响应（messages/blocks 结构与 load_session 一致） */
 interface LoadMessagesPageResponseType {
   messages: LoadSessionResponseType['messages'];
@@ -186,6 +190,13 @@ interface BuildSendOptionsSnapshot {
 // ============================================================================
 // ChatV2TauriAdapter
 // ============================================================================
+
+function getRegisteredSkillRuntimeAdmission(skill: SkillDefinition) {
+  return getSkillRuntimeAdmissionWithDependencies(
+    skill,
+    (skillId) => skillRegistry.get(skillId),
+  );
+}
 
 /**
  * Chat V2 Tauri 适配器
@@ -235,6 +246,8 @@ export class ChatV2TauriAdapter {
   } | null = null;
   /** ChatAnki 桥接 chunk 日志节流计数器（按 blockId） */
   private chatAnkiChunkLogCounter = new Map<string, number>();
+  /** 多变体 content/thinking chunk 调试日志采样计数器（1/10 采样，避免流式期间刷屏） */
+  private variantChunkLogCounter = 0;
   /** 已终态 anki 块收到任务事件时，表示失败分段正在重试。 */
   private retryingAnkiDocumentIds = new Set<string>();
   /** 防止并发查询的旧结果覆盖更新的重试终态。 */
@@ -1914,7 +1927,12 @@ export class ChatV2TauriAdapter {
       }
 
       // 🔧 调试打点：追踪多变体事件接收
-      if (event.variantId || event.type === 'variant_start' || event.type === 'variant_end') {
+      // 🚀 性能：content/thinking 的 chunk 阶段按 1/10 采样（与上方 chatanki 模式一致），
+      // 避免多变体流式期间每个 token 级 chunk 都记录一条日志
+      const isHotStreamChunk = event.phase === 'chunk'
+        && (event.type === 'content' || event.type === 'thinking');
+      const shouldLogVariantEvent = !isHotStreamChunk || ++this.variantChunkLogCounter % 10 === 1;
+      if (shouldLogVariantEvent && (event.variantId || event.type === 'variant_start' || event.type === 'variant_end')) {
         logMultiVariant('adapter', 'event_received', {
           type: event.type,
           phase: event.phase,
@@ -1998,7 +2016,16 @@ export class ChatV2TauriAdapter {
       round: existing.length + 1,
     };
 
+    // 🚀 内存上限：请求体含全量上下文且跨轮次超线性增长，长 agentic 会话
+    // 无上限累积可达数十 MB。仅保留最近 N 轮完整 body，更早轮次置为占位符
+    // （保留 model/url/round/logFilePath 元信息，完整内容仍可经 logFilePath 读取）
     const rawRequests = [...existing, entry];
+    const truncateBefore = rawRequests.length - MAX_FULL_RAW_REQUEST_ROUNDS;
+    for (let i = 0; i < truncateBefore; i++) {
+      if (rawRequests[i].body !== RAW_REQUEST_BODY_TRUNCATED) {
+        rawRequests[i] = { ...rawRequests[i], body: RAW_REQUEST_BODY_TRUNCATED };
+      }
+    }
 
     // rawRequest 保持最新一轮（兼容旧逻辑）
     const rawRequest = {
@@ -4537,6 +4564,11 @@ export class ChatV2TauriAdapter {
       return options;
     }
 
+    // Mark every modern original-replay request as admission-checked, even if
+    // the renderer no longer has the historical snapshot locally. This keeps
+    // the backend from restoring revoked historical schemas as a fallback.
+    (options as Record<string, unknown>).skillAdmissionErrors = {};
+
     const resolvedReplay = this.resolveReplaySkillSnapshot(messageId, variantId);
     if (!resolvedReplay) {
       return options;
@@ -4560,37 +4592,47 @@ export class ChatV2TauriAdapter {
     const replayPinnedSkillIds = Array.from(new Set([
       ...(snapshot.manualPinnedSkillIds || []),
       ...(runtimeSnapshot?.activeSkillIds || []),
-    ])).filter(Boolean);
+    ])).filter((skillId) => {
+      if (!skillId) return false;
+      const skill = skillRegistry.get(skillId);
+      return Boolean(skill && getRegisteredSkillRuntimeAdmission(skill).allowed);
+    });
 
-    if (replayPinnedSkillIds.length > 0) {
-      options.activeSkillIds = replayPinnedSkillIds;
-    }
+    options.activeSkillIds = replayPinnedSkillIds;
 
-    const skillContents: Record<string, string> = { ...(runtimeSnapshot?.skillContents || {}) };
-    const skillDependencies: Record<string, string[]> = { ...(runtimeSnapshot?.skillDependencies || {}) };
-    const skillEmbeddedTools: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>> = {
-      ...(runtimeSnapshot?.skillEmbeddedTools || {}),
-    };
+    const skillContents: Record<string, string> = {};
+    const skillDependencies: Record<string, string[]> = {};
+    const skillEmbeddedTools: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>> = {};
+    const skillAdmissionErrors: Record<string, string> = {};
+    const snapshotSkillToolNames = new Set(
+      Object.values(runtimeSnapshot?.skillEmbeddedTools ?? {})
+        .flat()
+        .map((tool) => tool.name)
+        .filter(Boolean),
+    );
     const replayToolSchemas: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> = [
       LOAD_SKILLS_TOOL_SCHEMA,
-      ...((runtimeSnapshot?.mcpToolSchemas || []).filter(Boolean)),
+      ...((runtimeSnapshot?.mcpToolSchemas ?? []).filter(
+        (schema) => Boolean(schema?.serverId) && !snapshotSkillToolNames.has(schema.name),
+      )),
     ];
 
     for (const skillId of enabledReplaySkillIds) {
-      if (skillContents[skillId] || skillEmbeddedTools[skillId]) {
-        continue;
-      }
       const skill = skillRegistry.get(skillId);
       if (!skill) continue;
-      // 🔒 P1（2026-07-08 审阅 22 P1-1）：重放路径同样对 untrusted 技能 fail-closed，
-      // 与 buildSendOptions 主路径的信任门禁保持一致
-      if (resolveEffectiveTrustStatus(skill) === 'untrusted') {
-        console.log(LOG_PREFIX, '[Replay] Skip untrusted skill injection:', skill.id);
+      const admission = getRegisteredSkillRuntimeAdmission(skill);
+      if (!admission.allowed) {
+        skillAdmissionErrors[skill.id] = `${admission.code}: ${admission.message}`;
+        console.log(LOG_PREFIX, '[Replay] Skip rejected skill injection:', skill.id, admission.code);
         continue;
       }
-      if (skill.content) {
-        skillContents[skill.id] = skill.content;
-      }
+      // Trust is bound to the currently installed package, not to historical
+      // replay bytes. Reusing an old body here could inject content whose hash
+      // was never approved by the current trust decision.
+      // Keep an explicit entry even for tool-only skills. The backend uses
+      // membership in this map as the admitted-set check; omitting an empty
+      // body would incorrectly classify an admitted tool-only skill as missing.
+      skillContents[skill.id] = skill.content ?? '';
       if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
         skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
       }
@@ -4605,19 +4647,19 @@ export class ChatV2TauriAdapter {
       }
     }
 
-    if (Object.keys(skillContents).length > 0) {
-      (options as Record<string, unknown>).skillContents = skillContents;
-      (options as Record<string, unknown>).replaySkillContents = skillContents;
-    }
-    if (Object.keys(skillDependencies).length > 0) {
-      (options as Record<string, unknown>).skillDependencies = skillDependencies;
-    }
-    if (Object.keys(skillEmbeddedTools).length > 0) {
-      (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
-    }
+    (options as Record<string, unknown>).skillContents = skillContents;
+    (options as Record<string, unknown>).replaySkillContents = skillContents;
+    (options as Record<string, unknown>).skillDependencies = skillDependencies;
+    (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
+    // Presence of this field is also the backend contract that the current
+    // renderer has re-evaluated replay admission. An empty map is meaningful:
+    // the backend must preserve these already-filtered fields instead of
+    // restoring older schema/allowlist snapshots over them.
+    (options as Record<string, unknown>).skillAdmissionErrors = skillAdmissionErrors;
 
+    const hasExternalReplaySchemas = replayToolSchemas.some((schema) => Boolean(schema.serverId));
     if (
-      replayToolSchemas.length <= 1
+      !hasExternalReplaySchemas
       && effectiveSelectedServerIds
       && effectiveSelectedServerIds.length > 0
     ) {
@@ -4777,6 +4819,14 @@ export class ChatV2TauriAdapter {
     const webSearchEnabled = features.get('webSearch') ?? modeEnabledTools.includes('web_search');
     const ankiEnabled = features.get('anki') ?? modeEnabledTools.includes('anki');
 
+    // 3) 知识库主动检索提示词（加号菜单 → 知识库 → 主动检索）
+    // 仅在 RAG 未被关闭时注入，否则模型会被引导去调用注定被拦截的工具
+    if (ragEnabled && features.get('kbProactive')) {
+      systemPromptOverride = systemPromptOverride
+        ? `${systemPromptOverride}\n\n${PROACTIVE_KB_SYSTEM_PROMPT}`
+        : PROACTIVE_KB_SYSTEM_PROMPT;
+    }
+
     // pendingParallelModelIds 也从 currentState 获取（保持一致性）
     const parallelIds = currentState.pendingParallelModelIds;
     const contextLimit = this.resolveInputContextLimit(
@@ -4788,11 +4838,15 @@ export class ChatV2TauriAdapter {
     const testModeConfig = getTestModeConfig();
 
     const structuredSkillState = this.getStructuredSkillStateFromStore();
-    // 🆕 技能停用覆盖：停用的技能不作为激活技能上报（全量 skillContents 透传不受影响）
+    // Runtime-active skills must pass the same trust/enable/requires admission
+    // used by load_skills and model-facing metadata.
     const authoritativeActiveSkillIds = (structuredSkillState
       ? structuredSkillState.manualPinnedSkillIds
       : currentState.activeSkillIds
-    ).filter((id) => !isSkillDisabled(id));
+    ).filter((id) => {
+      const skill = skillRegistry.get(id);
+      return Boolean(skill && getRegisteredSkillRuntimeAdmission(skill).allowed);
+    });
     const modeRequiredSkillIds = (() => {
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       return currentWorkspaceId ? ['workspace-tools'] : [];
@@ -4823,10 +4877,9 @@ export class ChatV2TauriAdapter {
     while (pendingSkillIds.length > 0) {
       const skillId = pendingSkillIds.pop();
       if (!skillId || enabledSkillIdSet.has(skillId)) continue;
-      // 🆕 停用的技能（含作为种子或依赖被引入的场景）不进入 schema 工具收集
-      if (isSkillDisabled(skillId)) continue;
-      enabledSkillIdSet.add(skillId);
       const skill = skillRegistry.get(skillId);
+      if (!skill || !getRegisteredSkillRuntimeAdmission(skill).allowed) continue;
+      enabledSkillIdSet.add(skillId);
       for (const depId of skill?.dependencies ?? []) {
         if (depId && !enabledSkillIdSet.has(depId)) {
           pendingSkillIds.push(depId);
@@ -4949,10 +5002,10 @@ export class ChatV2TauriAdapter {
       console.log(LOG_PREFIX, 'Schema tools collected:', schemaToolResult);
     }
 
-    // Transient skill injection 需要每轮拿到所有已注册 skills 的正文、依赖和工具定义。
-    // NOTE: skillContents/skillDependencies/skillEmbeddedTools 必须包含 ALL 已注册技能的完整数据，
-    // 不能按 enabledSkillIdSet 过滤。否则 LLM 调用 load_skills 时后端会因为 skill_contents 缺失而返回
-    // "No skills loaded. Missing: ..."（skills_executor.rs:382）
+    // Transient skill injection includes every runtime-admitted skill so the
+    // backend can service load_skills. Rejected skills are represented only by
+    // a non-sensitive admission error; their content, metadata, and schemas
+    // never cross the frontend/backend boundary.
     const allSkills = skillRegistry.getAll();
     if (allSkills.length > 0) {
       const skillContents: Record<string, string> = {};
@@ -4960,20 +5013,16 @@ export class ChatV2TauriAdapter {
       const skillDependencies: Record<string, string[]> = {};
       const skillEmbeddedTools: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>> = {};
       const skillPackageRoots: Record<string, string> = {};
+      const skillAdmissionErrors: Record<string, string> = {};
       for (const skill of allSkills) {
-        // 🔒 P1（2026-07-08 审阅 22 P1-1）：untrusted 技能的正文/embeddedTools/依赖
-        // 一律不注入 LLM 请求。此前 untrusted 只拦截 packageRoot（包内文件读取），
-        // 指令正文与工具描述仍进入上下文，构成提示注入通道；改为 fail-closed：
-        // 未信任的技能对 LLM 完全不可见，用户显式信任后方可注入。
-        const effectiveTrust = resolveEffectiveTrustStatus(skill);
-        if (effectiveTrust === 'untrusted') {
-          console.log(LOG_PREFIX, '[TransientSkills] Skip untrusted skill injection:', skill.id);
+        const admission = getRegisteredSkillRuntimeAdmission(skill);
+        if (!admission.allowed) {
+          skillAdmissionErrors[skill.id] = `${admission.code}: ${admission.message}`;
+          console.log(LOG_PREFIX, '[TransientSkills] Skip rejected skill injection:', skill.id, admission.code);
           continue;
         }
-        if (skill.content) {
-          skillContents[skill.id] = skill.content;
-          replaySkillContents[skill.id] = skill.content;
-        }
+        skillContents[skill.id] = skill.content ?? '';
+        replaySkillContents[skill.id] = skill.content ?? '';
         if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
           skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
         }
@@ -5008,6 +5057,7 @@ export class ChatV2TauriAdapter {
         (options as Record<string, unknown>).skillPackageRoots = skillPackageRoots;
         console.log(LOG_PREFIX, '[TransientSkills] Injected skill package roots:', Object.keys(skillPackageRoots).length);
       }
+      (options as Record<string, unknown>).skillAdmissionErrors = skillAdmissionErrors;
     }
 
     // 🔧 调试日志：记录发送选项（包含 modelId）
@@ -5072,9 +5122,11 @@ export class ChatV2TauriAdapter {
       }
     };
 
-    // 🆕 会话中已加载但事后被停用的技能，其工具不再注入 schema（下一条消息生效）
+    // Re-check current admission so stale session caches cannot retain schemas
+    // after a skill is disabled, becomes untrusted, or loses a requirement.
     for (const loadedSkill of getLoadedSkills(this.sessionId)) {
-      if (isSkillDisabled(loadedSkill.id)) continue;
+      const skill = skillRegistry.get(loadedSkill.id);
+      if (!skill || !getRegisteredSkillRuntimeAdmission(skill).allowed) continue;
       for (const tool of loadedSkill.tools) {
         appendLoadedTool(tool);
       }
@@ -5085,6 +5137,7 @@ export class ChatV2TauriAdapter {
       : [];
     for (const skillId of effectiveLoadedSkillIds) {
       const skill = skillRegistry.get(skillId);
+      if (!skill || !getRegisteredSkillRuntimeAdmission(skill).allowed) continue;
       const embeddedTools = skill?.embeddedTools ?? [];
       for (const tool of embeddedTools) {
         appendLoadedTool(tool);
@@ -5156,24 +5209,9 @@ export class ChatV2TauriAdapter {
   private buildSystemPromptWithSkills(
     basePrompt: string | undefined
   ): string | undefined {
-    // 渐进披露模式：使用 available_skills 格式，告知 LLM 可用的技能组
-    // 🔧 排除已加载的技能，避免 LLM 重复调用 load_skills
-    let skillMetadataPrompt = generateAvailableSkillsPrompt(true, this.sessionId);
-    // 🆕 停用的技能不参与 LLM 自动发现/激活：从 available_skills 元数据中剔除对应条目。
-    // generateAvailableSkillsPrompt 属于共享模块，此处按 <skill id="..."> 块做最小侵入过滤；
-    // 块内描述经过 XML 转义，不会出现 "</skill>"，懒匹配到闭合标签是安全的。
-    if (skillMetadataPrompt) {
-      const disabledSkillIds = skillRegistry.getAll()
-        .filter((skill) => isSkillDisabled(skill.id))
-        .map((skill) => skill.id);
-      for (const skillId of disabledSkillIds) {
-        const escapedId = escapeXmlAttr(skillId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        skillMetadataPrompt = skillMetadataPrompt.replace(
-          new RegExp(`[ \\t]*<skill id="${escapedId}"[^>]*>[\\s\\S]*?</skill>\\n?`),
-          '',
-        );
-      }
-    }
+    // The shared generator applies trust/enable visibility before reading any
+    // model-facing description or embedded-tool metadata.
+    const skillMetadataPrompt = generateAvailableSkillsPrompt(true, this.sessionId);
     console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (excludeLoaded=true)');
 
     // 如果没有 skills 元数据，返回原始提示

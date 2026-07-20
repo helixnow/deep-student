@@ -12,7 +12,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   DownloadSimple,
   CheckCircle,
@@ -239,14 +239,14 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 <CircleNotch size={12} className="animate-spin text-primary" />
               ) : (
                 <div className="relative flex items-center gap-0.5">
-                  <NotionButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title={t('blocks.paperSave.retryTitle')}>
+                  <DsButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title={t('blocks.paperSave.retryTitle')}>
                     <ArrowCounterClockwise size={12} />
                     <span>{t('blocks.paperSave.retry')}</span>
-                  </NotionButton>
+                  </DsButton>
                   {hasMultipleSources && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="relative !h-7 !w-7 after:absolute after:-inset-1.5 after:content-['']" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="relative !h-7 !w-7 after:absolute after:-inset-1.5 after:content-['']" aria-label={t('blocks.paperSave.switchSource')} title={t('blocks.paperSave.switchSource')}>
                       <CaretDown className={cn('transition-transform', showSources && 'rotate-180')} size={12} />
-                    </NotionButton>
+                    </DsButton>
                   )}
                 </div>
               )}
@@ -264,7 +264,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
       {showSources && sources.length > 0 && (
         <div className="ml-5 flex flex-wrap gap-1">
           {sources.map((src, si) => (
-            <NotionButton
+            <DsButton
               key={si}
               variant={selectedSourceIdx === si ? 'outline' : 'ghost'}
               size="sm"
@@ -287,7 +287,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                   {src.url}
                 </span>
               </span>
-            </NotionButton>
+            </DsButton>
           ))}
         </div>
       )}

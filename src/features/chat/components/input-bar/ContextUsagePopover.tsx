@@ -15,7 +15,7 @@ import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Archive, CircleNotch } from '@phosphor-icons/react';
 import { AppMenu, AppMenuContent, AppMenuTrigger } from '@/components/ui/app-menu/AppMenu';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Z_INDEX } from '@/config/zIndex';
 import type { SessionUsageSummary } from '@/api/llmUsageApi';
 import type { ContextWindowUsage } from './contextWindowUsage';
@@ -170,7 +170,7 @@ export const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
           {/* 快捷操作：压缩上下文 */}
           {onCompactContext && (
             <div className="mt-2.5 border-t border-[color:var(--input-shell-border)] pt-2.5">
-              <NotionButton
+              <DsButton
                 variant="secondary"
                 size="sm"
                 className="w-full justify-center gap-1.5"
@@ -193,7 +193,7 @@ export const ContextUsagePopover: React.FC<ContextUsagePopoverProps> = ({
                     ? t('chatV2:inputBar.plusMenu.compactingContext')
                     : t('chatV2:inputBar.plusMenu.compactContext')}
                 </span>
-              </NotionButton>
+              </DsButton>
             </div>
           )}
         </div>

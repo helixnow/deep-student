@@ -8,7 +8,7 @@ import {
   AppMenuSeparator,
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { StudyComposeIcon } from '@/components/icons/StudySidebarIcons';
 import type { SessionGroup } from '../types/group';
@@ -69,7 +69,7 @@ export function SessionGroupActions({
       >
         <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <AppMenuTrigger asChild>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -79,7 +79,7 @@ export function SessionGroupActions({
               className="!h-6 !w-6"
             >
               <DotsThree size={14} />
-            </NotionButton>
+            </DsButton>
           </AppMenuTrigger>
           <AppMenuContent align="end" width={180}>
             <AppMenuGroup>
@@ -117,7 +117,7 @@ export function SessionGroupActions({
         </AppMenu>
       </div>
       <CommonTooltip content={newSessionInGroupLabel} position="right">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -129,7 +129,7 @@ export function SessionGroupActions({
           className="!h-6 !w-6"
         >
           <StudyComposeIcon className="w-3.5 h-3.5" />
-        </NotionButton>
+        </DsButton>
       </CommonTooltip>
     </div>
   );

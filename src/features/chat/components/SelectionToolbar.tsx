@@ -2,7 +2,7 @@
  * SelectionToolbar - 文本选中操作条（轻量、非遮罩）
  *
  * 当用户在消息内容中选中文本时，在选区附近显示操作条。
- * 提供：复制、AI 解释、翻译、添加到聊天 四个操作。
+ * 提供：复制、AI 解释、翻译、制卡、添加到聊天 操作。
  *
  * 定位契约（P0-3 去 Portal 改造）：
  * - 不再 createPortal 到 body、不再 fixed + z-[9999] 全局悬浮；
@@ -13,7 +13,7 @@
  */
 
 import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Copy, Check, Sparkle, Translate, ChatDots } from '@phosphor-icons/react';
+import { Copy, Check, Sparkle, Translate, ChatDots, Cards } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -44,6 +44,8 @@ export interface SelectionToolbarProps {
   onTranslate?: (text: string) => void;
   /** 添加到聊天输入框回调 */
   onAddToChat?: (text: string) => void;
+  /** 划词制卡回调 */
+  onMakeCards?: (text: string) => void;
 }
 
 // ============================================================================
@@ -70,6 +72,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   onExplain,
   onTranslate,
   onAddToChat,
+  onMakeCards,
 }) => {
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
@@ -232,6 +235,16 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     onClear();
   }, [selectedText, onTranslate, onClear]);
 
+  // 划词制卡
+  const handleMakeCards = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onMakeCards) {
+      onMakeCards(selectedText);
+    }
+    onClear();
+  }, [selectedText, onMakeCards, onClear]);
+
   // 添加到聊天输入框
   const handleAddToChat = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -303,6 +316,17 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
         icon={<Translate size={touchTarget ? 16 : 14} />}
         label={t('selectionToolbar.translate')}
         disabled={!onTranslate}
+        touchTarget={touchTarget}
+      />
+
+      <Divider />
+
+      {/* 制卡 */}
+      <ToolbarButton
+        onClick={handleMakeCards}
+        icon={<Cards size={touchTarget ? 16 : 14} />}
+        label={t('selectionToolbar.makeCards', '制卡')}
+        disabled={!onMakeCards}
         touchTarget={touchTarget}
       />
 

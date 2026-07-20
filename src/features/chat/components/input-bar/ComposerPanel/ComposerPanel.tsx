@@ -32,7 +32,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 // ============================================================================
 // Root —— 通用 flex 容器，统一上下间距
@@ -133,7 +133,7 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
         <div className="flex shrink-0 items-center gap-1.5">
           {actions}
           {onClose ? (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -142,7 +142,7 @@ const Header: React.FC<ComposerPanelHeaderProps> = ({
               title={closeAriaLabel}
             >
               <X size={16} />
-            </NotionButton>
+            </DsButton>
           ) : null}
         </div>
       )}
@@ -204,7 +204,7 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
       {(showClear || endAdornment) && (
         <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1">
           {showClear ? (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -213,7 +213,7 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
               className="!h-5 !w-5 relative after:absolute after:-inset-3 after:content-['']"
             >
               <X size={12} />
-            </NotionButton>
+            </DsButton>
           ) : null}
           {endAdornment}
         </div>
@@ -426,7 +426,7 @@ const Row = React.forwardRef<HTMLButtonElement, ComposerPanelRowProps>(
   ) => {
     const tinted = selectedAccent === 'tinted';
     return (
-      // eslint-disable-next-line ds-components/no-native-button -- Row 是 ComposerPanel 的低层 primitive，需要直接控制 token 化的强调色 className，使用 NotionButton 会被其内置 variant 覆盖
+      // eslint-disable-next-line ds-components/no-native-button -- Row 是 ComposerPanel 的低层 primitive，需要直接控制 token 化的强调色 className，使用 DsButton 会被其内置 variant 覆盖
       <button
         ref={ref}
         type="button"

@@ -3,7 +3,7 @@
  *
  * 在 WorkspacePanel 中点击 Worker 时，展开显示该 Worker 的对话输出预览：
  * - 会话输出复用 ChatContainer，子代理渲染与主代理完全相同
- * - 派发任务为卡片内的内联展开条（原 NotionDialog 模态框已内联化）
+ * - 派发任务为卡片内的内联展开条（原 DsDialog 模态框已内联化）
  * - 状态色走语义 token（info/success/warning/destructive）
  */
 
@@ -11,7 +11,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, CaretRight, ArrowSquareOut, CircleNotch, Robot, ArrowsOut, ArrowsIn, PaperPlaneRight, Timer, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
 import type { AgentStatus } from '../types';
@@ -67,7 +67,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
   const { t } = useTranslation(['chatV2', 'skills']);
   // 🆕 高度切换状态
   const [isFullHeight, setIsFullHeight] = useState(false);
-  // 派发任务内联展开条（原 NotionDialog 内联化）
+  // 派发任务内联展开条（原 DsDialog 内联化）
   const [isDispatchOpen, setIsDispatchOpen] = useState(false);
   const [dispatchContent, setDispatchContent] = useState('');
   const [dispatching, setDispatching] = useState(false);
@@ -297,7 +297,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
           <span className={cn('text-xs', statusColors[status])}>{statusText}</span>
           
           {/* 派发任务按钮（切换内联派发条） */}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className={cn('h-8 lg:h-6 px-2 text-xs', isDispatchOpen && 'bg-primary/10 text-primary')}
@@ -315,29 +315,29 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
           >
             <PaperPlaneRight size={12} className="mr-1" />
             {t('chatV2:workspace.dispatch.title')}
-          </NotionButton>
+          </DsButton>
 
           {status === 'running' && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="h-8 lg:h-6 px-2 text-xs text-destructive"
               onClick={handleCancel}
             >
               {t('chatV2:workspace.cancel')}
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 高度切换按钮（仅展开时显示） */}
           {isExpanded && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-8 !w-8 lg:!h-6 lg:!w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-8 !w-8 lg:!h-6 lg:!w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
               {isFullHeight ? <ArrowsIn size={14} className="text-muted-foreground" /> : <ArrowsOut size={14} className="text-muted-foreground" />}
-            </NotionButton>
+            </DsButton>
           )}
           
           {/* 查看完整会话按钮 */}
           {onViewFullSession && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="h-8 lg:h-6 px-2 text-xs"
@@ -348,7 +348,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             >
               <ArrowSquareOut size={12} className="mr-1" />
               {t('workspace.viewFull')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>
@@ -365,7 +365,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
         </div>
       )}
 
-      {/* 派发任务内联展开条（原 NotionDialog 模态框内联化；关闭时保留已输入内容，仅清除错误提示） */}
+      {/* 派发任务内联展开条（原 DsDialog 模态框内联化；关闭时保留已输入内容，仅清除错误提示） */}
       {isDispatchOpen && (
         <div
           className="ui-rise-in border-t border-border/50 bg-muted/30 px-2.5 py-2.5 space-y-2"
@@ -414,7 +414,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <p role="alert" className="text-xs text-destructive">{dispatchError}</p>
           )}
           <div className="flex items-center justify-end gap-2">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => {
@@ -425,8 +425,8 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
               disabled={dispatching}
             >
               {t('chatV2:workspace.dispatch.cancel')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="primary"
               size="sm"
               onClick={handleDispatch}
@@ -438,7 +438,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
                 <PaperPlaneRight size={12} className="mr-1" />
               )}
               {t('chatV2:workspace.dispatch.send')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}

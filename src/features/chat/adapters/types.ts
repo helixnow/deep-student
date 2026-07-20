@@ -150,6 +150,8 @@ export interface SendOptions {
     description?: string;
     inputSchema?: unknown;
   }>>;
+  /** Runtime admission failures keyed by skill id (content/schema free). */
+  skillAdmissionErrors?: Record<string, string>;
   /** Skill package roots exposed to local runtime as read-only skill:<id> roots */
   skillPackageRoots?: Record<string, string>;
   /** 图片压缩质量策略 */

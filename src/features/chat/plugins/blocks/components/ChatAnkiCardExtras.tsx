@@ -16,7 +16,7 @@ import {
   DownloadSimple,
   ListChecks,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import './chat-anki-cards.css';
 
@@ -52,7 +52,7 @@ export const AnkiInlineUndoBar: React.FC<{
     data-testid="chatanki-undo-bar"
   >
     <span className="min-w-0 truncate text-xs text-muted-foreground">{message}</span>
-    <NotionButton
+    <DsButton
       type="button"
       size="sm"
       variant="ghost"
@@ -61,7 +61,7 @@ export const AnkiInlineUndoBar: React.FC<{
     >
       <ArrowCounterClockwise size={13} />
       {undoLabel}
-    </NotionButton>
+    </DsButton>
     <div
       className="canki-undo-progress absolute inset-x-0 bottom-0 h-0.5 bg-primary/50"
       style={{ animationDuration: `${durationMs}ms` }}
@@ -97,7 +97,7 @@ export const AnkiCompletionSummary: React.FC<{
       <span className="text-xs text-muted-foreground">{durationText}</span>
     ) : null}
     <span className="ml-auto flex flex-shrink-0 items-center gap-1">
-      <NotionButton
+      <DsButton
         type="button"
         size="sm"
         variant="ghost"
@@ -106,8 +106,8 @@ export const AnkiCompletionSummary: React.FC<{
       >
         <ListChecks size={13} />
         {taskCenterLabel}
-      </NotionButton>
-      <NotionButton
+      </DsButton>
+      <DsButton
         type="button"
         size="sm"
         variant="ghost"
@@ -122,7 +122,7 @@ export const AnkiCompletionSummary: React.FC<{
           <DownloadSimple size={13} />
         )}
         {exportLabel}
-      </NotionButton>
+      </DsButton>
     </span>
   </div>
 );

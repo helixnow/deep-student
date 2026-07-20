@@ -28,7 +28,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -525,7 +525,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               />
             )}
             {isRetryMode && onRetry && (
-              <NotionButton
+              <DsButton
                 variant="primary"
                 size="sm"
                 onClick={() => {
@@ -537,9 +537,9 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               >
                 <ArrowCounterClockwise size={14} />
                 {t('chatV2:modelMention.retry')}
-              </NotionButton>
+              </DsButton>
             )}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -550,7 +550,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               title={t('common:actions.cancel')}
             >
               <X size={16} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}
@@ -561,7 +561,11 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           className={cn(
             'relative flex items-center gap-1.5 rounded-[var(--menu-shell-row-radius)] border',
             'bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)]',
-            'border-[color:var(--menu-shell-border)] px-2 py-1.5 transition-colors',
+            'border-[color:var(--menu-shell-border)] px-2 transition-colors',
+            // 📱 移动端：搜索框收敛为紧凑尺寸（外壳约 36px），
+            // 否则内部 Input 的 min-h-[--touch-target-size]（44px）叠加外壳
+            // padding 会撑到 ~58px，挤压下方模型列表可视区域
+            isMobile ? 'min-h-9 py-1' : 'py-1.5',
             'focus-within:border-[color:var(--border)] focus-within:bg-[color:var(--menu-shell-surface)]'
           )}
         >
@@ -574,7 +578,12 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder={t('chatV2:modelPicker.searchPlaceholder')}
-          className="h-auto w-full border-0 bg-transparent px-0 py-0 text-[var(--menu-shell-font-size)] text-[color:var(--menu-shell-foreground)] shadow-none hover:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
+          className={cn(
+            'h-auto w-full border-0 bg-transparent px-0 py-0 text-[color:var(--menu-shell-foreground)] shadow-none hover:bg-transparent focus-visible:bg-transparent focus-visible:ring-0',
+            // 📱 移动端：干掉 Input 自带的 44px 触控 min-h（外壳 min-h-9 保底），
+            // 字号必须 ≥16px——iOS WKWebView 聚焦 <16px 的输入框会自动放大页面
+            isMobile ? '!min-h-0 text-[16px] leading-5' : 'text-[var(--menu-shell-font-size)]'
+          )}
           disabled={disabled}
         />
         </div>
@@ -656,7 +665,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 </span>
                 {/* 真空态（非搜索无结果）：深链设置-模型页，复用 readiness 的引导机制 */}
                 {!searchTerm && (
-                  <NotionButton
+                  <DsButton
                     variant="secondary"
                     size="sm"
                     onClick={() => {
@@ -666,7 +675,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                     className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
                   >
                     {t('chatV2:modelPicker.goToSettings')}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
             )}
@@ -680,7 +689,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
 
       {isRetryMode && onRetry && (
         <div className="flex shrink-0 items-center justify-end px-1 pb-1">
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={() => {
@@ -693,7 +702,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           >
             <ArrowCounterClockwise size={14} />
             {t('chatV2:modelMention.retry')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
     </div>

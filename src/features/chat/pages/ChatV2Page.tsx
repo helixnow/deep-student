@@ -11,7 +11,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, Chat, X, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, Warning, ArrowSquareOut, SquaresFour } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -20,6 +20,7 @@ import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { ThreadEmptyStateShell } from '../components/ui/ThreadEmptyStateShell';
 import { SessionBrowser } from '../components/session-browser';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { unifiedConfirm } from '@/utils/unifiedDialogs';
 // Learning Hub 学习资源侧边栏
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
@@ -275,6 +276,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<SessionGroup | null>(null);
   const [groupEditorAutoFocusField, setGroupEditorAutoFocusField] = useState<'name' | null>(null);
+  const [groupEditorDirty, setGroupEditorDirty] = useState(false);
   const [pendingArchiveGroup, setPendingArchiveGroup] = useState<SessionGroup | null>(null);
   
   // 视图模式：sidebar（侧边栏+聊天）或 browser（全宽浏览）
@@ -567,6 +569,25 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups: editableVisibleGroups,
   });
 
+  const groupEditorCloseConfirmKeyRef = useRef(0);
+  useEffect(() => {
+    if (groupEditorOpen) {
+      groupEditorCloseConfirmKeyRef.current += 1;
+    }
+  }, [groupEditorOpen]);
+
+  const requestCloseGroupEditor = useCallback(() => {
+    if (groupEditorDirty && !unifiedConfirm(
+      t('page.groupUnsavedChangesConfirm'),
+      { key: `chat-group-editor-unsaved-${groupEditorCloseConfirmKeyRef.current}` },
+    )) {
+      return false;
+    }
+    setGroupEditorDirty(false);
+    closeGroupEditor();
+    return true;
+  }, [closeGroupEditor, groupEditorDirty, t]);
+
   // ===== 左侧主导航栏分组操作事件监听 =====
   useEffect(() => {
     const handler = (event: Event) => {
@@ -644,21 +665,6 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     setOpenApp(null);
   }, []);
 
-  // ===== 页面布局 hook =====
-  useChatPageLayout({
-    currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
-    viewMode, sessionSheetOpen, t, sessionCount: sessions.length,
-    createSession, isLoading,
-    mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
-    setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
-    mobileSandboxOpen, closeMobileSandbox,
-    openAppTitle: openApp ? (openApp.title ?? '') : null,
-    closeMobileOpenApp,
-    groupEditorOpen,
-    groupEditorMode: editingGroup ? 'edit' : 'create',
-    closeGroupEditor,
-  });
-
   // ===== Android 返回键：中屏子视图（会话浏览 / 分组编辑器）逐层返回 =====
   // 左/右屏由 MobileSlidingLayout 以 overlay 优先级先行消费，这里只处理中屏内容
   const mobileCenterBackRef = useRef({ viewMode, groupEditorOpen });
@@ -674,15 +680,16 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       } = mobileCenterBackRef.current;
       if (centerMode === 'browser') {
         setViewMode('sidebar');
+        setSessionSheetOpen(true);
         return true;
       }
       if (editorOpen) {
-        closeGroupEditor();
+        requestCloseGroupEditor();
         return true;
       }
       return false;
     }, BACK_PRIORITY.view);
-  }, [isSmallScreen, closeGroupEditor]);
+  }, [isSmallScreen, requestCloseGroupEditor, setSessionSheetOpen, setViewMode]);
 
   // ===== 页面事件 hook =====
   useChatPageEvents({
@@ -788,9 +795,18 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     }
 
     if (desktopSecondaryPanelMode) {
+      // ★ 内容相同则跳过 set：避免每次 set 新对象字面量触发
+      //   「状态变化 → 重渲染 → effect 重跑 → 又 set 新对象」的自续循环
+      const nextOpenApp = desktopSecondaryPanelMode === 'attachment' ? openApp : null;
+      if (
+        desktopSecondaryPanelSnapshot?.mode === desktopSecondaryPanelMode &&
+        desktopSecondaryPanelSnapshot.openApp === nextOpenApp
+      ) {
+        return;
+      }
       setDesktopSecondaryPanelSnapshot({
         mode: desktopSecondaryPanelMode,
-        openApp: desktopSecondaryPanelMode === 'attachment' ? openApp : null,
+        openApp: nextOpenApp,
       });
       return;
     }
@@ -931,7 +947,23 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         break;
     }
     handleCloseApp();
-  }, [openApp, handleCloseApp]);
+    setMobileResourcePanelOpen(false);
+  }, [openApp, handleCloseApp, setMobileResourcePanelOpen]);
+
+  // ===== 页面布局 hook =====
+  useChatPageLayout({
+    currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
+    viewMode, sessionSheetOpen, t, sessionCount: sessions.length,
+    createSession, isLoading,
+    mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
+    setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
+    mobileSandboxOpen, closeMobileSandbox,
+    openAppTitle: openApp ? (openApp.title ?? '') : null,
+    closeMobileOpenApp,
+    groupEditorOpen,
+    groupEditorMode: editingGroup ? 'edit' : 'create',
+    closeGroupEditor: requestCloseGroupEditor,
+  });
 
   // ★ 标题更新回调
   const handleTitleChange = useCallback((title: string) => {
@@ -957,9 +989,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       )}>
         <div
           className={cn(
-            'study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0',
+            'study-shell-toolbar items-center justify-between px-3 py-2 border-b shrink-0',
+            isSmallScreen && options?.fullScreen ? 'hidden' : 'flex',
             options?.fullScreen && 'study-shell-toolbar--floating backdrop-blur-lg'
           )}
+          aria-hidden={isSmallScreen && options?.fullScreen}
         >
           <div className="flex items-center gap-2 min-w-0">
             {(() => {
@@ -974,12 +1008,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub', '在学习中心打开')} title={t('page.openInLearningHub', '在学习中心打开')} className="!h-7 !w-7">
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub', '在学习中心打开')} title={t('page.openInLearningHub', '在学习中心打开')} className="!h-7 !w-7">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
               <X size={16} className="text-muted-foreground" />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
 
@@ -1007,7 +1041,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         </div>
       </div>
     );
-  }, [openApp, handleCloseApp, handleOpenInLearningHub, handleTitleChange, t]);
+  }, [openApp, handleCloseApp, handleOpenInLearningHub, handleTitleChange, isSmallScreen, t]);
 
   // ★ 处理从 openResource 触发的待打开资源
   // 简化逻辑：直接调用 handleOpenApp，不再通过事件传递
@@ -1034,8 +1068,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       );
     }
     // 加载完成仍无会话（自动创建失败等）：与会话内空态共用 ThreadEmptyStateShell
-    // 统一内容模型（品牌 → 标题 → 描述 → CTA → hint）；无会话时不渲染建议 chips
-    // （建议 chips 依赖输入栏承接 CHAT_V2_SET_INPUT，此处尚无会话/输入栏）
+    // 统一内容模型（品牌 → 标题 → 描述 → CTA → hint）
     return (
       <div
         data-slot="chat-page-empty-state"
@@ -1045,19 +1078,18 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           title={t('page.welcome')}
           brandIcon={<Chat size={26} weight="duotone" />}
           description={t('page.emptyPage.subtitle')}
-          suggestions={null}
           hint={t('page.emptyPage.hint')}
           actions={
             <>
-              <NotionButton variant="primary" size="sm" onClick={() => void createSession()}>
+              <DsButton variant="primary" size="sm" onClick={() => void createSession()}>
                 <Plus size={14} />
                 {t('page.newChat')}
-              </NotionButton>
+              </DsButton>
               {!isSmallScreen && sessions.length > 0 && (
-                <NotionButton variant="outline" size="sm" onClick={() => setViewMode('browser')}>
+                <DsButton variant="outline" size="sm" onClick={() => setViewMode('browser')}>
                   <SquaresFour size={14} />
                   {t('browser.title')}
-                </NotionButton>
+                </DsButton>
               )}
             </>
           }
@@ -1084,17 +1116,17 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         {t('page.archiveGroupDesc', { name: pendingArchiveGroup.name })}
       </p>
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           autoFocus
           onClick={() => setPendingArchiveGroup(null)}
         >
           {t('common:cancel')}
-        </NotionButton>
-        <NotionButton variant="warning" size="sm" onClick={() => void confirmArchiveGroup()}>
+        </DsButton>
+        <DsButton variant="warning" size="sm" onClick={() => void confirmArchiveGroup()}>
           {t('page.archiveGroupConfirm')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   ) : null;
@@ -1125,7 +1157,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
           initial={editingGroup}
           autoFocusField={groupEditorAutoFocusField}
           onSubmit={handleSubmitGroup}
-          onClose={closeGroupEditor}
+          onClose={requestCloseGroupEditor}
+          onDirtyChange={setGroupEditorDirty}
           onArchive={editingGroup ? () => {
             setPendingArchiveGroup(editingGroup);
             closeGroupEditor();
@@ -1192,10 +1225,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               ) : openApp ? (
                 renderOpenAppPanel({
                   fullScreen: true,
-                  onClose: () => {
-                    handleCloseApp();
-                    setMobileResourcePanelOpen(false);
-                  },
+                  onClose: closeMobileOpenApp,
                 })
               ) : (
                 <LearningHubSidebar
@@ -1235,6 +1265,14 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             sessionSheetOpen ? 'left' : 'center'
           }
           onScreenPositionChange={(pos: ScreenPosition) => {
+            // 资源详情是右屏内的二级页：返回键/右屏回滑先回资源列表，
+            // 与统一顶栏返回行为保持一致；再次返回才退出右屏回到聊天。
+            if (pos !== 'right' && openApp && !sandboxWorkbenchOpen) {
+              setOpenApp(null);
+              setSessionSheetOpen(false);
+              setMobileResourcePanelOpen(true);
+              return;
+            }
             setSessionSheetOpen(pos === 'left');
             setMobileResourcePanelOpen(pos === 'right');
             // 沙箱工作台占据右屏时，手势/返回键滑回中屏必须同步关闭工作台，
@@ -1321,7 +1359,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             content={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench', '收起沙箱工作台') : t('page.expandSandboxWorkbench', '展开沙箱工作台')}
             position="bottom"
           >
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -1355,7 +1393,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
                   <SidebarFrameWithLeftRailIcon />
                 </span>
               </span>
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
         </div>
       )}

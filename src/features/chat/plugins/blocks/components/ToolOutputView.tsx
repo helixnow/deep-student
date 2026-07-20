@@ -9,7 +9,7 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { CheckCircle, FileJs, FileText, Table, Image as ImageIcon, Copy, Check } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
@@ -183,7 +183,7 @@ const TextOutput: React.FC<{ text: string }> = ({ text }) => {
         {displayText}
       </div>
       {isLong && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setExpanded((prev) => !prev)}
@@ -193,7 +193,7 @@ const TextOutput: React.FC<{ text: string }> = ({ text }) => {
           {expanded
             ? t('blocks.mcpTool.collapseLongOutput')
             : t('blocks.mcpTool.expandLongOutput', { count: text.length })}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );
@@ -411,7 +411,7 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
         <TypeIcon size={12} />
         <span>{t('blocks.mcpTool.output')}</span>
         {copyableText && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -421,7 +421,7 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
             title={t('blocks.mcpTool.copyOutput')}
           >
             {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 

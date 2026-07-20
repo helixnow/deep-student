@@ -415,6 +415,20 @@ export const EVENT_TYPE_VARIANT_START = 'variant_start';
 /** 变体结束事件类型 */
 export const EVENT_TYPE_VARIANT_END = 'variant_end';
 
+// 🚀 性能：content/thinking 的 chunk 阶段是 token 级热路径，多变体流式时
+// 逐条调试日志会绕开 chunk 缓冲（每秒数百次分配 + 同步 DOM 事件派发）。
+// 此处按 1/10 采样（与 TauriAdapter 的 chatanki chunk 日志同一模式），
+// start/end/error/variant_* 等低频事件仍全量记录，不影响调试面板可观测性。
+let variantChunkLogCounter = 0;
+
+/** 判断当前事件的多变体调试日志是否应记录（高频 chunk 采样，其余全量） */
+function shouldLogVariantEvent(type: string, phase: EventPhase): boolean {
+  if (phase !== 'chunk' || (type !== 'content' && type !== 'thinking')) {
+    return true;
+  }
+  return ++variantChunkLogCounter % 10 === 1;
+}
+
 // ============================================================================
 // 序列号检测与乱序缓冲 (Prompt 9)
 // ============================================================================
@@ -437,10 +451,13 @@ export function handleBackendEventWithSequence(
 ): void {
   const { sequenceId, type, variantId, phase } = event;
 
+  // 🚀 性能：本事件的调试日志采样决策（content/thinking chunk 按 1/10 采样）
+  const shouldLogThisEvent = shouldLogVariantEvent(type, phase);
+
   // 🔧 去重检查：如果事件已处理过，直接忽略
   if (sequenceId !== undefined && isEventProcessed(store.sessionId, sequenceId)) {
     // 🔧 调试打点：重复事件
-    if (variantId || type === 'variant_start' || type === 'variant_end') {
+    if (shouldLogThisEvent && (variantId || type === 'variant_start' || type === 'variant_end')) {
       logMultiVariant('adapter', 'sequenceHandler_duplicate', {
         type,
         variantId,
@@ -451,7 +468,7 @@ export function handleBackendEventWithSequence(
   }
 
   // 🔧 调试打点：序列号处理入口
-  if (variantId || type === 'variant_start' || type === 'variant_end') {
+  if (shouldLogThisEvent && (variantId || type === 'variant_start' || type === 'variant_end')) {
     logMultiVariant('adapter', 'sequenceHandler_entry', {
       type,
       phase,
@@ -463,7 +480,7 @@ export function handleBackendEventWithSequence(
 
   // 如果没有 sequenceId，直接处理（向后兼容）
   if (sequenceId === undefined) {
-    if (variantId || type === 'variant_start') {
+    if (shouldLogThisEvent && (variantId || type === 'variant_start')) {
       logMultiVariant('adapter', 'sequenceHandler_no_seq_direct', {
         type,
         variantId,
@@ -526,7 +543,7 @@ export function handleBackendEventWithSequence(
       processEventInternal(store, event);
       return;
     }
-    if (variantId || type === 'variant_start') {
+    if (shouldLogThisEvent && (variantId || type === 'variant_start')) {
       logMultiVariant('adapter', 'sequenceHandler_expired', {
         type,
         variantId,
@@ -539,7 +556,7 @@ export function handleBackendEventWithSequence(
 
   // 2. 如果是期望的下一个事件，直接处理
   if (sequenceId === expectedSeqId) {
-    if (variantId || type === 'variant_start') {
+    if (shouldLogThisEvent && (variantId || type === 'variant_start')) {
       logMultiVariant('adapter', 'sequenceHandler_process', {
         type,
         variantId,
@@ -557,7 +574,7 @@ export function handleBackendEventWithSequence(
   }
 
   // 3. 如果是未来事件（乱序），加入缓冲区
-  if (variantId || type === 'variant_start') {
+  if (shouldLogThisEvent && (variantId || type === 'variant_start')) {
     logMultiVariant('adapter', 'sequenceHandler_buffered', {
       type,
       variantId,
@@ -720,8 +737,11 @@ function processEventInternal(store: ChatStore, event: BackendEvent): void {
 
   updateRoundContext(context, event);
 
-  // 🔧 调试打点：追踪多变体相关事件
-  if (variantId || type === EVENT_TYPE_VARIANT_START || type === EVENT_TYPE_VARIANT_END) {
+  // 🔧 调试打点：追踪多变体相关事件（content/thinking chunk 按 1/10 采样）
+  if (
+    shouldLogVariantEvent(type, phase)
+    && (variantId || type === EVENT_TYPE_VARIANT_START || type === EVENT_TYPE_VARIANT_END)
+  ) {
     logMultiVariant('adapter', 'processEventInternal', {
       type,
       phase,
@@ -1230,7 +1250,11 @@ function dispatchBlockEvent(store: ChatStore, event: BackendEvent): void {
           // 终态完整保存由 end/error 与 stream_complete 的 forceImmediateSave 保证。
         } else {
           handler.onChunk(store, effectiveBlockId, chunk ?? '');
-          autoSave.scheduleAutoSave(store);
+          // 🚀 性能：空 chunk（如空 content chunk 落进此分支）没有产生新内容，
+          // 不调度全量会话保存
+          if (chunk) {
+            autoSave.scheduleAutoSave(store);
+          }
         }
       }
       break;

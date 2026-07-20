@@ -5,7 +5,7 @@
  * 影响编程滚动（scrollTo/scrollIntoView 等），对用户滚轮无效。
  *
  * 本 hook 拦截鼠标滚轮事件，把 deltaY 累加到一个目标 scrollTop，再用
- * rAF 把当前 scrollTop 缓动逼近目标，从而获得 Notion / VSCode 那种顺滑感。
+ * rAF 把当前 scrollTop 缓动逼近目标，从而获得  VSCode 那种顺滑感。
  *
  * 设计要点：
  * 1. 仅拦截"鼠标滚轮"，不动触控板。

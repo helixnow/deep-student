@@ -33,7 +33,11 @@ describe('chat v2 composer panel sizing contract', () => {
 
   it('lets skill and MCP panels fill the available tray height with internal scroll regions', () => {
     expect(skillSelectorSource).toContain('flex min-h-0 flex-1 gap-3 overflow-hidden');
-    expect(skillSelectorSource).not.toContain('h-[240px]');
+    // 禁固定高度 h-[240px]；menu 变体的 min-h-[240px]（最小可视高度保障）不在此列
+    expect(skillSelectorSource).not.toMatch(/(?<!min-)h-\[240px\]/);
+    // menu 变体：AppMenuSubContent 只有 max-height（不定高），列表不能用 h-full
+    // 百分比取高（会按内容撑高、失去滚动），必须走 flex stretch
+    expect(skillSelectorSource).toContain('fullHeight={!isMenuVariant}');
     expect(composerPanelSource).toContain("'flex min-h-0 flex-col gap-3'");
     expect(composerPanelSource).toContain("fillHeight && 'h-full'");
     expect(mcpPanelSource).toContain('<ComposerPanel.Root fillHeight className="overflow-hidden">');

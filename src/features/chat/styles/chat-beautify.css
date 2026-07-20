@@ -39,7 +39,9 @@
   --unified-input-bottom-fade-size: 42px;
   --unified-input-shell-surface: var(--surface-root);
 
-  will-change: transform, bottom;
+  /* 只提示 transform：bottom 是布局属性，进 will-change 无合成收益、
+     还会让常驻输入壳强制持有独立合成层 */
+  will-change: transform;
   background: transparent;
   border-top: 0;
 }

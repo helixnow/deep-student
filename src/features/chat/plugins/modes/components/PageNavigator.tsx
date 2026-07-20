@@ -9,7 +9,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import {
   CaretLeft,
@@ -148,10 +148,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
             {loadingError || t('textbook.loadError')}
           </span>
         </div>
-        <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="text-primary hover:bg-primary/10">
+        <DsButton variant="ghost" size="sm" onClick={handleRetry} className="text-primary hover:bg-primary/10">
           <ArrowClockwise size={12} />
           {t('textbook.retry')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -252,10 +252,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
         </div>
 
         {/* 右侧：缩略图切换 */}
-        <NotionButton variant="ghost" size="sm" onClick={() => setIsThumbExpanded((prev) => !prev)} className={cn(isThumbExpanded && 'bg-muted/50 text-foreground')}>
+        <DsButton variant="ghost" size="sm" onClick={() => setIsThumbExpanded((prev) => !prev)} className={cn(isThumbExpanded && 'bg-muted/50 text-foreground')}>
           <Image size={12} />
           {t('textbook.preview')}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 缩略图预览区域 */}
@@ -307,7 +307,7 @@ const NavigationButton: React.FC<NavigationButtonProps> = ({
   children,
 }) => {
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="icon"
       iconOnly
@@ -318,6 +318,6 @@ const NavigationButton: React.FC<NavigationButtonProps> = ({
       className="!w-7 !h-7"
     >
       {children}
-    </NotionButton>
+    </DsButton>
   );
 };

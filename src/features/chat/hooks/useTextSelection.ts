@@ -21,12 +21,28 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 /** 触屏 selectionchange 防抖时长：长按/拖手柄期间持续触发，稳定后再弹工具栏 */
 const TOUCH_SELECTION_DEBOUNCE_MS = 300;
 
+// 模块级缓存 coarse pointer 查询结果：直渲长列表时每条消息都挂着 scroll 监听，
+// 滚动期间每个 handler 都调用本函数，不能每次都重跑 window.matchMedia。
+// coarse pointer 在桌面/移动运行期基本不变，缓存后监听 change 事件兜底更新。
+let coarsePointerQuery: MediaQueryList | null | undefined;
+let coarsePointerMatches = false;
+
 const isTouchPrimaryPointer = (): boolean => {
-  try {
-    return window.matchMedia?.('(pointer: coarse)').matches ?? false;
-  } catch {
-    return false;
+  if (coarsePointerQuery === undefined) {
+    try {
+      coarsePointerQuery = window.matchMedia?.('(pointer: coarse)') ?? null;
+      if (coarsePointerQuery) {
+        coarsePointerMatches = coarsePointerQuery.matches;
+        // 老 WebView 可能没有 addEventListener，此时降级为首次结果一次性缓存
+        coarsePointerQuery.addEventListener?.('change', (e) => {
+          coarsePointerMatches = e.matches;
+        });
+      }
+    } catch {
+      coarsePointerQuery = null;
+    }
   }
+  return coarsePointerQuery ? coarsePointerMatches : false;
 };
 
 export interface SelectionRect {
@@ -191,15 +207,19 @@ export function useTextSelection(
 
   // mousedown 时检查是否点击在工具栏上
   const handleMouseDown = useCallback((e: MouseEvent) => {
+    // 最速短路：工具栏未显示时无事可做——closest 命中的只可能是别的消息的
+    // 工具栏（全局选区唯一，本实例不可见即选区不在本容器内），置不置
+    // isToolbarInteraction 都不影响本实例 mouseup 评估的结果（评估后仍是清除态）
+    if (!isVisibleRef.current) {
+      return;
+    }
     const target = e.target as Element;
     if (target.closest('[data-selection-toolbar]')) {
       isToolbarInteraction.current = true;
       return;
     }
     // 点击其他区域时清除
-    if (isVisibleRef.current) {
-      clear();
-    }
+    clear();
   }, [clear]);
 
   // 滚动/窗口尺寸变化时隐藏（选区 rect 已失效）。
@@ -208,6 +228,16 @@ export function useTextSelection(
   const scrollSettleTimerRef = useRef<number | null>(null);
   const handleScroll = useCallback(() => {
     if (isTouchPrimaryPointer()) {
+      // 最速短路：工具栏未显示、当前无选区且无待触发的停稳定时器时，
+      // 停稳后重评估必然是无事可做的 clear 空转，直接返回避免长列表
+      // 滚动时每条消息都做定时器续期。有选区时仍需续期定时器，
+      // 保证 P1-10 的"滚动停稳后重新弹出"行为不变
+      if (!isVisibleRef.current && scrollSettleTimerRef.current === null) {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) {
+          return;
+        }
+      }
       if (isVisibleRef.current) {
         clear();
       }

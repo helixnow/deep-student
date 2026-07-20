@@ -3,7 +3,7 @@
  */
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
 
 export interface MessageInlineEditProps {
@@ -63,22 +63,22 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
         disabled={isSubmitting}
       />
       <div className="flex gap-2">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={onCancel}
           disabled={isSubmitting}
         >
           {t('common:actions.cancel')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="primary"
           size="sm"
           onClick={onConfirm}
           disabled={isSubmitting}
         >
           {t('chatV2:messageItem.actions.send')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

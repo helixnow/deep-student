@@ -5,7 +5,7 @@ import { Check, CircleNotch, X, ArrowClockwise, CaretDown } from '@phosphor-icon
 import { cn } from '@/utils/cn';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { AnkiCardsBlockData } from '../ankiCardsBlock';
 import { parseAnkiSegmentCounts } from './ankiSegmentCounts';
 import './chat-anki-cards.css';
@@ -97,7 +97,7 @@ const AnkiConnectRefreshButton: React.FC<{
     }
   };
   return (
-    <NotionButton
+    <DsButton
       type="button"
       variant="ghost"
       size="icon"
@@ -109,7 +109,7 @@ const AnkiConnectRefreshButton: React.FC<{
       aria-label={label}
     >
       <ArrowClockwise className={cn('h-4 w-4 text-muted-foreground', refreshing && 'animate-spin')} />
-    </NotionButton>
+    </DsButton>
   );
 };
 
@@ -423,7 +423,7 @@ export const ChatAnkiProgressCompact: React.FC<{
               {smoothedPercent}%
             </span>
           )}
-          <NotionButton
+          <DsButton
             type="button"
             variant="ghost"
             size="icon"
@@ -440,7 +440,7 @@ export const ChatAnkiProgressCompact: React.FC<{
                 showDetails && 'rotate-180'
               )}
             />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 

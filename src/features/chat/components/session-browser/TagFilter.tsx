@@ -8,7 +8,7 @@ import { Tag, X, Plus, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 interface TagInfo {
   tag: string;
@@ -52,9 +52,9 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
           <span>{t('tags.filterTitle')}</span>
         </div>
         {selectedTags.size > 0 && (
-          <NotionButton variant="ghost" size="sm" onClick={onClear} className="h-6 px-1.5 text-2xs">
+          <DsButton variant="ghost" size="sm" onClick={onClear} className="h-6 px-1.5 text-2xs">
             {t('tags.clearFilter')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
       <div className="flex flex-wrap gap-1.5">

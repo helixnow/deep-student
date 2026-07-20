@@ -11,7 +11,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { SlidersHorizontal, Chat, Thermometer, Stack, Image } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SnappySlider } from '@/components/ui/SnappySlider';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Label } from '@/components/ui/shad/Label';
@@ -328,7 +328,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             <span className="text-2xs text-muted-foreground line-clamp-2">
               {t('chat_host:advanced.context.description')}
             </span>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className={cn(
@@ -343,7 +343,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
               }}
             >
               {t('chat_host:advanced.context.reset_auto')}
-            </NotionButton>
+            </DsButton>
           </div>
           <SnappySlider
             className={cn(samplingControlsDisabled && 'pointer-events-none opacity-60')}

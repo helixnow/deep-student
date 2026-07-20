@@ -21,6 +21,7 @@ interface UseContentSearchReturn {
   loading: boolean;
   error: string | null;
   search: (query: string) => void;
+  retry: () => void;
   query: string;
   clear: () => void;
 }
@@ -36,8 +37,8 @@ export function useContentSearch(debounceMs = 300): UseContentSearchReturn {
   // 请求代数：递增即可让所有 in-flight 回调作废（effect cleanup 与 clear() 共用）
   const generationRef = useRef(0);
 
-  useEffect(() => {
-    const trimmed = debouncedQuery.trim();
+  const runSearch = useCallback((rawQuery: string) => {
+    const trimmed = rawQuery.trim();
     if (!trimmed || trimmed.length < 2) {
       generationRef.current++;
       setResults([]);
@@ -72,14 +73,21 @@ export function useContentSearch(debounceMs = 300): UseContentSearchReturn {
           setLoading(false);
         }
       });
+  }, []);
 
+  useEffect(() => {
+    runSearch(debouncedQuery);
     // 无需 cleanup：每次 effect 重跑（或 clear()）都会先递增 generation，
     // 旧请求的回调经 gen 比对自动作废，天然防乱序覆盖
-  }, [debouncedQuery]);
+  }, [debouncedQuery, runSearch]);
 
   const search = useCallback((q: string) => {
     setQuery(q);
   }, []);
+
+  const retry = useCallback(() => {
+    runSearch(query);
+  }, [query, runSearch]);
 
   const clear = useCallback(() => {
     // 立即作废 in-flight 请求，避免 debounce 窗口期内旧结果回填
@@ -90,7 +98,7 @@ export function useContentSearch(debounceMs = 300): UseContentSearchReturn {
     setLoading(false);
   }, []);
 
-  return { results, loading, error, search, query, clear };
+  return { results, loading, error, search, retry, query, clear };
 }
 
 export default useContentSearch;

@@ -21,7 +21,7 @@ import { cn } from '@/utils/cn';
 import { openUrl } from '@/utils/urlOpener';
 import { citationEvents, type CitationHighlightEvent } from '../../utils/citationEvents';
 import { useIsMobile } from '@/hooks/useBreakpoint';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { TextShimmer } from '../ui/TextShimmer';
@@ -84,12 +84,35 @@ function groupIcon(group: CategoryKey, size = 16) {
 function renderScore(item: UnifiedSourceItem) {
   if (typeof item.score !== 'number') return null;
   const pct = Math.round(item.score * 100);
-  return <span className="usp-item-score">{pct}%</span>;
+  const tier = pct >= 75 ? 'high' : pct >= 45 ? 'mid' : 'low';
+  return (
+    <span className="usp-item-score" data-tier={tier}>
+      <i className="usp-score-dot" aria-hidden />
+      {pct}%
+    </span>
+  );
 }
 
 function isHttpUrl(value?: string | null): boolean {
   if (!value) return false;
   return value.startsWith('http://') || value.startsWith('https://');
+}
+
+/** 网页来源的域名（用于卡片底部元信息，比重复的分组名信息量更大） */
+function extractDomain(link?: string | null): string | null {
+  if (!isHttpUrl(link)) return null;
+  try {
+    return new URL(link as string).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+/** 入场 stagger 延迟档位（超过后统一用最大延迟，避免长列表尾部等太久） */
+const STAGGER_CAP = 12;
+
+function staggerStyle(seqIndex: number): React.CSSProperties {
+  return { '--usp-i': Math.min(seqIndex, STAGGER_CAP) } as React.CSSProperties;
 }
 
 const CATEGORY_PRIORITY: Record<CategoryKey, number> = {
@@ -213,17 +236,35 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     toggleDetail(item);
   }, [toggleDetail]);
 
+  const handleCardSurfaceKeyDown = useCallback((e: React.KeyboardEvent<HTMLElement>, item: UnifiedSourceItem) => {
+    if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    toggleDetail(item);
+  }, [toggleDetail]);
+
   // 切换分类 / 展开模式 / 折叠面板时收起详情
   useEffect(() => {
     setDetailItemId(null);
   }, [activeCategory, isExpanded, open]);
 
   // ========== 状态健壮性 ==========
-  // data 变化（流式追加来源等）只重置瞬时态，不打断用户的展开浏览
+  // data 变化（流式追加来源等）只重置瞬时态，不打断用户的展开浏览。
+  // 以内容签名（total + 各 item id 序列）为依赖而非对象身份：
+  // 流式 flush 期间上游可能换 bundle 引用但来源集合未变，
+  // 按身份重置会不断清掉用户点开的内联详情卡
+  const dataSignature = useMemo(() => {
+    let sig = `${data?.total ?? 0}`;
+    for (const group of data?.groups || []) {
+      for (const item of group.items || []) {
+        sig += `|${item.id}`;
+      }
+    }
+    return sig;
+  }, [data]);
   useEffect(() => {
     setDetailItemId(null);
     setLocalHighlightId(null);
-  }, [data]);
+  }, [dataSignature]);
 
   // 展开态按 messageId 维度管理：组件被复用渲染另一条消息时，
   // 不能把上一条消息的 open/isExpanded/分页状态带过去
@@ -609,34 +650,34 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     const iconSize = compact ? 12 : 14;
     if (item.origin === 'graph') {
       return (
-        <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(item)} className={btnClass}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleLocateGraph(item)} className={btnClass}>
           <ArrowSquareOut size={iconSize} />
           {t('common:chat.sources.locateGraph')}
-        </NotionButton>
+        </DsButton>
       );
     }
     if (item.origin === 'memory' && getMemoryLocateId(item)) {
       return (
-        <NotionButton variant="ghost" size="sm" onClick={() => handleLocateMemory(item)} className={btnClass}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleLocateMemory(item)} className={btnClass}>
           <ArrowSquareOut size={iconSize} />
           {t('common:chat.sources.locateMemory')}
-        </NotionButton>
+        </DsButton>
       );
     }
     if ((item.origin === 'rag' || item.origin === 'multimodal') && canLocateResource(getItemResourceLocator(item))) {
       return (
-        <NotionButton variant="ghost" size="sm" onClick={() => handleLocateResource(item)} className={btnClass}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleLocateResource(item)} className={btnClass}>
           <ArrowSquareOut size={iconSize} />
           {t('common:chat.sources.locateKb')}
-        </NotionButton>
+        </DsButton>
       );
     }
     if (item.link && isHttpUrl(item.link)) {
       return (
-        <NotionButton variant="ghost" size="sm" onClick={() => handleOpenLink(item)} className={btnClass}>
+        <DsButton variant="ghost" size="sm" onClick={() => handleOpenLink(item)} className={btnClass}>
           <ArrowSquareOut size={iconSize} />
           {t('common:actions.open')}
-        </NotionButton>
+        </DsButton>
       );
     }
     return null;
@@ -770,7 +811,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       <div
         key={`usp-skeleton-${i}`}
         className={cn(
-          'usp-skeleton-card rounded-lg border border-border/50 bg-card p-2.5',
+          'usp-skeleton-card rounded-xl border border-border/50 bg-card p-2.5',
           fullWidth ? 'w-full' : 'w-56 flex-shrink-0'
         )}
         aria-hidden
@@ -794,7 +835,8 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   /** 桌面端来源卡片（多模态走 MultimodalSourceCard，其余走通用卡） */
   const renderSourceCard = (
     entry: Extract<FlatEntry, { type: 'item' }>,
-    expandedMode: boolean
+    expandedMode: boolean,
+    seqIndex: number
   ) => {
     const isHighlighted = localHighlightId === entry.item.id;
 
@@ -810,48 +852,72 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           expanded={expandedMode}
           onLocate={canLocate ? handleLocateResource : undefined}
           onClick={toggleDetail}
-          className={cn('cursor-pointer', detailItemId === entry.item.id && 'border-primary/50')}
+          className={cn('usp-card-in cursor-pointer', detailItemId === entry.item.id && 'usp-card-active')}
+          style={staggerStyle(seqIndex)}
         />
       );
     }
 
     const snippetText = sanitizeSnippet(entry.item.snippet);
+    const domain = extractDomain(entry.item.link);
 
     return (
       <div
         ref={registerCardRef(entry.item.id)}
         className={cn(
-          'usp-item-card rounded-lg border bg-card p-2.5 hover:bg-[var(--interactive-hover)] transition-all cursor-pointer group',
+          'usp-item-card usp-card-in group',
           !expandedMode && 'w-56 flex-shrink-0',
           isHighlighted && 'usp-citation-pulse',
-          detailItemId === entry.item.id && 'border-primary/50'
+          detailItemId === entry.item.id && 'usp-card-active'
         )}
+        style={staggerStyle(seqIndex)}
         key={entry.key}
-        role="listitem"
         onClick={(e) => handleCardSurfaceClick(e, entry.item)}
+        onKeyDown={(e) => handleCardSurfaceKeyDown(e, entry.item)}
+        role="button"
+        tabIndex={0}
+        aria-expanded={detailItemId === entry.item.id}
+        aria-controls={detailAreaId}
       >
-        <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
           <div className="flex items-center gap-2 overflow-hidden">
             {/* 来源编号徽章（类型内序号，与 [类型-N] 契约一致） */}
-            <span className="flex-shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-semibold">
-              {entry.displayNumber}
+            <span className="usp-item-badge">{entry.displayNumber}</span>
+            <span className="usp-card-icon shrink-0">{groupIcon(entry.item.origin, 15)}</span>
+            <span className="usp-card-title text-sm font-medium truncate" title={entry.item.title}>
+              {entry.item.title}
             </span>
-            <span className="text-muted-foreground shrink-0">{groupIcon(entry.item.origin)}</span>
-            <span className="text-sm font-medium truncate" title={entry.item.title}>{entry.item.title}</span>
           </div>
           {renderScore(entry.item)}
         </div>
-        <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 h-8">
+        <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 min-h-8">
           {snippetText}
         </div>
-        <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
-          <span className="text-2xs text-muted-foreground uppercase tracking-wider opacity-70">
-            {groupLabelOf(entry.item.origin)}
+        <div className="flex items-center justify-between gap-2 mt-auto pt-1.5 border-t border-border/50">
+          <span
+            className="usp-card-meta truncate"
+            title={domain ?? undefined}
+          >
+            {domain ?? groupLabelOf(entry.item.origin)}
           </span>
           {renderItemAction(entry.item, true)}
         </div>
       </div>
     );
+  };
+
+  /**
+   * 渲染扁平条目列表（provider header + 来源卡），并为卡片分配 stagger 序号。
+   * seqIndex 只数卡片，header 不占位，保证入场节奏均匀。
+   */
+  const renderEntryCards = (entries: FlatEntry[], expandedMode: boolean) => {
+    let seq = 0;
+    return entries.map(entry => {
+      if (entry.type === 'header') {
+        return renderProviderHeader(entry, expandedMode);
+      }
+      return renderSourceCard(entry, expandedMode, seq++);
+    });
   };
 
   /** provider 分组标识（轮播 = 竖排分隔条；展开网格 = 整行小标题） */
@@ -863,11 +929,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       return (
         <div
           key={entry.key}
-          className="usp-provider-header flex items-center gap-1.5 text-xs font-medium text-muted-foreground pt-1"
+          className="usp-provider-header flex items-center gap-2 text-xs font-medium text-muted-foreground pt-1"
           style={{ gridColumn: '1 / -1' }}
         >
           <span className="truncate">{entry.label}</span>
-          {entry.count != null && <span className="opacity-70">{entry.count}</span>}
+          {entry.count != null && <span className="usp-provider-count">{entry.count}</span>}
+          <span className="usp-provider-rule" aria-hidden />
         </div>
       );
     }
@@ -881,10 +948,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   /** 卡片内联详情：点击卡片在面板内展开完整 snippet，随消息流滚动（桌面/移动共用） */
   const renderInlineDetail = () => {
     if (!detailItem) return null;
+    const detailDomain = extractDomain(detailItem.link);
     return (
       <div
+        key={detailItem.id}
         id={detailAreaId}
-        className="usp-inline-detail rounded-lg border border-primary/30 bg-card p-3 flex flex-col text-sm"
+        className="usp-inline-detail rounded-xl border border-primary/30 bg-card p-3 flex flex-col text-sm"
         role="region"
         aria-label={detailItem.title}
       >
@@ -892,16 +961,16 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           {groupIcon(detailItem.origin)}
           <span className="truncate flex-1" title={detailItem.title}>{detailItem.title}</span>
           {renderScore(detailItem)}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
-            className="!w-6 !h-6 shrink-0"
+            className="!h-6 !w-6 shrink-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
             onClick={closeDetail}
             aria-label={t('common:actions.close')}
           >
             <X size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
         {detailItem.origin === 'multimodal' && (
           <SourceThumb item={detailItem} className="w-full h-32 mb-2 shrink-0" iconSize={20} />
@@ -911,9 +980,9 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             {detailItem.snippet || t('common:chat.sources.multimodal.noSnippet')}
           </div>
         </CustomScrollArea>
-        <div className="flex items-center justify-between pt-2 mt-2 border-t border-border/50 shrink-0">
-          <span className="text-2xs text-muted-foreground uppercase tracking-wider opacity-70">
-            {groupLabelOf(detailItem.origin)}
+        <div className="flex items-center justify-between gap-2 pt-2 mt-2 border-t border-border/50 shrink-0">
+          <span className="usp-card-meta truncate" title={detailDomain ?? undefined}>
+            {detailDomain ?? groupLabelOf(detailItem.origin)}
           </span>
           {renderItemAction(detailItem, true)}
         </div>
@@ -923,8 +992,9 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
 
   // ========== 移动端：inline 折叠 + 垂直/水平列表 ==========
 
-  const renderMobileSourceItem = (entry: Extract<FlatEntry, { type: 'item' }>) => {
+  const renderMobileSourceItem = (entry: Extract<FlatEntry, { type: 'item' }>, seqIndex: number) => {
     const isHighlighted = localHighlightId === entry.item.id;
+    const domain = extractDomain(entry.item.link);
 
     return (
       <div
@@ -932,18 +1002,22 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
         ref={registerCardRef(entry.item.id)}
         // 点击整卡展开内联详情（与桌面对齐；内部按钮/链接不触发）
         onClick={(e) => handleCardSurfaceClick(e, entry.item)}
+        onKeyDown={(e) => handleCardSurfaceKeyDown(e, entry.item)}
+        role="button"
+        tabIndex={0}
+        aria-expanded={detailItemId === entry.item.id}
+        aria-controls={detailAreaId}
         className={cn(
-          'usp-item-card p-3 rounded-lg border bg-card hover:bg-[var(--interactive-hover)] transition-all cursor-pointer',
+          'usp-item-card usp-card-in !p-3',
           isHighlighted && 'usp-citation-pulse',
-          detailItemId === entry.item.id && 'border-primary/50'
+          detailItemId === entry.item.id && 'usp-card-active'
         )}
+        style={staggerStyle(seqIndex)}
       >
         <div className="flex items-center gap-2 mb-2">
-          <span className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-semibold">
-            {entry.displayNumber}
-          </span>
-          <span className="text-muted-foreground">{groupIcon(entry.item.origin)}</span>
-          <span className="font-medium truncate flex-1">{entry.item.title}</span>
+          <span className="usp-item-badge usp-item-badge-lg">{entry.displayNumber}</span>
+          <span className="usp-card-icon">{groupIcon(entry.item.origin)}</span>
+          <span className="usp-card-title font-medium truncate flex-1">{entry.item.title}</span>
           {renderScore(entry.item)}
         </div>
         <div className="flex items-start gap-2 mb-2">
@@ -954,9 +1028,9 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             {sanitizeSnippet(entry.item.snippet)}
           </div>
         </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border/50">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider opacity-70">
-            {groupLabelOf(entry.item.origin)}
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
+          <span className="usp-card-meta truncate" title={domain ?? undefined}>
+            {domain ?? groupLabelOf(entry.item.origin)}
           </span>
           {renderItemAction(entry.item, false)}
         </div>
@@ -974,7 +1048,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       >
         {/* 头部 */}
         <div className="usp-header">
-          <NotionButton
+          <DsButton
             data-testid="btn-toggle-source-panel"
             variant="ghost"
             size="sm"
@@ -985,7 +1059,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             <MagnifyingGlass size={16} className="panel-header-icon" />
             {renderHeaderTitle()}
             <CaretRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
-          </NotionButton>
+          </DsButton>
           {renderRetrievingChip()}
         </div>
 
@@ -1010,7 +1084,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       const isActive = category.group === activeCategory;
                       const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
                       return (
-                        <NotionButton
+                        <DsButton
                           key={`category-${category.group}`}
                           variant="ghost"
                           size="sm"
@@ -1021,12 +1095,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                           <span className="usp-pill-icon">{groupIcon(category.group)}</span>
                           <span className="usp-pill-label">{label}</span>
                           <span className="usp-pill-count">{category.count}</span>
-                        </NotionButton>
+                        </DsButton>
                       );
                     })}
                     {/* 展开/收起按钮 → 移动端契约：不用底部抽屉，改为消息流内 inline 垂直展开 */}
                     {totalItemsInCategory > 2 && (
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="sm"
                         className="usp-expand-btn ml-auto"
@@ -1035,134 +1109,157 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       >
                         {isExpanded ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
                         <span>{isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}</span>
-                      </NotionButton>
+                      </DsButton>
                     )}
                   </div>
                 )}
 
                 {isExpanded ? (
-                  /* 展开态：inline 垂直列表（含分组标题 + 分页懒挂载），随消息流滚动 */
-                  <div className="space-y-3 py-1">
-                    {expandedEntries.length === 0 && !isRetrieving && (
-                      <div className="usp-empty w-full text-center py-4">{t('common:chat.sources.empty')}</div>
-                    )}
-                    {expandedEntries.map(entry => {
-                      if (entry.type === 'header') {
-                        return (
-                          <div key={entry.key} className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2">
-                            {entry.label}
-                          </div>
-                        );
-                      }
-                      return renderMobileSourceItem(entry);
-                    })}
-                    {isRetrieving && renderSkeletonCards(2, true)}
-                    {expandedRemaining > 0 && (
-                      <div className="flex justify-center">
-                        <NotionButton
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setVisibleCount(c => c + EXPANDED_PAGE_SIZE)}
-                        >
-                          {t('chatV2:sourcePanel.loadMore', { count: expandedRemaining })}
-                        </NotionButton>
-                      </div>
-                    )}
+                  /* 展开态：inline 网格（窄屏单列，稍宽自动双列；含分组标题 + 分页懒挂载） */
+                  <div className="usp-sources-wrapper">
+                    <div className="usp-grid py-1" key={`m-grid-${activeCategory}`} role="list">
+                      {expandedEntries.length === 0 && !isRetrieving && (
+                        <div className="usp-empty w-full text-center py-4" style={{ gridColumn: '1 / -1' }}>
+                          {t('common:chat.sources.empty')}
+                        </div>
+                      )}
+                      {(() => {
+                        let seq = 0;
+                        return expandedEntries.map(entry => {
+                          if (entry.type === 'header') {
+                            return (
+                              <div
+                                key={entry.key}
+                                className="usp-provider-header flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2"
+                                style={{ gridColumn: '1 / -1' }}
+                              >
+                                <span className="truncate">{entry.label}</span>
+                                <span className="usp-provider-rule" aria-hidden />
+                              </div>
+                            );
+                          }
+                          return renderMobileSourceItem(entry, seq++);
+                        });
+                      })()}
+                      {isRetrieving && renderSkeletonCards(2, true)}
+                      {expandedRemaining > 0 && (
+                        <div className="flex justify-center" style={{ gridColumn: '1 / -1' }}>
+                          <DsButton
+                            variant="ghost"
+                            size="sm"
+                            className="usp-load-more"
+                            onClick={() => setVisibleCount(c => c + EXPANDED_PAGE_SIZE)}
+                          >
+                            {t('chatV2:sourcePanel.loadMore', { count: expandedRemaining })}
+                          </DsButton>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
                 /* 收起态：来源卡片水平滚动列表 */
                 <div className="usp-sources-wrapper relative">
                   {/* 左翻页按钮 */}
                   {canScrollLeft && (
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="icon"
                       iconOnly
-                      className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-9 !h-9 rounded-full bg-background/90 border shadow-md"
+                      className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 z-10 !h-11 !w-11 -translate-y-1/2 rounded-full border bg-background/90 shadow-md"
                       onClick={() => scrollByAmount('left')}
                       aria-label={t('common:actions.scrollLeft')}
                     >
                       <CaretLeft size={16} />
-                    </NotionButton>
+                    </DsButton>
                   )}
 
                   {/* 右翻页按钮 */}
                   {canScrollRight && (
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="icon"
                       iconOnly
-                      className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-9 !h-9 rounded-full bg-background/90 border shadow-md"
+                      className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 z-10 !h-11 !w-11 -translate-y-1/2 rounded-full border bg-background/90 shadow-md"
                       onClick={() => scrollByAmount('right')}
                       aria-label={t('common:actions.scrollRight')}
                     >
                       <CaretRight size={16} />
-                    </NotionButton>
+                    </DsButton>
                   )}
 
                   <CustomScrollArea
                     orientation="horizontal"
                     viewportRef={scrollContainerRef}
-                    viewportClassName="flex gap-2 py-1"
-                    viewportProps={{ role: 'list' }}
+                    viewportClassName="py-1"
                     className="w-full"
                   >
-                    {carouselEntries.length === 0 && !isRetrieving && (
-                      <div className="usp-empty w-full text-center py-4">{t('common:chat.sources.empty')}</div>
-                    )}
-                    {carouselEntries.map(entry => {
-                      if (entry.type === 'header') {
-                        return renderProviderHeader(entry, false);
-                      }
-                      const snippetText = sanitizeSnippet(entry.item.snippet);
-                      const isHighlighted = localHighlightId === entry.item.id;
+                    {/* 布局包装元素必须由本组件持有：OverlayScrollbars 会把 children
+                        包进自己的 contents 元素，viewportClassName 的 flex/grid 到不了卡片层 */}
+                    <div className="usp-carousel" key={`m-carousel-${activeCategory}`} role="list">
+                      {carouselEntries.length === 0 && !isRetrieving && (
+                        <div className="usp-empty w-full text-center py-4">{t('common:chat.sources.empty')}</div>
+                      )}
+                      {(() => {
+                        let seq = 0;
+                        return carouselEntries.map(entry => {
+                          if (entry.type === 'header') {
+                            return renderProviderHeader(entry, false);
+                          }
+                          const snippetText = sanitizeSnippet(entry.item.snippet);
+                          const isHighlighted = localHighlightId === entry.item.id;
+                          const seqIndex = seq++;
 
-                      return (
-                        <div
-                          ref={registerCardRef(entry.item.id)}
-                          // 点击展开内联详情（移动端此前完全没有查看全文的入口）
-                          onClick={(e) => handleCardSurfaceClick(e, entry.item)}
-                          className={cn(
-                            'usp-item-card w-44 flex-shrink-0 rounded-lg border bg-card p-2 transition-all cursor-pointer',
-                            isHighlighted && 'shadow-[inset_0_0_0_2px_hsl(var(--primary))]',
-                            detailItemId === entry.item.id && 'border-primary/50'
-                          )}
-                          key={entry.key}
-                          role="listitem"
-                        >
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="flex-shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-2xs font-semibold">
-                              {entry.displayNumber}
-                            </span>
-                            <span className="text-muted-foreground shrink-0">{groupIcon(entry.item.origin)}</span>
-                            <span className="text-xs font-medium truncate">{entry.item.title}</span>
-                          </div>
-                          {entry.item.origin === 'multimodal' && resolveMultimodalImageSrc(entry.item) ? (
-                            <div className="flex items-start gap-1.5">
-                              <SourceThumb item={entry.item} className="w-9 h-9 flex-shrink-0" iconSize={14} />
-                              <div className="text-2xs text-muted-foreground line-clamp-2 h-6 flex-1 min-w-0">
-                                {snippetText}
+                          return (
+                            <div
+                              ref={registerCardRef(entry.item.id)}
+                              // 点击展开内联详情（移动端此前完全没有查看全文的入口）
+                              onClick={(e) => handleCardSurfaceClick(e, entry.item)}
+                              onKeyDown={(e) => handleCardSurfaceKeyDown(e, entry.item)}
+                              className={cn(
+                                'usp-item-card usp-card-in w-44 flex-shrink-0 !p-2',
+                                isHighlighted && 'usp-citation-pulse',
+                                detailItemId === entry.item.id && 'usp-card-active'
+                              )}
+                              style={staggerStyle(seqIndex)}
+                              key={entry.key}
+                              role="button"
+                              tabIndex={0}
+                              aria-expanded={detailItemId === entry.item.id}
+                              aria-controls={detailAreaId}
+                            >
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="usp-item-badge usp-item-badge-sm">{entry.displayNumber}</span>
+                                <span className="usp-card-icon shrink-0">{groupIcon(entry.item.origin, 14)}</span>
+                                <span className="usp-card-title text-xs font-medium truncate">{entry.item.title}</span>
                               </div>
+                              {entry.item.origin === 'multimodal' && resolveMultimodalImageSrc(entry.item) ? (
+                                <div className="flex items-start gap-1.5">
+                                  <SourceThumb item={entry.item} className="w-9 h-9 flex-shrink-0" iconSize={14} />
+                                  <div className="text-2xs text-muted-foreground line-clamp-2 min-h-6 flex-1 min-w-0">
+                                    {snippetText}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-2xs text-muted-foreground line-clamp-2 min-h-6">
+                                  {snippetText}
+                                </div>
+                              )}
                             </div>
-                          ) : (
-                            <div className="text-2xs text-muted-foreground line-clamp-2 h-6">
-                              {snippetText}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {isRetrieving && renderSkeletonCards(2)}
-                    {carouselOverflow > 0 && (
-                      <NotionButton
-                        variant="ghost"
-                        size="sm"
-                        className="usp-more-card w-28 flex-shrink-0 rounded-lg border border-dashed !h-auto self-stretch text-xs text-muted-foreground"
-                        onClick={() => setIsExpanded(true)}
-                      >
-                        {t('chatV2:sourcePanel.showAllCard', { count: totalItemsInCategory })}
-                      </NotionButton>
-                    )}
+                          );
+                        });
+                      })()}
+                      {isRetrieving && renderSkeletonCards(2)}
+                      {carouselOverflow > 0 && (
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          className="usp-more-card w-28 flex-shrink-0 rounded-xl border border-dashed !h-auto self-stretch text-xs text-muted-foreground"
+                          onClick={() => setIsExpanded(true)}
+                        >
+                          {t('chatV2:sourcePanel.showAllCard', { count: totalItemsInCategory })}
+                        </DsButton>
+                      )}
+                    </div>
                   </CustomScrollArea>
                 </div>
                 )}
@@ -1185,7 +1282,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       data-testid="unified-source-panel"
     >
       <div className="usp-header">
-        <NotionButton
+        <DsButton
           data-testid="btn-toggle-source-panel"
           variant="ghost"
           size="sm"
@@ -1197,7 +1294,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           <MagnifyingGlass size={16} className="panel-header-icon" />
           {renderHeaderTitle()}
           <CaretRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
-        </NotionButton>
+        </DsButton>
         {renderRetrievingChip()}
         {data.stage && (
           <span className="usp-header-stage">{data.stage}</span>
@@ -1229,7 +1326,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     const isActive = category.group === activeCategory;
                     const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
                     return (
-                      <NotionButton
+                      <DsButton
                         key={`category-${category.group}`}
                         data-testid={`source-category-${category.group}`}
                         variant="ghost"
@@ -1241,12 +1338,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                         <span className="usp-pill-icon">{groupIcon(category.group)}</span>
                         <span className="usp-pill-label">{label}</span>
                         <span className="usp-pill-count">{category.count}</span>
-                      </NotionButton>
+                      </DsButton>
                     );
                   })}
                   {/* 展开/收起按钮 */}
                   {totalItemsInCategory > 3 && (
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="sm"
                       className="usp-expand-btn ml-auto"
@@ -1255,7 +1352,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     >
                       {isExpanded ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
                       <span>{isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}</span>
-                    </NotionButton>
+                    </DsButton>
                   )}
                 </div>
               )}
@@ -1264,7 +1361,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
               <div className="usp-sources-wrapper relative">
                 {/* 左翻页按钮 */}
                 {!isExpanded && canScrollLeft && (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
@@ -1273,12 +1370,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     aria-label={t('common:actions.scrollLeft')}
                   >
                     <CaretLeft size={18} />
-                  </NotionButton>
+                  </DsButton>
                 )}
 
                 {/* 右翻页按钮 */}
                 {!isExpanded && canScrollRight && (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
@@ -1287,64 +1384,70 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     aria-label={t('common:actions.scrollRight')}
                   >
                     <CaretRight size={18} />
-                  </NotionButton>
+                  </DsButton>
                 )}
 
-                <CustomScrollArea
-                  orientation="horizontal"
-                  viewportRef={scrollContainerRef}
-                  viewportClassName={cn(
-                    'py-1 w-full',
-                    isExpanded
-                      ? 'grid gap-2'
-                      : 'flex gap-2'
-                  )}
-                  viewportProps={{
-                    role: 'list',
-                    ...(isExpanded ? { style: { gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' } } : {})
-                  }}
-                  className="w-full"
-                >
-                  {totalItemsInCategory === 0 && !isRetrieving && (
-                    <div className="usp-empty w-full text-center py-4" style={isExpanded ? { gridColumn: '1 / -1' } : undefined}>
-                      {t('common:chat.sources.empty')}
+                {isExpanded ? (
+                  /* 展开态：双列/三列自适应网格（随面板宽度在 1~3 列间流动），随消息流滚动 */
+                  <div className="usp-grid py-1" key={`grid-${activeCategory}`} role="list">
+                    {totalItemsInCategory === 0 && !isRetrieving && (
+                      <div className="usp-empty w-full text-center py-4" style={{ gridColumn: '1 / -1' }}>
+                        {t('common:chat.sources.empty')}
+                      </div>
+                    )}
+
+                    {renderEntryCards(expandedEntries, true)}
+
+                    {isRetrieving && renderSkeletonCards(hasItems ? 2 : 3, true)}
+
+                    {/* 展开网格：分页加载更多 */}
+                    {expandedRemaining > 0 && (
+                      <div className="flex justify-center py-1" style={{ gridColumn: '1 / -1' }}>
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          className="usp-load-more"
+                          onClick={() => setVisibleCount(c => c + EXPANDED_PAGE_SIZE)}
+                        >
+                          {t('chatV2:sourcePanel.loadMore', { count: expandedRemaining })}
+                        </DsButton>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <CustomScrollArea
+                    orientation="horizontal"
+                    viewportRef={scrollContainerRef}
+                    viewportClassName="py-1 w-full"
+                    className="w-full"
+                  >
+                    {/* 布局包装元素必须由本组件持有：OverlayScrollbars 会把 children
+                        包进自己的 contents 元素，viewportClassName 的 flex/grid 到不了卡片层 */}
+                    <div className="usp-carousel" key={`carousel-${activeCategory}`} role="list">
+                      {totalItemsInCategory === 0 && !isRetrieving && (
+                        <div className="usp-empty w-full text-center py-4">
+                          {t('common:chat.sources.empty')}
+                        </div>
+                      )}
+
+                      {renderEntryCards(carouselEntries, false)}
+
+                      {isRetrieving && renderSkeletonCards(hasItems ? 2 : 3, false)}
+
+                      {/* 轮播溢出：查看全部卡 */}
+                      {carouselOverflow > 0 && (
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          className="usp-more-card w-32 flex-shrink-0 rounded-xl border border-dashed !h-auto self-stretch text-xs text-muted-foreground"
+                          onClick={() => setIsExpanded(true)}
+                        >
+                          {t('chatV2:sourcePanel.showAllCard', { count: totalItemsInCategory })}
+                        </DsButton>
+                      )}
                     </div>
-                  )}
-
-                  {(isExpanded ? expandedEntries : carouselEntries).map(entry => {
-                    if (entry.type === 'header') {
-                      return renderProviderHeader(entry, isExpanded);
-                    }
-                    return renderSourceCard(entry, isExpanded);
-                  })}
-
-                  {isRetrieving && renderSkeletonCards(hasItems ? 2 : 3, isExpanded)}
-
-                  {/* 轮播溢出：查看全部卡 */}
-                  {!isExpanded && carouselOverflow > 0 && (
-                    <NotionButton
-                      variant="ghost"
-                      size="sm"
-                      className="usp-more-card w-32 flex-shrink-0 rounded-lg border border-dashed !h-auto self-stretch text-xs text-muted-foreground"
-                      onClick={() => setIsExpanded(true)}
-                    >
-                      {t('chatV2:sourcePanel.showAllCard', { count: totalItemsInCategory })}
-                    </NotionButton>
-                  )}
-
-                  {/* 展开网格：分页加载更多 */}
-                  {isExpanded && expandedRemaining > 0 && (
-                    <div className="flex justify-center py-1" style={{ gridColumn: '1 / -1' }}>
-                      <NotionButton
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setVisibleCount(c => c + EXPANDED_PAGE_SIZE)}
-                      >
-                        {t('chatV2:sourcePanel.loadMore', { count: expandedRemaining })}
-                      </NotionButton>
-                    </div>
-                  )}
-                </CustomScrollArea>
+                  </CustomScrollArea>
+                )}
               </div>
 
               {/* 卡片内联详情：点击卡片在面板内展开完整 snippet，随消息流滚动 */}

@@ -12,7 +12,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { BookOpen } from '@phosphor-icons/react';
 
 // ============================================================================
@@ -70,7 +70,7 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
   }, [sessionId, title, onClick, t]);
 
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       onClick={handleClick}
@@ -94,7 +94,7 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
       <span className="truncate max-w-[150px]">
         {title || t('qbankCitation.qbank')}
       </span>
-    </NotionButton>
+    </DsButton>
   );
 };
 

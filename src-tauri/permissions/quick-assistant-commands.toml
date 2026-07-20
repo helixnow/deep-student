@@ -6,6 +6,8 @@ commands.allow = [
   "save_setting",
   "quick_assistant_hide",
   "chat_v2_create_session",
+  "chat_v2_list_groups",
+  "chat_v2_create_group",
   "chat_v2_send_message",
   "chat_v2_cancel_stream",
   "chat_v2_perform_ocr",

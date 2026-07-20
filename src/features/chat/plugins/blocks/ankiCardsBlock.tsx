@@ -11,7 +11,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { cn } from '@/utils/cn';
@@ -602,7 +602,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
             #{index + 1}
           </span>
           <div className="flex items-center gap-1">
-            <NotionButton
+            <DsButton
               type="button"
               variant="ghost"
               onClick={() => onDelete(index)}
@@ -612,7 +612,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               aria-label={t('chatV2.deleteCard')}
             >
               <Trash size={14} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
         {/* 编辑内容 */}
@@ -650,7 +650,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
             <span className="text-xs text-muted-foreground mr-auto">
               {t('chatBlock.editHint')}
             </span>
-            <NotionButton
+            <DsButton
               type="button"
               size="sm"
               variant="ghost"
@@ -658,8 +658,8 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               disabled={savePending}
             >
               {t('chatV2.cancelEdit')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               type="button"
               size="sm"
               variant="primary"
@@ -673,7 +673,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
                 <Check size={14} />
               )}
               {t('chatV2.saveEdit')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       </div>
@@ -694,7 +694,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         {!disabled && (
           <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
             {onQuote && card.id && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -710,9 +710,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
                 title={t('chatBlock.quoteToInput')}
               >
                 <Quotes size={isTouchPrimary ? 14 : 12} className="text-muted-foreground" />
-              </NotionButton>
+              </DsButton>
             )}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -728,8 +728,8 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               title={t('chatV2.editInline')}
             >
               <Pencil size={isTouchPrimary ? 14 : 12} className="text-muted-foreground" />
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -745,7 +745,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               title={t('chatV2.deleteCard')}
             >
               <Trash size={isTouchPrimary ? 14 : 12} className="text-destructive/80" />
-            </NotionButton>
+            </DsButton>
           </div>
         )}
         {/* 模板渲染预览（翻面浏览不受编辑锁影响） */}
@@ -1242,7 +1242,7 @@ const ActionButtons: React.FC<{
 
   const retryAction = showRetryFailedSegments ? (
     <div className="col-span-2 flex min-w-0 flex-col items-start gap-1 sm:col-span-1">
-      <NotionButton
+      <DsButton
         type="button"
         onClick={() => void onRetryFailedSegments()}
         disabled={retryStatus === 'loading'}
@@ -1252,7 +1252,7 @@ const ActionButtons: React.FC<{
       >
         {renderIcon(retryStatus, ArrowClockwise)}
         {t('blocks.ankiCards.retryFailedSegments')}
-      </NotionButton>
+      </DsButton>
       {retryStatus === 'error' && retryError && (
         <span
           role="alert"
@@ -1282,7 +1282,7 @@ const ActionButtons: React.FC<{
       {showTaskControls && (
         <>
           {isPaused ? (
-            <NotionButton
+            <DsButton
               type="button"
               onClick={() => void handleTaskControl('resume')}
               disabled={taskControlStatus === 'loading'}
@@ -1294,9 +1294,9 @@ const ActionButtons: React.FC<{
                 ? renderIcon(taskControlStatus, Play)
                 : <Play size={14} />}
               {t('blocks.ankiCards.resume')}
-            </NotionButton>
+            </DsButton>
           ) : (
-            <NotionButton
+            <DsButton
               type="button"
               onClick={() => void handleTaskControl('pause')}
               disabled={taskControlStatus === 'loading'}
@@ -1308,9 +1308,9 @@ const ActionButtons: React.FC<{
                 ? renderIcon(taskControlStatus, Pause)
                 : <Pause size={14} />}
               {t('blocks.ankiCards.pause')}
-            </NotionButton>
+            </DsButton>
           )}
-          <NotionButton
+          <DsButton
             type="button"
             onClick={() => void handleTaskControl('cancel')}
             disabled={taskControlStatus === 'loading'}
@@ -1322,14 +1322,14 @@ const ActionButtons: React.FC<{
               ? renderIcon(taskControlStatus, Stop)
               : <Stop size={14} />}
             {t('blocks.ankiCards.cancel')}
-          </NotionButton>
+          </DsButton>
         </>
       )}
 
       {cards.length > 0 && (
         <>
           {/* 内联展开/折叠编辑：生成中也允许展开浏览 */}
-          <NotionButton
+          <DsButton
             type="button"
             onClick={onToggleExpand}
             variant={isExpanded ? 'default' : 'primary'}
@@ -1337,10 +1337,10 @@ const ActionButtons: React.FC<{
           >
             {isExpanded ? <CaretUp size={14} /> : <Pencil size={14} />}
             {isExpanded ? t('blocks.ankiCards.collapse') : t('blocks.ankiCards.edit')}
-          </NotionButton>
+          </DsButton>
 
           {/* 加入本地卡片库 */}
-          <NotionButton
+          <DsButton
             type="button"
             onClick={handleSave}
             disabled={isDisabled || saveStatus === 'loading'}
@@ -1353,10 +1353,10 @@ const ActionButtons: React.FC<{
                 ? 'blocks.ankiCards.addedToLibrary'
                 : 'blocks.ankiCards.addToLibrary'
             )}
-          </NotionButton>
+          </DsButton>
 
           {/* 复习这批 → workbench 闪卡会话 */}
-          <NotionButton
+          <DsButton
             type="button"
             onClick={handleReviewBatch}
             disabled={isDisabled || !canReviewBatch}
@@ -1366,12 +1366,12 @@ const ActionButtons: React.FC<{
           >
             <Stack size={16} />
             {t('blocks.ankiCards.reviewBatch')}
-          </NotionButton>
+          </DsButton>
 
           {/* 牌组名选择：保存/导出/同步共用（默认取生成 options，会话内记住上次输入） */}
           <Popover>
             <PopoverTrigger asChild>
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="ghost"
                 className="min-h-10 max-w-[180px] text-xs text-muted-foreground sm:text-sm"
@@ -1380,7 +1380,7 @@ const ActionButtons: React.FC<{
               >
                 <Cards size={14} />
                 <span className="truncate">{deckName}</span>
-              </NotionButton>
+              </DsButton>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-60 rounded-lg border bg-popover p-3 shadow-md">
               <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -1402,7 +1402,7 @@ const ActionButtons: React.FC<{
           {/* 低频交付动作收进菜单，避免与编辑/复习争夺主层级。 */}
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="ghost"
                 size="icon"
@@ -1412,7 +1412,7 @@ const ActionButtons: React.FC<{
                 title={t('blocks.ankiCards.moreActions')}
               >
                 <DotsThree size={20} />
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="end" width={240}>
               <AppMenuGroup>
@@ -2589,7 +2589,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               </span>
             </span>
             <div className="flex items-center gap-1">
-              <NotionButton
+              <DsButton
                 type="button"
                 variant={layout === 'list' ? 'default' : 'ghost'}
                 size="icon"
@@ -2601,8 +2601,8 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 title={tAnki('chatBlock.layoutList')}
               >
                 <Rows size={14} />
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 type="button"
                 variant={layout === 'grid' ? 'default' : 'ghost'}
                 size="icon"
@@ -2614,8 +2614,8 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 title={tAnki('chatBlock.layoutGrid')}
               >
                 <SquaresFour size={14} />
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 type="button"
                 size="sm"
                 variant="ghost"
@@ -2624,7 +2624,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               >
                 <CaretUp size={14} />
                 {t('blocks.ankiCards.collapse')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
 
@@ -2638,7 +2638,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 {t('blocks.ankiCards.selectedCount', { count: selectedCount })}
               </span>
               <span className="ml-auto flex flex-wrap items-center gap-1">
-                <NotionButton
+                <DsButton
                   type="button"
                   size="sm"
                   variant="ghost"
@@ -2646,8 +2646,8 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   className="min-h-8 text-xs"
                 >
                   {t('blocks.ankiCards.invertSelection')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   type="button"
                   size="sm"
                   variant="ghost"
@@ -2657,8 +2657,8 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                 >
                   <Trash size={13} />
                   {t('blocks.ankiCards.deleteSelected')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   type="button"
                   size="sm"
                   variant="ghost"
@@ -2673,8 +2673,8 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                     <FloppyDisk size={13} />
                   )}
                   {t('blocks.ankiCards.saveSelected')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   type="button"
                   size="sm"
                   variant="ghost"
@@ -2689,7 +2689,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                     <DownloadSimple size={13} />
                   )}
                   {t('blocks.ankiCards.exportSelected')}
-                </NotionButton>
+                </DsButton>
               </span>
             </div>
           )}
@@ -2750,7 +2750,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   layout === 'grid' && 'sm:col-span-2'
                 )}
               >
-                <NotionButton
+                <DsButton
                   type="button"
                   size="sm"
                   variant="ghost"
@@ -2758,10 +2758,10 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                   className="min-h-10 text-xs"
                 >
                   {t('blocks.ankiCards.showMore', { remaining: cards.length - visibleCount })}
-                </NotionButton>
+                </DsButton>
                 {/* >50 张时不再一键挂全部 iframe，改为大步长分页（每次 +50） */}
                 {cards.length > 50 ? (
-                  <NotionButton
+                  <DsButton
                     type="button"
                     size="sm"
                     variant="ghost"
@@ -2769,9 +2769,9 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                     className="min-h-10 text-xs text-muted-foreground"
                   >
                     {t('blocks.ankiCards.showMoreBig', { count: 50 })}
-                  </NotionButton>
+                  </DsButton>
                 ) : (
-                  <NotionButton
+                  <DsButton
                     type="button"
                     size="sm"
                     variant="ghost"
@@ -2779,7 +2779,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
                     className="min-h-10 text-xs text-muted-foreground"
                   >
                     {t('blocks.ankiCards.showAll', { total: cards.length })}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
             )}

@@ -9,7 +9,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { InlineImageViewer } from '../InlineImageViewer';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import type { AttachmentMeta, PdfProcessingStatus } from '../../core/types/common';
@@ -290,7 +290,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
               // ui-rise-in：新添加的 chip 挂载入场（150ms fade+rise，reduced-motion 自动降级）
               className="group/attachment-chip ui-rise-in relative inline-flex min-w-0 shrink-0 items-center"
             >
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -390,7 +390,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                     )}
                   />
                 )}
-              </NotionButton>
+              </DsButton>
               {/* 错误态内联重试（chip 外侧尾随，44px 触控命中区） */}
               {isError && onRetry && attachment.sourceId && !disabled && (
                 <button

@@ -13,7 +13,7 @@ import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Image, FileText, Scan, Images, CircleNotch } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { AttachmentMeta, ImageInjectMode, PdfInjectMode, AttachmentInjectModes, PdfProcessingStatus } from '../../core/types/common';
 import { DEFAULT_IMAGE_INJECT_MODES, DEFAULT_PDF_INJECT_MODES } from '../../core/types/common';
 import { getMediaTypeForAttachment } from './injectModeUtils';
@@ -95,7 +95,7 @@ const ToggleTag: React.FC<ToggleTagProps> = memo(({
   const processingNotReady = isProcessing && !isReady;
   
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       onClick={onToggle}
@@ -119,7 +119,7 @@ const ToggleTag: React.FC<ToggleTagProps> = memo(({
         <Icon size={11} weight="bold" />
       )}
       <span>{label}</span>
-    </NotionButton>
+    </DsButton>
   );
 });
 

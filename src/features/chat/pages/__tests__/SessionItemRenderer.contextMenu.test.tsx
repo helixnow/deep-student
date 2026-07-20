@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { useSessionItemRenderer } from '../SessionItemRenderer';
 
-vi.mock('@/components/ui/NotionButton', () => ({
-  NotionButton: ({ children, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+vi.mock('@/components/ui/DsButton', () => ({
+  DsButton: ({ children, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button className={className} {...props}>
       {children}
     </button>

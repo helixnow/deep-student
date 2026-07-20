@@ -12,7 +12,7 @@ import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { Stack, X, Image, Info } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Switch } from '@/components/ui/shad/Switch';
 import { SnappySlider } from '@/components/ui/SnappySlider';
 import type { ChatStore } from '../../core/types';
@@ -134,9 +134,9 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
             {t('chat_host:rag.panel.vfs_subtitle')}
           </span>
         </div>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
           <X size={16} />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 配置区域（简化：只保留检索参数） */}
@@ -167,7 +167,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
             <span className="text-[11px] text-muted-foreground">
               {t('chatV2:ragPanel.topkHelper', { value: ragTopK })}
             </span>
-            <NotionButton
+            <DsButton
               type="button"
               variant="ghost"
               size="sm"
@@ -176,7 +176,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
               className="h-5 px-1.5 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
               {t('common:actions.reset')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
 

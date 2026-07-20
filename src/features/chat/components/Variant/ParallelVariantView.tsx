@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from 'zustand';
 import i18n from 'i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -101,6 +101,12 @@ export interface ParallelVariantViewProps {
 // ============================================================================
 // 辅助函数
 // ============================================================================
+
+/**
+ * hasSources 选择器复用的单元素数组：hasSourcesInBlocks 只接受数组，
+ * 逐块判断时复用同一容器避免每 flush 每卡片分配中间数组（同步使用，用后清引用）
+ */
+const singleBlockScratch: Block[] = [undefined as unknown as Block];
 
 /**
  * 默认的模型名称显示函数
@@ -216,11 +222,30 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
   // 检查是否有来源（与单变体一致）
   // 订阅 Store 计算布尔值：流式过程中 citations 到达时也能及时显示来源面板
   // （选择器只返回 boolean，Object.is 相等时不会触发重渲染）
+  // 🚀 选择器在流式期间每次 flush 都重跑：改为 for-of 免分配逐块扫描，
+  // 并在判定为 true 后用 ref 短路后续扫描——来源只增不减；即便极端情况下
+  // 检索块从 pending 落空，SourcePanelV2 自身也会渲染为 null，不会误显示。
+  // blockIds 换引用（如变体块列表变化）时重置短路缓存，保守重扫。
+  const hasSourcesLatchRef = useRef<{ ids: string[]; value: boolean }>({ ids: blockIds, value: false });
+  if (hasSourcesLatchRef.current.ids !== blockIds) {
+    hasSourcesLatchRef.current = { ids: blockIds, value: false };
+  }
   const hasSources = useStore(store, (s) => {
-    const blocks = blockIds
-      .map((id) => s.blocks.get(id))
-      .filter((b): b is Block => b !== undefined);
-    return hasSourcesInBlocks(blocks);
+    const latch = hasSourcesLatchRef.current;
+    if (latch.value) return true;
+    let found = false;
+    for (const id of latch.ids) {
+      const block = s.blocks.get(id);
+      if (!block) continue;
+      singleBlockScratch[0] = block;
+      if (hasSourcesInBlocks(singleBlockScratch)) {
+        found = true;
+        break;
+      }
+    }
+    singleBlockScratch[0] = undefined as unknown as Block;
+    if (found) latch.value = true;
+    return found;
   });
 
   // 🚀 P0修复：复制内容时即时获取 blocks
@@ -471,37 +496,37 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
         {/* 操作按钮 */}
         <div className="flex items-center gap-0.5">
           {/* 复制 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
             {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
-          </NotionButton>
+          </DsButton>
 
           {/* 重试（可重试状态） */}
           {canRetry && onRetry && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry')} title={t('variant.retry')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry')} title={t('variant.retry')}>
               <ArrowCounterClockwise size={16} className={cn(isOperating && 'animate-spin')} />
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 取消（流式中） */}
           {canCancel && onCancel && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel')} title={t('variant.cancel')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel')} title={t('variant.cancel')}>
               <Square size={16} />
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 删除（非最后一个） */}
           {canDelete && onDelete && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn(isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete')} title={t('variant.delete')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn(isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete')} title={t('variant.delete')}>
               <Trash size={16} />
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 更多操作菜单 */}
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label={t('variant.actions')} title={t('variant.actions')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label={t('variant.actions')} title={t('variant.actions')}>
                 <DotsThree size={16} />
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={160}>
               <AppMenuItem onClick={handleCopy} icon={<Copy size={16} />}>
@@ -659,32 +684,32 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
       <div className="flex items-center gap-1">
         {/* 复制按钮 */}
         {onCopy && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
             {copied ? <Check size={16} className="text-success" /> : <Copy size={16} />}
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 会话分支按钮 */}
         {onBranchSession && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch')} title={t('messageItem.actions.branch')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch')} title={t('messageItem.actions.branch')}>
             <GitBranch size={16} className={cn(isBranching && 'animate-pulse')} />
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 全部重试按钮 */}
         {onRetryAll && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll')} title={t('variant.retryAll')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll')} title={t('variant.retryAll')}>
             <ArrowCounterClockwise size={16} className={cn(isRetryingAll && 'animate-spin')} />
-          </NotionButton>
+          </DsButton>
         )}
 
         {/* 删除消息按钮（带确认） */}
         {onDeleteMessage && (
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')}>
+              <DsButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')}>
                 <Trash size={16} className={cn(isDeleting && 'animate-pulse')} />
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={180}>
               <AppMenuItem
@@ -704,7 +729,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
         {hasOverflowActions && (
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -712,7 +737,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
                 title={t('common:more')}
               >
                 <DotsThree size={16} />
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={180}>
               {onSaveAsNote && (
@@ -884,7 +909,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               {variants.map((variant, index) => {
                 const isActive = variant.id === activeVariantId;
                 return (
-                  <NotionButton
+                  <DsButton
                     key={variant.id}
                     variant="ghost"
                     size="icon"

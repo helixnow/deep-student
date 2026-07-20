@@ -4,9 +4,10 @@
 
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, Chat, CircleNotch, User, Robot, CaretDown } from '@phosphor-icons/react';
+import { MagnifyingGlass, Chat, CircleNotch, User, Robot, CaretDown, ArrowClockwise } from '@phosphor-icons/react';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
 import { cn } from '@/lib/utils';
+import { DsButton } from '@/components/ui/DsButton';
 import type { ContentSearchResult } from '../../hooks/useContentSearch';
 
 const INITIAL_ITEMS_PER_SESSION = 3;
@@ -14,14 +15,18 @@ const INITIAL_ITEMS_PER_SESSION = 3;
 interface SearchResultListProps {
   results: ContentSearchResult[];
   loading: boolean;
+  error?: string | null;
   query: string;
+  onRetry?: () => void;
   onSelectResult: (sessionId: string) => void;
 }
 
 export const SearchResultList: React.FC<SearchResultListProps> = ({
   results,
   loading,
+  error,
   query,
+  onRetry,
   onSelectResult,
 }) => {
   const { t } = useTranslation(['chatV2']);
@@ -44,6 +49,26 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
       <div className="flex items-center justify-center py-12 text-muted-foreground">
         <CircleNotch size={20} className="animate-spin mr-2" />
         <span className="text-sm">{t('search.searching')}</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground" role="alert">
+        <MagnifyingGlass size={32} className="mb-2 opacity-40" />
+        <span className="text-sm">{t('search.contentSearchFailed')}</span>
+        {onRetry && (
+          <DsButton
+            variant="default"
+            size="sm"
+            className="mt-3 min-h-11 gap-1.5"
+            onClick={onRetry}
+          >
+            <ArrowClockwise size={15} />
+            {t('error.retry')}
+          </DsButton>
+        )}
       </div>
     );
   }

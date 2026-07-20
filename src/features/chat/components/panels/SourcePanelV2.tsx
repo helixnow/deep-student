@@ -23,6 +23,7 @@ import {
   hasSourcesInBlocks,
 } from './sourceAdapter';
 import { useMessageBlocks } from '../../hooks/useChatStore';
+import { useStableSourceBlocks } from './useStableSourceBlocks';
 
 /** 检索中但尚无来源时使用的空 bundle（保持引用稳定，避免面板重复重置状态） */
 const EMPTY_BUNDLE: UnifiedSourceBundle = { total: 0, groups: [] };
@@ -107,8 +108,13 @@ export const SourcePanelV2: React.FC<SourcePanelV2Props> = ({ store, messageId, 
     [allMessageBlocks, blockIds]
   );
 
+  // 流式期间 content 块每次 flush 都让 messageBlocks 换新引用；
+  // 折叠为"仅来源相关块"的稳定数组，来源未变时 bundle 保持同一引用，
+  // 避免每 flush 重算 + 下游面板因 data 身份变化重置用户交互状态
+  const sourceBlocks = useStableSourceBlocks(messageBlocks);
+
   // 检索进行中（pending/running 的知识检索块）→ 驱动面板"正在检索"内联态
-  const isRetrieving = useMemo(() => hasActiveRetrievalInBlocks(messageBlocks), [messageBlocks]);
+  const isRetrieving = useMemo(() => hasActiveRetrievalInBlocks(sourceBlocks), [sourceBlocks]);
 
   // 转换为 UnifiedSourceBundle
   // 优先使用 sharedContext（多变体模式），否则从 blocks 提取
@@ -116,7 +122,7 @@ export const SourcePanelV2: React.FC<SourcePanelV2Props> = ({ store, messageId, 
     // 1. 优先从 sharedContext 提取（多变体消息）；检索失败信息仍从 blocks 提取
     if (sharedContext) {
       const bundle = extractSourcesFromSharedContext(sharedContext);
-      const errors = extractRetrievalErrors(messageBlocks);
+      const errors = extractRetrievalErrors(sourceBlocks);
       if (!bundle) {
         return errors.length > 0 ? { total: 0, groups: [], errors } : null;
       }
@@ -124,8 +130,8 @@ export const SourcePanelV2: React.FC<SourcePanelV2Props> = ({ store, messageId, 
     }
 
     // 2. 从 blocks 提取（单变体消息；内部已附带检索错误信息）
-    return extractSourcesFromMessageBlocks(messageBlocks);
-  }, [sharedContext, messageBlocks]);
+    return extractSourcesFromMessageBlocks(sourceBlocks);
+  }, [sharedContext, sourceBlocks]);
 
   // ========== 渲染 ==========
 

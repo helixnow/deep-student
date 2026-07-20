@@ -1,11 +1,11 @@
 /**
  * SessionBrowser - 会话历史全宽多列浏览视图
  *
- * 类似 Notion Gallery View 的极简设计风格
+ * 类似 简洁 Gallery View 的极简设计风格
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import {
   Chat,
@@ -136,25 +136,27 @@ const groupSessionsByTime = (sessions: SessionItem[]): Map<TimeGroup, SessionIte
 };
 
 // ============================================================================
-// 会话卡片组件 (Notion Style)
+// 会话卡片组件 (Clean Style)
 // ============================================================================
 
 interface SessionCardProps {
   session: SessionItem;
   isEditing: boolean;
+  /** 编辑中的标题（仅编辑态卡片传实际值，非编辑卡片传空串以避免重命名时全网格重渲） */
   editingTitle: string;
   tags?: string[];
-  onSelect: () => void;
-  onDelete: () => void;
-  onStartEdit: () => void;
-  onSaveEdit: () => void;
+  onSelect: (sessionId: string) => void;
+  onDelete: (sessionId: string) => void;
+  onStartEdit: (session: SessionItem) => void;
+  onSaveEdit: (sessionId: string) => void;
   onCancelEdit: () => void;
   onEditTitleChange: (value: string) => void;
-  onAddTag?: (tag: string) => void;
-  onRemoveTag?: (tag: string) => void;
+  onAddTag?: (sessionId: string, tag: string) => void;
+  onRemoveTag?: (sessionId: string, tag: string) => void;
 }
 
-const SessionCard: React.FC<SessionCardProps> = ({
+// 🚀 性能：React.memo + 稳定回调，避免任一卡片状态变化时全网格重渲
+const SessionCard: React.FC<SessionCardProps> = React.memo(({
   session,
   isEditing,
   editingTitle,
@@ -171,7 +173,8 @@ const SessionCard: React.FC<SessionCardProps> = ({
   const { t } = useTranslation(['chatV2', 'common']);
   const fallbackTitle = t('page.untitled');
   const sessionTitle = getSessionTitleText(session.title, fallbackTitle);
-  const taskSummary = summarizeTaskSession(session);
+  // 🚀 性能：按 session 引用缓存任务摘要，避免每次渲染重新解析 metadata
+  const taskSummary = useMemo(() => summarizeTaskSession(session), [session]);
   const hasTaskSummary = taskSummary.status !== 'unknown'
     || taskSummary.artifactCount > 0
     || taskSummary.changeCount > 0
@@ -211,16 +214,16 @@ const SessionCard: React.FC<SessionCardProps> = ({
 
   const handleCardClick = useCallback(() => {
     if (!isEditing) {
-      onSelect();
+      onSelect(session.id);
     }
-  }, [isEditing, onSelect]);
+  }, [isEditing, onSelect, session.id]);
 
   const handleDeleteClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (confirmingDelete) {
         resetDeleteConfirmation();
-        onDelete();
+        onDelete(session.id);
         return;
       }
 
@@ -230,16 +233,30 @@ const SessionCard: React.FC<SessionCardProps> = ({
         resetDeleteConfirmation();
       }, 2500);
     },
-    [clearDeleteConfirmTimeout, confirmingDelete, onDelete, resetDeleteConfirmation]
+    [clearDeleteConfirmTimeout, confirmingDelete, onDelete, resetDeleteConfirmation, session.id]
   );
 
   const handleEditClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       resetDeleteConfirmation();
-      onStartEdit();
+      onStartEdit(session);
     },
-    [onStartEdit, resetDeleteConfirmation]
+    [onStartEdit, resetDeleteConfirmation, session]
+  );
+
+  const handleSaveEdit = useCallback(() => {
+    onSaveEdit(session.id);
+  }, [onSaveEdit, session.id]);
+
+  const handleAddTag = useCallback(
+    (tag: string) => onAddTag?.(session.id, tag),
+    [onAddTag, session.id]
+  );
+
+  const handleRemoveTag = useCallback(
+    (tag: string) => onRemoveTag?.(session.id, tag),
+    [onRemoveTag, session.id]
   );
 
   // 导出会话（Markdown）：chat_v2_export_session → 保存对话框
@@ -285,15 +302,15 @@ const SessionCard: React.FC<SessionCardProps> = ({
             isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
           )}
         >
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
             <PencilSimple size={isTouchPrimary ? 16 : 14} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleExportClick} disabled={exporting} aria-label={t('browser.exportSession', '导出会话')} title={t('browser.exportSession', '导出会话')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleExportClick} disabled={exporting} aria-label={t('browser.exportSession', '导出会话')} title={t('browser.exportSession', '导出会话')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
             {exporting ? <CircleNotch size={isTouchPrimary ? 16 : 14} className="animate-spin" /> : <DownloadSimple size={isTouchPrimary ? 16 : 14} />}
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn(isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7', confirmingDelete ? 'text-danger bg-danger/10' : 'hover:text-danger hover:bg-danger/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn(isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7', confirmingDelete ? 'text-danger bg-danger/10' : 'hover:text-danger hover:bg-danger/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
             {confirmingDelete ? <Trash size={isTouchPrimary ? 16 : 14} /> : <X size={isTouchPrimary ? 16 : 14} />}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -311,7 +328,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
                 if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  onSaveEdit();
+                  handleSaveEdit();
                 } else if (e.key === 'Escape') {
                   onCancelEdit();
                 }
@@ -320,12 +337,12 @@ const SessionCard: React.FC<SessionCardProps> = ({
               className="flex-1 h-8"
               placeholder={t('page.sessionNamePlaceholder')}
             />
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onSaveEdit(); }} className="text-success hover:bg-success/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }} className="text-success hover:bg-success/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
               <Check size={16} />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} aria-label={t('page.cancelEdit')} title={t('page.cancelEdit')}>
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} aria-label={t('page.cancelEdit')} title={t('page.cancelEdit')}>
               <X size={16} />
-            </NotionButton>
+            </DsButton>
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
@@ -370,10 +387,10 @@ const SessionCard: React.FC<SessionCardProps> = ({
             {/* 标签 */}
             <div className="flex items-center gap-0.5 flex-wrap">
               {tags && tags.length > 0 && (
-                <SessionTagBadges tags={tags} maxDisplay={3} onRemove={onRemoveTag} />
+                <SessionTagBadges tags={tags} maxDisplay={3} onRemove={onRemoveTag ? handleRemoveTag : undefined} />
               )}
               {onAddTag && (
-                <AddTagInput onAdd={onAddTag} />
+                <AddTagInput onAdd={handleAddTag} />
               )}
             </div>
           </div>
@@ -389,7 +406,9 @@ const SessionCard: React.FC<SessionCardProps> = ({
       </div>
     </div>
   );
-};
+});
+
+SessionCard.displayName = 'SessionCard';
 
 // ============================================================================
 // 骨架屏组件
@@ -468,6 +487,14 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   // 编辑状态
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  // 🚀 性能：镜像 editingTitle 到 ref，让 handleSaveEdit 不依赖 editingTitle，
+  // 保持回调稳定（否则重命名时每键都会使全部卡片的 memo 失效）
+  const editingTitleRef = useRef('');
+
+  const handleEditTitleChange = useCallback((value: string) => {
+    editingTitleRef.current = value;
+    setEditingTitle(value);
+  }, []);
 
   // 分组模式状态
   const [groupMode, setGroupMode] = useState<BrowseGroupMode>(
@@ -490,13 +517,13 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
   }, []);
 
   // 时间分组标签
-  const timeGroupLabels: Record<TimeGroup, string> = {
+  const timeGroupLabels: Record<TimeGroup, string> = useMemo(() => ({
     today: t('page.timeGroups.today'),
     yesterday: t('page.timeGroups.yesterday'),
     previous7Days: t('page.timeGroups.previous7Days'),
     previous30Days: t('page.timeGroups.previous30Days'),
     older: t('page.timeGroups.older'),
-  };
+  }), [t]);
 
   // 搜索过滤 + 标签过滤
   const filteredSessions = useMemo(() => {
@@ -593,26 +620,30 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
   // 开始编辑
   const handleStartEdit = useCallback((session: SessionItem) => {
+    const initialTitle = getSessionTitleText(session.title, '');
     setEditingSessionId(session.id);
-    setEditingTitle(getSessionTitleText(session.title, ''));
+    editingTitleRef.current = initialTitle;
+    setEditingTitle(initialTitle);
   }, []);
 
-  // 保存编辑
+  // 保存编辑（读 ref 而非 state，保持回调稳定）
   const handleSaveEdit = useCallback(
     (sessionId: string) => {
-      const trimmedTitle = editingTitle.trim();
+      const trimmedTitle = editingTitleRef.current.trim();
       if (trimmedTitle && onRenameSession) {
         onRenameSession(sessionId, trimmedTitle);
       }
       setEditingSessionId(null);
+      editingTitleRef.current = '';
       setEditingTitle('');
     },
-    [editingTitle, onRenameSession]
+    [onRenameSession]
   );
 
   // 取消编辑
   const handleCancelEdit = useCallback(() => {
     setEditingSessionId(null);
+    editingTitleRef.current = '';
     setEditingTitle('');
   }, []);
 
@@ -676,7 +707,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
             {/* 标签过滤按钮 */}
             {sessionTags.allTags.length > 0 && (
-              <NotionButton
+              <DsButton
                 variant={showTagFilter || sessionTags.selectedFilterTags.size > 0 ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShowTagFilter(!showTagFilter)}
@@ -686,7 +717,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 {sessionTags.selectedFilterTags.size > 0 && (
                   <span className="text-2xs px-1 rounded-full bg-primary/10">{sessionTags.selectedFilterTags.size}</span>
                 )}
-              </NotionButton>
+              </DsButton>
             )}
 
             {/* 桌面端搜索框 + 模式切换 */}
@@ -728,10 +759,10 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             </div>
 
             {/* 新建按钮 */}
-            <NotionButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0">
+            <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0">
               <Plus size={16} />
               <span className="hidden xs:inline">{t('page.newSession')}</span>
-            </NotionButton>
+            </DsButton>
           </div>
 
           {/* （原 sm:hidden 移动端搜索行为死代码：非嵌入形态仅在 ≥768px 渲染，已移除；
@@ -771,7 +802,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             </button>
             {/* 标签过滤入口（补齐移动端与桌面的功能对等） */}
             {sessionTags.allTags.length > 0 && (
-              <NotionButton
+              <DsButton
                 variant={showTagFilter || sessionTags.selectedFilterTags.size > 0 ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setShowTagFilter(!showTagFilter)}
@@ -783,7 +814,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 {sessionTags.selectedFilterTags.size > 0 && (
                   <span className="text-2xs px-1 rounded-full bg-primary/10">{sessionTags.selectedFilterTags.size}</span>
                 )}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
           {/* 分组滑块独占一行：三分段等宽拉伸，40px 触控高度，图标+文字标签 */}
@@ -850,7 +881,9 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
           <SearchResultList
             results={contentSearch.results}
             loading={contentSearch.loading}
+            error={contentSearch.error}
             query={searchQuery}
+            onRetry={contentSearch.retry}
             onSelectResult={onSelectSession}
           />
         ) : isLoading ? (
@@ -878,9 +911,9 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     : t('page.selectOrCreate')}
                 </span>
                 {!hasActiveFilter && (
-                  <NotionButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:underline">
+                  <DsButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:underline">
                     {t('page.createFirst')}
-                  </NotionButton>
+                  </DsButton>
                 )}
               </div>
             );
@@ -913,16 +946,16 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                           key={session.id}
                           session={session}
                           isEditing={editingSessionId === session.id}
-                          editingTitle={editingTitle}
+                          editingTitle={editingSessionId === session.id ? editingTitle : ''}
                           tags={sessionTags.tagsBySession.get(session.id)}
-                          onSelect={() => onSelectSession(session.id)}
-                          onDelete={() => onDeleteSession(session.id)}
-                          onStartEdit={() => handleStartEdit(session)}
-                          onSaveEdit={() => handleSaveEdit(session.id)}
+                          onSelect={onSelectSession}
+                          onDelete={onDeleteSession}
+                          onStartEdit={handleStartEdit}
+                          onSaveEdit={handleSaveEdit}
                           onCancelEdit={handleCancelEdit}
-                          onEditTitleChange={setEditingTitle}
-                          onAddTag={(tag) => sessionTags.addTag(session.id, tag)}
-                          onRemoveTag={(tag) => sessionTags.removeTag(session.id, tag)}
+                          onEditTitleChange={handleEditTitleChange}
+                          onAddTag={sessionTags.addTag}
+                          onRemoveTag={sessionTags.removeTag}
                         />
                       ))}
                     </div>
@@ -963,16 +996,16 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                         key={session.id}
                         session={session}
                         isEditing={editingSessionId === session.id}
-                        editingTitle={editingTitle}
+                        editingTitle={editingSessionId === session.id ? editingTitle : ''}
                         tags={sessionTags.tagsBySession.get(session.id)}
-                        onSelect={() => onSelectSession(session.id)}
-                        onDelete={() => onDeleteSession(session.id)}
-                        onStartEdit={() => handleStartEdit(session)}
-                        onSaveEdit={() => handleSaveEdit(session.id)}
+                        onSelect={onSelectSession}
+                        onDelete={onDeleteSession}
+                        onStartEdit={handleStartEdit}
+                        onSaveEdit={handleSaveEdit}
                         onCancelEdit={handleCancelEdit}
-                        onEditTitleChange={setEditingTitle}
-                        onAddTag={(tag) => sessionTags.addTag(session.id, tag)}
-                        onRemoveTag={(tag) => sessionTags.removeTag(session.id, tag)}
+                        onEditTitleChange={handleEditTitleChange}
+                        onAddTag={sessionTags.addTag}
+                        onRemoveTag={sessionTags.removeTag}
                       />
                     ))}
                   </div>
@@ -1023,16 +1056,16 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                           key={session.id}
                           session={session}
                           isEditing={editingSessionId === session.id}
-                          editingTitle={editingTitle}
+                          editingTitle={editingSessionId === session.id ? editingTitle : ''}
                           tags={sessionTags.tagsBySession.get(session.id)}
-                          onSelect={() => onSelectSession(session.id)}
-                          onDelete={() => onDeleteSession(session.id)}
-                          onStartEdit={() => handleStartEdit(session)}
-                          onSaveEdit={() => handleSaveEdit(session.id)}
+                          onSelect={onSelectSession}
+                          onDelete={onDeleteSession}
+                          onStartEdit={handleStartEdit}
+                          onSaveEdit={handleSaveEdit}
                           onCancelEdit={handleCancelEdit}
-                          onEditTitleChange={setEditingTitle}
-                          onAddTag={(tag) => sessionTags.addTag(session.id, tag)}
-                          onRemoveTag={(tag) => sessionTags.removeTag(session.id, tag)}
+                          onEditTitleChange={handleEditTitleChange}
+                          onAddTag={sessionTags.addTag}
+                          onRemoveTag={sessionTags.removeTag}
                         />
                       ))}
                     </div>
@@ -1071,16 +1104,16 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                           key={session.id}
                           session={session}
                           isEditing={editingSessionId === session.id}
-                          editingTitle={editingTitle}
+                          editingTitle={editingSessionId === session.id ? editingTitle : ''}
                           tags={sessionTags.tagsBySession.get(session.id)}
-                          onSelect={() => onSelectSession(session.id)}
-                          onDelete={() => onDeleteSession(session.id)}
-                          onStartEdit={() => handleStartEdit(session)}
-                          onSaveEdit={() => handleSaveEdit(session.id)}
+                          onSelect={onSelectSession}
+                          onDelete={onDeleteSession}
+                          onStartEdit={handleStartEdit}
+                          onSaveEdit={handleSaveEdit}
                           onCancelEdit={handleCancelEdit}
-                          onEditTitleChange={setEditingTitle}
-                          onAddTag={(tag) => sessionTags.addTag(session.id, tag)}
-                          onRemoveTag={(tag) => sessionTags.removeTag(session.id, tag)}
+                          onEditTitleChange={handleEditTitleChange}
+                          onAddTag={sessionTags.addTag}
+                          onRemoveTag={sessionTags.removeTag}
                         />
                       ))}
                     </div>

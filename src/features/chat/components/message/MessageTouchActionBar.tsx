@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CopySimple, Check, ArrowCounterClockwise, PencilSimple, Trash, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 
 export interface MessageTouchActionBarProps {
@@ -170,7 +170,7 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
             'shadow-[var(--shadow-shell-soft)]'
           )}
         >
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className={barButtonClassName}
@@ -184,10 +184,10 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
               b={<Check className="h-4 w-4 text-success" />}
             />
             <span>{t('messageItem.actions.copy')}</span>
-          </NotionButton>
+          </DsButton>
 
           {isUser && onEdit && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className={barButtonClassName}
@@ -198,11 +198,11 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
             >
               <PencilSimple className="h-4 w-4" />
               <span>{t('messageItem.actions.edit')}</span>
-            </NotionButton>
+            </DsButton>
           )}
 
           {!isUser && onRetry && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className={barButtonClassName}
@@ -213,10 +213,10 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
             >
               <ArrowCounterClockwise className={cn('h-4 w-4', isRetrying && 'animate-spin')} />
               <span>{t('messageItem.actions.retry')}</span>
-            </NotionButton>
+            </DsButton>
           )}
 
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className={cn(
@@ -233,9 +233,9 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
           >
             <Trash className={cn('h-4 w-4', isDeleting && 'animate-pulse')} />
             <span>{deleteArmed ? t('messageItem.actions.deleteConfirmTitle') : t('messageItem.actions.delete')}</span>
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -246,7 +246,7 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
             title={t('common.cancel')}
           >
             <X className="h-4 w-4" />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>

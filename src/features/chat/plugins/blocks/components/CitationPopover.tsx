@@ -19,7 +19,7 @@ import React, {
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   FileText,
   Globe,
@@ -242,10 +242,10 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
       {/* 底部操作：有 url 时提供外链打开 */}
       {hasUrl && (
         <div className="p-2 border-t border-border/50">
-          <NotionButton variant="ghost" size="sm" onClick={handleOpenUrl} className="w-full">
+          <DsButton variant="ghost" size="sm" onClick={handleOpenUrl} className="w-full">
             <ArrowSquareOut size={14} />
             <span className="truncate">{t('blocks.retrieval.openSource')}</span>
-          </NotionButton>
+          </DsButton>
         </div>
       )}
     </div>,
@@ -283,7 +283,7 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
   className,
 }) => {
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       onClick={onClick}
@@ -298,7 +298,7 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
       )}
     >
       [{index + 1}]
-    </NotionButton>
+    </DsButton>
   );
 };
 

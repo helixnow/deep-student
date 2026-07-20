@@ -13,7 +13,7 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, Copy, Terminal } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -103,7 +103,7 @@ const SuggestedCommand: React.FC<{ command: string; compact?: boolean }> = ({ co
           <Terminal size={14} />
           {t('completion.suggestedCommand')}
         </span>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={handleCopyCommand}
@@ -111,7 +111,7 @@ const SuggestedCommand: React.FC<{ command: string; compact?: boolean }> = ({ co
         >
           <Copy size={12} className="mr-1" />
           {t('completion.copy')}
-        </NotionButton>
+        </DsButton>
       </div>
       <code className="block overflow-x-auto rounded bg-background px-2 py-1.5 font-mono text-sm">
         {command}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
 import { Plus } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useMobileHeader } from '@/components/layout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
@@ -76,7 +76,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
   const headerRightActions = useMemo(() => {
     if (viewMode === 'browser') {
       return (
-        <NotionButton
+        <DsButton
           variant="primary"
           size="icon"
           iconOnly
@@ -89,13 +89,13 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           title={t('page.newSession')}
         >
           <Plus size={20} />
-        </NotionButton>
+        </DsButton>
       );
     }
     // C-10 修复：移除"对话控制"幽灵按钮（其目标面板从未在抽屉中渲染）；
     // 对话参数控制已由输入栏的对话控制面板承载。
     return (
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -105,7 +105,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
         title={t('page.newSession')}
       >
         <Plus size={20} />
-      </NotionButton>
+      </DsButton>
     );
   }, [viewMode, createSession, isLoading, isEmptyNewChat, setViewMode, t]);
 

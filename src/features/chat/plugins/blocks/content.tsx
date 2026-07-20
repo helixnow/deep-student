@@ -14,6 +14,7 @@ import { CitationSourceContext } from '../../utils/citationSourceContext';
 import type { RetrievalSource, RetrievalSourceType } from './components/types';
 import { useMessageBlocks } from '../../hooks/useChatStore';
 import { extractSourcesFromMessageBlocks, resolveCitationSource as resolveSourceByCitation } from '../../components/panels/sourceAdapter';
+import { useStableSourceBlocks } from '../../components/panels/useStableSourceBlocks';
 import type { UnifiedSourceItem } from '../../components/panels/sourceTypes';
 
 // ============================================================================
@@ -79,9 +80,14 @@ const ContentBlockBase: React.FC<ContentBlockBaseProps> = ({ block, isStreaming,
 
 const ContentBlockWithStore: React.FC<BlockComponentProps> = ({ block, isStreaming, store }) => {
   const messageBlocks = useMessageBlocks(store!, block.messageId);
+  // 流式期间 content 块每次 flush 换新引用会让 messageBlocks 整体换引用；
+  // 先折叠为"仅来源相关块"的稳定数组，来源未变时 sourceBundle 保持同一引用，
+  // 下游三个 resolver 回调与 CitationSourceContext value 不再每次 flush 击穿
+  // MemoizedBlock 的已完成块缓存
+  const sourceBlocks = useStableSourceBlocks(messageBlocks);
   const sourceBundle = useMemo(() => {
-    return extractSourcesFromMessageBlocks(messageBlocks);
-  }, [messageBlocks]);
+    return extractSourcesFromMessageBlocks(sourceBlocks);
+  }, [sourceBlocks]);
 
   // 按"类型内 1-based 序号"（[类型-N] 的 N，契约不可变）查找来源项。
   // 使用 adapter 的 resolveCitationSource（基于 typeIndex，按全局出现顺序计数），

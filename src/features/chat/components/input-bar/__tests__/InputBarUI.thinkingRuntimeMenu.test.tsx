@@ -1,9 +1,18 @@
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InputBarUI } from '../InputBarUI';
 import { createDefaultPanelStates } from '../../../core/types/common';
+
+beforeAll(() => {
+  // ThinkingDepthSlider 在 jsdom 下无 2D 上下文；返回 null 走无画布降级路径
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+});
+
+afterAll(() => {
+  vi.restoreAllMocks();
+});
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => undefined },
@@ -15,6 +24,9 @@ vi.mock('react-i18next', () => ({
       defaultValueOrOptions?: Record<string, unknown> | string,
       maybeOptions?: Record<string, unknown>
     ) => {
+      if (_key === 'settings:api.modal.reasoning.effort.high') {
+        return '高';
+      }
       const defaultValue =
         typeof defaultValueOrOptions === 'string'
           ? defaultValueOrOptions
@@ -201,6 +213,55 @@ describe('InputBarUI thinking/runtime model menu', () => {
     const triggerLabel = screen.getByTestId('thinking-runtime-state-label');
     expect(triggerLabel).toHaveTextContent('关闭');
     expect(triggerLabel).not.toHaveTextContent('DeepSeek V3.2');
+  });
+
+  it('uses the transitions-dev text swap surface for reasoning depth changes', () => {
+    renderInputBar({
+      enableThinking: true,
+      thinkingStateLabel: 'Reasoning: high',
+      thinkingDepthOptions: [
+        {
+          value: 'high',
+          labelKey: 'settings:api.modal.reasoning.effort.high',
+          defaultLabel: 'High',
+        },
+      ],
+      thinkingDepthValue: 'high',
+      onToggleThinking: vi.fn(),
+      onSetThinkingDepth: vi.fn(),
+    });
+
+    expect(
+      screen.getByTestId('thinking-runtime-state-label').querySelector('.t-text-swap')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('thinking-runtime-state-label').querySelector('.t-resize')
+    ).toBeInTheDocument();
+  });
+
+  it('localizes the active reasoning depth in both the trigger and slider', async () => {
+    const user = userEvent.setup();
+
+    renderInputBar({
+      enableThinking: true,
+      thinkingStateLabel: 'Reasoning: high',
+      thinkingDepthOptions: [
+        {
+          value: 'high',
+          labelKey: 'settings:api.modal.reasoning.effort.high',
+          defaultLabel: 'High',
+        },
+      ],
+      thinkingDepthValue: 'high',
+      onToggleThinking: vi.fn(),
+      onSetThinkingDepth: vi.fn(),
+    });
+
+    expect(screen.getByTestId('thinking-runtime-state-label')).toHaveTextContent('高');
+
+    await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+
+    expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '高');
   });
 
   it('shows the current runtime model with its provider as the compact switch row', async () => {

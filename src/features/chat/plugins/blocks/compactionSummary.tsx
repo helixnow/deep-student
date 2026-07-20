@@ -19,7 +19,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   CaretDown,
   CaretRight,
@@ -189,7 +189,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
         'transition-colors'
       )}
     >
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={toggleExpanded}
@@ -205,7 +205,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
             {t('blocks.compactionSummary.expandHint')}
           </span>
         )}
-      </NotionButton>
+      </DsButton>
 
       {isExpanded && (
         <div
@@ -279,7 +279,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
             </div>
             <div className="flex flex-shrink-0 items-center gap-1">
               {metadata.rangeStartMessageId && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleLocateOriginal}
@@ -296,10 +296,10 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
                   <span className="text-xs">
                     {t('blocks.compactionSummary.locateOriginal')}
                   </span>
-                </NotionButton>
+                </DsButton>
               )}
               {metadata.compactionId && metadata.isActive !== false && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={handleUndo}
@@ -320,9 +320,9 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
                       ? t('blocks.compactionSummary.undone')
                       : t('blocks.compactionSummary.undo')}
                   </span>
-                </NotionButton>
+                </DsButton>
               )}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={handleCopy}
@@ -334,7 +334,7 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
                 <span className="text-xs">
                   {copied ? t('blocks.compactionSummary.copied') : t('blocks.compactionSummary.copy')}
                 </span>
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         </div>

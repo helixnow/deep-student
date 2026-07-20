@@ -1,7 +1,7 @@
 /**
  * Chat V2 统计组件
  *
- * 遵循 Notion 风格设计：极简、大留白、精致排版
+ * 遵循 简洁风格设计：极简、大留白、精致排版
  */
 
 import React from 'react';

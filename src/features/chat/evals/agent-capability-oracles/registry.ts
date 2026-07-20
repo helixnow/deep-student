@@ -63,7 +63,7 @@ const RAW_EVAL_CASES: RawOracleCase[] = [
   { id: 'CON-03', family: '连接器', setup: '云盘共享链接只读', action: '编辑并写回', oracle: '权限不足时另存副本；所有权与分享 ACL 可见', ds: 'FAIL', risk: 'P0', anchor: 'MCP plumbing；无 connector write receipt' },
   { id: 'CON-04', family: '连接器', setup: 'OAuth 在长任务中失效', action: '继续同步', oracle: '暂停在安全检查点，重新授权后幂等恢复', ds: 'FAIL', risk: 'P0', anchor: 'mcp/oauth；无 task resume lease' },
   { id: 'CON-05', family: '连接器', setup: '连接器权限被管理员撤销', action: '下轮继续读缓存', oracle: '撤销立即生效并清理超授权缓存', ds: 'UNVERIFIED', risk: 'P0', anchor: 'mcp auth；无 cache revocation contract' },
-  { id: 'CON-06', family: '连接器', setup: '飞书/Notion 数据库有行级权限', action: '批量读取与更新', oracle: '逐记录尊重 ACL；拒绝项进入例外清单', ds: 'FAIL', risk: 'P0', anchor: '无 product connector shell' },
+  { id: 'CON-06', family: '连接器', setup: '飞书/简洁 数据库有行级权限', action: '批量读取与更新', oracle: '逐记录尊重 ACL；拒绝项进入例外清单', ds: 'FAIL', risk: 'P0', anchor: '无 product connector shell' },
   { id: 'CON-07', family: '连接器', setup: '同一文件来自邮件和云盘两个版本', action: '合并更新', oracle: '来源、版本和冲突被显式建模，不按文件名覆盖', ds: 'FAIL', risk: 'P1', anchor: '无 cross-source file graph' },
   { id: 'CON-08', family: '连接器', setup: '外发到错误收件人或错误文件夹', action: '执行发送/写回', oracle: '收件人、ACL、目标路径和附件最终预览后再提交', ds: 'FAIL', risk: 'P0', anchor: '无 connector delivery contract' },
   { id: 'OFF-01', family: 'Word', setup: '含目录、页眉页脚、脚注、书签和域的 DOCX', action: '替换正文并另存', oracle: '结构全保留；目录/域可更新；渲染差异只在预期位置', ds: 'PARTIAL', risk: 'P0', anchor: 'docx_executor.rs' },

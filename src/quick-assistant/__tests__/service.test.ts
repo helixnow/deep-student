@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferQuickActions, isCaptureLikeText } from '../service';
+import { inferQuickActions, isCaptureLikeText, looksLikeSecret } from '../service';
 
 describe('inferQuickActions', () => {
   it('prioritizes hints for exercise-like content', () => {
@@ -34,5 +34,22 @@ describe('isCaptureLikeText', () => {
 
   it('ignores whitespace-only paste', () => {
     expect(isCaptureLikeText('   \n  ')).toBe(false);
+  });
+});
+
+describe('looksLikeSecret', () => {
+  it('flags password-like single tokens', () => {
+    expect(looksLikeSecret('Xk9#mQ2$vLp7wRt!')).toBe(true);
+    expect(looksLikeSecret('sk-Ab3dEf9hIj2kLm5nOp8q')).toBe(true);
+  });
+
+  it('keeps study material and questions', () => {
+    expect(looksLikeSecret('什么是熵？')).toBe(false);
+    expect(looksLikeSecret('Photosynthesis converts light energy.')).toBe(false);
+  });
+
+  it('keeps math expressions and urls', () => {
+    expect(looksLikeSecret('x^2+y_1=Z9(a-b)/2!')).toBe(false);
+    expect(looksLikeSecret('https://example.com/A9_b?x=1')).toBe(false);
   });
 });

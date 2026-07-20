@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
@@ -212,7 +212,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
   return (
     <div className={cn('todo-list-panel', className)}>
       {/* 可折叠头部 - 显示摘要或 diff */}
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={toggleExpanded}
@@ -233,7 +233,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         )}>
           {getCollapsedSummary()}
         </span>
-      </NotionButton>
+      </DsButton>
 
       {/* 任务列表 - 可折叠 */}
       <AnimatePresence initial={false}>

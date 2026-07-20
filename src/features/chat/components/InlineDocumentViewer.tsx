@@ -14,7 +14,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   X,
   MagnifyingGlassPlus,
@@ -609,47 +609,47 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
               </span>
             )}
           </div>
-          <NotionButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(-1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40" aria-label={t('chatV2:documentViewer.prevMatch')} title={t('chatV2:documentViewer.prevMatch')}>
+          <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(-1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40" aria-label={t('chatV2:documentViewer.prevMatch')} title={t('chatV2:documentViewer.prevMatch')}>
             <CaretUp size={14} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40" aria-label={t('chatV2:documentViewer.nextMatch')} title={t('chatV2:documentViewer.nextMatch')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly disabled={matches.length === 0} onClick={() => gotoMatch(1)} className="bg-muted hover:bg-[var(--interactive-hover)] disabled:opacity-40" aria-label={t('chatV2:documentViewer.nextMatch')} title={t('chatV2:documentViewer.nextMatch')}>
             <CaretDown size={14} />
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 字号 / 换行 */}
         <div className="flex items-center gap-1">
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.max(prev / 1.1, 0.75))} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.max(prev / 1.1, 0.75))} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
             <MagnifyingGlassMinus size={15} />
-          </NotionButton>
+          </DsButton>
           <span className="min-w-[42px] rounded-md bg-muted px-1.5 py-1 text-center text-xs font-medium text-muted-foreground">
             {Math.round(fontScale * 100)}%
           </span>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.min(prev * 1.1, 2))} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((prev) => Math.min(prev * 1.1, 2))} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
             <MagnifyingGlassPlus size={15} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale(1)} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale(1)} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
             <House size={15} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setWrap((w) => !w)} className={cn(wrap ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-[var(--interactive-hover)]')} aria-label={wrap ? t('chatV2:documentViewer.noWrap') : t('chatV2:documentViewer.wrap')} title={wrap ? t('chatV2:documentViewer.noWrap') : t('chatV2:documentViewer.wrap')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={() => setWrap((w) => !w)} className={cn(wrap ? 'bg-primary/20 text-primary' : 'bg-muted hover:bg-[var(--interactive-hover)]')} aria-label={wrap ? t('chatV2:documentViewer.noWrap') : t('chatV2:documentViewer.wrap')} title={wrap ? t('chatV2:documentViewer.noWrap') : t('chatV2:documentViewer.wrap')}>
             <TextIndent size={15} />
-          </NotionButton>
+          </DsButton>
         </div>
 
         {/* 操作按钮 */}
         <div className="flex items-center gap-1">
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.copy')} title={t('common:actions.copy')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.copy')} title={t('common:actions.copy')}>
             {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.open')} title={t('common:actions.open')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.open')} title={t('common:actions.open')}>
             <ArrowSquareOut size={15} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.download')} title={t('common:actions.download')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-[var(--interactive-hover)]" aria-label={t('common:actions.download')} title={t('common:actions.download')}>
             <Download size={15} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive" aria-label={t('common:actions.close')} title={t('common:actions.close')}>
+          </DsButton>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive" aria-label={t('common:actions.close')} title={t('common:actions.close')}>
             <X size={15} />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 

@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -453,7 +453,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                   isResponding && 'opacity-50'
                 )}
               >
-                <NotionButton
+                <DsButton
                   variant={isRecommended ? 'primary' : 'ghost'}
                   size="sm"
                   onClick={() => handleSingleSelect(index, option.label)}
@@ -461,7 +461,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                   className="!h-auto !flex-1 !justify-start !p-0 text-left !bg-transparent !text-inherit hover:!bg-transparent"
                 >
                   <span className="flex-1">{option.label}</span>
-                </NotionButton>
+                </DsButton>
                 {renderOptionReason(option)}
                 {isRecommended && (
                   <span className="flex flex-shrink-0 items-center gap-1 text-xs text-[color:var(--text-secondary)]">
@@ -478,7 +478,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       {/* Multi-select confirm button */}
       {multiple && (
         <div className="px-3 pb-2">
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={handleMultiConfirm}
@@ -487,7 +487,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
           >
             <Check size={14} className="mr-1.5" />
             {t('askUser.confirmSelection')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -518,7 +518,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
             )}
           />
           {!multiple && (
-            <NotionButton
+            <DsButton
               variant="primary"
               size="sm"
               onClick={handleCustomSubmit}
@@ -527,7 +527,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
               aria-label="send"
             >
               <PaperPlaneRight size={14} />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}

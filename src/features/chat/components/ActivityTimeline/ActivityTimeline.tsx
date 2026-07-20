@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import { useLiveDurationSeconds } from '../../hooks/useLiveDurationSeconds';
@@ -604,7 +604,7 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             weight={node.isThinking ? 'fill' : 'regular'}
             className="text-primary flex-shrink-0 mr-[3px]"
           />
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={hasContent ? toggleExpanded : undefined}
@@ -643,7 +643,7 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
                 <CaretRight size={12} weight="bold" />
               </motion.span>
             )}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 
@@ -971,7 +971,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
     >
       <div className="flex flex-col gap-1">
         {/* 工具头部 - 🔧 统一交互：文字区域也可以点击展开 */}
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={toggleExpanded}
@@ -1040,7 +1040,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
               {liveRunningSeconds}s
             </span>
           ) : null}
-        </NotionButton>
+        </DsButton>
 
         {/* 展开的详细信息 */}
         <AnimatePresence initial={false}>
@@ -1256,7 +1256,7 @@ const ToolLimitNodeContentInner: React.FC<ToolLimitNodeContentProps> = ({ isFirs
 
         {/* 🔧 继续按钮 */}
         {onContinue && (
-          <NotionButton
+          <DsButton
             variant="outline"
             size="sm"
             onClick={handleContinue}
@@ -1270,7 +1270,7 @@ const ToolLimitNodeContentInner: React.FC<ToolLimitNodeContentProps> = ({ isFirs
             )}
             {/* 复用已存在的 tool_limit.continuing key（timeline.limit 下无此 key，避免英文环境回退中文） */}
             <span>{isContinuing ? t('tool_limit.continuing') : t('timeline.limit.continue')}</span>
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </TimelineNode>

@@ -72,7 +72,7 @@ export const PRESET_ICONS = [
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -87,6 +87,7 @@ interface GroupEditorPanelProps {
   autoFocusField?: 'name' | null;
   onSubmit: (payload: CreateGroupRequest | UpdateGroupRequest) => Promise<void>;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
   onArchive?: () => void;
   /** 移动端：通过父级 MobileSlidingLayout 右面板浏览资源，传入 togglePinnedResource 回调和当前已选 ID */
   onMobileBrowse?: (toggleResource: (sourceId: string) => 'added' | 'removed' | false, currentIds: string[]) => void;
@@ -125,6 +126,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   autoFocusField = null,
   onSubmit,
   onClose,
+  onDirtyChange,
   onArchive,
   onMobileBrowse,
 }) => {
@@ -336,6 +338,64 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     return matched?.path ?? '';
   }, [defaultRuntimeRootId, preferredProjectRootPath, runtimeRoots]);
 
+  const isDirty = useMemo(() => {
+    const baseline = mode === 'edit' && initial
+      ? {
+          name: initial.name,
+          description: initial.description ?? '',
+          icon: initial.icon ?? '',
+          systemPrompt: initial.systemPrompt ?? '',
+          defaultSkillIds: initial.defaultSkillIds ?? [],
+          pinnedResourceIds: initial.pinnedResourceIds ?? [],
+          defaultRuntimeRootId: initial.defaultRuntimeRootId ?? '',
+          preferredProjectRootPath: initial.preferredProjectRootPath ?? '',
+        }
+      : {
+          name: '',
+          description: '',
+          icon: '',
+          systemPrompt: '',
+          defaultSkillIds: [] as string[],
+          pinnedResourceIds: [] as string[],
+          defaultRuntimeRootId: '',
+          preferredProjectRootPath: '',
+        };
+    const sameIds = (left: string[], right: string[]) => {
+      if (left.length !== right.length) return false;
+      const sortedLeft = [...left].sort();
+      const sortedRight = [...right].sort();
+      return sortedLeft.every((value, index) => value === sortedRight[index]);
+    };
+
+    return name !== baseline.name
+      || description !== baseline.description
+      || icon !== baseline.icon
+      || systemPrompt !== baseline.systemPrompt
+      || !sameIds(defaultSkillIds, baseline.defaultSkillIds)
+      || !sameIds(pinnedResourceIds, baseline.pinnedResourceIds)
+      || defaultRuntimeRootId !== baseline.defaultRuntimeRootId
+      || preferredProjectRootPath !== baseline.preferredProjectRootPath;
+  }, [
+    defaultRuntimeRootId,
+    defaultSkillIds,
+    description,
+    icon,
+    initial,
+    mode,
+    name,
+    pinnedResourceIds,
+    preferredProjectRootPath,
+    systemPrompt,
+  ]);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => () => {
+    onDirtyChange?.(false);
+  }, [onDirtyChange]);
+
   const handleSubmit = useCallback(async () => {
     if (!name.trim()) return;
     setIsSaving(true);
@@ -390,17 +450,17 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     <div className="flex flex-col h-full bg-background relative">
       {/* Action Buttons - Absolute Positioned */}
       <div className="absolute top-4 right-4 md:top-6 md:right-8 z-10 flex items-center gap-2">
-          <NotionButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3 max-md:h-10">
+          <DsButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3 max-md:h-11">
             {t('common:cancel')}
-          </NotionButton>
-          <NotionButton 
+          </DsButton>
+          <DsButton 
             variant="primary" 
             onClick={handleSubmit} 
             disabled={isSaving || !name.trim()}
-            className="h-8 px-3 max-md:h-10"
+            className="h-8 px-3 max-md:h-11"
           >
             {mode === 'create' ? t('common:create') : t('common:save')}
-          </NotionButton>
+          </DsButton>
       </div>
 
       <CustomScrollArea className="flex-1">
@@ -520,7 +580,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       </option>
                     ))}
                   </select>
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     onClick={() => void handleBrowseAndAuthorizeRoot()}
                     disabled={isAuthorizingRoot}
@@ -532,9 +592,9 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       <Folder size={14} className="mr-1.5" />
                     )}
                     {t('page.groupDefaultRuntimeRootBrowse')}
-                  </NotionButton>
+                  </DsButton>
                   {defaultRuntimeRootId && (
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       onClick={clearRuntimeRoot}
                       disabled={isAuthorizingRoot}
@@ -543,7 +603,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     >
                       <X size={14} className="mr-1.5" />
                       {t('common:clear')}
-                    </NotionButton>
+                    </DsButton>
                   )}
                 </div>
                 {selectedRuntimeRootPath ? (
@@ -707,14 +767,14 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
 
           {mode === 'edit' && onArchive && (
             <div className="pt-6 border-t border-border/40">
-              <NotionButton
+              <DsButton
                 variant="warning"
                 onClick={onArchive}
                 className="h-8 px-3"
               >
                 <Archive size={14} className="mr-1.5" />
                 {t('page.archiveGroup')}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
         </div>

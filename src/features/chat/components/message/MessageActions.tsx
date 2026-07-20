@@ -6,7 +6,7 @@ import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, Bookmark
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu/AppMenu';
 import { formatTokenCount } from '../TokenUsageDisplay';
@@ -218,19 +218,19 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     ? 'flex items-center gap-0.5 transition-opacity'
     : 'flex items-center gap-0.5 transition-opacity md:pointer-events-none md:w-0 md:overflow-hidden md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:w-auto md:group-hover:overflow-visible md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:w-auto md:group-focus-within:overflow-visible md:group-focus-within:opacity-100';
   const desktopCopyButton = showInlineCopyOnly ? (
-    <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
+    <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
       <IconSwap
         active={copied}
         a={<CopySimple className="w-4 h-4" />}
         b={<Check className="w-4 h-4 text-success" />}
       />
-    </NotionButton>
+    </DsButton>
   ) : null;
 
   const actionsMenu = (
     <AppMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
       <AppMenuTrigger asChild>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -239,7 +239,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           className={compactButtonClassName}
         >
           <DotsThree className="w-4 h-4" weight="bold" />
-        </NotionButton>
+        </DsButton>
       </AppMenuTrigger>
       <AppMenuContent
         align="end"
@@ -310,7 +310,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   if (compactMobile) {
     return (
       <div className={cn('flex items-center gap-0.5', className)}>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -324,7 +324,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             a={<CopySimple className="w-4 h-4" />}
             b={<Check className="w-4 h-4 text-success" />}
           />
-        </NotionButton>
+        </DsButton>
         {actionsMenu}
       </div>
     );
@@ -336,15 +336,15 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
 
       <div className={desktopSecondaryActionsClassName}>
         {showInlineRetry && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRetry} disabled={isLocked || isRetrying} aria-label={t('messageItem.actions.retry')} title={t('messageItem.actions.retry')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={handleRetry} disabled={isLocked || isRetrying} aria-label={t('messageItem.actions.retry')} title={t('messageItem.actions.retry')}>
             <ArrowCounterClockwise className={cn('w-4 h-4', isRetrying && 'animate-spin')} />
-          </NotionButton>
+          </DsButton>
         )}
 
         {showInlineEdit && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onEdit} disabled={!canEdit} aria-label={t('messageItem.actions.edit')} title={t('messageItem.actions.edit')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={onEdit} disabled={!canEdit} aria-label={t('messageItem.actions.edit')} title={t('messageItem.actions.edit')}>
             <PencilSimple className="w-4 h-4" />
-          </NotionButton>
+          </DsButton>
         )}
 
         {showOverflowMenu && actionsMenu}

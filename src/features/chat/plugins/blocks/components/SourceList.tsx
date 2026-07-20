@@ -8,7 +8,7 @@
 import React, { useState, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CaretDown, Stack } from '@phosphor-icons/react';
 import { SourceCard } from './SourceCard';
 import type { RetrievalSource } from './types';
@@ -135,7 +135,7 @@ export const SourceList: React.FC<SourceListProps> = ({
 
       {/* 展开/折叠按钮 */}
       {hasMore && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={toggleExpanded}
@@ -155,7 +155,7 @@ export const SourceList: React.FC<SourceListProps> = ({
               ? t('blocks.retrieval.showLess')
               : t('blocks.retrieval.showMore', { count: hiddenCount })}
           </span>
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );

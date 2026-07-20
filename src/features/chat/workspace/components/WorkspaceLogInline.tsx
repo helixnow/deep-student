@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
@@ -310,14 +310,14 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
         <div className="flex items-center gap-1">
           {/* 🆕 复制完整调试信息按钮 */}
           {store && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
               {debugCopied ? <Check size={14} className="text-success" /> : <Bug size={14} />}
-            </NotionButton>
+            </DsButton>
           )}
           {/* 复制日志按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyLog(); }} aria-label={t('workspace.log.copy')} title={t('workspace.log.copy')}>
+          <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyLog(); }} aria-label={t('workspace.log.copy')} title={t('workspace.log.copy')}>
             {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-          </NotionButton>
+          </DsButton>
           {isExpanded ? (
             <CaretUp size={16} className="text-muted-foreground" />
           ) : (

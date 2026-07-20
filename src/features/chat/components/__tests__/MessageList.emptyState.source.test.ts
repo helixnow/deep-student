@@ -44,10 +44,20 @@ describe('MessageList empty state source guards', () => {
     expect(source).not.toContain(`defaultValue: '${oldWorkspaceHintText}'`);
     expect(source).not.toContain("defaultValue: '查看建议起点'");
     expect(source).not.toContain('<Sparkles');
-    expect(source).not.toContain('<NotionButton');
+    expect(source).not.toContain('<DsButton');
     expect(source).not.toContain(`messageList.empty.${oldWorkspaceHintKey}`);
     expect(source).not.toContain(`messageList.empty.${oldShowSuggestionsKey}`);
     expect(emptyBlock).not.toContain("const starterPrompt = t('messageList.empty.suggestion2');");
+  });
+
+  it('never renders suggestion prompt chips in the empty state (removed by product decision)', () => {
+    const source = readSource(messageListPath);
+    const emptyStateShellSource = readSource(threadEmptyStateShellPath);
+
+    for (const forbidden of ['thread-empty-suggestions', 'messageList.empty.suggestion', 'DEFAULT_SUGGESTION_KEYS']) {
+      expect(source).not.toContain(forbidden);
+      expect(emptyStateShellSource).not.toContain(forbidden);
+    }
   });
 
   it('passes only real group names into the empty state and keeps ungrouped sessions generic', () => {

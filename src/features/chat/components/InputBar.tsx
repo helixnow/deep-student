@@ -11,7 +11,7 @@ import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { PaperPlaneRight, Square, CircleNotch, Paperclip } from '@phosphor-icons/react';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useSessionStatus, useInputValue, useCanSend, useAttachments } from '../hooks/useChatStore';
@@ -188,7 +188,7 @@ export const InputBar: React.FC<InputBarProps> = ({
             // 使用 children 模式，不显示 DropZone
             className="flex-shrink-0"
           >
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -203,7 +203,7 @@ export const InputBar: React.FC<InputBarProps> = ({
               title={t('inputBar.addAttachment')}
             >
               <Paperclip size={20} />
-            </NotionButton>
+            </DsButton>
           </AttachmentUploader>
         )}
 
@@ -232,7 +232,7 @@ export const InputBar: React.FC<InputBarProps> = ({
         </div>
 
         {/* 发送/停止按钮 */}
-        <NotionButton
+        <DsButton
           variant={isStreaming ? 'danger' : 'primary'}
           size="icon"
           iconOnly
@@ -256,7 +256,7 @@ export const InputBar: React.FC<InputBarProps> = ({
           ) : (
             <PaperPlaneRight size={20} className="ml-0.5" />
           )}
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 快捷键提示 */}

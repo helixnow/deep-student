@@ -76,7 +76,7 @@ describe('SessionGroupActions', () => {
   it('uses the study compose icon for grouped new session quick actions', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionGroupActions.tsx'), 'utf-8');
     const newSessionButton = source.match(
-      /aria-label=\{newSessionInGroupLabel\}[\s\S]*?<\/NotionButton>/
+      /aria-label=\{newSessionInGroupLabel\}[\s\S]*?<\/DsButton>/
     )?.[0] ?? '';
 
     expect(source).toContain("import { CommonTooltip } from '@/components/shared/CommonTooltip';");

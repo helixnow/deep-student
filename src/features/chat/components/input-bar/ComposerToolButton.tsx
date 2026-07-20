@@ -15,7 +15,7 @@
 import * as React from 'react';
 import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
 export interface ComposerToolButtonProps {
@@ -44,7 +44,7 @@ export interface ComposerToolButtonProps {
 }
 
 // React.memo：输入栏每个按键都会重渲染，工具按钮 props 稳定时跳过
-// NotionButton + Tooltip 子树的重复协调
+// DsButton + Tooltip 子树的重复协调
 export const ComposerToolButton: React.FC<ComposerToolButtonProps> = React.memo(({
   icon: IconComponent,
   label,
@@ -65,7 +65,7 @@ export const ComposerToolButton: React.FC<ComposerToolButtonProps> = React.memo(
   const isPressed = ariaPressed ?? active;
 
   const button = (
-    <NotionButton
+    <DsButton
       data-testid={dataTestId}
       variant="ghost"
       size="icon"
@@ -128,7 +128,7 @@ export const ComposerToolButton: React.FC<ComposerToolButtonProps> = React.memo(
           />
         ) : null}
       </span>
-    </NotionButton>
+    </DsButton>
   );
 
   return (

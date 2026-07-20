@@ -15,7 +15,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -355,7 +355,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
         >
           {isSelected && <Check size={12} />}
         </button>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => handleToggleModel(option)}
@@ -400,11 +400,11 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           <div className={cn('w-full text-foreground break-all', isMobile ? 'text-ui leading-4' : 'text-xs leading-4')}>
             {option.model || option.name}
           </div>
-        </NotionButton>
+        </DsButton>
         {/* 设为默认按钮 - 仅对非默认模型显示，hover 时显示 */}
         {!isDefault && (
           <CommonTooltip content={t('chat_host:model_panel.set_as_default')} position="left">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -422,7 +422,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
               aria-label={t('chat_host:model_panel.set_as_default')}
             >
               <PushPin size={12} />
-            </NotionButton>
+            </DsButton>
           </CommonTooltip>
         )}
       </div>
@@ -476,7 +476,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             {/* 右侧：图标按钮 */}
             <div className="flex items-center gap-1">
               {isRetryMode && onRetry && (
-                <NotionButton
+                <DsButton
                   variant="primary"
                   size="sm"
                   onClick={() => {
@@ -488,11 +488,11 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                 >
                   <ArrowCounterClockwise size={14} />
                   {t('chatV2:modelRetry.retry')}
-                </NotionButton>
+                </DsButton>
               )}
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} title={t('common:actions.cancel')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')} title={t('common:actions.cancel')}>
                 <X size={16} />
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
 
@@ -507,7 +507,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
               ? t('chatV2:modelMention.selectedCount', { count: selectedModels.length })
               : t('chatV2:modelRetry.hint')}
           </span>
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={() => {
@@ -519,7 +519,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           >
             <ArrowCounterClockwise size={14} />
             {t('chatV2:modelRetry.retry')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 

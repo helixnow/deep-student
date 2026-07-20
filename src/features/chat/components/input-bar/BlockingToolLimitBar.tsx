@@ -8,7 +8,7 @@
 import React, { useCallback, useState } from 'react';
 import { Warning, Play, CircleNotch } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { BlockingInteraction } from '../../core/types/store';
 
 type ToolLimitInteraction = Extract<BlockingInteraction, { kind: 'tool_limit' }>;
@@ -42,7 +42,7 @@ export const BlockingToolLimitBar: React.FC<BlockingToolLimitBarProps> = React.m
         </span>
       </div>
       {interaction.onContinue && (
-        <NotionButton
+        <DsButton
           variant="primary"
           size="sm"
           onClick={handleContinue}
@@ -60,7 +60,7 @@ export const BlockingToolLimitBar: React.FC<BlockingToolLimitBarProps> = React.m
               <span className="ml-1.5">{t('tool_limit.continue')}</span>
             </>
           )}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );

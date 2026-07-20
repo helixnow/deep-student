@@ -14,7 +14,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { Plus, CircleNotch, WarningCircle, ArrowClockwise, WifiSlash } from '@phosphor-icons/react';
 import { AgentCard } from './AgentCard';
@@ -161,7 +161,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
         <p className="text-xs text-muted-foreground text-center max-w-[200px]">
           {error}
         </p>
-        <NotionButton
+        <DsButton
           variant="outline"
           size="sm"
           onClick={() => handleRefresh()}
@@ -169,7 +169,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
         >
           <ArrowClockwise size={12} className="mr-1" />
           {t('chatV2:workspace.retry', '重试')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
@@ -248,7 +248,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                 {t('chatV2:workspace.offlineTag', '离线')}
               </span>
             )}
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="h-6 px-2 text-xs"
@@ -261,7 +261,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                 <ArrowClockwise size={12} className="mr-1" />
               )}
               {t('chatV2:workspace.refresh', '同步')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
         {/* 🆕 Worker 聚合状态行 */}
@@ -299,7 +299,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
           <h4 className="text-xs font-medium text-muted-foreground">
             {t('chatV2:workspace.workers', 'Worker')} ({workerAgents.length})
           </h4>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="h-6 px-2 text-xs"
@@ -314,7 +314,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
               )}
             />
             {t('chatV2:workspace.addAgent', '添加')}
-          </NotionButton>
+          </DsButton>
         </div>
         {/* 内联展开的创建 Worker 卡片（原 CreateAgentDialog 模态框） */}
         {showCreateAgent && (
@@ -346,7 +346,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                 <p className="text-xs text-muted-foreground">
                   {t('chatV2:workspace.noWorkers', '暂无 Worker')}
                 </p>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="mt-1.5 h-6 px-2 text-xs text-primary"
@@ -354,7 +354,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
                 >
                   <Plus size={12} className="mr-1" />
                   {t('chatV2:workspace.addAgent', '添加')}
-                </NotionButton>
+                </DsButton>
               </div>
             )}
           </div>

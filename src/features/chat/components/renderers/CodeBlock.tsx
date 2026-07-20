@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { Copy, Check, Plus, Minus, ArrowCounterClockwise, Warning } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -195,9 +195,9 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
         <span className="mermaid-error-title">
           {t('codeBlock.renderFailed')}
         </span>
-        <NotionButton variant="ghost" size="sm" className="mermaid-error-reset" onClick={onReset}>
+        <DsButton variant="ghost" size="sm" className="mermaid-error-reset" onClick={onReset}>
           {t('codeBlock.retry')}
-        </NotionButton>
+        </DsButton>
       </div>
       <div className="mermaid-error-message">
         {error || t('codeBlock.unknownError')}
@@ -710,18 +710,18 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     <div className="code-block-header">
       <span className="code-block-lang">{language}</span>
       <div className="code-block-actions">
-        <NotionButton variant="ghost" size="sm" className="code-block-copy" onClick={handleCopy}>
+        <DsButton variant="ghost" size="sm" className="code-block-copy" onClick={handleCopy}>
           <IconSwap
             active={copied}
             a={<Copy size={14} />}
             b={<Check size={14} />}
           />
           <span>{copied ? t('codeBlock.copied') : t('codeBlock.copy')}</span>
-        </NotionButton>
+        </DsButton>
 
         {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml) && (
           (renderedSvg || htmlPreviewContent) ? (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="code-block-copy"
@@ -730,10 +730,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
             >
               <span style={{ marginRight: 4 }}>{showRendered ? '</>' : '◎'}</span>
               <span>{showRendered ? t('codeBlock.source') : t('codeBlock.render')}</span>
-            </NotionButton>
+            </DsButton>
           ) : (
             <>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="code-block-copy"
@@ -753,10 +753,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
               >
                 <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
                 <span>{running && canRunMermaid ? t('codeBlock.running') : t('codeBlock.run')}</span>
-              </NotionButton>
+              </DsButton>
 
               {canRenderHtml && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   className="code-block-copy"
@@ -765,7 +765,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
                   title={t('codeBlock.openSandbox')}
                 >
                   <span>{t('codeBlock.openSandbox')}</span>
-                </NotionButton>
+                </DsButton>
               )}
             </>
           )
@@ -773,18 +773,18 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
         {(renderedSvg && showRendered && !htmlPreviewContent) && (
           <>
-            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut')} title={t('codeBlock.zoomOut')}>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut')} title={t('codeBlock.zoomOut')}>
               <Minus size={14} />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn')} title={t('codeBlock.zoomIn')}>
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn')} title={t('codeBlock.zoomIn')}>
               <Plus size={14} />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleFitView} aria-label={t('codeBlock.fitView')} title={t('codeBlock.fitView')}>
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleFitView} aria-label={t('codeBlock.fitView')} title={t('codeBlock.fitView')}>
               <span style={{ fontSize: 12 }}>⤢</span>
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView')} title={t('codeBlock.resetView')}>
+            </DsButton>
+            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView')} title={t('codeBlock.resetView')}>
               <ArrowCounterClockwise size={14} />
-            </NotionButton>
+            </DsButton>
           </>
         )}
       </div>

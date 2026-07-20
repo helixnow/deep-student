@@ -19,14 +19,16 @@ mod desktop {
     pub const WINDOW_LABEL: &str = "quick-assistant";
     const SHOWN_EVENT: &str = "quick-assistant://shown";
     const ENABLED_KEY: &str = "quick_assistant.enabled";
-    const BOUNDS_KEY: &str = "quick_assistant.window_bounds";
+    // v2：默认/最小尺寸整体缩小后换 key，让所有用户回到新的紧凑默认尺寸，
+    // 而不是永远恢复旧版持久化下来的大窗口。
+    const BOUNDS_KEY: &str = "quick_assistant.window_bounds.v2";
 
-    const DEFAULT_WIDTH: f64 = 520.0;
-    const DEFAULT_HEIGHT: f64 = 420.0;
-    const MIN_WIDTH: f64 = 460.0;
-    const MIN_HEIGHT: f64 = 360.0;
-    const MAX_WIDTH: f64 = 860.0;
-    const MAX_HEIGHT: f64 = 760.0;
+    const DEFAULT_WIDTH: f64 = 480.0;
+    const DEFAULT_HEIGHT: f64 = 384.0;
+    const MIN_WIDTH: f64 = 400.0;
+    const MIN_HEIGHT: f64 = 320.0;
+    const MAX_WIDTH: f64 = 800.0;
+    const MAX_HEIGHT: f64 = 720.0;
 
     /// 呼出小窗前主窗口是否处于聚焦状态；隐藏小窗时据此决定是否把焦点还给系统。
     static MAIN_WAS_FOCUSED: AtomicBool = AtomicBool::new(false);

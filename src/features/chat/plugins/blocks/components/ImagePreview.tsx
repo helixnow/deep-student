@@ -10,7 +10,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import './image-preview.css';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { openUrl } from '@/utils/urlOpener';
 import { fileManager } from '@/utils/fileManager';
 import {
@@ -160,7 +160,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             {width && height ? `${width} × ${height}` : alt || ''}
           </span>
           <div className="flex items-center gap-1">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -169,8 +169,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               title={t('blocks.imageGen.download')}
             >
               <Download size={16} />
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -179,8 +179,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               title={t('blocks.imageGen.openInNewTab')}
             >
               <ArrowSquareOut size={16} />
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -189,7 +189,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               title={t('blocks.imageGen.collapse')}
             >
               <ArrowsIn size={16} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
 
@@ -251,9 +251,9 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           )}
         >
           <div className="flex items-center gap-2 text-white pointer-events-auto">
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.expandInline')} title={t('blocks.imageGen.expandInline')}>
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.expandInline')} title={t('blocks.imageGen.expandInline')}>
               <ArrowsOut size={20} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       )}

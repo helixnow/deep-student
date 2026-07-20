@@ -2,7 +2,7 @@ import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Warning, ArrowClockwise } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { reportFrontendError } from '@/logging/errorReporter';
 
 interface ChatErrorBoundaryProps {
@@ -65,10 +65,10 @@ const ErrorFallback: React.FC<ErrorFallbackProps> = ({ error, title, onRetry, re
         {errorMessage || t('errorBoundary.unknownErrorRefresh')}
       </p>
       {onRetry && (
-        <NotionButton variant="primary" size="sm" onClick={onRetry} className="bg-primary text-primary-foreground hover:bg-primary/90">
+        <DsButton variant="primary" size="sm" onClick={onRetry} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <ArrowClockwise size={16} />
           {retryLabel ?? t('errorBoundary.retry')}
-        </NotionButton>
+        </DsButton>
       )}
       {import.meta.env.DEV && errorStack && (
         <details className="mt-4 text-left w-full max-w-lg">

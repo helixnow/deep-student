@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { CheckCircle, XCircle, Warning, CircleNotch, Clock, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 export interface PlanGateRequestData {
   planId: string;
@@ -224,7 +224,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
               : argsText.slice(0, ARGS_TRUNCATE_THRESHOLD) + ' …'}
           </pre>
           {argsNeedTruncation && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setIsArgsExpanded((prev) => !prev)}
@@ -241,14 +241,14 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
                   {t('approval.expandArgs', '展开')}
                 </>
               )}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}
 
       {/* Row 4: 操作按钮（层级对齐审批栏：拒绝 outline destructive，确认 success 实底） */}
       <div className="flex items-center justify-end gap-2">
-        <NotionButton
+        <DsButton
           ref={rejectButtonRef}
           variant="outline"
           size="sm"
@@ -259,8 +259,8 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
         >
           <XCircle size={14} className="mr-1" aria-hidden="true" />
           {t('authority.planGate.reject', '拒绝')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           size="sm"
           disabled={busy || timedOut}
           onClick={() => void respond(true)}
@@ -273,7 +273,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
             <CheckCircle size={14} className="mr-1" aria-hidden="true" />
           )}
           {t('authority.planGate.approve', '确认执行')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

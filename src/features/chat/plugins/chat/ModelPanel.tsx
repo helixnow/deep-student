@@ -12,7 +12,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Star, PushPin, Sparkle } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -398,14 +398,14 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       {!defaultModelId && !loading && (
         <div className="rounded-md border border-warning/70 bg-warning/10 px-3 py-2 text-xs text-warning">
           <div>{t('chat_host:model_panel.missing_default_hint')}</div>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="mt-2 h-7 px-2 text-xs"
             onClick={openModelSettings}
           >
             {t('chat_host:model_panel.go_config_model2')}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -449,7 +449,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
 
       {selectedModelId && selectedModelId !== defaultModelId && (
         <ComposerPanel.Footer divided>
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             className="w-full justify-center gap-2 text-xs"
@@ -460,7 +460,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
             {savingDefault
               ? t('common:saving')
               : t('chat_host:model_panel.set_as_default')}
-          </NotionButton>
+          </DsButton>
         </ComposerPanel.Footer>
       )}
     </ComposerPanel.Root>

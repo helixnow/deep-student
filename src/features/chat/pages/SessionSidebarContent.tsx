@@ -16,7 +16,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import {
   AppMenu,
@@ -113,7 +113,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const isSearching = normalizedSearchQuery.length > 0;
 
-  // 分组归档行内确认（替代 NotionAlertDialog），6s 无操作自动复位
+  // 分组归档行内确认（替代 DsAlertDialog），6s 无操作自动复位
   const [pendingArchiveGroupId, setPendingArchiveGroupId] = React.useState<string | null>(null);
   const archiveConfirmTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearArchiveConfirm = React.useCallback(() => {
@@ -364,7 +364,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             <span className="flex items-center gap-1.5 text-[color:var(--sidebar-muted)]">
               {/* 触屏无 hover：pointer-coarse 下常显；按钮用伪元素扩大命中区 */}
               <span className="flex items-center opacity-0 transition-opacity duration-150 ease-out focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-100">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -377,7 +377,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   }}
                 >
                   <Plus size={12} />
-                </NotionButton>
+                </DsButton>
               </span>
               <CaretRight
                 size={12}
@@ -393,7 +393,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center">
             <AppMenu>
               <AppMenuTrigger asChild>
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -402,7 +402,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   title={t('page.groupActions')}
                 >
                   <DotsThree size={18} className="text-muted-foreground/80" />
-                </NotionButton>
+                </DsButton>
               </AppMenuTrigger>
               <AppMenuContent align="end" width={200}>
                 <AppMenuGroup>
@@ -450,7 +450,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             </span>
             <div className="flex shrink-0 items-center gap-1">
               {/* 破坏性操作确认按钮：移动/平板保持较大触控目标，桌面 lg 起紧凑 */}
-              <NotionButton
+              <DsButton
                 variant="warning"
                 size="sm"
                 className="!h-9 lg:!h-7 !px-2 text-[12px]"
@@ -460,8 +460,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 }}
               >
                 {t('page.archiveGroupConfirm', '确认归档')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -470,7 +470,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 onClick={clearArchiveConfirm}
               >
                 <X size={13} />
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
         )}
@@ -562,7 +562,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             <div className="min-w-0 flex-1">
               {renderSectionLabel(t('page.studySessions', '课题'), unified)}
             </div>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -572,7 +572,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               className="!h-11 !w-11 -my-2.5 shrink-0 text-muted-foreground/80"
             >
               <Plus size={15} />
-            </NotionButton>
+            </DsButton>
           </div>
           <div className="space-y-0.5">
             {visibleGroups.length > 0 ? (
@@ -617,7 +617,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 activeGroupId === 'ungrouped',
                 unified,
                 hasMoreSessions ? (
-                  <NotionButton
+                  <DsButton
                     variant="ghost"
                     size="sm"
                     onClick={() => { void loadMoreSessions(); }}
@@ -626,7 +626,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   >
                     {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
                     <span>{t('page.loadMore')}</span>
-                  </NotionButton>
+                  </DsButton>
                 ) : undefined,
               )}
             </div>
@@ -681,7 +681,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         )}
       />
       {searchQuery && (
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -690,7 +690,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           onClick={() => handleSearchChange('')}
         >
           <X size={12} />
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );

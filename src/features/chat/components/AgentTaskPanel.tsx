@@ -4,7 +4,7 @@
  * 附着在 chat 输入栏上方，非阻塞式。展开即见全部 steps。
  * 设计语义对齐 composer shell，颜色随主题 palette 联动。
  *
- * 结构化分区（对标 Codex 任务侧栏）：
+ * 结构化分区（任务侧栏）：
  * 1. 计划 — todo steps 列表（completed/failed/running 可展开查看结果）
  * 2. 来源 — 只显示计数与「在消息中查看」提示（详情收敛到消息级来源面板）
  * 3. 本地 — runtime 环境状态 + 读/写/命令活动（危险操作 destructive 标注）
@@ -43,7 +43,7 @@ import {
 import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { openResource } from '@/dstu/openResource';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -330,7 +330,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               'bg-transparent hover:bg-[color:var(--interactive-hover)]',
             )}
           >
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => setExpanded(true)}
@@ -353,7 +353,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   : title || (has ? t('agentPanel.plan') : t('agentPanel.environment'))}
               </span>
               <CaretDown size={10} className="text-[color:var(--text-muted)]" />
-            </NotionButton>
+            </DsButton>
 
             {has && (
               <>
@@ -415,7 +415,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                     {done}/{total}
                   </span>
                 )}
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   onClick={() => setExpanded(false)}
                   // ★ 触控目标：18px 视觉不变，触屏伪元素扩命中区到 ≥44px
@@ -424,7 +424,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   aria-expanded={true}
                 >
                   <CaretUp size={10} />
-                </NotionButton>
+                </DsButton>
               </div>
               {/* ★ 高-2：分区内容统一在此容器内滚动（头部保持固定） */}
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">

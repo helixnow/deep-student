@@ -29,19 +29,61 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuBranch).not.toContain('onClick={onToggleThinking}');
   });
 
-  it('orders reasoning depth choices before the off action', () => {
-    const menuGroupStart = inputBarSource.indexOf("label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}");
-    const menuGroupEnd = inputBarSource.indexOf('</AppMenuGroup>', menuGroupStart);
+  it('renders reasoning depth as a slider with an off stop when thinking can be disabled', () => {
+    const menuGroupStart = inputBarSource.indexOf(') : hasThinkingDepthMenu ? (');
+    const menuGroupEnd = inputBarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
     const menuGroup = inputBarSource.slice(menuGroupStart, menuGroupEnd);
 
     expect(menuGroupStart).toBeGreaterThan(-1);
     expect(menuGroupEnd).toBeGreaterThan(menuGroupStart);
-    expect(menuGroup.indexOf('thinkingDepthOptions.map')).toBeLessThan(
-      menuGroup.indexOf("<AppMenuSeparator />")
-    );
-    expect(menuGroup.indexOf("<AppMenuSeparator />")).toBeLessThan(
-      menuGroup.indexOf("t('chatV2:inputBar.thinkingOff', '关闭')")
-    );
+    expect(menuGroup).toContain('<ThinkingDepthSlider');
+    expect(menuGroup).toContain('options={thinkingDepthOptions}');
+    expect(menuGroup).toContain('value={thinkingDepthValue}');
+    expect(menuGroup).toContain('enabled={!!enableThinking}');
+    expect(menuGroup).toContain("offLabel={t('chatV2:inputBar.thinkingOff', '关闭')}");
+    expect(menuGroup).toContain("efficientLabel={t('chatV2:inputBar.thinkingDepthEfficient', '更高效')}");
+    expect(menuGroup).toContain("smartLabel={t('chatV2:inputBar.thinkingDepthSmart', '更智能')}");
+  });
+
+  it('keeps a menu-item fallback without an off action for forced-thinking models', () => {
+    const menuGroupStart = inputBarSource.indexOf(') : hasThinkingDepthMenu ? (');
+    const menuGroupEnd = inputBarSource.indexOf(') : hasThinkingToggleMenu ? (', menuGroupStart);
+    const menuGroup = inputBarSource.slice(menuGroupStart, menuGroupEnd);
+
+    expect(menuGroup).toContain('thinkingCanDisable ? (');
+    // 滑块必带"关闭"档；不可关闭推理的模型退回菜单列表且不渲染关闭项
+    const fallbackStart = menuGroup.indexOf('thinkingDepthOptions.map');
+    expect(fallbackStart).toBeGreaterThan(-1);
+    const fallback = menuGroup.slice(fallbackStart);
+    expect(fallback).not.toContain('<AppMenuSeparator />');
+    expect(fallback).not.toContain("t('chatV2:inputBar.thinkingOff', '关闭')");
+  });
+
+  it('anchors the reasoning menu to the stable right edge while depth labels change', () => {
+    const triggerStart = inputBarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
+    const contentStart = inputBarSource.indexOf('<AppMenuContent', triggerStart);
+    const contentEnd = inputBarSource.indexOf('>', contentStart);
+    const menuContent = inputBarSource.slice(contentStart, contentEnd);
+
+    expect(triggerStart).toBeGreaterThan(-1);
+    expect(contentStart).toBeGreaterThan(triggerStart);
+    expect(menuContent).toContain('align="end"');
+  });
+
+  it('uses the transitions-dev text state swap for changes in the trigger label', () => {
+    const triggerStart = inputBarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
+    const triggerEnd = inputBarSource.indexOf('</button>', triggerStart);
+    const triggerSource = inputBarSource.slice(triggerStart, triggerEnd);
+
+    expect(triggerStart).toBeGreaterThan(-1);
+    expect(triggerEnd).toBeGreaterThan(triggerStart);
+    expect(inputBarSource).toContain("import { TextSwap } from '@/components/ui/TextSwap';");
+    expect(inputBarSource).toContain('function ResizingThinkingLabel');
+    expect(triggerSource).toContain('<ResizingThinkingLabel');
+    expect(triggerSource).toContain('text={thinkingRuntimeTriggerLabel}');
+    expect(inputBarSource).toContain("className=\"t-resize inline-block whitespace-nowrap\"");
+    expect(inputBarSource).toContain('style={labelWidth ? { width: labelWidth } : undefined}');
+    expect(triggerSource).not.toContain('max-w-[5.75rem]');
   });
 
   it('adds the runtime model selector to the thinking runtime menu', () => {
@@ -189,7 +231,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
       'utf-8'
     );
     const buttonStart = plusMenuSource.indexOf('data-testid="btn-toggle-attachments"');
-    const buttonEnd = plusMenuSource.indexOf('</NotionButton>', buttonStart);
+    const buttonEnd = plusMenuSource.indexOf('</DsButton>', buttonStart);
     const attachmentButton = plusMenuSource.slice(buttonStart, buttonEnd);
 
     expect(buttonStart).toBeGreaterThan(-1);

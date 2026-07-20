@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -186,7 +186,7 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
   return (
     <div className="border-t border-border/30">
       {/* 紧凑头部行 */}
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={onToggle}
@@ -231,7 +231,7 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
             )}
           </span>
         )}
-      </NotionButton>
+      </DsButton>
 
       {/* 嵌入聊天视图 - 无额外边框；高度用视口相对值封顶，避免小屏嵌套滚动超出可视范围 */}
       {!isCollapsed && (
@@ -550,7 +550,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
         )}
         <div className="flex-1" />
         {status === 'sleeping' && (
-          <NotionButton
+          <DsButton
             variant="outline"
             size="sm"
             onClick={(e) => {
@@ -561,7 +561,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
             className="bg-white dark:bg-gray-800"
           >
             {isWaking ? <CircleNotch size={12} className="animate-spin" /> : t('sleep.wakeButton')}
-          </NotionButton>
+          </DsButton>
         )}
         {isExpanded ? (
           <CaretDown size={16} className="text-muted-foreground" />

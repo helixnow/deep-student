@@ -1025,38 +1025,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
           <ThreadEmptyStateShell
             title={emptyStatePrimaryAction}
             contentClassName={isSmallScreen ? 'py-10' : 'py-16'}
-          >
-            {/* P2-15: 移动端空态建议 chip——点按填入输入框（不自动发送），降低首条消息门槛 */}
-            {isSmallScreen && (
-              <div className="flex w-full max-w-md flex-col gap-2" data-slot="thread-empty-suggestions">
-                {(['suggestion1', 'suggestion2', 'suggestion5'] as const).map((suggestionKey) => {
-                  const suggestionText = t(`messageList.empty.${suggestionKey}`);
-                  return (
-                    // eslint-disable-next-line ds-components/no-native-button -- 空态建议 chip：整行可点、文本左对齐两行截断，共享按钮组件的居中单行排版不适配
-                    <button
-                      key={suggestionKey}
-                      type="button"
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('CHAT_V2_SET_INPUT', {
-                          detail: { content: suggestionText, autoSend: false },
-                        }));
-                      }}
-                      className={cn(
-                        'min-h-11 w-full rounded-2xl border border-[color:var(--composer-panel-border,hsl(var(--border)))]',
-                        'bg-[color:var(--surface-root,hsl(var(--background)))] px-4 py-2.5 text-left',
-                        'text-ui leading-relaxed text-muted-foreground',
-                        'transition-colors duration-150 hover:text-foreground',
-                        'active:bg-[var(--interactive-hover)]',
-                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30'
-                      )}
-                    >
-                      <span className="line-clamp-2">{suggestionText}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </ThreadEmptyStateShell>
+          />
         </div>
       </div>
     );

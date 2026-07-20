@@ -21,7 +21,7 @@ describe('chat v2 send button contract', () => {
 
   it('uses the study-ui button shell with black filled active and stop states', () => {
     const stopButtonStart = inputBarSource.indexOf('data-testid="btn-stop"');
-    const stopButtonEnd = inputBarSource.indexOf('</NotionButton>', stopButtonStart);
+    const stopButtonEnd = inputBarSource.indexOf('</DsButton>', stopButtonStart);
     const stopButtonSource = inputBarSource.slice(stopButtonStart, stopButtonEnd);
 
     expect(stopButtonStart).toBeGreaterThan(-1);

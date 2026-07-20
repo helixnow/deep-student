@@ -14,7 +14,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -379,7 +379,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={handleIgnore}
@@ -387,8 +387,8 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               className="text-muted-foreground hover:text-foreground"
             >
               {t('askUser.ignore')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="primary"
               size="sm"
               onClick={handlePrimarySubmit}
@@ -399,7 +399,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               )}
             >
               <span>{t('askUser.submit')}</span>
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       </div>

@@ -10,7 +10,7 @@ import React, { useCallback, useState } from 'react';
 import { Warning, Play, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
@@ -121,7 +121,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
         </p>
         
         {onContinue && (
-          <NotionButton
+          <DsButton
             variant="primary"
             size="sm"
             onClick={handleContinue}
@@ -139,7 +139,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
                 {t('chatV2:tool_limit.continue')}
               </>
             )}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </div>

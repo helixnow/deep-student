@@ -20,7 +20,7 @@ import {
   WarningCircle,
   XCircle,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { TextShimmer } from '../../components/ui/TextShimmer';
 import { cn } from '@/utils/cn';
@@ -490,7 +490,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
 
         <div className="flex flex-shrink-0 items-center gap-2">
           {canOpenTarget && (
-            <NotionButton
+            <DsButton
               type="button"
               variant="outline"
               size="sm"
@@ -502,7 +502,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             >
               <ArrowSquareOut size={16} />
               <span className="hidden sm:inline">{t('blocks.workbenchOps.openTarget')}</span>
-            </NotionButton>
+            </DsButton>
           )}
 
           <span
@@ -688,7 +688,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             <WarningCircle size={12} className="mt-0.5 flex-shrink-0 text-warning" />
             {t('blocks.workbenchOps.undoHighRisk')}
           </p>
-          <NotionButton
+          <DsButton
             type="button"
             variant="default"
             size="sm"
@@ -728,7 +728,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             ) : (
               t('blocks.workbenchOps.undo')
             )}
-          </NotionButton>
+          </DsButton>
           {undoToken && undoState !== 'reverted' && (
             <span className="self-center text-[11px] text-muted-foreground/70">
               {persistentUndo

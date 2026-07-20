@@ -16,7 +16,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   WarningCircle,
   ArrowCounterClockwise,
@@ -199,7 +199,7 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
       {/* 流式输出（如 stdout） */}
       {content && (
         <div className="mt-2">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
@@ -207,7 +207,7 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
           >
             {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
             <span>{t('blocks.mcpTool.streamingOutput')}</span>
-          </NotionButton>
+          </DsButton>
 
           {isExpanded && (
             <pre
@@ -261,7 +261,7 @@ const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
           )}
         </div>
         {charCount > 0 && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
@@ -269,7 +269,7 @@ const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
             aria-label={t('blocks.mcpTool.streamingOutput')}
           >
             {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 
@@ -333,7 +333,7 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
               {localizedError}
             </div>
             {isRuntimeBlocked && (
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={openToolPermissionSettings}
@@ -341,7 +341,7 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
               >
                 <ArrowSquareOut size={11} />
                 {t('blocks.mcpTool.openRuntimeSettings')}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
         </div>
@@ -350,7 +350,7 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
       {/* 重试按钮 */}
       {showRetry && (
         <div className="mt-2">
-          <NotionButton
+          <DsButton
             variant={isRetryDisabled ? 'default' : 'outline'}
             size="sm"
             onClick={onRetry}
@@ -359,7 +359,7 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
           >
             <ArrowCounterClockwise size={14} />
             <span>{t('blocks.mcpTool.retry')}</span>
-          </NotionButton>
+          </DsButton>
           {isRetryDisabled && (
             <div className="mt-1 text-xs text-muted-foreground">
               {retryDisabledText}
@@ -709,7 +709,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             const DocIcon = getDocToolFileIcon(toolName);
             return (
               <div className="mt-2 flex items-center gap-2">
-                <NotionButton
+                <DsButton
                   variant="outline"
                   size="sm"
                   onClick={() => {
@@ -726,7 +726,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                   <DocIcon size={12} />
                   <span className="truncate max-w-[200px]">{fileInfo.fileName}</span>
                   <ArrowSquareOut size={10} className="text-muted-foreground shrink-0" />
-                </NotionButton>
+                </DsButton>
               </div>
             );
           })()}
@@ -737,7 +737,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             if (!readInfo) return null;
             const DocIcon = getDocToolFileIcon(toolName);
             return (
-              <NotionButton
+              <DsButton
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -754,7 +754,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                 <DocIcon size={12} />
                 <Eye size={10} />
                 {t('blocks.mcpTool.viewSourceFile')}
-              </NotionButton>
+              </DsButton>
             );
           })()}
 
@@ -763,7 +763,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
             const noteId = extractNoteId(toolOutput, toolInput);
             if (!noteId) return null;
             return (
-              <NotionButton
+              <DsButton
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -775,7 +775,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
               >
                 <ArrowSquareOut size={12} />
                 {t('timeline.noteTool.openNote')}
-              </NotionButton>
+              </DsButton>
             );
           })()}
         </div>

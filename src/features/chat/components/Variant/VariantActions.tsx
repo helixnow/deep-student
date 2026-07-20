@@ -10,7 +10,7 @@
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
@@ -146,9 +146,9 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
   return (
     <AppMenu>
       <AppMenuTrigger asChild>
-        <NotionButton variant="ghost" size="icon" iconOnly disabled={isLoading} className={cn(isLoading && 'opacity-50', className)} aria-label={t('variant.actions')}>
+        <DsButton variant="ghost" size="icon" iconOnly disabled={isLoading} className={cn(isLoading && 'opacity-50', className)} aria-label={t('variant.actions')}>
           <DotsThree size={16} />
-        </NotionButton>
+        </DsButton>
       </AppMenuTrigger>
       <AppMenuContent align="end" width={160}>
         {/* 取消 */}

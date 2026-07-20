@@ -13,7 +13,7 @@ import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, FileText, BookOpen, ClipboardText, Translate, PencilSimple, Folder, Lightning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { ContextRef } from '../../resources/types';
 
 // ============================================================================
@@ -186,9 +186,9 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
               <Icon size={12} weight="bold" className="shrink-0" />
               <span className="truncate max-w-[80px]">{label}</span>
               {!disabled && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={`${t('common:actions.remove')} ${label}`} title={t('common:actions.remove')}>
+                <DsButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={`${t('common:actions.remove')} ${label}`} title={t('common:actions.remove')}>
                   <X size={10} weight="bold" />
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           );
@@ -196,9 +196,9 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
 
         {/* 清空所有按钮 */}
         {displayRefs.length > 1 && !disabled && (
-          <NotionButton variant="ghost" size="sm" onClick={onClearAll} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title={t('chatV2:contextRef.clearAll')}>
+          <DsButton variant="ghost" size="sm" onClick={onClearAll} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" title={t('chatV2:contextRef.clearAll')}>
             {t('common:actions.clear_all')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     );

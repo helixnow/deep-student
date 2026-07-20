@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
 import {
   FileText,
@@ -52,6 +52,8 @@ export interface MultimodalSourceCardProps {
   onMouseLeave?: React.MouseEventHandler<HTMLDivElement>;
   /** 额外的 CSS 类名 */
   className?: string;
+  /** 内联样式（父级面板注入入场 stagger 变量等） */
+  style?: React.CSSProperties;
 }
 
 // ============================================================================
@@ -115,6 +117,7 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
   onMouseEnter,
   onMouseLeave,
   className,
+  style,
 }, ref) => {
   const { t } = useTranslation(['common', 'chatV2']);
   const [imageLoading, setImageLoading] = useState(true);
@@ -144,6 +147,12 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
     onClick?.(item);
   }, [onClick, item]);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!onClick || e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    onClick(item);
+  }, [item, onClick]);
+
   const handleLocate = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -170,16 +179,19 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
     <div
       ref={ref}
       className={cn(
-        // 与 UnifiedSourcePanel 中的卡片样式保持一致
-        'usp-item-card rounded-lg border bg-card p-2.5 hover:bg-[var(--interactive-hover)] transition-all cursor-default group',
+        // 视觉样式统一走 UnifiedSourcePanel.css 的 .usp-item-card
+        'usp-item-card group',
         !expanded && 'w-56 flex-shrink-0',
-        highlighted && 'shadow-[inset_0_0_0_2px_hsl(var(--primary)),0_10px_15px_-3px_rgb(0_0_0/0.1)]',
+        highlighted && 'usp-citation-pulse',
         className
       )}
+      style={style}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      role="listitem"
+      role={onClick ? 'button' : 'listitem'}
+      tabIndex={onClick ? 0 : undefined}
     >
       {/* 缩略图区域：加载失败时显示占位（图标 + 文案），不整块消失 */}
       {imageSrc && (
@@ -214,17 +226,21 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 overflow-hidden">
           {displayNumber != null && (
-            <span className="flex-shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-semibold">
-              {displayNumber}
-            </span>
+            <span className="usp-item-badge">{displayNumber}</span>
           )}
-          <span className="text-muted-foreground shrink-0">
+          <span className="usp-card-icon shrink-0">
             {getSourceTypeIcon(multimodal?.sourceType)}
           </span>
-          <span className="text-sm font-medium truncate" title={item.title}>{item.title}</span>
+          <span className="usp-card-title text-sm font-medium truncate" title={item.title}>{item.title}</span>
         </div>
         {scorePercent != null && (
-          <span className="usp-item-score">{scorePercent}%</span>
+          <span
+            className="usp-item-score"
+            data-tier={scorePercent >= 75 ? 'high' : scorePercent >= 45 ? 'mid' : 'low'}
+          >
+            <i className="usp-score-dot" aria-hidden />
+            {scorePercent}%
+          </span>
         )}
       </div>
 
@@ -248,20 +264,25 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
       )}
 
       {/* 文本摘要 */}
-      <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 h-8">
+      <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 min-h-8">
         {item.snippet || t('common:chat.sources.multimodal.noSnippet')}
       </div>
 
       {/* 底部操作区 */}
-      <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
-        <span className="text-2xs text-muted-foreground uppercase tracking-wider opacity-70">
+      <div className="flex items-center justify-between gap-2 mt-auto pt-1.5 border-t border-border/50">
+        <span className="usp-card-meta truncate">
           {t('common:chat.sources.groupLabels.multimodal')}
         </span>
         {onLocate && (
-          <NotionButton variant="ghost" size="sm" onClick={handleLocate} className="text-primary !h-6 text-xs">
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleLocate}
+            className="!h-6 text-xs text-primary [@media(pointer:coarse)]:!h-11"
+          >
             <ArrowSquareOut size={12} />
             {locateLabel || t('common:chat.sources.locateKb')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     </div>

@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { X, Copy, ArrowSquareOut, FileText, Download } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from '../features/chat/components/renderers';
@@ -175,9 +175,9 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
             </div>
           </div>
         </div>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!p-2 !rounded-lg hover:bg-[hsl(var(--muted)/0.6)]" aria-label={t('source_preview.close')}>
+        <DsButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!p-2 !rounded-lg hover:bg-[hsl(var(--muted)/0.6)]" aria-label={t('source_preview.close')}>
           <X size={20} className="text-[hsl(var(--muted-foreground))]" />
-        </NotionButton>
+        </DsButton>
       </div>
 
       {/* 文件信息 */}
@@ -198,20 +198,20 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
       {/* 操作按钮 */}
       <div className="p-4 border-b border-[hsl(var(--border))]">
         <div className="flex gap-2 flex-wrap">
-          <NotionButton variant="ghost" size="sm" onClick={handleCopyContent} className={`!px-3 !py-2 text-sm !rounded-lg border ${copyButtonState === 'success' ? 'bg-[hsl(var(--success)/0.18)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.35)] shadow-sm' : 'bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]'}`}>
+          <DsButton variant="ghost" size="sm" onClick={handleCopyContent} className={`!px-3 !py-2 text-sm !rounded-lg border ${copyButtonState === 'success' ? 'bg-[hsl(var(--success)/0.18)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.35)] shadow-sm' : 'bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]'}`}>
             <Copy size={14} />
             {copied ? t('source_preview.copied') : t('source_preview.copy_chunk')}
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton variant="ghost" size="sm" onClick={handleOpenInKnowledgeBase} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--info-bg))] text-[hsl(var(--info))] border-[hsl(var(--info)/0.4)] hover:brightness-95">
+          <DsButton variant="ghost" size="sm" onClick={handleOpenInKnowledgeBase} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--info-bg))] text-[hsl(var(--info))] border-[hsl(var(--info)/0.4)] hover:brightness-95">
             <ArrowSquareOut size={14} />
             {t('source_preview.open_in_kb')}
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton variant="ghost" size="sm" onClick={handleDownload} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]">
+          <DsButton variant="ghost" size="sm" onClick={handleDownload} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--card)/0.65)] text-[hsl(var(--foreground))] border-[hsl(var(--border)/0.55)] hover:bg-[hsl(var(--card)/0.8)]">
             <Download size={14} />
             {t('source_preview.download')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 

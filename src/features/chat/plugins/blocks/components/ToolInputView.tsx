@@ -8,7 +8,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CaretDown, CaretRight, CodeBlock } from '@phosphor-icons/react';
 
 // ============================================================================
@@ -142,12 +142,12 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
   return (
     <div className={cn('tool-input-view', className)}>
       {/* 折叠头部 */}
-      <NotionButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 text-muted-foreground hover:text-foreground">
+      <DsButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 text-muted-foreground hover:text-foreground">
         {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
         <CodeBlock size={12} />
         <span>{t('blocks.mcpTool.input')}</span>
         <span className="text-muted-foreground/60">({paramKeys.length})</span>
-      </NotionButton>
+      </DsButton>
 
       {/* 内容区域 */}
       {isExpanded && (
