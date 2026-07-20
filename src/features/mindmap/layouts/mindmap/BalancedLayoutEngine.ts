@@ -7,6 +7,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../types';
 import type { LayoutCategory, LayoutDirection } from '../../registry/types';
+import type { LayoutBoundsWithMeta } from '../../registry/types';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
 import {
   calculateSubtreeHeight,
@@ -15,7 +16,9 @@ import {
   calculateBounds,
   resolveSubtreeOverlaps,
   recenterParents,
+  normalizeLayoutRoot,
 } from '../../utils/layout/helpers';
+import { compactSiblingSubtrees, isCompactionEnabled } from '../../utils/layout/compactTree';
 import { BaseLayoutEngine, MAX_TREE_DEPTH } from '../base/LayoutEngine';
 
 /** 节点数据类型 */
@@ -81,8 +84,13 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
     let rightHeight = 0;
 
     // 贪心分配：将子树放到累计高度较小的一侧（含间距）
+    // ★ P1 修复：高度相等时不再恒偏左——先比子树数量，再默认右侧
+    //   （对标 XMind：首条分支默认出现在右侧，等高兄弟左右交替）
     for (const item of sorted) {
-      if (rightHeight < leftHeight) {
+      const placeRight =
+        rightHeight < leftHeight ||
+        (rightHeight === leftHeight && rightIndices.length <= leftIndices.length);
+      if (placeRight) {
         const gap = rightIndices.length > 0 ? config.verticalGap : 0;
         rightIndices.push(item.originalIndex);
         rightHeight += item.height + gap;
@@ -115,14 +123,19 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
     config: LayoutConfig = DEFAULT_LAYOUT_CONFIG,
     _direction: LayoutDirection = this.defaultDirection
   ): LayoutResult {
+    // 入口防御：children 缺失时补空数组
+    root = normalizeLayoutRoot(root);
     const nodes: Node<BalancedNodeData>[] = [];
     const edges: Edge[] = [];
     const mindmapNodeById = new Map<string, MindMapNode>();
-    
+    // 深度超限截断标记（随 bounds 返回，供上层提示）
+    let truncated = false;
+
     // ★ P0 修复：添加深度限制，防止栈溢出
     const collectMindMapNode = (current: MindMapNode, depth: number = 0) => {
       if (depth > MAX_TREE_DEPTH) {
         console.warn(`[BalancedLayoutEngine] Tree depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return;
       }
       mindmapNodeById.set(current.id, current);
@@ -169,6 +182,7 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
           maxY: rootHeight,
           width: rootWidth,
           height: rootHeight,
+          ...(truncated ? { truncated: true } : {}),
         },
       };
     }
@@ -223,6 +237,7 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
       // 深度限制检查
       if (level > MAX_TREE_DEPTH) {
         console.warn(`[BalancedLayoutEngine] Layout depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return config.nodeHeight;
       }
       
@@ -252,7 +267,8 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
           level,
           collapsed: !!node.collapsed,
           completed: !!node.completed,
-          hasChildren: hasChildren && !node.collapsed,
+          // 折叠节点也要保留 hasChildren=true，展开按钮/子数徽章依赖它（与 Tree/OrgChart 语义一致）
+          hasChildren,
           childCount: this.countAllDescendants(node),
           nodeId: node.id,
           side,
@@ -313,20 +329,29 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
       layoutSide(right, 'right', rightX);
     }
 
-    // 基于实测高度的子树碰撞消除
     const nodesById = new Map(nodes.map(node => [node.id, node]));
+    // 基于实测高度的子树碰撞消除
     resolveSubtreeOverlaps(root, nodesById, config, true);
     recenterParents(root, nodesById, config, true);
+    // 轮廓紧凑（须在 resolve/recenter 之后）：按子树实际轮廓上提同侧兄弟，
+    // 减少「深窄子树旁的大片空白」；左右分支分组独立，不产生新重叠
+    if (isCompactionEnabled(config)) {
+      compactSiblingSubtrees(root, nodesById, config, true);
+    }
 
     // 计算边界
+    // ★ P0 修复：宽度估算传入 isRoot，保证 bounds 与实际渲染宽度一致
     const layoutBoxes = nodes.map(node => {
       const mmNode = mindmapNodeById.get(node.id);
-      const isRootNode = node.data?.isRoot || node.type === 'rootNode';
-      const width = mmNode ? calculateNodeWidth(mmNode, config) : config.nodeMinWidth;
+      const isRootNode = !!node.data?.isRoot || node.type === 'rootNode';
+      const width = mmNode ? calculateNodeWidth(mmNode, config, isRootNode) : config.nodeMinWidth;
       const height = mmNode ? calculateNodeHeight(mmNode, isRootNode, config) : config.nodeHeight;
       return { x: node.position.x, y: node.position.y, width, height };
     });
-    const bounds = calculateBounds(layoutBoxes);
+    const bounds: LayoutBoundsWithMeta = {
+      ...calculateBounds(layoutBoxes),
+      ...(truncated ? { truncated: true } : {}),
+    };
 
     return { nodes, edges, bounds };
   }

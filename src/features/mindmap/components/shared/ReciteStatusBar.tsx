@@ -21,8 +21,9 @@ export const ReciteStatusBar: React.FC = () => {
 
   if (!reciteMode) return null;
 
+  // 顶部内联占位条：占用文档流（父容器 flex-col），不再作为悬浮层遮挡画布顶部节点
   return (
-    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-2 py-1 max-w-[calc(100%-16px)] rounded border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)]">
+    <div className="shrink-0 z-30 flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] ui-drop-in">
       <BookOpen className="w-4 h-4 text-[var(--mm-warning)] shrink-0" />
       <span className="text-sm font-medium whitespace-nowrap">{t('recite.title')}</span>
 
@@ -30,7 +31,7 @@ export const ReciteStatusBar: React.FC = () => {
         <div className="flex items-center gap-2">
           <div className="w-24 h-1.5 rounded-full bg-[var(--mm-border)] overflow-hidden">
             <div
-              className="h-full rounded-full bg-[var(--mm-warning)] transition-all duration-300"
+              className="h-full rounded-full bg-[var(--mm-warning)] transition-all duration-300 motion-reduce:transition-none"
               style={{ width: `${(progress.revealed / progress.total) * 100}%` }}
             />
           </div>

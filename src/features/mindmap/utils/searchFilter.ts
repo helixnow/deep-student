@@ -16,15 +16,71 @@ export function getSearchResultIdSet(ids: readonly string[]): ReadonlySet<string
   return result;
 }
 
-/** 前序搜索正文和备注，结果顺序与大纲/画布遍历顺序一致。 */
-export function searchMindMapNodeIds(root: MindMapNode, query: string): string[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return [];
+/**
+ * 搜索匹配选项（C13）。
+ * 全部可选且默认关闭——不传选项时行为与旧版完全一致（大小写不敏感的子串匹配）。
+ */
+export interface SearchOptions {
+  /** 大小写敏感匹配；默认 false */
+  caseSensitive?: boolean;
+  /** 全词匹配（匹配两侧不能是字母/数字/下划线）；默认 false */
+  wholeWord?: boolean;
+}
+
+/** 词字符定义（Unicode 字母 / 数字 / 下划线），用于全词边界判断 */
+const WORD_CHAR = /[\p{L}\p{N}_]/u;
+
+function isWholeWordAt(text: string, index: number, length: number): boolean {
+  const before = index > 0 ? text[index - 1] : '';
+  const after = index + length < text.length ? text[index + length] : '';
+  return !(before && WORD_CHAR.test(before)) && !(after && WORD_CHAR.test(after));
+}
+
+/**
+ * 在（已按 caseSensitive 归一化的）文本中查找下一处匹配；
+ * wholeWord 时跳过非全词出现。无匹配返回 -1。
+ */
+function findNextMatchIndex(
+  haystack: string,
+  needle: string,
+  from: number,
+  wholeWord: boolean,
+): number {
+  let idx = haystack.indexOf(needle, from);
+  while (idx !== -1) {
+    if (!wholeWord || isWholeWordAt(haystack, idx, needle.length)) return idx;
+    idx = haystack.indexOf(needle, idx + 1);
+  }
+  return -1;
+}
+
+function textMatchesQuery(
+  value: string | undefined,
+  normalizedQuery: string,
+  options: SearchOptions,
+): boolean {
+  if (!value) return false;
+  const haystack = options.caseSensitive ? value : value.toLowerCase();
+  return findNextMatchIndex(haystack, normalizedQuery, 0, !!options.wholeWord) !== -1;
+}
+
+/**
+ * 前序搜索正文和备注，结果顺序与大纲/画布遍历顺序一致。
+ * 第三参可选（向后兼容）：见 SearchOptions。
+ */
+export function searchMindMapNodeIds(
+  root: MindMapNode,
+  query: string,
+  options: SearchOptions = {},
+): string[] {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const normalizedQuery = options.caseSensitive ? trimmed : trimmed.toLowerCase();
   const results: string[] = [];
   const visit = (node: MindMapNode) => {
     if (
-      node.text.toLowerCase().includes(normalizedQuery) ||
-      node.note?.toLowerCase().includes(normalizedQuery)
+      textMatchesQuery(node.text, normalizedQuery, options) ||
+      textMatchesQuery(node.note, normalizedQuery, options)
     ) {
       results.push(node.id);
     }
@@ -54,6 +110,22 @@ export function collectSearchPathIds(
 
   visit(root);
   return pathIds;
+}
+
+/**
+ * 判断当前搜索状态是否「有结果可展示」，供 UI 决定是否显示零命中空态文案。
+ * - 搜索未激活 / 查询为空：返回 true（此时展示全树，不属于空态）；
+ * - 搜索激活且查询非空：matchIds 非空才返回 true。
+ * 过滤模式零命中仍保持「空树」行为（有单测锁定），本函数只提供空态判定，
+ * UI 接线（空态文案 toolbar.searchNoResults）归 W10。
+ */
+export function hasSearchResults(state: {
+  enabled: boolean;
+  query: string;
+  matchIds: readonly string[];
+}): boolean {
+  if (!state.enabled || !state.query.trim()) return true;
+  return state.matchIds.length > 0;
 }
 
 /** 解析大纲搜索过滤状态；非空查询即使零命中也返回空 Set。 */
@@ -136,21 +208,27 @@ export interface SearchHighlightPart {
   match: boolean;
 }
 
-/** 将文本按查询词切分为高亮片段（大小写不敏感） */
+/**
+ * 将文本按查询词切分为高亮片段。
+ * 第三参可选（向后兼容）：默认大小写不敏感、非全词，与旧行为一致。
+ * 传入的 options 应与 searchMindMapNodeIds 保持一致，否则高亮与命中会不同步。
+ */
 export function splitSearchHighlights(
   text: string,
-  query: string
+  query: string,
+  options: SearchOptions = {},
 ): SearchHighlightPart[] {
   const q = query.trim();
   if (!q || !text) return [{ text, match: false }];
 
-  const lowerText = text.toLowerCase();
-  const lowerQuery = q.toLowerCase();
+  const haystack = options.caseSensitive ? text : text.toLowerCase();
+  const needle = options.caseSensitive ? q : q.toLowerCase();
+  const wholeWord = !!options.wholeWord;
   const parts: SearchHighlightPart[] = [];
   let start = 0;
 
   while (start < text.length) {
-    const idx = lowerText.indexOf(lowerQuery, start);
+    const idx = findNextMatchIndex(haystack, needle, start, wholeWord);
     if (idx === -1) {
       parts.push({ text: text.slice(start), match: false });
       break;

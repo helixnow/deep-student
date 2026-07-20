@@ -1,5 +1,14 @@
 import type { IStyleTheme } from '../../registry/types';
+import { DARK_SAFE_PALETTE } from './palettes';
 
+/**
+ * 显式暗色主题（Notion 风格深色）
+ *
+ * 与 hidden 的 default-dark 是两套不同视觉：
+ * - dark：用户主动选择的独立主题，主色根节点（primary 底），任何模式下都是深色视觉；
+ * - default-dark：default 主题在应用暗色模式下的自动映射变体，结构与 default 镜像。
+ * 两者的彩虹 palette 对齐为同一套暗色安全色板（DARK_SAFE_PALETTE）。
+ */
 export const darkTheme: IStyleTheme = {
   id: 'dark',
   name: 'themes.dark',
@@ -35,15 +44,7 @@ export const darkTheme: IStyleTheme = {
     stroke: 'hsl(var(--foreground) / 0.15)',
     strokeWidth: 1.5,
   },
-  palette: [
-    '#FF6B6B', // Red
-    '#FF9F43', // Orange
-    '#F1C40F', // Yellow
-    '#2ECC71', // Green
-    '#54A0FF', // Blue
-    '#5F27CD', // Purple
-    '#FF9FF3', // Pink
-  ],
+  palette: DARK_SAFE_PALETTE,
   canvas: {
     background: 'var(--mm-bg)',
   },

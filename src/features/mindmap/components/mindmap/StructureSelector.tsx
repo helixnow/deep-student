@@ -5,7 +5,7 @@
  * 支持思维导图、逻辑图、组织结构图三种分类
  */
 
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -171,7 +171,10 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
-  
+  // 视口钳位：面板锚定触发按钮时的水平修正量（px）
+  const [clampOffset, setClampOffset] = useState(0);
+  const clampOffsetRef = useRef(0);
+
   // 受控/非受控模式
   const isControlled = controlledOpen !== undefined;
   const isOpen = isControlled ? controlledOpen : internalOpen;
@@ -257,18 +260,51 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
     }
   }, [isOpen, setIsOpen]);
 
-  // 处理键盘事件
+  // 处理键盘事件（仅面板打开时挂监听，避免常驻全局 keydown）
   useEffect(() => {
+    if (!isOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen) {
-        setIsOpen(false);
-        triggerRef.current?.querySelector<HTMLElement>('button')?.focus();
-      }
+      if (event.key !== 'Escape') return;
+      setIsOpen(false);
+      triggerRef.current?.querySelector<HTMLElement>('button')?.focus();
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, setIsOpen]);
+
+  // 视口钳位：锚定面板贴近窗口边缘时向内平移，防止右缘/左缘被裁切
+  // 用独立的 translate 属性修正，避免与 ui-zoom-fade-in 的 transform 动画互相覆盖
+  useLayoutEffect(() => {
+    if (!isOpen || isInline) {
+      clampOffsetRef.current = 0;
+      setClampOffset(0);
+      return;
+    }
+    const measure = () => {
+      const el = panelRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const margin = 8;
+      // 先扣掉上一次修正量，还原面板的自然锚定位置再重新计算
+      const naturalLeft = rect.left - clampOffsetRef.current;
+      const naturalRight = rect.right - clampOffsetRef.current;
+      let next = 0;
+      if (naturalRight > window.innerWidth - margin) {
+        next = window.innerWidth - margin - naturalRight;
+      }
+      if (naturalLeft + next < margin) {
+        next = margin - naturalLeft;
+      }
+      if (next !== clampOffsetRef.current) {
+        clampOffsetRef.current = next;
+        setClampOffset(next);
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [isOpen, isInline]);
 
   // 计算面板位置样式
   const getPlacementStyles = () => {
@@ -373,32 +409,22 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
         </NotionButton>
       )}
 
-      {/* 弹出面板 */}
+      {/* 弹出面板（桌面锚定 popover；窄屏由外壳的 inline 子屏承载，不再走底部 sheet + 遮罩） */}
       {isOpen && (
-        <>
-          {/* 背景遮罩（移动端） */}
-          <div
-            className="fixed inset-0 z-40 bg-black/10 dark:bg-black/20 md:hidden"
-            onClick={() => setIsOpen(false)}
-          />
-
-          {/* 面板内容 */}
-          <div
-            ref={panelRef}
-            className={cn(
-              'absolute z-50',
-              getPlacementStyles(),
-              'mm-settings-popover mm-structure-popover',
-              'ui-zoom-fade-in',
-              // 移动端全宽
-              'max-md:fixed max-md:left-4 max-md:right-4 max-md:top-auto max-md:bottom-4 max-md:w-auto'
-            )}
-            role="dialog"
-            aria-label={t('structure.selectorLabel')}
-          >
-            {panelContent}
-          </div>
-        </>
+        <div
+          ref={panelRef}
+          className={cn(
+            'absolute z-50',
+            getPlacementStyles(),
+            'mm-settings-popover mm-structure-popover',
+            'ui-zoom-fade-in'
+          )}
+          style={clampOffset !== 0 ? { translate: `${clampOffset}px 0` } : undefined}
+          role="dialog"
+          aria-label={t('structure.selectorLabel')}
+        >
+          {panelContent}
+        </div>
       )}
     </div>
   );

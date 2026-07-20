@@ -4,7 +4,9 @@ import type { MindMapNode } from '@/features/mindmap/types';
 import {
   collectSearchPathIds,
   flattenOutlineTree,
+  hasSearchResults,
   resolveSearchPathIds,
+  searchMindMapNodeIds,
   splitSearchHighlights,
 } from '@/features/mindmap/utils/searchFilter';
 import { collectTopLevelNodeIds } from '@/features/mindmap/utils/node/traverse';
@@ -71,6 +73,79 @@ describe('searchFilter', () => {
       { text: 'Target', match: true },
       { text: ' World', match: false },
     ]);
+  });
+
+  describe('SearchOptions', () => {
+    const optionsRoot = node('root', 'Root', [
+      node('lower', 'target here', [], { note: 'plain note' }),
+      node('upper', 'Target here'),
+      node('word', 'a cat sat'),
+      node('substring', 'concatenate'),
+      node('note-only', 'no hit in text', [], { note: 'CAT in note' }),
+    ]);
+
+    it('defaults stay backward compatible: case-insensitive substring', () => {
+      expect(searchMindMapNodeIds(optionsRoot, 'target')).toEqual(['lower', 'upper']);
+      expect(searchMindMapNodeIds(optionsRoot, 'cat')).toEqual([
+        'word', 'substring', 'note-only',
+      ]);
+    });
+
+    it('caseSensitive matches exact case in text and note', () => {
+      expect(searchMindMapNodeIds(optionsRoot, 'Target', { caseSensitive: true })).toEqual([
+        'upper',
+      ]);
+      expect(searchMindMapNodeIds(optionsRoot, 'CAT', { caseSensitive: true })).toEqual([
+        'note-only',
+      ]);
+    });
+
+    it('wholeWord skips substring-only occurrences', () => {
+      expect(searchMindMapNodeIds(optionsRoot, 'cat', { wholeWord: true })).toEqual([
+        'word', 'note-only',
+      ]);
+    });
+
+    it('caseSensitive + wholeWord combine', () => {
+      expect(
+        searchMindMapNodeIds(optionsRoot, 'cat', { caseSensitive: true, wholeWord: true }),
+      ).toEqual(['word']);
+    });
+
+    it('splitSearchHighlights honors caseSensitive', () => {
+      expect(splitSearchHighlights('Target target', 'target', { caseSensitive: true })).toEqual([
+        { text: 'Target ', match: false },
+        { text: 'target', match: true },
+      ]);
+    });
+
+    it('splitSearchHighlights honors wholeWord', () => {
+      expect(splitSearchHighlights('concatenate cat', 'cat', { wholeWord: true })).toEqual([
+        { text: 'concatenate ', match: false },
+        { text: 'cat', match: true },
+      ]);
+    });
+
+    it('wholeWord treats unicode letters as word characters', () => {
+      // 「猫」两侧是 CJK 字符时不算词边界；两侧是空格/标点时命中
+      expect(splitSearchHighlights('a cat, dog', 'cat', { wholeWord: true })).toEqual([
+        { text: 'a ', match: false },
+        { text: 'cat', match: true },
+        { text: ', dog', match: false },
+      ]);
+    });
+  });
+
+  describe('hasSearchResults', () => {
+    it('returns true when search is inactive or query empty', () => {
+      expect(hasSearchResults({ enabled: false, query: 'x', matchIds: [] })).toBe(true);
+      expect(hasSearchResults({ enabled: true, query: '   ', matchIds: [] })).toBe(true);
+    });
+
+    it('reflects matches for an active non-empty query', () => {
+      expect(hasSearchResults({ enabled: true, query: 'x', matchIds: ['a'] })).toBe(true);
+      expect(hasSearchResults({ enabled: true, query: 'x', matchIds: [] })).toBe(false);
+    });
   });
 
   it('hideCompleted still works when not filtering by search', () => {

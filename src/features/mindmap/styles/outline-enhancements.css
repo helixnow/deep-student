@@ -52,6 +52,78 @@
   align-self: center;
 }
 
+/* 独立六点拖拽手柄：hover/键盘可见，与 bullet 的选中/聚焦语义解耦 */
+.outline-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--mm-text-muted);
+  opacity: 0;
+  cursor: grab;
+  /* dnd-kit PointerSensor 需要：阻止触摸滚动抢占拖拽 */
+  touch-action: none;
+  transition:
+    opacity var(--notes-hover-transition, 120ms ease),
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.outline-node-row:hover .outline-drag-handle,
+.outline-node-row.focused .outline-drag-handle,
+.outline-drag-handle:focus-visible {
+  opacity: 1;
+}
+
+.outline-drag-handle:hover {
+  background-color: var(--mm-bg-hover);
+  color: var(--mm-text);
+}
+
+.outline-drag-handle:active {
+  cursor: grabbing;
+}
+
+.outline-drag-handle:focus-visible {
+  outline: 2px solid var(--mm-primary);
+  outline-offset: 1px;
+}
+
+/* 折叠三角从 div 改为 button 后的原生样式重置（视觉沿用 mindmap.css） */
+button.collapse-toggle {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+button.collapse-toggle.is-collapsed {
+  /* 与 mindmap.css 的胶囊形态保持一致（上面的 padding:0 重置会覆盖它） */
+  padding: 0 4px;
+}
+
+button.collapse-toggle:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--mm-primary);
+  outline-offset: 1px;
+}
+
+/* 千级节点性能：视口外行跳过布局与绘制。
+   拖拽期间由 OutlineView 移除 .outline-cv，保证 dnd 测量精度；
+   contain-intrinsic-size 记住上次渲染高度，34px 为单行首屏估值 */
+.outline-cv > .outline-node-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 34px;
+}
+
 /* mindmap.css 入场动画未覆盖大纲 reduced-motion，此处补齐 */
 @media (prefers-reduced-motion: reduce) {
   .outline-node-row.entering,
@@ -62,6 +134,7 @@
   .outline-task-checkbox,
   .outline-collapse-count,
   .outline-empty-action,
+  .outline-drag-handle,
   .indent-guide {
     transition: none;
   }

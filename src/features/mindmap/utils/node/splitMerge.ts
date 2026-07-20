@@ -1,5 +1,10 @@
 /**
  * 大纲行内拆分 / 与上一节点合并（不可变更新）
+ *
+ * D3 注意：运行时主路径是 store/mindmapStore.ts 内联实现的
+ * splitNode / mergeWithPrevious（额外处理焦点、选中、编辑态、revealedBlanks、
+ * 关联线清理等 store 状态）。本文件是等价的纯函数版本，供测试与无 store
+ * 场景使用；修改任一侧的树结构/元数据合并语义时必须同步另一侧。
  */
 
 import type { MindMapNode, NodeId } from '../../types';
@@ -80,8 +85,33 @@ export function splitNode(
 }
 
 /**
+ * 合并目标继承被合并节点的元数据（与 store.mergeWithPrevious 对齐）：
+ * 备注拼接；样式/refs 仅目标缺失时继承；completed 取或。
+ */
+function mergeNodeMeta(target: MindMapNode, source: MindMapNode): Partial<MindMapNode> {
+  const patch: Partial<MindMapNode> = {};
+  if (source.note) {
+    patch.note = target.note ? `${target.note}\n${source.note}` : source.note;
+  }
+  if (!target.style && source.style) {
+    patch.style = { ...source.style };
+  }
+  if (source.refs?.length) {
+    const existing = new Set((target.refs ?? []).map((ref) => ref.sourceId));
+    const incoming = source.refs.filter((ref) => !existing.has(ref.sourceId));
+    if (incoming.length) {
+      patch.refs = [...(target.refs ?? []), ...incoming];
+    }
+  }
+  if (source.completed && !target.completed) {
+    patch.completed = true;
+  }
+  return patch;
+}
+
+/**
  * 将当前节点合并到上一同级；若无上一同级则合并到父节点。
- * 当前节点的子树接到合并目标末尾。
+ * 上一同级：子树接到目标末尾；并入父：子树占据原节点槽位（与 store 实现一致）。
  */
 export function mergeWithPrevious(
   root: MindMapNode,
@@ -100,6 +130,7 @@ export function mergeWithPrevious(
     const caretOffset = (prev.text ?? '').length;
     const mergedPrev: MindMapNode = {
       ...prev,
+      ...mergeNodeMeta(prev, info.node),
       text: (prev.text ?? '') + currentText,
       blankedRanges: undefined,
       children: [...prev.children, ...currentChildren],
@@ -127,6 +158,7 @@ export function mergeWithPrevious(
   ];
 
   const tree = updateNodeById(root, parent.id, {
+    ...mergeNodeMeta(parent, info.node),
     text: (parent.text ?? '') + currentText,
     blankedRanges: undefined,
     children: mergedParentChildren,

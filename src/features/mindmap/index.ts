@@ -61,6 +61,9 @@ export type {
   LayoutOptions,
 } from './types';
 
+// 导出 Tauri API 封装（含版本历史 API 与类型化错误）
+export * from './api';
+
 // 导出常量
 export * from './constants';
 

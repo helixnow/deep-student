@@ -1,9 +1,12 @@
 import type { IStyleTheme } from '../../registry/types';
+import { COLORFUL_DARK_PALETTE } from './palettes';
 
 /**
  * 彩色主题 - 暗色变体
  *
- * 保持彩色渐变、阴影等装饰性风格，结构底色适配暗色模式全局 token。
+ * 根节点渐变与亮色 colorful 同走 --brand-gradient（暗色下 primary 族自动变浅），
+ * 结构底色适配暗色模式全局 token。
+ * 结构参数（fontSize / padding / borderRadius / 边宽）与 colorful 亮色严格镜像。
  */
 export const colorfulDarkTheme: IStyleTheme = {
   id: 'colorful-dark',
@@ -11,8 +14,7 @@ export const colorfulDarkTheme: IStyleTheme = {
   hidden: true,
   node: {
     root: {
-      // 品牌渐变保留（与亮色 colorful 同源），阴影透明度改走 primary token
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: 'var(--brand-gradient)',
       foreground: 'hsl(var(--primary-foreground))',
       border: 'transparent',
       borderRadius: 8,
@@ -43,15 +45,7 @@ export const colorfulDarkTheme: IStyleTheme = {
     stroke: 'hsl(var(--foreground) / 0.18)',
     strokeWidth: 2,
   },
-  palette: [
-    '#F56565', // Red
-    '#ED8936', // Orange
-    '#ECC94B', // Yellow
-    '#48BB78', // Green
-    '#4299E1', // Blue
-    '#9F7AEA', // Purple
-    '#ED64A6', // Pink
-  ],
+  palette: COLORFUL_DARK_PALETTE,
   canvas: {
     background: 'var(--mm-bg)',
   },

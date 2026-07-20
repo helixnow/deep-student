@@ -11,6 +11,9 @@ function leaf(id: string, text: string): MindMapNode {
   return { id, text, children: [] };
 }
 
+// 注意：等高子树的 tie-break 规则为「先比子树数量，数量也相等时默认右侧」，
+// 因此想让某个子树落在左侧，需要先用更高的 filler 子树占住右侧。
+
 describe('BalancedLayoutEngine left X', () => {
   it('places each left grandchild by its own width (not children[0] width)', () => {
     const short = leaf('short', 'A');
@@ -20,10 +23,16 @@ describe('BalancedLayoutEngine left X', () => {
       text: 'L',
       children: [short, wide],
     };
+    // 3 个叶子的 filler 子树更高 → 首个分配到右侧，把 leftParent 挤到左侧
+    const tallFiller: MindMapNode = {
+      id: 'tall-filler',
+      text: 'F',
+      children: [leaf('f1', 'a'), leaf('f2', 'b'), leaf('f3', 'c')],
+    };
     const root: MindMapNode = {
       id: 'root',
       text: 'Root',
-      children: [leftParent],
+      children: [tallFiller, leftParent],
     };
 
     const config = { ...DEFAULT_LAYOUT_CONFIG };
@@ -33,6 +42,9 @@ describe('BalancedLayoutEngine left X', () => {
     const parent = byId.get('left-parent')!;
     const shortNode = byId.get('short')!;
     const wideNode = byId.get('wide')!;
+
+    expect(parent.data?.side).toBe('left');
+    expect(byId.get('tall-filler')!.data?.side).toBe('right');
 
     const parentWidth = calculateNodeWidth(leftParent, config);
     const shortWidth = calculateNodeWidth(short, config);
@@ -56,14 +68,18 @@ describe('BalancedLayoutEngine left X', () => {
   });
 
   it('places unequal-width root-level left siblings on their own widths', () => {
-    // Equal-height leaves: distribute L, R, L → short & wide both on left
+    // 更高的 filler 子树先占右侧，其余等高叶子依次落到左侧
+    const tallFiller: MindMapNode = {
+      id: 'R-fill',
+      text: 'F',
+      children: [leaf('rf1', 'a'), leaf('rf2', 'b')],
+    };
     const short = leaf('L-short', 'Hi');
-    const rightFiller = leaf('R-fill', 'R');
     const wide = leaf('L-wide', 'XXXXXXXXXXXXXXXXXXXXXXXXXXXX');
     const root: MindMapNode = {
       id: 'root2',
       text: 'Root',
-      children: [short, rightFiller, wide],
+      children: [tallFiller, short, wide],
     };
 
     const config = { ...DEFAULT_LAYOUT_CONFIG };
@@ -72,6 +88,7 @@ describe('BalancedLayoutEngine left X', () => {
 
     const shortNode = byId.get('L-short')!;
     const wideNode = byId.get('L-wide')!;
+    expect(byId.get('R-fill')!.data?.side).toBe('right');
     expect(shortNode.data?.side).toBe('left');
     expect(wideNode.data?.side).toBe('left');
 
@@ -83,5 +100,31 @@ describe('BalancedLayoutEngine left X', () => {
     expect(wideNode.position.x + wideWidth).toBeCloseTo(expectedRightEdge, 5);
     expect(wideWidth).toBeGreaterThan(shortWidth);
     expect(wideNode.position.x).toBeLessThan(shortNode.position.x);
+  });
+
+  it('sends a single child to the right side (XMind convention)', () => {
+    const only = leaf('only', 'Solo');
+    const root: MindMapNode = { id: 'root3', text: 'Root', children: [only] };
+
+    const config = { ...DEFAULT_LAYOUT_CONFIG };
+    const { nodes } = engine.calculate(root, config);
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+
+    const onlyNode = byId.get('only')!;
+    expect(onlyNode.data?.side).toBe('right');
+    expect(onlyNode.position.x).toBeGreaterThan(0);
+  });
+
+  it('alternates equal-height siblings between sides', () => {
+    const kids = ['a', 'b', 'c', 'd'].map((id) => leaf(id, id));
+    const root: MindMapNode = { id: 'root4', text: 'Root', children: kids };
+
+    const config = { ...DEFAULT_LAYOUT_CONFIG };
+    const { nodes } = engine.calculate(root, config);
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+
+    const sides = ['a', 'b', 'c', 'd'].map((id) => byId.get(id)!.data?.side);
+    expect(sides.filter((s) => s === 'left')).toHaveLength(2);
+    expect(sides.filter((s) => s === 'right')).toHaveLength(2);
   });
 });

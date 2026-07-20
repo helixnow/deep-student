@@ -9,6 +9,15 @@ import type { BlankRange, MindMapNodeRef } from '../../../types';
 import { getMindMapPreferences } from '../../../utils/mindmapPreferences';
 import { NodeRefList } from '../../shared/NodeRefCard';
 import { useTextSelectionBubble } from '../../../hooks/useTextSelectionBubble';
+import { isOutlineCompositionActive } from '../../../utils/outlineCaret';
+import {
+  CompletedCheckbox,
+  NodeLinkButton,
+  PriorityBadge,
+  ProgressRing,
+} from '../../shared/NodeDecorationBadges';
+import type { NodeDecorations } from '../../../utils/nodeDecorations';
+import '../../../styles/node-edge-enhancements.css';
 
 export interface NodeContentProps {
   text: string;
@@ -24,6 +33,17 @@ export interface NodeContentProps {
   revealedIndices?: Record<number, boolean>;
   reciteMode?: boolean;
   isBold?: boolean;
+  /** 装饰角标（priority / progress / href），由节点壳层从 store 读取后传入 */
+  decorations?: NodeDecorations | null;
+  /** 完成态以 checkbox 视觉呈现（style.showCheckbox） */
+  showCheckbox?: boolean;
+  /** checkbox 点击切换 completed */
+  onToggleCompleted?: () => void;
+  /**
+   * 新建后未输入任何内容的空节点失焦/Escape 时回调（代替静默回滚）。
+   * 壳层实现需自带连续建点守卫：editingNodeId 已移至新节点时不得删除。
+   */
+  onEmptyCommit?: () => void;
   onTextChange?: (text: string) => void;
   /** 挖空前对齐 store 文本且保留 blankedRanges */
   onCommitLiveText?: (text: string) => void;
@@ -58,6 +78,10 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   revealedIndices,
   reciteMode = false,
   isBold = false,
+  decorations,
+  showCheckbox = false,
+  onToggleCompleted,
+  onEmptyCommit,
   onTextChange,
   onCommitLiveText,
   onNoteChange,
@@ -149,9 +173,15 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   }, [editValue, text, onTextChange]);
 
   const handleSave = useCallback(() => {
+    // 新建后从未输入内容的空节点：失焦时交由壳层处理（通常删除空节点），
+    // 壳层自带 editingNodeId 守卫，连续建点（Enter 后旧 textarea blur）不受影响
+    if (editValue.trim() === '' && text.trim() === '' && onEmptyCommit) {
+      onEmptyCommit();
+      return;
+    }
     commitText();
     onEndEdit?.();
-  }, [commitText, onEndEdit]);
+  }, [commitText, editValue, text, onEmptyCommit, onEndEdit]);
 
   const noteSavingRef = useRef(false);
   const handleNoteSave = useCallback(() => {
@@ -168,6 +198,9 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   }, [editNoteValue, note, onNoteChange, onEndEditNote]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // IME 组字中 Enter/Tab/Escape 属于输入法确认键，不得触发提交/建点
+    if (isOutlineCompositionActive(e.nativeEvent)) return;
+
     if (e.key === 'Enter') {
       if (e.shiftKey) {
         return;
@@ -190,12 +223,22 @@ export const NodeContent: React.FC<NodeContentProps> = ({
       return;
     }
     if (e.key === 'Escape') {
+      // Escape 单一路径：此处恢复 draft 并结束编辑，随后阻断冒泡，
+      // 防止全局监听（useMindMapKeyboard）二次清 editingNodeId / 抢跑
+      e.preventDefault();
+      e.stopPropagation();
+      if (editValue.trim() === '' && text.trim() === '' && onEmptyCommit) {
+        onEmptyCommit();
+        return;
+      }
       setEditValue(text);
       onEndEdit?.();
     }
-  }, [commitText, text, onEndEdit, onCommitAndCreateSibling, onCommitAndCreateChild]);
+  }, [commitText, editValue, text, onEmptyCommit, onEndEdit, onCommitAndCreateSibling, onCommitAndCreateChild]);
 
   const handleNoteKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isOutlineCompositionActive(e.nativeEvent)) return;
+
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -212,6 +255,12 @@ export const NodeContent: React.FC<NodeContentProps> = ({
 
   const displayWithBlanks = !isEditing && (reciteMode || !!onAddBlank);
   const hasLatex = containsLatex(text);
+  const hasBlanks = (blankedRanges?.length ?? 0) > 0;
+  // LaTeX 与挖空共存降级策略：
+  // - 背诵模式：恒走 BlankedText（遮罩正确性优先）
+  // - 已有挖空区间：走 BlankedText（挖空可见/可管理），公式显示为原文（降级）
+  // - 仅 LaTeX 无挖空：走 InlineLatex 渲染公式（编辑态选区气泡仍可新增挖空）
+  const useBlankedDisplay = displayWithBlanks && (reciteMode || hasBlanks || !hasLatex);
   const descriptionFirstLine = getMindMapPreferences().descriptionPreview === 'first-line';
 
   return (
@@ -224,9 +273,22 @@ export const NodeContent: React.FC<NodeContentProps> = ({
       onDoubleClick={handleDoubleClick}
     >
       <div className="relative flex items-center gap-1">
+        {showCheckbox && !isEditing && (
+          <CompletedCheckbox
+            completed={isCompleted}
+            disabled={reciteMode || !onToggleCompleted}
+            onToggle={onToggleCompleted}
+          />
+        )}
+        {decorations?.priority != null && !isEditing && (
+          <PriorityBadge priority={decorations.priority} />
+        )}
+        {decorations?.progress != null && !isEditing && (
+          <ProgressRing progress={decorations.progress} />
+        )}
         {icon && <span className="flex-shrink-0 text-base leading-none select-none">{icon}</span>}
         <div className="relative flex-1 min-w-0">
-        {displayWithBlanks && !(hasLatex && !reciteMode) ? (
+        {useBlankedDisplay ? (
           <BlankedText
             text={text || t('node.unnamed')}
             blankedRanges={blankedRanges || []}
@@ -239,7 +301,9 @@ export const NodeContent: React.FC<NodeContentProps> = ({
             onRemoveBlank={onRemoveBlank}
             onToggleBold={onToggleBold}
             className={cn(
-              "inline-block whitespace-nowrap px-1 min-h-[1.2em] rounded-sm",
+              // 多行策略：展示态支持 pre-wrap（Shift+Enter 换行不再“消失”），
+              // 高度变化由 ResizeObserver → setMeasuredNodeHeight 链路同步布局
+              "mm-node-text inline-block whitespace-pre-wrap break-words px-1 min-h-[1.2em] rounded-sm",
               isCompleted && "line-through text-[var(--mm-text-muted)]",
             )}
             style={{ backgroundColor: bgColor ? `${bgColor}85` : undefined }}
@@ -248,8 +312,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
           <InlineLatex
             text={text || t('node.unnamed')}
             className={cn(
-              "inline-block px-1 min-h-[1.2em] select-none opacity-0 rounded-sm",
-              !hasLatex && "whitespace-nowrap",
+              "mm-node-text inline-block whitespace-pre-wrap break-words px-1 min-h-[1.2em] select-none opacity-0 rounded-sm",
               !isEditing && "opacity-100",
               isCompleted && !isEditing && "line-through text-[var(--mm-text-muted)]",
             )}
@@ -259,9 +322,17 @@ export const NodeContent: React.FC<NodeContentProps> = ({
 
         {isEditing && (
           <>
+            {/* 测量 span：字体属性靠自然继承与展示态一致（不要加 Tailwind 字体类破坏继承） */}
             <span
               ref={measureRef}
-              className="absolute invisible pointer-events-none whitespace-pre px-1 font-inherit text-inherit"
+              className="absolute invisible pointer-events-none whitespace-pre px-1"
+              style={{
+                fontFamily: 'inherit',
+                fontSize: 'inherit',
+                fontWeight: 'inherit',
+                lineHeight: 'inherit',
+                letterSpacing: 'inherit',
+              }}
               aria-hidden="true"
             >
               {editValue || t('node.unnamed')}
@@ -275,6 +346,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
             onKeyDown={handleKeyDown as any}
             onClick={(e) => e.stopPropagation()}
             onMouseUp={handleEditSelectionMouseUp as any}
+            onTouchEnd={handleEditSelectionMouseUp as any}
             style={{
               width: inputWidth,
               left: isRoot ? '50%' : '0',
@@ -302,6 +374,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
           </>
         )}
       </div>
+      {decorations?.href && !isEditing && <NodeLinkButton href={decorations.href} />}
       </div>
 
       {isEditingNote ? (

@@ -5,10 +5,16 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { Node } from '@xyflow/react';
 import {
+  ANIMATION_NODE_HARD_LIMIT,
+  ANIMATION_NODE_SOFT_LIMIT,
+  ANIMATION_SOFT_DURATION_SCALE,
   easeOutCubic,
   lerp,
   positionsEqual,
+  resolveAnimationDuration,
   useAnimatedNodes,
+  NODE_SPAWN_CLASS,
+  NODE_SPAWN_DURATION_MS,
 } from '../useAnimatedNodes';
 
 function node(id: string, x: number, y: number, extra?: Partial<Node>): Node {
@@ -163,7 +169,7 @@ describe('useAnimatedNodes', () => {
     expect(result.current).toBe(to);
   });
 
-  it('新增节点不动画，直接就位', () => {
+  it('新增节点位置直接就位，并短暂标注 CSS 入场类', () => {
     const from = [node('a', 0, 0)];
     const to = [node('a', 0, 0), node('b', 50, 50)];
 
@@ -173,9 +179,65 @@ describe('useAnimatedNodes', () => {
     );
 
     rerender({ n: to });
-    expect(result.current).toBe(to);
+    // 位置不插值（无 spawnOrigin 时原位入场），但追加入场类交给 CSS 动画
     expect(result.current[1].position).toEqual({ x: 50, y: 50 });
+    expect(result.current[1].className).toContain(NODE_SPAWN_CLASS);
+    // 已有节点不受影响，复用目标引用
+    expect(result.current[0]).toBe(to[0]);
     expect(rafCbs.length).toBe(0);
+  });
+
+  it('入场类在 NODE_SPAWN_DURATION_MS 后剥离（避免虚拟化重挂载重播）', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const from = [node('a', 0, 0)];
+      const to = [node('a', 0, 0), node('b', 50, 50)];
+
+      const { result, rerender } = renderHook(
+        ({ n }) => useAnimatedNodes(n, { duration: 200 }),
+        { initialProps: { n: from } },
+      );
+
+      rerender({ n: to });
+      expect(result.current[1].className).toContain(NODE_SPAWN_CLASS);
+
+      act(() => {
+        vi.advanceTimersByTime(NODE_SPAWN_DURATION_MS + 40);
+      });
+      // 过期后重发目标数组引用，入场类消失
+      expect(result.current).toBe(to);
+      expect(result.current[1].className).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('提供 getSpawnOrigin 时新节点从起点插值滑入目标位置', () => {
+    const from = [node('a', 0, 0)];
+    const to = [node('a', 0, 0), node('b', 100, 40)];
+
+    const { result, rerender } = renderHook(
+      ({ n }) =>
+        useAnimatedNodes(n, {
+          duration: 200,
+          getSpawnOrigin: () => ({ x: 0, y: 0 }),
+        }),
+      { initialProps: { n: from } },
+    );
+
+    rerender({ n: to });
+    // bootstrap 帧停在生长起点
+    expect(result.current[1].position).toEqual({ x: 0, y: 0 });
+    expect(result.current[1].className).toContain(NODE_SPAWN_CLASS);
+    expect(rafCbs.length).toBeGreaterThan(0);
+
+    act(() => {
+      flushRaf(0);
+    });
+    act(() => {
+      flushRaf(200);
+    });
+    expect(result.current[1].position).toEqual({ x: 100, y: 40 });
   });
 
   it('enabled=false 时直达目标并取消动画', () => {
@@ -208,5 +270,43 @@ describe('useAnimatedNodes', () => {
     rerender({ n: to });
     unmount();
     expect(cancel).toHaveBeenCalled();
+  });
+
+  it('超过硬阈值的大图直接返回目标（跳过动画）', () => {
+    const count = ANIMATION_NODE_HARD_LIMIT + 1;
+    const from = Array.from({ length: count }, (_, i) => node(`n${i}`, 0, i));
+    const to = Array.from({ length: count }, (_, i) => node(`n${i}`, 100, i));
+
+    const { result, rerender } = renderHook(
+      ({ n }) => useAnimatedNodes(n, { duration: 200 }),
+      { initialProps: { n: from } },
+    );
+
+    rerender({ n: to });
+    expect(result.current).toBe(to);
+    expect(rafCbs.length).toBe(0);
+  });
+});
+
+describe('resolveAnimationDuration 大图降级策略', () => {
+  it('小图保持原时长', () => {
+    expect(resolveAnimationDuration(200, 10)).toBe(200);
+    expect(resolveAnimationDuration(200, ANIMATION_NODE_SOFT_LIMIT)).toBe(200);
+  });
+
+  it('软阈值以上压缩时长', () => {
+    expect(resolveAnimationDuration(200, ANIMATION_NODE_SOFT_LIMIT + 1))
+      .toBe(Math.round(200 * ANIMATION_SOFT_DURATION_SCALE));
+    expect(resolveAnimationDuration(200, ANIMATION_NODE_HARD_LIMIT))
+      .toBe(Math.round(200 * ANIMATION_SOFT_DURATION_SCALE));
+  });
+
+  it('硬阈值以上返回 0（跳过动画）', () => {
+    expect(resolveAnimationDuration(200, ANIMATION_NODE_HARD_LIMIT + 1)).toBe(0);
+  });
+
+  it('阈值常量契约', () => {
+    expect(ANIMATION_NODE_SOFT_LIMIT).toBe(300);
+    expect(ANIMATION_NODE_HARD_LIMIT).toBe(800);
   });
 });

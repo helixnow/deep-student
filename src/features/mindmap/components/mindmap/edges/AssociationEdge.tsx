@@ -6,6 +6,7 @@ import {
   type EdgeProps,
 } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
+import { isOutlineCompositionActive } from '../../../utils/outlineCaret';
 import './associationEdge.css';
 
 export type AssociationEdgeData = {
@@ -122,6 +123,8 @@ export const AssociationEdge: React.FC<EdgeProps> = ({
                 onBlur={commit}
                 onKeyDown={(e) => {
                   e.stopPropagation();
+                  // IME 组字中 Enter/Escape 属于输入法按键，不提交标签
+                  if (isOutlineCompositionActive(e.nativeEvent)) return;
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     commit();

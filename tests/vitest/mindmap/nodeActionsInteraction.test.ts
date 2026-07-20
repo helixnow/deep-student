@@ -25,4 +25,19 @@ describe('mind map node actions interaction contract', () => {
   it('keeps portal menus fixed even though mindmap-container is position-relative', () => {
     expect(contextMenuSource.match(/position: 'fixed'/g)).toHaveLength(3);
   });
+
+  it('keeps plain handles non-connectable by default to avoid accidental reparent', () => {
+    // 普通锚点默认不可连接（防误触 reparent），仅 data.handlesConnectable 显式开启
+    expect(branchNodeSource).toContain('isConnectable={handlesConnectable}');
+    expect(branchNodeSource).not.toContain('isConnectable={true}');
+  });
+
+  it('applies the semantic underline class alongside the legacy one', () => {
+    expect(branchNodeSource).toContain('mindmap-node-underline mm-node--underline');
+  });
+
+  it('resolves theme through the dark-mode aware hook instead of a memoized get', () => {
+    expect(branchNodeSource).toContain('useMindMapTheme(styleId)');
+    expect(branchNodeSource).not.toContain('useMemo(() => StyleRegistry.get');
+  });
 });

@@ -1,4 +1,5 @@
 import type { IStyleTheme } from '../../registry/types';
+import { DEFAULT_LIGHT_PALETTE } from './palettes';
 
 export const defaultTheme: IStyleTheme = {
   id: 'default',
@@ -35,15 +36,7 @@ export const defaultTheme: IStyleTheme = {
     stroke: 'var(--mm-edge)',
     strokeWidth: 1.5,
   },
-  palette: [
-    '#E05252', // Red
-    '#E69038', // Orange
-    '#EBCB4B', // Yellow
-    '#5BB98C', // Green
-    '#2EAADC', // Blue (Primary)
-    '#6C63FF', // Purple
-    '#F2668B', // Pink
-  ],
+  palette: DEFAULT_LIGHT_PALETTE,
   canvas: {
     background: 'var(--mm-bg)',
   },

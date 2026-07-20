@@ -8,13 +8,15 @@
 import { useEffect, useCallback } from 'react';
 import { useMindMapStore } from '../store';
 import { useMindMapIsActive } from '../MindMapActiveContext';
-import { flattenVisibleNodes } from '../utils/node/traverse';
+import { collectTopLevelNodeIds, flattenVisibleNodes } from '../utils/node/traverse';
 import { findNodeById, findParentNode } from '../utils/node/find';
+import type { MindMapNode, NodeStyle } from '../types';
 import { findNextUnrevealedBlank } from '../utils/reciteNavigation';
 import {
   findSpatialMindMapNeighbor,
   getMindMapPreferences,
 } from '../utils/mindmapPreferences';
+import { eventMatchesShortcut } from '../constants/shortcuts';
 
 // ============================================================================
 // Hook
@@ -33,7 +35,18 @@ export function useMindMapKeyboard(): void {
   const setSelection = useMindMapStore(s => s.setSelection);
   const addNode = useMindMapStore(s => s.addNode);
   const deleteNodes = useMindMapStore(s => s.deleteNodes);
-  const moveNode = useMindMapStore(s => s.moveNode);
+  // moveNode 单节点版已由 moveNodes 批量版覆盖（Cmd+↑↓ 支持整选中集移动）
+  const moveNodes = useMindMapStore(s => s.moveNodes);
+  const indentNodes = useMindMapStore(s => s.indentNodes);
+  const outdentNodes = useMindMapStore(s => s.outdentNodes);
+  // store 并行迭代中的新 action：存在则优先使用，不存在则本地回退计算
+  const selectAllVisible = useMindMapStore(
+    s => (s as unknown as { selectAllVisible?: () => void }).selectAllVisible,
+  );
+  // store 并行迭代中的新 action（W01）：duplicateNodes(nodeIds) → 新节点 id 数组 | null
+  const duplicateNodes = useMindMapStore(
+    s => (s as unknown as { duplicateNodes?: (nodeIds: string[]) => string[] | null }).duplicateNodes,
+  );
   const toggleCollapse = useMindMapStore(s => s.toggleCollapse);
   const collapseAll = useMindMapStore(s => s.collapseAll);
   const expandAll = useMindMapStore(s => s.expandAll);
@@ -61,8 +74,8 @@ export function useMindMapKeyboard(): void {
 
     // ── 全局快捷键（即使在编辑模式也生效） ──
 
-    // Cmd+S → 保存
-    if (isMod && e.key === 's') {
+    // Cmd+S → 保存（用 lowerKey，避免 Caps Lock 下失效）
+    if (isMod && lowerKey === 's') {
       e.preventDefault();
       handled();
       void save();
@@ -97,6 +110,9 @@ export function useMindMapKeyboard(): void {
     // Escape → 退出编辑 / 退出背诵 / 取消选中
     // 搜索栏 Esc 由 MindMapContentView 在 window capture 阶段优先处理并 stopPropagation，
     // 本 listener 挂在 document 冒泡，搜索打开时不会走到这里。
+    // 节点编辑态的 Esc 由 NodeContent 的 textarea 就地处理（恢复 draft + stopPropagation），
+    // 正常不会冒泡到 document；下面的 editingNodeId 分支仅是兜底
+    // （编辑态残留但焦点已不在 textarea 的异常场景），不会抢跑吞掉 draft。
     if (e.key === 'Escape') {
       e.preventDefault();
       handled();
@@ -119,6 +135,26 @@ export function useMindMapKeyboard(): void {
 
     // ── 如果焦点在输入控件上，跳过 ──
     if (isTextInputContext) return;
+
+    // Cmd+A → 全选可见节点（不依赖焦点；背诵模式下禁用编辑类选择）
+    if (isMod && lowerKey === 'a' && !reciteMode) {
+      e.preventDefault();
+      handled();
+      if (typeof selectAllVisible === 'function') {
+        // store 新增的 selectAllVisible（并行迭代中），存在则直接使用
+        selectAllVisible();
+      } else {
+        // 回退：本地展平可见节点（不含根，与 cut/delete 的根保护语义一致）
+        const visibleIds = flattenVisibleNodes(document.root)
+          .map((entry) => entry.node.id)
+          .filter((id) => id !== document.root.id);
+        if (visibleIds.length > 0) {
+          setSelection(visibleIds);
+          if (!focusedNodeId) setFocusedNodeId(visibleIds[0]);
+        }
+      }
+      return;
+    }
 
     // ── 无选中节点时，跳过 ──
     if (!focusedNodeId) return;
@@ -205,6 +241,39 @@ export function useMindMapKeyboard(): void {
       return true;
     };
 
+    /**
+     * Cmd/Alt+↑/↓ 批量上移/下移：作用于整个选中集（无多选时只动焦点节点）。
+     * 选中集须同父才做块移动（非连续选中会被聚拢成块，与幕布一致）；
+     * 跨父级多选时退化为仅移动焦点节点。
+     */
+    const moveFocusedOrSelection = (direction: 'up' | 'down') => {
+      const targetIds = selection.length > 0 ? selection : [focusedNodeId];
+      let ids = collectTopLevelNodeIds(root, targetIds, { excludeRoot: true });
+      if (ids.length === 0) return;
+      let parent = findParentNode(root, ids[0]);
+      if (!parent) return;
+      let indices = ids.map((id) => parent!.children.findIndex((c) => c.id === id));
+      if (indices.some((i) => i < 0)) {
+        parent = findParentNode(root, focusedNodeId);
+        if (!parent) return;
+        const idx = parent.children.findIndex((c) => c.id === focusedNodeId);
+        if (idx < 0) return;
+        ids = [focusedNodeId];
+        indices = [idx];
+      }
+      const ordered = ids
+        .map((id, i) => ({ id, index: indices[i] }))
+        .sort((a, b) => a.index - b.index);
+      const sortedIds = ordered.map((entry) => entry.id);
+      const minIdx = ordered[0].index;
+      const maxIdx = ordered[ordered.length - 1].index;
+      if (direction === 'up') {
+        if (minIdx > 0) moveNodes(sortedIds, parent.id, minIdx - 1);
+      } else if (maxIdx < parent.children.length - 1) {
+        moveNodes(sortedIds, parent.id, maxIdx + 2);
+      }
+    };
+
     // Fold is independent from zoom in both keymaps.
     if (e.altKey && (e.key === '[' || e.key === ']')) {
       e.preventDefault();
@@ -221,29 +290,88 @@ export function useMindMapKeyboard(): void {
       return;
     }
 
+    // ── Alt+方向键（XMind 惯例，两种键位方案共用；C4） ──
+    // Alt+↑/↓ 同级上移/下移；Alt+←/→ 反缩进/缩进（画布侧 outdent/indent 等价，
+    // 大纲语义由 OutlineView 自行处理编辑态）
+    if (!isMod && e.altKey && !e.shiftKey) {
+      if (eventMatchesShortcut(e, 'alt+ArrowUp') || eventMatchesShortcut(e, 'alt+ArrowDown')) {
+        e.preventDefault();
+        handled();
+        moveFocusedOrSelection(e.key === 'ArrowUp' ? 'up' : 'down');
+        return;
+      }
+      if (eventMatchesShortcut(e, 'alt+ArrowLeft')) {
+        e.preventDefault();
+        handled();
+        outdentNodes(selection.length > 0 ? selection : [focusedNodeId]);
+        return;
+      }
+      if (eventMatchesShortcut(e, 'alt+ArrowRight')) {
+        e.preventDefault();
+        handled();
+        indentNodes(selection.length > 0 ? selection : [focusedNodeId]);
+        return;
+      }
+    }
+
     // ── Cmd 组合键 ──
     if (isMod) {
+      // Cmd+D → duplicate 选中集（store 新 action，W01 并行实现；C5）
+      if (eventMatchesShortcut(e, 'mod+d')) {
+        e.preventDefault();
+        handled();
+        if (typeof duplicateNodes === 'function') {
+          const targetIds = selection.length > 0 ? selection : [focusedNodeId];
+          const newIds = duplicateNodes(
+            collectTopLevelNodeIds(root, targetIds, { excludeRoot: true }),
+          );
+          if (newIds && newIds.length > 0) {
+            setSelection(newIds);
+            setFocusedNodeId(newIds[newIds.length - 1]);
+          }
+        }
+        return;
+      }
+
+      // Cmd+B / Cmd+I / Cmd+U → 文本样式，作用于整个选中集（单次 undo）
+      if (lowerKey === 'b' || lowerKey === 'i' || lowerKey === 'u') {
+        e.preventDefault();
+        handled();
+        const targetIds = selection.length > 0 ? selection : [focusedNodeId];
+        const nodes = Array.from(new Set(targetIds))
+          .map((id) => findNodeById(root, id))
+          .filter((node): node is MindMapNode => !!node);
+        if (nodes.length === 0) return;
+        // 统一切换：只要有一个未生效则全部生效，否则全部取消
+        const isOn = (style: NodeStyle | undefined): boolean =>
+          lowerKey === 'b'
+            ? style?.fontWeight === 'bold'
+            : lowerKey === 'i'
+              ? style?.fontStyle === 'italic'
+              : style?.textDecoration === 'underline';
+        const enable = nodes.some((node) => !isOn(node.style));
+        nodes.forEach((node, index) => {
+          const style: NodeStyle = { ...node.style };
+          if (lowerKey === 'b') style.fontWeight = enable ? 'bold' : undefined;
+          else if (lowerKey === 'i') style.fontStyle = enable ? 'italic' : undefined;
+          else style.textDecoration = enable ? 'underline' : undefined;
+          // 首个节点记录历史快照，其余跳过 → 一次 undo 还原整批
+          updateNode(node.id, { style }, index === 0 ? undefined : { skipHistory: true });
+        });
+        return;
+      }
+
       switch (e.key) {
         case 'ArrowUp': {
           e.preventDefault();
           handled();
-          const parent = findParentNode(root, focusedNodeId);
-          if (!parent) return;
-          const idx = parent.children.findIndex(c => c.id === focusedNodeId);
-          if (idx > 0) {
-            moveNode(focusedNodeId, parent.id, idx - 1);
-          }
+          moveFocusedOrSelection('up');
           return;
         }
         case 'ArrowDown': {
           e.preventDefault();
           handled();
-          const parent = findParentNode(root, focusedNodeId);
-          if (!parent) return;
-          const idx = parent.children.findIndex(c => c.id === focusedNodeId);
-          if (idx < parent.children.length - 1) {
-            moveNode(focusedNodeId, parent.id, idx + 2);
-          }
+          moveFocusedOrSelection('down');
           return;
         }
         case '[': {
@@ -278,20 +406,6 @@ export function useMindMapKeyboard(): void {
           const node = findNodeById(root, focusedNodeId);
           if (node && node.collapsed) {
             toggleCollapse(focusedNodeId);
-          }
-          return;
-        }
-        case 'b': {
-          e.preventDefault();
-          handled();
-          const node = findNodeById(root, focusedNodeId);
-          if (node) {
-            updateNode(focusedNodeId, {
-              style: {
-                ...node.style,
-                fontWeight: node.style?.fontWeight === 'bold' ? undefined : 'bold',
-              },
-            });
           }
           return;
         }
@@ -391,8 +505,19 @@ export function useMindMapKeyboard(): void {
         return;
       }
       case 'Tab': {
-        // Tab → 添加子节点
         e.preventDefault();
+        // Shift+Tab → 反缩进（作用于整个选中集，与大纲对齐）
+        if (e.shiftKey) {
+          handled();
+          outdentNodes(selection.length > 0 ? selection : [focusedNodeId]);
+          return;
+        }
+        // 多选时 Tab 批量缩进（幕布语义）；单选保持画布语义：添加子节点
+        if (selection.length > 1) {
+          handled();
+          indentNodes(selection);
+          return;
+        }
         const newId = addNode(focusedNodeId, 0);
         if (newId) {
           setFocusedNodeId(newId);
@@ -424,7 +549,8 @@ export function useMindMapKeyboard(): void {
   }, [
     focusedNodeId, editingNodeId, editingNoteNodeId, selection, document,
     setFocusedNodeId, setEditingNodeId, setEditingNoteNodeId, setSelection,
-    addNode, deleteNodes, moveNode, toggleCollapse, collapseAll, expandAll, updateNode,
+    addNode, deleteNodes, moveNodes, indentNodes, outdentNodes, selectAllVisible, duplicateNodes,
+    toggleCollapse, collapseAll, expandAll, updateNode,
     undo, redo, save, reciteMode, revealedBlanks, revealBlank, setReciteMode,
     viewRootId, setViewRootId,
   ]);

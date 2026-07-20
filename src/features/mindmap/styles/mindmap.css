@@ -6,8 +6,9 @@
   /* 背景层 */
   --mm-bg: var(--surface-root, hsl(var(--background)));
   --mm-bg-elevated: var(--surface-elevated, hsl(var(--card)));
-  --mm-bg-hover: var(--surface-hover, hsl(var(--accent) / 0.5));
-  --mm-bg-active: var(--surface-active, hsl(var(--accent)));
+  /* 对齐全局交互 token（--surface-hover/--surface-active 并不存在，此前一直走 fallback） */
+  --mm-bg-hover: var(--interactive-hover, hsl(var(--accent) / 0.5));
+  --mm-bg-active: var(--interactive-selected, hsl(var(--accent)));
   
   /* 边框 */
   --mm-border: var(--border-default, hsl(var(--border)));
@@ -32,8 +33,31 @@
   --mm-selection-hover: color-mix(in hsl, var(--mm-text) 13%, var(--mm-bg));
   --mm-warning: hsl(var(--warning));
   --mm-warning-soft: hsl(var(--warning) / 0.12);
-  --mm-popover-shadow: 0 4px 14px hsl(var(--shadow-base) / 0.16);
-  
+  /* 浮层阴影对齐 notes token（变量名保留向后兼容） */
+  --mm-popover-shadow: var(--notes-popover-shadow, 0 8px 24px hsl(var(--shadow-base) / 0.14));
+
+  /* 圆角对齐 notes 视觉契约：行 6 / 控件 5 / 浮层 8 / 胶囊 999 */
+  --mm-radius-row: var(--notes-radius-row, 6px);
+  --mm-radius-control: var(--notes-radius-control, 5px);
+  --mm-radius-popup: var(--notes-radius-popup, 8px);
+  --mm-radius-pill: 999px;
+
+  /* 阴影契约：节点静置 / 浮层 / 拖拽抬起 */
+  --mm-shadow-node: var(--shadow-content-subtle, 0 1px 3px hsl(var(--shadow-base) / 0.05));
+  --mm-shadow-popup: var(--mm-popover-shadow);
+  --mm-shadow-drag: var(--shadow-shell-floating, 0 18px 36px hsl(var(--shadow-base) / 0.08));
+
+  /* 动效契约：hover 120ms / 入场 150ms / 结构变化 150ms（吃全局时长，不自创节奏） */
+  --mm-hover-transition: var(--notes-hover-transition, 120ms ease);
+  --mm-dur-enter: var(--notes-popup-enter-duration, 150ms);
+  --mm-ease-enter: var(--notes-popup-enter-easing, cubic-bezier(0.16, 1, 0.3, 1));
+  --mm-dur-structure: var(--dropdown-close-dur, 150ms);
+  --mm-ease-structure: var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+
+  /* 画布氛围点阵（可选）：默认关闭；容器加 .mm-canvas-dots 开启 */
+  --mm-canvas-pattern: none;
+  --mm-canvas-pattern-size: 24px 24px;
+
   /* 布局尺寸 */
   --mm-line-height: 28px; /* 每一行的高度 */
   --mm-indent-width: 28px; /* 缩进宽度 */
@@ -47,12 +71,12 @@
    ============================================ */
 
 .mindmap-container {
-  font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+  font-family: var(--font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif);
   color: var(--mm-text);
   background: var(--mm-bg);
 }
 
-/* 隐藏滚动条但保留滚动功能 */
+/* 滚动条：静置隐藏，hover 时接全局 --scrollbar-* 色板 */
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -60,11 +84,15 @@
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: transparent;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
 }
 
 .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-  background: var(--mm-text-muted);
+  background: var(--scrollbar-thumb, var(--mm-text-muted));
+}
+
+.custom-scrollbar:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, var(--mm-text-secondary));
 }
 
 /* --- 节点样式 --- */
@@ -75,9 +103,9 @@
   align-items: flex-start;
   min-height: var(--mm-line-height);
   padding: 0;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-row, 6px);
   position: relative;
-  transition: background-color 120ms ease;
+  transition: background-color var(--mm-hover-transition, 120ms ease);
 }
 
 /* 悬停整行效果 - 类似 Notion */
@@ -106,21 +134,34 @@
   background: var(--mm-bg-elevated);
 }
 
-/* 多选浮动操作条 */
+/* 多选浮动操作条（入场用 translate 属性做 6px 上浮，
+   不碰 transform，避免与 translateX(-50%) 定位互相覆盖） */
+@keyframes mmBarRiseIn {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
 .outline-multiselect-bar {
   position: absolute;
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
+  animation: mmBarRiseIn var(--mm-dur-enter, 150ms) var(--mm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) both;
   z-index: 20;
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 4px 6px;
-  border-radius: 5px;
+  border-radius: var(--mm-radius-popup, 8px);
   background: var(--mm-bg-elevated);
   border: 1px solid var(--mm-border);
-  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 12%);
+  box-shadow: var(--mm-popover-shadow);
   color: var(--mm-text);
 }
 
@@ -137,9 +178,10 @@
   gap: 4px;
   height: 28px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius: var(--mm-radius-control, 5px);
   font-size: 12px;
   color: var(--mm-text);
+  transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
 }
 
 .outline-multiselect-btn:hover {
@@ -150,6 +192,8 @@
   color: hsl(var(--destructive));
 }
 
+/* 注意：拖拽计数角标随 DragOverlay 一起 portal 到 body，
+   不在 .mindmap-container 作用域内，须直接消费全局 token */
 .outline-drag-count-badge {
   position: absolute;
   top: -8px;
@@ -158,14 +202,14 @@
   height: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--mm-primary);
+  background: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
   font-size: 11px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--mm-shadow-sm);
+  box-shadow: var(--shadow-content-subtle, 0 1px 2px hsl(var(--shadow-base) / 0.05));
 }
 
 /* 缩进参考线：常驻极淡 + hover 加深；用 border 透明度，暗色不过淡/不扎眼 */
@@ -175,7 +219,7 @@
   bottom: 0;
   width: 1px;
   background-color: hsl(var(--border) / 0.28);
-  transition: background-color var(--notes-hover-transition, 120ms ease);
+  transition: background-color var(--mm-hover-transition, 120ms ease);
   pointer-events: none;
 }
 
@@ -201,10 +245,10 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+  transition: opacity var(--mm-hover-transition, 120ms ease), background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
   color: var(--mm-text-muted);
 }
 
@@ -218,7 +262,7 @@
   width: auto;
   height: 18px;
   padding: 0 4px;
-  border-radius: 9px;
+  border-radius: var(--mm-radius-pill, 999px);
   background-color: var(--mm-bg-hover);
 }
 
@@ -234,7 +278,7 @@
   justify-content: center;
   margin-left: 2px;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--mm-radius-pill, 999px);
   font-size: 11px;
   font-weight: 500;
   line-height: 1.2;
@@ -246,8 +290,8 @@
   flex-shrink: 0;
   align-self: center;
   transition:
-    color var(--notes-hover-transition, 120ms ease),
-    background-color var(--notes-hover-transition, 120ms ease);
+    color var(--mm-hover-transition, 120ms ease),
+    background-color var(--mm-hover-transition, 120ms ease);
 }
 
 .outline-collapse-count:hover {
@@ -256,7 +300,7 @@
 }
 
 .collapse-toggle svg {
-  transition: transform 150ms ease;
+  transition: transform var(--mm-dur-structure, 150ms) ease;
 }
 
 .collapse-toggle.is-collapsed svg {
@@ -276,7 +320,7 @@
   justify-content: center;
   border-radius: 50%;
   cursor: pointer;
-  transition: background-color 0.1s;
+  transition: background-color var(--mm-hover-transition, 120ms ease);
   position: relative;
   z-index: 2;
 }
@@ -285,13 +329,16 @@
   background-color: var(--mm-border);
 }
 
-/* 子弹点本身 */
+/* 子弹点本身（native-feel：hover 不做 scale，只做颜色/外圈变化） */
 .node-bullet {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background-color: var(--mm-text-muted);
-  transition: all var(--page-slide-dur, 200ms) var(--ease-standard);
+  transition:
+    background-color var(--mm-hover-transition, 120ms ease),
+    box-shadow var(--mm-hover-transition, 120ms ease),
+    border-color var(--mm-hover-transition, 120ms ease);
   position: relative;
   box-sizing: border-box;
 }
@@ -305,14 +352,12 @@
 .outline-node-row.focused .node-bullet:not(.collapsed) {
   background-color: var(--mm-primary);
   opacity: 1;
-  transform: scale(1.1);
 }
 
-/* 悬停在容器上时，圆点变深并放大 */
+/* 悬停在容器上时，圆点变深 */
 .node-bullet-container:hover .node-bullet:not(.collapsed) {
   background-color: var(--mm-text);
   opacity: 1;
-  transform: scale(1.2);
 }
 
 /* 悬停在有子节点的圆点上 - 显示淡淡的外圈暗示可折叠 */
@@ -336,7 +381,6 @@
   background-color: var(--mm-primary);
   border: 2px solid var(--mm-bg);
   box-shadow: 0 0 0 1.5px var(--mm-text); /* 悬停时外圈变深 */
-  transform: scale(1);
 }
 
 /* 焦点状态下的折叠圆点 */
@@ -344,7 +388,6 @@
   background-color: var(--mm-primary);
   border: 2px solid var(--mm-bg);
   box-shadow: 0 0 0 1.5px var(--mm-primary); /* 选中时整体变蓝 */
-  transform: scale(1.1);
 }
 
 /* 折叠状态下的伪元素清除（如果之前有的话） */
@@ -455,10 +498,10 @@
   gap: 2px;
   opacity: 0;
   background: transparent;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   padding: 0 4px;
   pointer-events: none; /* 默认不响应事件 */
-  transition: opacity 0.15s ease;
+  transition: opacity var(--mm-hover-transition, 120ms ease);
   z-index: 10;
 }
 
@@ -475,24 +518,27 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text-muted);
-  transition: all 0.1s;
+  transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease), box-shadow var(--mm-hover-transition, 120ms ease);
 }
 
 .action-btn:hover {
   background-color: var(--mm-bg-elevated);
   color: var(--mm-text);
-  box-shadow: 0 1px 2px hsl(var(--shadow-base) / 0.1);
+  box-shadow: var(--mm-shadow-sm);
 }
 
-/* --- 拖拽视觉反馈 --- */
+/* --- 拖拽视觉反馈 ---
+   DragOverlay portal 到 body，不在 .mindmap-container 作用域内，
+   须直接消费全局 token（--mm-* 在此不可见） */
 .drag-overlay-item {
-  background: var(--mm-bg-elevated);
-  border: 1px solid var(--mm-border);
-  box-shadow: 0 8px 20px -4px hsl(var(--shadow-base) / 0.2);
+  background: var(--surface-elevated, hsl(var(--card)));
+  border: 1px solid var(--border-default, hsl(var(--border)));
+  color: var(--text-primary, hsl(var(--foreground)));
+  box-shadow: var(--shadow-shell-floating, 0 18px 36px hsl(var(--shadow-base) / 0.08));
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--notes-radius-row, 6px);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -520,15 +566,29 @@
 }
 
 .mm-root-node.search-match,
-.mm-branch-node.search-match,
-.mindmap-node-underline.search-match {
+.mm-branch-node.search-match {
   box-shadow: 0 0 0 2px hsl(var(--warning) / 0.55);
 }
 
 .mm-root-node.search-match-current,
-.mm-branch-node.search-match-current,
-.mindmap-node-underline.search-match-current {
+.mm-branch-node.search-match-current {
   box-shadow: 0 0 0 2px hsl(var(--warning) / 0.85);
+}
+
+/* 下划线节点基础样式带 box-shadow: none !important，
+   须同用 !important 才能显示搜索命中框；同时补背景轻染增强可辨性 */
+.mindmap-node-underline.search-match,
+.mm-node--underline.search-match,
+[data-node-chrome="underline"].search-match {
+  box-shadow: 0 0 0 2px hsl(var(--warning) / 0.55) !important;
+  background-color: hsl(var(--warning) / 0.1);
+}
+
+.mindmap-node-underline.search-match-current,
+.mm-node--underline.search-match-current,
+[data-node-chrome="underline"].search-match-current {
+  box-shadow: 0 0 0 2px hsl(var(--warning) / 0.85) !important;
+  background-color: hsl(var(--warning) / 0.16);
 }
 
 .mm-node-content .search-text-match {
@@ -580,10 +640,7 @@
   transition: none;
 }
 
-.mindmap-container .react-flow__edge-path {
-  stroke: var(--mm-edge);
-  stroke-width: 1.5px;
-}
+/* （edge-path 的 stroke 规则统一收敛在下方「连接线 (Edges)」段，勿在此重复定义） */
 
 /* compact editor compact toolbar */
 .mm-toolbar {
@@ -616,8 +673,8 @@
   color: var(--mm-text);
   background: var(--mm-bg-elevated);
   border: 1px solid var(--mm-border);
-  border-radius: 5px;
-  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 14%);
+  border-radius: var(--mm-radius-popup, 8px);
+  box-shadow: var(--mm-popover-shadow);
 }
 
 .mm-search-input {
@@ -648,7 +705,7 @@
 .mm-search-mode {
   height: 24px;
   overflow: hidden;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   background: var(--mm-bg-hover);
   font-size: 11px;
 }
@@ -682,7 +739,7 @@
   height: 24px;
   padding: 0;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text-secondary);
 }
 
@@ -695,7 +752,7 @@
 .mm-toolbar-button {
   height: 28px;
   padding: 0 8px;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text);
   background: transparent;
   border: none;
@@ -704,7 +761,7 @@
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  transition: background 0.1s ease;
+  transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
 }
 
 .notion-btn:hover,
@@ -740,7 +797,7 @@
   height: 28px;
   padding: 0 7px;
   gap: 4px;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text-secondary);
   font-size: 11px;
 }
@@ -760,7 +817,7 @@
   height: 28px;
   padding: 0 8px;
   gap: 5px;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text-muted);
   font-size: 12px;
   background: transparent;
@@ -778,6 +835,48 @@
   }
 }
 
+/* --- 焦点可见性：与 notes 模块同语（2px ring，offset 1） --- */
+.notion-btn:focus-visible,
+.mm-toolbar-button:focus-visible,
+.mm-learning-button:focus-visible,
+.mm-view-switcher-button:focus-visible,
+.mm-search-mode-button:focus-visible,
+.mm-search-nav-button:focus-visible,
+.mm-search-close:focus-visible,
+.outline-multiselect-btn:focus-visible,
+.mm-canvas-mode-button:focus-visible,
+.mm-structure-preset:focus-visible,
+.mm-theme-option:focus-visible,
+.mm-style-icon-button:focus-visible,
+.mm-style-swatch:focus-visible,
+.mm-font-size-input:focus-visible,
+.mm-action-btn:focus-visible,
+.mm-collapse-btn:focus-visible,
+.mm-presentation-exit:focus-visible,
+.action-btn:focus-visible,
+.collapse-toggle:focus-visible,
+.outline-collapse-count:focus-visible,
+.outline-empty-action:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* 分段控件容器 overflow: hidden，外扩 ring 会被裁切，改用内缩 ring */
+.mm-search-mode-button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* 悬停显隐的控件在键盘聚焦时必须可见 */
+.action-btn:focus-visible,
+.collapse-toggle:focus-visible {
+  opacity: 1;
+}
+
+.outline-node-row .node-actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* ============================================
    思维导图节点样式 (Mind Map Nodes)
    ============================================ */
@@ -787,7 +886,7 @@
 .mm-root-node {
   min-width: 80px;
   text-align: center;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--mm-dur-structure, 150ms) ease, box-shadow var(--mm-dur-structure, 150ms) ease;
   /* 防止文字竖排 */
   white-space: nowrap;
 }
@@ -796,9 +895,13 @@
   border-color: var(--mm-border-strong);
 }
 
+/* 选中态：2px ring outline + offset（对齐 native-feel focus 语言）
+   + inset 轻染（叠加在主题内联背景之上，无需覆盖 inline background） */
 .mm-root-node.selected {
   border-color: var(--mm-primary);
-  box-shadow: 0 0 0 1px var(--mm-primary-soft);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  box-shadow: inset 0 0 0 999px hsl(var(--primary) / 0.05);
 }
 
 /* --- 分支节点 --- */
@@ -806,7 +909,7 @@
 .mm-branch-node {
   min-width: 40px;
   position: relative;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--mm-dur-structure, 150ms) ease, box-shadow var(--mm-dur-structure, 150ms) ease;
   /* 防止文字竖排 */
   white-space: nowrap;
 }
@@ -817,15 +920,24 @@
 
 .mm-branch-node.selected {
   border-color: var(--mm-primary);
-  box-shadow: 0 0 0 1px var(--mm-primary-soft);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  box-shadow: inset 0 0 0 999px hsl(var(--primary) / 0.05);
 }
 
 .mm-branch-node.editing {
   border-color: var(--mm-primary);
 }
 
-/* --- 下划线风格节点 (Level 2+) --- */
-.mindmap-node-underline {
+/* --- 下划线风格节点 (Level 2+) ---
+   三代选择器并存兼容：
+   - .mindmap-node-underline（旧类）
+   - .mm-node--underline（语义类）
+   - [data-node-chrome="underline"]（W04 新增结构化属性，推荐）
+   所有状态规则三者都覆盖。 */
+.mindmap-node-underline,
+.mm-node--underline,
+[data-node-chrome="underline"] {
   background: transparent; /* 不用 !important，允许 inline style 覆盖（高亮背景色） */
   border-top: none !important;
   border-left: none !important;
@@ -835,40 +947,43 @@
   box-shadow: none !important;
   border-bottom: 1.5px solid var(--mm-border); /* 默认颜色，会被 inline style 覆盖 */
   min-width: 20px !important;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
+  transition: border-color var(--mm-dur-structure, 150ms) ease, background-color var(--mm-dur-structure, 150ms) ease;
   /* 防止文字竖排 */
   white-space: nowrap !important;
 }
 
-/* 移除强制 hover 变色，让 inline style 生效 */
-/* 如果有内联样式设置了 border-color，这里不应该强制覆盖为 primary */
-/* 只有当没有 branchColor 时才变 primary */
-/* 但 CSS 无法判断是否有内联样式。 */
-/* 妥协方案：如果是在彩虹模式下，hover 效果由 brightness 处理；非彩虹模式（默认边框色）则变色 */
-
-/* 默认情况（非彩虹） */
-.mindmap-node-underline:not([style*="border-bottom-color"]):hover {
+/* hover 只在「无彩虹 inline 底边色」时染 primary（inline 色由导出/彩虹分支写入，须保留）；
+   :not([style*=]) 属性匹配较脆弱但目前是 CSS 侧唯一判据，data-node-chrome 版本同规则 */
+.mindmap-node-underline:not([style*="border-bottom-color"]):hover,
+.mm-node--underline:not([style*="border-bottom-color"]):hover,
+[data-node-chrome="underline"]:not([style*="border-bottom-color"]):hover {
    border-bottom-color: var(--mm-primary) !important;
 }
 
-.mindmap-node-underline.selected {
+/* 选中态：底边加粗 + 背景轻染（彩虹色 inline background 仍可覆盖背景） */
+.mindmap-node-underline.selected,
+.mm-node--underline.selected,
+[data-node-chrome="underline"].selected {
   border-bottom-width: 2px !important;
+  background-color: hsl(var(--primary) / 0.07);
   /* 如果没有彩虹色，则使用 primary */
 }
-.mindmap-node-underline:not([style*="border-bottom-color"]).selected {
+.mindmap-node-underline:not([style*="border-bottom-color"]).selected,
+.mm-node--underline:not([style*="border-bottom-color"]).selected,
+[data-node-chrome="underline"]:not([style*="border-bottom-color"]).selected {
    border-bottom-color: var(--mm-primary) !important;
 }
 
-.mindmap-node-underline .node-content {
-  /* 不使用 transform 以避免文字模糊 */
-}
-
-.mindmap-node-underline.editing {
+.mindmap-node-underline.editing,
+.mm-node--underline.editing,
+[data-node-chrome="underline"].editing {
   border-bottom-color: var(--mm-primary) !important;
 }
 
 /* 下划线节点的操作按钮位置调整 - 不使用 transform 避免模糊 */
-.mindmap-node-underline .mm-node-actions {
+.mindmap-node-underline .mm-node-actions,
+.mm-node--underline .mm-node-actions,
+[data-node-chrome="underline"] .mm-node-actions {
   left: 100%;
   margin-left: 8px;
   top: 0;
@@ -883,7 +998,7 @@
   border-radius: 50%;
   border: none;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--mm-hover-transition, 120ms ease), border-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
 }
 
 .mm-collapse-btn:hover {
@@ -906,12 +1021,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   border: none;
   background: var(--mm-bg-elevated);
   color: var(--mm-text-muted);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease), border-color var(--mm-hover-transition, 120ms ease);
 }
 
 .mm-action-btn:hover {
@@ -931,7 +1046,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
-  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+  transition: stroke var(--mm-dur-structure, 150ms) ease, stroke-width var(--mm-dur-structure, 150ms) ease;
 }
 
 /* 选中节点的连接线高亮 */
@@ -940,22 +1055,30 @@
   stroke-width: 2.5px;
 }
 
-/* --- 节点选中状态 --- */
+/* --- 节点选中状态（与 .selected 类版本保持同一 ring outline 语言） --- */
 .mindmap-container .react-flow__node.selected .mm-branch-node,
 .mindmap-container .react-flow__node.selected .mm-root-node {
   border-color: var(--mm-primary);
-  box-shadow: 0 0 0 1px var(--mm-primary-soft);
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  box-shadow: inset 0 0 0 999px hsl(var(--primary) / 0.05);
 }
 
-.mindmap-container .react-flow__node.selected .mindmap-node-underline {
-  box-shadow: 0 1px 0 0 var(--mm-primary);
+/* 下划线节点保留 underline 语义（不加圆角外环），
+   用底边加粗 + 背景轻染表达选中；
+   彩虹分支色由 inline style 提供，此处不强改颜色 */
+.mindmap-container .react-flow__node.selected .mindmap-node-underline,
+.mindmap-container .react-flow__node.selected .mm-node--underline,
+.mindmap-container .react-flow__node.selected [data-node-chrome="underline"] {
+  border-bottom-width: 2px !important;
+  background-color: hsl(var(--primary) / 0.07);
 }
 
 /* --- ReactFlow 控件面板 --- */
 .mindmap-container .react-flow__controls {
   background: var(--mm-bg-elevated);
   border: 1px solid var(--mm-border);
-  border-radius: 4px;
+  border-radius: var(--mm-radius-row, 6px);
   box-shadow: none;
   overflow: hidden;
 }
@@ -994,7 +1117,7 @@
   height: 30px;
   padding: 2px;
   border: 1px solid var(--mm-border);
-  border-radius: 4px;
+  border-radius: var(--mm-radius-row, 6px);
   background: var(--mm-bg-elevated);
   box-shadow: none;
   user-select: none;
@@ -1009,13 +1132,14 @@
   min-width: 56px;
   padding: 0 7px;
   border: 0;
-  border-radius: 3px;
+  border-radius: calc(var(--mm-radius-row, 6px) - 2px); /* 分段容器 6px − 2px 内衬 */
   background: transparent;
   color: var(--mm-text-secondary);
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
 }
 
 .mm-canvas-mode-button:hover {
@@ -1045,7 +1169,7 @@
 .mindmap-container .react-flow__minimap {
   background: var(--mm-bg-elevated);
   border: 1px solid var(--mm-border);
-  border-radius: 4px;
+  border-radius: var(--mm-radius-row, 6px);
   box-shadow: none;
   opacity: 0.82;
 }
@@ -1061,7 +1185,7 @@
   max-width: min(480px, 70vw);
   height: 26px;
   padding: 0 3px;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-row, 6px);
   color: var(--mm-text-secondary);
   background: hsl(var(--background) / 88%);
   font-size: 12px;
@@ -1078,15 +1202,15 @@
   max-width: 280px;
   margin: 48px auto 0;
   padding: 16px 20px;
-  border-radius: var(--notes-radius-popup, 8px);
+  border-radius: var(--mm-radius-popup, 8px);
   color: var(--mm-text-muted);
   cursor: pointer;
   font-size: 13px;
   line-height: 1.4;
   text-align: center;
   transition:
-    color var(--notes-hover-transition, 120ms ease),
-    background-color var(--notes-hover-transition, 120ms ease);
+    color var(--mm-hover-transition, 120ms ease),
+    background-color var(--mm-hover-transition, 120ms ease);
 }
 
 .outline-empty-action:hover {
@@ -1112,10 +1236,10 @@
   max-height: min(680px, calc(100vh - 64px));
   padding: 8px;
   border: 1px solid var(--mm-border);
-  border-radius: 5px;
+  border-radius: var(--mm-radius-popup, 8px);
   color: var(--mm-text);
   background: var(--mm-bg-elevated);
-  box-shadow: 0 2px 10px hsl(var(--shadow-base) / 14%);
+  box-shadow: var(--mm-popover-shadow);
   overflow-y: auto;
 }
 
@@ -1165,9 +1289,9 @@
   width: 100%;
   height: 38px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text-muted);
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
 }
 
 .mm-structure-preset:hover {
@@ -1227,9 +1351,10 @@
   justify-content: space-between;
   height: 28px;
   padding: 0 7px;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text-secondary);
   font-size: 12px;
+  transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
 }
 
 .mm-theme-option:hover,
@@ -1258,7 +1383,7 @@
   width: fit-content;
   height: 26px;
   padding: 0 4px;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text-muted);
   background: var(--mm-bg-hover);
 }
@@ -1279,7 +1404,7 @@
   height: 26px;
   padding: 0;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--mm-radius-control, 5px);
   color: var(--mm-text-muted);
 }
 
@@ -1311,7 +1436,7 @@
   padding: 0;
   border: 1px solid var(--mm-border);
   border-radius: 50%;
-  transition: border-color 0.1s ease;
+  transition: border-color var(--mm-hover-transition, 120ms ease), box-shadow var(--mm-hover-transition, 120ms ease);
 }
 
 .mm-style-swatch:hover,
@@ -1369,7 +1494,15 @@
 
 /* --- 背景 --- */
 .mindmap-container .react-flow__background {
-  background: var(--mm-bg);
+  background-color: var(--mm-bg);
+  background-image: var(--mm-canvas-pattern, none);
+  background-size: var(--mm-canvas-pattern-size, 24px 24px);
+}
+
+/* 画布氛围点阵（可选）：容器加 .mm-canvas-dots 开启；
+   极淡 foreground 点阵，亮暗模式自适应，导出时不参与截图干扰 */
+.mindmap-container.mm-canvas-dots {
+  --mm-canvas-pattern: radial-gradient(hsl(var(--foreground) / 0.06) 1px, transparent 1px);
 }
 
 /* --- 提示栏 --- */
@@ -1384,8 +1517,8 @@
   padding: 6px 12px;
   background: var(--mm-bg-elevated);
   border: 1px solid var(--mm-border);
-  border-radius: 6px;
-  box-shadow: var(--mm-shadow);
+  border-radius: var(--mm-radius-popup, 8px);
+  box-shadow: var(--mm-popover-shadow);
   font-size: 12px;
   color: var(--mm-text-muted);
   z-index: 10;
@@ -1414,7 +1547,7 @@
 .straight-edge,
 .orthogonal-edge,
 .step-edge {
-  transition: stroke 0.2s ease;
+  transition: stroke var(--mm-dur-structure, 150ms) ease;
 }
 
 .straight-edge:hover,
@@ -1423,11 +1556,18 @@
   stroke: var(--mm-primary) !important;
 }
 
+/* 树边 / 组织结构边 hover 反馈：与 straight/orthogonal/step 对齐（用 stroke，禁 filter 防文字发糊） */
+.mindmap-container .react-flow__edge:hover .tree-edge,
+.mindmap-container .react-flow__edge:hover .orgchart-edge {
+  stroke: var(--mm-primary) !important;
+}
+
 /* ============================================
    拖拽放置目标高亮 (Drag Drop Target)
    ============================================ */
 
-/* 与文件树 .nwt-drop-indicator 同语：2px 主色线 + 端点圆 */
+/* 与文件树 .nwt-drop-indicator 同语：2px 主色实线 + 端点圆
+   （不做模糊光晕，对齐项目克制光效倾向） */
 .drop-indicator {
   height: 2px;
   background-color: var(--mm-primary);
@@ -1437,8 +1577,7 @@
   pointer-events: none;
   z-index: 10;
   border-radius: 1px;
-  box-shadow: 0 0 4px hsl(var(--primary) / 50%);
-  transition: left 0.15s ease, bottom 0.15s ease, top 0.15s ease;
+  transition: left var(--mm-dur-structure, 150ms) ease, bottom var(--mm-dur-structure, 150ms) ease, top var(--mm-dur-structure, 150ms) ease;
 }
 
 .drop-indicator::before {
@@ -1451,7 +1590,6 @@
   border-radius: 50%;
   background-color: var(--mm-primary);
   border: 2px solid var(--mm-bg);
-  box-shadow: 0 0 2px hsl(var(--primary) / 50%);
   box-sizing: border-box;
 }
 
@@ -1462,20 +1600,26 @@
   pointer-events: none;
   z-index: 10;
   border-radius: 1px;
-  box-shadow: 0 0 4px hsl(var(--primary) / 50%);
-  transition: left 0.15s ease, height 0.15s ease;
+  transition: left var(--mm-dur-structure, 150ms) ease, height var(--mm-dur-structure, 150ms) ease;
 }
 
+/* 拖拽中：不用 transform scale（与画布防糊字策略冲突——节点会被
+   GPU 重采样导致文字发糊），改用「加深阴影 + 微调透明度」表达抬起感 */
 .mm-dragging {
-  opacity: 0.5;
+  opacity: 0.85;
   z-index: 1000 !important;
 }
 
 .mm-dragging .mm-root-node,
-.mm-dragging .mm-branch-node,
-.mm-dragging .mindmap-node-underline {
-  box-shadow: 0 8px 24px hsl(var(--shadow-base) / 0.2);
-  transform: scale(1.02);
+.mm-dragging .mm-branch-node {
+  box-shadow: var(--mm-shadow-drag);
+}
+
+/* 下划线节点基础样式 box-shadow: none !important，须同权重覆盖 */
+.mm-dragging .mindmap-node-underline,
+.mm-dragging .mm-node--underline,
+.mm-dragging [data-node-chrome="underline"] {
+  box-shadow: var(--mm-shadow-drag) !important;
 }
 
 /* 落点目标公共：RF 节点 wrapper 作为定位上下文 */
@@ -1487,13 +1631,23 @@
 
 /* child：内侧虚线框 + 右侧「成为子节点」角标 */
 .mm-drop-target.mm-drop-child .mm-root-node,
-.mm-drop-target.mm-drop-child .mm-branch-node,
-.mm-drop-target.mm-drop-child .mindmap-node-underline {
+.mm-drop-target.mm-drop-child .mm-branch-node {
   outline: 2.5px dashed var(--mm-primary);
   outline-offset: 4px;
-  border-radius: 6px;
+  border-radius: var(--mm-radius-row, 6px);
   background-color: color-mix(in srgb, var(--mm-primary) 10%, transparent);
-  transition: outline 0.12s ease, background-color 0.12s ease;
+  transition: outline var(--mm-hover-transition, 120ms ease), background-color var(--mm-hover-transition, 120ms ease);
+}
+
+/* 下划线节点保留 underline 语义：不加圆角虚线框，
+   改为底边加粗染主色 + 背景轻染表达「成为子节点」 */
+.mm-drop-target.mm-drop-child .mindmap-node-underline,
+.mm-drop-target.mm-drop-child .mm-node--underline,
+.mm-drop-target.mm-drop-child [data-node-chrome="underline"] {
+  border-bottom-width: 3px !important;
+  border-bottom-color: var(--mm-primary) !important;
+  background-color: color-mix(in srgb, var(--mm-primary) 10%, transparent);
+  transition: border-color var(--mm-hover-transition, 120ms ease), background-color var(--mm-hover-transition, 120ms ease);
 }
 
 .mindmap-container .react-flow__node.mm-drop-child::after {
@@ -1515,7 +1669,7 @@
   z-index: 20;
 }
 
-/* sibling：上下插入线（带端点圆点，对齐大纲 drop-indicator 语义） */
+/* sibling：上下插入线（实线 + 端点圆点，对齐大纲 drop-indicator 语义，不做光晕） */
 .mindmap-container .react-flow__node.mm-drop-sibling-before::before,
 .mindmap-container .react-flow__node.mm-drop-sibling-after::after {
   content: '';
@@ -1525,7 +1679,6 @@
   height: 3px;
   background: var(--mm-primary);
   border-radius: 2px;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--mm-primary) 45%, transparent);
   pointer-events: none;
   z-index: 20;
 }
@@ -1548,7 +1701,6 @@
   height: 8px;
   border-radius: 50%;
   background: var(--mm-primary);
-  box-shadow: 0 0 4px color-mix(in srgb, var(--mm-primary) 40%, transparent);
   pointer-events: none;
   z-index: 21;
 }
@@ -1565,11 +1717,15 @@
 .mm-drop-sibling-before .mm-root-node,
 .mm-drop-sibling-before .mm-branch-node,
 .mm-drop-sibling-before .mindmap-node-underline,
+.mm-drop-sibling-before .mm-node--underline,
+.mm-drop-sibling-before [data-node-chrome="underline"],
 .mm-drop-sibling-after .mm-root-node,
 .mm-drop-sibling-after .mm-branch-node,
-.mm-drop-sibling-after .mindmap-node-underline {
+.mm-drop-sibling-after .mindmap-node-underline,
+.mm-drop-sibling-after .mm-node--underline,
+.mm-drop-sibling-after [data-node-chrome="underline"] {
   background-color: color-mix(in srgb, var(--mm-primary) 5%, transparent);
-  transition: background-color 0.12s ease;
+  transition: background-color var(--mm-hover-transition, 120ms ease);
 }
 
 /* ============================================
@@ -1599,18 +1755,13 @@
 }
 
 .outline-node-row.entering {
-  animation: nodeSlideIn 0.2s ease-out both;
+  animation: nodeSlideIn var(--page-slide-dur, 200ms) ease-out both;
 }
 
-/* ACR R1-11：画布节点 Agent 入场（transform + opacity only，复用 nodeSlideIn） */
+/* ACR R1-11：画布节点 Agent 入场（transform + opacity only，复用 nodeSlideIn；
+   reduced-motion 关停统一收敛在文件末尾的单一 block） */
 .mindmap-container .react-flow__node.agent-entering {
-  animation: nodeSlideIn 0.2s ease-out both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mindmap-container .react-flow__node.agent-entering {
-    animation: none;
-  }
+  animation: nodeSlideIn var(--page-slide-dur, 200ms) ease-out both;
 }
 
 /* --- 进入/退出节点视图动画 --- */
@@ -1627,18 +1778,68 @@
 }
 
 .outline-content-enter {
-  animation: contentFadeIn 150ms ease-out both;
+  animation: contentFadeIn var(--mm-dur-enter, 150ms) var(--mm-ease-enter, ease-out) both;
 }
 
 .mindmap-container .react-flow {
-  animation: contentFadeIn 150ms ease-out both;
+  animation: contentFadeIn var(--mm-dur-enter, 150ms) var(--mm-ease-enter, ease-out) both;
 }
 
+/* --- reduced-motion：mindmap.css 内所有 transition/animation 的统一关停点 --- */
 @media (prefers-reduced-motion: reduce) {
   .outline-node-row,
+  .outline-node-row.entering,
+  .outline-content-enter,
   .collapse-toggle,
   .collapse-toggle svg,
   .outline-collapse-count,
+  .outline-multiselect-bar,
+  .outline-multiselect-btn,
+  .node-bullet,
+  .node-bullet-container,
+  .node-actions,
+  .action-btn,
+  .indent-guide,
+  .drop-indicator,
+  .drop-indicator-vertical,
+  .notion-btn,
+  .mm-toolbar-button,
+  .mm-learning-button,
+  .mm-view-switcher-button,
+  .mm-search-nav-button,
+  .mm-search-close,
+  .mm-canvas-mode-button,
+  .mm-structure-preset,
+  .mm-theme-option,
+  .mm-style-swatch,
+  .mm-style-icon-button,
+  .mm-root-node,
+  .mm-branch-node,
+  .mindmap-node-underline,
+  .mm-node--underline,
+  [data-node-chrome="underline"],
+  .mm-collapse-btn,
+  .mm-action-btn,
+  .mm-dragging,
+  .mm-drop-target.mm-drop-child .mm-root-node,
+  .mm-drop-target.mm-drop-child .mm-branch-node,
+  .mm-drop-target.mm-drop-child .mindmap-node-underline,
+  .mm-drop-target.mm-drop-child .mm-node--underline,
+  .mm-drop-target.mm-drop-child [data-node-chrome="underline"],
+  .mm-drop-sibling-before .mm-root-node,
+  .mm-drop-sibling-before .mm-branch-node,
+  .mm-drop-sibling-after .mm-root-node,
+  .mm-drop-sibling-after .mm-branch-node,
+  .straight-edge,
+  .orthogonal-edge,
+  .step-edge,
+  .mindmap-container .react-flow__edge-path,
+  .tree-edge,
+  .mindmap-container .react-flow__node.agent-entering,
+  .mm-mobile-node-toolbar,
+  .mm-mobile-toolbar-btn,
+  .mm-mobile-panel-row,
+  .mm-canvas-touch-button,
   .mindmap-container .react-flow {
     transition: none;
     animation: none;
@@ -1699,6 +1900,25 @@
     position: absolute;
     inset: -6px;
   }
+
+  /* 画布：折叠钮触屏常显淡色（覆盖 invisible/group-hover 显隐），
+     配合上方 .mm-collapse-btn 命中扩展 */
+  .mm-collapse-wrap {
+    visibility: visible !important;
+  }
+  .mm-collapse-wrap .mm-collapse-btn {
+    opacity: 0.6;
+  }
+  .mm-collapse-wrap .mm-collapse-btn.is-collapsed,
+  .mm-collapse-wrap .mm-collapse-btn:active {
+    opacity: 1;
+  }
+
+  /* 画布：侧向浮动操作弱化——只保留加号，菜单/删除走底部工具条 */
+  .mm-node-actions .mm-action-btn--menu,
+  .mm-node-actions .mm-action-btn--delete {
+    display: none;
+  }
 }
 .mm-note-first-line {
   display: -webkit-box;
@@ -1721,8 +1941,190 @@
   padding: 0;
   justify-content: center;
   border: 1px solid var(--mm-border);
-  border-radius: 6px;
+  border-radius: var(--mm-radius-row, 6px);
   background: color-mix(in srgb, var(--mm-bg-elevated) 88%, transparent);
   color: var(--mm-text-secondary);
-  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 0.12);
+  box-shadow: var(--shadow-content-soft, 0 2px 8px hsl(var(--shadow-base) / 0.12));
+}
+
+/* ============================================
+   触屏底部节点工具条 (Mobile Node Toolbar)
+   ============================================ */
+
+@keyframes mmToolbarSlideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.mm-mobile-node-toolbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--mm-bg-elevated);
+  border-top: 1px solid var(--mm-border);
+  box-shadow: 0 -4px 16px hsl(var(--shadow-base) / 0.1);
+  /* 上滑入场（对齐 --mm-dur-enter） */
+  animation: mmToolbarSlideUp var(--mm-dur-enter, 150ms) ease-out both;
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px));
+}
+
+.mm-mobile-toolbar-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: 2px;
+  padding: 4px 6px;
+}
+
+.mm-mobile-toolbar-btn {
+  flex: 1;
+  min-width: 44px;
+  min-height: 48px;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-secondary);
+  font-size: 10px;
+  line-height: 1.1;
+  overflow: hidden;
+  transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
+}
+
+.mm-mobile-toolbar-btn > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-mobile-toolbar-btn:active {
+  background: var(--mm-bg-active);
+  color: var(--mm-text);
+}
+
+.mm-mobile-toolbar-btn.is-active {
+  color: var(--mm-primary);
+  background: var(--mm-primary-soft);
+}
+
+.mm-mobile-toolbar-btn.destructive:not(:disabled) {
+  color: hsl(var(--destructive));
+}
+
+/* 展开面板：条上方的内联区域（非 Portal、非模态） */
+.mm-mobile-toolbar-panel {
+  max-height: min(288px, 45vh);
+  overflow-y: auto;
+  border-bottom: 1px solid var(--mm-border);
+  padding: 4px 6px;
+  overscroll-behavior: contain;
+}
+
+.mm-mobile-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--mm-radius-row, 6px);
+  color: var(--mm-text);
+  font-size: 14px;
+  text-align: left;
+  justify-content: flex-start;
+  transition: background-color var(--mm-hover-transition, 120ms ease);
+}
+
+.mm-mobile-panel-row:active {
+  background: var(--mm-bg-hover);
+}
+
+.mm-mobile-panel-row.destructive {
+  color: hsl(var(--destructive));
+}
+
+.mm-mobile-panel-row.is-active {
+  color: var(--mm-primary);
+}
+
+/* 展开面板内的格式按钮：44px 触控目标 */
+.mm-mobile-format-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-secondary);
+}
+
+.mm-mobile-format-btn.is-active {
+  color: var(--mm-primary);
+  background: var(--mm-primary-soft);
+}
+
+/* 工具条出现时，把 ReactFlow 底部面板（缩放控件等）抬到工具条上方 */
+.mm-has-mobile-toolbar .react-flow__panel.bottom {
+  bottom: calc(60px + max(env(safe-area-inset-bottom, 0px), var(--mobile-safe-area-bottom, 0px)));
+}
+
+/* 触屏空白画布快捷操作（与 mm-canvas-mode-switch 同槽位：控件条右侧） */
+.mm-canvas-touch-actions {
+  position: absolute;
+  bottom: 8px;
+  left: 42px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--mm-border);
+  border-radius: var(--mm-radius-row, 6px);
+  background: var(--mm-bg-elevated);
+  user-select: none;
+}
+
+.mm-canvas-touch-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: calc(var(--mm-radius-row, 6px) - 2px); /* 分段容器 6px − 2px 内衬 */
+  background: transparent;
+  color: var(--mm-text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  position: relative;
+  transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
+}
+
+/* 触控命中扩展到 ~40px（视觉尺寸不变） */
+.mm-canvas-touch-button::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.mm-canvas-touch-button:active {
+  background: var(--mm-bg-hover);
+  color: var(--mm-text);
 }

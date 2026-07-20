@@ -7,10 +7,18 @@
 
 import type { Node, Edge } from '@xyflow/react';
 import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../types';
-import type { LayoutCategory, LayoutDirection } from '../../registry/types';
+import type { LayoutCategory, LayoutDirection, LayoutBoundsWithMeta } from '../../registry/types';
 import { BaseLayoutEngine, MAX_TREE_DEPTH } from '../base/LayoutEngine';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
-import { calculateNodeWidth, calculateNodeHeight, calculateBounds } from '../../utils/layout/helpers';
+import { getSiblingGap, getLevelGap } from '../../constants/layout';
+import {
+  calculateNodeWidth,
+  calculateNodeHeight,
+  calculateBounds,
+  resolveSubtreeOverlapsX,
+  recenterParentsX,
+  normalizeLayoutRoot,
+} from '../../utils/layout/helpers';
 
 /** 组织结构图节点数据类型 */
 interface OrgChartNodeData extends Record<string, unknown> {
@@ -46,6 +54,8 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
   /**
    * 计算子树宽度（水平方向占用的空间）
    * ★ P0 修复：添加深度限制参数
+   * ★ P1 修复：兄弟间距改用语义化 siblingGap（原先误用 verticalGap 命名，
+   *   现通过 getSiblingGap 读取，未配置时保持原有回退值不变）
    */
   private calculateSubtreeWidth(node: MindMapNode, config: LayoutConfig, depth: number = 0, isRoot: boolean = false): number {
     // 深度限制检查
@@ -58,8 +68,9 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
       return calculateNodeWidth(node, config, isRoot);
     }
 
+    const siblingGap = getSiblingGap(config);
     const childrenWidth = node.children.reduce(
-      (sum, child, i) => sum + this.calculateSubtreeWidth(child, config, depth + 1, false) + (i > 0 ? config.verticalGap : 0),
+      (sum, child, i) => sum + this.calculateSubtreeWidth(child, config, depth + 1, false) + (i > 0 ? siblingGap : 0),
       0
     );
 
@@ -74,12 +85,30 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
     config: LayoutConfig = DEFAULT_LAYOUT_CONFIG,
     direction: LayoutDirection = this.defaultDirection
   ): LayoutResult {
+    // 入口防御：children 缺失时补空数组
+    root = normalizeLayoutRoot(root);
     const validDirection = this.getValidDirection(direction);
     const isUp = validDirection === 'up';
 
     const nodes: Node<OrgChartNodeData>[] = [];
     const edges: Edge[] = [];
-    const layoutBoxes: Array<{ x: number; y: number; width: number; height: number }> = [];
+    const siblingGap = getSiblingGap(config);
+    const levelGap = getLevelGap(config);
+    const mindmapNodeById = new Map<string, MindMapNode>();
+    // 深度超限截断标记（随 bounds 返回，供上层提示）
+    let truncated = false;
+
+    // ★ P0 修复：添加深度限制，防止栈溢出
+    const collectMindMapNode = (current: MindMapNode, depth: number = 0) => {
+      if (depth > MAX_TREE_DEPTH) {
+        console.warn(`[VerticalOrgChartEngine] Tree depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
+        return;
+      }
+      mindmapNodeById.set(current.id, current);
+      current.children?.forEach(child => collectMindMapNode(child, depth + 1));
+    };
+    collectMindMapNode(root, 0);
 
     /**
      * 递归布局节点
@@ -95,6 +124,7 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
       // 深度限制检查
       if (level > MAX_TREE_DEPTH) {
         console.warn(`[VerticalOrgChartEngine] Layout depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return config.nodeMinWidth;
       }
 
@@ -135,7 +165,6 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
           targetPosition: level === 0 ? undefined : targetPosition,
         },
       });
-      layoutBoxes.push({ x: nodeX, y, width: nodeWidth, height: nodeHeight });
 
       // 添加边（使用 orgchart 类型实现组织结构图的直角连线）
       if (parentId) {
@@ -146,7 +175,7 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
           type: 'orgchart',
           data: {
             direction: validDirection,
-            railOffset: config.horizontalGap / 2,
+            railOffset: levelGap / 2,
           },
         });
       }
@@ -156,17 +185,18 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
         return subtreeWidth;
       }
 
-      // 计算子节点的 Y 坐标
-      const childY = isUp
-        ? y - config.horizontalGap - nodeHeight
-        : y + nodeHeight + config.horizontalGap;
-
       // 布局子节点（水平排列）
+      // ★ P1 修复：向上布局时子节点 Y 按各自高度贴合（底边对齐到父节点上方
+      //   levelGap 处），原先统一用父节点高度回退，多行子节点会与父节点重叠
       let currentX = x;
       node.children!.forEach((child) => {
         const childWidth = this.calculateSubtreeWidth(child, config, level + 1);
+        const childHeight = calculateNodeHeight(child, false, config);
+        const childY = isUp
+          ? y - levelGap - childHeight
+          : y + nodeHeight + levelGap;
         layoutNode(child, currentX, childY, level + 1, node.id);
-        currentX += childWidth + config.verticalGap;
+        currentX += childWidth + siblingGap;
       });
 
       return subtreeWidth;
@@ -175,7 +205,24 @@ export class VerticalOrgChartEngine extends BaseLayoutEngine {
     // 从根节点开始布局
     layoutNode(root, 0, 0, 0);
 
-    const bounds = calculateBounds(layoutBoxes);
+    // ★ P1 修复：补齐水平方向的子树碰撞消除 + 父节点重新居中
+    //   （measuredNodeHeights 注入实测宽高后估算与首帧可能不一致，兜底防重叠）
+    const nodesById = new Map(nodes.map(node => [node.id, node]));
+    resolveSubtreeOverlapsX(root, nodesById, config, siblingGap, true);
+    recenterParentsX(root, nodesById, config, true);
+
+    // 基于最终位置重新计算边界
+    const layoutBoxes = nodes.map(node => {
+      const mmNode = mindmapNodeById.get(node.id);
+      const isRootNode = !!node.data?.isRoot || node.type === 'rootNode';
+      const width = mmNode ? calculateNodeWidth(mmNode, config, isRootNode) : config.nodeMinWidth;
+      const height = mmNode ? calculateNodeHeight(mmNode, isRootNode, config) : config.nodeHeight;
+      return { x: node.position.x, y: node.position.y, width, height };
+    });
+    const bounds: LayoutBoundsWithMeta = {
+      ...calculateBounds(layoutBoxes),
+      ...(truncated ? { truncated: true } : {}),
+    };
 
     return { nodes, edges, bounds };
   }

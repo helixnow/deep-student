@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -17,7 +17,6 @@ import {
   TextHOne,
   TextHTwo,
   TextHThree,
-  PaintBucket 
 } from '@phosphor-icons/react';
 
 // ============================================================================
@@ -77,7 +76,10 @@ export const StyleSettings: React.FC<{
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
-  
+  // 视口钳位：面板锚定触发按钮时的水平修正量（px）
+  const [clampOffset, setClampOffset] = useState(0);
+  const clampOffsetRef = useRef(0);
+
   // 受控/非受控模式
   const isControlled = controlledOpen !== undefined;
   const isOpen = isControlled ? controlledOpen : internalOpen;
@@ -164,6 +166,39 @@ export const StyleSettings: React.FC<{
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, setIsOpen]);
+
+  // 视口钳位：锚定面板贴近窗口边缘时向内平移，防止右缘/左缘被裁切
+  // 用独立的 translate 属性修正，避免与 ui-zoom-fade-in 的 transform 动画互相覆盖
+  useLayoutEffect(() => {
+    if (!isOpen || isInline) {
+      clampOffsetRef.current = 0;
+      setClampOffset(0);
+      return;
+    }
+    const measure = () => {
+      const el = panelRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const margin = 8;
+      // 先扣掉上一次修正量，还原面板的自然锚定位置再重新计算
+      const naturalLeft = rect.left - clampOffsetRef.current;
+      const naturalRight = rect.right - clampOffsetRef.current;
+      let next = 0;
+      if (naturalRight > window.innerWidth - margin) {
+        next = window.innerWidth - margin - naturalRight;
+      }
+      if (naturalLeft + next < margin) {
+        next = margin - naturalLeft;
+      }
+      if (next !== clampOffsetRef.current) {
+        clampOffsetRef.current = next;
+        setClampOffset(next);
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [isOpen, isInline]);
 
   const getPlacementStyles = () => {
     switch (placement) {
@@ -324,24 +359,22 @@ export const StyleSettings: React.FC<{
         </NotionButton>
       )}
 
+      {/* 弹出面板（桌面锚定 popover；窄屏由外壳的 inline 子屏承载，不再走底部 sheet + 遮罩） */}
       {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40 bg-transparent md:hidden" onClick={() => setIsOpen(false)} />
-          <div
-            ref={panelRef}
-            className={cn(
-              'absolute z-50',
-              getPlacementStyles(),
-              'mm-settings-popover mm-style-popover',
-              'ui-zoom-fade-in',
-              'max-md:fixed max-md:left-4 max-md:right-4 max-md:top-auto max-md:bottom-4 max-md:w-auto'
-            )}
-            role="dialog"
-            aria-label={t('style.globalTheme')}
-          >
-            {panelContent}
-          </div>
-        </>
+        <div
+          ref={panelRef}
+          className={cn(
+            'absolute z-50',
+            getPlacementStyles(),
+            'mm-settings-popover mm-style-popover',
+            'ui-zoom-fade-in'
+          )}
+          style={clampOffset !== 0 ? { translate: `${clampOffset}px 0` } : undefined}
+          role="dialog"
+          aria-label={t('style.globalTheme')}
+        >
+          {panelContent}
+        </div>
       )}
     </div>
   );

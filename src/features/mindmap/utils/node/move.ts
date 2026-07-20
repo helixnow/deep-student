@@ -56,12 +56,24 @@ export function moveNode(
   // 获取要移动的节点
   const nodeInfo = findNodeWithParent(root, nodeId);
   if (!nodeInfo) return root;
+
+  // B7：同父下移时「先删后插」会使目标索引左移一位，需要校正
+  //（与 store.moveNodes 的 removedBeforeTarget 校正语义一致）
+  let targetIndex = index;
+  if (
+    index >= 0 &&
+    nodeInfo.parent &&
+    nodeInfo.parent.id === newParentId &&
+    nodeInfo.index < index
+  ) {
+    targetIndex = index - 1;
+  }
   
   // 从原位置删除
   let result = deleteNodeRecursive(root, nodeId);
   
   // 插入到新位置
-  result = insertNode(result, newParentId, nodeInfo.node, index);
+  result = insertNode(result, newParentId, nodeInfo.node, targetIndex);
   
   return result;
 }
@@ -122,22 +134,58 @@ export function indentNode(
   return moveNode(root, nodeId, prevSibling.id, -1);
 }
 
-/** 反缩进节点（变成父节点的下一个兄弟） */
+/**
+ * 反缩进节点（变成父节点的下一个兄弟）。
+ * 幕布/Workflowy 语义：原先跟在该节点后面的同级会被它收养为子节点，
+ * 与 store.outdentNodes 保持一致。
+ */
 export function outdentNode(
   root: MindMapNode,
   nodeId: NodeId
 ): MindMapNode {
   const info = findNodeWithParent(root, nodeId);
   if (!info || !info.parent) return root;
-  
-  // 获取祖父节点信息
-  const grandparentInfo = findNodeWithParent(root, info.parent.id);
-  if (!grandparentInfo) return root; // 父节点是根节点，无法反缩进
-  
-  const newParentId = grandparentInfo.parent?.id || root.id;
-  const newIndex = grandparentInfo.index + 1;
-  
-  return moveNode(root, nodeId, newParentId, newIndex);
+
+  const parent = info.parent;
+  const grandparentInfo = findNodeWithParent(root, parent.id);
+  if (!grandparentInfo || !grandparentInfo.parent) return root; // 父节点是根节点，无法反缩进
+
+  const grandParent = grandparentInfo.parent;
+
+  // 后续同级被提升节点收养为子树（深度不变，无需重查深度限制）
+  const adoptedSiblings = parent.children.slice(info.index + 1);
+  const promoted: MindMapNode = {
+    ...info.node,
+    children: [...info.node.children, ...adoptedSiblings],
+    ...(adoptedSiblings.length > 0 && info.node.collapsed === true
+      ? { collapsed: false }
+      : {}),
+  };
+
+  const nextParent: MindMapNode = {
+    ...parent,
+    children: parent.children.slice(0, info.index),
+  };
+
+  const nextGrandChildren = grandParent.children.flatMap((child) =>
+    child.id === parent.id ? [nextParent, promoted] : [child],
+  );
+
+  return replaceNodeChildren(root, grandParent.id, nextGrandChildren);
+}
+
+function replaceNodeChildren(
+  root: MindMapNode,
+  parentId: NodeId,
+  children: MindMapNode[]
+): MindMapNode {
+  if (root.id === parentId) {
+    return { ...root, children };
+  }
+  return {
+    ...root,
+    children: root.children.map((child) => replaceNodeChildren(child, parentId, children)),
+  };
 }
 
 /** 在指定节点后添加兄弟节点 */

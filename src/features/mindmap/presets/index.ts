@@ -2,15 +2,18 @@ import { PresetRegistry } from '../registry';
 import { mindmapPresets } from './mindmap-presets';
 import { logicPresets } from './logic-presets';
 import { orgchartPresets } from './orgchart-presets';
+import { timelinePresets } from './timeline-presets';
 
 export { mindmapPresets } from './mindmap-presets';
 export { logicPresets } from './logic-presets';
 export { orgchartPresets } from './orgchart-presets';
+export { timelinePresets } from './timeline-presets';
 
 /** 所有内置预设 */
 export const allPresets = [
   ...mindmapPresets,
   ...logicPresets,
+  ...timelinePresets,
   ...orgchartPresets,
 ];
 

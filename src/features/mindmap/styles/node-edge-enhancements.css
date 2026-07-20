@@ -1,0 +1,172 @@
+/* 节点与边渲染增强（W04）
+   - 下划线节点选中/hover：class + CSS 变量（data-node-chrome / --mm-underline-color），
+     替代 mindmap.css 中 [style*="border-bottom-color"] 属性选择器黑客（旧规则由 W06 清理）
+   - 边 hover / 强调：只动 stroke，禁 filter（防文字发糊）
+   - 节点装饰角标（优先级 / 进度环 / 链接 / 完成 checkbox）
+   视觉一律走 --mm-* / hsl(var(--*)) token；动效尊重 prefers-reduced-motion。
+   由 NodeContent.tsx 引入。 */
+
+/* ============================================
+   下划线节点状态（data-node-chrome="underline"）
+   彩虹分支色经 BranchNode 写入 --mm-underline-color；
+   无彩虹色时回退 primary。内联 borderBottom（导出兜底）需 !important 覆盖。
+   ============================================ */
+
+.mindmap-container [data-node-chrome='underline']:not(.selected):not(.editing):hover {
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--mm-underline-color, var(--mm-primary)) 80%,
+    var(--mm-text)
+  ) !important;
+}
+
+.mindmap-container [data-node-chrome='underline'].selected:not(.editing) {
+  border-bottom-width: 2px !important;
+  border-bottom-color: var(--mm-underline-color, var(--mm-primary)) !important;
+}
+
+/* ============================================
+   边 hover：统一加粗（颜色反馈已在 mindmap.css 中就位，此处补宽度）
+   BaseEdge 内联 strokeWidth，需 !important
+   ============================================ */
+
+.mindmap-container .react-flow__edge:hover .tree-edge,
+.mindmap-container .react-flow__edge:hover .orgchart-edge,
+.mindmap-container .react-flow__edge:hover .straight-edge,
+.mindmap-container .react-flow__edge:hover .orthogonal-edge,
+.mindmap-container .react-flow__edge:hover .step-edge {
+  stroke-width: 2.25px !important;
+}
+
+/* 父节点选中 → 出边强调（stroke/宽度由组件内联完成，此处只做平滑过渡） */
+.mindmap-container .mm-edge-emphasized {
+  transition:
+    stroke var(--notes-hover-transition, 120ms ease),
+    stroke-width var(--notes-hover-transition, 120ms ease);
+}
+
+/* ============================================
+   节点装饰角标
+   ============================================ */
+
+/* 优先级徽标：圆形数字，颜色由组件按级别注入（语义 token） */
+.mm-deco-priority {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 1;
+  color: hsl(var(--primary-foreground, 0 0% 100%));
+}
+
+/* 进度环 */
+.mm-deco-progress {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+/* 链接图标按钮 */
+.mm-deco-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--mm-radius-control, 5px);
+  background: transparent;
+  color: hsl(var(--primary));
+  cursor: pointer;
+  font-size: 12px;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.mm-deco-link:hover {
+  background: var(--mm-bg-hover, var(--interactive-hover));
+}
+
+.mm-deco-link:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* 完成态 checkbox（style.showCheckbox 开启时） */
+.mm-deco-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1.5px solid var(--mm-border-strong, var(--mm-border));
+  border-radius: 4px;
+  background: var(--mm-bg-elevated);
+  color: hsl(var(--primary-foreground, 0 0% 100%));
+  cursor: pointer;
+  font-size: 10px;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    border-color var(--notes-hover-transition, 120ms ease);
+}
+
+.mm-deco-checkbox.is-checked {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+}
+
+.mm-deco-checkbox:not(:disabled):hover {
+  border-color: hsl(var(--primary));
+}
+
+.mm-deco-checkbox:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.mm-deco-checkbox:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* ============================================
+   触控设备：分支操作条 / 装饰按钮扩大命中
+   ============================================ */
+
+@media (pointer: coarse) {
+  .mindmap-container .mm-node-actions .mm-action-btn {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+  }
+
+  .mm-deco-link,
+  .mm-deco-checkbox {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* 导出时隐藏交互性装饰按钮的 hover 痕迹由 .mm-exporting 全局规则兜底，无需额外处理 */
+
+@media (prefers-reduced-motion: reduce) {
+  .mindmap-container .mm-edge-emphasized,
+  .mm-deco-link,
+  .mm-deco-checkbox {
+    transition: none;
+  }
+}

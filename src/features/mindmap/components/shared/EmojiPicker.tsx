@@ -56,21 +56,24 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
     <div
       ref={ref}
       className={cn(
-        "bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] rounded-md shadow-[var(--mm-popover-shadow)] p-2 w-[220px]",
+        "bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] rounded-[var(--mm-radius-popup,8px)] shadow-[var(--mm-popover-shadow)] p-2 w-[220px]",
         className
       )}
       onClick={(e) => e.stopPropagation()}
     >
       {/* Tab headers */}
-      <div className="flex gap-1 mb-2 border-b border-border pb-1">
+      <div className="flex gap-1 mb-2 border-b border-[var(--mm-border)] pb-1" role="tablist">
         {EMOJI_CATEGORIES.map((cat, i) => (
           <button
             key={cat.key}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === i}
             className={cn(
-              "text-sm px-1.5 py-0.5 rounded transition-colors",
+              "text-sm px-1.5 py-0.5 rounded transition-colors motion-reduce:transition-none",
               activeTab === i
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-[var(--interactive-hover)]"
+                ? "bg-[var(--mm-bg-active)]"
+                : "text-muted-foreground hover:bg-[var(--mm-bg-hover)]"
             )}
             onClick={() => setActiveTab(i)}
           >
@@ -84,9 +87,11 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
         {EMOJI_CATEGORIES[activeTab].emojis.map((emoji) => (
           <button
             key={emoji}
+            type="button"
+            aria-label={emoji}
             className={cn(
-              "w-6 h-6 flex items-center justify-center rounded text-base hover:bg-[var(--interactive-hover)] transition-colors",
-              value === emoji && "bg-accent ring-1 ring-primary"
+              "w-6 h-6 flex items-center justify-center rounded text-base hover:bg-[var(--mm-bg-hover)] transition-colors motion-reduce:transition-none",
+              value === emoji && "bg-[var(--mm-bg-active)] ring-1 ring-primary"
             )}
             onClick={() => {
               onChange(emoji);
@@ -101,7 +106,8 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
       {/* Remove button */}
       {value && (
         <button
-          className="w-full mt-2 text-xs text-muted-foreground hover:text-destructive py-1 rounded hover:bg-destructive/10 transition-colors"
+          type="button"
+          className="w-full mt-2 text-xs text-muted-foreground hover:text-destructive py-1 rounded hover:bg-destructive/10 transition-colors motion-reduce:transition-none"
           onClick={() => {
             onChange(undefined);
             onClose?.();

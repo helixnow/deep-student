@@ -7,6 +7,7 @@ import { TreeLayoutEngine } from './mindmap/TreeLayoutEngine';
 import { BalancedLayoutEngine } from './mindmap/BalancedLayoutEngine';
 import { LogicTreeLayoutEngine, LogicBalancedLayoutEngine } from './logic';
 import { VerticalOrgChartEngine, HorizontalOrgChartEngine } from './orgchart';
+import { TimelineLayoutEngine } from './timeline';
 
 // 创建布局引擎实例
 export const treeLayout = new TreeLayoutEngine();
@@ -17,6 +18,9 @@ export const logicBalancedLayout = new LogicBalancedLayoutEngine();
 // 组织结构图布局引擎实例
 export const verticalOrgChart = new VerticalOrgChartEngine();
 export const horizontalOrgChart = new HorizontalOrgChartEngine();
+
+// 时间轴布局引擎实例
+export const timelineLayout = new TimelineLayoutEngine();
 
 /**
  * 注册内置布局引擎
@@ -35,6 +39,9 @@ export function registerBuiltinLayouts(): void {
   // 组织结构图布局
   LayoutRegistry.register(verticalOrgChart);
   LayoutRegistry.register(horizontalOrgChart);
+
+  // 时间轴布局
+  LayoutRegistry.register(timelineLayout);
 }
 
 // 导出基类
@@ -48,3 +55,6 @@ export * from './logic';
 
 // 导出组织结构图布局
 export * from './orgchart';
+
+// 导出时间轴布局
+export * from './timeline';

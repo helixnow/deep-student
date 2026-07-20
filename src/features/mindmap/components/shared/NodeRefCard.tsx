@@ -57,16 +57,16 @@ export const NodeRefCard: React.FC<NodeRefCardProps> = ({
         'group/ref nopan nodrag',
         'inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
         'text-[11px] leading-tight',
-        'bg-[var(--mm-bg-elevated)] hover:bg-[var(--interactive-hover)]',
-        'border border-border/30',
-        'cursor-pointer transition-colors duration-150',
+        'bg-[var(--mm-bg-elevated)] hover:bg-[var(--mm-bg-hover)]',
+        'border border-border/30 hover:border-border/60',
+        'cursor-pointer transition-colors duration-150 motion-reduce:transition-none',
         className
       )}
       onClick={handleClick}
       title={`${ref_.name} (${ref_.sourceId})`}
     >
-      <IconComp size={14} className="shrink-0" />
-      <span className="whitespace-nowrap">{ref_.name}</span>
+      <IconComp size={14} className="shrink-0 text-[var(--mm-text-secondary)]" />
+      <span className="whitespace-nowrap max-w-[200px] truncate">{ref_.name}</span>
       {!readonly && onRemove && (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="!ml-0.5 !-mr-0.5 !p-0.5 !h-auto !w-auto !min-w-0 !rounded-sm opacity-0 group-hover/ref:opacity-60 hover:!opacity-100 hover:bg-destructive/10" aria-label="remove">
           <X className="w-2.5 h-2.5" />

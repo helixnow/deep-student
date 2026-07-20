@@ -372,6 +372,164 @@ describe('mindmap store polish APIs', () => {
     );
   });
 
+  it('outdentNodes adopts following siblings as children (Workflowy semantics)', () => {
+    const nested = createFlatDocument();
+    const [a, b, c, d] = nested.root.children;
+    nested.root.children = [
+      { id: 'parent', text: 'Parent', children: [a, b, c] },
+      d,
+    ];
+    seedStore(nested);
+
+    useMindMapStore.getState().outdentNodes(['b']);
+    const root = useMindMapStore.getState().document.root;
+    expect(root.children.map((child) => child.id)).toEqual(['parent', 'b', 'd']);
+    expect(findNodeById(root, 'parent')?.children.map((child) => child.id)).toEqual(['a']);
+    // 原后续同级 c 被提升节点 b 收养为子节点
+    expect(findNodeById(root, 'b')?.children.map((child) => child.id)).toEqual(['c']);
+    expect(useMindMapStore.getState().history.past).toHaveLength(1);
+
+    useMindMapStore.getState().undo();
+    const restored = useMindMapStore.getState().document.root;
+    expect(restored.children.map((child) => child.id)).toEqual(['parent', 'd']);
+    expect(findNodeById(restored, 'parent')?.children.map((child) => child.id)).toEqual([
+      'a', 'b', 'c',
+    ]);
+  });
+
+  it('mergeWithPrevious scopeRootId resolves previous-visible inside the focused branch only', () => {
+    seedStore(createDocument());
+    // 专注在 node_b：node_b1 的上一可见是专注根自身，允许合并
+    const scoped = useMindMapStore
+      .getState()
+      .mergeWithPrevious('node_b1', undefined, 'node_b');
+    expect(scoped?.mergedIntoId).toBe('node_b');
+
+    seedStore(createDocument());
+    // 专注在 node_b1：自身是专注视图首行，范围内无上一可见 → 拒绝合并（不越界并入 node_b）
+    expect(
+      useMindMapStore.getState().mergeWithPrevious('node_b1', undefined, 'node_b1'),
+    ).toBeNull();
+    expect(useMindMapStore.getState().history.past).toHaveLength(0);
+  });
+
+  it('duplicateNodes inserts deep copies after sources with fresh ids in one undo step', () => {
+    const document = createDocument();
+    document.root.children[0].style = { bgColor: '#fff' };
+    document.root.children[0].blankedRanges = [{ start: 0, end: 5 }];
+    seedStore(document);
+
+    // 祖先/后代去重：只复制顶层 node_a
+    const newIds = useMindMapStore.getState().duplicateNodes(['node_a', 'node_a1']);
+    expect(newIds).toHaveLength(1);
+
+    const state = useMindMapStore.getState();
+    const rootChildren = state.document.root.children;
+    expect(rootChildren.map((node) => node.id)).toEqual(['node_a', newIds![0], 'node_b']);
+
+    const source = findNodeById(state.document.root, 'node_a')!;
+    const clone = rootChildren[1];
+    expect(clone.text).toBe('HelloWorld');
+    expect(clone.children).toHaveLength(1);
+    expect(clone.children[0].id).not.toBe('node_a1');
+    expect(clone.style).toEqual({ bgColor: '#fff' });
+    expect(clone.style).not.toBe(source.style);
+    expect(clone.blankedRanges).toEqual([{ start: 0, end: 5 }]);
+    expect(clone.blankedRanges).not.toBe(source.blankedRanges);
+    expect(state.focusedNodeId).toBe(newIds![0]);
+    expect(state.selection).toEqual(newIds);
+    expect(state.history.past).toHaveLength(1);
+
+    state.undo();
+    expect(useMindMapStore.getState().document.root.children.map((node) => node.id)).toEqual([
+      'node_a',
+      'node_b',
+    ]);
+
+    // 根不可复制
+    expect(useMindMapStore.getState().duplicateNodes(['root_test'])).toBeNull();
+  });
+
+  it('collapseSubtree / expandSubtree toggle a whole branch in one history step', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().collapseSubtree('node_b');
+
+    let root = useMindMapStore.getState().document.root;
+    expect(findNodeById(root, 'node_b')!.collapsed).toBe(true);
+    expect(findNodeById(root, 'node_b1')!.collapsed).toBe(true);
+    // 叶子不写 collapsed，避免污染树快照
+    expect(
+      Object.prototype.hasOwnProperty.call(findNodeById(root, 'node_b1a')!, 'collapsed'),
+    ).toBe(false);
+    expect(useMindMapStore.getState().history.past).toHaveLength(1);
+
+    useMindMapStore.getState().expandSubtree('node_b');
+    root = useMindMapStore.getState().document.root;
+    expect(findNodeById(root, 'node_b')!.collapsed).toBe(false);
+    expect(findNodeById(root, 'node_b1')!.collapsed).toBe(false);
+    expect(useMindMapStore.getState().history.past).toHaveLength(2);
+
+    // 文档根自身保持展开
+    useMindMapStore.getState().collapseSubtree('root_test');
+    root = useMindMapStore.getState().document.root;
+    expect(root.collapsed).toBeFalsy();
+    expect(findNodeById(root, 'node_a')!.collapsed).toBe(true);
+  });
+
+  it('pasteMarkdownChildren position sibling-after inserts the forest after the target', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().pasteMarkdownChildren('node_a', '- one\n- two', {
+      position: 'sibling-after',
+    });
+
+    const state = useMindMapStore.getState();
+    expect(state.document.root.children.map((node) => node.text)).toEqual([
+      'HelloWorld', 'one', 'two', 'Beta',
+    ]);
+    // 子树不受影响
+    expect(
+      findNodeById(state.document.root, 'node_a')!.children.map((node) => node.id),
+    ).toEqual(['node_a1']);
+    expect(state.history.past).toHaveLength(1);
+
+    // 根无同级：回退为 child（保持兼容）
+    seedStore(createDocument());
+    useMindMapStore.getState().pasteMarkdownChildren('root_test', '- one', {
+      position: 'sibling-after',
+    });
+    expect(useMindMapStore.getState().document.root.children.at(-1)?.text).toBe('one');
+  });
+
+  it('updateNode remaps blank ranges on text edits instead of clearing them all', () => {
+    seedStore(createDocument());
+    useMindMapStore.getState().addBlankRange('node_a', { start: 0, end: 5 }); // "Hello"
+
+    // 末尾追加：区间位置不变
+    useMindMapStore.getState().updateNode('node_a', { text: 'HelloWorld!' });
+    let node = findNodeById(useMindMapStore.getState().document.root, 'node_a')!;
+    expect(node.blankedRanges).toEqual([{ start: 0, end: 5 }]);
+
+    // 整段改写：区间无法映射 → 清除
+    useMindMapStore.getState().updateNode('node_a', { text: 'Rewritten entirely' });
+    node = findNodeById(useMindMapStore.getState().document.root, 'node_a')!;
+    expect(node.blankedRanges).toBeUndefined();
+  });
+
+  it('destroy is idempotent and public clearDraft removes the stored draft', () => {
+    seedStore(createDocument());
+    useMindMapStore.setState({ mindmapId: 'mm_pub_draft', isDirty: true, _documentVersion: 1 });
+    useMindMapStore.getState().saveDraftSync();
+    expect(window.localStorage.getItem('mindmap:draft:mm_pub_draft')).toBeTruthy();
+
+    useMindMapStore.getState().clearDraft();
+    expect(window.localStorage.getItem('mindmap:draft:mm_pub_draft')).toBeNull();
+
+    expect(() => {
+      useMindMapStore.getState().destroy();
+      useMindMapStore.getState().destroy();
+    }).not.toThrow();
+  });
+
   it('batch indent/outdent preserve sibling order and undo in one step', () => {
     seedStore(createFlatDocument());
     useMindMapStore.getState().indentNodes(['b', 'c']);

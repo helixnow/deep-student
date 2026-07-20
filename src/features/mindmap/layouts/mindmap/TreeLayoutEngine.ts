@@ -7,6 +7,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../types';
 import type { LayoutCategory, LayoutDirection } from '../../registry/types';
+import type { LayoutBoundsWithMeta } from '../../registry/types';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
 import {
   calculateSubtreeHeight,
@@ -15,7 +16,9 @@ import {
   calculateBounds,
   resolveSubtreeOverlaps,
   recenterParents,
+  normalizeLayoutRoot,
 } from '../../utils/layout/helpers';
+import { compactSiblingSubtrees, isCompactionEnabled } from '../../utils/layout/compactTree';
 import { BaseLayoutEngine, MAX_TREE_DEPTH } from '../base/LayoutEngine';
 
 /** 节点数据类型 */
@@ -60,17 +63,22 @@ export class TreeLayoutEngine extends BaseLayoutEngine {
     config: LayoutConfig = DEFAULT_LAYOUT_CONFIG,
     direction: LayoutDirection = this.defaultDirection
   ): LayoutResult {
+    // 入口防御：children 缺失时补空数组
+    root = normalizeLayoutRoot(root);
     const validDirection = this.getValidDirection(direction);
     const isLeftDirection = validDirection === 'left';
 
     const nodes: Node<TreeNodeData>[] = [];
     const edges: Edge[] = [];
     const mindmapNodeById = new Map<string, MindMapNode>();
-    
+    // 深度超限截断标记（随 bounds 返回，供上层提示）
+    let truncated = false;
+
     // ★ P0 修复：添加深度限制，防止栈溢出
     const collectMindMapNode = (current: MindMapNode, depth: number = 0) => {
       if (depth > MAX_TREE_DEPTH) {
         console.warn(`[TreeLayoutEngine] Tree depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return;
       }
       mindmapNodeById.set(current.id, current);
@@ -92,6 +100,7 @@ export class TreeLayoutEngine extends BaseLayoutEngine {
       // 深度限制检查
       if (level > MAX_TREE_DEPTH) {
         console.warn(`[TreeLayoutEngine] Layout depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return config.nodeHeight;
       }
       
@@ -187,20 +196,29 @@ export class TreeLayoutEngine extends BaseLayoutEngine {
     // 从根节点开始布局
     layoutNode(root, 0, 0, 0);
 
-    // 基于实测高度的子树碰撞消除
     const nodesById = new Map(nodes.map(node => [node.id, node]));
+    // 基于实测高度的子树碰撞消除
     resolveSubtreeOverlaps(root, nodesById, config, true);
     recenterParents(root, nodesById, config, true);
+    // 轮廓紧凑（须在 resolve/recenter 之后）：按子树实际轮廓上提兄弟，
+    // 减少「深窄子树旁的大片空白」；只在安全净距内收紧，不产生新重叠
+    if (isCompactionEnabled(config)) {
+      compactSiblingSubtrees(root, nodesById, config, true);
+    }
 
     // 重新计算边界
+    // ★ P0 修复：宽度估算传入 isRoot，保证 bounds 与实际渲染宽度一致
     const layoutBoxes = nodes.map(node => {
       const mmNode = mindmapNodeById.get(node.id);
-      const isRootNode = node.data?.isRoot || node.type === 'rootNode';
-      const width = mmNode ? calculateNodeWidth(mmNode, config) : config.nodeMinWidth;
+      const isRootNode = !!node.data?.isRoot || node.type === 'rootNode';
+      const width = mmNode ? calculateNodeWidth(mmNode, config, isRootNode) : config.nodeMinWidth;
       const height = mmNode ? calculateNodeHeight(mmNode, isRootNode, config) : config.nodeHeight;
       return { x: node.position.x, y: node.position.y, width, height };
     });
-    const bounds = calculateBounds(layoutBoxes);
+    const bounds: LayoutBoundsWithMeta = {
+      ...calculateBounds(layoutBoxes),
+      ...(truncated ? { truncated: true } : {}),
+    };
 
     return { nodes, edges, bounds };
   }

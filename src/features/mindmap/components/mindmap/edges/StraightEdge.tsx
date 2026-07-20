@@ -1,5 +1,7 @@
 import React from 'react';
 import { BaseEdge, EdgeProps, getStraightPath } from '@xyflow/react';
+import { getEdgeEmphasis, emphasizedEdgeStyle, withEmphasisClass } from './edgeEmphasis';
+import './edges.css';
 
 export const StraightEdge: React.FC<EdgeProps> = ({
   sourceX,
@@ -7,6 +9,7 @@ export const StraightEdge: React.FC<EdgeProps> = ({
   targetX,
   targetY,
   id,
+  data,
   markerEnd,
   markerStart,
   interactionWidth,
@@ -19,6 +22,8 @@ export const StraightEdge: React.FC<EdgeProps> = ({
     targetY,
   });
 
+  const emphasized = getEdgeEmphasis(data);
+
   return (
     <BaseEdge
       id={id}
@@ -26,13 +31,14 @@ export const StraightEdge: React.FC<EdgeProps> = ({
       markerEnd={markerEnd}
       markerStart={markerStart}
       interactionWidth={interactionWidth}
-      className="straight-edge"
+      className={withEmphasisClass('straight-edge mm-tree-edge', emphasized)}
       style={{
         strokeWidth: 1.5,
         stroke: 'var(--mm-edge)',
         strokeLinecap: 'round',
         fill: 'none',
         ...style,
+        ...emphasizedEdgeStyle(emphasized),
       }}
     />
   );

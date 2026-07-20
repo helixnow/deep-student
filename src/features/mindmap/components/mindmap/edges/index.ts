@@ -18,6 +18,8 @@ export { StepEdge } from './StepEdge';
 export { OrgChartEdge, OrgChartHorizontalEdge } from './OrgChartEdge';
 export { AssociationEdge } from './AssociationEdge';
 export type { AssociationEdgeData } from './AssociationEdge';
+// 边强调通道契约：Canvas 侧为选中节点的出边设置 data.emphasized = true 即可高亮
+export { getEdgeEmphasis } from './edgeEmphasis';
 
 // 边类型注册（默认边类型）
 export const edgeTypes: EdgeTypes = {

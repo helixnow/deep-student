@@ -1,15 +1,23 @@
-import React, { useCallback, useMemo, useLayoutEffect, useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Plus } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
+import { useNodeHeightObserver } from './useNodeHeightObserver';
+import { pickDefined } from './styleUtils';
 import { useMindMapStore, useMindMapStoreApi } from '../../../store';
-import { StyleRegistry } from '../../../registry';
+import { useMindMapTheme } from '../../../hooks/useMindMapTheme';
+import { getThemeFontMetrics, MM_NODE_LINE_HEIGHT_RATIO } from '../../../styles/themes';
 import { openNodeRef } from '../../../utils/openNodeRef';
 import { getSearchResultIdSet } from '../../../utils/searchFilter';
+import {
+  selectNodeDecorationKey,
+  parseNodeDecorations,
+} from '../../../utils/nodeDecorations';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
+import './nodes.css';
 
 export interface RootNodeData extends Record<string, unknown> {
   label: string;
@@ -51,13 +59,18 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
   const removeBlankRange = useMindMapStore(state => state.removeBlankRange);
   const removeNodeRef = useMindMapStore(state => state.removeNodeRef);
+  // 装饰字段（priority/progress/href）：布局引擎未拷贝，经索引直接读 store（值稳定 key，无装饰不触发重渲染）
+  const decorationKey = useMindMapStore(state =>
+    selectNodeDecorationKey(state.document.root, data.nodeId),
+  );
+  const decorations = parseNodeDecorations(decorationKey);
   const nodeRef = useRef<HTMLDivElement>(null);
   
   const isEditing = editingNodeId === data.nodeId;
   const isEditingNote = editingNoteNodeId === data.nodeId;
 
-  // 从 StyleRegistry 获取主题配置
-  const theme = useMemo(() => StyleRegistry.get(styleId) || StyleRegistry.getDefault(), [styleId]);
+  // 从 StyleRegistry 解析主题（订阅暗色模式切换与注册变更，见 useMindMapTheme）
+  const theme = useMindMapTheme(styleId);
 
   const handleTextChange = useCallback((text: string) => {
     updateNode(data.nodeId, { text });
@@ -104,37 +117,22 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   // 记录节点实测高度，避免布局重叠
   // ★ 2026-02 优化：embed 模式下跳过测量，防止小容器的测量值覆盖主编辑器
   const isEmbed = !!(data as Record<string, unknown>).isEmbed;
-  useLayoutEffect(() => {
-    if (isEmbed) return;
-    const element = nodeRef.current;
-    if (!element || !data.nodeId) {
-      return;
-    }
-    const updateHeight = () => {
-      const height = element.offsetHeight;
-      if (height > 0) {
-        setMeasuredNodeHeight(data.nodeId, height);
-      }
-    };
-    updateHeight();
-    const observer = new ResizeObserver(() => updateHeight());
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-    };
-  }, [data.nodeId, setMeasuredNodeHeight, isEmbed]);
+  useNodeHeightObserver(nodeRef, data.nodeId, setMeasuredNodeHeight, !isEmbed);
 
-  // 主题样式 - 从 theme.node.root 获取
+  // 主题样式 - 从 theme.node.root 获取；fallback 走主题度量单一数据源
   const rootTheme = theme?.node?.root;
+  const rootMetrics = getThemeFontMetrics(theme, true);
   
   // 自定义样式（来自 data.style）优先级高于主题样式
-  const customStyle: React.CSSProperties = {
+  // ★ 修复：剔除 undefined 字段——直接展开会把主题样式同名键覆盖为 undefined，
+  //   导致主题 foreground / fontWeight 等被静默丢弃
+  const customStyle: React.CSSProperties = pickDefined({
     color: data.style?.textColor,
     fontWeight: data.style?.fontWeight,
     fontStyle: data.style?.fontStyle === 'italic' ? 'italic' : undefined,
     textDecoration: data.style?.textDecoration && data.style.textDecoration !== 'none' ? data.style.textDecoration : undefined,
     fontSize: data.style?.headingLevel === 'h1' ? '22px' : data.style?.headingLevel === 'h2' ? '18px' : data.style?.headingLevel === 'h3' ? '16px' : data.style?.fontSize ? `${data.style.fontSize}px` : undefined,
-  };
+  });
 
   // 合并主题样式和自定义样式，自定义样式优先级更高
   // ★ 修复：正确应用全局主题的所有属性
@@ -143,7 +141,9 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     color: rootTheme?.foreground || 'var(--mm-text)',
     border: rootTheme?.border || '1px solid var(--mm-border)',
     borderRadius: rootTheme?.borderRadius ? `${rootTheme.borderRadius}px` : '4px',
-    fontSize: rootTheme?.fontSize ? `${rootTheme.fontSize}px` : '18px',
+    fontSize: rootTheme?.fontSize ? `${rootTheme.fontSize}px` : `${rootMetrics.fontSize}px`,
+    // 行高与布局估算（getThemeFontMetrics）保持同一系数，编辑态 textarea 继承后不跳动
+    lineHeight: MM_NODE_LINE_HEIGHT_RATIO,
     fontWeight: rootTheme?.fontWeight || 600,
     padding: rootTheme?.padding || '10px 18px',
     boxShadow: rootTheme?.shadow || 'none',
@@ -160,6 +160,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
       className={cn(
         "mm-root-node group relative flex items-center justify-center",
         selected && "selected",
+        isEditing && "editing",
         isSearchMatch && "search-match",
         isCurrentSearchMatch && "search-match-current",
         data.completed && "mm-completed"
@@ -183,6 +184,9 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         blankedRanges={data.blankedRanges}
         revealedIndices={revealedBlanks[data.nodeId]}
         reciteMode={reciteMode}
+        decorations={decorations}
+        showCheckbox={data.style?.showCheckbox}
+        onToggleCompleted={() => updateNode(data.nodeId, { completed: !data.completed })}
         onTextChange={handleTextChange}
         onCommitLiveText={handleCommitLiveText}
         onNoteChange={(note) => updateNode(data.nodeId, { note })}
@@ -237,7 +241,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
       </div>
       )}
 
-      {/* 动态渲染 Source Handle */}
+      {/* 动态渲染 Source Handle（与 BranchNode 统一：默认隐藏、hover/选中淡入的小锚点） */}
       {(() => {
         const sourcePos = data.sourcePosition || 'right';
         
@@ -248,14 +252,14 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
                 type="source"
                 position={Position.Left}
                 id="left"
-                className="!w-1 !h-1 !bg-transparent !border-0"
+                className="mm-node-handle"
                 isConnectable={false}
               />
               <Handle
                 type="source"
                 position={Position.Right}
                 id="right"
-                className="!w-1 !h-1 !bg-transparent !border-0"
+                className="mm-node-handle"
                 isConnectable={false}
               />
             </>
@@ -273,7 +277,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
           <Handle
             type="source"
             position={positionMap[sourcePos] || Position.Right}
-            className="!w-1 !h-1 !bg-transparent !border-0"
+            className="mm-node-handle"
             isConnectable={false}
           />
         );

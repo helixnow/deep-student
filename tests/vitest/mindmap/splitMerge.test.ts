@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { MindMapNode } from '@/features/mindmap/types';
 import { splitNode, mergeWithPrevious } from '@/features/mindmap/utils/node/splitMerge';
+import { moveNode, outdentNode } from '@/features/mindmap/utils/node/move';
 
 function node(id: string, text: string, children: MindMapNode[] = []): MindMapNode {
   return { id, text, children };
@@ -84,5 +85,61 @@ describe('mergeWithPrevious', () => {
     const root = node('root', 'R', [node('a', 'foo'), node('b', 'old')]);
     const result = mergeWithPrevious(root, 'b', 'NEW')!;
     expect(result.tree.children[0].text).toBe('fooNEW');
+  });
+});
+
+describe('moveNode (utils, B7 index correction)', () => {
+  it('corrects the target index when moving down within the same parent', () => {
+    const root = node('root', 'R', [node('a', 'A'), node('b', 'B'), node('c', 'C')]);
+    // 与 store.moveNodes 语义对齐：index 按「移动前」的同级序列表达
+    const result = moveNode(root, 'a', 'root', 2);
+    expect(result.children.map((n) => n.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('keeps the index when moving up within the same parent', () => {
+    const root = node('root', 'R', [node('a', 'A'), node('b', 'B'), node('c', 'C')]);
+    const result = moveNode(root, 'c', 'root', 0);
+    expect(result.children.map((n) => n.id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('does not adjust the index when moving across parents', () => {
+    const root = node('root', 'R', [
+      node('p', 'P', [node('a', 'A')]),
+      node('q', 'Q', [node('x', 'X'), node('y', 'Y')]),
+    ]);
+    const result = moveNode(root, 'a', 'q', 1);
+    expect(result.children[1].children.map((n) => n.id)).toEqual(['x', 'a', 'y']);
+  });
+});
+
+describe('outdentNode (utils, Workflowy adoption semantics)', () => {
+  it('adopts following siblings as children of the promoted node', () => {
+    const root = node('root', 'R', [
+      node('p', 'P', [node('a', 'A'), node('b', 'B'), node('c', 'C')]),
+      node('d', 'D'),
+    ]);
+    const result = outdentNode(root, 'b');
+    expect(result.children.map((n) => n.id)).toEqual(['p', 'b', 'd']);
+    expect(result.children[0].children.map((n) => n.id)).toEqual(['a']);
+    expect(result.children[1].children.map((n) => n.id)).toEqual(['c']);
+  });
+
+  it('keeps existing children before adopted siblings and uncollapses the adopter', () => {
+    const root = node('root', 'R', [
+      node('p', 'P', [
+        { ...node('b', 'B', [node('k', 'K')]), collapsed: true },
+        node('c', 'C'),
+      ]),
+    ]);
+    const result = outdentNode(root, 'b');
+    const promoted = result.children[1];
+    expect(promoted.id).toBe('b');
+    expect(promoted.children.map((n) => n.id)).toEqual(['k', 'c']);
+    expect(promoted.collapsed).toBe(false);
+  });
+
+  it('returns the tree unchanged when the parent is the root', () => {
+    const root = node('root', 'R', [node('a', 'A')]);
+    expect(outdentNode(root, 'a')).toBe(root);
   });
 });

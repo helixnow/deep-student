@@ -38,6 +38,13 @@
     "searchLocate": "定位",
     "searchFilterHint": "大纲只显示匹配节点及其祖先路径",
     "searchLocateHint": "保留全树，跳转到匹配节点",
+    "searchOptions": "搜索选项",
+    "searchCaseSensitive": "区分大小写",
+    "searchWholeWord": "全词匹配",
+    "searchNoResults": "无匹配结果",
+    "searchCaseSensitive": "区分大小写",
+    "searchWholeWord": "全词匹配",
+    "searchNoResults": "没有匹配的节点",
     "moreActions": "更多操作",
     "save": "保存",
     "saving": "保存中...",
@@ -50,7 +57,11 @@
     "foldMenu": "展开 / 折叠到层级",
     "expandAll": "展开全部",
     "collapseAll": "折叠全部",
-    "collapseToLevel": "折叠到 {{level}} 层"
+    "collapseToLevel": "折叠到 {{level}} 层",
+    "unsaved": "未保存",
+    "saveShortcut": "保存 (Cmd+S)",
+    "undoDisabled": "没有可撤销的操作",
+    "redoDisabled": "没有可重做的操作"
   },
   "preferences": {
     "mubuKeymap": "幕布兼容键位",
@@ -81,7 +92,14 @@
     "switchToMindMapView": "请切换到思维导图视图后导出图片",
     "failed": "导出失败，请重试",
     "success": "导出成功",
-    "processing": "正在导出..."
+    "processing": "正在导出...",
+    "exportJson": "导出 JSON",
+    "exportSvg": "导出 SVG",
+    "exportXmind": "导出 XMind",
+    "dialogExportXmind": "导出 XMind",
+    "filterXmind": "XMind 文件",
+    "exportPdf": "导出 PDF",
+    "pdfPrintHint": "将打开系统打印对话框，请选择「另存为 PDF」"
   },
   "import": {
     "title": "导入",
@@ -95,7 +113,11 @@
     "unsavedWarning": "当前导图有未保存的修改，导入将覆盖这些修改。是否继续？",
     "unsavedTitle": "导入将覆盖未保存修改",
     "unsavedConfirm": "继续导入",
-    "unnamedTopic": "未命名主题"
+    "unnamedTopic": "未命名主题",
+    "multiSheetNote": "合并自 {{count}} 个 XMind 画布：{{titles}}",
+    "labelsNote": "标签：{{labels}}",
+    "markersNote": "XMind 标记：{{markers}}",
+    "saveAndImport": "保存并导入"
   },
   "presentation": {
     "enter": "演示模式",
@@ -144,7 +166,55 @@
     "panCanvasKeys": "Space / 中键 / 右键 + 拖拽",
     "panCanvasKeysPanMode": "拖拽空白处",
     "associationEntryKeys": "右键节点",
-    "associationAdd": "添加关联线（再点目标）"
+    "associationAdd": "添加关联线（再点目标）",
+    "groupRecite": "背诵模式",
+    "reciteNavigate": "在节点间导航",
+    "reciteReveal": "揭示下一个挖空",
+    "reciteExit": "退出背诵模式",
+    "duplicate": "创建副本",
+    "addSiblingOrSplit": "添加同级 / 行中拆分",
+    "toggleComplete": "切换完成状态",
+    "drillIn": "聚焦进入",
+    "drillOut": "返回上级",
+    "moveUp": "上移节点",
+    "moveDown": "下移节点",
+    "collapse": "折叠节点",
+    "expand": "展开节点",
+    "collapseAll": "全部折叠",
+    "expandAll": "全部展开",
+    "copy": "复制节点",
+    "cut": "剪切节点",
+    "paste": "粘贴",
+    "pasteAsText": "按纯文本粘贴",
+    "selectAll": "全选可见节点",
+    "italic": "斜体",
+    "underline": "下划线",
+    "indent": "缩进",
+    "outdent": "反缩进"
+  },
+  "versions": {
+    "title": "版本历史",
+    "loading": "正在加载版本历史...",
+    "loadFailed": "版本历史加载失败",
+    "empty": "暂无历史版本",
+    "untitled": "无标题",
+    "preview": "预览",
+    "previewTitle": "标题预览：{{title}}",
+    "previewFailed": "预览失败或内容不可用",
+    "restore": "恢复",
+    "restoreConfirm": "确认恢复",
+    "restoreConfirmHint": "恢复将用该版本覆盖当前内容；当前未保存修改会先自动保存。",
+    "restoring": "恢复中...",
+    "restored": "已恢复到所选版本",
+    "restoreFailed": "版本恢复失败，请重试",
+    "close": "关闭版本历史",
+    "source": {
+      "manual": "手动保存",
+      "auto": "自动保存",
+      "chat_update": "AI 更新",
+      "chat_edit_nodes": "AI 编辑节点",
+      "unknown": "未知来源"
+    }
   },
   "embed": {
     "zoomIn": "放大",
@@ -179,7 +249,8 @@
     "orgchartDown": "组织结构图(向下)",
     "orgchartUp": "组织结构图(向上)",
     "orgchartRight": "组织结构图(向右)",
-    "orgchartLeft": "组织结构图(向左)"
+    "orgchartLeft": "组织结构图(向左)",
+    "timelineRight": "时间轴(向右)"
   },
   "themes": {
     "default": "默认",
@@ -192,7 +263,9 @@
     "notionDark": "Notion 深色",
     "notionLight": "Notion 浅色",
     "minimalWhite": "极简白",
-    "minimalBlack": "极简黑"
+    "minimalBlack": "极简黑",
+    "paper": "纸墨",
+    "paperDark": "纸墨（夜墨）"
   },
   "layouts": {
     "tree": "树形图",
@@ -206,7 +279,9 @@
     "orgchartVertical": "组织结构图",
     "orgchartVerticalDesc": "从上到下的层级结构图",
     "orgchartHorizontal": "水平组织结构图",
-    "orgchartHorizontalDesc": "从左到右的层级结构图"
+    "orgchartHorizontalDesc": "从左到右的层级结构图",
+    "timeline": "时间轴",
+    "timelineDesc": "一级节点沿水平主轴排布的时间轴布局"
   },
   "store": {
     "draftRecovered": "已恢复未保存的本地草稿",
@@ -255,7 +330,12 @@
     "batchComplete": "完成",
     "clearSelection": "清除选择",
     "convertToTask": "转为任务",
-    "removeTask": "移除任务"
+    "removeTask": "移除任务",
+    "batchCopy": "复制",
+    "batchIndent": "缩进",
+    "batchOutdent": "反缩进",
+    "bulletClickHint": "单击选中 · ⌘单击聚焦此节点",
+    "subtreeItemCount": "{{count}} 项"
   },
   "contextMenu": {
     "clearColor": "清除颜色",
@@ -314,7 +394,11 @@
     "openMenu": "打开节点菜单",
     "moreActions": "更多操作",
     "addChildShortcut": "添加子节点 (Tab)",
-    "deleteShortcut": "删除 (Del)"
+    "deleteShortcut": "删除 (Del)",
+    "openLink": "打开链接",
+    "priorityBadge": "优先级 {{level}}",
+    "progressLabel": "进度 {{percent}}%",
+    "toggleComplete": "切换完成状态"
   },
   "errorDetails": "查看错误详情",
   "canvas": {
@@ -344,5 +428,12 @@
   },
   "errors": {
     "notFound": "未找到思维导图"
+  },
+  "clipboard": {
+    "pasteParseFailed": "粘贴内容过大或层级过深，无法解析"
+  },
+  "menu": {
+    "groupData": "数据",
+    "groupView": "视图"
   }
 }

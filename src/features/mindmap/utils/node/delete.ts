@@ -4,6 +4,7 @@
 
 import type { MindMapNode, NodeId } from '../../types';
 import { findNodeWithParent } from './find';
+import { collectTopLevelNodeIds } from './traverse';
 
 /** 删除节点（返回新的树） */
 export function deleteNode(
@@ -74,16 +75,27 @@ function promoteChildrenRecursive(
   return result;
 }
 
-/** 删除多个节点 */
+/**
+ * 删除多个节点。
+ * B9：先做祖先/后代去重（父子同选只删顶层），一次过滤而非逐个顺序删，
+ * 与 store.deleteNodes 的 collectTopLevelNodeIds 语义对齐。
+ */
 export function deleteNodes(
   root: MindMapNode,
   nodeIds: NodeId[]
 ): MindMapNode {
-  let result = root;
-  for (const id of nodeIds) {
-    result = deleteNode(result, id);
-  }
-  return result;
+  const topLevelIds = new Set(
+    collectTopLevelNodeIds(root, nodeIds, { excludeRoot: true }),
+  );
+  if (topLevelIds.size === 0) return root;
+
+  const prune = (node: MindMapNode): MindMapNode => ({
+    ...node,
+    children: node.children
+      .filter((child) => !topLevelIds.has(child.id))
+      .map(prune),
+  });
+  return prune(root);
 }
 
 /** 清空节点的子节点 */

@@ -7,10 +7,18 @@
 
 import type { Node, Edge } from '@xyflow/react';
 import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../types';
-import type { LayoutCategory, LayoutDirection } from '../../registry/types';
+import type { LayoutCategory, LayoutDirection, LayoutBoundsWithMeta } from '../../registry/types';
 import { BaseLayoutEngine, MAX_TREE_DEPTH } from '../base/LayoutEngine';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
-import { calculateNodeWidth, calculateNodeHeight, calculateBounds } from '../../utils/layout/helpers';
+import { getSiblingGap, getLevelGap } from '../../constants/layout';
+import {
+  calculateNodeWidth,
+  calculateNodeHeight,
+  calculateBounds,
+  resolveSubtreeOverlaps,
+  recenterParents,
+  normalizeLayoutRoot,
+} from '../../utils/layout/helpers';
 
 /** 组织结构图节点数据类型 */
 interface OrgChartNodeData extends Record<string, unknown> {
@@ -46,22 +54,24 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
   /**
    * 计算子树高度（垂直方向占用的空间）
    * ★ P0 修复：添加深度限制参数
+   * ★ P1 修复：传入 isRoot（根节点更高），兄弟间距改用语义化 siblingGap
    */
-  private calculateSubtreeHeight(node: MindMapNode, config: LayoutConfig, depth: number = 0): number {
+  private calculateSubtreeHeight(node: MindMapNode, config: LayoutConfig, depth: number = 0, isRoot: boolean = false): number {
     // 深度限制检查
     if (depth > MAX_TREE_DEPTH) {
       console.warn(`[HorizontalOrgChartEngine] calculateSubtreeHeight depth exceeds limit (${MAX_TREE_DEPTH})`);
       return config.nodeHeight;
     }
 
-    const nodeHeight = calculateNodeHeight(node, false, config);
+    const nodeHeight = calculateNodeHeight(node, isRoot, config);
 
     if (!node.children || node.children.length === 0 || node.collapsed) {
       return nodeHeight;
     }
 
+    const siblingGap = getSiblingGap(config);
     const childrenHeight = node.children.reduce(
-      (sum, child, i) => sum + this.calculateSubtreeHeight(child, config, depth + 1) + (i > 0 ? config.verticalGap : 0),
+      (sum, child, i) => sum + this.calculateSubtreeHeight(child, config, depth + 1, false) + (i > 0 ? siblingGap : 0),
       0
     );
 
@@ -76,12 +86,30 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
     config: LayoutConfig = DEFAULT_LAYOUT_CONFIG,
     direction: LayoutDirection = this.defaultDirection
   ): LayoutResult {
+    // 入口防御：children 缺失时补空数组
+    root = normalizeLayoutRoot(root);
     const validDirection = this.getValidDirection(direction);
     const isLeft = validDirection === 'left';
 
     const nodes: Node<OrgChartNodeData>[] = [];
     const edges: Edge[] = [];
-    const layoutBoxes: Array<{ x: number; y: number; width: number; height: number }> = [];
+    const siblingGap = getSiblingGap(config);
+    const levelGap = getLevelGap(config);
+    const mindmapNodeById = new Map<string, MindMapNode>();
+    // 深度超限截断标记（随 bounds 返回，供上层提示）
+    let truncated = false;
+
+    // ★ P0 修复：添加深度限制，防止栈溢出
+    const collectMindMapNode = (current: MindMapNode, depth: number = 0) => {
+      if (depth > MAX_TREE_DEPTH) {
+        console.warn(`[HorizontalOrgChartEngine] Tree depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
+        return;
+      }
+      mindmapNodeById.set(current.id, current);
+      current.children?.forEach(child => collectMindMapNode(child, depth + 1));
+    };
+    collectMindMapNode(root, 0);
 
     /**
      * 递归布局节点
@@ -97,6 +125,7 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
       // 深度限制检查
       if (level > MAX_TREE_DEPTH) {
         console.warn(`[HorizontalOrgChartEngine] Layout depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return config.nodeHeight;
       }
 
@@ -106,7 +135,7 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
       const nodeWidth = calculateNodeWidth(node, config, isRootNode);
       const nodeHeight = calculateNodeHeight(node, isRootNode, config);
 
-      const subtreeHeight = this.calculateSubtreeHeight(node, config, level);
+      const subtreeHeight = this.calculateSubtreeHeight(node, config, level, isRootNode);
       const nodeY = y + (subtreeHeight - nodeHeight) / 2;
 
       // 计算节点实际 X 位置（向左展开时需要调整）
@@ -140,7 +169,6 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
           targetPosition: level === 0 ? undefined : targetPosition,
         },
       });
-      layoutBoxes.push({ x: nodeX, y: nodeY, width: nodeWidth, height: nodeHeight });
 
       // 添加边（使用 orgchart 类型实现组织结构图的直角连线）
       if (parentId) {
@@ -151,7 +179,7 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
           type: 'orgchart',
           data: {
             direction: validDirection,
-            railOffset: config.horizontalGap / 2,
+            railOffset: levelGap / 2,
           },
         });
       }
@@ -164,9 +192,9 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
       // 计算子节点的 X 坐标
       let childX: number;
       if (isLeft) {
-        childX = nodeX - config.horizontalGap;
+        childX = nodeX - levelGap;
       } else {
-        childX = x + nodeWidth + config.horizontalGap;
+        childX = x + nodeWidth + levelGap;
       }
 
       // 布局子节点（垂直排列）
@@ -174,7 +202,7 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
       node.children!.forEach((child) => {
         const childHeight = this.calculateSubtreeHeight(child, config, level + 1);
         layoutNode(child, childX, currentY, level + 1, node.id);
-        currentY += childHeight + config.verticalGap;
+        currentY += childHeight + siblingGap;
       });
 
       return subtreeHeight;
@@ -183,7 +211,24 @@ export class HorizontalOrgChartEngine extends BaseLayoutEngine {
     // 从根节点开始布局
     layoutNode(root, 0, 0, 0);
 
-    const bounds = calculateBounds(layoutBoxes);
+    // ★ P1 修复：补齐垂直方向的子树碰撞消除 + 父节点重新居中
+    //   （与 Tree/Logic 引擎保持一致，实测高度注入后兜底防重叠）
+    const nodesById = new Map(nodes.map(node => [node.id, node]));
+    resolveSubtreeOverlaps(root, nodesById, config, true, 0, siblingGap);
+    recenterParents(root, nodesById, config, true);
+
+    // 基于最终位置重新计算边界
+    const layoutBoxes = nodes.map(node => {
+      const mmNode = mindmapNodeById.get(node.id);
+      const isRootNode = !!node.data?.isRoot || node.type === 'rootNode';
+      const width = mmNode ? calculateNodeWidth(mmNode, config, isRootNode) : config.nodeMinWidth;
+      const height = mmNode ? calculateNodeHeight(mmNode, isRootNode, config) : config.nodeHeight;
+      return { x: node.position.x, y: node.position.y, width, height };
+    });
+    const bounds: LayoutBoundsWithMeta = {
+      ...calculateBounds(layoutBoxes),
+      ...(truncated ? { truncated: true } : {}),
+    };
 
     return { nodes, edges, bounds };
   }

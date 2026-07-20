@@ -1,6 +1,14 @@
 /**
  * 知识导图布局计算引擎
  *
+ * @deprecated 旧版函数式布局实现，与生产布局引擎已分叉，请勿在新代码中使用。
+ * 生产布局请使用 layouts/* 下的引擎类：
+ * - TreeLayoutEngine / BalancedLayoutEngine（思维导图）
+ * - LogicTreeLayoutEngine / LogicBalancedLayoutEngine（逻辑图）
+ * - VerticalOrgChartEngine / HorizontalOrgChartEngine（组织结构图）
+ * 已从 utils/index.ts 桶导出中移除（2026-07，仓库内无任何调用方）；
+ * 保留文件仅为避免与并行改造分支冲突，确认稳定后可整体删除。
+ *
  * 基于树形布局算法，计算节点位置
  * 支持水平和垂直布局
  */

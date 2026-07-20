@@ -5,6 +5,14 @@ import {
   htmlOutlineToMarkdown,
 } from '@/features/mindmap/utils/pasteMarkdown';
 import {
+  encodeMindMapClipboard,
+  hashText,
+  nodesToMarkdown,
+  parseMindMapClipboardPayload,
+  MINDMAP_CLIPBOARD_FORMAT,
+  MINDMAP_CLIPBOARD_VERSION,
+} from '@/features/mindmap/utils/clipboardCodec';
+import {
   filterCompletedTree,
   shouldHideCompletedNode,
   resolveVisibleFocusId,
@@ -41,6 +49,12 @@ describe('looksLikeMarkdownList', () => {
     expect(looksLikeMarkdownList('Parent\n  Child\n    Deep')).toBe(true);
     expect(looksLikeMarkdownList('• Parent\n  • Child')).toBe(true);
   });
+
+  it('accepts single-line explicit list items and headings', () => {
+    expect(looksLikeMarkdownList('- item')).toBe(true);
+    expect(looksLikeMarkdownList('1. item')).toBe(true);
+    expect(looksLikeMarkdownList('# heading')).toBe(true);
+  });
 });
 
 describe('markdownListToNodes', () => {
@@ -63,6 +77,138 @@ describe('markdownListToNodes', () => {
     expect(forest.map((node) => node.text)).toEqual(['Parent', 'Sibling']);
     expect(forest[0].children[0].text).toBe('Child');
     expect(forest[0].children[0].children[0].text).toBe('Deep');
+  });
+
+  it('parses task list markers into completed state', () => {
+    const forest = markdownListToNodes('- [ ] todo\n  - [x] done\n- plain');
+    expect(forest[0].text).toBe('todo');
+    expect(forest[0].completed).toBe(false);
+    expect(forest[0].children[0].text).toBe('done');
+    expect(forest[0].children[0].completed).toBe(true);
+    expect(forest[1].completed).toBeUndefined();
+  });
+
+  it('handles tab indentation', () => {
+    const forest = markdownListToNodes('- parent\n\t- child\n\t\t- deep');
+    expect(forest).toHaveLength(1);
+    expect(forest[0].children[0].text).toBe('child');
+    expect(forest[0].children[0].children[0].text).toBe('deep');
+  });
+
+  it('tolerates 3-space indentation steps', () => {
+    const forest = markdownListToNodes('- parent\n   - child\n      - deep');
+    expect(forest).toHaveLength(1);
+    expect(forest[0].children[0].text).toBe('child');
+    expect(forest[0].children[0].children[0].text).toBe('deep');
+  });
+
+  it('keeps 4-space indentation as one level per step', () => {
+    const forest = markdownListToNodes('- parent\n    - child\n        - deep');
+    expect(forest).toHaveLength(1);
+    expect(forest[0].children[0].text).toBe('child');
+    expect(forest[0].children[0].children[0].text).toBe('deep');
+  });
+
+  it('unescapes exporter-escaped note continuation lines', () => {
+    // exporters.escapeMarkdownNoteLine 会给行首列表标记 / `>` 加 `\`，
+    // 解析侧应对称还原（文件导入与粘贴共用本解析器）
+    const forest = markdownListToNodes('- parent\n  \\- looks like a bullet\n  \\> quoted line');
+    expect(forest).toHaveLength(1);
+    expect(forest[0].text).toBe('parent');
+    expect(forest[0].note).toBe('- looks like a bullet\n> quoted line');
+  });
+
+  it('strips `> ` note prefix without touching unescaped content', () => {
+    const forest = markdownListToNodes('- parent\n  > - kept as note text');
+    expect(forest[0].note).toBe('- kept as note text');
+  });
+});
+
+describe('clipboardCodec', () => {
+  const forest = [
+    {
+      id: 'n1',
+      text: 'parent',
+      note: 'a note',
+      completed: false,
+      children: [
+        {
+          id: 'n2',
+          text: 'done child',
+          completed: true,
+          children: [],
+          branchColor: '#ff0000',
+        },
+        { id: 'n3', text: 'plain child', children: [] },
+      ],
+    },
+  ] as MindMapNode[];
+
+  it('serializes tasks and notes to markdown', () => {
+    expect(nodesToMarkdown(forest)).toBe(
+      '- [ ] parent\n  > a note\n  - [x] done child\n  - plain child',
+    );
+  });
+
+  it('round-trips markdown back into an equivalent tree', () => {
+    const parsed = markdownListToNodes(nodesToMarkdown(forest));
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].text).toBe('parent');
+    expect(parsed[0].note).toBe('a note');
+    expect(parsed[0].completed).toBe(false);
+    expect(parsed[0].children.map((n) => n.text)).toEqual(['done child', 'plain child']);
+    expect(parsed[0].children[0].completed).toBe(true);
+  });
+
+  it('hashText is deterministic and content-sensitive', () => {
+    expect(hashText('abc')).toBe(hashText('abc'));
+    expect(hashText('abc')).not.toBe(hashText('abd'));
+  });
+
+  it('encodes payload whose fingerprint matches its text', () => {
+    const encoded = encodeMindMapClipboard(forest);
+    expect(encoded).not.toBeNull();
+    expect(encoded!.payload.format).toBe(MINDMAP_CLIPBOARD_FORMAT);
+    expect(encoded!.payload.version).toBe(MINDMAP_CLIPBOARD_VERSION);
+    expect(encoded!.payload.fingerprint).toBe(hashText(encoded!.text));
+    // 运行时字段（branchColor）不进入载荷
+    const child = encoded!.payload.nodes[0].children[0] as unknown as Record<string, unknown>;
+    expect(child.branchColor).toBeUndefined();
+    expect(child.completed).toBe(true);
+  });
+
+  it('rejects malformed payloads', () => {
+    expect(parseMindMapClipboardPayload(null)).toBeNull();
+    expect(parseMindMapClipboardPayload({ format: 'other', version: 1 })).toBeNull();
+    expect(
+      parseMindMapClipboardPayload({
+        format: MINDMAP_CLIPBOARD_FORMAT,
+        version: MINDMAP_CLIPBOARD_VERSION,
+        fingerprint: 'deadbeef',
+        nodes: [{ noText: true }],
+      }),
+    ).toBeNull();
+  });
+
+  it('accepts and sanitizes well-formed payloads', () => {
+    const payload = parseMindMapClipboardPayload({
+      format: MINDMAP_CLIPBOARD_FORMAT,
+      version: MINDMAP_CLIPBOARD_VERSION,
+      copiedAt: 123,
+      fingerprint: 'deadbeef',
+      nodes: [
+        {
+          text: 'a',
+          completed: true,
+          style: { fontWeight: 'bold', bogus: 'dropped' },
+          children: [{ text: 'b', children: [] }],
+        },
+      ],
+    });
+    expect(payload).not.toBeNull();
+    expect(payload!.nodes[0].completed).toBe(true);
+    expect(payload!.nodes[0].style).toEqual({ fontWeight: 'bold' });
+    expect(payload!.nodes[0].children[0].text).toBe('b');
   });
 });
 

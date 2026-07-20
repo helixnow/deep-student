@@ -17,7 +17,11 @@ import type { VfsMindMap, MindMapViewType } from '../types';
 import { PresetRegistry } from '../registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { findNodeById, findParentNode, isDescendantOf } from '../utils/node/find';
-import { mergeRanges, validateRanges } from '../utils/node/blankRanges';
+import {
+  mergeRanges,
+  validateRanges,
+  remapRangesAfterTextEdit,
+} from '../utils/node/blankRanges';
 import {
   collectTopLevelNodeIds,
   flattenVisibleNodes,
@@ -29,7 +33,13 @@ import {
   buildCompletedVisibilityIndex,
   resolveVisibleIdFromIndex,
 } from '../utils/hideCompleted';
-import { collectSearchPathIds, searchMindMapNodeIds } from '../utils/searchFilter';
+import {
+  collectSearchPathIds,
+  flattenOutlineTree,
+  resolveSearchPathIds,
+  searchMindMapNodeIds,
+  type SearchOptions,
+} from '../utils/searchFilter';
 import { mergeMindMapViewport } from '../utils/viewport';
 
 /** ACR R1-11：agentEnteringIds 使用 Set，需启用 Immer MapSet 插件 */
@@ -47,6 +57,22 @@ export type MindMapViewportView = keyof MindMapViewports;
 export interface MergeWithPreviousResult {
   mergedIntoId: string;
   cursorOffset: number;
+}
+
+/**
+ * U3/U6：history 条目附带的轻量 UI 快照（变更前的焦点/选中/专注根）。
+ * 仅存引用，不深拷贝；undo/redo 恢复时会对新树做存在性校验。
+ */
+export interface MindMapHistoryUiSnapshot {
+  focusedNodeId: string | null;
+  selection: string[];
+  viewRootId: string | null;
+}
+
+/** 历史条目：结构共享的文档引用 + 变更前 UI 快照 */
+export interface MindMapHistoryEntry {
+  document: MindMapDocument;
+  ui?: MindMapHistoryUiSnapshot;
 }
 
 // ============================================================================
@@ -145,6 +171,40 @@ function pruneAssociationsForRemovedNodes(
   );
   if (document.associations.length === 0) {
     delete document.associations;
+  }
+}
+
+/**
+ * 节点从树中移除后的统一后置清理（deleteNodes / cutNodes / agentDeleteNode / merge 共用）：
+ * 关联线剪枝、焦点回退、编辑态退出、选中/锚点过滤、viewRootId 失效退出。
+ * 必须在节点已从 state.document 移除之后调用。
+ */
+function afterRemoveNodes(
+  state: MindMapStoreState,
+  removedIds: ReadonlySet<string>,
+  fallbackFocusId?: string,
+): void {
+  pruneAssociationsForRemovedNodes(state.document, removedIds);
+  if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
+    state.focusedNodeId = fallbackFocusId ?? state.document.root.id;
+  }
+  if (state.editingNodeId && removedIds.has(state.editingNodeId)) {
+    state.editingNodeId = null;
+  }
+  if (state.editingNoteNodeId && removedIds.has(state.editingNoteNodeId)) {
+    state.editingNoteNodeId = null;
+  }
+  state.selection = state.selection.filter((id) => !removedIds.has(id));
+  if (state.selectionAnchorId && removedIds.has(state.selectionAnchorId)) {
+    state.selectionAnchorId = null;
+  }
+  // 专注根被删（或其祖先被删导致不可达）时退出专注，避免视图指向已删节点
+  if (
+    state.viewRootId &&
+    (removedIds.has(state.viewRootId) ||
+      !findNodeById(state.document.root, state.viewRootId))
+  ) {
+    state.viewRootId = null;
   }
 }
 
@@ -249,10 +309,10 @@ export interface MindMapStoreState {
   edgeType: EdgeType;         // 边类型，默认 'bezier'
   measuredNodeHeights: Record<string, number>;
 
-  // 历史记录
+  // 历史记录（条目含文档引用与变更前 UI 快照）
   history: {
-    past: MindMapDocument[];
-    future: MindMapDocument[];
+    past: MindMapHistoryEntry[];
+    future: MindMapHistoryEntry[];
   };
 
   // 保存状态
@@ -288,6 +348,8 @@ export interface MindMapStoreState {
 
   // 搜索状态
   searchQuery: string;
+  /** W08：当前搜索匹配选项（大小写敏感/全词）；文档变更重算结果时沿用 */
+  searchOptions: SearchOptions;
   searchResults: string[];
   currentSearchIndex: number;
   /** 为 true 时 UI 应按搜索结果过滤视图（search 仍只维护结果列表） */
@@ -310,12 +372,29 @@ export interface MindMapStoreState {
   clipboard: {
     nodes: MindMapNode[];
     sourceOperation: 'copy' | 'cut';
+    /** C4：写入内部剪贴板的时间戳（ms），供与系统剪贴板比较新旧 */
+    copiedAt?: number;
   } | null;
 
   // 初始化/加载
-  loadMindMap: (mindmapId: string) => Promise<void>;
+  /**
+   * @param opts.preserveViewports 为 true 时保留 viewports / currentView
+   *（供外部 watch 检测到变更后的静默重载，避免视口跳回默认）。
+   */
+  loadMindMap: (
+    mindmapId: string,
+    opts?: { preserveViewports?: boolean },
+  ) => Promise<void>;
   createNewMindMap: (title: string, folderId?: string) => Promise<string>;
   reset: () => void;
+  /**
+   * 清全部 pending 定时器（draft/save/retry/measured），幂等。
+   * 宿主替换 store 实例（resourceId 切换 / ErrorBoundary 重建）前调用，
+   * 防止旧实例的 debounce 保存写到已卸载的文档。不重置状态字段。
+   */
+  destroy: () => void;
+  /** 公开草稿清除：删除当前导图的 localStorage/sessionStorage 草稿（Discard 关闭用） */
+  clearDraft: () => void;
 
   // 文档操作
   setDocument: (doc: MindMapDocument) => void;
@@ -325,6 +404,11 @@ export interface MindMapStoreState {
   setEditingNoteNodeId: (nodeId: string | null) => void;
   setSelection: (nodeIds: string[]) => void;
   setSelectionAnchorId: (nodeId: string | null) => void;
+  /**
+   * 全选当前视图可见节点（尊重 viewRoot / 折叠 / 搜索过滤 / 隐藏已完成）。
+   * 不含视图根自身；纯 UI 状态，不进 history、不标脏。
+   */
+  selectAllVisible: () => void;
 
   // 节点操作
   updateNode: (
@@ -336,9 +420,21 @@ export interface MindMapStoreState {
       markDirty?: boolean;
       /** 文本变更时保留 blankedRanges（选区挖空前先 commit 文本用） */
       preserveBlankedRanges?: boolean;
+      /**
+       * U5：历史合并键。text/note/style 补丁默认按「节点+字段」自动合并
+       * （时间窗内同键连续变更只占一个 undo 步）；显式传 null 可禁用本次合并。
+       */
+      coalesceKey?: string | null;
     }
   ) => void;
   addNode: (parentId: string, index?: number) => string;
+  /**
+   * 在各节点原位置之后插入其深拷贝（全部重新生成 id；style/refs/blankedRanges 深拷贝）。
+   * 传入集合先做祖先/后代去重，仅复制顶层节点。
+   * @returns 新顶层节点 id 数组（与去重后的输入顺序一致）；无可复制节点或超限时返回 null。
+   * 单 history 步；聚焦第一个新节点。
+   */
+  duplicateNodes: (nodeIds: string[]) => string[] | null;
   deleteNode: (nodeId: string) => void;
   deleteNodes: (nodeIds: string[]) => void;
   moveNode: (nodeId: string, newParentId: string, index: number) => void;
@@ -355,6 +451,13 @@ export interface MindMapStoreState {
   collapseAll: () => void;
   /** 展开全部 */
   expandAll: () => void;
+  /**
+   * 折叠整个子树（nodeId 及其所有有子节点的后代），单 history 步。
+   * nodeId 为文档根时根自身保持展开。替代 UI 层 forEach toggleCollapse 拼事务。
+   */
+  collapseSubtree: (nodeId: string) => void;
+  /** 展开整个子树（nodeId 及其所有后代），单 history 步。 */
+  expandSubtree: (nodeId: string) => void;
   /**
    * 折叠到指定深度（0=根）。
    * maxDepth=N：深度 < N 展开，深度 >= N 且有子节点则折叠。
@@ -377,11 +480,14 @@ export interface MindMapStoreState {
   ) => string | null;
   /**
    * 行首合并到上一同级（无同级则上一可见节点）；根不可合并。
+   * @param scopeRootId 分支专注（viewRootId）场景传入专注根：
+   *「上一可见」在该子树的 flattenVisibleNodes 内解析，不会合并到专注范围外的节点。
    * @returns 合并目标与光标位置，供 UI 恢复
    */
   mergeWithPrevious: (
     nodeId: string,
-    textOverride?: string
+    textOverride?: string,
+    scopeRootId?: string,
   ) => MergeWithPreviousResult | null;
   /** 行末 Forward Delete：把下一可见节点合并进当前节点。 */
   mergeNextIntoCurrent: (
@@ -407,8 +513,24 @@ export interface MindMapStoreState {
   canUndo: () => boolean;
   canRedo: () => boolean;
 
+  /**
+   * P2：全图查找替换（默认大小写不敏感、含备注）。
+   * @param options.nodeIds 限定只替换这些节点（精确匹配，不含后代）
+   * @returns 实际发生替换的节点数；0 表示未产生 history 条目
+   */
+  replaceInMindMap: (
+    query: string,
+    replacement: string,
+    options?: {
+      nodeIds?: string[];
+      caseSensitive?: boolean;
+      includeNotes?: boolean;
+    }
+  ) => number;
+
   // 搜索
-  search: (query: string) => void;
+  /** W08 契约：options 可选（大小写敏感/全词匹配），缺省行为与旧版一致 */
+  search: (query: string, options?: SearchOptions) => void;
   nextSearchResult: () => void;
   prevSearchResult: () => void;
   clearSearch: () => void;
@@ -421,19 +543,30 @@ export interface MindMapStoreState {
 
   copyNodes: (nodeIds: string[]) => void;
   cutNodes: (nodeIds: string[]) => void;
-  pasteNodes: (targetId: string) => void;
+  /**
+   * 粘贴内部剪贴板。
+   * @param mode 'child'（默认）贴为 target 子节点；'sibling-after' 贴到 target 后面的同级位置
+   *（target 为根时自动回退为 child）。
+   */
+  pasteNodes: (targetId: string, mode?: 'child' | 'sibling-after') => void;
   /** 将普通多行文本作为同级子节点一次性粘贴（单 history）。 */
   pasteTextChildren: (targetId: string, lines: string[]) => void;
-  /** 将 Markdown 列表解析为层级子树，一次 undo 贴到 targetId 下。 */
+  /**
+   * 将 Markdown 列表解析为层级森林一次 undo 粘贴。
+   * @param options.position 'child'（默认）贴为 targetId 的子节点；
+   * 'sibling-after' 贴到 targetId 之后的同级位置（targetId 为根时回退为 child）。
+   * @param options.currentText 同一事务内先把 targetId 标题更新为该值（未保存草稿）。
+   */
   pasteMarkdownChildren: (
     targetId: string,
     markdown: string,
-    options?: { currentText?: string },
+    options?: { currentText?: string; position?: 'child' | 'sibling-after' },
   ) => void;
 
   // 保存
   /** 将当前脏文档刷新到后端；返回本次保存是否成功。 */
-  save: () => Promise<boolean>;
+  /** source 标记保存来源：防抖自动保存传 'auto'，显式保存缺省 'manual'（后端按来源分别做版本合并窗口） */
+  save: (options?: { source?: 'auto' | 'manual' }) => Promise<boolean>;
   markDirty: () => void;
   /** M-069: 同步写入 localStorage 草稿，用于组件卸载/关闭时防止异步 save 未完成导致丢失 */
   saveDraftSync: () => void;
@@ -460,6 +593,8 @@ export interface MindMapStoreState {
 }
 
 const MAX_HISTORY = 50;
+/** U5：同一 coalesceKey 在该时间窗内的连续变更合并为一个 undo 步 */
+export const HISTORY_COALESCE_WINDOW_MS = 800;
 const DRAFT_KEY_PREFIX = 'mindmap:draft:';
 
 interface MindMapDraftPayload {
@@ -474,17 +609,35 @@ interface MindMapDraftPayload {
   edgeType?: EdgeType;
 }
 
+/** 访问 storage 本身也可能抛 SecurityError（隐私模式等），统一吞掉 */
 const getDraftStorage = (): Storage | null => {
   if (typeof window === 'undefined') {
     return null;
   }
-  return window.localStorage;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+
+const getDraftSessionStorage = (): Storage | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
 };
 
 const getDraftKey = (mindmapId: string): string => `${DRAFT_KEY_PREFIX}${mindmapId}`;
 
-const readDraft = (mindmapId: string): MindMapDraftPayload | null => {
-  const storage = getDraftStorage();
+const readDraftFromStorage = (
+  storage: Storage | null,
+  mindmapId: string,
+): MindMapDraftPayload | null => {
   if (!storage) return null;
   try {
     const raw = storage.getItem(getDraftKey(mindmapId));
@@ -499,29 +652,61 @@ const readDraft = (mindmapId: string): MindMapDraftPayload | null => {
   }
 };
 
+/**
+ * 读取草稿：localStorage 与 sessionStorage（写失败时的降级目标）都读，
+ * 取 savedAt 更新的一份——否则降级写入的新草稿会被旧的 localStorage 草稿盖掉。
+ */
+const readDraft = (mindmapId: string): MindMapDraftPayload | null => {
+  const local = readDraftFromStorage(getDraftStorage(), mindmapId);
+  const session = readDraftFromStorage(getDraftSessionStorage(), mindmapId);
+  if (!local) return session;
+  if (!session) return local;
+  const localAt = Date.parse(local.savedAt || '');
+  const sessionAt = Date.parse(session.savedAt || '');
+  if (Number.isNaN(sessionAt)) return local;
+  if (Number.isNaN(localAt)) return session;
+  return sessionAt > localAt ? session : local;
+};
+
 const writeDraft = (payload: MindMapDraftPayload): void => {
   const storage = getDraftStorage();
-  if (!storage) return;
-  try {
-    storage.setItem(getDraftKey(payload.mindmapId), JSON.stringify(payload));
-  } catch (error) {
-    console.error('[MindMapStore] Failed to write draft to localStorage:', error);
-    // 尝试降级到 sessionStorage
+  const key = getDraftKey(payload.mindmapId);
+  const serialized = JSON.stringify(payload);
+  if (storage) {
     try {
-      window.sessionStorage.setItem(getDraftKey(payload.mindmapId), JSON.stringify(payload));
-    } catch (sessionError) {
-      console.error('[MindMapStore] Failed to write draft to sessionStorage as well:', sessionError);
-      // 打破用户的安全幻觉，通知用户草稿保存失败
-      showGlobalNotification('error', i18next.t('mindmap:store.draftSaveFailed'));
+      storage.setItem(key, serialized);
+      // 主通道成功后清掉降级副本，避免残留旧 sessionStorage 草稿参与新旧比较
+      try {
+        getDraftSessionStorage()?.removeItem(key);
+      } catch {
+        // ignore
+      }
+      return;
+    } catch (error) {
+      console.error('[MindMapStore] Failed to write draft to localStorage:', error);
     }
+  }
+  // 尝试降级到 sessionStorage
+  try {
+    const session = getDraftSessionStorage();
+    if (!session) throw new Error('sessionStorage unavailable');
+    session.setItem(key, serialized);
+  } catch (sessionError) {
+    console.error('[MindMapStore] Failed to write draft to sessionStorage as well:', sessionError);
+    // 打破用户的安全幻觉，通知用户草稿保存失败
+    showGlobalNotification('error', i18next.t('mindmap:store.draftSaveFailed'));
   }
 };
 
-const clearDraft = (mindmapId: string): void => {
-  const storage = getDraftStorage();
-  if (!storage) return;
+const removeDraftFromStorage = (mindmapId: string): void => {
+  const key = getDraftKey(mindmapId);
   try {
-    storage.removeItem(getDraftKey(mindmapId));
+    getDraftStorage()?.removeItem(key);
+  } catch {
+    // ignore
+  }
+  try {
+    getDraftSessionStorage()?.removeItem(key);
   } catch {
     // ignore
   }
@@ -538,6 +723,8 @@ export function createMindMapStore(): MindMapStoreApi {
     immer((set, get) => {
     let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let retrySaveTimer: ReturnType<typeof setTimeout> | null = null;
+    /** save() 在保存中被调用时置位，当前保存结束后自动补一次保存（可见性 flush 不再空跑） */
+    let pendingSaveRequested = false;
     /** 非结构性保存失败的自动重试计数（成功或用户新编辑周期后清零） */
     let saveRetryCount = 0;
     const MAX_SAVE_AUTO_RETRIES = 3;
@@ -546,6 +733,11 @@ export function createMindMapStore(): MindMapStoreApi {
     let measuredFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const measuredHeightsQueue = new Map<string, number>();
     const lastDraftVersionByMindmap = new Map<string, number>();
+    /**
+     * U5：最近一次进入 history 的合并键与时间。同键且在时间窗内的下一次变更
+     * 不再 pushHistory（沿用上一个快照），使连续打字/调样式只占一个 undo 步。
+     */
+    let lastCoalesce: { key: string; at: number } | null = null;
 
     const flushMeasuredNodeHeights = () => {
       if (measuredHeightsQueue.size === 0) return;
@@ -603,14 +795,22 @@ export function createMindMapStore(): MindMapStoreApi {
         measuredFlushTimer = null;
       }
       measuredHeightsQueue.clear();
+      lastCoalesce = null;
     };
 
-    const pushHistory = (doc: MindMapDocument) => {
+    /** 捕获变更前的轻量 UI 快照（存引用，不深拷贝） */
+    const captureUiSnapshot = (s: MindMapStoreState): MindMapHistoryUiSnapshot => ({
+      focusedNodeId: s.focusedNodeId,
+      selection: s.selection,
+      viewRootId: s.viewRootId,
+    });
+
+    const pushHistory = (doc: MindMapDocument, ui?: MindMapHistoryUiSnapshot) => {
       set((state) => {
         // ★ 性能：store 经 immer 中间件，document 是 frozen 不可变树，
         // 每次 mutation 产生结构共享的新树。历史栈直接存引用即可，
         // 全量深克隆（旧实现）在大导图上每次编辑都有明显开销且浪费内存。
-        state.history.past.push(doc);
+        state.history.past.push({ document: doc, ui });
         if (state.history.past.length > MAX_HISTORY) {
           state.history.past.shift();
         }
@@ -645,14 +845,31 @@ export function createMindMapStore(): MindMapStoreApi {
       // 用户新编辑触发的保存周期：重置自动重试计数
       saveRetryCount = 0;
       saveDebounceTimer = setTimeout(() => {
-        void get().save();
+        void get().save({ source: 'auto' });
       }, 1500);
+    };
+
+    /**
+     * D1：布局/主题等渲染配置变更。不进 history（撤销栈只管文档结构），
+     * 但必须标脏 + 草稿落盘 + 调度保存——save() 会把当前布局字段拼进
+     * meta.renderConfig，纯改布局后关闭不再丢失。
+     */
+    const applyRenderConfigChange = (mutate: (state: MindMapStoreState) => void) => {
+      set((state) => {
+        mutate(state);
+        state.isDirty = true;
+        state._documentVersion += 1;
+      });
+      if (get().mindmapId) {
+        scheduleDraftPersist();
+      }
+      debounceSave();
     };
 
     const refreshSearchResults = (state: MindMapStoreState) => {
       if (!state.searchQuery.trim()) return;
       const currentId = state.searchResults[state.currentSearchIndex] ?? null;
-      const results = searchMindMapNodeIds(state.document.root, state.searchQuery);
+      const results = searchMindMapNodeIds(state.document.root, state.searchQuery, state.searchOptions);
       state.searchResults = results;
       const retainedIndex = currentId ? results.indexOf(currentId) : -1;
       state.currentSearchIndex = retainedIndex >= 0 ? retainedIndex : (results.length > 0 ? 0 : -1);
@@ -664,11 +881,32 @@ export function createMindMapStore(): MindMapStoreApi {
         skipHistory?: boolean;
         skipSave?: boolean;
         markDirty?: boolean;
+        /** U5：同键且时间窗内的连续变更合并为一个 undo 步 */
+        coalesceKey?: string | null;
       }
     ) => {
-      const { document } = get();
+      const before = get();
       if (!options?.skipHistory) {
-        pushHistory(document);
+        const now = Date.now();
+        const key = options?.coalesceKey ?? null;
+        const canCoalesce =
+          key !== null &&
+          lastCoalesce !== null &&
+          lastCoalesce.key === key &&
+          now - lastCoalesce.at <= HISTORY_COALESCE_WINDOW_MS &&
+          before.history.past.length > 0 &&
+          before.history.future.length === 0;
+        if (canCoalesce) {
+          // 沿用上一个快照：本次不 pushHistory，undo 一次回到合并组之前
+          lastCoalesce = { key: key!, at: now };
+        } else {
+          pushHistory(before.document, captureUiSnapshot(before));
+          lastCoalesce = key !== null ? { key, at: now } : null;
+        }
+      } else {
+        // skipHistory 变更（agent 演出等）不在合并组快照内，
+        // 之后若继续合并会把这些变更一起吞进 undo，故打断合并链
+        lastCoalesce = null;
       }
       set((state) => {
         mutate(state);
@@ -719,6 +957,71 @@ export function createMindMapStore(): MindMapStoreApi {
       }
     }
 
+    /**
+     * D5：undo/redo 恢复文档后校正 revealedBlanks——节点已不存在、挖空被清除
+     * 或区间数变少时，丢弃越界的揭示状态，避免索引错位揭示到别的空。
+     */
+    function reconcileRevealedBlanks(state: MindMapStoreState) {
+      const nodeIds = Object.keys(state.revealedBlanks);
+      if (nodeIds.length === 0) return;
+      const nodeById = buildNodeIndex(state.document.root).nodeById;
+      for (const nodeId of nodeIds) {
+        const node = nodeById.get(nodeId);
+        if (!node?.blankedRanges?.length) {
+          delete state.revealedBlanks[nodeId];
+          continue;
+        }
+        const rangeCount = mergeRanges(
+          validateRanges(node.blankedRanges, node.text.length),
+        ).length;
+        const next: Record<number, boolean> = {};
+        for (const [key, value] of Object.entries(state.revealedBlanks[nodeId])) {
+          const index = Number(key);
+          if (index >= 0 && index < rangeCount) next[index] = value;
+        }
+        if (Object.keys(next).length > 0) {
+          state.revealedBlanks[nodeId] = next;
+        } else {
+          delete state.revealedBlanks[nodeId];
+        }
+      }
+    }
+
+    /**
+     * U3/U6：undo/redo 恢复 history 条目的 UI 快照。
+     * 所有 ID 先对已恢复的 state.document 做存在性校验（复用 reconcile 思路），
+     * 旧条目（无 ui 字段）退化为「清理不存在的 ID + meta.lastFocusId 兜底」。
+     */
+    function restoreUiSnapshot(state: MindMapStoreState, entry: MindMapHistoryEntry) {
+      const nodeById = buildNodeIndex(state.document.root).nodeById;
+      if (entry.ui) {
+        state.selection = entry.ui.selection.filter((id) => nodeById.has(id));
+        state.viewRootId =
+          entry.ui.viewRootId &&
+          entry.ui.viewRootId !== state.document.root.id &&
+          nodeById.has(entry.ui.viewRootId)
+            ? entry.ui.viewRootId
+            : null;
+        if (entry.ui.focusedNodeId && nodeById.has(entry.ui.focusedNodeId)) {
+          state.focusedNodeId = entry.ui.focusedNodeId;
+        }
+      } else {
+        state.selection = state.selection.filter((id) => nodeById.has(id));
+        if (state.viewRootId && !nodeById.has(state.viewRootId)) {
+          state.viewRootId = null;
+        }
+      }
+      // 焦点兜底链：快照 → 文档 meta.lastFocusId → 根
+      if (!state.focusedNodeId || !nodeById.has(state.focusedNodeId)) {
+        const metaFocusId = state.document.meta?.lastFocusId;
+        state.focusedNodeId =
+          metaFocusId && nodeById.has(metaFocusId) ? metaFocusId : state.document.root.id;
+      }
+      if (state.selectionAnchorId && !nodeById.has(state.selectionAnchorId)) {
+        state.selectionAnchorId = null;
+      }
+    }
+
     return {
       // 初始状态
       mindmapId: null,
@@ -752,6 +1055,7 @@ export function createMindMapStore(): MindMapStoreApi {
       hideCompleted: false,
       viewRootId: null,
       searchQuery: '',
+      searchOptions: {},
       searchResults: [],
       currentSearchIndex: -1,
       searchFilterMode: true,
@@ -764,9 +1068,10 @@ export function createMindMapStore(): MindMapStoreApi {
       _reactFlowGetter: null,
 
       // 加载知识导图（修复: 完整重置所有状态字段）
-      loadMindMap: async (mindmapId: string) => {
+      loadMindMap: async (mindmapId: string, opts?: { preserveViewports?: boolean }) => {
         // 清除 pending timer，防止跨文档保存/重试
         clearPendingTimers();
+        pendingSaveRequested = false;
 
         // M-066: 递增加载序列号，防止快速切换时旧请求覆盖新数据
         let seq: number;
@@ -817,10 +1122,12 @@ export function createMindMapStore(): MindMapStoreApi {
             state.mindmapId = mindmapId;
             state.metadata = metadata;
             state.document = document;
-            state.currentView =
-              (recoveredDraft ? localDraft?.currentView : undefined) ||
-              metadata.defaultView ||
-              'mindmap';
+            if (!opts?.preserveViewports) {
+              state.currentView =
+                (recoveredDraft ? localDraft?.currentView : undefined) ||
+                metadata.defaultView ||
+                'mindmap';
+            }
             state.focusedNodeId =
               (recoveredDraft ? localDraft?.focusedNodeId : undefined) ||
               document.meta?.lastFocusId ||
@@ -843,14 +1150,20 @@ export function createMindMapStore(): MindMapStoreApi {
             state.edgeType = (rc?.edgeType || document.meta?.renderConfig?.edgeType || 'bezier') as EdgeType;
             // 修复: 重置搜索状态
             state.searchQuery = '';
+            state.searchOptions = {};
             state.searchResults = [];
             state.currentSearchIndex = -1;
             // 修复: 重置背诵模式状态
             state.reciteMode = false;
             state.revealedBlanks = {};
-            // 分支专注 / 视口保真为会话级，换图时重置
+            // ACR 瞬态入场标记随文档重载清除
+            state.agentEnteringIds = new Set();
+            // 分支专注 / 视口保真为会话级，换图时重置；
+            // preserveViewports（外部 watch 静默重载）时保留视口与当前视图
             state.viewRootId = null;
-            state.viewports = {};
+            if (!opts?.preserveViewports) {
+              state.viewports = {};
+            }
             // hideCompleted / searchFilterMode 为会话级 UI 偏好，切换导图时保留
           });
 
@@ -867,7 +1180,7 @@ export function createMindMapStore(): MindMapStoreApi {
         }
       },
 
-      // 创建新知识导图
+      // 创建新知识导图（B13：重置字段与 loadMindMap / reset 对齐）
       createNewMindMap: async (title: string, folderId?: string) => {
         const doc = createDefaultDocument(title);
 
@@ -878,30 +1191,66 @@ export function createMindMapStore(): MindMapStoreApi {
           folderId,
         });
 
+        // 与 loadMindMap 一致：切文档前清 pending 定时器，防止旧文档的 debounce 保存串扰
+        clearPendingTimers();
+        pendingSaveRequested = false;
+        lastDraftVersionByMindmap.delete(result.id);
+        lastCoalesce = null;
         set((state) => {
           state.mindmapId = result.id;
           state.metadata = result;
           state.document = doc;
           state.currentView = 'mindmap';
           state.focusedNodeId = doc.root.id;
+          state.editingNodeId = null;
+          state.editingNoteNodeId = null;
           state.selection = [];
           state.selectionAnchorId = null;
+          state.agentEnteringIds = new Set();
           state.history = { past: [], future: [] };
           state.isDirty = false;
+          state.isSaving = false;
+          state.lastSavedAt = null;
           state._documentVersion = 0;
+          state.conflictSnapshot = null;
           state.measuredNodeHeights = {};
+          // 新文档回到默认渲染配置（与 reset 一致）
+          state.layoutId = 'tree';
+          state.layoutDirection = 'right';
+          state.styleId = 'default';
+          state.edgeType = 'bezier';
           state.viewRootId = null;
+          state.viewports = {};
           state.reciteMode = false;
           state.revealedBlanks = {};
+          state.searchQuery = '';
+          state.searchOptions = {};
+          state.searchResults = [];
+          state.currentSearchIndex = -1;
         });
 
         return result.id;
+      },
+
+      // 清全部 pending 定时器（宿主换 store 实例前调用）；幂等，不重置状态
+      destroy: () => {
+        pendingSaveRequested = false;
+        clearPendingTimers();
+      },
+
+      // 公开草稿清除（Discard 关闭：调用后再卸载即可跳过 saveDraftSync 残留）
+      clearDraft: () => {
+        const currentId = get().mindmapId;
+        if (!currentId) return;
+        clearDraft(currentId);
+        lastDraftVersionByMindmap.delete(currentId);
       },
 
       // 重置状态（修复: 补全所有遗漏字段）
       reset: () => {
         // 清除 pending timer
         clearPendingTimers();
+        pendingSaveRequested = false;
         const currentId = get().mindmapId;
         if (currentId) {
           clearDraft(currentId);
@@ -932,6 +1281,7 @@ export function createMindMapStore(): MindMapStoreApi {
           state.measuredNodeHeights = {};
           // 修复: 重置搜索状态
           state.searchQuery = '';
+          state.searchOptions = {};
           state.searchResults = [];
           state.currentSearchIndex = -1;
           // 修复: 重置背诵模式状态
@@ -948,8 +1298,9 @@ export function createMindMapStore(): MindMapStoreApi {
 
       // 设置文档
       setDocument: (doc: MindMapDocument) => {
-        const current = get().document;
-        pushHistory(current);
+        const current = get();
+        pushHistory(current.document, captureUiSnapshot(current));
+        lastCoalesce = null;
         set((state) => {
           state.document = doc;
           state.isDirty = true;
@@ -974,12 +1325,12 @@ export function createMindMapStore(): MindMapStoreApi {
       },
 
       // 设置焦点节点
+      // B4/性能：不再把 lastFocusId 写进 document.meta——immer 下每次点击都会产生
+      // 新的 document 引用，导致订阅 document 的大纲/画布整体重渲染。
+      // 持久化的 lastFocusId 由 save()/splitNode/merge* 从 focusedNodeId 写入。
       setFocusedNodeId: (nodeId: string | null) => {
         set((state) => {
           state.focusedNodeId = nodeId;
-          if (nodeId && state.document.meta) {
-            state.document.meta.lastFocusId = nodeId;
-          }
         });
       },
 
@@ -1044,6 +1395,32 @@ export function createMindMapStore(): MindMapStoreApi {
       setSelectionAnchorId: (nodeId: string | null) => {
         set((state) => {
           state.selectionAnchorId = nodeId;
+        });
+      },
+
+      // 全选当前视图可见节点（mod+a）：与大纲的可见性计算保持一致
+      selectAllVisible: () => {
+        const s = get();
+        const displayRoot = s.viewRootId
+          ? findNodeById(s.document.root, s.viewRootId) ?? s.document.root
+          : s.document.root;
+        // 搜索过滤模式优先（与 OutlineView 的 resolveSearchPathIds 相同语义）
+        const pathIds = resolveSearchPathIds(displayRoot, {
+          enabled: s.searchFilterMode,
+          query: s.searchQuery,
+          matchIds: s.searchResults,
+        });
+        const flat = flattenOutlineTree(displayRoot, {
+          hideCompleted: s.hideCompleted,
+          pathIds,
+        });
+        // 视图根自身不入选：根不可删除/移动，作为标题行不参与批量操作
+        const visibleIds = flat
+          .filter((row) => row.id !== displayRoot.id)
+          .map((row) => row.id);
+        set((state) => {
+          state.selection = visibleIds;
+          state.selectionAnchorId = visibleIds[0] ?? null;
         });
       },
 
@@ -1138,24 +1515,7 @@ export function createMindMapStore(): MindMapStoreApi {
 
         applyMutation((state) => {
           removeNodesById(state.document.root, new Set(normalizedIds));
-          pruneAssociationsForRemovedNodes(state.document, removedIds);
-          if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
-            state.focusedNodeId = nextFocusedNodeId;
-          }
-          if (state.editingNodeId && removedIds.has(state.editingNodeId)) {
-            state.editingNodeId = null;
-          }
-          if (state.editingNoteNodeId && removedIds.has(state.editingNoteNodeId)) {
-            state.editingNoteNodeId = null;
-          }
-          state.selection = state.selection.filter((id) => !removedIds.has(id));
-          if (
-            state.viewRootId &&
-            (removedIds.has(state.viewRootId) ||
-              !findNodeById(state.document.root, state.viewRootId))
-          ) {
-            state.viewRootId = null;
-          }
+          afterRemoveNodes(state, removedIds, nextFocusedNodeId);
         }, { skipHistory: true });
       },
 
@@ -1221,17 +1581,49 @@ export function createMindMapStore(): MindMapStoreApi {
 
       // 更新节点（patch 中显式 undefined 的键会 delete，便于移除任务 completed 等可选字段）
       updateNode: (nodeId: string, patch: UpdateNodeParams, options) => {
+        // U5：文本/备注/样式补丁默认按「节点+字段集」合并 history，
+        // 连续打字/连点样式不再逐击键占用 undo 步；结构性字段（collapsed 等）不合并
+        const patchKeys = Object.keys(patch).sort();
+        const autoCoalescible =
+          patchKeys.length > 0 &&
+          patchKeys.every((key) => key === 'text' || key === 'note' || key === 'style');
+        const coalesceKey =
+          options?.coalesceKey !== undefined
+            ? options.coalesceKey
+            : autoCoalescible
+              ? `update:${nodeId}:${patchKeys.join(',')}`
+              : null;
         applyMutation((state) => {
           const node = findNodeById(state.document.root, nodeId);
           if (node) {
-            // 文本变更时自动清除挖空（字符索引失效）；挖空前 commit 可保留
+            // 文本变更时对挖空区间做编辑重映射（替代旧「一改就全清」）；
+            // 无法映射（区间文本被改写/删除）的区间被丢弃，全部失效才清除。
+            // 挖空前 commit 文本走 preserveBlankedRanges 原样保留。
             if (
               patch.text !== undefined &&
               patch.text !== node.text &&
               !options?.preserveBlankedRanges
             ) {
-              delete node.blankedRanges;
-              delete state.revealedBlanks[nodeId];
+              if (node.blankedRanges?.length) {
+                const prevRanges = mergeRanges(
+                  validateRanges(node.blankedRanges, node.text.length),
+                );
+                const remapped = remapRangesAfterTextEdit(
+                  node.text,
+                  patch.text,
+                  prevRanges,
+                );
+                if (remapped.length === 0) {
+                  delete node.blankedRanges;
+                  delete state.revealedBlanks[nodeId];
+                } else {
+                  node.blankedRanges = remapped;
+                  // 区间数变化时索引不再可靠，丢弃揭示状态；数目不变则保留
+                  if (remapped.length !== prevRanges.length) {
+                    delete state.revealedBlanks[nodeId];
+                  }
+                }
+              }
             }
             for (const key of Object.keys(patch) as Array<keyof UpdateNodeParams>) {
               const value = patch[key];
@@ -1243,7 +1635,7 @@ export function createMindMapStore(): MindMapStoreApi {
               }
             }
           }
-        }, options);
+        }, { ...options, coalesceKey });
       },
 
       // 添加节点（M-070: 前端深度/节点数限制）
@@ -1286,6 +1678,66 @@ export function createMindMapStore(): MindMapStoreApi {
         return newId;
       },
 
+      // 复制节点（在原位置后插入深拷贝；全部重新生成 id；单 history 步）
+      duplicateNodes: (nodeIds: string[]) => {
+        const { document } = get();
+        const normalizedIds = collectTopLevelNodeIds(document.root, nodeIds, {
+          excludeRoot: true,
+        });
+        if (normalizedIds.length === 0) return null;
+
+        const treeIndex = buildNodeIndex(document.root);
+        const sources = normalizedIds
+          .map((id) => treeIndex.nodeById.get(id))
+          .filter((node): node is MindMapNode => Boolean(node));
+        if (sources.length !== normalizedIds.length) return null;
+
+        const pendingCount = sources.reduce((sum, node) => sum + countNodes(node), 0);
+        if (countNodes(document.root) + pendingCount > MAX_MINDMAP_NODES) {
+          showGlobalNotification('warning', i18next.t('store.nodeCountExceeded', { ns: 'mindmap' }));
+          return null;
+        }
+
+        const usedIds = new Set(treeIndex.nodeById.keys());
+        const nextNodeId = () => {
+          let id = `node_${nanoid(10)}`;
+          while (usedIds.has(id)) id = `node_${nanoid(10)}`;
+          usedIds.add(id);
+          return id;
+        };
+        // JSON 克隆深拷贝 style/refs/blankedRanges 等嵌套对象，再全量重生成 id
+        const regenerateIds = (node: MindMapNode): MindMapNode => ({
+          ...node,
+          id: nextNodeId(),
+          children: node.children.map(regenerateIds),
+        });
+        const plans = normalizedIds.map((sourceId, index) => ({
+          sourceId,
+          clone: regenerateIds(JSON.parse(JSON.stringify(sources[index])) as MindMapNode),
+        }));
+
+        const newIds: string[] = [];
+        applyMutation((state) => {
+          for (const plan of plans) {
+            const liveParent = findParentNode(state.document.root, plan.sourceId);
+            if (!liveParent) continue;
+            const sourceIndex = liveParent.children.findIndex(
+              (child) => child.id === plan.sourceId,
+            );
+            if (sourceIndex === -1) continue;
+            liveParent.children.splice(sourceIndex + 1, 0, plan.clone);
+            newIds.push(plan.clone.id);
+          }
+          if (newIds.length > 0) {
+            state.focusedNodeId = newIds[0];
+            state.selection = [...newIds];
+            state.selectionAnchorId = newIds[0];
+          }
+        });
+
+        return newIds.length > 0 ? newIds : null;
+      },
+
       // 删除节点
       deleteNode: (nodeId: string) => {
         get().deleteNodes([nodeId]);
@@ -1308,26 +1760,7 @@ export function createMindMapStore(): MindMapStoreApi {
 
         applyMutation((state) => {
           removeNodesById(state.document.root, new Set(normalizedIds));
-          pruneAssociationsForRemovedNodes(state.document, removedIds);
-
-          if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
-            state.focusedNodeId = nextFocusedNodeId;
-          }
-          if (state.editingNodeId && removedIds.has(state.editingNodeId)) {
-            state.editingNodeId = null;
-          }
-          if (state.editingNoteNodeId && removedIds.has(state.editingNoteNodeId)) {
-            state.editingNoteNodeId = null;
-          }
-          state.selection = state.selection.filter((id) => !removedIds.has(id));
-          // 专注根被删或其祖先被删时退出专注
-          if (
-            state.viewRootId &&
-            (removedIds.has(state.viewRootId) ||
-              !findNodeById(state.document.root, state.viewRootId))
-          ) {
-            state.viewRootId = null;
-          }
+          afterRemoveNodes(state, removedIds, nextFocusedNodeId);
         });
       },
 
@@ -1431,6 +1864,36 @@ export function createMindMapStore(): MindMapStoreApi {
         });
       },
 
+      // 折叠整个子树（单 history 步；替代 UI 层 forEach toggleCollapse + skipHistory 拼事务）
+      collapseSubtree: (nodeId: string) => {
+        const { document } = get();
+        if (!findNodeById(document.root, nodeId)) return;
+        applyMutation((state) => {
+          const target = findNodeById(state.document.root, nodeId);
+          if (!target) return;
+          const isDocRoot = nodeId === state.document.root.id;
+          traverseDFS(target, (node) => {
+            // 文档根保持展开；叶子不写 collapsed，避免污染树快照
+            if (isDocRoot && node.id === nodeId) return;
+            if (node.children.length > 0) node.collapsed = true;
+          });
+        });
+      },
+
+      // 展开整个子树（单 history 步）
+      expandSubtree: (nodeId: string) => {
+        const { document } = get();
+        if (!findNodeById(document.root, nodeId)) return;
+        applyMutation((state) => {
+          const target = findNodeById(state.document.root, nodeId);
+          if (!target) return;
+          traverseDFS(target, (node) => {
+            // 仅在确为折叠时展开，不给未折叠节点写入 collapsed:false
+            if (node.collapsed === true) node.collapsed = false;
+          });
+        });
+      },
+
       collapseToDepth: (depth: number) => {
         const targetDepth = Math.max(0, Math.floor(depth));
         applyMutation((state) => {
@@ -1521,17 +1984,32 @@ export function createMindMapStore(): MindMapStoreApi {
         if (normalizedIds.length === 0) return;
 
         const selectedIds = new Set(normalizedIds);
-        const plans: Array<{ parentId: string; grandParentId: string; nodeIds: string[] }> = [];
+        const plans: Array<{
+          parentId: string;
+          grandParentId: string;
+          nodeIds: string[];
+          /** Workflowy/幕布语义：原后续同级被最后一个反缩进节点收养为子树 */
+          adoptIds: string[];
+        }> = [];
         const visit = (parent: MindMapNode, grandParent: MindMapNode | null) => {
           if (grandParent) {
             const movingIds = parent.children
               .filter((child) => selectedIds.has(child.id))
               .map((child) => child.id);
             if (movingIds.length > 0) {
+              let lastSelectedIndex = -1;
+              parent.children.forEach((child, index) => {
+                if (selectedIds.has(child.id)) lastSelectedIndex = index;
+              });
+              const adoptIds = parent.children
+                .slice(lastSelectedIndex + 1)
+                .filter((child) => !selectedIds.has(child.id))
+                .map((child) => child.id);
               plans.push({
                 parentId: parent.id,
                 grandParentId: grandParent.id,
                 nodeIds: movingIds,
+                adoptIds,
               });
             }
           }
@@ -1549,10 +2027,27 @@ export function createMindMapStore(): MindMapStoreApi {
             const movingIds = new Set(plan.nodeIds);
             const movingNodes = parent.children.filter((child) => movingIds.has(child.id));
             if (movingNodes.length === 0) continue;
-            parent.children = parent.children.filter((child) => !movingIds.has(child.id));
+
+            // 收养后续同级：深度不变（parent+1 → grandParent+2），无需重查深度限制
+            const adoptIdSet = new Set(plan.adoptIds);
+            const adoptedNodes = parent.children.filter((child) => adoptIdSet.has(child.id));
+
+            parent.children = parent.children.filter(
+              (child) => !movingIds.has(child.id) && !adoptIdSet.has(child.id),
+            );
             const parentIndex = grandParent.children.findIndex((child) => child.id === parent.id);
-            if (parentIndex < 0) continue;
+            if (parentIndex < 0) {
+              // 目标位置丢失时回滚本计划的收养，避免节点凭空消失
+              parent.children.push(...adoptedNodes);
+              continue;
+            }
             grandParent.children.splice(parentIndex + 1, 0, ...movingNodes);
+
+            if (adoptedNodes.length > 0) {
+              const adopter = movingNodes[movingNodes.length - 1];
+              adopter.children.push(...adoptedNodes);
+              if (adopter.collapsed === true) adopter.collapsed = false;
+            }
           }
         });
       },
@@ -1612,7 +2107,7 @@ export function createMindMapStore(): MindMapStoreApi {
         return newId;
       },
 
-      mergeWithPrevious: (nodeId: string, textOverride?: string) => {
+      mergeWithPrevious: (nodeId: string, textOverride?: string, scopeRootId?: string) => {
         const { document } = get();
         if (document.root.id === nodeId) return null;
 
@@ -1627,8 +2122,13 @@ export function createMindMapStore(): MindMapStoreApi {
         if (idx > 0) {
           mergeTarget = parent.children[idx - 1];
         } else {
-          // 无上一同级：取可见列表中的上一节点（通常是父）
-          const visible = flattenVisibleNodes(document.root);
+          // 无上一同级：取可见列表中的上一节点（通常是父）。
+          // E01 B7：分支专注时传入 scopeRootId，以专注子树为界解析「上一可见」，
+          // 避免行首 Backspace 合并到专注范围外（UI 不可见）的节点。
+          const scopeRoot =
+            (scopeRootId ? findNodeById(document.root, scopeRootId) : null) ??
+            document.root;
+          const visible = flattenVisibleNodes(scopeRoot);
           const visIdx = visible.findIndex((n) => n.node.id === nodeId);
           if (visIdx > 0) {
             mergeTarget = visible[visIdx - 1].node;
@@ -1689,6 +2189,13 @@ export function createMindMapStore(): MindMapStoreApi {
             target.children.push(...movingChildren);
             liveParent.children.splice(liveIdx, 1);
           }
+          // 被合并节点已从树中移除，清理指向它的关联线（与 mergeNextIntoCurrent 对称）
+          pruneAssociationsForRemovedNodes(state.document, new Set([nodeId]));
+          // 专注根被合并时专注点跟随合并目标（目标为文档根则退出专注）
+          if (state.viewRootId === nodeId) {
+            state.viewRootId =
+              mergedIntoId === state.document.root.id ? null : mergedIntoId;
+          }
 
           state.focusedNodeId = mergedIntoId;
           if (state.document.meta) {
@@ -1700,9 +2207,11 @@ export function createMindMapStore(): MindMapStoreApi {
           if (state.editingNoteNodeId === nodeId) {
             state.editingNoteNodeId = null;
           }
-          state.selection = state.selection
-            .filter((id) => id !== nodeId)
-            .map((id) => (id === nodeId ? mergedIntoId : id));
+          // U7：被合并节点在选中集内时改指向 merged 节点（旧实现先 filter 再 map，映射永不生效）
+          const mappedSelection = state.selection.map((id) =>
+            id === nodeId ? mergedIntoId : id,
+          );
+          state.selection = Array.from(new Set(mappedSelection));
         });
 
         return { mergedIntoId, cursorOffset };
@@ -1757,6 +2266,10 @@ export function createMindMapStore(): MindMapStoreApi {
             liveSourceParent.children.splice(sourceIndex, 1);
           }
           pruneAssociationsForRemovedNodes(state.document, new Set([sourceId]));
+          // 专注根被合并进当前节点时专注点跟随目标（目标为文档根则退出专注）
+          if (state.viewRootId === sourceId) {
+            state.viewRootId = nodeId === state.document.root.id ? null : nodeId;
+          }
 
           state.focusedNodeId = nodeId;
           if (state.document.meta) state.document.meta.lastFocusId = nodeId;
@@ -1886,33 +2399,34 @@ export function createMindMapStore(): MindMapStoreApi {
         });
       },
 
-      // Undo
+      // Undo（恢复文档 + 条目附带的 UI 快照，并对新树做存在性校验）
       undo: () => {
-        const { history, document } = get();
-        if (history.past.length === 0) return;
+        const current = get();
+        if (current.history.past.length === 0) return;
+        // undo 后继续输入应开启新的 undo 步
+        lastCoalesce = null;
+        // document 为 immer frozen 树，直接存引用（见 pushHistory）
+        const currentEntry: MindMapHistoryEntry = {
+          document: current.document,
+          ui: captureUiSnapshot(current),
+        };
 
         let restoredFocusId: string | null = null;
         set((state) => {
-          const prev = state.history.past.pop();
-          if (prev) {
-            // document 为 immer frozen 树，直接存引用（见 pushHistory）
-            state.history.future.push(document);
-            state.document = prev;
-            refreshSearchResults(state);
-            reconcileFilteredInteractionState(state);
-            state.isDirty = true;
-            state._documentVersion += 1;
-            // ★ 2026-02 修复：退出编辑模式，防止 OutlineView 的 localText 与撤销后的文档不一致
-            state.editingNodeId = null;
-            state.editingNoteNodeId = null;
-            // 恢复焦点
-            if (prev.meta?.lastFocusId) {
-              state.focusedNodeId = prev.meta.lastFocusId;
-              restoredFocusId = prev.meta.lastFocusId;
-            } else if (state.focusedNodeId) {
-              restoredFocusId = state.focusedNodeId;
-            }
-          }
+          const entry = state.history.past.pop();
+          if (!entry) return;
+          state.history.future.push(currentEntry);
+          state.document = entry.document;
+          restoreUiSnapshot(state, entry);
+          refreshSearchResults(state);
+          reconcileFilteredInteractionState(state);
+          reconcileRevealedBlanks(state);
+          state.isDirty = true;
+          state._documentVersion += 1;
+          // ★ 2026-02 修复：退出编辑模式，防止 OutlineView 的 localText 与撤销后的文档不一致
+          state.editingNodeId = null;
+          state.editingNoteNodeId = null;
+          restoredFocusId = state.focusedNodeId;
         });
 
         const nextState = get();
@@ -1926,31 +2440,32 @@ export function createMindMapStore(): MindMapStoreApi {
         debounceSave();
       },
 
-      // Redo
+      // Redo（对称恢复 undo 前的文档与 UI 状态）
       redo: () => {
-        const { history, document } = get();
-        if (history.future.length === 0) return;
+        const current = get();
+        if (current.history.future.length === 0) return;
+        lastCoalesce = null;
+        // document 为 immer frozen 树，直接存引用（见 pushHistory）
+        const currentEntry: MindMapHistoryEntry = {
+          document: current.document,
+          ui: captureUiSnapshot(current),
+        };
 
         let restoredFocusId: string | null = null;
         set((state) => {
-          const next = state.history.future.pop();
-          if (next) {
-            // document 为 immer frozen 树，直接存引用（见 pushHistory）
-            state.history.past.push(document);
-            state.document = next;
-            refreshSearchResults(state);
-            reconcileFilteredInteractionState(state);
-            state.isDirty = true;
-            state._documentVersion += 1;
-            state.editingNodeId = null;
-            state.editingNoteNodeId = null;
-            if (next.meta?.lastFocusId) {
-              state.focusedNodeId = next.meta.lastFocusId;
-              restoredFocusId = next.meta.lastFocusId;
-            } else if (state.focusedNodeId) {
-              restoredFocusId = state.focusedNodeId;
-            }
-          }
+          const entry = state.history.future.pop();
+          if (!entry) return;
+          state.history.past.push(currentEntry);
+          state.document = entry.document;
+          restoreUiSnapshot(state, entry);
+          refreshSearchResults(state);
+          reconcileFilteredInteractionState(state);
+          reconcileRevealedBlanks(state);
+          state.isDirty = true;
+          state._documentVersion += 1;
+          state.editingNodeId = null;
+          state.editingNoteNodeId = null;
+          restoredFocusId = state.focusedNodeId;
         });
 
         const nextState = get();
@@ -1967,12 +2482,77 @@ export function createMindMapStore(): MindMapStoreApi {
       canUndo: () => get().history.past.length > 0,
       canRedo: () => get().history.future.length > 0,
 
+      // P2：查找替换。先在当前树上规划补丁，再单次 applyMutation（一次 undo）
+      replaceInMindMap: (query, replacement, options) => {
+        if (!query) return 0;
+        const caseSensitive = options?.caseSensitive ?? false;
+        const includeNotes = options?.includeNotes ?? true;
+        const scope = options?.nodeIds ? new Set(options.nodeIds) : null;
+
+        /** 大小写不敏感时手动扫描替换（避免动态 RegExp 的转义问题） */
+        const replaceAllOccurrences = (source: string): string => {
+          if (caseSensitive) return source.split(query).join(replacement);
+          const haystack = source.toLowerCase();
+          const needle = query.toLowerCase();
+          let result = '';
+          let cursor = 0;
+          while (cursor <= source.length - needle.length) {
+            const idx = haystack.indexOf(needle, cursor);
+            if (idx === -1) break;
+            result += source.slice(cursor, idx) + replacement;
+            cursor = idx + needle.length;
+          }
+          return result + source.slice(cursor);
+        };
+
+        const { document } = get();
+        const plans: Array<{ id: string; text?: string; note?: string }> = [];
+        traverseDFS(document.root, (node) => {
+          if (scope && !scope.has(node.id)) return;
+          const nextText = replaceAllOccurrences(node.text ?? '');
+          const nextNote =
+            includeNotes && node.note ? replaceAllOccurrences(node.note) : undefined;
+          const textChanged = nextText !== (node.text ?? '');
+          const noteChanged = nextNote !== undefined && nextNote !== node.note;
+          if (!textChanged && !noteChanged) return;
+          plans.push({
+            id: node.id,
+            ...(textChanged ? { text: nextText } : {}),
+            ...(noteChanged ? { note: nextNote } : {}),
+          });
+        });
+        if (plans.length === 0) return 0;
+
+        applyMutation((state) => {
+          const liveNodeById = buildNodeIndex(state.document.root).nodeById;
+          for (const plan of plans) {
+            const node = liveNodeById.get(plan.id);
+            if (!node) continue;
+            if (plan.text !== undefined) {
+              node.text = plan.text;
+              // 文本变更后挖空字符索引失效（与 updateNode 语义一致）
+              delete node.blankedRanges;
+              delete state.revealedBlanks[plan.id];
+            }
+            if (plan.note !== undefined) {
+              node.note = plan.note;
+            }
+          }
+        });
+        return plans.length;
+      },
+
       // 保存（防竞态 + 冲突检测 + 自动重试）
-      save: async () => {
+      save: async (options) => {
+        const saveSource = options?.source ?? 'manual';
         const { mindmapId, metadata, document, currentView, focusedNodeId, isDirty, isSaving, _documentVersion } = get();
         if (!mindmapId) return false;
         if (!isDirty) return true;
-        if (isSaving) return false;
+        if (isSaving) {
+          // 保存进行中：登记补存请求，当前保存结束后自动再保存一次
+          pendingSaveRequested = true;
+          return false;
+        }
 
         // 捕获保存开始时的版本号，防止竞态（替代 JSON.stringify 全量比较，O(1) 性能）
         const savingMindmapId = mindmapId;
@@ -2018,6 +2598,7 @@ export function createMindMapStore(): MindMapStoreApi {
             content: JSON.stringify(docWithViewState),
             defaultView: currentView,
             expectedUpdatedAt,
+            versionSource: saveSource,
           });
 
           set((state) => {
@@ -2040,8 +2621,14 @@ export function createMindMapStore(): MindMapStoreApi {
           const nextState = get();
           if (nextState.mindmapId === savingMindmapId) {
             if (!nextState.isDirty) {
+              pendingSaveRequested = false;
               clearDraft(savingMindmapId);
               lastDraftVersionByMindmap.delete(savingMindmapId);
+            } else if (pendingSaveRequested) {
+              // 保存期间有显式 save() 请求（如可见性 flush）：立即补存而非等 debounce
+              pendingSaveRequested = false;
+              persistDraftNow(true);
+              void get().save();
             } else {
               persistDraftNow(true);
               // 保存期间若继续编辑，重排一次自动保存，避免漏存
@@ -2051,6 +2638,8 @@ export function createMindMapStore(): MindMapStoreApi {
           return true;
         } catch (error) {
           console.error('[MindMapStore] save failed:', error);
+          // 失败路径交给重试/冲突流程处理，避免补存请求造成额外循环
+          pendingSaveRequested = false;
           set((state) => {
             state.isSaving = false;
           });
@@ -2162,7 +2751,8 @@ export function createMindMapStore(): MindMapStoreApi {
           });
           return;
         }
-        pushHistory(get().document);
+        pushHistory(get().document, captureUiSnapshot(get()));
+        lastCoalesce = null;
         set((state) => {
           state.document = snap.document;
           state.currentView = snap.currentView;
@@ -2205,29 +2795,34 @@ export function createMindMapStore(): MindMapStoreApi {
       },
 
       // 设置布局
+      // D1：布局/样式变更需要标脏并触发保存，否则「只改主题/方向后切走」会丢失渲染配置
       setLayoutId: (layoutId: string) => {
-        set((state) => {
+        if (get().layoutId === layoutId) return;
+        applyRenderConfigChange((state) => {
           state.layoutId = layoutId;
         });
       },
 
       // 设置布局方向
       setLayoutDirection: (direction: LayoutDirection) => {
-        set((state) => {
+        if (get().layoutDirection === direction) return;
+        applyRenderConfigChange((state) => {
           state.layoutDirection = direction;
         });
       },
 
       // 设置样式主题
       setStyleId: (styleId: string) => {
-        set((state) => {
+        if (get().styleId === styleId) return;
+        applyRenderConfigChange((state) => {
           state.styleId = styleId;
         });
       },
 
       // 设置边类型
       setEdgeType: (edgeType: EdgeType) => {
-        set((state) => {
+        if (get().edgeType === edgeType) return;
+        applyRenderConfigChange((state) => {
           state.edgeType = edgeType;
         });
       },
@@ -2247,17 +2842,27 @@ export function createMindMapStore(): MindMapStoreApi {
         }, 16);
       },
 
-      // 应用预设
+      // 应用预设（D1：同 setLayoutId，需持久化渲染配置）
       applyPreset: (presetId: string) => {
         const preset = PresetRegistry.get(presetId);
-        if (preset) {
-          set((state) => {
-            state.layoutId = preset.layoutId;
-            state.layoutDirection = preset.layoutDirection as LayoutDirection;
-            state.styleId = preset.styleId || 'default';
-            state.edgeType = (preset.edgeType || 'bezier') as EdgeType;
-          });
+        if (!preset) return;
+        const s = get();
+        const nextStyleId = preset.styleId || 'default';
+        const nextEdgeType = (preset.edgeType || 'bezier') as EdgeType;
+        if (
+          s.layoutId === preset.layoutId &&
+          s.layoutDirection === preset.layoutDirection &&
+          s.styleId === nextStyleId &&
+          s.edgeType === nextEdgeType
+        ) {
+          return;
         }
+        applyRenderConfigChange((state) => {
+          state.layoutId = preset.layoutId;
+          state.layoutDirection = preset.layoutDirection as LayoutDirection;
+          state.styleId = nextStyleId;
+          state.edgeType = nextEdgeType;
+        });
       },
 
       // 获取当前渲染配置
@@ -2388,10 +2993,12 @@ export function createMindMapStore(): MindMapStoreApi {
       },
 
       // 搜索节点
-      search: (query: string) => {
+      search: (query: string, options?: SearchOptions) => {
+        const searchOptions = options ?? {};
         if (!query.trim()) {
           set((state) => {
             state.searchQuery = '';
+            state.searchOptions = searchOptions;
             state.searchResults = [];
             state.currentSearchIndex = -1;
           });
@@ -2399,10 +3006,11 @@ export function createMindMapStore(): MindMapStoreApi {
         }
 
         const { document } = get();
-        const results = searchMindMapNodeIds(document.root, query);
+        const results = searchMindMapNodeIds(document.root, query, searchOptions);
 
         set((state) => {
           state.searchQuery = query;
+          state.searchOptions = searchOptions;
           state.searchResults = results;
           state.currentSearchIndex = results.length > 0 ? 0 : -1;
           reconcileFilteredInteractionState(state);
@@ -2451,6 +3059,7 @@ export function createMindMapStore(): MindMapStoreApi {
       clearSearch: () => {
         set((state) => {
           state.searchQuery = '';
+          state.searchOptions = {};
           state.searchResults = [];
           state.currentSearchIndex = -1;
         });
@@ -2515,6 +3124,7 @@ export function createMindMapStore(): MindMapStoreApi {
             state.clipboard = {
               nodes: copiedNodes,
               sourceOperation: 'copy',
+              copiedAt: Date.now(),
             };
           });
         }
@@ -2550,29 +3160,26 @@ export function createMindMapStore(): MindMapStoreApi {
           state.clipboard = {
             nodes: copiedNodes,
             sourceOperation: 'cut',
+            copiedAt: Date.now(),
           };
 
           removeNodesById(state.document.root, new Set(normalizedIds));
-          pruneAssociationsForRemovedNodes(state.document, removedIds);
-
-          if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
-            state.focusedNodeId = nextFocusedNodeId;
-          }
-          if (state.editingNodeId && removedIds.has(state.editingNodeId)) {
-            state.editingNodeId = null;
-          }
-          if (state.editingNoteNodeId && removedIds.has(state.editingNoteNodeId)) {
-            state.editingNoteNodeId = null;
-          }
-          state.selection = state.selection.filter((id) => !removedIds.has(id));
+          afterRemoveNodes(state, removedIds, nextFocusedNodeId);
         });
       },
 
-      pasteNodes: (targetId: string) => {
+      pasteNodes: (targetId: string, mode: 'child' | 'sibling-after' = 'child') => {
         const { clipboard, document } = get();
         if (!clipboard || clipboard.nodes.length === 0) return;
 
-        const parentDepth = getNodeDepth(document.root, targetId);
+        // C4：sibling-after 贴到 target 的父节点内、target 之后；target 为根时回退为 child
+        const siblingParent =
+          mode === 'sibling-after' ? findParentNode(document.root, targetId) : null;
+        const effectiveMode: 'child' | 'sibling-after' =
+          mode === 'sibling-after' && siblingParent ? 'sibling-after' : 'child';
+        const insertParentId = effectiveMode === 'sibling-after' ? siblingParent!.id : targetId;
+
+        const parentDepth = getNodeDepth(document.root, insertParentId);
         if (parentDepth < 0) return;
         const pendingCount = clipboard.nodes.reduce((sum, node) => sum + countNodes(node), 0);
         if (countNodes(document.root) + pendingCount > MAX_MINDMAP_NODES) {
@@ -2604,9 +3211,17 @@ export function createMindMapStore(): MindMapStoreApi {
         const clearClipboard = clipboard.sourceOperation === 'cut';
 
         applyMutation((state) => {
-          const parentNode = findNodeById(state.document.root, targetId);
+          const parentNode = findNodeById(state.document.root, insertParentId);
           if (!parentNode) return;
-          parentNode.children.push(...forest);
+          if (effectiveMode === 'sibling-after') {
+            const targetIndex = parentNode.children.findIndex((child) => child.id === targetId);
+            const insertAt = targetIndex >= 0 ? targetIndex + 1 : parentNode.children.length;
+            parentNode.children.splice(insertAt, 0, ...forest);
+          } else {
+            // 与 addNode 一致：折叠父下粘贴时自动展开，避免节点存在但不可见
+            if (parentNode.collapsed === true) parentNode.collapsed = false;
+            parentNode.children.push(...forest);
+          }
           state.focusedNodeId = forest[0].id;
           if (clearClipboard) state.clipboard = null;
         });
@@ -2639,6 +3254,8 @@ export function createMindMapStore(): MindMapStoreApi {
         applyMutation((state) => {
           const parentNode = findNodeById(state.document.root, targetId);
           if (!parentNode) return;
+          // 与 addNode 一致：折叠父下粘贴时自动展开
+          if (parentNode.collapsed === true) parentNode.collapsed = false;
           parentNode.children.push(...nodes);
           state.focusedNodeId = nodes[0].id;
         });
@@ -2647,7 +3264,7 @@ export function createMindMapStore(): MindMapStoreApi {
       pasteMarkdownChildren: (
         targetId: string,
         markdown: string,
-        options?: { currentText?: string },
+        options?: { currentText?: string; position?: 'child' | 'sibling-after' },
       ) => {
         let forest: MindMapNode[];
         try {
@@ -2659,7 +3276,18 @@ export function createMindMapStore(): MindMapStoreApi {
         if (forest.length === 0) return;
 
         const { document } = get();
-        const parentDepth = getNodeDepth(document.root, targetId);
+        // C0.2：'sibling-after' 把森林插到 targetId 之后同级；target 为根时回退为 child
+        const siblingParent =
+          options?.position === 'sibling-after'
+            ? findParentNode(document.root, targetId)
+            : null;
+        const effectivePosition: 'child' | 'sibling-after' =
+          options?.position === 'sibling-after' && siblingParent
+            ? 'sibling-after'
+            : 'child';
+        const insertParentId =
+          effectivePosition === 'sibling-after' ? siblingParent!.id : targetId;
+        const parentDepth = getNodeDepth(document.root, insertParentId);
         if (parentDepth < 0) return;
 
         const totalNodes = countNodes(document.root);
@@ -2687,19 +3315,33 @@ export function createMindMapStore(): MindMapStoreApi {
         }
 
         applyMutation((state) => {
-          const parentNode = findNodeById(state.document.root, targetId);
-          if (!parentNode) return;
+          const targetNode = findNodeById(state.document.root, targetId);
+          if (!targetNode) return;
 
           if (options && Object.prototype.hasOwnProperty.call(options, 'currentText')) {
             const nextText = options.currentText ?? '';
-            if (nextText !== parentNode.text) {
-              parentNode.text = nextText;
+            if (nextText !== targetNode.text) {
+              targetNode.text = nextText;
               // Text offsets are no longer valid after an actual title edit.
-              delete parentNode.blankedRanges;
+              delete targetNode.blankedRanges;
               delete state.revealedBlanks[targetId];
             }
           }
-          parentNode.children.push(...forest);
+
+          if (effectivePosition === 'sibling-after') {
+            const liveParent = findParentNode(state.document.root, targetId);
+            if (!liveParent) return;
+            const targetIndex = liveParent.children.findIndex(
+              (child) => child.id === targetId,
+            );
+            const insertAt =
+              targetIndex >= 0 ? targetIndex + 1 : liveParent.children.length;
+            liveParent.children.splice(insertAt, 0, ...forest);
+          } else {
+            // 与 addNode 一致：折叠父下粘贴时自动展开
+            if (targetNode.collapsed === true) targetNode.collapsed = false;
+            targetNode.children.push(...forest);
+          }
           if (forest[0]) {
             state.focusedNodeId = forest[0].id;
           }

@@ -38,6 +38,13 @@
     "searchLocate": "Locate",
     "searchFilterHint": "Outline shows only matches and their ancestor path",
     "searchLocateHint": "Keep full tree and jump to matches",
+    "searchOptions": "Search options",
+    "searchCaseSensitive": "Match case",
+    "searchWholeWord": "Whole word",
+    "searchNoResults": "No matches",
+    "searchCaseSensitive": "Match case",
+    "searchWholeWord": "Whole word",
+    "searchNoResults": "No matching nodes",
     "moreActions": "More actions",
     "save": "Save",
     "saving": "Saving...",
@@ -50,7 +57,11 @@
     "foldMenu": "Expand / collapse to level",
     "expandAll": "Expand all",
     "collapseAll": "Collapse all",
-    "collapseToLevel": "Collapse to level {{level}}"
+    "collapseToLevel": "Collapse to level {{level}}",
+    "unsaved": "Unsaved",
+    "saveShortcut": "Save (Cmd+S)",
+    "undoDisabled": "Nothing to undo",
+    "redoDisabled": "Nothing to redo"
   },
   "preferences": {
     "mubuKeymap": "Mubu-compatible keymap",
@@ -81,7 +92,14 @@
     "switchToMindMapView": "Please switch to mind map view to export images",
     "failed": "Export failed, please try again",
     "success": "Export successful",
-    "processing": "Exporting..."
+    "processing": "Exporting...",
+    "exportJson": "Export JSON",
+    "exportSvg": "Export SVG",
+    "exportXmind": "Export XMind",
+    "dialogExportXmind": "Export XMind",
+    "filterXmind": "XMind File",
+    "exportPdf": "Export PDF",
+    "pdfPrintHint": "The system print dialog will open; choose \"Save as PDF\""
   },
   "import": {
     "title": "Import",
@@ -95,7 +113,11 @@
     "unsavedWarning": "The current mind map has unsaved changes. Importing will overwrite them. Continue?",
     "unsavedTitle": "Import will overwrite unsaved changes",
     "unsavedConfirm": "Continue import",
-    "unnamedTopic": "Untitled topic"
+    "unnamedTopic": "Untitled topic",
+    "multiSheetNote": "Merged from {{count}} XMind sheets: {{titles}}",
+    "labelsNote": "Labels: {{labels}}",
+    "markersNote": "XMind markers: {{markers}}",
+    "saveAndImport": "Save & Import"
   },
   "presentation": {
     "enter": "Presentation mode",
@@ -147,7 +169,55 @@
     "panCanvasKeys": "Space / Middle / Right button + drag",
     "panCanvasKeysPanMode": "Drag blank area",
     "associationEntryKeys": "Right-click node",
-    "associationAdd": "Add association (then click target)"
+    "associationAdd": "Add association (then click target)",
+    "groupRecite": "Recite Mode",
+    "reciteNavigate": "Navigate between nodes",
+    "reciteReveal": "Reveal next blank",
+    "reciteExit": "Exit recite mode",
+    "duplicate": "Duplicate",
+    "addSiblingOrSplit": "Add sibling / split at caret",
+    "toggleComplete": "Toggle completed",
+    "drillIn": "Focus in",
+    "drillOut": "Return to parent",
+    "moveUp": "Move node up",
+    "moveDown": "Move node down",
+    "collapse": "Collapse node",
+    "expand": "Expand node",
+    "collapseAll": "Collapse all",
+    "expandAll": "Expand all",
+    "copy": "Copy nodes",
+    "cut": "Cut nodes",
+    "paste": "Paste",
+    "pasteAsText": "Paste as plain text",
+    "selectAll": "Select all visible nodes",
+    "italic": "Italic",
+    "underline": "Underline",
+    "indent": "Indent",
+    "outdent": "Outdent"
+  },
+  "versions": {
+    "title": "Version History",
+    "loading": "Loading version history...",
+    "loadFailed": "Failed to load version history",
+    "empty": "No versions yet",
+    "untitled": "Untitled",
+    "preview": "Preview",
+    "previewTitle": "Title preview: {{title}}",
+    "previewFailed": "Preview failed or content unavailable",
+    "restore": "Restore",
+    "restoreConfirm": "Confirm restore",
+    "restoreConfirmHint": "Restoring will overwrite the current content with this version; unsaved changes are saved first.",
+    "restoring": "Restoring...",
+    "restored": "Restored to the selected version",
+    "restoreFailed": "Failed to restore version, please retry",
+    "close": "Close version history",
+    "source": {
+      "manual": "Manual save",
+      "auto": "Auto save",
+      "chat_update": "AI update",
+      "chat_edit_nodes": "AI node edits",
+      "unknown": "Unknown source"
+    }
   },
   "embed": {
     "zoomIn": "Zoom in",
@@ -182,7 +252,8 @@
     "orgchartDown": "Org Chart (Down)",
     "orgchartUp": "Org Chart (Up)",
     "orgchartRight": "Org Chart (Right)",
-    "orgchartLeft": "Org Chart (Left)"
+    "orgchartLeft": "Org Chart (Left)",
+    "timelineRight": "Timeline (Right)"
   },
   "themes": {
     "default": "Default",
@@ -195,7 +266,9 @@
     "notionDark": "Notion Dark",
     "notionLight": "Notion Light",
     "minimalWhite": "Minimal White",
-    "minimalBlack": "Minimal Black"
+    "minimalBlack": "Minimal Black",
+    "paper": "Paper & Ink",
+    "paperDark": "Paper & Ink (Dark)"
   },
   "layouts": {
     "tree": "Tree",
@@ -209,7 +282,9 @@
     "orgchartVertical": "Organization Chart",
     "orgchartVerticalDesc": "Top-down hierarchical chart",
     "orgchartHorizontal": "Horizontal Org Chart",
-    "orgchartHorizontalDesc": "Left-right hierarchical chart"
+    "orgchartHorizontalDesc": "Left-right hierarchical chart",
+    "timeline": "Timeline",
+    "timelineDesc": "Timeline layout with first-level topics along a horizontal axis"
   },
   "store": {
     "draftRecovered": "Restored unsaved local draft",
@@ -258,7 +333,12 @@
     "batchComplete": "Complete",
     "clearSelection": "Clear selection",
     "convertToTask": "Convert to task",
-    "removeTask": "Remove task"
+    "removeTask": "Remove task",
+    "batchCopy": "Copy",
+    "batchIndent": "Indent",
+    "batchOutdent": "Outdent",
+    "bulletClickHint": "Click to select · ⌘-click to zoom in",
+    "subtreeItemCount": "{{count}} items"
   },
   "contextMenu": {
     "clearColor": "Clear color",
@@ -317,7 +397,11 @@
     "openMenu": "Open node menu",
     "moreActions": "More actions",
     "addChildShortcut": "Add Child (Tab)",
-    "deleteShortcut": "Delete (Del)"
+    "deleteShortcut": "Delete (Del)",
+    "openLink": "Open link",
+    "priorityBadge": "Priority {{level}}",
+    "progressLabel": "Progress {{percent}}%",
+    "toggleComplete": "Toggle completed"
   },
   "errorDetails": "Error details",
   "canvas": {
@@ -344,5 +428,12 @@
     "emptyHint": "Select text and click 'Blank' to create cloze items",
     "createBlankCta": "Exit recite and create a blank",
     "progress": "{{revealed}}/{{total}} revealed"
+  },
+  "clipboard": {
+    "pasteParseFailed": "Pasted content is too large or too deep to parse"
+  },
+  "menu": {
+    "groupData": "Data",
+    "groupView": "View"
   }
 }

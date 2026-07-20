@@ -7,6 +7,7 @@
 import type { Node, Edge } from '@xyflow/react';
 import type { MindMapNode, LayoutConfig, LayoutResult, NodeStyle } from '../../types';
 import type { LayoutCategory, LayoutDirection } from '../../registry/types';
+import type { LayoutBoundsWithMeta } from '../../registry/types';
 import { DEFAULT_LAYOUT_CONFIG } from '../../constants';
 import {
   calculateSubtreeHeight,
@@ -15,6 +16,7 @@ import {
   calculateBounds,
   resolveSubtreeOverlaps,
   recenterParents,
+  normalizeLayoutRoot,
 } from '../../utils/layout/helpers';
 import { BaseLayoutEngine, MAX_TREE_DEPTH } from '../base/LayoutEngine';
 
@@ -61,17 +63,22 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
     config: LayoutConfig = DEFAULT_LAYOUT_CONFIG,
     direction: LayoutDirection = this.defaultDirection
   ): LayoutResult {
+    // 入口防御：children 缺失时补空数组
+    root = normalizeLayoutRoot(root);
     const validDirection = this.getValidDirection(direction);
     const isLeftDirection = validDirection === 'left';
 
     const nodes: Node<LogicNodeData>[] = [];
     const edges: Edge[] = [];
     const mindmapNodeById = new Map<string, MindMapNode>();
-    
+    // 深度超限截断标记（随 bounds 返回，供上层提示）
+    let truncated = false;
+
     // ★ P0 修复：添加深度限制
     const collectMindMapNode = (current: MindMapNode, depth: number = 0) => {
       if (depth > MAX_TREE_DEPTH) {
         console.warn(`[LogicTreeLayoutEngine] Tree depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return;
       }
       mindmapNodeById.set(current.id, current);
@@ -93,6 +100,7 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
       // 深度限制检查
       if (level > MAX_TREE_DEPTH) {
         console.warn(`[LogicTreeLayoutEngine] Layout depth exceeds limit (${MAX_TREE_DEPTH})`);
+        truncated = true;
         return config.nodeHeight;
       }
 
@@ -198,14 +206,18 @@ export class LogicTreeLayoutEngine extends BaseLayoutEngine {
     recenterParents(root, nodesById, config, true);
 
     // 重新计算边界
+    // ★ P0 修复：宽度估算传入 isRoot，保证 bounds 与实际渲染宽度一致
     const layoutBoxes = nodes.map(node => {
       const mmNode = mindmapNodeById.get(node.id);
-      const isRootNode = node.data?.isRoot || node.type === 'rootNode';
-      const width = mmNode ? calculateNodeWidth(mmNode, config) : config.nodeMinWidth;
+      const isRootNode = !!node.data?.isRoot || node.type === 'rootNode';
+      const width = mmNode ? calculateNodeWidth(mmNode, config, isRootNode) : config.nodeMinWidth;
       const height = mmNode ? calculateNodeHeight(mmNode, isRootNode, config) : config.nodeHeight;
       return { x: node.position.x, y: node.position.y, width, height };
     });
-    const bounds = calculateBounds(layoutBoxes);
+    const bounds: LayoutBoundsWithMeta = {
+      ...calculateBounds(layoutBoxes),
+      ...(truncated ? { truncated: true } : {}),
+    };
 
     return { nodes, edges, bounds };
   }

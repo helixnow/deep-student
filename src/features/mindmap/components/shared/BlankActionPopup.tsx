@@ -3,6 +3,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { EyeSlash, Eye, TextB } from '@phosphor-icons/react';
+import { Z_INDEX } from '@/config/zIndex';
 
 export interface BlankActionPopupProps {
   x: number;
@@ -73,11 +74,13 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
   return createPortal(
     <div
       ref={ref}
-      className="mindmap-container fixed z-[9999] flex items-center gap-0.5 rounded-md border border-[var(--mm-border)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in bg-[var(--mm-bg-elevated)] p-1"
+      role="toolbar"
+      className="mindmap-container fixed flex items-center gap-0.5 rounded-[var(--mm-radius-popup,8px)] border border-[var(--mm-border)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in bg-[var(--mm-bg-elevated)] p-1"
       style={{
         left: `${position?.left ?? -9999}px`,
         top: `${position?.top ?? -9999}px`,
         visibility: position ? 'visible' : 'hidden',
+        zIndex: Z_INDEX.contextMenu,
       }}
       // 阻止 mousedown 抢先让编辑框 blur，否则加粗/挖空点击会失效
       onMouseDown={(e) => e.preventDefault()}

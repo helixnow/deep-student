@@ -21,13 +21,20 @@ import {
 import '@xyflow/react/dist/style.css';
 import '../../styles/mindmap.css';
 
-import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CircleNotch, WarningCircle, ArrowsOut, MagnifyingGlassPlus, MagnifyingGlassMinus, Crosshair, GitFork } from '@phosphor-icons/react';
+import { dstu } from '@/dstu';
 
+import {
+  getMindMap,
+  getMindMapContent,
+  getMindMapVersion,
+  getMindMapVersionContent,
+} from '../../api';
 import { DEFAULT_LAYOUT_CONFIG, REACTFLOW_CONFIG, ROOT_NODE_STYLE, calculateBaseNodeHeight } from '../../constants';
 import { LayoutRegistry, StyleRegistry } from '../../registry';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { ensureInitialized } from '../../init';
 import { nodeTypes } from './nodes';
 import { edgeTypes } from './edges';
@@ -66,10 +73,6 @@ interface LoadState {
 // 节点数阈值：超过此数量时使用 2 倍高度
 const LARGE_MAP_NODE_THRESHOLD = 10;
 
-// 触屏（粗指针）设备：嵌入卡片放行单指滑动给聊天滚动
-const isCoarsePointer =
-  typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
-
 /**
  * 递归统计导图节点总数
  */
@@ -103,6 +106,8 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
   const { t } = useTranslation('mindmap');
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const hasFitView = useRef(false);
+  // 触屏（粗指针）设备：嵌入卡片放行单指滑动给聊天滚动；响应运行时输入设备变化
+  const isCoarsePointer = useCoarsePointer();
 
   // ★ 2026-02 修复：Embed 使用独立的默认配置，不订阅全局 store
   // 避免主编辑器切换布局/样式时导致所有 Embed 实例重新渲染
@@ -348,6 +353,19 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
 
   const targetId = mindmapId || versionId;
 
+  // B-10（轻量失效）：当前导图（非版本快照）在别处被更新时，静默重新拉取预览，
+  // 避免聊天卡片与打开的编辑器短暂不一致。版本引用（mv_）不可变，无需订阅。
+  const [reloadNonce, setReloadNonce] = useState(0);
+  useEffect(() => {
+    if (!targetId || targetId.startsWith('mv_')) return;
+    const unwatch = dstu.watch('*', (event) => {
+      if (event.type !== 'updated' || !event.node) return;
+      if (event.node.id !== targetId) return;
+      setReloadNonce((nonce) => nonce + 1);
+    });
+    return unwatch;
+  }, [targetId]);
+
   // 计算节点数量
   const nodeCount = useMemo(() => {
     if (!state.document?.root) return 0;
@@ -368,7 +386,8 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
 
     const loadMindMap = async () => {
       try {
-        setState(prev => ({ ...prev, loading: true, error: null }));
+        // 静默刷新：已有文档时不回退到 loading 卡片，避免 watch 失效重载闪烁
+        setState(prev => ({ ...prev, loading: !prev.document, error: null }));
 
         if (!targetId) {
           setState(prev => ({ ...prev, loading: false, error: t('embed.notFound') }));
@@ -382,16 +401,8 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
 
         if (isVersionRef) {
           const [versionMeta, versionContent] = await Promise.all([
-            invoke<{
-              versionId: string;
-              mindmapId: string;
-              resourceId: string;
-              title: string;
-              label?: string;
-              source?: string;
-              createdAt: string;
-            } | null>('vfs_get_mindmap_version', { versionId: targetId }),
-            invoke<string | null>('vfs_get_mindmap_version_content', { versionId: targetId }),
+            getMindMapVersion(targetId),
+            getMindMapVersionContent(targetId),
           ]);
           contentStr = versionContent;
           if (versionMeta) {
@@ -413,8 +424,8 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
           }
         } else {
           [metadata, contentStr] = await Promise.all([
-            invoke<VfsMindMap | null>('vfs_get_mindmap', { mindmapId: targetId }),
-            invoke<string | null>('vfs_get_mindmap_content', { mindmapId: targetId }),
+            getMindMap(targetId),
+            getMindMapContent(targetId),
           ]);
         }
 
@@ -465,7 +476,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [displayTitle, t, targetId]);
+  }, [displayTitle, t, targetId, reloadNonce]);
 
   // 打开思维导图
   const handleOpen = useCallback(() => {

@@ -12,14 +12,22 @@ export {
   registerMindMapStore,
   getMindMapStoreForResource,
   getMindMapStoreForInstance,
+  getMindMapStoreForWindow,
   subscribeMindMapStoreReady,
+  subscribeMindMapStoreReadyForWindow,
   useMindMapStore,
   useMindMapStoreApi,
+  MAX_MINDMAP_DEPTH,
+  MAX_MINDMAP_NODES,
+  HISTORY_COALESCE_WINDOW_MS,
   type MindMapStoreApi,
   type MindMapStoreState,
   type MindMapViewports,
   type MindMapViewportView,
   type MergeWithPreviousResult,
+  type MindMapHistoryEntry,
+  type MindMapHistoryUiSnapshot,
+  type MindMapConflictSnapshot,
 } from './mindmapStore';
 
 // 兼容旧导入路径
@@ -29,6 +37,8 @@ export { useMindMapStore as useUIStore } from './mindmapStore';
 // Selectors
 export {
   selectVisibleNodes,
+  selectDisplayRoot,
+  selectVisibleNodesInScope,
   selectAllNodes,
   selectSearchResults,
   selectNodeAncestors,

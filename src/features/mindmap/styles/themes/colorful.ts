@@ -1,30 +1,37 @@
 import type { IStyleTheme } from '../../registry/types';
+import { COLORFUL_LIGHT_PALETTE } from './palettes';
 
+/**
+ * 彩色主题（亮色）
+ *
+ * 根节点渐变与阴影跟随项目品牌 token（--brand-gradient / --primary），
+ * 随 data-theme-palette 强调色联动；结构色走 --mm-* 变量。
+ */
 export const colorfulTheme: IStyleTheme = {
   id: 'colorful',
   name: 'themes.colorful',
   node: {
     root: {
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      foreground: '#FFFFFF',
+      background: 'var(--brand-gradient)',
+      foreground: 'hsl(var(--primary-foreground))',
       border: 'transparent',
       borderRadius: 8,
       fontSize: 18,
       fontWeight: '600',
       padding: '12px 24px',
-      shadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
+      shadow: '0 4px 15px hsl(var(--primary) / 0.4)',
     },
     branch: {
-      background: '#F8F9FA',
-      foreground: '#2D3748',
-      border: '1px solid #E2E8F0',
+      background: 'var(--mm-bg-elevated)',
+      foreground: 'var(--mm-text)',
+      border: '1px solid var(--mm-border)',
       borderRadius: 6,
       fontSize: 14,
       padding: '8px 14px',
     },
     leaf: {
       background: 'transparent',
-      foreground: '#4A5568',
+      foreground: 'var(--mm-text-secondary)',
       border: 'transparent',
       borderRadius: 4,
       fontSize: 13,
@@ -33,19 +40,11 @@ export const colorfulTheme: IStyleTheme = {
   },
   edge: {
     type: 'bezier',
-    stroke: '#CBD5E0',
+    stroke: 'var(--mm-edge)',
     strokeWidth: 2,
   },
-  palette: [
-    '#F56565', // Red
-    '#ED8936', // Orange
-    '#ECC94B', // Yellow
-    '#48BB78', // Green
-    '#4299E1', // Blue
-    '#9F7AEA', // Purple
-    '#ED64A6', // Pink
-  ],
+  palette: COLORFUL_LIGHT_PALETTE,
   canvas: {
-    background: '#FFFFFF',
+    background: 'var(--mm-bg)',
   },
 };

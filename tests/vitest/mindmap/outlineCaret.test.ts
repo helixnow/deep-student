@@ -5,12 +5,17 @@ import {
   clearOutlineGoalColumn,
   collectSubtreeCollapseTargets,
   countDescendants,
+  estimateOutlineTextWidth,
   getOutlineGoalColumn,
+  getOutlineGoalVisual,
   requestOutlineCaret,
   resolveGoalColumnOffset,
+  resolveGoalEntryOffset,
+  resolveVisualColumnOffset,
   shouldNavigateAcrossOutlineNode,
   isOutlineCompositionActive,
   setOutlineGoalColumn,
+  setOutlineGoalVisual,
   takeOutlineCaret,
 } from '@/features/mindmap/utils/outlineCaret';
 
@@ -73,11 +78,89 @@ describe('outline goal column state', () => {
     expect(getOutlineGoalColumn()).toBeNull();
   });
 
+  it('stores visual goal (px + font) and clears together with column', () => {
+    expect(getOutlineGoalVisual()).toBeNull();
+    setOutlineGoalVisual(42.5, '15px sans-serif');
+    expect(getOutlineGoalVisual()).toEqual({ px: 42.5, font: '15px sans-serif' });
+    setOutlineGoalVisual(10);
+    expect(getOutlineGoalVisual()).toEqual({ px: 10, font: null });
+    clearOutlineGoalColumn();
+    expect(getOutlineGoalVisual()).toBeNull();
+  });
+
+  it('clamps negative / non-finite visual goals', () => {
+    setOutlineGoalVisual(-5);
+    expect(getOutlineGoalVisual()).toEqual({ px: 0, font: null });
+    setOutlineGoalVisual(Number.NaN);
+    expect(getOutlineGoalVisual()).toBeNull();
+  });
+
   it('pending caret is consumed once per node', () => {
     requestOutlineCaret('a', 3);
     expect(takeOutlineCaret('b')).toBeNull();
     expect(takeOutlineCaret('a')).toBe(3);
     expect(takeOutlineCaret('a')).toBeNull();
+  });
+});
+
+describe('estimateOutlineTextWidth', () => {
+  it('estimates ascii at 0.55em and CJK at 1em with the default 15px font', () => {
+    expect(estimateOutlineTextWidth('')).toBe(0);
+    expect(estimateOutlineTextWidth('ab')).toBeCloseTo(2 * 15 * 0.55);
+    expect(estimateOutlineTextWidth('中文')).toBeCloseTo(2 * 15);
+    expect(estimateOutlineTextWidth('a中')).toBeCloseTo(15 * 0.55 + 15);
+  });
+
+  it('respects an explicit font size', () => {
+    expect(estimateOutlineTextWidth('a', '20px sans-serif')).toBeCloseTo(11);
+    expect(estimateOutlineTextWidth('中', 'bold 20px "PingFang SC"')).toBeCloseTo(20);
+  });
+});
+
+describe('resolveVisualColumnOffset', () => {
+  // 具体中段落点依赖测量实现（canvas 或估宽），这里只锁边界与单调性
+  it('clamps to line boundaries', () => {
+    expect(resolveVisualColumnOffset('', 100)).toBe(0);
+    expect(resolveVisualColumnOffset('abc', 0)).toBe(0);
+    expect(resolveVisualColumnOffset('abc', -1)).toBe(0);
+    expect(resolveVisualColumnOffset('abc中文', 1e6)).toBe(5);
+  });
+
+  it('is monotonic in the pixel goal', () => {
+    const text = 'ab中文cd';
+    let prev = 0;
+    for (let px = 0; px <= 120; px += 5) {
+      const offset = resolveVisualColumnOffset(text, px);
+      expect(offset).toBeGreaterThanOrEqual(prev);
+      prev = offset;
+    }
+    expect(prev).toBe(text.length);
+  });
+});
+
+describe('resolveGoalEntryOffset', () => {
+  it('uses the character column when no visual goal is present', () => {
+    expect(resolveGoalEntryOffset('hello', 'first-line', { column: 3 })).toBe(3);
+    expect(resolveGoalEntryOffset('hello', 'first-line', { column: 99 })).toBe(5);
+    expect(resolveGoalEntryOffset('hello', 'last-line', { column: null })).toBe(0);
+  });
+
+  it('lands on the first logical line when navigating down', () => {
+    expect(resolveGoalEntryOffset('ab\ncdef', 'first-line', { column: 5 })).toBe(2);
+    expect(resolveGoalEntryOffset('ab\ncdef', 'first-line', { column: 1 })).toBe(1);
+  });
+
+  it('lands on the last logical line when navigating up', () => {
+    expect(resolveGoalEntryOffset('ab\ncdef', 'last-line', { column: 1 })).toBe(4);
+    expect(resolveGoalEntryOffset('ab\ncdef', 'last-line', { column: 99 })).toBe(7);
+  });
+
+  it('prefers the visual pixel goal over the character column', () => {
+    // px=0 必落行首，即使字符列更大（说明 px 优先生效）
+    expect(resolveGoalEntryOffset('ab\ncdef', 'last-line', { column: 3, px: 0 })).toBe(3);
+    expect(
+      resolveGoalEntryOffset('ab\ncdef', 'last-line', { column: 0, px: 1e6 }),
+    ).toBe(7);
   });
 });
 

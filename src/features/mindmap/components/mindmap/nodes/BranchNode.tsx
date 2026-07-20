@@ -1,16 +1,24 @@
-import React, { useCallback, useMemo, useLayoutEffect, useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { Plus, Trash, DotsThree } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { useNodeHeightObserver } from './useNodeHeightObserver';
+import { pickDefined } from './styleUtils';
 import { useMindMapStore, useMindMapStoreApi } from '../../../store';
-import { StyleRegistry } from '../../../registry';
-import { findParentNode } from '../../../utils/node/find';
+import { useMindMapTheme } from '../../../hooks/useMindMapTheme';
+import { getThemeFontMetrics, MM_NODE_LINE_HEIGHT_RATIO } from '../../../styles/themes';
+import { findParentNode, findNodeById } from '../../../utils/node/find';
 import { openNodeRef } from '../../../utils/openNodeRef';
 import { getSearchResultIdSet } from '../../../utils/searchFilter';
+import {
+  selectNodeDecorationKey,
+  parseNodeDecorations,
+} from '../../../utils/nodeDecorations';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
+import './nodes.css';
 
 export interface BranchNodeData extends Record<string, unknown> {
   label: string;
@@ -29,6 +37,11 @@ export interface BranchNodeData extends Record<string, unknown> {
   targetPosition?: 'left' | 'right' | 'top' | 'bottom';
   side?: 'left' | 'right' | 'center';  // 节点所在侧
   branchColor?: string;
+  /**
+   * 明确开启 Handle 拖拽连接（onConnect → reparent）。
+   * 默认关闭：普通拖动锚点极易误触 reparent，改父级请用节点整体拖拽（drop target）。
+   */
+  handlesConnectable?: boolean;
   onOpenMenu?: (nodeId: string, position: { x: number; y: number }) => void;
 }
 
@@ -59,6 +72,11 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
   const removeBlankRange = useMindMapStore(state => state.removeBlankRange);
   const removeNodeRef = useMindMapStore(state => state.removeNodeRef);
+  // 装饰字段（priority/progress/href）：布局引擎未拷贝，经索引直接读 store（值稳定 key，无装饰不触发重渲染）
+  const decorationKey = useMindMapStore(state =>
+    selectNodeDecorationKey(state.document.root, data.nodeId),
+  );
+  const decorations = parseNodeDecorations(decorationKey);
   const nodeRef = useRef<HTMLDivElement>(null);
 
   const isEditing = editingNodeId === data.nodeId;
@@ -107,8 +125,8 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     }
   };
 
-  // 从 StyleRegistry 获取主题配置
-  const theme = useMemo(() => StyleRegistry.get(styleId) || StyleRegistry.getDefault(), [styleId]);
+  // 从 StyleRegistry 解析主题（订阅暗色模式切换与注册变更，见 useMindMapTheme）
+  const theme = useMindMapTheme(styleId);
 
   const handleTextChange = useCallback((text: string) => {
     updateNode(data.nodeId, { text });
@@ -160,6 +178,19 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     }
   }, [data.nodeId, addNode, setFocusedNodeId, setEditingNodeId]);
 
+  // 空文本失焦策略：新建后从未输入内容的空节点，真正结束编辑时删除（不留「未命名」残留）。
+  // 守卫与 handleEndEdit 同源：连续建点（Enter 后 editingNodeId 已移至新节点）时不删除。
+  const handleEmptyCommit = useCallback(() => {
+    const state = storeApi.getState();
+    if (state.editingNodeId !== data.nodeId) return;
+    state.setEditingNodeId(null);
+    const node = findNodeById(state.document.root, data.nodeId);
+    // 有子节点或已有正文（如经 live commit 写入）的节点不删
+    if (node && (node.children?.length ?? 0) === 0 && node.text.trim() === '') {
+      state.deleteNode(data.nodeId);
+    }
+  }, [data.nodeId, storeApi]);
+
   const handleAddChild = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     handleCommitAndCreateChild();
@@ -188,48 +219,36 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   // 记录节点实测高度，避免布局重叠
   // ★ 2026-02 优化：embed 模式下跳过测量，防止小容器的测量值覆盖主编辑器
   const isEmbed = !!(data as Record<string, unknown>).isEmbed;
-  useLayoutEffect(() => {
-    if (isEmbed) return;
-    const element = nodeRef.current;
-    if (!element || !data.nodeId) {
-      return;
-    }
-    const updateHeight = () => {
-      const height = element.offsetHeight;
-      if (height > 0) {
-        setMeasuredNodeHeight(data.nodeId, height);
-      }
-    };
-    updateHeight();
-    const observer = new ResizeObserver(() => updateHeight());
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-    };
-  }, [data.nodeId, setMeasuredNodeHeight, isEmbed]);
+  useNodeHeightObserver(nodeRef, data.nodeId, setMeasuredNodeHeight, !isEmbed);
 
   // 节点外观只由层级决定，避免新增子节点时在 branch/leaf 样式间跳变。
   const nodeTheme = data.level === 1 ? theme?.node?.branch : theme?.node?.leaf;
+  // fallback 字号走主题度量单一数据源（default 主题 branch 实为 15px，勿再硬编码 14px）
+  const branchMetrics = getThemeFontMetrics(theme, false);
 
   // 二级及以下使用下划线风格。
   const isUnderlineNode = data.level >= 2;
   const branchColor = data.branchColor;
   
   // 自定义样式（来自 data.style）优先级高于主题样式
-  const customStyle: React.CSSProperties = {
+  // ★ 修复：剔除 undefined 字段——直接展开会把主题样式同名键覆盖为 undefined，
+  //   导致主题 foreground / fontSize 等被静默丢弃
+  const customStyle: React.CSSProperties = pickDefined({
     color: data.style?.textColor,
     fontWeight: data.style?.fontWeight,
     fontStyle: data.style?.fontStyle === 'italic' ? 'italic' : undefined,
     textDecoration: data.style?.textDecoration && data.style.textDecoration !== 'none' ? data.style.textDecoration : undefined,
     fontSize: data.style?.headingLevel === 'h1' ? '22px' : data.style?.headingLevel === 'h2' ? '18px' : data.style?.headingLevel === 'h3' ? '16px' : data.style?.fontSize ? `${data.style.fontSize}px` : undefined,
-  };
+  });
 
   // 合并主题样式和自定义样式
   // ★ 修复：正确应用全局主题的所有属性
   const themeStyle: React.CSSProperties = isUnderlineNode ? {
     // 下划线节点忽略大部分主题背景样式
     color: nodeTheme?.foreground || 'var(--mm-text)',
-    fontSize: nodeTheme?.fontSize ? `${nodeTheme.fontSize}px` : undefined,
+    fontSize: nodeTheme?.fontSize ? `${nodeTheme.fontSize}px` : `${branchMetrics.fontSize}px`,
+    // 行高与布局估算（getThemeFontMetrics）保持同一系数，编辑态 textarea 继承后不跳动
+    lineHeight: MM_NODE_LINE_HEIGHT_RATIO,
     // 自定义样式优先级更高
     ...customStyle,
     border: 'none',
@@ -241,7 +260,9 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     color: nodeTheme?.foreground || 'var(--mm-text)',
     border: nodeTheme?.border || '1px solid var(--mm-border)',
     borderRadius: nodeTheme?.borderRadius ? `${nodeTheme.borderRadius}px` : '4px',
-    fontSize: nodeTheme?.fontSize ? `${nodeTheme.fontSize}px` : '14px',
+    fontSize: nodeTheme?.fontSize ? `${nodeTheme.fontSize}px` : `${branchMetrics.fontSize}px`,
+    // 行高与布局估算（getThemeFontMetrics）保持同一系数，编辑态 textarea 继承后不跳动
+    lineHeight: MM_NODE_LINE_HEIGHT_RATIO,
     padding: nodeTheme?.padding || '6px 12px',
     boxShadow: nodeTheme?.shadow,
     // 自定义样式优先级更高
@@ -250,9 +271,9 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     ...(branchColor && data.level === 1 ? { borderColor: branchColor } : {}),
   };
 
-  // 下划线节点：Target Handle 和 Source Handle 需各自定位到底部对应侧
+  // 下划线节点：Target Handle 和 Source Handle 需各自定位到底部对应侧（锚点贴在下划线两端）
   const baseHandleStyle: React.CSSProperties = isUnderlineNode
-    ? { top: 'auto', bottom: '-1.5px', transform: 'none', width: '4px', height: '4px', background: 'transparent' }
+    ? { top: 'auto', bottom: '-4px', transform: 'none' }
     : {};
 
   const targetHandleStyle: React.CSSProperties = isUnderlineNode
@@ -260,8 +281,8 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         ...baseHandleStyle,
         left: targetPos === 'left' ? 0 : 'auto',
         right: targetPos === 'right' ? 0 : 'auto',
-        marginLeft: targetPos === 'left' ? '-2px' : 0,
-        marginRight: targetPos === 'right' ? '-2px' : 0,
+        marginLeft: targetPos === 'left' ? '-3px' : 0,
+        marginRight: targetPos === 'right' ? '-3px' : 0,
       }
     : {};
 
@@ -270,39 +291,61 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         ...baseHandleStyle,
         left: sourcePos === 'left' ? 0 : 'auto',
         right: sourcePos === 'right' ? 0 : 'auto',
-        marginLeft: sourcePos === 'left' ? '-2px' : 0,
-        marginRight: sourcePos === 'right' ? '-2px' : 0,
+        marginLeft: sourcePos === 'left' ? '-3px' : 0,
+        marginRight: sourcePos === 'right' ? '-3px' : 0,
       }
     : {};
 
+  // 锚点统一视觉（默认隐藏、hover/选中淡入），样式见 nodes.css
+  const handlesConnectable = data.handlesConnectable === true;
   const handleClassName = cn(
-    '!w-2 !h-2 !border !border-[var(--mm-border)] !bg-[var(--mm-bg-elevated)]',
-    selected ? '!visible' : '!invisible group-hover:!visible'
+    'mm-node-handle',
+    handlesConnectable && 'mm-node-handle--connectable',
   );
+
+  // 下划线节点选中/hover 状态走 data-node-chrome + --mm-underline-color CSS 变量
+  // （见 styles/node-edge-enhancements.css），替代 [style*="border-bottom-color"] 属性选择器黑客
+
+  // 入场动画的生长起点朝向父节点一侧（transform-origin，常驻无副作用）
+  const spawnOriginClass = {
+    left: 'mm-node-origin-left',
+    right: 'mm-node-origin-right',
+    top: 'mm-node-origin-top',
+    bottom: 'mm-node-origin-bottom',
+  }[targetPos] ?? 'mm-node-origin-left';
 
   return (
     <div
       ref={nodeRef}
       className={cn(
-        isUnderlineNode ? "mindmap-node-underline" : "mm-branch-node",
+        // mm-node--underline 为语义类（mindmap.css 已备好全套状态 twin 规则），与旧类并存兼容
+        isUnderlineNode ? "mindmap-node-underline mm-node--underline" : "mm-branch-node",
         "group flex items-center justify-center gap-1",
+        spawnOriginClass,
         selected && "selected",
         isEditing && "editing",
         isSearchMatch && "search-match",
         isCurrentSearchMatch && "search-match-current",
         data.completed && "mm-completed"
       )}
-      style={themeStyle}
+      data-node-chrome={isUnderlineNode ? 'underline' : 'box'}
+      style={{
+        ...themeStyle,
+        ...(isUnderlineNode && branchColor
+          ? ({ '--mm-underline-color': branchColor } as React.CSSProperties)
+          : {}),
+      }}
       onDoubleClick={(e) => {
         e.stopPropagation();
         // Handled by ReactFlow onNodeDoubleClick
       }}
     >
-      {/* Collapse/Expand Toggle - 位置根据 targetPosition 或 side 调整 */}
+      {/* Collapse/Expand Toggle - 位置根据 targetPosition 或 side 调整
+          触屏无 hover：mm-collapse-wrap 在 coarse 媒体查询下常驻淡色显示 */}
       {hasChildren && (
         <div 
           className={cn(
-            "w-5 h-5 z-20",
+            "mm-collapse-wrap w-5 h-5 z-20",
             !selected && !isCollapsed ? "invisible group-hover:visible" : "visible"
           )}
           style={getCollapseButtonStyle()}
@@ -331,7 +374,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         type="target"
         position={getPosition(targetPos)}
         className={handleClassName}
-        isConnectable={true}
+        isConnectable={handlesConnectable}
         style={targetHandleStyle}
       />
 
@@ -348,6 +391,10 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           blankedRanges={data.blankedRanges}
           revealedIndices={revealedBlanks[data.nodeId]}
           reciteMode={reciteMode}
+          decorations={decorations}
+          showCheckbox={data.style?.showCheckbox}
+          onToggleCompleted={() => updateNode(data.nodeId, { completed: !data.completed })}
+          onEmptyCommit={handleEmptyCommit}
           onTextChange={handleTextChange}
           onCommitLiveText={handleCommitLiveText}
           onNoteChange={(note) => updateNode(data.nodeId, { note })}
@@ -385,22 +432,28 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
       <div
         className={cn(
           "mm-node-actions nodrag nopan",
-          selected && !isEditing ? "visible pointer-events-auto" : "invisible pointer-events-none"
+          // 与 RootNode 一致：选中或 hover 均可见（编辑态收起）
+          isEditing
+            ? "invisible pointer-events-none"
+            : selected
+              ? "visible pointer-events-auto"
+              : "invisible pointer-events-none group-hover:visible group-hover:pointer-events-auto"
         )}
         style={{ left: '100%', marginLeft: '8px' }}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <NotionButton variant="ghost"
           onClick={handleAddChild}
-          className="mm-action-btn"
+          className="mm-action-btn mm-action-btn--add"
           aria-label={t('actions.addChild')}
           title={t('node.addChildShortcut')}
         >
           <Plus className="w-3.5 h-3.5" />
         </NotionButton>
+        {/* 触屏下弱化侧向浮动操作（只保留加号）：菜单/删除走底部工具条 */}
         <NotionButton variant="ghost"
           onClick={handleOpenMenu}
-          className="mm-action-btn"
+          className="mm-action-btn mm-action-btn--menu"
           aria-label={t('node.openMenu')}
           title={t('node.moreActions')}
         >
@@ -408,7 +461,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         </NotionButton>
         <NotionButton variant="ghost"
           onClick={handleDelete}
-          className="mm-action-btn hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+          className="mm-action-btn mm-action-btn--delete hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
           aria-label={t('actions.delete')}
           title={t('node.deleteShortcut')}
         >
@@ -421,7 +474,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         type="source"
         position={getPosition(sourcePos)}
         className={handleClassName}
-        isConnectable={true}
+        isConnectable={handlesConnectable}
         style={sourceHandleStyle}
       />
     </div>

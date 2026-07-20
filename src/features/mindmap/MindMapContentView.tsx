@@ -1,4 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  useMemo,
+} from 'react';
 // 初始化思维导图模块（注册布局、样式、预设）
 import './init';
 import {
@@ -11,6 +19,10 @@ import {
 } from './store';
 import { MindMapActiveContext } from './MindMapActiveContext';
 import { MindMapErrorBoundary } from './MindMapErrorBoundary';
+import {
+  registerMindMapViewController,
+  getMindMapViewController,
+} from './viewController';
 import { dstu } from '@/dstu';
 import { StyleRegistry } from './registry';
 import { exportToOpml, exportToMarkdown, exportToJson, exportToImage } from './utils/exporters';
@@ -21,7 +33,6 @@ import { cn } from '@/lib/utils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import {
   FileText,
   GitBranch,
@@ -38,7 +49,6 @@ import {
   CaretLeft,
   Keyboard,
   WarningCircle,
-  ArrowClockwise as RefreshIcon,
   Gear,
   BookOpen,
   EyeSlash,
@@ -46,9 +56,15 @@ import {
   ArrowsOutLineVertical,
   Presentation,
   ShareNetwork,
+  Check,
+  ClockCounterClockwise,
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { TextSwap } from '@/components/ui/TextSwap';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -61,6 +77,11 @@ import { OutlineView, type OutlineViewHandle } from './views/OutlineView';
 import { MindMapView, type MindMapViewHandle } from './views/MindMapView';
 import { StructureSelector } from './components/mindmap/StructureSelector';
 import { StyleSettings } from './components/toolbar/StylePanel';
+// W09 契约：选中节点时的内联格式条（无必需 props，内部消费当前 store）
+import { MindMapFormatBar } from './components/toolbar/FormatBar';
+import { VersionHistoryPanel } from './components/toolbar/VersionHistoryPanel';
+// W07 契约：结构化快捷键表 getShortcutGroups(view, keymap, platform)
+import { getShortcutGroups } from './constants/shortcuts';
 import { ReciteStatusBar } from './components/shared/ReciteStatusBar';
 import { Progress } from '@/components/ui/shad/Progress';
 import { useMindMapClipboard } from './hooks/useMindMapClipboard';
@@ -83,6 +104,81 @@ const MindMapClipboardEffects: React.FC = () => {
   return null;
 };
 
+// ============================================================================
+// 快捷键表适配（W07 契约的防御性归一化：字段名差异时降级而非崩溃）
+// ============================================================================
+
+interface NormalizedShortcutItem {
+  keys: string[];
+  label: string;
+}
+
+interface NormalizedShortcutGroup {
+  id: string;
+  title: string;
+  items: NormalizedShortcutItem[];
+}
+
+/**
+ * 把 W07 getShortcutGroups 的返回值归一化为 { title, items:[{keys,label}] }。
+ * 兼容 items/shortcuts 两种字段名与 label/labelKey/description 三种文案来源，
+ * 结构完全不符时返回空数组（面板会退化为只显示键位方案说明与背诵组）。
+ */
+function normalizeShortcutGroups(raw: unknown, t: TFunction): NormalizedShortcutGroup[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((group, groupIndex): NormalizedShortcutGroup => {
+      const g = (group ?? {}) as Record<string, unknown>;
+      const rawItems = (
+        Array.isArray(g.items) ? g.items : Array.isArray(g.shortcuts) ? g.shortcuts : []
+      ) as unknown[];
+      const title =
+        typeof g.title === 'string'
+          ? g.title
+          : typeof g.titleKey === 'string'
+            ? t(g.titleKey, { defaultValue: g.titleKey })
+            : '';
+      const items = rawItems
+        .map((item): NormalizedShortcutItem => {
+          const it = (item ?? {}) as Record<string, unknown>;
+          const keys = Array.isArray(it.keys)
+            ? it.keys.map(String)
+            : typeof it.keys === 'string'
+              ? [it.keys]
+              : Array.isArray(it.combos)
+                ? it.combos.map(String)
+                : [];
+          const label =
+            typeof it.label === 'string'
+              ? it.label
+              : typeof it.labelKey === 'string'
+                ? t(it.labelKey, { defaultValue: it.labelKey })
+                : typeof it.description === 'string'
+                  ? it.description
+                  : '';
+          return { keys, label };
+        })
+        .filter((item) => item.keys.length > 0 && item.label);
+      return {
+        id: typeof g.id === 'string' ? g.id : `group-${groupIndex}`,
+        title,
+        items,
+      };
+    })
+    .filter((group) => group.items.length > 0);
+}
+
+/** 宿主可通过 ref 调用的命令（Notes 关闭标签「丢弃修改」等场景） */
+export interface MindMapContentViewHandle {
+  /**
+   * 丢弃语义：清除本地草稿 + 取消待执行的保存定时器 + 跳过 unmount 时的
+   * saveDraftSync。调用后本实例视为终结，宿主应随即卸载该组件。
+   */
+  discardDraft: () => void;
+  /** 与工具栏同语义的视图切换（blur + viewport + caret resume） */
+  switchView: (view: 'outline' | 'mindmap') => void;
+}
+
 interface MindMapContentViewProps {
   resourceId?: string;
   /** Workbench windowId；用于同资源多宿主时精确路由 activation。 */
@@ -99,7 +195,12 @@ interface MindMapContentViewProps {
   className?: string;
 }
 
-const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
+interface MindMapContentViewInnerProps extends MindMapContentViewProps {
+  /** Outer 下发：discardDraft 后置 true，unmount/可见性 flush 跳过草稿写入 */
+  discardedRef: React.MutableRefObject<boolean>;
+}
+
+const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
   resourceId,
   onTitleChange,
   onReady,
@@ -107,6 +208,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   isActive,
   focusOnActive,
   onSaveStateChange,
+  discardedRef,
   className
 }) => {
   const { t } = useTranslation(['mindmap', 'common']);
@@ -143,6 +245,9 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   const setSearchFilterMode = useMindMapStore(state => state.setSearchFilterMode);
   const setDocument = useMindMapStore(state => state.setDocument);
   const setFocusedNodeId = useMindMapStore(state => state.setFocusedNodeId);
+  // 选中态：驱动工具栏下方的内联格式条（W09 FormatBar）显隐
+  const focusedNodeId = useMindMapStore(state => state.focusedNodeId);
+  const hasSelection = useMindMapStore(state => state.selection.length > 0);
   const collapseAll = useMindMapStore(state => state.collapseAll);
   const expandAll = useMindMapStore(state => state.expandAll);
   const collapseToDepth = useMindMapStore(state => state.collapseToDepth);
@@ -158,21 +263,27 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   
   const [showSearch, setShowSearch] = useState(false);
   const [searchInput, setSearchInput] = useState('');
+  // W08 SearchOptions：大小写敏感 / 全词匹配（会话级 UI 状态，不入草稿）
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const [searchWholeWord, setSearchWholeWord] = useState(false);
+  // 版本历史内联面板（工具栏下方文档流展开）
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   const lastTitleRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
   // 工具栏面板互斥状态：同一时间只允许打开一个面板
   const [activePanel, setActivePanel] = useState<'structure' | 'style' | 'more' | null>(null);
 
-  // 移动端悬浮面板状态
+  // 移动端全屏内联子屏状态
   const [showMobileStructure, setShowMobileStructure] = useState(false);
   const [showMobileStyle, setShowMobileStyle] = useState(false);
+  const [showMobileMore, setShowMobileMore] = useState(false);
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   // 画布空白拖拽模式（框选/平移）：快捷键帮助面板按当前模式展示对应操作
   const [canvasDragMode] = useCanvasDragMode();
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
-  // A6-16: 导入未保存确认改为声明式 NotionAlertDialog（替换 window.confirm）
+  // A6-16: 导入未保存确认为工具栏下方的内联确认条（不再使用模态对话框）
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [presentationMode, setPresentationMode] = useState(false);
   const [associationModeRequest, setAssociationModeRequest] = useState(0);
@@ -252,6 +363,12 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     [setCurrentView, setViewViewport, storeApi],
   );
 
+  // B-5：把带防护语义的 switchView 注册到视图控制器注册表，
+  // Workbench activation（register.ts setView）与宿主 ref 均经此路径切换视图。
+  useEffect(() => {
+    return registerMindMapViewController(storeApi, { switchView });
+  }, [storeApi, switchView]);
+
   const handleToggleViewCommand = useCallback(() => {
     if (isActive === false) return;
     const next = storeApi.getState().currentView === 'outline' ? 'mindmap' : 'outline';
@@ -285,6 +402,77 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
       setShowShortcutHelp(false);
       return true;
     }, BACK_PRIORITY.overlay);
+  }, [showShortcutHelp]);
+
+  useEffect(() => {
+    if (!showMobileMore) return;
+    return registerBackHandler(() => {
+      setShowMobileMore(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [showMobileMore]);
+
+  // 内容区浮层互斥：移动端子屏（更多/结构/样式）与快捷键/版本历史面板同一时间只保留一个
+  const openMobileStructure = useCallback(() => {
+    setShowMobileStyle(false);
+    setShowMobileMore(false);
+    setShowShortcutHelp(false);
+    setShowVersionHistory(false);
+    setShowMobileStructure(true);
+  }, []);
+
+  const openMobileStyle = useCallback(() => {
+    setShowMobileStructure(false);
+    setShowMobileMore(false);
+    setShowShortcutHelp(false);
+    setShowVersionHistory(false);
+    setShowMobileStyle(true);
+  }, []);
+
+  const openMobileMore = useCallback(() => {
+    setShowMobileStructure(false);
+    setShowMobileStyle(false);
+    setShowShortcutHelp(false);
+    setShowVersionHistory(false);
+    setShowMobileMore(true);
+  }, []);
+
+  const openShortcutHelp = useCallback(() => {
+    setShowMobileStructure(false);
+    setShowMobileStyle(false);
+    setShowVersionHistory(false);
+    setShowShortcutHelp(true);
+  }, []);
+
+  // 版本历史内联面板：与移动子屏/快捷键面板互斥
+  const openVersionHistory = useCallback(() => {
+    setShowMobileStructure(false);
+    setShowMobileStyle(false);
+    setShowMobileMore(false);
+    setShowShortcutHelp(false);
+    setShowVersionHistory(true);
+  }, []);
+
+  useEffect(() => {
+    if (!showVersionHistory) return;
+    return registerBackHandler(() => {
+      setShowVersionHistory(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [showVersionHistory]);
+
+  // 快捷键面板无遮罩，点击面板外部关闭（面板打开的那次点击不会命中：监听在下一帧才挂上）
+  const shortcutHelpRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showShortcutHelp) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const panel = shortcutHelpRef.current;
+      if (panel && !panel.contains(event.target as Node)) {
+        setShowShortcutHelp(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [showShortcutHelp]);
 
   // ★ 标签页保活：isActive 变化时 saveDraft / loadMindMap
@@ -358,11 +546,12 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
         return;
       }
 
-      // 静默重载，保留用户当前视图与焦点位置
+      // 静默重载，保留用户当前视图与焦点位置；
+      // B-4：preserveViewports 保留大纲滚动与画布视口（W01 契约）
       const prevView = state.currentView;
       const prevFocusedNodeId = state.focusedNodeId;
       void state
-        .loadMindMap(resourceId)
+        .loadMindMap(resourceId, { preserveViewports: true })
         .then(() => {
           if (storeApi.getState().mindmapId !== resourceId) return;
           storeApi.setState({
@@ -539,9 +728,47 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     void doImport();
   }, [doImport]);
 
+  // 内联确认条：先保存当前修改再导入（导入会整体替换文档）
+  const handleSaveAndImport = useCallback(async () => {
+    setShowImportConfirm(false);
+    let saved = false;
+    try {
+      saved = await save();
+    } catch {
+      saved = false;
+    }
+    // 保存失败已由 store 层弹出通知；不继续导入，避免覆盖未保存内容
+    if (!saved) return;
+    void doImport();
+  }, [save, doImport]);
+
   const handleSave = useCallback(() => {
     save();
   }, [save]);
+
+  // W08 契约：search(query, options?) 向后兼容；大小写/全词开关变化时重跑当前查询
+  const runSearch = useCallback(
+    (query: string, caseSensitive: boolean, wholeWord: boolean) => {
+      searchFn(query, { caseSensitive, wholeWord });
+    },
+    [searchFn],
+  );
+
+  const toggleSearchCaseSensitive = useCallback(() => {
+    setSearchCaseSensitive((prev) => {
+      const next = !prev;
+      runSearch(searchInput, next, searchWholeWord);
+      return next;
+    });
+  }, [runSearch, searchInput, searchWholeWord]);
+
+  const toggleSearchWholeWord = useCallback(() => {
+    setSearchWholeWord((prev) => {
+      const next = !prev;
+      runSearch(searchInput, searchCaseSensitive, next);
+      return next;
+    });
+  }, [runSearch, searchInput, searchCaseSensitive]);
 
   const handleStartAssociation = useCallback(() => {
     const state = storeApi.getState();
@@ -557,6 +784,12 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     switchView('mindmap');
     setShowSearch(false);
     setActivePanel(null);
+    // 演示模式全屏画布：收起所有内容区浮层，避免残留面板挡住演示
+    setShowShortcutHelp(false);
+    setShowMobileStructure(false);
+    setShowMobileStyle(false);
+    setShowMobileMore(false);
+    setShowVersionHistory(false);
     setPresentationMode(true);
   }, [switchView]);
 
@@ -578,6 +811,28 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
       const target = e.target as HTMLElement;
       const isTextInputContext =
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // 内联浮层 Esc 关闭次序：演示模式 > 导入确认条 > 版本历史 > 快捷键面板 > 搜索 > 画布级联
+      if (e.key === 'Escape' && showImportConfirm) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowImportConfirm(false);
+        return;
+      }
+
+      if (e.key === 'Escape' && showVersionHistory) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowVersionHistory(false);
+        return;
+      }
+
+      if (e.key === 'Escape' && showShortcutHelp) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowShortcutHelp(false);
+        return;
+      }
 
       // 搜索打开时 Esc 优先关闭搜索，不进入画布「退出编辑 → 退出背诵 → 清选中」级联
       if (e.key === 'Escape' && showSearch) {
@@ -617,18 +872,21 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive, presentationMode]);
+  }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive, presentationMode, showImportConfirm, showShortcutHelp, showVersionHistory]);
 
   // M-069: 组件卸载时同步保存草稿到 localStorage，防止异步 save 未完成导致数据丢失
   // loadMindMap 时会自动检查并恢复本地草稿
+  // B-1：宿主已执行「丢弃修改」（discardDraft）时跳过，否则草稿会在下次打开复活
   useEffect(() => {
     return () => {
+      if (discardedRef.current) return;
       storeApi.getState().saveDraftSync();
     };
-  }, [storeApi]);
+  }, [storeApi, discardedRef]);
 
   useEffect(() => {
     const flushPendingChanges = () => {
+      if (discardedRef.current) return;
       const state = storeApi.getState();
       // M-069: 先同步写入 localStorage 草稿，确保即使异步 save 未完成也不丢失
       state.saveDraftSync();
@@ -663,18 +921,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     };
   }, [storeApi]);
 
-  // 错误边界重置处理
-  const handleErrorReset = useCallback(() => {
-    void tryLoadMindMap();
-  }, [tryLoadMindMap]);
-
   const activeContextValue = useMemo(
     () => ({ isActive: isActive !== false, resourceId: resourceId || null }),
     [isActive, resourceId]
   );
 
   return (
-    <MindMapErrorBoundary onReset={handleErrorReset} fallbackMessage={t('mindmap:errorBoundary')}>
+    <>
     {/* isActive 下发到画布内的全局键盘/剪贴板监听器，非活跃保活实例忽略按键 */}
     <MindMapActiveContext.Provider value={activeContextValue}>
     <MindMapClipboardEffects />
@@ -683,55 +936,113 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
       <div className="mm-toolbar">
         {/* Left: View Switcher & Undo/Redo */}
         <div className="flex items-center gap-3">
-          <div className="mm-view-switcher" role="group" aria-label={t('mindmap:toolbar.view')}>
-            <NotionButton variant="ghost"
-              className={cn(
-                "mm-view-switcher-button",
-                currentView === 'outline'
-                  ? "is-active"
-                  : ""
-              )}
-              onClick={() => switchView('outline')}
-            >
-              <FileText className="w-3.5 h-3.5 mr-1.5" />
-              {t('mindmap:toolbar.outline')}
-            </NotionButton>
-            <NotionButton variant="ghost"
-              className={cn(
-                "mm-view-switcher-button",
-                currentView === 'mindmap'
-                  ? "is-active"
-                  : ""
-              )}
-              onClick={() => switchView('mindmap')}
-            >
-              <GitBranch className="w-3.5 h-3.5 mr-1.5" />
-              {t('mindmap:toolbar.mindmap')}
-            </NotionButton>
-          </div>
+          {/* 视图切换：统一到项目级 SegmentedControl（键盘左右键漫游 + thumb 动效） */}
+          <SegmentedControl<'outline' | 'mindmap'>
+            ariaLabel={t('mindmap:toolbar.view')}
+            size="compact"
+            value={currentView === 'outline' ? 'outline' : 'mindmap'}
+            onValueChange={(next) => switchView(next)}
+            options={[
+              {
+                value: 'outline',
+                ariaLabel: t('mindmap:toolbar.outline'),
+                label: (
+                  <span className="inline-flex items-center">
+                    <FileText className="w-3.5 h-3.5 mr-1.5" />
+                    {t('mindmap:toolbar.outline')}
+                  </span>
+                ),
+              },
+              {
+                value: 'mindmap',
+                ariaLabel: t('mindmap:toolbar.mindmap'),
+                label: (
+                  <span className="inline-flex items-center">
+                    <GitBranch className="w-3.5 h-3.5 mr-1.5" />
+                    {t('mindmap:toolbar.mindmap')}
+                  </span>
+                ),
+              },
+            ]}
+          />
           
           <div className="w-px h-4 bg-[var(--mm-border)]" />
           
           <div className="flex items-center gap-0.5">
-             <NotionButton variant="ghost" 
-              className="notion-btn" 
-              onClick={undo} 
-              disabled={!canUndo()}
-              title={t('mindmap:toolbar.undoShortcut')}
-              aria-label={t('mindmap:toolbar.undo')}
+            {/* disabled 按钮不冒泡鼠标事件，tooltip 挂在外层 span 上保证禁用态也有提示 */}
+            <CommonTooltip
+              content={canUndo() ? t('mindmap:toolbar.undo') : t('mindmap:toolbar.undoDisabled')}
+              shortcut={canUndo() ? '⌘Z' : undefined}
+              position="bottom"
             >
-              <ArrowCounterClockwise size={16} />
-            </NotionButton>
-            <NotionButton variant="ghost" 
-              className="notion-btn" 
-              onClick={redo} 
-              disabled={!canRedo()}
-              title={t('mindmap:toolbar.redoShortcut')}
-              aria-label={t('mindmap:toolbar.redo')}
+              <span className="inline-flex">
+                <NotionButton variant="ghost"
+                  className="notion-btn"
+                  onClick={undo}
+                  disabled={!canUndo()}
+                  aria-label={t('mindmap:toolbar.undo')}
+                >
+                  <ArrowCounterClockwise size={16} />
+                </NotionButton>
+              </span>
+            </CommonTooltip>
+            <CommonTooltip
+              content={canRedo() ? t('mindmap:toolbar.redo') : t('mindmap:toolbar.redoDisabled')}
+              shortcut={canRedo() ? '⌘⇧Z' : undefined}
+              position="bottom"
             >
-              <ArrowClockwise size={16} />
-            </NotionButton>
+              <span className="inline-flex">
+                <NotionButton variant="ghost"
+                  className="notion-btn"
+                  onClick={redo}
+                  disabled={!canRedo()}
+                  aria-label={t('mindmap:toolbar.redo')}
+                >
+                  <ArrowClockwise size={16} />
+                </NotionButton>
+              </span>
+            </CommonTooltip>
           </div>
+
+          <div className="w-px h-4 bg-[var(--mm-border)] hidden sm:block" />
+
+          {/* 保存状态内联可视化：状态点常显，未保存时可点击立即保存（替代藏在菜单里的保存项） */}
+          <CommonTooltip
+            content={t('mindmap:toolbar.save')}
+            shortcut="⌘S"
+            position="bottom"
+            disabled={!isDirty || isSaving}
+          >
+            <NotionButton variant="ghost"
+              className="notion-btn hidden sm:flex"
+              onClick={handleSave}
+              disabled={!isDirty || isSaving}
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  'w-1.5 h-1.5 rounded-full shrink-0',
+                  isSaving
+                    ? 'bg-[var(--mm-primary)] motion-safe:animate-pulse'
+                    : isDirty
+                      ? 'bg-[var(--mm-warning)]'
+                      : 'bg-[var(--mm-text-muted)] opacity-60'
+                )}
+              />
+              <span aria-live="polite">
+                <TextSwap
+                  className="text-xs text-[var(--mm-text-muted)]"
+                  text={
+                    isSaving
+                      ? t('mindmap:toolbar.saving')
+                      : isDirty
+                        ? t('mindmap:toolbar.unsaved')
+                        : t('mindmap:toolbar.saved')
+                  }
+                />
+              </span>
+            </NotionButton>
+          </CommonTooltip>
         </div>
 
         {/* Right: Actions */}
@@ -742,9 +1053,11 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
             open={activePanel === 'structure'}
             onOpenChange={(open) => setActivePanel(open ? 'structure' : null)}
             trigger={
-              <NotionButton variant="ghost" className="mm-toolbar-button" title={t('mindmap:toolbar.switchStructure')} aria-label={t('mindmap:toolbar.switchStructure')}>
-                <GitBranch size={16} />
-              </NotionButton>
+              <CommonTooltip content={t('mindmap:toolbar.switchStructure')} position="bottom">
+                <NotionButton variant="ghost" className="mm-toolbar-button" aria-label={t('mindmap:toolbar.switchStructure')}>
+                  <GitBranch size={16} />
+                </NotionButton>
+              </CommonTooltip>
             }
           />
 
@@ -754,9 +1067,11 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
             open={activePanel === 'style'}
             onOpenChange={(open) => setActivePanel(open ? 'style' : null)}
             trigger={
-              <NotionButton variant="ghost" className="mm-toolbar-button" title={t('mindmap:toolbar.styleSettings')} aria-label={t('mindmap:toolbar.styleSettings')}>
-                <Gear size={16} />
-              </NotionButton>
+              <CommonTooltip content={t('mindmap:toolbar.styleSettings')} position="bottom">
+                <NotionButton variant="ghost" className="mm-toolbar-button" aria-label={t('mindmap:toolbar.styleSettings')}>
+                  <Gear size={16} />
+                </NotionButton>
+              </CommonTooltip>
             }
           />
 
@@ -784,15 +1099,16 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
           </div>
 
           {/* Desktop: Search Toggle */}
-          <NotionButton variant="ghost" 
-            className={cn("mm-toolbar-button hidden sm:flex", showSearch && "is-active")}
-            onClick={() => setShowSearch(!showSearch)}
-            title={t('mindmap:toolbar.searchShortcut')}
-            aria-label={t('mindmap:toolbar.search')}
-            aria-pressed={showSearch}
-          >
-            <MagnifyingGlass size={16} />
-          </NotionButton>
+          <CommonTooltip content={t('mindmap:toolbar.search')} shortcut="⌘F" position="bottom">
+            <NotionButton variant="ghost" 
+              className={cn("mm-toolbar-button hidden sm:flex", showSearch && "is-active")}
+              onClick={() => setShowSearch(!showSearch)}
+              aria-label={t('mindmap:toolbar.search')}
+              aria-pressed={showSearch}
+            >
+              <MagnifyingGlass size={16} />
+            </NotionButton>
+          </CommonTooltip>
 
           <div className="w-px h-4 bg-[var(--mm-border)] mx-1 hidden sm:block" />
 
@@ -803,11 +1119,9 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
                 <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
+            {/* NOTE: AppMenuTrigger asChild 需要直接子元素承接 ref/props，此处不包 CommonTooltip */}
             <AppMenuContent align="end" width={200}>
-              <AppMenuItem icon={<FloppyDisk size={16} />} onClick={handleSave} disabled={!isDirty || isSaving}>
-                {isSaving ? t('mindmap:toolbar.saving') : isDirty ? t('mindmap:toolbar.save') : t('mindmap:toolbar.saved')}
-              </AppMenuItem>
-              <AppMenuSeparator />
+              {/* 保存入口移到工具栏内联状态点，菜单不再重复保存项 */}
               <AppMenuItem icon={<ArrowsOutLineVertical size={16} />} shortcut="⌘⇧]" onClick={() => expandAll()}>
                 {t('mindmap:toolbar.expandAll')}
               </AppMenuItem>
@@ -816,12 +1130,17 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               </AppMenuItem>
               <AppMenuItem onClick={() => collapseToDepth(1)}>{t('mindmap:toolbar.collapseToLevel', { level: 1 })}</AppMenuItem>
               <AppMenuItem onClick={() => collapseToDepth(2)}>{t('mindmap:toolbar.collapseToLevel', { level: 2 })}</AppMenuItem>
+              <AppMenuItem onClick={() => collapseToDepth(3)}>{t('mindmap:toolbar.collapseToLevel', { level: 3 })}</AppMenuItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<Presentation size={16} />} onClick={handleEnterPresentation}>
                 {t('mindmap:presentation.enter')}
               </AppMenuItem>
               <AppMenuItem icon={<ShareNetwork size={16} />} onClick={handleStartAssociation}>
                 {t('mindmap:association.add')}
+              </AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuItem icon={<ClockCounterClockwise size={16} />} onClick={openVersionHistory}>
+                {t('mindmap:versions.title')}
               </AppMenuItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>{t('mindmap:import.title')}</AppMenuItem>
@@ -856,86 +1175,31 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
                 {t('mindmap:preferences.descriptionFirstLine')}
               </AppMenuCheckboxItem>
               <AppMenuSeparator />
-              <AppMenuItem icon={<Keyboard size={16} />} onClick={() => setShowShortcutHelp(true)}>
+              <AppMenuItem icon={<Keyboard size={16} />} onClick={openShortcutHelp}>
                 {t('mindmap:toolbar.shortcutList')}
               </AppMenuItem>
             </AppMenuContent>
           </AppMenu>
 
-          {/* Mobile: Unified More Menu */}
-          <AppMenu>
-            <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" className="notion-btn mm-mobile-more w-7 justify-center px-0 sm:hidden" aria-label={t('mindmap:toolbar.moreActions')} title={t('mindmap:toolbar.moreActions')}>
-                <DotsThree size={16} />
-              </NotionButton>
-            </AppMenuTrigger>
-            <AppMenuContent align="end" width={200}>
-              <AppMenuItem icon={<GitBranch size={16} />} onClick={() => setShowMobileStructure(true)}>
-                {t('mindmap:toolbar.structure')}
-              </AppMenuItem>
-              <AppMenuItem icon={<Gear size={16} />} onClick={() => setShowMobileStyle(true)}>
-                {t('mindmap:toolbar.style')}
-              </AppMenuItem>
-              <AppMenuSeparator />
-              <AppMenuItem icon={<BookOpen size={16} />} onClick={() => setReciteMode(!reciteMode)}>
-                {reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.title')}
-              </AppMenuItem>
-              <AppMenuCheckboxItem
-                checked={hideCompleted}
-                onCheckedChange={setHideCompleted}
-              >
-                {t('mindmap:toolbar.hideCompleted')}
-              </AppMenuCheckboxItem>
-              <AppMenuItem icon={<MagnifyingGlass size={16} />} onClick={() => setShowSearch(!showSearch)}>
-                {t('mindmap:toolbar.search')}
-              </AppMenuItem>
-              <AppMenuSeparator />
-              <AppMenuItem icon={<ArrowsOutLineVertical size={16} />} onClick={() => expandAll()}>
-                {t('mindmap:toolbar.expandAll')}
-              </AppMenuItem>
-              <AppMenuItem icon={<ArrowsInLineVertical size={16} />} onClick={() => collapseAll()}>
-                {t('mindmap:toolbar.collapseAll')}
-              </AppMenuItem>
-              <AppMenuItem onClick={() => collapseToDepth(1)}>
-                {t('mindmap:toolbar.collapseToLevel', { level: 1 })}
-              </AppMenuItem>
-              <AppMenuItem onClick={() => collapseToDepth(2)}>
-                {t('mindmap:toolbar.collapseToLevel', { level: 2 })}
-              </AppMenuItem>
-              <AppMenuItem onClick={() => collapseToDepth(3)}>
-                {t('mindmap:toolbar.collapseToLevel', { level: 3 })}
-              </AppMenuItem>
-              <AppMenuSeparator />
-              <AppMenuItem icon={<Presentation size={16} />} onClick={handleEnterPresentation}>
-                {t('mindmap:presentation.enter')}
-              </AppMenuItem>
-              <AppMenuItem icon={<ShareNetwork size={16} />} onClick={handleStartAssociation}>
-                {t('mindmap:association.add')}
-              </AppMenuItem>
-              <AppMenuSeparator />
-              <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>
-                {t('mindmap:import.title')}
-              </AppMenuItem>
-              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('markdown')}>
-                {t('mindmap:export.exportMarkdown')}
-              </AppMenuItem>
-              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('opml')}>
-                {t('mindmap:export.exportOpml')}
-              </AppMenuItem>
-              <AppMenuItem icon={<Download size={16} />} onClick={() => handleExport('png')}>
-                {t('mindmap:export.exportPng')}
-              </AppMenuItem>
-              <AppMenuSeparator />
-              <AppMenuItem icon={<Keyboard size={16} />} onClick={() => setShowShortcutHelp(true)}>
-                {t('mindmap:toolbar.shortcutList')}
-              </AppMenuItem>
-              <AppMenuItem icon={<FloppyDisk size={16} />} onClick={handleSave} disabled={!isDirty || isSaving}>
-                {isSaving ? t('mindmap:toolbar.saving') : isDirty ? t('mindmap:toolbar.save') : t('mindmap:toolbar.saved')}
-              </AppMenuItem>
-            </AppMenuContent>
-          </AppMenu>
+          {/* Mobile: 「更多」入口 → 全屏内联子屏（同结构/样式子屏范式，替代浮层菜单） */}
+          <NotionButton
+            variant="ghost"
+            className="notion-btn mm-mobile-more w-7 justify-center px-0 sm:hidden"
+            aria-label={t('mindmap:toolbar.moreActions')}
+            title={t('mindmap:toolbar.moreActions')}
+            onClick={openMobileMore}
+          >
+            <DotsThree size={16} />
+          </NotionButton>
         </div>
       </div>
+
+      {/* W09 格式条：选中节点时在工具栏下方内联展开（背诵/演示模式下隐藏，避免误编辑） */}
+      {!reciteMode && !presentationMode && (focusedNodeId || hasSelection) && (
+        <div className="border-b border-[var(--mm-border)] bg-[var(--mm-bg)] ui-drop-in">
+          <MindMapFormatBar />
+        </div>
+      )}
 
       {/* A6-24: 保存冲突后，本地未保存编辑已暂存，提供"恢复我的修改"入口 */}
       {conflictSnapshot && conflictSnapshot.mindmapId === resourceId && (
@@ -960,8 +1224,43 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
         </div>
       )}
 
+      {/* A6-16: 导入未保存确认——工具栏下方内联确认条（复用冲突横幅的视觉模式，不再弹模态框） */}
+      {showImportConfirm && (
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)] ui-drop-in"
+          role="alert"
+        >
+          <WarningCircle size={16} className="shrink-0" />
+          <span className="text-sm flex-1 min-w-[160px]">{t('mindmap:import.unsavedWarning')}</span>
+          <NotionButton
+            variant="ghost"
+            className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+            onClick={() => void handleSaveAndImport()}
+          >
+            <FloppyDisk size={14} />
+            <span className="text-xs">{t('mindmap:import.saveAndImport', { defaultValue: '保存并导入' })}</span>
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
+            onClick={handleConfirmImport}
+          >
+            <Upload size={14} />
+            <span className="text-xs">{t('mindmap:import.unsavedConfirm')}</span>
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
+            onClick={() => setShowImportConfirm(false)}
+          >
+            <span className="text-xs">{t('common:cancel')}</span>
+          </NotionButton>
+        </div>
+      )}
+
+      {/* 窄屏时允许搜索条的模式/计数区换行，避免输入框被挤压到最小宽度以下 */}
       {showSearch && (
-        <div className="mm-search-popover ui-drop-in" role="search">
+        <div className="mm-search-popover ui-drop-in max-sm:flex-wrap" role="search">
           <MagnifyingGlass size={16} className="text-[var(--mm-text-muted)]" />
           <Input
             type="search"
@@ -970,7 +1269,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
             value={searchInput}
             onChange={(e) => {
               setSearchInput(e.target.value);
-              searchFn(e.target.value);
+              runSearch(e.target.value, searchCaseSensitive, searchWholeWord);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
@@ -990,7 +1289,47 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
             }}
             autoFocus
           />
-          
+
+          {/* W08 SearchOptions：大小写敏感 / 全词匹配开关 */}
+          <div
+            className="flex items-center gap-0.5"
+            role="group"
+            aria-label={t('mindmap:toolbar.searchOptions')}
+          >
+            <CommonTooltip content={t('mindmap:toolbar.searchCaseSensitive')} position="bottom">
+              <NotionButton
+                variant="ghost"
+                className={cn(
+                  'notion-btn h-6 px-1.5 text-xs font-medium',
+                  searchCaseSensitive
+                    ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
+                    : 'text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)]'
+                )}
+                onClick={toggleSearchCaseSensitive}
+                aria-pressed={searchCaseSensitive}
+                aria-label={t('mindmap:toolbar.searchCaseSensitive')}
+              >
+                Aa
+              </NotionButton>
+            </CommonTooltip>
+            <CommonTooltip content={t('mindmap:toolbar.searchWholeWord')} position="bottom">
+              <NotionButton
+                variant="ghost"
+                className={cn(
+                  'notion-btn h-6 px-1.5 text-xs font-medium',
+                  searchWholeWord
+                    ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]'
+                    : 'text-[var(--mm-text-muted)] hover:bg-[var(--mm-bg-hover)]'
+                )}
+                onClick={toggleSearchWholeWord}
+                aria-pressed={searchWholeWord}
+                aria-label={t('mindmap:toolbar.searchWholeWord')}
+              >
+                <span className="underline underline-offset-2">ab</span>
+              </NotionButton>
+            </CommonTooltip>
+          </div>
+
           {searchInput.trim() && (
             <div
               className="mm-search-mode"
@@ -1029,6 +1368,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
             </div>
           )}
 
+          {/* 零命中空态：有查询词但无结果时的内联提示 */}
+          {searchInput.trim() && searchResults.length === 0 && (
+            <span className="text-xs text-[var(--mm-text-muted)] whitespace-nowrap" aria-live="polite">
+              {t('mindmap:toolbar.searchNoResults')}
+            </span>
+          )}
+
           {searchResults.length > 0 && (
             <div className="mm-search-results">
               <span className="tabular-nums">{currentSearchIndex + 1}/{searchResults.length}</span>
@@ -1065,16 +1411,39 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
         </div>
       )}
 
-      <div className="flex-1 overflow-hidden relative bg-[var(--mm-bg)]">
-        {/* 背诵模式状态条（两个视图共享） */}
+      {/* 版本历史：工具栏下方文档流内联面板（时间/来源/标题 + 预览 + 一键恢复） */}
+      {showVersionHistory && resourceId && (
+        <VersionHistoryPanel
+          mindmapId={resourceId}
+          onClose={() => setShowVersionHistory(false)}
+        />
+      )}
+
+      {/* 导出进度：工具栏下方文档流内联进度条（非阻塞，不遮画布） */}
+      {isExporting && (
+        <div
+          className="flex items-center gap-2.5 px-4 py-1.5 border-b border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] ui-drop-in"
+          role="status"
+          aria-live="polite"
+        >
+          <Download size={14} className="shrink-0 text-[var(--mm-text-muted)]" />
+          <span className="text-xs text-[var(--mm-text)] whitespace-nowrap">{t('mindmap:export.processing')}</span>
+          <Progress value={exportProgress} className="h-1 flex-1 max-w-64" />
+          <span className="text-xs text-[var(--mm-text-muted)] tabular-nums">{exportProgress}%</span>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-hidden relative flex flex-col bg-[var(--mm-bg)]">
+        {/* 背诵模式状态条：顶部内联占位条（两个视图共享，不再悬浮遮挡画布） */}
         <ReciteStatusBar />
+        <div className="flex-1 min-h-0 relative">
         {isLoadingDoc ? (
           <div className="h-full w-full flex items-center justify-center text-sm text-[var(--mm-text-muted)]">
             {t('mindmap:loading')}
           </div>
         ) : loadError ? (
           <div className="h-full w-full flex items-center justify-center p-6" role="alert">
-            <div className="max-w-md w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] p-5 text-center shadow-sm">
+            <div className="max-w-md w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] p-5 text-center shadow-[var(--notes-popover-shadow)]">
               <WarningCircle size={32} className="mx-auto mb-3 text-red-500" />
               <p className="text-sm font-medium text-[var(--mm-text)] mb-2">{t('mindmap:loadFailed')}</p>
               <p className="text-xs text-[var(--mm-text-muted)] break-words">{loadError}</p>
@@ -1101,6 +1470,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
             associationModeRequest={associationModeRequest}
           />
         )}
+        </div>
 
         {presentationMode && (
           <NotionButton
@@ -1132,10 +1502,80 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               {children}
             </div>
           );
+          // W07 契约：结构化快捷键表（按当前视图 + 键位方案 + 平台生成）
+          const platform = /mac/i.test(
+            typeof navigator !== 'undefined' ? navigator.platform ?? '' : '',
+          )
+            ? 'mac'
+            : 'windows';
+          let groups: NormalizedShortcutGroup[] = [];
+          try {
+            groups = normalizeShortcutGroups(
+              getShortcutGroups(currentView, mindMapPreferences.keymap, platform),
+              t,
+            );
+          } catch (error) {
+            console.error('[MindMapContentView] getShortcutGroups failed:', error);
+          }
+
+          // 画布手势提示（依赖运行时拖拽模式，不属于 W07 静态键表）
+          const gestureGroup: NormalizedShortcutGroup = {
+            id: 'canvas-gestures',
+            title: t('mindmap:shortcuts.groupCanvas'),
+            items: [
+              {
+                keys: [
+                  canvasDragMode === 'pan'
+                    ? t('mindmap:shortcuts.marqueeSelectKeysPanMode', { defaultValue: '⇧ + 拖拽空白处' })
+                    : t('mindmap:shortcuts.marqueeSelectKeys', { defaultValue: '拖拽空白处' }),
+                ],
+                label: t('mindmap:shortcuts.marqueeSelect', { defaultValue: '框选多选节点' }),
+              },
+              {
+                keys: [
+                  canvasDragMode === 'pan'
+                    ? t('mindmap:shortcuts.panCanvasKeysPanMode', { defaultValue: '拖拽空白处' })
+                    : t('mindmap:shortcuts.panCanvasKeys', { defaultValue: 'Space / 中键 / 右键 + 拖拽' }),
+                ],
+                label: t('mindmap:shortcuts.panCanvas', { defaultValue: '平移画布' }),
+              },
+              {
+                keys: [t('mindmap:shortcuts.associationEntryKeys', { defaultValue: '右键节点' })],
+                label: t('mindmap:shortcuts.associationAdd', { defaultValue: '添加关联线（再点目标）' }),
+              },
+            ],
+          };
+
+          // 背诵模式快捷键组：W07 表未覆盖时补齐（导航/揭示/退出）
+          const reciteTitle = t('mindmap:shortcuts.groupRecite');
+          const hasReciteGroup = groups.some(
+            (group) =>
+              group.id.toLowerCase().includes('recite') || group.title === reciteTitle,
+          );
+          const reciteGroup: NormalizedShortcutGroup = {
+            id: 'recite',
+            title: reciteTitle,
+            items: [
+              { keys: ['↑ ↓ ← →'], label: t('mindmap:shortcuts.reciteNavigate') },
+              { keys: ['Enter', 'Space'], label: t('mindmap:shortcuts.reciteReveal') },
+              { keys: ['Esc'], label: t('mindmap:shortcuts.reciteExit') },
+            ],
+          };
+
+          const allGroups = [
+            ...groups,
+            ...(currentView === 'mindmap' ? [gestureGroup] : []),
+            ...(hasReciteGroup ? [] : [reciteGroup]),
+          ];
+
+          // 无遮罩内联面板：从工具栏下方展开、右上角对齐的浮动卡片，不阻挡画布其余区域
           return (
-          <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/35" onClick={() => setShowShortcutHelp(false)} />
-            <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)]">
+          <div
+            ref={shortcutHelpRef}
+            className="absolute top-2 right-2 z-50 w-[min(26rem,calc(100%-16px))] max-h-[calc(100%-16px)] hidden sm:flex flex-col rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--notes-popover-shadow)] ui-zoom-fade-in"
+            role="complementary"
+            aria-label={t('mindmap:shortcuts.title')}
+          >
               <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--mm-border)]">
                 <h3 className="text-sm font-medium">{t('mindmap:shortcuts.title')}</h3>
                 <NotionButton variant="ghost"
@@ -1152,72 +1592,14 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
                     ? t('mindmap:preferences.mubuKeymapActive')
                     : t('mindmap:preferences.deepStudentKeymapActive')}
                 </div>
-                <Group title={t('mindmap:shortcuts.groupGeneral')}>
-                  <Row keys={['⌘/Ctrl + Z']} label={t('mindmap:shortcuts.undo')} />
-                  <Row keys={['⌘/Ctrl + ⇧ + Z', '⌘/Ctrl + Y']} label={t('mindmap:shortcuts.redo')} />
-                  <Row keys={['⌘/Ctrl + S']} label={t('mindmap:shortcuts.save')} />
-                  <Row keys={['⌘/Ctrl + F']} label={t('mindmap:shortcuts.search')} />
-                  <Row keys={['Esc']} label={t('mindmap:shortcuts.escape')} />
-                </Group>
-                <Group title={t('mindmap:shortcuts.groupCanvas')}>
-                  <Row keys={mindMapPreferences.keymap === 'mubu' ? ['Tab', '⌘/Ctrl + ⇧ + Enter'] : ['Tab', '⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
-                  <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
-                  <Row keys={['Enter (edit)']} label={t('mindmap:shortcuts.continuousCreate')} />
-                  <Row keys={['F2', 'Space']} label={t('mindmap:shortcuts.editNode')} />
-                  <Row keys={['⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
-                  <Row keys={['↑ ↓ ← →']} label={t('mindmap:shortcuts.navigate')} />
-                  <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
-                  <Row keys={['Alt + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
-                  {mindMapPreferences.keymap === 'mubu' && <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.zoomInOut')} />}
-                  <Row
-                    keys={[mindMapPreferences.keymap === 'mubu' ? 'Alt + ⇧ + [/]' : '⌘/Ctrl + ⇧ + [/]']}
-                    label={t('mindmap:shortcuts.collapseExpandAll', { defaultValue: '全部折叠 / 全部展开' })}
-                  />
-                  <Row
-                    keys={[
-                      canvasDragMode === 'pan'
-                        ? t('mindmap:shortcuts.marqueeSelectKeysPanMode', { defaultValue: '⇧ + 拖拽空白处' })
-                        : t('mindmap:shortcuts.marqueeSelectKeys', { defaultValue: '拖拽空白处' }),
-                    ]}
-                    label={t('mindmap:shortcuts.marqueeSelect', { defaultValue: '框选多选节点' })}
-                  />
-                  <Row
-                    keys={[
-                      canvasDragMode === 'pan'
-                        ? t('mindmap:shortcuts.panCanvasKeysPanMode', { defaultValue: '拖拽空白处' })
-                        : t('mindmap:shortcuts.panCanvasKeys', { defaultValue: 'Space / 中键 / 右键 + 拖拽' }),
-                    ]}
-                    label={t('mindmap:shortcuts.panCanvas', { defaultValue: '平移画布' })}
-                  />
-                  <Row
-                    keys={[t('mindmap:shortcuts.associationEntryKeys', { defaultValue: '右键节点' })]}
-                    label={t('mindmap:shortcuts.associationAdd', { defaultValue: '添加关联线（再点目标）' })}
-                  />
-                  <Row keys={['⌘/Ctrl + B']} label={t('mindmap:shortcuts.bold')} />
-                  <Row keys={['⌘/Ctrl + C/X/V']} label={t('mindmap:shortcuts.clipboard')} />
-                  <Row keys={['Del / ⌫']} label={t('mindmap:shortcuts.deleteNode')} />
-                  <Row keys={['⌘/Ctrl + 0']} label={t('mindmap:shortcuts.fitView')} />
-                </Group>
-                <Group title={t('mindmap:shortcuts.groupOutline')}>
-                  <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
-                  <Row keys={['Enter / ⌫']} label={t('mindmap:shortcuts.splitMerge')} />
-                  <Row keys={mindMapPreferences.keymap === 'mubu' ? ['⌘/Ctrl + ⇧ + Enter'] : ['⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
-                  <Row keys={['Tab / ⇧ + Tab']} label={t('mindmap:shortcuts.indentOutdent')} />
-                  <Row keys={['⇧ + Click', '⌘/Ctrl + Click']} label={t('mindmap:shortcuts.multiSelect')} />
-                  <Row keys={['Tab / Del (multi)']} label={t('mindmap:shortcuts.batchOps')} />
-                  <Row keys={['↑ ↓']} label={t('mindmap:shortcuts.navigate')} />
-                  <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
-                  <Row keys={['Alt + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
-                  {mindMapPreferences.keymap === 'mubu' && <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.zoomInOut')} />}
-                  <Row
-                    keys={[mindMapPreferences.keymap === 'mubu' ? 'Alt + ⇧ + [/]' : '⌘/Ctrl + ⇧ + [/]']}
-                    label={t('mindmap:shortcuts.collapseExpandAll', { defaultValue: '全部折叠 / 全部展开' })}
-                  />
-                  <Row keys={mindMapPreferences.keymap === 'mubu' ? ['⇧ + Enter'] : ['⌘/Ctrl + ⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
-                  <Row keys={['⌘/Ctrl + C/X/V']} label={t('mindmap:shortcuts.clipboard')} />
-                </Group>
+                {allGroups.map((group) => (
+                  <Group key={group.id} title={group.title}>
+                    {group.items.map((item, itemIndex) => (
+                      <Row key={itemIndex} keys={item.keys} label={item.label} />
+                    ))}
+                  </Group>
+                ))}
               </div>
-            </div>
           </div>
           );
         })()}
@@ -1263,65 +1645,224 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
           </div>
         )}
 
-        {/* Export Loading Overlay */}
-        {isExporting && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20">
-            <div className="bg-[var(--mm-bg-elevated)] px-5 py-4 rounded-md shadow-[var(--mm-popover-shadow)] border border-[var(--mm-border)] flex flex-col items-center gap-3 ui-zoom-fade-in min-w-[240px]">
-              <div className="w-full space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-[var(--mm-text)]">{t('mindmap:export.processing')}</span>
-                  <span className="text-[var(--mm-text-muted)]">{exportProgress}%</span>
-                </div>
-                <Progress value={exportProgress} className="h-1.5" />
+        {/* Mobile: More Panel（inline 子屏：分组列表 + 顶栏返回，替代 AppMenu 浮层） */}
+        {showMobileMore && (() => {
+          const MenuRow: React.FC<{
+            icon?: React.ReactNode;
+            label: string;
+            checked?: boolean;
+            disabled?: boolean;
+            onClick: () => void;
+          }> = ({ icon, label, checked, disabled, onClick }) => (
+            <NotionButton
+              variant="ghost"
+              className="w-full h-11 !justify-start gap-3 px-3 rounded-md text-sm text-[var(--mm-text)]"
+              disabled={disabled}
+              onClick={onClick}
+            >
+              <span className="w-5 h-5 flex items-center justify-center shrink-0 text-[var(--mm-text-secondary)]">
+                {icon}
+              </span>
+              <span className="flex-1 text-left">{label}</span>
+              {checked && <Check size={16} className="text-[var(--mm-primary)] shrink-0" />}
+            </NotionButton>
+          );
+          const MenuGroup: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+            <div className="mb-2">
+              <div className="h-8 flex items-end px-3 pb-1 text-[11px] font-medium text-[var(--mm-text-muted)]">
+                {title}
+              </div>
+              {children}
+            </div>
+          );
+          const closeThen = (action: () => void) => () => {
+            setShowMobileMore(false);
+            action();
+          };
+          return (
+            <div className="absolute inset-0 z-50 sm:hidden flex flex-col bg-[var(--mm-bg)]">
+              <div className="flex items-center gap-1 px-2 h-12 border-b border-[var(--mm-border)] shrink-0">
+                <NotionButton variant="ghost"
+                  className="h-10 w-10 p-0 flex items-center justify-center hover:bg-[var(--mm-bg-hover)] rounded"
+                  onClick={() => setShowMobileMore(false)}
+                  aria-label={t('common:back')}
+                >
+                  <CaretLeft className="w-5 h-5" />
+                </NotionButton>
+                <span className="font-medium text-sm">{t('mindmap:toolbar.moreActions')}</span>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto px-1 py-1 pb-[var(--mobile-safe-area-bottom,0px)]">
+                <MenuGroup title={t('mindmap:menu.groupView', { defaultValue: '视图' })}>
+                  <MenuRow icon={<GitBranch size={18} />} label={t('mindmap:toolbar.structure')} onClick={openMobileStructure} />
+                  <MenuRow icon={<Gear size={18} />} label={t('mindmap:toolbar.style')} onClick={openMobileStyle} />
+                  <MenuRow
+                    icon={<MagnifyingGlass size={18} />}
+                    label={t('mindmap:toolbar.search')}
+                    onClick={closeThen(() => setShowSearch(true))}
+                  />
+                  <MenuRow icon={<Presentation size={18} />} label={t('mindmap:presentation.enter')} onClick={closeThen(handleEnterPresentation)} />
+                  <MenuRow icon={<ArrowsOutLineVertical size={18} />} label={t('mindmap:toolbar.expandAll')} onClick={closeThen(() => expandAll())} />
+                  <MenuRow icon={<ArrowsInLineVertical size={18} />} label={t('mindmap:toolbar.collapseAll')} onClick={closeThen(() => collapseAll())} />
+                  <MenuRow label={t('mindmap:toolbar.collapseToLevel', { level: 1 })} onClick={closeThen(() => collapseToDepth(1))} />
+                  <MenuRow label={t('mindmap:toolbar.collapseToLevel', { level: 2 })} onClick={closeThen(() => collapseToDepth(2))} />
+                  <MenuRow label={t('mindmap:toolbar.collapseToLevel', { level: 3 })} onClick={closeThen(() => collapseToDepth(3))} />
+                </MenuGroup>
+                <MenuGroup title={t('mindmap:toolbar.learning')}>
+                  <MenuRow
+                    icon={<BookOpen size={18} />}
+                    label={reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.title')}
+                    checked={reciteMode}
+                    onClick={closeThen(() => setReciteMode(!reciteMode))}
+                  />
+                  <MenuRow
+                    icon={<EyeSlash size={18} />}
+                    label={t('mindmap:toolbar.hideCompleted')}
+                    checked={hideCompleted}
+                    onClick={() => setHideCompleted(!hideCompleted)}
+                  />
+                  <MenuRow icon={<ShareNetwork size={18} />} label={t('mindmap:association.add')} onClick={closeThen(handleStartAssociation)} />
+                </MenuGroup>
+                <MenuGroup title={t('mindmap:menu.groupData', { defaultValue: '数据' })}>
+                  <MenuRow
+                    icon={<FloppyDisk size={18} />}
+                    label={isSaving ? t('mindmap:toolbar.saving') : isDirty ? t('mindmap:toolbar.save') : t('mindmap:toolbar.saved')}
+                    disabled={!isDirty || isSaving}
+                    onClick={closeThen(handleSave)}
+                  />
+                  <MenuRow
+                    icon={<ClockCounterClockwise size={18} />}
+                    label={t('mindmap:versions.title')}
+                    onClick={closeThen(openVersionHistory)}
+                  />
+                  <MenuRow icon={<Upload size={18} />} label={t('mindmap:import.title')} onClick={closeThen(handleImport)} />
+                  <MenuRow icon={<FileText size={18} />} label={t('mindmap:export.exportMarkdown')} onClick={closeThen(() => void handleExport('markdown'))} />
+                  <MenuRow icon={<FileText size={18} />} label={t('mindmap:export.exportOpml')} onClick={closeThen(() => void handleExport('opml'))} />
+                  <MenuRow icon={<FileText size={18} />} label={t('mindmap:export.dialogExportJson')} onClick={closeThen(() => void handleExport('json'))} />
+                  <MenuRow icon={<Download size={18} />} label={t('mindmap:export.exportPng')} onClick={closeThen(() => void handleExport('png'))} />
+                  <MenuRow icon={<Download size={18} />} label={t('mindmap:export.svgVector')} onClick={closeThen(() => void handleExport('svg'))} />
+                </MenuGroup>
+                {/* 快捷键帮助为键盘场景功能，移动端不提供入口（P0-4） */}
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          );
+        })()}
 
-      {/* A6-16: 导入未保存确认（替换 window.confirm） */}
-      <NotionAlertDialog
-        open={showImportConfirm}
-        onOpenChange={setShowImportConfirm}
-        title={t('mindmap:import.unsavedTitle')}
-        description={t('mindmap:import.unsavedWarning')}
-        confirmText={t('mindmap:import.unsavedConfirm')}
-        cancelText={t('common:cancel')}
-        confirmVariant="danger"
-        onConfirm={handleConfirmImport}
-      />
+      </div>
     </div>
     </MindMapActiveContext.Provider>
-    </MindMapErrorBoundary>
+    </>
   );
 };
 
 /**
- * 每个内容视图持有独立 store。resourceId 改变时同步换新实例，避免旧资源的
- * 文档、历史栈、编辑状态或保存定时器泄漏到新资源。
+ * 每个内容视图持有独立 store。resourceId 改变或错误边界重置时同步换新实例，
+ * 避免旧资源的文档、历史栈、编辑状态或保存定时器泄漏到新资源。
+ *
+ * B-2：被替换下来的旧 store 在 commit 后调用 destroy()（W01 契约：
+ * 取消 debounce/retry 定时器并终结实例），杜绝旧定时器回调跨文档保存。
+ * B-11：错误边界重置（errorNonce++）时同样重建 store，清掉可能残留在
+ * immer/history 里的坏状态，而不是仅 reload 文档。
  */
-export const MindMapContentView: React.FC<MindMapContentViewProps> = (props) => {
+export const MindMapContentView = forwardRef<
+  MindMapContentViewHandle,
+  MindMapContentViewProps
+>((props, ref) => {
+  const { t } = useTranslation(['mindmap']);
+  const [errorNonce, setErrorNonce] = useState(0);
   const holderRef = useRef<{
     resourceId: string | undefined;
+    errorNonce: number;
     store: MindMapStoreApi;
   } | null>(null);
+  // 换 store 是 render 期决策，副作用（destroy 旧实例）延迟到 commit 后执行
+  const pendingDestroyRef = useRef<MindMapStoreApi[]>([]);
+  // B-1：宿主调用 discardDraft 后置位；Inner 的 unmount/flush 路径读取
+  const discardedRef = useRef(false);
 
-  if (!holderRef.current || holderRef.current.resourceId !== props.resourceId) {
+  if (
+    !holderRef.current ||
+    holderRef.current.resourceId !== props.resourceId ||
+    holderRef.current.errorNonce !== errorNonce
+  ) {
+    if (holderRef.current) {
+      pendingDestroyRef.current.push(holderRef.current.store);
+    }
     holderRef.current = {
       resourceId: props.resourceId,
+      errorNonce,
       store: createMindMapStore(),
     };
+    // 新文档实例开始新的丢弃语义周期
+    discardedRef.current = false;
   }
 
   const store = holderRef.current.store;
+
+  // commit 后销毁被替换的旧 store（子组件的 cleanup——saveDraftSync/注销——已先行）
+  useEffect(() => {
+    if (pendingDestroyRef.current.length === 0) return;
+    const staleStores = pendingDestroyRef.current.splice(0);
+    for (const staleStore of staleStores) {
+      try {
+        staleStore.getState().destroy();
+      } catch (error) {
+        console.error('[MindMapContentView] Failed to destroy stale store:', error);
+      }
+    }
+  });
+
   useEffect(() => {
     if (!props.resourceId) return;
     return registerMindMapStore(props.resourceId, store, props.storeInstanceId);
   }, [props.resourceId, props.storeInstanceId, store]);
 
-  return (
-    <MindMapStoreContext.Provider value={store}>
-      <MindMapContentViewInner {...props} />
-    </MindMapStoreContext.Provider>
+  useImperativeHandle(
+    ref,
+    () => ({
+      discardDraft: () => {
+        discardedRef.current = true;
+        const currentStore = holderRef.current?.store;
+        if (!currentStore) return;
+        try {
+          // 先清本地草稿（依赖 state.mindmapId 定位 key），再取消待执行定时器
+          currentStore.getState().clearDraft();
+          currentStore.getState().destroy();
+        } catch (error) {
+          console.error('[MindMapContentView] discardDraft failed:', error);
+        }
+      },
+      switchView: (view) => {
+        const currentStore = holderRef.current?.store;
+        if (!currentStore) return;
+        const controller = getMindMapViewController(currentStore);
+        if (controller) {
+          controller.switchView(view);
+        } else {
+          currentStore.getState().setCurrentView(view);
+        }
+      },
+    }),
+    [],
   );
-};
+
+  const handleErrorReset = useCallback(() => {
+    setErrorNonce((nonce) => nonce + 1);
+  }, []);
+
+  return (
+    <MindMapErrorBoundary
+      onReset={handleErrorReset}
+      fallbackMessage={t('mindmap:errorBoundary')}
+    >
+      <MindMapStoreContext.Provider value={store}>
+        <MindMapContentViewInner
+          key={`${props.resourceId ?? 'blank'}:${errorNonce}`}
+          {...props}
+          discardedRef={discardedRef}
+        />
+      </MindMapStoreContext.Provider>
+    </MindMapErrorBoundary>
+  );
+});
+
+MindMapContentView.displayName = 'MindMapContentView';

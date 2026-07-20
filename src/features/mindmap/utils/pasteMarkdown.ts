@@ -1,5 +1,11 @@
 /**
  * 将简单 Markdown 列表/标题解析为节点森林（供粘贴为子树）
+ *
+ * 支持：
+ * - 无序（- * + • ‣ ◦）/ 有序（1. 1)）列表与 # 标题层级；
+ * - 任务列表 `- [ ]` / `- [x]`（解析为节点 completed 状态）；
+ * - tab 缩进与 2/3/4 空格等任意缩进步长（按整篇文本的缩进公约数自适应）；
+ * - 无标记的缩进续行并入上一节点（`> ` 前缀会被剥离，成为备注）。
  */
 
 import { nanoid } from 'nanoid';
@@ -8,13 +14,18 @@ import type { MindMapNode } from '../types';
 const MAX_PASTE_DEPTH = 100;
 const MAX_PASTE_NODES = 10000;
 
-/** 判断剪贴板文本是否像 Markdown 列表/标题层级（多行） */
+/** 判断剪贴板文本是否像 Markdown 列表/标题层级 */
 export function looksLikeMarkdownList(text: string): boolean {
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.replace(/\t/g, '    '))
     .filter((l) => l.trim().length > 0);
-  if (lines.length < 2) return false;
+  if (lines.length === 0) return false;
+
+  // 单行也识别显式列表项 / 标题（如 `- item`），粘贴为单个节点
+  if (lines.length === 1) {
+    return /^\s*(?:[-*+•‣◦]|#{1,6}|\d+[.)])\s+\S/.test(lines[0]);
+  }
 
   let bulletOrHeading = 0;
   let ordered = 0;
@@ -108,25 +119,64 @@ export function htmlOutlineToMarkdown(html: string): string | null {
 interface ParsedLine {
   level: number;
   text: string;
+  /** 任务列表项：`- [ ]` → false，`- [x]` → true；非任务项为 undefined */
+  completed?: boolean;
 }
 
-/** 缩进 → 层级：2 空格或 4 空格一档（取常见缩进步长） */
-function indentToLevel(indent: number): number {
-  if (indent <= 0) return 0;
-  // 优先按 2 空格；若全是 4 的倍数也正确（4→2, 8→4）
-  return Math.floor(indent / 2);
+/**
+ * 根据整篇文本实际出现的缩进宽度推断缩进步长（公约数）。
+ * 兼容 2/3/4 空格与 tab（tab 已预先展开为 4 空格）；无缩进时默认 2。
+ */
+function computeIndentUnit(indents: number[]): number {
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  let unit = 0;
+  for (const indent of indents) {
+    if (indent > 0) unit = gcd(unit, indent);
+  }
+  return unit > 0 ? unit : 2;
+}
+
+/**
+ * 续行反转义：还原导出侧（exporters.escapeMarkdownNoteLine）为防止备注行
+ * 被误判为子节点 / 被 `>` 前缀剥离逻辑破坏而添加的 `\` 前缀。
+ * 文件导入与剪贴板粘贴共用本解析器，因此在这里做对称还原。
+ */
+function unescapeContinuationLine(line: string): string {
+  return line.replace(/^\\(?=[-*+•‣◦]\s|\d+[.)]\s|>)/, '');
+}
+
+/** 提取任务列表标记：`[ ] 文本` / `[x] 文本` → { completed, text } */
+function extractTaskMarker(text: string): { text: string; completed?: boolean } {
+  const taskMatch = text.match(/^\[([ xX])\]\s+(.+)$/);
+  if (!taskMatch) return { text };
+  return { text: taskMatch[2], completed: taskMatch[1] !== ' ' };
 }
 
 function parseMarkdownLines(markdown: string): ParsedLine[] {
-  const lines = markdown.split('\n');
+  const lines = markdown.split('\n').map((line) => line.replace(/\t/g, '    ').trimEnd());
   const parsed: ParsedLine[] = [];
   let lastHeadingLevel = 0;
   const hasExplicitMarkers = lines.some((line) =>
-    /^\s*(?:#{1,6}\s+|[-*+•‣◦]\s+|\d+[.)]\s+)/.test(line.replace(/\t/g, '    ')),
+    /^\s*(?:#{1,6}\s+|[-*+•‣◦]\s+|\d+[.)]\s+)/.test(line),
   );
 
-  for (const rawLine of lines) {
-    const trimmed = rawLine.replace(/\t/g, '    ').trimEnd();
+  // 预扫描所有会生成节点的行的缩进宽度，推断缩进步长（tab / 3 空格等容错）
+  const indentSamples: number[] = [];
+  for (const line of lines) {
+    if (!line) continue;
+    const marked = line.match(/^(\s*)(?:[-*+•‣◦]|\d+[.)])\s+\S/);
+    if (marked) {
+      indentSamples.push(marked[1].length);
+    } else if (!hasExplicitMarkers) {
+      const plain = line.match(/^(\s*)\S/);
+      if (plain) indentSamples.push(plain[1].length);
+    }
+  }
+  const indentUnit = computeIndentUnit(indentSamples);
+  const indentToLevel = (indent: number): number =>
+    indent <= 0 ? 0 : Math.round(indent / indentUnit);
+
+  for (const trimmed of lines) {
     if (!trimmed) continue;
 
     const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
@@ -141,7 +191,8 @@ function parseMarkdownLines(markdown: string): ParsedLine[] {
     if (listMatch) {
       const indent = listMatch[1].length;
       const level = lastHeadingLevel + 1 + indentToLevel(indent);
-      parsed.push({ level, text: listMatch[2] });
+      const { text, completed } = extractTaskMarker(listMatch[2]);
+      parsed.push({ level, text, completed });
       continue;
     }
 
@@ -160,15 +211,17 @@ function parseMarkdownLines(markdown: string): ParsedLine[] {
     if (orderedMatch) {
       const indent = orderedMatch[1].length;
       const level = lastHeadingLevel + 1 + indentToLevel(indent);
-      parsed.push({ level, text: orderedMatch[2] });
+      const { text, completed } = extractTaskMarker(orderedMatch[2]);
+      parsed.push({ level, text, completed });
       continue;
     }
 
-    // 无标记的续行：并入上一节点文本
+    // 无标记的续行：并入上一节点文本（`> ` 前缀剥离、`\` 转义还原后成为备注行）
     if (parsed.length > 0) {
       const indentMatch = trimmed.match(/^(\s*)(.+)$/);
       if (indentMatch) {
-        parsed[parsed.length - 1].text += '\n' + indentMatch[2].replace(/^>\s*/, '');
+        parsed[parsed.length - 1].text +=
+          '\n' + unescapeContinuationLine(indentMatch[2].replace(/^>\s*/, ''));
       }
     }
   }
@@ -176,13 +229,14 @@ function parseMarkdownLines(markdown: string): ParsedLine[] {
   return parsed;
 }
 
-function createNodeFromText(text: string): MindMapNode {
-  const parts = text.split('\n');
+function createNodeFromLine(line: ParsedLine): MindMapNode {
+  const parts = line.text.split('\n');
   return {
     id: `node_${nanoid(10)}`,
     text: parts[0] ?? '',
     note: parts.length > 1 ? parts.slice(1).join('\n') : undefined,
     children: [],
+    ...(line.completed !== undefined ? { completed: line.completed } : {}),
   };
 }
 
@@ -210,7 +264,7 @@ export function markdownListToNodes(md: string): MindMapNode[] {
       throw new Error(`Node count exceeds maximum limit (${MAX_PASTE_NODES})`);
     }
 
-    const newNode = createNodeFromText(line.text);
+    const newNode = createNodeFromLine(line);
 
     while (stack.length > 0 && stack[stack.length - 1].level >= level) {
       stack.pop();

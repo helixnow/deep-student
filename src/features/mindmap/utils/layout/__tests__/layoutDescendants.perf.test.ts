@@ -4,9 +4,16 @@
 
 import { describe, expect, it } from 'vitest';
 import type { MindMapNode } from '../../../types';
-import { calculateBalancedLayout } from '../balancedLayout';
-import { calculateTreeLayout } from '../treeLayout';
+import { BalancedLayoutEngine } from '../../../layouts/mindmap/BalancedLayoutEngine';
+import { TreeLayoutEngine } from '../../../layouts/mindmap/TreeLayoutEngine';
 import { countAllDescendants, MAX_TREE_DEPTH } from '../countDescendants';
+
+// 旧的 calculateBalancedLayout/calculateTreeLayout 函数式实现已删除，
+// 计时与坐标稳定性回归改为直接压生产引擎类
+const balancedEngine = new BalancedLayoutEngine();
+const treeEngine = new TreeLayoutEngine();
+const calculateBalancedLayout = (root: MindMapNode) => balancedEngine.calculate(root);
+const calculateTreeLayout = (root: MindMapNode) => treeEngine.calculate(root);
 
 /** 生成扇出树：root → branching^depth 量级节点 */
 function buildTree(totalNodes: number, branching = 4): MindMapNode {

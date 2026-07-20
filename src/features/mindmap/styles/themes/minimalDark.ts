@@ -1,10 +1,12 @@
 import type { IStyleTheme } from '../../registry/types';
+import { MINIMAL_DARK_PALETTE } from './palettes';
 
 /**
  * 极简主题 - 暗色变体
  *
  * 保持极简风格（纯色、无装饰）。根节点使用半透明主题色底 + 浅字，
  * 避免旧版白底黑字在暗色模式下突兀。
+ * 结构参数（fontSize / padding / borderRadius / 边宽）与 minimal 亮色严格镜像。
  */
 export const minimalDarkTheme: IStyleTheme = {
   id: 'minimal-dark',
@@ -42,6 +44,7 @@ export const minimalDarkTheme: IStyleTheme = {
     stroke: 'hsl(var(--foreground) / 0.12)',
     strokeWidth: 1,
   },
+  palette: MINIMAL_DARK_PALETTE,
   canvas: {
     background: 'var(--mm-bg)',
   },
