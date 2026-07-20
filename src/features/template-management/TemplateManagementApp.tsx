@@ -11,7 +11,7 @@
  * SOTA 浏览体验重构：
  * - 网格 / 列表双视图 + 防抖搜索 + 类型/来源筛选 chips + 排序；
  * - 导入 / 批量导出改为页内内联面板（不再使用模态框）；
- * - 删除改为卡片内联二次确认（内置模板如实提示"升级后会自动恢复"）；
+ * - 删除改为卡片内联二次确认（内置模板如实提示"删除后保持停用、不会随升级恢复"）；
  * - 浏览态 ⇄ 编辑态页内平滑切换（尊重 prefers-reduced-motion）。
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -31,11 +31,12 @@ import {
 import type { CustomAnkiTemplate, TemplateExportResponse } from '@/types';
 import { invoke } from '@tauri-apps/api/core';
 import { templateManager } from '@/data/ankiTemplates';
-import { renderCardPreview } from '@/components/SharedPreview';
+import { TemplateRenderService } from '@/services/templateRenderService';
 import MinimalTemplateEditor, { EditorTabType } from '@/components/MinimalTemplateEditor';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input as ShadInput } from '@/components/ui/shad/Input';
 import { getErrorMessage, formatErrorMessage, logError } from '@/utils/errorUtils';
+import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import { templateService } from '@/services/templateService';
 import { useUIStore } from '@/stores/uiStore';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -130,6 +131,10 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   const [editorPortalTarget, setEditorPortalTarget] = useState<HTMLDivElement | null>(null);
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
 
+  // 离开编辑器的脏检查守卫（在下方编辑器状态就绪后赋值；面包屑点击时经 ref 调用，
+  // 避免 useMemo 工厂在渲染期引用尚未声明的回调触发 TDZ）
+  const leaveEditorGuardRef = useRef<() => boolean>(() => true);
+
   // 面包屑导航组件（移动端显示 "Anki 制卡 > 卡片模板管理"）
   const BreadcrumbNav = useMemo(() => {
     if (isSelectingMode) {
@@ -142,7 +147,16 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     return (
       <div className="flex items-center justify-center gap-1 text-base font-semibold whitespace-nowrap min-w-0">
         {/* 触屏无 hover，用颜色差标记面包屑父级可点击（当前页保持前景色形成对比） */}
-        <NotionButton variant="ghost" size="sm" onClick={() => onBackToAnki?.()} className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary">
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            // 编辑中带未保存更改时先二次确认，防止面包屑误触静默丢稿
+            if (!leaveEditorGuardRef.current()) return;
+            onBackToAnki?.();
+          }}
+          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary"
+        >
           {tAnki('page_title')}
         </NotionButton>
         <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
@@ -546,9 +560,29 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     setActiveTab('create');
   };
 
-  // 使用统一的预览渲染函数
+  // 使用统一渲染引擎（支持 {{FrontSide}}/{{hint:}}/{{type:}} 等 Anki 语法）渲染缩略预览；
+  // 示例数据取模板自带的 preview_data_json
   const renderTemplatePreview = (template: string, templateData: CustomAnkiTemplate, isBack = false) => {
-    return renderCardPreview(template, templateData, undefined, isBack);
+    let sampleData: Record<string, unknown> = {};
+    if (templateData.preview_data_json) {
+      try {
+        const parsed: unknown = JSON.parse(templateData.preview_data_json);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          sampleData = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // 预览数据损坏时按空数据渲染
+      }
+    }
+    // 调用方可能传入 preview_front/preview_back 兜底内容作为当前面的模板串，按面覆盖
+    const effectiveTemplate: CustomAnkiTemplate = isBack
+      ? { ...templateData, back_template: template }
+      : { ...templateData, front_template: template };
+    const detailed = TemplateRenderService.renderCardDetailed(
+      { fields: sampleData, tags: sampleData.Tags ?? sampleData.tags },
+      effectiveTemplate,
+    );
+    return isBack ? detailed.back.html : detailed.front.html;
   };
 
   // 导入内置模板
@@ -569,7 +603,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   // 删除模板（二次确认已由卡片内联确认完成，此处直接执行）
   const handleDeleteTemplate = async (template: CustomAnkiTemplate) => {
     try {
-      await templateManager.deleteTemplate(template.id);
+      const result = await templateManager.deleteTemplate(template.id);
       setError(null);
       if (selectedTemplate?.id === template.id) {
         setSelectedTemplate(null);
@@ -580,6 +614,14 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
           ? t('templateMgmt.deleted_builtin_toast', { name: template.name })
           : t('templateMgmt.deleted_toast', { name: template.name }),
       );
+      // 后端返回仍引用该模板的存量卡片数：>0 时提示这些卡片的渲染影响
+      const referencingCards = result?.referencingCards ?? 0;
+      if (referencingCards > 0) {
+        showGlobalNotification(
+          'warning',
+          t('templateMgmt.deleted_referencing_toast', { count: referencingCards }),
+        );
+      }
     } catch (err: unknown) {
       logError('删除模板失败', err);
       setError(formatErrorMessage(t('delete_failed'), err));
@@ -588,11 +630,33 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
 
   const isEditingMode = (activeTab === 'edit' || activeTab === 'create') && !!editingTemplate;
 
+  // 编辑器未保存更改标记（由 MinimalTemplateEditor 通过 onDirtyChange 同步）。
+  // 保存路径走 backToBrowse（不确认）；取消/返回浏览/面包屑离开走带二次确认的出口。
+  const editorDirtyRef = useRef(false);
+  const handleEditorDirtyChange = useCallback((dirty: boolean) => {
+    editorDirtyRef.current = dirty;
+  }, []);
+
   const backToBrowse = useCallback(() => {
+    editorDirtyRef.current = false;
     setActiveTab('browse');
     setEditingTemplate(null);
     setEditorTab('basic');
   }, []);
+
+  // 带脏检查的离开确认：首次触发提示，确认窗口内再次触发才放行（unifiedConfirm 两击语义）
+  const confirmDiscardEditorChanges = useCallback(() => {
+    if (!editorDirtyRef.current) return true;
+    return unifiedConfirm(t('templateMgmt.unsaved_changes_confirm'));
+  }, [t]);
+
+  const handleCancelEdit = useCallback(() => {
+    if (!confirmDiscardEditorChanges()) return;
+    backToBrowse();
+  }, [confirmDiscardEditorChanges, backToBrowse]);
+
+  // 面包屑「Anki 制卡」离开守卫与取消编辑共用同一脏检查
+  leaveEditorGuardRef.current = confirmDiscardEditorChanges;
 
   const startCreateTemplate = useCallback(() => {
     setEditingTemplate(null);
@@ -642,7 +706,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
             <UnifiedSidebarItem
               id="back-to-browse"
               isSelected={false}
-              onClick={backToBrowse}
+              onClick={handleCancelEdit}
               icon={ArrowLeft}
               title={t('back_to_browse')}
             />
@@ -734,7 +798,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     <nav className="wb-tm-nav" aria-label={t('manager_title')}>
       {isEditingMode && !isSelectingMode ? (
         <>
-          <button type="button" className="wb-tm-tab" onClick={backToBrowse}>
+          <button type="button" className="wb-tm-tab" onClick={handleCancelEdit}>
             <ArrowLeft size={16} weight="bold" />
             {t('back_to_browse')}
           </button>
@@ -771,17 +835,17 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         {!isSelectingMode && activeTab === 'browse' && (
           <>
             <CommonTooltip content={t('tab_create')}>
-              <NotionButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7">
+              <NotionButton variant="utility" size="icon" iconOnly onClick={startCreateTemplate} aria-label={t('tab_create')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
                 <Plus size={14} />
               </NotionButton>
             </CommonTooltip>
             <CommonTooltip content={t('refresh')}>
-              <NotionButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7">
+              <NotionButton variant="utility" size="icon" iconOnly onClick={loadTemplates} disabled={isLoading} aria-label={t('refresh')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
                 <ArrowClockwise size={14} className={cn(isLoading && 'animate-spin')} />
               </NotionButton>
             </CommonTooltip>
             <CommonTooltip content={isImporting ? t('importing') : t('import_builtin_templates')}>
-              <NotionButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7">
+              <NotionButton variant="utility" size="icon" iconOnly onClick={handleImportBuiltinTemplates} disabled={isImporting} aria-label={t('import_builtin_templates')} className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10">
                 <Download size={14} />
               </NotionButton>
             </CommonTooltip>
@@ -794,7 +858,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 aria-label={t('import_external_templates')}
                 aria-pressed={activePanel === 'import'}
                 data-active={activePanel === 'import' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle"
+                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
               >
                 <Upload size={14} />
               </NotionButton>
@@ -808,7 +872,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                 aria-label={t('export_templates_sidebar')}
                 aria-pressed={activePanel === 'export'}
                 data-active={activePanel === 'export' ? 'true' : undefined}
-                className="h-7 w-7 wb-tm-nav-toggle"
+                className="h-7 w-7 wb-tm-nav-toggle [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
               >
                 <Download size={14} weight="bold" />
               </NotionButton>
@@ -917,6 +981,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       {isEditorView ? (
         <div
           key="editor-view"
+          data-agent-entity={activeTab === 'edit' && editingTemplate ? `templates:${editingTemplate.id}` : undefined}
           className={cn(
             'wb-tm-view flex-1 min-h-0 flex flex-col overflow-hidden',
             !isCodeEditorTab && (isSmallScreen ? 'py-2 px-0' : 'p-4')
@@ -931,6 +996,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
               onExternalTabChange={setEditorTab}
               hideSidebar={true}
               mobileEditorPortalTarget={editorPortalTarget}
+              onDirtyChange={handleEditorDirtyChange}
               onSave={async (templateData) => {
                 if (activeTab === 'create') {
                   try {
@@ -956,7 +1022,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
                   }
                 }
               }}
-              onCancel={backToBrowse}
+              onCancel={handleCancelEdit}
             />
           </div>
         </div>
@@ -1043,6 +1109,8 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
       {isEditingMode ? (
         <>
           {renderMobileDrawerRow('back-to-browse', ArrowLeft, t('back_to_browse'), () => {
+            // 有未保存更改时先二次确认；确认未通过则保留抽屉当前状态
+            if (!confirmDiscardEditorChanges()) return;
             backToBrowse();
             closeMobileDrawer();
           })}

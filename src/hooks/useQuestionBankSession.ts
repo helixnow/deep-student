@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { type Question, type QuestionBankStats, type SubmitResult, type PracticeMode } from '@/api/questionBankApi';
+import { type Question, type QuestionBankStats, type SubmitResult, type PracticeMode, type QuestionStructuredData } from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 
@@ -38,6 +38,11 @@ interface StoreQuestion {
   ai_feedback?: string | null;
   ai_score?: number | null;
   ai_graded_at?: string | null;
+  /**
+   * 新题型（true_false/matching/ordering/numeric）的结构化数据。
+   * 本 hook 只负责透传，不做解析；契约类型见 questionBankApi.QuestionStructuredData。
+   */
+  structured_data?: QuestionStructuredData | null;
 }
 
 interface StoreStats {
@@ -75,7 +80,7 @@ function generateClientRequestId(): string {
 }
 
 function convertToApiQuestion(q: StoreQuestion): Question {
-  return {
+  const question: Question = {
     id: q.id,
     cardId: q.card_id || q.id,
     questionLabel: q.question_label || '',
@@ -100,6 +105,11 @@ function convertToApiQuestion(q: StoreQuestion): Question {
     ai_score: q.ai_score,
     ai_graded_at: q.ai_graded_at,
   };
+  // 透传新题型结构化数据（不做穷举解析；组件侧经 parse*Data 收窄校验）
+  if (q.structured_data !== undefined) {
+    question.structured_data = q.structured_data;
+  }
+  return question;
 }
 
 function convertToApiStats(s: StoreStats | null): QuestionBankStats | null {
@@ -190,6 +200,8 @@ export function useQuestionBankSession({
   const sessionEpochRef = useRef(0);
   const currentQuestionIdRef = useRef<string | null>(null);
   const localOrderRef = useRef<string[]>([]);
+  // 提交防重入：isSubmitting state 在同一帧内读到的是旧值，连点会触发双提交
+  const submitInFlightRef = useRef(false);
   examIdRef.current = examId;
   currentQuestionIdRef.current = currentQuestionId;
   localOrderRef.current = localOrder;
@@ -228,6 +240,16 @@ export function useQuestionBankSession({
           total: result.total,
           page: nextPage,
           has_more: result.has_more,
+        };
+      }
+
+      // 防御：后端异常地返回空页却仍报 has_more 时终止循环，避免无限请求
+      if (result.questions.length === 0) {
+        return {
+          ...result,
+          questions: allQuestions,
+          page: nextPage,
+          has_more: false,
         };
       }
 
@@ -337,6 +359,9 @@ export function useQuestionBankSession({
     const currentExamId = examIdRef.current;
     if (!currentExamId || isLoading || !pagination.hasMore) return;
     const epoch = sessionEpochRef.current;
+    // ★ 竞态守卫：loadMore 期间若有全量 reload 启动（loadRequestId 变化），
+    //   丢弃本次追加，否则过期分页会拼进刚刷新的新列表
+    const loadRequestIdAtStart = loadRequestIdRef.current;
     const nextPage = pagination.page + 1;
 
     setIsLoading(true);
@@ -344,7 +369,11 @@ export function useQuestionBankSession({
       const result = await invoke<QuestionListResult>('qbank_list_questions', {
         request: { exam_id: currentExamId, filters: {}, page: nextPage, page_size: PAGE_SIZE },
       });
-      if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) return;
+      if (
+        sessionEpochRef.current !== epoch
+        || examIdRef.current !== currentExamId
+        || loadRequestIdRef.current !== loadRequestIdAtStart
+      ) return;
 
       setLocalQuestions(prev => {
         const next = new Map(prev);
@@ -358,11 +387,16 @@ export function useQuestionBankSession({
       });
       setPagination(prev => ({ ...prev, page: result.page, total: result.total, hasMore: result.has_more }));
     } catch (err: unknown) {
-      if (sessionEpochRef.current !== epoch || examIdRef.current !== currentExamId) return;
+      if (
+        sessionEpochRef.current !== epoch
+        || examIdRef.current !== currentExamId
+        || loadRequestIdRef.current !== loadRequestIdAtStart
+      ) return;
       debugLog.error('[useQuestionBankSession] loadMoreQuestions failed:', err);
       setError(String(err));
     } finally {
-      if (sessionEpochRef.current === epoch) {
+      // 有更新的全量 reload 在途时不重置 isLoading，交由该请求自己收尾
+      if (sessionEpochRef.current === epoch && loadRequestIdRef.current === loadRequestIdAtStart) {
         setIsLoading(false);
       }
     }
@@ -416,6 +450,10 @@ export function useQuestionBankSession({
 
   // ========== 提交答案 ==========
   const submitAnswer = useCallback(async (questionId: string, answer: string, isCorrectOverride?: boolean): Promise<SubmitResult> => {
+    if (submitInFlightRef.current) {
+      throw new Error('Submission already in flight');
+    }
+    submitInFlightRef.current = true;
     const epoch = sessionEpochRef.current;
     const currentExamId = examIdRef.current;
     setIsSubmitting(true);
@@ -448,9 +486,13 @@ export function useQuestionBankSession({
         submissionId: result.submission_id,
       };
     } catch (err: unknown) {
-      setError(String(err));
+      // 会话已切换时不把过期错误写进新会话的 error 状态
+      if (sessionEpochRef.current === epoch && examIdRef.current === currentExamId) {
+        setError(String(err));
+      }
       throw err;
     } finally {
+      submitInFlightRef.current = false;
       if (sessionEpochRef.current === epoch) {
         setIsSubmitting(false);
       }
@@ -466,13 +508,15 @@ export function useQuestionBankSession({
 
   // ========== ★ 本地化导航（含 practiceMode） ==========
   const navigate = useCallback((index: number) => {
-    if (index >= 0 && index < localOrder.length) {
-      const questionId = localOrder[index] || null;
-      setCurrentQuestionId(questionId);
-      // ★ 持久化做题位置，重开恢复
-      if (examIdRef.current && questionId) {
-        writeLastQuestionId(examIdRef.current, questionId);
-      }
+    if (localOrder.length === 0) return;
+    // ★ 越界钳制：刷新/删除后题目数变化时，调用方持有的旧索引可能越界，
+    //   钳到有效范围而非静默忽略，保证"跳最后一题"之类的操作仍然生效
+    const clamped = Math.min(Math.max(index, 0), localOrder.length - 1);
+    const questionId = localOrder[clamped] || null;
+    setCurrentQuestionId(questionId);
+    // ★ 持久化做题位置，重开恢复
+    if (examIdRef.current && questionId) {
+      writeLastQuestionId(examIdRef.current, questionId);
     }
   }, [localOrder]);
 

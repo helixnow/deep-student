@@ -49,72 +49,72 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
       icon: ListNumbers,
       label: t('modes.sequential.label'),
       desc: t('modes.sequential.desc'),
-      color: 'text-slate-600',
-      bgColor: 'bg-slate-500/10',
+      color: 'text-muted-foreground',
+      bgColor: 'bg-muted',
     },
     {
       key: 'random',
       icon: Shuffle,
       label: t('modes.random.label'),
       desc: t('modes.random.desc'),
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-500/10',
+      color: 'text-primary',
+      bgColor: 'bg-primary/10',
     },
     {
       key: 'review_first',
       icon: ArrowCounterClockwise,
       label: t('modes.reviewFirst.label'),
       desc: t('modes.reviewFirst.desc'),
-      color: 'text-amber-600',
-      bgColor: 'bg-amber-500/10',
+      color: 'text-warning',
+      bgColor: 'bg-warning/10',
     },
     {
       key: 'review_only',
       icon: ArrowCounterClockwise,
       label: t('modes.reviewOnly.label'),
       desc: t('modes.reviewOnly.desc'),
-      color: 'text-amber-600',
-      bgColor: 'bg-amber-500/10',
+      color: 'text-warning',
+      bgColor: 'bg-warning/10',
     },
     {
       key: 'by_tag',
       icon: Tag,
       label: t('modes.byTag.label'),
       desc: t('modes.byTag.desc'),
-      color: 'text-sky-600',
-      bgColor: 'bg-sky-500/10',
+      color: 'text-primary',
+      bgColor: 'bg-primary/10',
     },
     {
       key: 'timed',
       icon: Timer,
       label: t('modes.timed.label'),
       desc: t('modes.timed.desc'),
-      color: 'text-rose-600',
-      bgColor: 'bg-rose-500/10',
+      color: 'text-destructive',
+      bgColor: 'bg-destructive/10',
     },
     {
       key: 'mock_exam',
       icon: FileText,
       label: t('modes.mockExam.label'),
       desc: t('modes.mockExam.desc'),
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-500/10',
+      color: 'text-info',
+      bgColor: 'bg-info/10',
     },
     {
       key: 'daily',
       icon: CalendarBlank,
       label: t('modes.daily.label'),
       desc: t('modes.daily.desc'),
-      color: 'text-emerald-600',
-      bgColor: 'bg-emerald-500/10',
+      color: 'text-success',
+      bgColor: 'bg-success/10',
     },
     {
       key: 'paper',
       icon: ClipboardText,
       label: t('modes.paper.label'),
       desc: t('modes.paper.desc'),
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-500/10',
+      color: 'text-warning',
+      bgColor: 'bg-warning/10',
     },
   ];
   
@@ -129,34 +129,35 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
           key={key}
           variant="ghost" size="sm"
           onClick={() => handleSelect(key)}
+          aria-pressed={currentMode === key}
           className={cn(
-            '!p-4 !h-auto !rounded-xl border !text-left !justify-start !items-start flex-col',
-            'hover:shadow-md hover:scale-[1.02]',
+            '!relative !p-4 !h-auto !rounded-xl border !text-left !justify-start !items-start flex-col',
+            'ui-press ui-state-colors hover:shadow-md',
             currentMode === key
-              ? 'border-sky-500 bg-sky-500/5 shadow-sm'
+              ? 'border-primary/50 bg-primary/5 shadow-sm'
               : 'border-border hover:border-border/80 bg-card'
           )}
         >
           {/* 选中指示器 */}
           {currentMode === key && (
-            <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-sky-500" />
+            <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary" />
           )}
           
           {/* 图标 */}
           <div className={cn(
             'w-10 h-10 rounded-lg flex items-center justify-center mb-3 transition-colors',
-            currentMode === key ? 'bg-sky-500/20' : bgColor
+            currentMode === key ? 'bg-primary/15' : bgColor
           )}>
             <Icon className={cn(
               'w-5 h-5 transition-colors',
-              currentMode === key ? 'text-sky-600' : color
+              currentMode === key ? 'text-primary' : color
             )} />
           </div>
           
           {/* 标签 */}
           <div className={cn(
             'font-medium text-sm mb-1 transition-colors',
-            currentMode === key ? 'text-sky-700 dark:text-sky-400' : 'text-foreground'
+            currentMode === key ? 'text-primary' : 'text-foreground'
           )}>
             {label}
           </div>

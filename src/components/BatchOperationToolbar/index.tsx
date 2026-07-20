@@ -9,6 +9,7 @@ import {
   Copy, CheckSquare, Square, DotsThreeVertical, X, CaretDown
 } from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm, unifiedPrompt } from '@/utils/unifiedDialogs';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import BatchEditDialog from './BatchEditDialog';
 import FilterBuilder from './FilterBuilder';
 import { generateId } from '../../utils/common';
@@ -46,9 +47,13 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number>(-1);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  // 触屏无 Shift/Ctrl 修饰键：点击语义改为切换选中，保证批量操作可用
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   
   // 虚拟列表容器
   const listContainerRef = useRef<HTMLDivElement>(null);
+  // 「更多」下拉容器（用于点击外部关闭）
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   
   // 过滤后的卡片
   const filteredCards = useMemo(() => {
@@ -96,8 +101,8 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           newSelection.add(filteredCards[i].id || filteredCards[i].front);
         }
       }
-    } else if (event.ctrlKey || event.metaKey) {
-      // Ctrl/Cmd选择：切换单个
+    } else if (event.ctrlKey || event.metaKey || isTouchPrimary) {
+      // Ctrl/Cmd选择：切换单个；触屏（无修饰键）同样按切换处理，否则无法多选
       if (newSelection.has(cardId)) {
         newSelection.delete(cardId);
       } else {
@@ -112,7 +117,20 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
     setSelectedIds(newSelection);
     setLastSelectedIndex(index);
     onSelectionChange?.(newSelection);
-  }, [selectedIds, lastSelectedIndex, filteredCards, onSelectionChange]);
+  }, [selectedIds, lastSelectedIndex, filteredCards, isTouchPrimary, onSelectionChange]);
+  
+  // 复选框独立命中区：无论指针类型，点复选框都是切换选中（不清空已有选择）
+  const handleToggleOne = useCallback((cardId: string, index: number) => {
+    const newSelection = new Set(selectedIds);
+    if (newSelection.has(cardId)) {
+      newSelection.delete(cardId);
+    } else {
+      newSelection.add(cardId);
+    }
+    setSelectedIds(newSelection);
+    setLastSelectedIndex(index);
+    onSelectionChange?.(newSelection);
+  }, [selectedIds, onSelectionChange]);
   
   // 全选/取消全选
   const toggleSelectAll = useCallback(() => {
@@ -272,8 +290,21 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, toggleSelectAll]);
   
+  // 「更多」菜单：点击菜单外任意位置关闭（触屏没有 hover，此前只能再点按钮收起）
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!moreMenuRef.current?.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, [showMoreMenu]);
+  
   return (
-    <>
+    // 根容器：flex 列布局让列表占据剩余高度（替代此前对工具栏高度的 100vh 硬编码假设）
+    <div className="batch-operation-root">
       <div className="batch-operation-toolbar">
         {/* 搜索和筛选区 */}
         <div className="toolbar-section search-filter">
@@ -337,45 +368,46 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
         
         {/* 批量操作按钮 */}
         <div className="toolbar-section batch-actions">
+          {/* 文案包 span：窄屏 (<640) 由 .action-btn span 规则收缩为纯图标 */}
           <NotionButton variant="ghost" size="sm" className="action-btn" onClick={() => setShowBatchEdit(true)} disabled={selectedIds.size === 0 || isProcessing}>
             <PencilSimple size={18} />
-            {t('edit')}
+            <span>{t('edit')}</span>
           </NotionButton>
           
           <NotionButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchAddTags} disabled={selectedIds.size === 0 || isProcessing}>
             <Tag size={18} />
-            {t('tags')}
+            <span>{t('tags')}</span>
           </NotionButton>
           
           <NotionButton variant="ghost" size="sm" className="action-btn" onClick={() => handleBatchExport()} disabled={selectedIds.size === 0 || isProcessing}>
             <Download size={18} />
-            {t('export')}
+            <span>{t('export')}</span>
           </NotionButton>
           
           <NotionButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchDuplicate} disabled={selectedIds.size === 0 || isProcessing}>
             <Copy size={18} />
-            {t('duplicate')}
+            <span>{t('duplicate')}</span>
           </NotionButton>
           
           <NotionButton variant="danger" size="sm" className="action-btn danger" onClick={handleBatchDelete} disabled={selectedIds.size === 0 || isProcessing}>
             <Trash size={18} />
-            {t('delete')}
+            <span>{t('delete')}</span>
           </NotionButton>
           
-          <div className="dropdown-container">
-            <NotionButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more">
+          <div className="dropdown-container" ref={moreMenuRef}>
+            <NotionButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more" aria-expanded={showMoreMenu}>
               <DotsThreeVertical size={18} />
             </NotionButton>
             
             {showMoreMenu && (
               <div className="dropdown-menu">
-                <NotionButton variant="ghost" size="sm" onClick={() => handleBatchExport('csv')}>
+                <NotionButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('csv'); }}>
                   {t('export_as_csv')}
                 </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={() => handleBatchExport('json')}>
+                <NotionButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('json'); }}>
                   {t('export_as_json')}
                 </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={() => handleBatchExport('markdown')}>
+                <NotionButton variant="ghost" size="sm" onClick={() => { setShowMoreMenu(false); void handleBatchExport('markdown'); }}>
                   {t('export_as_markdown')}
                 </NotionButton>
               </div>
@@ -417,6 +449,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
                   card={card}
                   isSelected={isSelected}
                   onSelect={(e) => handleSelect(cardId, virtualItem.index, e)}
+                  onToggle={() => handleToggleOne(cardId, virtualItem.index)}
 />
               </div>
             );
@@ -449,7 +482,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           onClose={() => setShowBatchEdit(false)}
 />
       )}
-    </>
+    </div>
   );
 };
 
@@ -458,12 +491,15 @@ interface BatchCardItemProps {
   card: AnkiCard;
   isSelected: boolean;
   onSelect: (event: React.MouseEvent) => void;
+  /** 复选框独立命中区：始终切换选中（不清空已有选择），触屏多选的主要入口 */
+  onToggle: () => void;
 }
 
 const BatchCardItem: React.FC<BatchCardItemProps> = React.memo(({
   card,
   isSelected,
-  onSelect
+  onSelect,
+  onToggle
 }) => {
   const { t } = useTranslation('anki');
   
@@ -472,9 +508,21 @@ const BatchCardItem: React.FC<BatchCardItemProps> = React.memo(({
       className={`batch-card-item ${isSelected ? 'selected' : ''}`}
       onClick={onSelect}
     >
-      <div className="card-checkbox">
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        className="card-checkbox"
+        role="checkbox"
+        aria-checked={isSelected}
+        aria-label={t('select_all')}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
         {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
-      </div>
+      </NotionButton>
       
       <div className="card-content">
         <div className="card-front">{card.front}</div>

@@ -62,16 +62,28 @@
     "warning": "时间不足1分钟！",
     "timeoutMessage": "限时练习时间已到",
     "timeoutTitle": "时间到",
-    "startError": "启动限时练习失败"
+    "startError": "启动限时练习失败",
+    "minutesShort": "{{count}} 分钟",
+    "confirmTitle": "确认交卷",
+    "confirmMessage": "确定要结束本次限时练习吗？",
+    "confirmWarning": "还有 {{count}} 道题未作答，确定要交卷吗？",
+    "cancel": "取消",
+    "confirmSubmit": "确认交卷"
   },
   "questionType": {
     "single_choice": "单选题",
     "multiple_choice": "多选题",
+    "indefinite_choice": "不定项",
     "fill_blank": "填空题",
     "short_answer": "简答题",
     "calculation": "计算题",
     "essay": "论述题",
-    "proof": "证明题"
+    "proof": "证明题",
+    "other": "其他",
+    "true_false": "判断题",
+    "matching": "匹配题",
+    "ordering": "排序题",
+    "numeric": "数值题"
   },
   "difficultyLevel": {
     "easy": "简单",
@@ -87,6 +99,7 @@
     "includeMistakes": "包含错题",
     "typeDistribution": "题型配比",
     "difficultyDistribution": "难度配比",
+    "distributionHint": "题型或难度配比之和超过题目数量时，按配比之和出题",
     "optional": "（选填）",
     "generating": "生成中...",
     "start": "开始考试",
@@ -112,7 +125,11 @@
     "seconds": "秒",
     "typeStats": "题型统计",
     "back": "返回",
-    "newExam": "再考一次"
+    "newExam": "再考一次",
+    "unansweredBanner": "还有 {{count}} 道题未作答",
+    "jumpToUnanswered": "跳到未答题",
+    "correctRateLabel": "正确率",
+    "configuredCount": "实际出题"
   },
   "daily": {
     "title": "每日一练",
@@ -146,7 +163,8 @@
     "monthQuestions": "做题总数",
     "streak": "连续打卡",
     "calendarLoadFailed": "打卡日历加载失败，请重试",
-    "startError": "获取每日练习失败"
+    "startError": "获取每日练习失败",
+    "completedDetail": "答对 {{correct}} / {{total}} 题"
   },
   "paper": {
     "title": "组卷生成器",
@@ -206,6 +224,7 @@
     "practice": {
       "noQuestions": "暂无题目",
       "addFirst": "请先添加题目",
+      "addFirstHint": "在「题目」列表页手动新建、拍照识别或导入 CSV，添加题目后即可开始练习",
       "chooseMode": "选择练习模式"
     },
     "stats": {
@@ -400,7 +419,11 @@
       "essay": "论述题",
       "calculation": "计算题",
       "proof": "证明题",
-      "other": "其他"
+      "other": "其他",
+      "trueFalse": "判断题",
+      "matching": "匹配题",
+      "ordering": "排序题",
+      "numeric": "数值题"
     },
     "modeShort": {
       "sequential": "顺序",
@@ -410,7 +433,103 @@
       "timed": "限时",
       "mockExam": "模拟考",
       "daily": "每日练",
-      "paper": "组卷"
+      "paper": "组卷",
+      "reviewOnly": "仅错题"
+    },
+    "shortcutNextAfterSubmit": "提交后下一题",
+    "inlineShortcutHint": "1-9 / A-D 选择 · Enter 提交 · ← → 切题",
+    "inlineShortcutHintAfterSubmit": "Enter 下一题 · ← → 切题",
+    "aiRetry": "重试",
+    "noteSaving": "保存中…",
+    "noteSaved": "已保存",
+    "noteSaveFailed": "保存失败",
+    "noteDone": "完成",
+    "noteAutoSaveHint": "移开焦点时自动保存",
+    "imageExpand": "点击放大图片",
+    "imageCollapse": "点击收起图片",
+    "shortcutFavorite": "收藏/取消收藏",
+    "shortcutTrueFalse": "判断题选择",
+    "inlineShortcutHintTrueFalse": "1 正确 · 2 错误 · Enter 提交 · ← → 切题",
+    "inlineShortcutHintGeneric": "Enter 提交 · ← → 切题 · F 收藏",
+    "trueFalse": {
+      "true": "正确",
+      "false": "错误"
+    },
+    "matching": {
+      "instruction": "点击左侧条目，再点击右侧条目完成配对；点击已配对项可拆开",
+      "pickOtherSide": "再点击另一列的条目完成配对",
+      "pairedCount": "已配对 {{count}}/{{total}}",
+      "leftColumn": "左列",
+      "rightColumn": "右列",
+      "correctPairs": "正确配对"
+    },
+    "ordering": {
+      "instruction": "拖拽或使用上下按钮调整顺序",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "correctOrder": "正确顺序"
+    },
+    "numeric": {
+      "placeholder": "输入数值...",
+      "invalidNumber": "请输入有效数字",
+      "toleranceHint": "允许误差 ±{{tolerance}}",
+      "toleranceHintRelative": "允许误差 ±{{tolerance}}%"
+    },
+    "fillBlank": {
+      "acceptedAnswers": "可接受答案：{{answers}}"
+    },
+    "structEdit": {
+      "addItem": "添加",
+      "removeItem": "删除条目",
+      "emptyItems": "暂无条目，点击\"添加\"创建",
+      "unpaired": "未配对",
+      "standardPairs": "标准答案配对",
+      "orderingItems": "条目（按出题展示顺序）",
+      "numericValue": "答案值",
+      "numericUnit": "单位",
+      "numericUnitPlaceholder": "如 m、kg（选填）",
+      "numericTolerance": "容差",
+      "numericToleranceMode": "容差模式",
+      "toleranceAbsolute": "绝对值",
+      "toleranceRelative": "相对比例",
+      "numericValueRequired": "请输入有效的答案数值",
+      "numericToleranceInvalid": "容差需为非负数字",
+      "blanksTitle": "空位与可接受答案",
+      "addBlank": "添加空位",
+      "removeBlank": "删除空位",
+      "blankLabel": "空位 {{n}}",
+      "caseSensitive": "区分大小写",
+      "trimSpaces": "忽略首尾空格",
+      "answerDraftPlaceholder": "输入可接受答案后回车添加",
+      "addAnswer": "添加答案",
+      "blankNeedsAnswer": "每个空位至少需要一个可接受答案",
+      "blanksAutoAnswerHint": "答案字段将由空位设置自动生成",
+      "trueFalseAnswerRequired": "请选择判断题答案（正确/错误）",
+      "matchingNeedsItems": "左右两列至少各需一个有内容的条目",
+      "matchingNeedsPairs": "请至少设置一组标准配对",
+      "orderingNeedsItems": "排序题至少需要两个有内容的条目"
     }
+  },
+  "answerSheet": {
+    "answered": "已答",
+    "unanswered": "未答",
+    "marked": "标记",
+    "progress": "已答 {{answered}} / {{total}}",
+    "jumpTo": "跳转到第 {{index}} 题",
+    "jumpHint": "点击题号跳转作答",
+    "expand": "展开答题卡",
+    "collapse": "收起答题卡"
+  },
+  "modeSummary": {
+    "inProgress": "进行中",
+    "lastScore": "上次 {{rate}}%",
+    "lastAccuracy": "上次正确率 {{rate}}%",
+    "streak": "连续 {{count}} 天",
+    "dailyProgress": "今日 {{completed}}/{{target}}",
+    "paperReady": "已生成 {{count}} 题试卷"
+  },
+  "stepper": {
+    "decrease": "减少「{{label}}」数量",
+    "increase": "增加「{{label}}」数量"
   }
 }

@@ -205,6 +205,7 @@
       "new": "未学习",
       "correctRate": "正确率",
       "noData": "暂无统计数据",
+      "noDataHint": "完成几道练习后，这里会展示进度与正确率统计",
       "progress": "学习进度",
       "accuracy": "正确率",
       "excellent": "优秀",
@@ -337,7 +338,14 @@
         "status": "状态",
         "attempts": "答题次数",
         "correctCount": "正确次数"
-      }
+      },
+      "columnsPreview": "导出列预览",
+      "savedTo": "已保存到",
+      "openFolder": "打开所在文件夹",
+      "openFolderFailed": "打开所在文件夹失败",
+      "done": "完成",
+      "exportedCount": "已导出 {{count}} 道题目",
+      "fieldsHint": "点击切换要导出的字段，题干内容为必选"
     },
     "search": "搜索题目...",
     "empty": "暂无题目",
@@ -410,6 +418,7 @@
     "history": {
       "description": "查看题目的修改历史和答题记录",
       "empty": "暂无历史记录",
+      "emptyHint": "答题和编辑题目后会自动生成记录",
       "title": "历史记录"
     }
   },
@@ -421,6 +430,8 @@
     "select_file_failed": "选择文件失败",
     "drop_or_click": "拖拽 CSV 文件到此处，或点击选择",
     "supported_formats": "支持 UTF-8 和 GBK 编码",
+    "format_hint": "CSV 需包含表头行，支持中英文列名",
+    "format_example": "题干,选项,答案,解析,标签",
     "drag_not_supported": "请点击选择文件按钮来选择 CSV 文件",
     "preview_failed": "预览 CSV 文件失败：{{error}}",
     "file_info": "{{rows}} 行数据，{{cols}} 列，编码：{{encoding}}",
@@ -470,7 +481,13 @@
     "import_cancel_unavailable": "导入已结束，无法再取消。",
     "import_cancelled_before_start": "导入已取消，尚未写入任何数据。",
     "import_in_progress_close_blocked": "导入进行中，请先取消导入后再关闭窗口",
-    "mapping_duplicate": "存在重复映射，请确保每个目标字段只映射一次"
+    "mapping_duplicate": "存在重复映射，请确保每个目标字段只映射一次",
+    "result_success": "成功",
+    "result_skipped": "跳过",
+    "result_failed": "失败",
+    "error_details_count": "错误详情（共 {{count}} 条）",
+    "error_row_label": "行 {{row}}",
+    "error_more": "还有 {{count}} 条错误未显示"
   },
   "image": {
     "alt_card": "题目卡片",
@@ -569,13 +586,30 @@
       "summary": "确认录入"
     },
     "manual_create_link": "没有文件？手动新建一道题",
-    "tips_combined": "图片将通过 OCR 识别，文档解析文本后由 AI 识别题目结构"
+    "tips_combined": "图片将通过 OCR 识别，文档解析文本后由 AI 识别题目结构",
+    "drop_active": "松开以添加文件",
+    "page_status_label": "逐页识别状态",
+    "page_n": "第 {{page}} 页",
+    "cancel_confirm_hint": "确定取消导入？已解析的题目会保留。",
+    "cancel_confirm_yes": "确认取消",
+    "cancel_confirm_no": "继续导入",
+    "resume_failed": "恢复导入失败: {{error}}",
+    "phases": {
+      "preparing": "准备",
+      "recognizing": "识别",
+      "parsing": "解析",
+      "done": "完成"
+    }
   },
   "questionTypes": {
     "single_choice": "单选",
     "multiple_choice": "多选",
     "indefinite_choice": "不定项",
+    "true_false": "判断",
     "fill_blank": "填空",
+    "matching": "匹配",
+    "ordering": "排序",
+    "numeric": "数值",
     "short_answer": "简答",
     "essay": "论述",
     "calculation": "计算",

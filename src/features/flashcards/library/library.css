@@ -409,6 +409,24 @@
   }
 }
 
+/* ---------- 触屏适配 ---------- */
+
+/* 筛选/排序 chips 是库页主操作，基准 ~24px 触控过小；
+   仅触屏放大到 ≥40px（与 flashcards.css 的 wb-fc-tab 同基线） */
+@media (pointer: coarse) {
+  .fc-lib-chip {
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+}
+
+/* 键盘操作提示（shift 连选等）对触屏无意义，隐藏释放行宽 */
+@media (hover: none) and (pointer: coarse) {
+  .fc-lib-kbd-hint {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fc-lib-expand,
   .fc-lib-row,

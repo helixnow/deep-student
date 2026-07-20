@@ -17,6 +17,7 @@ import {
   XCircle,
   Star,
   CaretRight,
+  BookOpen,
 } from '@phosphor-icons/react';
 import type { Question, QuestionStatus, Difficulty } from '@/api/questionBankApi';
 
@@ -29,11 +30,12 @@ interface VirtualQuestionListProps {
   estimateSize?: number;
 }
 
+// 语义色 token：跟随主题深浅模式，与做题视图状态配色一致
 const statusColors: Record<QuestionStatus, string> = {
-  new: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-  in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  mastered: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  review: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+  new: 'bg-muted text-muted-foreground',
+  in_progress: 'bg-primary/10 text-primary',
+  mastered: 'bg-success/10 text-success',
+  review: 'bg-warning/10 text-warning',
 };
 
 // Status labels are resolved via i18n at render time
@@ -82,8 +84,11 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
 
   if (questions.length === 0) {
     return (
-      <div className={cn('flex items-center justify-center h-full text-muted-foreground', className)}>
-        {t('questionBank.noQuestions')}
+      <div className={cn('flex flex-col items-center justify-center gap-2 h-full text-muted-foreground', className)}>
+        <div className="rounded-md bg-muted/50 p-2.5">
+          <BookOpen size={20} aria-hidden />
+        </div>
+        <span className="text-sm">{t('questionBank.noQuestions')}</span>
       </div>
     );
   }
@@ -104,6 +109,8 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
         {virtualItems.map((virtualItem) => {
           const question = questions[virtualItem.index];
           const isActive = virtualItem.index === currentIndex;
+          // Question.status 为可选字段，缺失时按"新题"渲染，避免 undefined 索引产生空样式/空文案
+          const status: QuestionStatus = question.status ?? 'new';
 
           return (
             <div
@@ -157,16 +164,18 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                 </div>
 
                 {/* 状态 */}
-                <Badge className={cn('text-xs flex-shrink-0', statusColors[question.status])}>
-                  {t(`questionBank.status.${STATUS_KEYS[question.status]}`)}
+                <Badge className={cn('text-xs flex-shrink-0', statusColors[status])}>
+                  {t(`questionBank.status.${STATUS_KEYS[status]}`)}
                 </Badge>
 
                 {/* 操作 */}
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  {/* 触屏：收藏钮命中区放大到 44px，负 margin 抵消占位保持行高稳定 */}
                   <NotionButton
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    aria-label={t('questionBank.favorite', { defaultValue: 'favorite' })}
+                    className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-m-2"
                     onClick={(e) => handleFavorite(e, question.id)}
                   >
                     <Star

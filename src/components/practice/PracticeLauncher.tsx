@@ -27,11 +27,14 @@ import {
   BookOpen,
   CaretLeft,
   Play,
+  Flame,
+  Trophy,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
 import type { QuestionBankStats } from '@/api/questionBankApi';
+import { ratioToPercent } from '@/components/stats';
 import type { PracticeMode } from '@/api/questionBankApi';
 
 // 懒加载高级模式组件
@@ -81,6 +84,9 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   const timedSession = useQuestionBankStore(state => state.timedSession);
   const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
   const mockExamScoreCard = useQuestionBankStore(state => state.mockExamScoreCard);
+  const dailyPractice = useQuestionBankStore(state => state.dailyPractice);
+  const checkInCalendar = useQuestionBankStore(state => state.checkInCalendar);
+  const generatedPaper = useQuestionBankStore(state => state.generatedPaper);
 
   const activeTimedSession = useMemo(
     () => (timedSession?.exam_id === examId ? timedSession : null),
@@ -90,18 +96,32 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
     () => (mockExamSession?.exam_id === examId ? mockExamSession : null),
     [mockExamSession, examId],
   );
+  const activeDailyPractice = useMemo(
+    () => (dailyPractice?.exam_id === examId ? dailyPractice : null),
+    [dailyPractice, examId],
+  );
+  const activeCheckInCalendar = useMemo(
+    () => (checkInCalendar?.exam_id === examId ? checkInCalendar : null),
+    [checkInCalendar, examId],
+  );
+  const activeGeneratedPaper = useMemo(
+    () => (generatedPaper?.exam_id === examId ? generatedPaper : null),
+    [generatedPaper, examId],
+  );
 
   useEffect(() => {
-    if (activeMockExamSession?.is_submitted && mockExamScoreCard?.exam_id === examId) {
-      setActiveAdvanced('mock_exam');
-      return;
-    }
+    // 恢复优先级（2026-07 修复）：进行中的会话优先于已完成的成绩单。
+    // 此前旧模拟考成绩单会抢占刚水合的进行中限时会话面板。
     if (activeMockExamSession && !activeMockExamSession.is_submitted) {
       setActiveAdvanced('mock_exam');
       return;
     }
     if (activeTimedSession && !activeTimedSession.is_submitted && !activeTimedSession.is_timeout) {
       setActiveAdvanced('timed');
+      return;
+    }
+    if (activeMockExamSession?.is_submitted && mockExamScoreCard?.exam_id === examId) {
+      setActiveAdvanced('mock_exam');
     }
   }, [activeMockExamSession, activeTimedSession, mockExamScoreCard, examId]);
 
@@ -209,6 +229,81 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
     },
   ], [t]);
 
+  // 高级模式卡片的"上次成绩 / 进行中"摘要
+  const modeSummaries = useMemo<Partial<Record<PracticeMode, React.ReactNode>>>(() => {
+    const summaries: Partial<Record<PracticeMode, React.ReactNode>> = {};
+
+    if (activeTimedSession && !activeTimedSession.is_submitted && !activeTimedSession.is_timeout) {
+      summaries.timed = (
+        <span className="flex items-center gap-1 text-primary">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+          {t('practice:modeSummary.inProgress')}
+        </span>
+      );
+    } else if (activeTimedSession?.is_submitted && activeTimedSession.answered_count > 0) {
+      summaries.timed = (
+        <span className="text-muted-foreground">
+          {t('practice:modeSummary.lastAccuracy', {
+            rate: Math.round((activeTimedSession.correct_count / activeTimedSession.answered_count) * 100),
+          })}
+        </span>
+      );
+    }
+
+    if (activeMockExamSession && !activeMockExamSession.is_submitted) {
+      summaries.mock_exam = (
+        <span className="flex items-center gap-1 text-primary">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+          {t('practice:modeSummary.inProgress')}
+        </span>
+      );
+    } else if (mockExamScoreCard?.exam_id === examId) {
+      summaries.mock_exam = (
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <Trophy size={11} className="text-warning" />
+          {t('practice:modeSummary.lastScore', { rate: Math.round(mockExamScoreCard.correct_rate) })}
+        </span>
+      );
+    }
+
+    if (activeCheckInCalendar && activeCheckInCalendar.streak_days > 0) {
+      summaries.daily = (
+        <span className="flex items-center gap-1 text-warning">
+          <Flame size={11} weight="fill" />
+          {t('practice:modeSummary.streak', { count: activeCheckInCalendar.streak_days })}
+        </span>
+      );
+    } else if (activeDailyPractice) {
+      summaries.daily = (
+        <span className="text-muted-foreground">
+          {t('practice:modeSummary.dailyProgress', {
+            completed: activeDailyPractice.completed_count,
+            target: activeDailyPractice.daily_target,
+          })}
+        </span>
+      );
+    }
+
+    if (activeGeneratedPaper) {
+      summaries.paper = (
+        <span className="text-muted-foreground">
+          {t('practice:modeSummary.paperReady', { count: activeGeneratedPaper.questions.length })}
+        </span>
+      );
+    }
+
+    return summaries;
+  }, [
+    activeTimedSession,
+    activeMockExamSession,
+    mockExamScoreCard,
+    activeCheckInCalendar,
+    activeDailyPractice,
+    activeGeneratedPaper,
+    examId,
+    t,
+  ]);
+
   const handleModeClick = useCallback((mode: PracticeMode, isAdvanced: boolean) => {
     if (mode === 'by_tag') {
       setActiveAdvanced(null);
@@ -245,6 +340,9 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
           </h3>
           <p className="text-sm text-muted-foreground">
             {t('practice:questionBank.practice.addFirst')}
+          </p>
+          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+            {t('practice:questionBank.practice.addFirstHint')}
           </p>
         </div>
       </div>
@@ -289,7 +387,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
           <div className="text-sm text-muted-foreground">
             {t('practice:questionBank.stats.correctRate')}{' '}
             <span className="font-medium text-foreground tabular-nums">
-              {Math.round(stats.correctRate * 100)}%
+              {ratioToPercent(stats.correctRate)}%
             </span>
           </div>
         </div>
@@ -309,8 +407,10 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 key={key}
                 variant="ghost" size="sm"
                 onClick={() => handleModeClick(key, isAdvanced)}
+                aria-expanded={isActive}
                 className={cn(
                   '!relative !h-auto !min-h-[76px] !flex-col !items-start !justify-start !rounded-md !border !p-3 !text-left',
+                  'ui-press ui-state-colors',
                   !isActive && 'border-border/60 bg-transparent hover:border-border hover:bg-accent',
                   isActive && 'border-primary/50 bg-primary/10 text-foreground'
                 )}
@@ -321,6 +421,10 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 <div>
                   <div className="text-sm font-medium">{label}</div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">{desc}</div>
+                  {/* 上次成绩 / 进行中摘要 */}
+                  {modeSummaries[key] && (
+                    <div className="mt-1 text-[10px] leading-tight">{modeSummaries[key]}</div>
+                  )}
                 </div>
                 {/* 错题数量 badge */}
                 {key === 'review_first' && stats && stats.review > 0 && (
@@ -335,7 +439,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       </div>
 
       {isTagPickerOpen && (
-        <section className="border-t border-border/50 pt-3" aria-label={t('practice:tagPicker.title')}>
+        <section className="ui-rise-in border-t border-border/50 pt-3" aria-label={t('practice:tagPicker.title')}>
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium">{t('practice:tagPicker.title')}</h3>
@@ -365,7 +469,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => handleStartPracticeByTag(tag)}
-                  className="!h-auto !justify-start !rounded-md !border !border-border/60 !px-2.5 !py-2 !text-left hover:border-primary/40 hover:bg-primary/10"
+                  className="ui-press !h-auto !justify-start !rounded-md !border !border-border/60 !px-2.5 !py-2 !text-left hover:border-primary/40 hover:bg-primary/10"
                 >
                   <Tag size={14} className="shrink-0 text-primary" />
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">{label}</span>
@@ -381,7 +485,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
 
       {/* 高级模式配置面板 */}
       {activeAdvanced && (
-        <div className="border-t border-border/40 pt-4">
+        <div key={activeAdvanced} className="ui-rise-in border-t border-border/40 pt-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium">
               {modes.find(m => m.key === activeAdvanced)?.label}

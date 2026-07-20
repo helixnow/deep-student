@@ -26,6 +26,7 @@ import {
 } from '../hooks/useReviewActivity';
 import { useCountUp } from '../hooks/useCountUp';
 import { ReviewHeatmap } from '../components/ReviewHeatmap';
+import { SchedulerSettingsSection } from '../components/SchedulerSettingsSection';
 import type { FsrsRating } from '../store/fsrsReviewStore';
 
 const DAILY_WINDOW_DAYS = 14;
@@ -243,6 +244,10 @@ export const StatisticsScreen: React.FC = () => {
       : activeDays.size === 0
         ? t('stats.activity.empty')
         : null;
+  // 数据来源标注：后端真实日志统计 vs 前端近似聚合（旧后端回退）
+  const activitySourceNote = activity.source === 'stats'
+    ? t('stats.activity.realNote')
+    : t('stats.activity.approxNote');
 
   const numberFormat = useMemo(
     () => new Intl.NumberFormat(i18n.language),
@@ -291,6 +296,7 @@ export const StatisticsScreen: React.FC = () => {
         <div className="wb-fc-loading">{t('statistics.loading')}</div>
       ) : stats ? (
         <div className="wb-fcx-scroll">
+          <SchedulerSettingsSection />
           <section className="wb-fcx-panel" data-testid="fsrs-statistics">
             <div className="wb-fcx-panel-head">
               <h3 className="wb-fcx-panel-title">
@@ -328,7 +334,7 @@ export const StatisticsScreen: React.FC = () => {
                   {hasActivityData
                     ? `${t('stats.heatmap.subtitle')} · ${t('stats.streak.activeDays', {
                         count: activeDays.size,
-                      })} · ${t('stats.activity.approxNote')}`
+                      })} · ${activitySourceNote}`
                     : t('stats.heatmap.subtitle')}
                 </p>
               </div>
@@ -397,7 +403,11 @@ export const StatisticsScreen: React.FC = () => {
                   <ChartPieSlice size={14} weight="duotone" />
                   {t('stats.ratings.title')}
                 </h3>
-                <p className="wb-fcx-panel-sub">{t('stats.ratings.subtitle')}</p>
+                <p className="wb-fcx-panel-sub">
+                  {activity.source === 'stats'
+                    ? t('stats.ratings.subtitleReal')
+                    : t('stats.ratings.subtitle')}
+                </p>
               </div>
               <div className="wb-fcx-panel-body">
                 {activity.status !== 'ready' ? (

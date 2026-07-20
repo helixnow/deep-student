@@ -2,12 +2,12 @@
  * 复习计划主视图
  *
  * Notion 风格 UI，包含：
- * - 今日复习卡片：显示今日到期复习数、已完成数
+ * - 今日复习卡片：醒目但不焦虑的到期数量呈现 + 开始复习引导
  * - 复习队列列表：显示待复习题目，按到期时间排序
  * - 复习进度条
- * - 开始复习按钮
+ * - 空状态：今日无复习时的纯 CSS 完成态插画
  *
- * 🆕 2026-01 新增
+ * 🆕 2026-01 新增；2026-07 对标 Anki 体验改造
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
@@ -21,24 +21,25 @@ import {
   Play,
   Clock,
   CheckCircle,
-  Warning as Warning,
   Calendar,
   Target,
   TrendUp as TrendingUp,
-  ArrowCounterClockwise as ArrowCounterClockwise,
   CaretRight as CaretRight,
-  CircleNotch as CircleNotch,
-  BookOpen,
   Fire as Flame,
-  Lightning as Lightning,
   Trophy as Award,
   ArrowsClockwise as ArrowClockwise,
+  Sparkle,
+  Star,
+  WarningCircle,
+  Info,
+  Pause,
+  ListPlus,
 } from '@phosphor-icons/react';
+import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTypeMeta';
 import { useTranslation } from 'react-i18next';
 import {
   useReviewPlanStore,
   type ReviewPlan,
-  type ReviewStats,
   type ReviewItemWithQuestion,
 } from '@/stores/reviewPlanStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -60,6 +61,10 @@ const formatLocalDate = (d: Date): string => {
 };
 
 interface ReviewPlanViewProps {
+  /**
+   * 本视图所属题目集。传入后视图数据与会话操作以该题目集为准（多窗口隔离）：
+   * 其他窗口把全局 dueReviews 刷成别的题目集时，本视图仍只展示自己的计划。
+   */
   examId?: string;
   className?: string;
   onStartReview?: (items: ReviewItemWithQuestion[]) => void;
@@ -90,16 +95,18 @@ const StatCard: React.FC<StatCardProps> = ({
 }) => (
   <div
     className={cn(
-      'group relative flex flex-col gap-2 p-3 rounded-md',
+      'group relative flex flex-col gap-2 p-3 rounded-lg',
       'bg-muted/20',
       'border border-border/50 hover:border-border',
-      'transition-[background-color,border-color] duration-150',
+      'transition-[background-color,border-color] duration-150 ease-standard',
       className
     )}
   >
     <div className="flex items-center justify-between">
       <div className={cn('p-1.5 rounded-md bg-muted/50', color)}>{icon}</div>
-      <span className={cn('text-lg font-semibold tabular-nums', color)}>{value}</span>
+      <span className={cn('text-xl font-semibold tabular-nums leading-none', color)}>
+        {value}
+      </span>
     </div>
     <div>
       <p className="text-sm font-medium text-foreground">{label}</p>
@@ -118,16 +125,26 @@ interface ReviewQueueItemProps {
   plan: ReviewPlan;
   question?: Question;
   isOverdue: boolean;
+  /** 逾期天数（isOverdue 时 > 0），用于"逾期 N 天"高亮标签 */
+  overdueDays?: number;
   onClick?: () => void;
+  /** 暂停该计划（可选；提供时行尾显示暂停按钮） */
+  onSuspend?: () => void;
+  suspendDisabled?: boolean;
 }
 
 const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
   plan,
   question,
   isOverdue,
+  overdueDays = 0,
   onClick,
+  onSuspend,
+  suspendDisabled,
 }) => {
   const { t } = useTranslation(['review']);
+  const typeMeta = getReviewQuestionTypeMeta(question?.question_type);
+  const TypeIcon = typeMeta.Icon;
 
   const statusColor = useMemo(() => {
     if (isOverdue) return 'text-destructive bg-destructive/10';
@@ -163,59 +180,153 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
     }
   }, [plan.status, plan.is_difficult, isOverdue, t]);
 
-  const content = (
-    <>
-      {/* 状态指示器 */}
-      <div
-        className={cn(
-          'flex-shrink-0 w-2 h-8 rounded-full',
-          isOverdue ? 'bg-destructive' : plan.is_difficult ? 'bg-warning' : 'bg-success'
-        )}
-      />
-
-      {/* 题目信息 */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground line-clamp-2">
-          {question?.content?.slice(0, 80) || t('review:unknownQuestion')}
-          {(question?.content?.length || 0) > 80 && '...'}
-        </p>
-        <div className="flex items-center gap-2 mt-1">
-          <Badge variant="secondary" className={cn('text-xs px-1.5 py-0', statusColor)}>
-            {statusLabel}
-          </Badge>
-          <span className="text-xs text-muted-foreground">
-            {t('review:interval')}: {plan.interval_days}
-            {t('review:days')}
-          </span>
-          {plan.total_reviews > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {t('review:accuracy')}:{' '}
-              {Math.round((plan.total_correct / plan.total_reviews) * 100)}%
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* 箭头 */}
-      <CaretRight size={16} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
-    </>
-  );
-
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
+    <div
       className={cn(
-        'group flex w-full items-center gap-3 p-3 rounded-lg text-left',
+        'group flex w-full items-center gap-1 rounded-lg',
         'bg-muted/20 hover:bg-[var(--interactive-hover)]',
         'border border-transparent hover:border-border/50',
-        'cursor-pointer transition-[background-color,border-color,color,box-shadow] duration-200 disabled:cursor-default disabled:hover:bg-muted/20',
+        'transition-[background-color,border-color,color,box-shadow] duration-200 ease-standard',
         isOverdue && 'border-destructive/30 bg-destructive/5'
       )}
     >
-      {content}
-    </button>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={!onClick}
+        className={cn(
+          'flex min-w-0 flex-1 items-center gap-3 p-3 rounded-lg text-left',
+          'cursor-pointer disabled:cursor-default',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+        )}
+      >
+        {/* 状态指示器 */}
+        <div
+          className={cn(
+            'flex-shrink-0 w-1.5 h-8 rounded-full',
+            isOverdue ? 'bg-destructive' : plan.is_difficult ? 'bg-warning' : 'bg-success'
+          )}
+        />
+
+        {/* 题目信息 */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground line-clamp-2">
+            {question?.content?.slice(0, 80) || t('review:unknownQuestion')}
+            {(question?.content?.length || 0) > 80 && '...'}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+            <Badge variant="secondary" className={cn('text-xs px-1.5 py-0', statusColor)}>
+              {statusLabel}
+            </Badge>
+            {question && (
+              <Badge
+                variant="secondary"
+                className="gap-1 bg-muted px-1.5 py-0 text-xs text-muted-foreground"
+              >
+                <TypeIcon size={11} />
+                {t(typeMeta.labelKey)}
+              </Badge>
+            )}
+            {/* 逾期高亮：显示逾期天数 */}
+            {isOverdue && overdueDays > 0 && (
+              <span className="text-xs font-medium text-destructive">
+                {t('review:queue.overdueDays', { count: overdueDays })}
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {t('review:interval')}: {plan.interval_days}
+              {t('review:days')}
+            </span>
+            {plan.total_reviews > 0 && (
+              <span className="hidden sm:inline text-xs text-muted-foreground">
+                {t('review:accuracy')}:{' '}
+                {Math.round((plan.total_correct / plan.total_reviews) * 100)}%
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 箭头 */}
+        <CaretRight size={16} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
+      </button>
+
+      {/* 暂停计划（内联操作，暂停可随时恢复，无需二次确认） */}
+      {onSuspend && (
+        <NotionButton
+          variant="ghost"
+          iconOnly
+          size="sm"
+          onClick={onSuspend}
+          disabled={suspendDisabled}
+          aria-label={t('review:actions.suspend')}
+          title={t('review:actions.suspend')}
+          className="mr-1.5 h-9 w-9 shrink-0 text-muted-foreground opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+        >
+          <Pause size={14} />
+        </NotionButton>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// 完成态空状态（纯 CSS / 图标插画，不引图片资源）
+// ============================================================================
+
+const AllDoneState: React.FC<{
+  masteredCount: number;
+  onViewCalendar?: () => void;
+}> = ({ masteredCount, onViewCalendar }) => {
+  const { t } = useTranslation(['review']);
+
+  return (
+    <div className="ui-rise-in flex flex-col items-center justify-center py-14 text-center">
+      {/* 同心圆 + 对勾 + 星点插画 */}
+      <div className="relative mb-6 h-28 w-28" aria-hidden="true">
+        <div className="absolute inset-0 rounded-full bg-success/10" />
+        <div className="absolute inset-3 rounded-full bg-success/15" />
+        <div className="absolute inset-6 flex items-center justify-center rounded-full bg-success/20">
+          <CheckCircle size={40} weight="fill" className="text-success" />
+        </div>
+        <Sparkle
+          size={16}
+          weight="fill"
+          className="absolute -top-1 right-3 text-warning motion-safe:animate-pulse"
+        />
+        <Star
+          size={12}
+          weight="fill"
+          className="absolute bottom-2 -left-2 text-primary/60 motion-safe:animate-pulse [animation-delay:400ms]"
+        />
+        <Sparkle
+          size={12}
+          weight="fill"
+          className="absolute top-8 -right-3 text-success/70 motion-safe:animate-pulse [animation-delay:800ms]"
+        />
+      </div>
+
+      <h3 className="text-lg font-semibold text-foreground mb-1.5">
+        {t('review:empty.title')}
+      </h3>
+      <p className="text-sm text-muted-foreground max-w-sm">
+        {t('review:empty.description')}
+      </p>
+
+      <div className="mt-5 flex items-center gap-3">
+        {masteredCount > 0 && (
+          <span className="inline-flex items-center gap-1.5 rounded-pill bg-success/10 px-3 py-1 text-xs font-medium text-success">
+            <Award size={14} weight="fill" />
+            {t('review:empty.masteredChip', { count: masteredCount })}
+          </span>
+        )}
+        {onViewCalendar && (
+          <NotionButton variant="ghost" size="sm" onClick={onViewCalendar} className="gap-1.5 text-xs">
+            <Calendar size={14} />
+            {t('review:empty.viewCalendar')}
+          </NotionButton>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -234,14 +345,38 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
 
   // Store
   const {
-    dueReviews,
-    stats,
+    dueReviews: rawDueReviews,
+    stats: rawStats,
     isLoading,
+    isProcessing,
     loadDueReviews,
     loadStats,
     refreshStats,
     startSession,
+    session,
+    suspendPlan,
+    createPlansForExam,
   } = useReviewPlanStore();
+
+  // ★ 多窗口隔离：dueReviews 是全局单槽位，另一窗口按别的题目集刷新后，
+  // 本视图若不过滤会把别人的计划当成自己的队列（开始复习会跨题目集打分）。
+  const dueReviews = useMemo(
+    () => (examId ? rawDueReviews.filter((p) => p.exam_id === examId) : rawDueReviews),
+    [rawDueReviews, examId]
+  );
+
+  // stats 同为全局单槽位：属于别的题目集时按"未加载"处理，等本视图的 loadStats 回写
+  const stats =
+    examId && rawStats?.exam_id && rawStats.exam_id !== examId ? null : rawStats;
+
+  // ★ 多窗口隔离：另一题目集的复习会话进行中，在此开始复习会替换并结束该会话，
+  // 用内联提示告知（不阻断操作：已提交的评分已持久化，仅丢失其本地队列进度）。
+  const otherExamSessionActive =
+    !!examId &&
+    session.isActive &&
+    !!session.examId &&
+    session.examId !== examId &&
+    session.currentIndex < session.queue.length;
 
   const { questions, loadQuestions } = useQuestionBankStore(
     useShallow((state) => ({
@@ -306,6 +441,12 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
     return Math.round((stats.graduated_count / stats.total_plans) * 100);
   }, [stats]);
 
+  // 预计用时（每题约 30 秒，向上取整到分钟，最低 1 分钟）
+  const estimatedMinutes = useMemo(
+    () => Math.max(1, Math.ceil(dueReviews.length * 0.5)),
+    [dueReviews.length]
+  );
+
   // 获取题目内容的映射
   const questionMap = useMemo(() => {
     const map = new Map<string, Question>();
@@ -316,10 +457,8 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
   const createReviewItem = useCallback((plan: ReviewPlan): ReviewItemWithQuestion | null => {
     const question = questionMap.get(plan.question_id);
     if (!question) return null;
-    return {
-      plan,
-      question: question as ReviewItemWithQuestion['question'],
-    };
+    // questionBankStore.Question 是 ReviewSessionQuestion 的结构超集，直接赋值即可
+    return { plan, question };
   }, [questionMap]);
 
   // 开始复习
@@ -343,6 +482,51 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       startSession(items, examId);
     }
   }, [createReviewItem, dueReviews, examId, onStartReview, startSession, t]);
+
+  // 暂停单个计划（暂停可随时恢复，直接执行 + 通知，无需确认）
+  const handleSuspendPlan = useCallback(async (planId: string) => {
+    try {
+      await suspendPlan(planId);
+      showGlobalNotification('success', t('review:toast.suspendSuccess'));
+    } catch (err: unknown) {
+      showGlobalNotification(
+        'error',
+        err instanceof Error && err.message ? err.message : String(err),
+      );
+    }
+  }, [suspendPlan, t]);
+
+  // 一键为本题目集创建复习计划（无计划时的内联引导入口）
+  const [isCreatingPlans, setIsCreatingPlans] = useState(false);
+  const handleCreatePlansForExam = useCallback(async () => {
+    if (!examId || isCreatingPlans) return;
+    setIsCreatingPlans(true);
+    try {
+      const result = await createPlansForExam(examId);
+      showGlobalNotification(
+        'success',
+        t('review:toast.createSuccess', { count: result.created }),
+      );
+      await loadDueReviews(examId);
+    } catch (err: unknown) {
+      showGlobalNotification(
+        'error',
+        `${t('review:toast.createFailed')}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setIsCreatingPlans(false);
+    }
+  }, [examId, isCreatingPlans, createPlansForExam, loadDueReviews, t]);
+
+  // 逾期天数（本地日界，用于队列行"逾期 N 天"标签）
+  const overdueDaysOf = useCallback((plan: ReviewPlan): number => {
+    if (plan.next_review_date >= today) return 0;
+    const [y1, m1, d1] = plan.next_review_date.split('-').map(Number);
+    const [y2, m2, d2] = today.split('-').map(Number);
+    const due = new Date(y1, (m1 || 1) - 1, d1 || 1).getTime();
+    const now = new Date(y2, (m2 || 1) - 1, d2 || 1).getTime();
+    return Math.max(0, Math.round((now - due) / 86400000));
+  }, [today]);
 
   const handleReviewItemClick = useCallback((plan: ReviewPlan) => {
     const item = createReviewItem(plan);
@@ -379,6 +563,8 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
     );
   }
 
+  const hasDue = dueReviews.length > 0;
+
   return (
     <div className={cn('space-y-6', className)}>
       {/* 头部标题和刷新按钮 */}
@@ -406,10 +592,12 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             size="icon"
             onClick={handleRefresh}
             disabled={isRefreshing}
- className="w-8 h-8"           >
+            aria-label={t('common:refresh', 'Refresh')}
+            className="w-8 h-8"
+          >
             <ArrowClockwise
               className={cn('w-4 h-4', isRefreshing && 'animate-spin')}
-/>
+            />
           </NotionButton>
         </div>
       </div>
@@ -428,7 +616,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               : undefined
           }
           color={overdueCount > 0 ? 'text-destructive' : 'text-primary'}
-/>
+        />
         <StatCard
           icon={<Flame size={18} />}
           label={t('review:stats.totalDue')}
@@ -441,14 +629,14 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               : undefined
           }
           color="text-warning"
-/>
+        />
         <StatCard
           icon={<Award size={18} />}
           label={t('review:stats.mastered')}
           value={stats?.graduated_count || 0}
           description={`${progressPercent}% ${t('review:stats.ofTotal')}`}
           color="text-success"
-/>
+        />
         <StatCard
           icon={<TrendingUp size={18} />}
           label={t('review:stats.accuracy')}
@@ -457,50 +645,90 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             'review:stats.totalReviews'
           )}`}
           color="text-primary"
-/>
+        />
       </div>
 
       {/* 今日复习卡片 */}
-      <Card className="p-4 bg-primary/5 border-primary/20">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-md bg-primary/10">
-              <Target size={18} className="text-primary" />
+      <Card
+        className={cn(
+          'relative overflow-hidden p-5',
+          hasDue ? 'bg-primary/5 border-primary/20' : 'bg-muted/20 border-border/50'
+        )}
+      >
+        {/* 装饰性光晕（纯 CSS） */}
+        {hasDue && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/10 blur-2xl"
+          />
+        )}
+
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <div
+              className={cn(
+                'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl',
+                hasDue ? 'bg-primary/10' : 'bg-success/10'
+              )}
+            >
+              {hasDue ? (
+                <Target size={22} className="text-primary" />
+              ) : (
+                <CheckCircle size={22} weight="fill" className="text-success" />
+              )}
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="font-semibold text-foreground">
                 {t('review:todayReview.title')}
               </h3>
-              <p className="text-sm text-muted-foreground">
-                {dueReviews.length > 0
-                  ? t('review:todayReview.hasDue', {
-                      count: dueReviews.length,
-                    })
-                  : t('review:todayReview.noDue')}
-              </p>
+              {hasDue ? (
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  <span className="text-2xl font-semibold tabular-nums text-primary align-middle mr-1">
+                    {dueReviews.length}
+                  </span>
+                  {t('review:todayReview.itemsUnit')}
+                  <span className="mx-1.5 text-border">·</span>
+                  {t('review:todayReview.estimatedTime', { count: estimatedMinutes })}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {t('review:todayReview.noDue')}
+                </p>
+              )}
             </div>
           </div>
 
-          {dueReviews.length > 0 && (
+          {hasDue && (
             <NotionButton
-              size="sm"
+              variant="primary"
               onClick={handleStartReview}
-              className="gap-1.5"
+              className="gap-2 min-h-10 px-4 shadow-soft"
             >
-              <Play size={16} />
+              <Play size={16} weight="fill" />
               {t('review:startReview')}
+              <CaretRight size={14} className="opacity-70" />
             </NotionButton>
           )}
         </div>
 
+        {/* ★ 多窗口隔离：另一题目集的会话进行中，开始复习会替换它（内联提示，无弹窗） */}
+        {otherExamSessionActive && hasDue && (
+          <div className="ui-rise-in relative mt-3 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
+            <WarningCircle size={14} className="mt-0.5 shrink-0 text-warning" />
+            <p className="text-xs text-warning">
+              {t('review:queue.otherSessionNotice')}
+            </p>
+          </div>
+        )}
+
         {/* 进度条 */}
         {stats && stats.total_plans > 0 && (
-          <div className="space-y-2">
+          <div className="relative space-y-2 mt-4">
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">
                 {t('review:progress.label')}
               </span>
-              <span className="font-medium">
+              <span className="font-medium tabular-nums">
                 {stats.graduated_count} / {stats.total_plans}
               </span>
             </div>
@@ -530,7 +758,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       </Card>
 
       {/* 复习队列 */}
-      {dueReviews.length > 0 && (
+      {hasDue && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-foreground">
@@ -542,15 +770,39 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
           </div>
 
           <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-            {dueReviews.slice(0, 20).map((plan) => (
-              <ReviewQueueItem
-                key={plan.id}
-                plan={plan}
-                question={questionMap.get(plan.question_id)}
-                isOverdue={plan.next_review_date < today}
-                onClick={() => handleReviewItemClick(plan)}
-/>
-            ))}
+            {/* 视觉分组：逾期在前（列表本身按到期日排序，逾期天然靠前） */}
+            {overdueCount > 0 && (
+              <p className="flex items-center gap-1.5 px-1 pt-1 text-xs font-medium text-destructive">
+                <WarningCircle size={13} />
+                {t('review:queue.overdueGroup', { count: overdueCount })}
+              </p>
+            )}
+            {dueReviews.slice(0, 20).map((plan, index) => {
+              const isOverdue = plan.next_review_date < today;
+              const prevPlan = index > 0 ? dueReviews[index - 1] : null;
+              const isFirstDueToday =
+                !isOverdue && (!prevPlan || prevPlan.next_review_date < today);
+              return (
+                <React.Fragment key={plan.id}>
+                  {/* 分组标题：逾期段之后的今日到期段 */}
+                  {isFirstDueToday && overdueCount > 0 && (
+                    <p className="flex items-center gap-1.5 px-1 pt-2 text-xs font-medium text-muted-foreground">
+                      <Clock size={13} />
+                      {t('review:queue.todayGroup')}
+                    </p>
+                  )}
+                  <ReviewQueueItem
+                    plan={plan}
+                    question={questionMap.get(plan.question_id)}
+                    isOverdue={isOverdue}
+                    overdueDays={overdueDaysOf(plan)}
+                    onClick={() => handleReviewItemClick(plan)}
+                    onSuspend={() => void handleSuspendPlan(plan.id)}
+                    suspendDisabled={isProcessing}
+                  />
+                </React.Fragment>
+              );
+            })}
             {dueReviews.length > 20 && (
               <div className="text-center py-2">
                 <span className="text-xs text-muted-foreground">
@@ -564,20 +816,53 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
         </div>
       )}
 
-      {/* 空状态 */}
-      {dueReviews.length === 0 && !isLoading && (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="p-2 rounded-md bg-success/10 mb-3">
-            <CheckCircle size={24} className="text-success" />
-          </div>
-          <h3 className="text-lg font-medium text-foreground mb-1">
-            {t('review:empty.title')}
-          </h3>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            {t('review:empty.description')}
-          </p>
-        </div>
+      {/* 空状态：无任何计划时显示内联创建引导（而非误导性的"全部完成"），
+          否则显示今日无复习的完成态 */}
+      {!hasDue && !isLoading && (
+        examId && stats && stats.total_plans === 0 ? (
+          <Card className="ui-rise-in flex flex-col items-center gap-3 p-6 text-center border-dashed">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+              <ListPlus size={22} className="text-primary" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                {t('review:setup.title')}
+              </h3>
+              <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                {t('review:setup.description')}
+              </p>
+            </div>
+            <NotionButton
+              variant="primary"
+              size="sm"
+              onClick={() => void handleCreatePlansForExam()}
+              disabled={isCreatingPlans}
+              className="min-h-10 gap-2"
+            >
+              <ArrowClockwise
+                size={14}
+                className={cn(isCreatingPlans ? 'animate-spin' : 'hidden')}
+              />
+              {!isCreatingPlans && <Play size={14} weight="fill" />}
+              {t('review:setup.createAll')}
+            </NotionButton>
+          </Card>
+        ) : (
+          <AllDoneState
+            masteredCount={stats?.graduated_count || 0}
+            onViewCalendar={onViewCalendar}
+          />
+        )
       )}
+
+      {/* 间隔重复原理说明：帮助新用户理解"间隔/状态"从哪来 */}
+      <div className="flex items-start gap-2 rounded-md bg-info/10 px-3 py-2 text-xs text-muted-foreground">
+        <Info size={14} className="mt-0.5 shrink-0 text-info" />
+        <span>
+          <span className="font-medium text-info">{t('review:tips.sm2Title')}</span>{' '}
+          {t('review:tips.sm2Desc')}
+        </span>
+      </div>
     </div>
   );
 };

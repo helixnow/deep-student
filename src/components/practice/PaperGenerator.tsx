@@ -16,7 +16,6 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
-import { Slider } from '@/components/ui/shad/Slider';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
@@ -34,10 +33,18 @@ import {
   CheckCircle,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
-import { useQuestionBankStore, PaperConfig, PaperExportFormat, GeneratedPaper, Question } from '@/stores/questionBankStore';
+import {
+  useQuestionBankStore,
+  PaperConfig,
+  PaperExportFormat,
+  GeneratedPaper,
+  Question,
+  PRACTICE_QUESTION_TYPES,
+} from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { CountStepperRow } from './CountStepperRow';
 
 interface PaperGeneratorProps {
   examId: string;
@@ -46,9 +53,8 @@ interface PaperGeneratorProps {
   className?: string;
 }
 
-const QUESTION_TYPE_KEYS = [
-  'single_choice', 'multiple_choice', 'fill_blank', 'short_answer', 'essay', 'calculation', 'proof',
-];
+// 组卷可配置的题型（含 2026-07 新增 true_false/numeric/matching/ordering）
+const QUESTION_TYPE_KEYS = PRACTICE_QUESTION_TYPES.filter((key) => key !== 'other');
 
 const DIFFICULTY_KEYS = [
   { key: 'easy', color: 'bg-success/10 text-success' },
@@ -214,7 +220,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
   // 预览界面
   if (showPreview && generatedPaper) {
     return (
-      <div className={cn('space-y-4', className)}>
+      <div className={cn('ui-rise-in space-y-4', className)}>
         <Card className="bg-transparent border-transparent shadow-none">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
@@ -266,7 +272,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 </NotionButton>
                 
                 {expandedQuestions.has(question.id) && (
-                  <CardContent className="pt-0 space-y-3">
+                  <CardContent className="ui-rise-in pt-0 space-y-3">
                     {/* 选项 */}
                     {question.options && question.options.length > 0 && (
                       <div className="space-y-2 ml-8">
@@ -309,9 +315,9 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
     );
   }
   
-  // 配置界面
+  // 配置界面（与其余练习模式配置面板统一：透明背景、无边框）
   return (
-    <Card className={cn('', className)}>
+    <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
       <CardHeader className="pb-4">
         <CardTitle className="flex items-center gap-2 text-base">
           <FileText size={18} className="text-primary" />
@@ -335,25 +341,19 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
             <GearSix size={16} />
             {t('paper.typeSelection')}
           </Label>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {QUESTION_TYPE_KEYS.map((key) => (
-              <div key={key} className="flex items-center gap-3">
-                <span className="text-sm w-20">{t(`questionType.${key}`)}</span>
-                <Slider
-                  value={[typeSelection[key] || 0]}
-                  onValueChange={(v) => handleTypeChange(key, v[0])}
-                  max={20}
-                  step={1}
-                  className="flex-1"
+              <CountStepperRow
+                key={key}
+                label={t(`questionType.${key}`)}
+                value={typeSelection[key] || 0}
+                onChange={(value) => handleTypeChange(key, value)}
+                max={20}
 />
-                <span className="text-sm w-8 text-right font-medium">
-                  {typeSelection[key] || 0}
-                </span>
-              </div>
             ))}
           </div>
           <div className="text-sm text-muted-foreground">
-            {t('paper.totalSelected')} <span className="font-medium text-foreground">{totalQuestions}</span> {t('paper.questions')}
+            {t('paper.totalSelected')} <span className="font-medium text-foreground tabular-nums">{totalQuestions}</span> {t('paper.questions')}
           </div>
         </div>
         
@@ -453,7 +453,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         {generationError && (
           <div
             role="alert"
-            className="flex items-start gap-2 border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            className="ui-rise-in flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           >
             <span>{t('paper.generateFailed', { error: generationError })}</span>
           </div>

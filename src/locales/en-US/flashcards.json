@@ -8,7 +8,9 @@
   },
   "card": {
     "untitled": "No front",
-    "noBack": "No back"
+    "noBack": "No back",
+    "renderIssue": "Template render issue: {{message}}",
+    "renderIssueMore": " (+{{count}} more)"
   },
   "today": {
     "title": "Today's review",
@@ -115,8 +117,17 @@
       "due": "Due",
       "created": "Created",
       "tags": "Tags",
-      "lastReview": "Last review"
+      "lastReview": "Last review",
+      "source": "Source"
     },
+    "source": {
+      "chat": "From chat",
+      "task": "From card-generation task",
+      "apkg": "Imported from APKG"
+    },
+    "viewSource": "View source",
+    "resetProgress": "Reset progress",
+    "resetProgressConfirm": "Click again to confirm (clears all review history)",
     "undoReview": "Undo last review",
     "dueNow": "Due now",
     "keyboardHint": "↑↓ navigate · Enter expand · Space select",
@@ -141,6 +152,8 @@
     "batchDoneRemaining": "Batch finished — {{count}} still due",
     "summaryRated": "Rated {{count}} this round",
     "stillDue": "{{count}} still due",
+    "continueReview": "Continue reviewing {{count}}",
+    "batchNotice": "This is a focused batch review — ratings count toward your official review history.",
     "intervalHint": "{{interval}}",
     "backToday": "Back to Today",
     "exit": "Exit",
@@ -203,6 +216,8 @@
     "newCount": "New {{count}}",
     "learnCount": "Review {{count}}",
     "remainingTitle": "{{count}} left this round",
+    "learningStep": "Repeats soon",
+    "learningStepHint": "Due in {{time}} — shown early as a learning step",
     "cardTimeTitle": "Time on this card",
     "sessionTimeTitle": "Session time {{time}}",
     "shortcutFlip": "flip",
@@ -219,7 +234,22 @@
     "title": "Flashcard settings",
     "subtitle": "Scheduling options coming later.",
     "schedulingNote": "Review pacing is managed by smart scheduling. Advanced options will open in a later release.",
-    "demoNote": "If the review service is unavailable, the app shows error details and a retry action instead of substituting sample cards."
+    "demoNote": "If the review service is unavailable, the app shows error details and a retry action instead of substituting sample cards.",
+    "scheduler": {
+      "title": "Scheduling",
+      "subtitle": "Daily limits and desired retention (default deck)",
+      "loading": "Loading scheduler configuration…",
+      "unavailable": "Scheduler configuration is unavailable",
+      "newPerDay": "New cards per day",
+      "reviewsPerDay": "Reviews per day",
+      "desiredRetention": "Desired retention",
+      "retentionHint": "Desired retention accepts 0.5–0.99 (e.g. 0.9); higher values shorten intervals and increase review load.",
+      "save": "Save",
+      "saved": "Saved",
+      "saveFailed": "Failed to save scheduler configuration",
+      "invalidLimit": "Daily limits must be integers between 0 and {{max}}",
+      "invalidRetention": "Desired retention must be between {{min}} and {{max}}"
+    }
   },
   "statistics": {
     "title": "Learning statistics",
@@ -259,6 +289,7 @@
     "ratings": {
       "title": "Rating breakdown",
       "subtitle": "Latest rating of each card",
+      "subtitleReal": "All ratings within the statistics window",
       "again": "Again",
       "hard": "Hard",
       "good": "Good",
@@ -279,6 +310,7 @@
       "empty": "No reviews yet — finish your first session to light this up.",
       "unavailable": "Review history is unavailable: the backend does not expose review logs yet, so these charts rely on library data.",
       "approxNote": "Estimated on the client from each card's latest review",
+      "realNote": "Real statistics from the complete review log",
       "truncated": "Only the most recent {{count}} cards were sampled"
     }
   }

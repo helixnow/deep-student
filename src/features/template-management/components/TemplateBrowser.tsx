@@ -204,8 +204,9 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
 
   return (
     <div
-      className={cn('wb-tm-card', !template.is_active && 'inactive')}
+      className={cn('wb-tm-card ui-press', !template.is_active && 'inactive')}
       data-selected={isSelected || undefined}
+      data-agent-entity={`templates:${template.id}`}
       data-template-item
       role="listitem"
       tabIndex={focusable ? 0 : -1}
@@ -329,6 +330,7 @@ const TemplateListRow: React.FC<TemplateListRowProps> = ({
     <div
       className={cn('wb-tm-row', !template.is_active && 'inactive')}
       data-selected={isSelected || undefined}
+      data-agent-entity={`templates:${template.id}`}
       data-template-item
       role="listitem"
       tabIndex={focusable ? 0 : -1}

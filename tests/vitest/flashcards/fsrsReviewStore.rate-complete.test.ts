@@ -231,20 +231,102 @@ describe('fsrsReviewStore rate completion', () => {
     expect(state.queue[state.queueIndex]?.id).toBe('b');
   });
 
-  it('does not reinsert a learning card before its advertised due time', async () => {
+  it('keeps a learning card in the session when its due lands inside the learning-step window', async () => {
     const dueMs = Date.now() + 10 * 60 * 1000;
     mockInvokeByCommand({
       fsrs_rate: {
         logId: 'log-future-learning',
         dueMs,
         scheduledDays: 0,
-        cardState: { lastReviewMs: Date.now() },
+        cardState: { state: 1, lastReviewMs: Date.now() },
+      },
+      fsrs_get_stats: { due: 0 },
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [
+        { id: 'learning', front: 'Q', back: 'A' },
+        { id: 'other', front: 'Q2', back: 'A2' },
+      ],
+      queueIndex: 0,
+      flipped: true,
+    });
+
+    await useFsrsReviewStore.getState().rate(1);
+
+    const state = useFsrsReviewStore.getState();
+    expect(state.queue.map((card) => card.id)).toEqual(['other', 'learning']);
+    expect(state.queue[1]?.learningDueMs).toBe(dueMs);
+    expect(state.queueIndex).toBe(0);
+    expect(state.lastSchedule?.dueMs).toBe(dueMs);
+  });
+
+  it('keeps the session open while only a learning-step card remains', async () => {
+    const dueMs = Date.now() + 60 * 1000;
+    mockInvokeByCommand({
+      fsrs_rate: {
+        logId: 'log-lone-learning',
+        dueMs,
+        scheduledDays: 0,
+        cardState: { state: 1, lastReviewMs: Date.now() },
       },
       fsrs_get_stats: { due: 0 },
     });
     useFsrsReviewStore.setState({
       screen: 'session',
       queue: [{ id: 'learning', front: 'Q', back: 'A' }],
+      queueIndex: 0,
+      flipped: true,
+    });
+
+    await useFsrsReviewStore.getState().rate(1);
+
+    const state = useFsrsReviewStore.getState();
+    // 学习步卡留在本轮：会话不进入完成态，轮到时可提前展示
+    expect(state.queue.map((card) => card.id)).toEqual(['learning']);
+    expect(state.queueIndex).toBe(0);
+    expect(state.queue[0]?.learningDueMs).toBe(dueMs);
+  });
+
+  it('dequeues a graduated card even when its due is near', async () => {
+    const dueMs = Date.now() + 5 * 60 * 1000;
+    mockInvokeByCommand({
+      fsrs_rate: {
+        logId: 'log-graduated',
+        dueMs,
+        scheduledDays: 1,
+        cardState: { state: 2, lastReviewMs: Date.now() },
+      },
+      fsrs_get_stats: { due: 0 },
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [{ id: 'graduated', front: 'Q', back: 'A' }],
+      queueIndex: 0,
+      flipped: true,
+    });
+
+    await useFsrsReviewStore.getState().rate(3);
+
+    const state = useFsrsReviewStore.getState();
+    expect(state.queueIndex).toBe(1);
+    expect(state.queue[state.queueIndex]).toBeUndefined();
+  });
+
+  it('dequeues a learning card whose due is beyond the learning-step window', async () => {
+    const dueMs = Date.now() + 30 * 60 * 1000;
+    mockInvokeByCommand({
+      fsrs_rate: {
+        logId: 'log-far-learning',
+        dueMs,
+        scheduledDays: 0,
+        cardState: { state: 1, lastReviewMs: Date.now() },
+      },
+      fsrs_get_stats: { due: 0 },
+    });
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [{ id: 'far-learning', front: 'Q', back: 'A' }],
       queueIndex: 0,
       flipped: true,
     });

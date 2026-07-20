@@ -17,6 +17,12 @@ const EXPECTED_BUILTIN_TEMPLATE_IDS = [
   'design-lexicon',
   'design-botanical',
   'design-eink',
+  'design-monograph',
+  'design-footnote',
+  'design-marginalia',
+  'design-seminar',
+  'design-nomenclature',
+  'design-exam',
 ];
 
 interface ForceImportResult {

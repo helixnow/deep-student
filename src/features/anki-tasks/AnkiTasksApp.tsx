@@ -26,10 +26,13 @@ import {
 } from '@phosphor-icons/react';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
-import {
-  registerTaskDashboardAgentSurface,
-  type TaskDashboardAgentSnapshot,
-} from '@/features/workbench/apps/system/agentSurfaceRegistry';
+import { registerTaskDashboardAgentSurface } from '@/features/workbench/apps/system/agentSurfaceRegistry';
+// A45-2：Agent 表面扩展（状态令牌 + 焦点会话失败分段），见 docs/dev/acr/ACR-4.5.md
+import { listFailedDocumentTasks } from '@/features/anki/taskControl';
+import type {
+  TaskDashboardAgentSnapshotDetailed,
+  TaskDashboardFocusedFailedTasks,
+} from './agentSurface';
 import {
   classify, computeWindowCardStats,
   POLL_ACTIVE, POLL_IDLE, DASHBOARD_SESSION_LIMIT,
@@ -66,14 +69,17 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
   const [filter, setFilter] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('time');
+  // A45-2：焦点会话失败分段（供 Agent 按 ref 重试单个分段；仅 Workbench 表面挂载时加载）
+  const [agentFailedTasks, setAgentFailedTasks] = useState<TaskDashboardFocusedFailedTasks | null>(null);
   const agentSessionsRef = useRef<DocumentSession[]>([]);
-  const agentSnapshotRef = useRef<TaskDashboardAgentSnapshot>({
+  const agentSnapshotRef = useRef<TaskDashboardAgentSnapshotDetailed>({
     filter: 'all',
     searchQuery: '',
     focusedSessionId: null,
     loading: true,
     sessions: [],
     totalSessions: 0,
+    focusedFailedTasks: null,
   });
 
   agentSessionsRef.current = sessions;
@@ -88,8 +94,17 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
       status: classify(session),
       sourceSessionId: session.sourceSessionId,
       updatedAt: session.lastUpdated,
+      // A45-2 状态令牌：口径与 list_document_sessions 一致（见 agentSurface.ts）
+      totalTasks: session.totalTasks,
+      completedTasks: session.completedTasks,
+      failedTasks: session.failedTasks,
+      activeTasks: session.activeTasks,
+      pausedTasks: session.pausedTasks,
+      totalCards: session.totalCards,
     })),
     totalSessions: sessions.length,
+    focusedFailedTasks:
+      agentFailedTasks && agentFailedTasks.sessionId === expandedId ? agentFailedTasks : null,
   };
 
   useEffect(() => {
@@ -114,6 +129,50 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
       },
     });
   }, [workbenchWindowId]);
+
+  /**
+   * A45-2：焦点会话存在失败口径任务时，为 Agent 观察面加载失败分段清单。
+   * 走 UI 同一条链路（listFailedDocumentTasks，与 FailedTasksPanel 一致）；
+   * key 编码「会话 id + 失败数 + 最后更新时间」，轮询导致的 sessions 数组换引用
+   * 不会重复拉取，失败数/更新时间变化才刷新。仅 Workbench 表面挂载时启用。
+   */
+  const agentFailedKey = useMemo(() => {
+    if (!workbenchWindowId || !expandedId) return null;
+    const session = sessions.find(s => s.documentId === expandedId);
+    if (!session || session.failedTasks <= 0) return null;
+    return JSON.stringify([session.documentId, session.failedTasks, session.lastUpdated]);
+  }, [workbenchWindowId, expandedId, sessions]);
+
+  useEffect(() => {
+    if (!agentFailedKey) {
+      setAgentFailedTasks(null);
+      return undefined;
+    }
+    const [sessionId] = JSON.parse(agentFailedKey) as [string, number, string];
+    let alive = true;
+    setAgentFailedTasks({ sessionId, loading: true, loadError: null, tasks: [] });
+    listFailedDocumentTasks(sessionId)
+      .then((failed) => {
+        if (!alive) return;
+        setAgentFailedTasks({
+          sessionId,
+          loading: false,
+          loadError: null,
+          tasks: failed.map(task => ({
+            id: task.id,
+            status: task.status,
+            segmentIndex: task.segment_index,
+            errorMessage: task.error_message ?? null,
+          })),
+        });
+      })
+      .catch((err: unknown) => {
+        if (!alive) return;
+        // 观察面诚实报告加载失败，不静默装作「没有失败任务」
+        setAgentFailedTasks({ sessionId, loading: false, loadError: getErrorMessage(err), tasks: [] });
+      });
+    return () => { alive = false; };
+  }, [agentFailedKey]);
 
   // 智能轮询 —— 通过 ref 跟踪是否有活跃任务
   const hasActiveRef = useRef(false);
@@ -650,16 +709,19 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
             {/* 移动端：排序 / 刷新 / 恢复卡住任务（桌面在页头工具条） */}
             {isSmallScreen && (
               <div className="flex items-center gap-1">
-                <NotionButton size="sm" variant="utility" onClick={cycleSort}>
+                <NotionButton size="sm" variant="utility" onClick={cycleSort} aria-label={sortLabel} title={sortLabel}>
                   <ArrowsDownUp size={14} />
+                  <span className="text-[11px]">{sortLabel}</span>
                 </NotionButton>
                 <NotionButton size="sm" variant="utility" onClick={load} className="w-11 p-0" aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </NotionButton>
-                <NotionButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')}>
+                {/* 触屏无 hover tooltip，纯图标无从得知含义——补文案（工具条 flex-wrap 可换行不溢出） */}
+                <NotionButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
+                  <span className="text-[11px]">{t('taskDashboard.recoverStuck')}</span>
                 </NotionButton>
               </div>
             )}

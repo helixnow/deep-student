@@ -52,6 +52,28 @@ describe('AnkiTemplateCardFace', () => {
     expect(backSrcdoc).toContain('Paris');
   });
 
+  it('masks only the AnkiCardOrd cloze for imported multi-cloze cards', () => {
+    const multiText = '{{c1::Alpha}} and {{c2::Beta}}';
+    const multi: AnkiCard = {
+      id: 'card-multi-cloze',
+      front: '',
+      back: '',
+      text: multiText,
+      tags: [],
+      images: [],
+      // apkg 导入卡：AnkiCardOrd=1（0 起）→ 对应 c2
+      extra_fields: { Text: multiText, AnkiCardOrd: '1' },
+    };
+
+    const view = render(
+      <AnkiTemplateCardFace card={multi} template={template} side="front" />,
+    );
+    const frontSrcdoc = view.container.querySelector('iframe')?.getAttribute('srcdoc') || '';
+    expect(frontSrcdoc).toContain('Alpha');
+    expect(frontSrcdoc).toContain('[...]');
+    expect(frontSrcdoc).not.toContain('Beta');
+  });
+
   it('uses controlled plain-text fallbacks without a template', () => {
     const view = render(
       <AnkiTemplateCardFace

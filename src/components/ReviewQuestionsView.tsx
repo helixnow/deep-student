@@ -16,9 +16,53 @@ import {
   Trophy as Award,
   Warning as Warning,
 } from '@phosphor-icons/react';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTypeMeta';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useTranslation, Trans } from 'react-i18next';
 import type { Question, QuestionBankStats, Difficulty } from '@/api/questionBankApi';
+
+/** 错题排序方式：默认（题目顺序）/ 错误次数 / 最近错误 */
+type ReviewSortBy = 'default' | 'errors' | 'recent';
+
+/**
+ * 错因标签（由作答统计推导，无需后端字段）：
+ * - neverCorrect: 从未答对
+ * - repeatedErrors: 反复错（错误 ≥3 次）
+ * - highErrorRate: 高错误率（≥60% 且尝试 ≥2 次）
+ * - stale: 久未复习（>14 天）
+ */
+type ErrorCause = 'neverCorrect' | 'repeatedErrors' | 'highErrorRate' | 'stale';
+
+const STALE_DAYS = 14;
+
+const getErrorCauses = (question: Question): ErrorCause[] => {
+  const attempts = question.attemptCount || 0;
+  const correct = question.correctCount || 0;
+  const errors = attempts - correct;
+  const causes: ErrorCause[] = [];
+
+  if (attempts > 0 && correct === 0) {
+    causes.push('neverCorrect');
+  } else if (errors >= 3) {
+    causes.push('repeatedErrors');
+  } else if (attempts >= 2 && errors / attempts >= 0.6) {
+    causes.push('highErrorRate');
+  }
+
+  if (question.lastAttemptAt) {
+    const diffDays = (Date.now() - new Date(question.lastAttemptAt).getTime()) / 86400000;
+    if (diffDays > STALE_DAYS) causes.push('stale');
+  }
+  return causes;
+};
+
+const ERROR_CAUSE_STYLE: Record<ErrorCause, string> = {
+  neverCorrect: 'bg-destructive/10 text-destructive',
+  repeatedErrors: 'bg-warning/10 text-warning',
+  highErrorRate: 'bg-warning/10 text-warning',
+  stale: 'bg-info/10 text-info',
+};
 
 export interface ReviewQuestionsViewProps {
   /** 所有题目（组件内部会过滤出 review 状态的） */
@@ -151,18 +195,25 @@ const ReviewStatsCard: React.FC<{
 
 /**
  * 错题卡片
+ *
+ * 行点击内联展开「我的答案 vs 正确答案」对比 + 快速重做入口（无弹窗）。
  */
 const ReviewQuestionCard: React.FC<{
   question: Question;
   originalIndex: number;
   isSelected: boolean;
+  isExpanded: boolean;
   onSelect: (selected: boolean) => void;
-  onClick?: () => void;
-}> = ({ question, originalIndex, isSelected, onSelect, onClick }) => {
+  onToggleExpand: () => void;
+  onRedo?: () => void;
+}> = ({ question, originalIndex, isSelected, isExpanded, onSelect, onToggleExpand, onRedo }) => {
   const { t } = useTranslation(['review']);
   const attemptCount = question.attemptCount || 0;
   const correctCount = question.correctCount || 0;
   const errorRate = attemptCount > 0 ? ((attemptCount - correctCount) / attemptCount * 100).toFixed(0) : '100';
+  const typeMeta = getReviewQuestionTypeMeta(question.questionType);
+  const TypeIcon = typeMeta.Icon;
+  const errorCauses = useMemo(() => getErrorCauses(question), [question]);
   
   // 格式化最后尝试时间
   const lastAttemptText = useMemo(() => {
@@ -177,67 +228,191 @@ const ReviewQuestionCard: React.FC<{
     if (diffDays < 7) return t('review:questions.daysAgo', { count: diffDays });
     if (diffDays < 30) return t('review:questions.weeksAgo', { count: Math.floor(diffDays / 7) });
     return t('review:questions.monthsAgo', { count: Math.floor(diffDays / 30) });
-  }, [question.lastAttemptAt]);
+  }, [question.lastAttemptAt, t]);
+
+  const hasUserAnswer = Boolean(question.userAnswer?.trim());
 
   return (
     <div
       className={cn(
-        'group flex min-h-11 items-center gap-2 rounded-md px-2 py-1.5 transition-colors sm:min-h-0',
-        !isSelected && 'hover:bg-accent',
-        isSelected && 'bg-warning/10'
+        'rounded-md transition-colors',
+        isSelected && 'bg-warning/10',
+        !isSelected && isExpanded && 'bg-muted/30',
+        !isSelected && !isExpanded && 'hover:bg-accent'
       )}
     >
-      {/* 复选框：触控命中区 ≥44px（移动端），视觉盒保持 16px */}
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={isSelected}
-        aria-label={t('review:questions.selectQuestion', { label: question.questionLabel || `Q${originalIndex + 1}` })}
-        className="flex h-11 w-11 -my-2 -ml-2 shrink-0 items-center justify-center sm:h-6 sm:w-6 sm:-my-0 sm:-ml-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(!isSelected);
-        }}
-      >
-        <span
-          aria-hidden="true"
-          className={cn(
-            'flex h-4 w-4 items-center justify-center rounded-sm border transition-colors',
-            isSelected
-              ? 'border-warning bg-warning text-warning-foreground'
-              : 'border-muted-foreground/40 text-transparent hover:border-warning'
-          )}
+      <div className="group flex min-h-11 items-center gap-2 px-2 py-1.5 sm:min-h-0">
+        {/* 复选框：触控命中区 ≥44px（移动端），视觉盒保持 16px */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={isSelected}
+          aria-label={t('review:questions.selectQuestion', { label: question.questionLabel || `Q${originalIndex + 1}` })}
+          className="flex h-11 w-11 -my-2 -ml-2 shrink-0 items-center justify-center sm:h-6 sm:w-6 sm:-my-0 sm:-ml-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(!isSelected);
+          }}
         >
-          {isSelected && <Check size={10} />}
-        </span>
-      </button>
-
-      <button type="button" onClick={onClick} disabled={!onClick} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default">
-        {/* 题号 */}
-        <span className="w-10 shrink-0 text-sm font-medium text-muted-foreground">
-          {question.questionLabel || `Q${originalIndex + 1}`}
-        </span>
-        {/* 难度指示器 */}
-        {question.difficulty && (
-          <span className={cn('shrink-0 text-xs font-medium', DIFFICULTY_CONFIG[question.difficulty].color)}>
-            {t(`review:questions.difficulty.${question.difficulty}`)}
+          <span
+            aria-hidden="true"
+            className={cn(
+              'flex h-4 w-4 items-center justify-center rounded-sm border transition-colors',
+              isSelected
+                ? 'border-warning bg-warning text-warning-foreground'
+                : 'border-muted-foreground/40 text-transparent hover:border-warning'
+            )}
+          >
+            {isSelected && <Check size={10} />}
           </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          aria-expanded={isExpanded}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+        >
+          {/* 题号 */}
+          <span className="w-10 shrink-0 text-sm font-medium text-muted-foreground">
+            {question.questionLabel || `Q${originalIndex + 1}`}
+          </span>
+          {/* 题型（穷举映射，含新题型；窄屏仅图标） */}
+          <span
+            className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+            title={t(typeMeta.labelKey)}
+          >
+            <TypeIcon size={13} />
+            <span className="hidden md:inline">{t(typeMeta.labelKey)}</span>
+          </span>
+          {/* 难度指示器 */}
+          {question.difficulty && (
+            <span className={cn('shrink-0 text-xs font-medium', DIFFICULTY_CONFIG[question.difficulty].color)}>
+              {t(`review:questions.difficulty.${question.difficulty}`)}
+            </span>
+          )}
+
+          {/* 题目内容 */}
+          <p className="flex-1 truncate text-sm text-foreground/80">
+            {question.content || question.ocrText || t('review:questions.noContent')}
+          </p>
+
+          {/* 错因标签（首个；完整列表见展开明细） */}
+          {errorCauses.length > 0 && (
+            <span
+              className={cn(
+                'hidden sm:inline-flex shrink-0 items-center rounded-pill px-1.5 py-0.5 text-[10px] font-medium',
+                ERROR_CAUSE_STYLE[errorCauses[0]]
+              )}
+            >
+              {t(`review:questions.errorCause.${errorCauses[0]}`)}
+            </span>
+          )}
+
+          {/* 统计信息 */}
+          <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+            <span>{t('review:questions.attemptCount', { count: attemptCount })}</span>
+            <span className="font-medium text-destructive">{errorRate}%</span>
+            <span className="hidden sm:inline">{lastAttemptText}</span>
+          </div>
+
+          <CaretRight
+            size={16}
+            className={cn(
+              'shrink-0 transition-transform duration-200 ease-standard',
+              isExpanded
+                ? 'rotate-90 text-muted-foreground/60'
+                : 'text-muted-foreground/0 group-hover:text-muted-foreground/60'
+            )}
+          />
+        </button>
+      </div>
+
+      {/* 内联展开：我的答案 vs 正确答案对比 + 快速重做（grid-rows 展开动画） */}
+      <div
+        className={cn(
+          'grid transition-[grid-template-rows,opacity] duration-200 ease-standard motion-reduce:transition-none',
+          isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
         )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {isExpanded && (
+            <div className="px-2 pb-2 pt-0.5 sm:pl-[4.5rem]">
+              {/* 错因标签完整列表（窄屏行内只显示首个，这里补全） */}
+              {errorCauses.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                  {errorCauses.map((cause) => (
+                    <span
+                      key={cause}
+                      className={cn(
+                        'inline-flex items-center rounded-pill px-1.5 py-0.5 text-[10px] font-medium',
+                        ERROR_CAUSE_STYLE[cause]
+                      )}
+                    >
+                      {t(`review:questions.errorCause.${cause}`)}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="grid gap-2 sm:grid-cols-2">
+                {/* 我的答案 */}
+                <div className="rounded-md border border-destructive/25 bg-destructive/5 p-2.5">
+                  <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
+                    <X size={12} weight="bold" />
+                    {t('review:questions.myAnswer')}
+                  </p>
+                  <p className={cn(
+                    'text-sm break-words whitespace-pre-wrap',
+                    hasUserAnswer ? 'text-foreground/90' : 'italic text-muted-foreground'
+                  )}>
+                    {hasUserAnswer ? question.userAnswer : t('review:questions.noAnswerRecorded')}
+                  </p>
+                </div>
+                {/* 正确答案 */}
+                <div className="rounded-md border border-success/25 bg-success/5 p-2.5">
+                  <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-success">
+                    <Check size={12} weight="bold" />
+                    {t('review:questions.correctAnswer')}
+                  </p>
+                  <p className={cn(
+                    'text-sm break-words whitespace-pre-wrap',
+                    question.answer?.trim() ? 'text-foreground/90' : 'italic text-muted-foreground'
+                  )}>
+                    {question.answer?.trim() || t('review:questions.noContent')}
+                  </p>
+                </div>
+              </div>
 
-        {/* 题目内容 */}
-        <p className="flex-1 truncate text-sm text-foreground/80">
-          {question.content || question.ocrText || t('review:questions.noContent')}
-        </p>
+              {/* 解析（有则展示） */}
+              {question.explanation?.trim() && (
+                <div className="mt-2 rounded-md border border-info/25 bg-info/5 p-2.5">
+                  <p className="mb-1 text-xs font-medium text-info">
+                    {t('review:questions.explanation')}
+                  </p>
+                  <p className="text-sm text-foreground/80 break-words whitespace-pre-wrap line-clamp-6">
+                    {question.explanation}
+                  </p>
+                </div>
+              )}
 
-        {/* 统计信息 */}
-        <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
-          <span>{t('review:questions.attemptCount', { count: attemptCount })}</span>
-          <span className="font-medium text-destructive">{errorRate}%</span>
-          <span className="hidden sm:inline">{lastAttemptText}</span>
+              {/* 快速重做入口 */}
+              {onRedo && (
+                <div className="mt-2 flex justify-end">
+                  <NotionButton
+                    variant="warning"
+                    size="sm"
+                    onClick={onRedo}
+                    className="gap-1.5 !h-auto min-h-8 !px-2.5 !py-1 text-xs"
+                  >
+                    <ArrowClockwise size={13} />
+                    {t('review:questions.redo')}
+                  </NotionButton>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-
-        <CaretRight size={16} className="shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/60" />
-      </button>
+      </div>
     </div>
   );
 };
@@ -272,6 +447,10 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
   const { t } = useTranslation(['review', 'practice', 'common']);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isOperating, setIsOperating] = useState(false);
+  // 展开中的错题（互斥展开：一次只看一题的答案对比）
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // 排序方式：默认题目顺序 / 错误次数降序 / 最近错误在前
+  const [sortBy, setSortBy] = useState<ReviewSortBy>('default');
   // 行内二次确认（无模态框）：首次点击进入待确认态，4s 后自动回退
   const [armedAction, setArmedAction] = useState<'delete' | 'reset' | null>(null);
   const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -298,6 +477,26 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
   const reviewQuestions = useMemo(() => {
     return questions.filter(q => q.status === 'review');
   }, [questions]);
+
+  // 排序后的错题列表（默认保持题目原顺序；排序均为稳定排序）
+  const sortedReviewQuestions = useMemo(() => {
+    if (sortBy === 'default') return reviewQuestions;
+    const list = [...reviewQuestions];
+    if (sortBy === 'errors') {
+      list.sort((a, b) => {
+        const errA = (a.attemptCount || 0) - (a.correctCount || 0);
+        const errB = (b.attemptCount || 0) - (b.correctCount || 0);
+        return errB - errA;
+      });
+    } else {
+      list.sort((a, b) => {
+        const timeA = a.lastAttemptAt ? new Date(a.lastAttemptAt).getTime() : 0;
+        const timeB = b.lastAttemptAt ? new Date(b.lastAttemptAt).getTime() : 0;
+        return timeB - timeA;
+      });
+    }
+    return list;
+  }, [reviewQuestions, sortBy]);
 
   // 获取原始索引映射
   const originalIndexMap = useMemo(() => {
@@ -364,13 +563,18 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     }
   }, [selectedIds, onDelete, disarm, t]);
 
-  // 点击题目
-  const handleQuestionClick = useCallback((questionId: string) => {
+  // 快速重做：跳转到该题练习
+  const handleRedoQuestion = useCallback((questionId: string) => {
     const originalIndex = originalIndexMap.get(questionId);
     if (originalIndex !== undefined) {
       onQuestionClick?.(originalIndex);
     }
   }, [originalIndexMap, onQuestionClick]);
+
+  // 行点击：内联展开/收起答案对比
+  const handleToggleExpand = useCallback((questionId: string) => {
+    setExpandedId((prev) => (prev === questionId ? null : questionId));
+  }, []);
 
   // 空状态
   if (reviewQuestions.length === 0) {
@@ -462,18 +666,38 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
         </div>
       </div>
 
+      {/* 排序控件（默认题目顺序 / 错误次数 / 最近错误） */}
+      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-1.5">
+        <span className="text-xs text-muted-foreground">
+          {t('review:questions.sortLabel')}
+        </span>
+        <SegmentedControl<ReviewSortBy>
+          ariaLabel={t('review:questions.sortLabel')}
+          size="compact"
+          value={sortBy}
+          onValueChange={setSortBy}
+          options={[
+            { value: 'default', label: t('review:questions.sortDefault') },
+            { value: 'errors', label: t('review:questions.sortByErrors') },
+            { value: 'recent', label: t('review:questions.sortByRecent') },
+          ]}
+        />
+      </div>
+
       {/* 错题列表 - 紧凑布局 */}
       <CustomScrollArea className="flex-1" viewportClassName="px-4 pb-4">
         <div className="space-y-0.5 pt-1">
-          {reviewQuestions.map((q) => (
+          {sortedReviewQuestions.map((q) => (
             <ReviewQuestionCard
               key={q.id}
               question={q}
               originalIndex={originalIndexMap.get(q.id) || 0}
               isSelected={selectedIds.has(q.id)}
+              isExpanded={expandedId === q.id}
               onSelect={(selected) => toggleSelect(q.id, selected)}
-              onClick={onQuestionClick ? () => handleQuestionClick(q.id) : undefined}
-/>
+              onToggleExpand={() => handleToggleExpand(q.id)}
+              onRedo={onQuestionClick ? () => handleRedoQuestion(q.id) : undefined}
+            />
           ))}
         </div>
       </CustomScrollArea>

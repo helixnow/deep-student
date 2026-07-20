@@ -253,7 +253,10 @@ export const SessionRow: React.FC<{
   const isRunning = group === 'active' && session.activeTasks > 0;
 
   return (
-    <div className={`wb-at-row group/row${isRunning ? ' wb-at-row-running' : ''}`}>
+    <div
+      className={`wb-at-row group/row${isRunning ? ' wb-at-row-running' : ''}`}
+      data-agent-entity={`taskDashboard:${session.documentId}`}
+    >
       {/* ---- 主行 ---- */}
       <div
         className={`wb-at-row-main${isSmallScreen ? ' min-h-[44px]' : ''}`}
@@ -365,9 +368,9 @@ export const SessionRow: React.FC<{
         )}
       </div>
 
-      {/* ---- 展开区域 ---- */}
+      {/* ---- 展开区域 ----（ui-rise-in：与设置 TabsContent 同款挂载入场，reduced-motion 自动降级） */}
       {expanded && (
-        <div className="wb-at-row-detail space-y-3">
+        <div className="wb-at-row-detail space-y-3 ui-rise-in">
           {/* 属性行 */}
           <div className="space-y-0.5">
             <PropRow icon={<Hash size={14} />} label={t('taskDashboard.colStatus')}>

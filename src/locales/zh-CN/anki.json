@@ -442,6 +442,11 @@
     "prev_card": "上一张",
     "card_preview": "卡片预览"
   },
+  "apkg_import": {
+    "colpkg_unsupported": "暂不支持导入 .colpkg 集合包。请在 Anki 中使用「文件 → 导出 → 牌组（.apkg）」按牌组导出后再导入。",
+    "modern_schema_unsupported": "该 APKG 使用现代 Anki 导出格式，解析失败。请在 Anki 导出时勾选「支持较旧的 Anki 版本」后重新导出再试。",
+    "schedule_preserved": "已将 Anki 复习进度保存为卡片元数据，再导出 APKG 时会自动回写调度信息。"
+  },
   "errors": {
     "rejected_files": "已拒绝文件",
     "no_source_selected": "请先选择来源",
@@ -492,10 +497,10 @@
     "force_import_hint": "强制导入所有复杂模板示例",
     "import_builtin": "导入内置模板",
     "import_builtin_hint": "导入官方内置模板",
-    "import_builtin_hint_detail": "点击导入6个官方内置模板",
-    "import_builtin_count": "导入内置模板 (6个)",
+    "import_builtin_hint_detail": "点击导入10个官方内置模板",
+    "import_builtin_count": "导入内置模板 (10个)",
     "importing": "导入中...",
-    "import_hint_text": "可导入你导出的模板或兼容的JSON格式；内置按钮包含极简卡片、代码卡片、填空题等6个高质量模板"
+    "import_hint_text": "可导入你导出的模板或兼容的JSON格式；内置按钮包含学术选择题、学术填空题、手稿风格等10个精心设计的模板"
   },
   "template_editor": {
     "toolbar": "工具栏",
@@ -715,7 +720,7 @@
     "colTime": "更新时间",
     "colActions": "操作",
     "noTasksFound": "暂无任务",
-    "footer": "任务数据保留30天",
+    "footer": "任务数据长期保留，可手动删除",
     "items": "项",
     "chartStatusDistribution": "任务状态分布",
     "chartTopDocs": "制卡数量排行 (Top 5)",
@@ -819,8 +824,11 @@
     "skeletonHint": "下一张卡片生成中…",
     "editHint": "Enter 保存 · Shift+Enter 换行 · Esc 取消",
     "deletedCard": "已删除第 {{index}} 张卡片",
+    "deletedCards": "已删除 {{count}} 张卡片",
     "undo": "撤销",
     "deleteCommitFailed": "删除未生效，卡片已恢复",
+    "deleteCommittedOnLeave": "已离开视图，待撤销的 {{count}} 张卡片删除已生效",
+    "quoteToInput": "引用到输入框",
     "summaryCompleted": "已生成 {{count}} 张卡片",
     "summaryDuration": "用时 {{duration}}",
     "durationSeconds": "{{count}} 秒",
@@ -846,6 +854,7 @@
     "assistant_generated_summary": "AI 已生成模板「{{name}}」（{{noteType}}）"
   },
   "connect": {
+    "disabled": "AnkiConnect 未启用，请先在设置中开启",
     "no_cards_provided": "未提供卡片",
     "deck_name_required": "牌组名称不能为空",
     "note_type_required": "笔记类型不能为空"
@@ -875,6 +884,7 @@
     "switchToDarkPreview": "切换为深色预览",
     "switchToLightPreview": "切换为浅色预览",
     "renderError": "预览渲染失败",
+    "renderIssuesTitle": "发现 {{count}} 个渲染问题",
     "renderErrorHint": "请检查模板语法，修正后预览会自动恢复。",
     "sampleData": "示例数据",
     "sampleDataHint": "编辑字段值即可实时更新预览；数组字段用英文逗号分隔。",

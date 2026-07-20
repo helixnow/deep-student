@@ -9,6 +9,7 @@ import {
   deleteAnkiCard,
   enqueueAnkiLibraryCard,
   listAnkiLibraryCards,
+  resetFsrsCardProgress,
   suspendFsrsCard,
   undoFsrsLastReview,
   unsuspendFsrsCard,
@@ -16,6 +17,7 @@ import {
 } from '@/utils/chatApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { requestFlashcardsDueRefresh } from '../events';
+import type { ReviewEditTemplate } from '../reviewCardEditFields';
 
 export const FLASHCARDS_LIBRARY_PAGE_SIZE = 20;
 
@@ -69,8 +71,14 @@ interface FlashcardsLibraryState {
   goToPage: (page: number) => Promise<boolean>;
   enqueueCard: (cardId: string) => Promise<boolean>;
   setCardSuspended: (cardId: string, suspended: boolean) => Promise<boolean>;
-  updateCard: (cardId: string, patch: AnkiLibraryCardPatch) => Promise<boolean>;
+  updateCard: (
+    cardId: string,
+    patch: AnkiLibraryCardPatch,
+    template?: ReviewEditTemplate | null,
+  ) => Promise<boolean>;
   undoLastReview: (cardId: string) => Promise<boolean>;
+  /** 危险操作：清除全部复习历史并重建 New 状态（stateId 会更换）。 */
+  resetProgress: (cardId: string) => Promise<boolean>;
   deleteCard: (cardId: string) => Promise<boolean>;
   bulkEnqueue: (cardIds: string[]) => Promise<boolean>;
   bulkSetSuspended: (cardIds: string[], suspended: boolean) => Promise<boolean>;
@@ -255,9 +263,12 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
         : unsuspendFsrsCard(card.stateId);
     }),
 
-    updateCard: (cardId, patch) => runMutation(
+    updateCard: (cardId, patch, template) => runMutation(
       cardId,
-      (card) => updateAnkiLibraryCard(card, patch),
+      // 未提供 template 时保持两参调用形态（既有调用方/断言不感知新参数）
+      (card) => (template !== undefined
+        ? updateAnkiLibraryCard(card, patch, template)
+        : updateAnkiLibraryCard(card, patch)),
     ),
 
     undoLastReview: (cardId) => runMutation(cardId, async (card) => {
@@ -266,6 +277,11 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
         throw new Error(i18n.t('flashcards:library.undoUnavailable'));
       }
       return undoFsrsLastReview(card.stateId, logId);
+    }),
+
+    resetProgress: (cardId) => runMutation(cardId, async (card) => {
+      if (!card.stateId) throw new Error(i18n.t('flashcards:library.missingState'));
+      return resetFsrsCardProgress(card.stateId);
     }),
 
     deleteCard: (cardId) => runMutation(cardId, (card) => deleteAnkiCard(card.id)),

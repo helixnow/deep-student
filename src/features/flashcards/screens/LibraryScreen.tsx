@@ -29,6 +29,7 @@ import {
   type LibraryStatusFilter,
 } from '../store/libraryStore';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
+import type { ReviewEditTemplate } from '../reviewCardEditFields';
 import { LibraryCardRow } from '../library/LibraryCardRow';
 import { matchesStatusFilter, sortLibraryCards } from '../library/libraryView';
 import '../library/library.css';
@@ -91,6 +92,7 @@ export const LibraryScreen: React.FC = () => {
   const setCardSuspended = useFlashcardsLibraryStore((state) => state.setCardSuspended);
   const updateCard = useFlashcardsLibraryStore((state) => state.updateCard);
   const undoLastReview = useFlashcardsLibraryStore((state) => state.undoLastReview);
+  const resetProgress = useFlashcardsLibraryStore((state) => state.resetProgress);
   const deleteCard = useFlashcardsLibraryStore((state) => state.deleteCard);
   const bulkEnqueue = useFlashcardsLibraryStore((state) => state.bulkEnqueue);
   const bulkSetSuspended = useFlashcardsLibraryStore((state) => state.bulkSetSuspended);
@@ -257,13 +259,21 @@ export const LibraryScreen: React.FC = () => {
   }, [deleteCandidateId, deleteCard]);
 
   const handleSaveEdit = useCallback(
-    (cardId: string, patch: AnkiLibraryCardPatch) => updateCard(cardId, patch),
+    (
+      cardId: string,
+      patch: AnkiLibraryCardPatch,
+      template?: ReviewEditTemplate | null,
+    ) => updateCard(cardId, patch, template),
     [updateCard],
   );
 
   const handleUndoReview = useCallback((cardId: string) => {
     void undoLastReview(cardId);
   }, [undoLastReview]);
+
+  const handleResetProgress = useCallback((cardId: string) => {
+    void resetProgress(cardId);
+  }, [resetProgress]);
 
   const handleRowKeyDown = useCallback((
     event: React.KeyboardEvent<HTMLLIElement>,
@@ -634,6 +644,7 @@ export const LibraryScreen: React.FC = () => {
                   onConfirmDelete={handleConfirmDelete}
                   onSaveEdit={handleSaveEdit}
                   onUndoReview={handleUndoReview}
+                  onResetProgress={handleResetProgress}
                   onRowKeyDown={handleRowKeyDown}
                   rowRef={registerRowRef}
                 />

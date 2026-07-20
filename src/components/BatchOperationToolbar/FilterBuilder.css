@@ -9,7 +9,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  /* 走全局浮层阶梯（此前硬编码 1000 低于 --z-overlay/--z-modal，会被其他浮层盖住） */
+  z-index: var(--z-modal);
 }
 
 .filter-builder {
@@ -218,40 +219,6 @@
   gap: 12px;
 }
 
-.btn-primary,
-.btn-secondary {
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-}
-
-.btn-primary {
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-}
-
-.btn-primary:hover {
-  background: hsl(var(--primary));
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-content-soft);
-}
-
-.btn-secondary {
-  background: hsl(var(--muted));
-  color: var(--text-primary);
-  border: 1px solid hsl(var(--border));
-}
-
-.btn-secondary:hover {
-  background: hsl(var(--accent));
-  border-color: var(--border-strong);
-}
-
 /* 响应式设计 */
 @media (max-width: 767.98px) {
   .filter-builder {
@@ -280,62 +247,7 @@
   }
 }
 
-/* 暗色模式支持 */
-@media (prefers-color-scheme: dark) {
-  .filter-builder {
-    background: hsl(var(--card));
-    color: hsl(var(--foreground));
-  }
-  
-  .filter-builder-header {
-    border-bottom-color: hsl(var(--border));
-  }
-  
-  .filter-builder-footer {
-    border-top-color: hsl(var(--border));
-  }
-  
-  .filter-item {
-    background: hsl(var(--background));
-    border-color: hsl(var(--border));
-  }
-  
-  .filter-type-select,
-  .filter-operator-select,
-  .filter-value-input {
-    background: hsl(var(--background));
-    border-color: hsl(var(--border));
-    color: hsl(var(--foreground));
-  }
-  
-  .add-filter-btn {
-    background: hsl(var(--background));
-    border-color: hsl(var(--border));
-    color: hsl(var(--muted-foreground));
-  }
-  
-  .add-filter-btn:hover {
-    background: hsl(var(--muted));
-    border-color: hsl(var(--muted-foreground));
-    color: hsl(var(--foreground));
-  }
-  
-  .close-btn:hover {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-  }
-  
-  .btn-secondary {
-    background: hsl(var(--muted));
-    color: hsl(var(--foreground));
-    border-color: hsl(var(--border));
-  }
-  
-  .btn-secondary:hover {
-    background: hsl(var(--accent));
-    border-color: hsl(var(--muted-foreground));
-  }
-}
+/* 暗色由 :root.dark 下的 token 翻转自动生效，无需 prefers-color-scheme 覆盖 */
 
 /* 动画效果 */
 .filter-item {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Sun, Moon, WarningCircle, CaretDown, CaretRight } from '@phosphor-icons/react';
 import { IframePreview } from './SharedPreview';
 import { Input } from './ui/shad/Input';
+import type { TemplateRenderIssue } from '../services/ankiTemplateEngine';
 import './TemplateEditorEnhancements.css';
 
 export type TemplatePreviewSide = 'front' | 'back';
@@ -12,8 +13,8 @@ interface TemplateEditorPreviewPanelProps {
   html: string;
   /** 模板 CSS */
   css: string;
-  /** 渲染异常信息（非空时显示内联错误而非白屏） */
-  renderError: string | null;
+  /** 统一渲染引擎返回的渲染问题列表（非空时在预览上方内联展示） */
+  renderIssues: TemplateRenderIssue[];
   previewSide: TemplatePreviewSide;
   onPreviewSideChange: (side: TemplatePreviewSide) => void;
   darkPreview: boolean;
@@ -51,7 +52,7 @@ const formatSampleValue = (value: unknown): string => {
 export const TemplateEditorPreviewPanel: React.FC<TemplateEditorPreviewPanelProps> = ({
   html,
   css,
-  renderError,
+  renderIssues,
   previewSide,
   onPreviewSideChange,
   darkPreview,
@@ -124,20 +125,25 @@ export const TemplateEditorPreviewPanel: React.FC<TemplateEditorPreviewPanelProp
         </div>
       </div>
 
+      {/* 渲染问题列表（引擎返回的结构化问题，不吞掉） */}
+      {renderIssues.length > 0 && (
+        <div className="template-editor-render-error" role="alert">
+          <WarningCircle size={16} weight="bold" />
+          <div>
+            <div className="font-medium">{t('templateEditor.renderIssuesTitle', { count: renderIssues.length })}</div>
+            {renderIssues.map((issue, index) => (
+              <div key={`${issue.code}-${index}`} className="text-[11px] opacity-80 break-all">
+                {issue.message}{issue.tag ? `（${issue.tag}）` : ''}
+              </div>
+            ))}
+            <div className="text-[11px] opacity-60 mt-1">{t('templateEditor.renderErrorHint')}</div>
+          </div>
+        </div>
+      )}
+
       {/* 预览画布 */}
       <div className={`template-editor-preview-canvas ${darkPreview ? 'dark-canvas' : ''}`}>
-        {renderError ? (
-          <div className="template-editor-render-error" role="alert">
-            <WarningCircle size={16} weight="bold" />
-            <div>
-              <div className="font-medium">{t('templateEditor.renderError')}</div>
-              <div className="text-[11px] opacity-80 break-all">{renderError}</div>
-              <div className="text-[11px] opacity-60 mt-1">{t('templateEditor.renderErrorHint')}</div>
-            </div>
-          </div>
-        ) : (
-          <IframePreview htmlContent={effectiveHtml} cssContent={effectiveCss} />
-        )}
+        <IframePreview htmlContent={effectiveHtml} cssContent={effectiveCss} />
       </div>
 
       {/* 示例数据快速编辑 */}

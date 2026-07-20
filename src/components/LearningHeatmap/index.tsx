@@ -27,6 +27,8 @@ export interface LearningHeatmapProps {
   className?: string;
   showLegend?: boolean;
   showStats?: boolean;
+  /** 隐藏内部标题（由外层分组容器提供标题时使用） */
+  hideTitle?: boolean;
 }
 
 // ============================================================================
@@ -161,6 +163,7 @@ export function LearningHeatmap({
   className = '',
   showLegend = true,
   showStats = true,
+  hideTitle = false,
 }: LearningHeatmapProps) {
   const { t } = useTranslation('stats');
   const {
@@ -253,10 +256,12 @@ export function LearningHeatmap({
   return (
     <div className={cn("flex flex-col", className)}>
       {/* 标题 */}
-      <div className="flex items-center gap-2 mb-4 pl-1">
-        <Pulse size={16} className="text-muted-foreground/70" />
-        <h3 className="font-medium text-sm text-foreground/80">{t('heatmap.title')}</h3>
-      </div>
+      {!hideTitle && (
+        <div className="flex items-center gap-2 mb-4 pl-1">
+          <Pulse size={16} className="text-muted-foreground/70" />
+          <h3 className="font-medium text-sm text-foreground/80">{t('heatmap.title')}</h3>
+        </div>
+      )}
 
       {/* 统计卡片 */}
       {showStats && (

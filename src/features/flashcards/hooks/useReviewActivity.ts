@@ -1,11 +1,10 @@
 /**
- * 复习活动聚合（前端近似）
+ * 复习活动聚合
  *
- * 后端目前没有暴露完整 fsrs_review_logs 查询命令，这里用
- * `list_anki_library_cards` 返回的每张卡「最近一次复习」(latestReview)
- * 做前端聚合：热力图 / 每日柱状 / 评分分布 / 连续天数均为基于该数据的
- * 诚实近似（一张卡只贡献它最近一次复习的那一天与那次评分）。
- * 一旦后端提供 review log 查询，本 hook 可原位替换数据源。
+ * 首选后端真实聚合命令 `fsrs_get_review_statistics`（完整 fsrs_review_logs
+ * 统计：热力图 / 每日复习数 / 评分分布均为真值，source='stats'）。
+ * 该命令不可用时回退到历史近似：用 `list_anki_library_cards` 返回的
+ * 每张卡「最近一次复习」(latestReview) 做前端聚合（source='approx'）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -14,22 +13,27 @@ import type { FsrsRating } from '../store/fsrsReviewStore';
 const PAGE_SIZE = 200;
 const MAX_PAGES = 5;
 const CACHE_TTL_MS = 30_000;
+const STATS_WINDOW_DAYS = 366;
 
 export type ReviewActivityStatus = 'loading' | 'ready' | 'unavailable';
 
+export type ReviewActivitySource = 'stats' | 'approx';
+
 export interface ReviewActivityData {
-  /** 本地日期 key（YYYY-MM-DD）→ 当天「最近一次复习落在该日」的卡片数 */
+  /** 本地日期 key（YYYY-MM-DD）→ 当天复习数（stats=真实日志计数；approx=近似） */
   dayCounts: Map<string, number>;
-  /** 各评分档最近一次评分的卡片数 */
+  /** 各评分档计数（stats=窗口内全部评分；approx=每卡最近一次评分） */
   ratingCounts: Record<FsrsRating, number>;
-  /** 参与评分分布统计的卡片数 */
+  /** 参与评分分布统计的复习/卡片数 */
   ratedTotal: number;
-  /** 卡片库总数（后端分页 total） */
+  /** 卡片库总数（仅 approx 路径的后端分页 total） */
   totalCards: number | null;
-  /** 实际扫描的卡片数（超出扫描上限时 < totalCards） */
+  /** 实际扫描的卡片数（仅 approx 路径；超出扫描上限时 < totalCards） */
   sampledCards: number;
-  /** 是否因扫描上限而截断 */
+  /** 是否因扫描上限而截断（仅 approx 路径） */
   truncated: boolean;
+  /** 数据来源：后端真实统计 / 前端近似聚合 */
+  source: ReviewActivitySource;
 }
 
 export interface ReviewActivityState extends ReviewActivityData {
@@ -100,6 +104,7 @@ function emptyData(): ReviewActivityData {
     totalCards: null,
     sampledCards: 0,
     truncated: false,
+    source: 'approx',
   };
 }
 
@@ -127,7 +132,60 @@ function ingestItem(item: unknown, data: ReviewActivityData): void {
   }
 }
 
+/** 解析 fsrs_get_review_statistics 响应；结构不符合预期时返回 null（走近似回退）。 */
+function parseRealStatistics(raw: unknown): ReviewActivityData | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const root = raw as Record<string, unknown>;
+  const dailyReviews = root.dailyReviews ?? root.daily_reviews;
+  const distribution = root.ratingDistribution ?? root.rating_distribution;
+  if (!Array.isArray(dailyReviews)) return null;
+  if (!distribution || typeof distribution !== 'object') return null;
+
+  const data = emptyData();
+  data.source = 'stats';
+  data.truncated = false;
+  for (const item of dailyReviews) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const date = typeof row.date === 'string' ? row.date : null;
+    const total = readFiniteNumber(row.total);
+    if (!date || total == null || total <= 0) continue;
+    data.dayCounts.set(date, Math.floor(total));
+  }
+  const dist = distribution as Record<string, unknown>;
+  const readCount = (key: string): number => {
+    const value = readFiniteNumber(dist[key]);
+    return value != null && value > 0 ? Math.floor(value) : 0;
+  };
+  data.ratingCounts = {
+    1: readCount('again'),
+    2: readCount('hard'),
+    3: readCount('good'),
+    4: readCount('easy'),
+  };
+  const total = readFiniteNumber(dist.total);
+  data.ratedTotal = total != null && total > 0
+    ? Math.floor(total)
+    : data.ratingCounts[1] + data.ratingCounts[2] + data.ratingCounts[3] + data.ratingCounts[4];
+  return data;
+}
+
+async function fetchRealStatistics(): Promise<ReviewActivityData | null> {
+  try {
+    const raw = await invoke<unknown>('fsrs_get_review_statistics', {
+      days: STATS_WINDOW_DAYS,
+    });
+    return parseRealStatistics(raw);
+  } catch {
+    return null;
+  }
+}
+
 async function fetchActivity(): Promise<ReviewActivityData | null> {
+  // 首选后端真实聚合；命令不可用（旧后端 / 失败）时回退近似路径
+  const real = await fetchRealStatistics();
+  if (real) return real;
+
   const data = emptyData();
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     let raw: unknown;

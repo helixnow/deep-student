@@ -1,4 +1,13 @@
 /* 批量操作工具栏样式 */
+
+/* 根容器：flex 列布局，列表占据剩余高度（避免硬编码视口高度假设） */
+.batch-operation-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .batch-operation-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -228,13 +237,15 @@
   border-radius: 0 0 8px 8px;
 }
 
-/* 卡片列表 */
+/* 卡片列表：flex 占满剩余空间；max-height 仅作父级未给定高度时的兜底
+   （100dvh 兼容移动端浏览器动态视口，替代旧的 100vh - 200px 硬编码） */
 .batch-cards-list {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   background: hsl(var(--muted));
   padding: 16px;
-  max-height: calc(100vh - 200px);
+  max-height: calc(100dvh - 200px);
 }
 
 /* 卡片项 */
@@ -261,10 +272,31 @@
   border-color: hsl(var(--primary));
 }
 
+/* 复选框独立命中区（button）：负 margin 抵消 padding，视觉尺寸不变 */
 .card-checkbox {
   flex-shrink: 0;
-  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  margin: -6px 0 0 -8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
   color: hsl(var(--muted-foreground));
+}
+
+.card-checkbox:hover {
+  background: hsl(var(--muted));
+}
+
+/* 触屏：命中区放大到 ≥44px */
+@media (pointer: coarse) {
+  .card-checkbox {
+    padding: 12px;
+    margin: -10px 0 0 -12px;
+  }
 }
 
 .batch-card-item.selected .card-checkbox {

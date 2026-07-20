@@ -398,10 +398,20 @@ pub async fn add_cards_to_anki_connect(
 }
 
 /// 导入 APKG 到本机 Anki（通过 AnkiConnect）
+///
+/// `delete_after` 为 true 时，导入成功后删除本地 APKG 文件（对应设置
+/// `anki_connect_delete_apkg_after_import`）；删除失败仅记录警告，不影响导入结果。
 #[tauri::command]
-pub async fn import_anki_package(path: String) -> Result<bool> {
+pub async fn import_anki_package(path: String, delete_after: Option<bool>) -> Result<bool> {
     match crate::anki_connect_service::import_apkg(&path).await {
-        Ok(ok) => Ok(ok),
+        Ok(ok) => {
+            if ok && delete_after.unwrap_or(false) {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    log::warn!("[import_anki_package] 导入成功但删除 APKG 失败 ({path}): {e}");
+                }
+            }
+            Ok(ok)
+        }
         Err(e) => Err(AppError::validation(e)),
     }
 }
@@ -1038,16 +1048,25 @@ pub async fn export_cards_as_apkg_with_template(
 
     println!("📁 导出路径: {:?}", output_path);
 
-    match crate::apkg_exporter_service::export_cards_to_apkg_with_full_template(
-        selected_cards,
-        deck_name,
-        note_type,
-        output_path.clone(),
-        template_config,
-        full_template,
-    )
+    // 导出是纯阻塞的 SQLite/zip 工作：放到 blocking 线程池执行，避免卡住 async runtime
+    let export_output_path = output_path.clone();
+    let runtime_handle = tokio::runtime::Handle::current();
+    let export_result = tokio::task::spawn_blocking(move || {
+        runtime_handle.block_on(
+            crate::apkg_exporter_service::export_cards_to_apkg_with_full_template(
+                selected_cards,
+                deck_name,
+                note_type,
+                export_output_path,
+                template_config,
+                full_template,
+            ),
+        )
+    })
     .await
-    {
+    .map_err(|e| AppError::internal(format!("APKG 导出任务执行失败: {}", e)))?;
+
+    match export_result {
         Ok(_) => {
             println!(".apkg文件导出成功: {:?}", output_path);
             Ok(output_path.to_string_lossy().to_string())
@@ -1142,14 +1161,21 @@ pub async fn export_multi_template_apkg(
         output_path.set_extension("apkg");
     }
 
-    if let Err(e) = crate::apkg_exporter_service::export_multi_template_apkg(
-        cards.into_iter().filter(|c| !c.is_error_card).collect(),
-        deck_name,
-        output_path.clone(),
-        template_map,
-    )
+    // 导出是纯阻塞的 SQLite/zip 工作：放到 blocking 线程池执行，避免卡住 async runtime
+    let staged_output_path = output_path.clone();
+    let runtime_handle = tokio::runtime::Handle::current();
+    let export_result = tokio::task::spawn_blocking(move || {
+        runtime_handle.block_on(crate::apkg_exporter_service::export_multi_template_apkg(
+            cards.into_iter().filter(|c| !c.is_error_card).collect(),
+            deck_name,
+            staged_output_path,
+            template_map,
+        ))
+    })
     .await
-    {
+    .map_err(|e| AppError::internal(format!("APKG 导出任务执行失败: {}", e)))?;
+
+    if let Err(e) = export_result {
         if target_uri.is_some() {
             if let Err(cleanup_err) = std::fs::remove_file(&output_path) {
                 log::warn!(
@@ -1286,8 +1312,7 @@ pub async fn batch_export_cards(
                 return Err(AppError::validation("没有卡片可以同步到 AnkiConnect"));
             }
 
-            if let Err(e) =
-                crate::anki_connect_service::create_deck_if_not_exists(&deck_name).await
+            if let Err(e) = crate::anki_connect_service::create_deck_if_not_exists(&deck_name).await
             {
                 log::warn!("[batch_export_cards] 创建牌组失败（可能已存在）: {}", e);
             }
@@ -1345,9 +1370,8 @@ pub async fn batch_export_cards(
                         )))
                     } else {
                         // 返回 JSON 化的同步报告字符串（历史契约为不透明字符串，向后兼容）
-                        serde_json::to_string(&report).map_err(|e| {
-                            AppError::validation(format!("序列化同步报告失败: {}", e))
-                        })
+                        serde_json::to_string(&report)
+                            .map_err(|e| AppError::validation(format!("序列化同步报告失败: {}", e)))
                     }
                 }
                 Err(e) => Err(AppError::validation(e)),

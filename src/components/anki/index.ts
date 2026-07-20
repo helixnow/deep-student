@@ -32,7 +32,8 @@ export {
 // =============================================================================
 // Preview Components
 // =============================================================================
-// 由孤儿 Modal（AnkiCardPreviewModal）重构而来的内联预览面板；导出备用，未强行接线
+// 由孤儿 Modal（AnkiCardPreviewModal）重构而来的内联预览面板；
+// 已接线：闪卡库行内展开（flashcards/library/LibraryCardRow）用于带模板卡片的正反面预览
 export { AnkiCardPreviewPanel } from './AnkiCardPreviewPanel';
 
 // =============================================================================

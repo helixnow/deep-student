@@ -752,6 +752,30 @@
   }
 }
 
+/* ===== 触屏适配 ===== */
+
+/* 顶部 tab 触控目标兜底（原 padding 高约 31px） */
+@media (pointer: coarse) {
+  .wb-fc-tab {
+    min-height: 44px;
+  }
+}
+
+/* 触屏无 hover：「点按翻面」提示常显（弱化透明度，避免视觉噪音） */
+@media (hover: none) {
+  .wb-fc-card-flip-hint {
+    opacity: 0.7;
+  }
+}
+
+/* 触屏设备隐藏键盘键位提示（Space/1-4/Z 对触屏无意义） */
+@media (hover: none) and (pointer: coarse) {
+  .wb-fc-keycap,
+  .wb-fc-shortcut-hint {
+    display: none;
+  }
+}
+
 /* ===== 复习会话：滑动评分手势层 ===== */
 
 /* 滑动评分：跟手期由内联样式接管（transition:none），回弹/飞出走这里的过渡 */

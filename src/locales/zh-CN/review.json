@@ -33,7 +33,9 @@
   "todayReview": {
     "title": "今日复习",
     "hasDue": "你有 {{count}} 个题目需要复习",
-    "noDue": "太棒了！今天没有需要复习的内容"
+    "noDue": "太棒了！今天没有需要复习的内容",
+    "itemsUnit": "个题目待复习",
+    "estimatedTime": "预计约 {{count}} 分钟"
   },
 
   "progress": {
@@ -44,12 +46,31 @@
     "title": "复习队列",
     "sortedByDue": "按到期时间排序",
     "andMore": "还有 {{count}} 个...",
-    "questionUnavailable": "题目内容暂不可用，请刷新后重试"
+    "questionUnavailable": "题目内容暂不可用，请刷新后重试",
+    "otherSessionNotice": "另一个题目集的复习会话正在进行，在此开始复习将结束该会话（已提交的评分会保留）。",
+    "overdueDays": "逾期 {{count}} 天",
+    "overdueGroup": "已逾期（{{count}}）",
+    "todayGroup": "今日到期"
+  },
+
+  "setup": {
+    "title": "还没有复习计划",
+    "description": "为本题目集的题目创建复习计划后，系统会按间隔重复算法自动安排每天的复习内容。",
+    "createAll": "为全部题目创建复习计划"
   },
 
   "empty": {
     "title": "全部完成！",
-    "description": "你已经完成了所有的复习任务。继续保持，明天还有新的复习内容等着你！"
+    "description": "你已经完成了所有的复习任务。继续保持，明天还有新的复习内容等着你！",
+    "masteredChip": "已掌握 {{count}} 题",
+    "viewCalendar": "查看复习记录"
+  },
+
+  "estimate": {
+    "days": "{{count}}天",
+    "weeks": "{{count}}周",
+    "months": "{{count}}个月",
+    "years": "{{count}}年"
   },
 
   "session": {
@@ -58,7 +79,9 @@
     "submitFailedTitle": "无法保存复习记录",
     "exitTitle": "结束复习会话？",
     "exitDescription": "已提交的评分会保留，剩余题目可稍后重新开始复习。",
-    "exitConfirm": "结束复习"
+    "exitConfirm": "结束复习",
+    "otherExamTitle": "该复习会话属于另一个题目集",
+    "otherExamDescription": "请切换到对应题目集的窗口继续复习，或在该窗口结束会话。"
   },
 
   "card": {
@@ -74,7 +97,29 @@
 
   "keyboard": {
     "space": "空格",
-    "ratingHint": "按 1-4 快速评分"
+    "ratingHint": "按 1-4 快速评分",
+    "spaceGood": "空格 = 良好"
+  },
+
+  "questionType": {
+    "single_choice": "单选题",
+    "multiple_choice": "多选题",
+    "indefinite_choice": "不定项",
+    "fill_blank": "填空题",
+    "short_answer": "简答题",
+    "essay": "论述题",
+    "calculation": "计算题",
+    "proof": "证明题",
+    "true_false": "判断题",
+    "matching": "匹配题",
+    "ordering": "排序题",
+    "numeric": "数值题",
+    "other": "其他"
+  },
+
+  "structured": {
+    "trueLabel": "正确",
+    "falseLabel": "错误"
   },
 
   "rating": {
@@ -114,6 +159,7 @@
     "accuracy": "正确率",
     "history": "复习记录",
     "noData": "当日无复习记录",
+    "emptyHint": "完成复习后，这里会点亮你的学习足迹",
     "less": "少",
     "more": "多",
     "currentStreak": "当前连续",
@@ -121,7 +167,14 @@
     "totalDays": "学习天数",
     "weekdaysShort": ["日", "一", "二", "三", "四", "五", "六"],
     "monthsFull": ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"],
-    "monthYearFormat": "{{year}}年{{monthName}}"
+    "monthYearFormat": "{{year}}年{{monthName}}",
+    "failed": "未通过",
+    "closeDetail": "收起当日明细",
+    "prevMonth": "上个月",
+    "nextMonth": "下个月",
+    "dueQueue": "当日到期队列（{{count}}）",
+    "dueMore": "还有 {{count}} 个...",
+    "dueLegend": "待复习到期数"
   },
 
   "questions": {
@@ -153,7 +206,22 @@
     "attemptCount": "{{count}}次",
     "emptyTitle": "太棒了！没有错题",
     "emptyDesc": "你已经掌握了所有题目，继续保持！<br/>可以尝试挑战更难的题目。",
-    "masteryTip": "连续答对 <highlight>2 次</highlight> 自动标记为已掌握"
+    "masteryTip": "连续答对 <highlight>2 次</highlight> 自动标记为已掌握",
+    "myAnswer": "我的答案",
+    "correctAnswer": "正确答案",
+    "noAnswerRecorded": "未作答",
+    "redo": "重做此题",
+    "explanation": "解析",
+    "sortLabel": "排序",
+    "sortDefault": "默认",
+    "sortByErrors": "错误次数",
+    "sortByRecent": "最近错误",
+    "errorCause": {
+      "neverCorrect": "从未答对",
+      "repeatedErrors": "反复出错",
+      "highErrorRate": "高错误率",
+      "stale": "久未复习"
+    }
   },
 
   "actions": {

@@ -10,25 +10,6 @@ vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
 }));
 
-vi.mock('@/components/ui/NotionDialog', () => ({
-  NotionAlertDialog: ({
-    open,
-    title,
-    confirmText,
-    onConfirm,
-  }: {
-    open: boolean;
-    title: string;
-    confirmText: string;
-    onConfirm: () => void;
-  }) => open ? (
-    <div role="alertdialog">
-      <p>{title}</p>
-      <button type="button" onClick={onConfirm}>{confirmText}</button>
-    </div>
-  ) : null,
-}));
-
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string | Record<string, unknown>) => (
@@ -49,34 +30,55 @@ const reviewQuestion = {
   status: 'review' as const,
 };
 
-describe('ReviewQuestionsView destructive actions', () => {
-  it('waits for confirmation before deleting selected review questions', async () => {
+describe('ReviewQuestionsView destructive actions (inline confirmation)', () => {
+  it('waits for inline confirmation before deleting selected review questions', async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+
+    render(<ReviewQuestionsView questions={[reviewQuestion]} onDelete={onDelete} />);
+
+    fireEvent.click(screen.getByRole('checkbox'));
+
+    // 第一次点击仅进入待确认态（按钮文案切换为确认文案），不执行删除
+    fireEvent.click(screen.getByRole('button', { name: 'review:questions.delete' }));
+    expect(onDelete).not.toHaveBeenCalled();
+
+    const confirmButton = screen.getByRole('button', { name: 'review:questions.confirmDelete' });
+    expect(confirmButton).toBeInTheDocument();
+
+    // 第二次点击真正执行
+    fireEvent.click(confirmButton);
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(['question-1']));
+  });
+
+  it('waits for inline confirmation before resetting selected review questions', async () => {
+    const onResetProgress = vi.fn().mockResolvedValue(undefined);
+
+    render(<ReviewQuestionsView questions={[reviewQuestion]} onResetProgress={onResetProgress} />);
+
+    fireEvent.click(screen.getByRole('checkbox'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'review:questions.reset' }));
+    expect(onResetProgress).not.toHaveBeenCalled();
+
+    const confirmButton = screen.getByRole('button', { name: 'review:questions.confirmReset' });
+    expect(confirmButton).toBeInTheDocument();
+
+    fireEvent.click(confirmButton);
+    await waitFor(() => expect(onResetProgress).toHaveBeenCalledWith(['question-1']));
+  });
+
+  it('disarms the pending confirmation when selection changes', () => {
     const onDelete = vi.fn().mockResolvedValue(undefined);
 
     render(<ReviewQuestionsView questions={[reviewQuestion]} onDelete={onDelete} />);
 
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: 'review:questions.delete' }));
+    expect(screen.getByRole('button', { name: 'review:questions.confirmDelete' })).toBeInTheDocument();
 
-    expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'common:delete' }));
-    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(['question-1']));
-  });
-
-  it('waits for confirmation before resetting selected review questions', async () => {
-    const onResetProgress = vi.fn().mockResolvedValue(undefined);
-
-    render(<ReviewQuestionsView questions={[reviewQuestion]} onResetProgress={onResetProgress} />);
-
+    // 变更选择集：待确认态应回退，避免确认数量与实际不一致
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'review:questions.reset' }));
-
-    expect(onResetProgress).not.toHaveBeenCalled();
-    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'practice:questionBank.resetProgress' }));
-    await waitFor(() => expect(onResetProgress).toHaveBeenCalledWith(['question-1']));
+    expect(screen.queryByRole('button', { name: 'review:questions.confirmDelete' })).not.toBeInTheDocument();
+    expect(onDelete).not.toHaveBeenCalled();
   });
 });

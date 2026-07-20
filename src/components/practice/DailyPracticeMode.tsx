@@ -31,6 +31,19 @@ import {
 import { useQuestionBankStore, DailyPracticeResult, CheckInCalendar } from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import './practice-celebration.css';
+
+// 庆祝彩点的散射位移（纯 CSS 动画，见 practice-celebration.css）
+const CELEBRATION_BURSTS = [
+  { x: '-42px', y: '-30px', delay: '0ms', className: 'text-warning' },
+  { x: '40px', y: '-34px', delay: '60ms', className: 'text-success' },
+  { x: '-26px', y: '-48px', delay: '120ms', className: 'text-primary' },
+  { x: '26px', y: '-50px', delay: '40ms', className: 'text-destructive' },
+  { x: '-50px', y: '-6px', delay: '160ms', className: 'text-success' },
+  { x: '52px', y: '-8px', delay: '100ms', className: 'text-warning' },
+  { x: '0px', y: '-56px', delay: '80ms', className: 'text-primary' },
+  { x: '-14px', y: '-20px', delay: '200ms', className: 'text-warning' },
+];
 
 interface DailyPracticeModeProps {
   examId: string;
@@ -183,11 +196,31 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
         <CardContent className="space-y-6">
           {/* 连续打卡 */}
           {activeCheckInCalendar && activeCheckInCalendar.streak_days > 0 && (
-            <div className="flex items-center justify-center gap-3 rounded-md bg-warning/10 p-3">
-              <Flame size={20} className="text-warning" />
+            <div className="flex items-center justify-center gap-3 rounded-md border border-warning/20 bg-gradient-to-r from-warning/15 via-warning/5 to-transparent p-3">
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-warning/15">
+                <Flame size={24} weight="fill" className="text-warning" />
+              </div>
               <div>
-                <div className="text-xl font-semibold text-warning">{activeCheckInCalendar.streak_days}</div>
+                <div className="text-xl font-semibold leading-tight text-warning tabular-nums">
+                  {activeCheckInCalendar.streak_days}
+                </div>
                 <div className="text-sm text-muted-foreground">{t('daily.streakDays')}</div>
+              </div>
+              {/* 近 7 天连续火苗点缀：点亮天数 = min(streak, 7) */}
+              <div className="ml-2 hidden items-end gap-1 sm:flex" aria-hidden="true">
+                {Array.from({ length: 7 }, (_, i) => {
+                  const lit = i < Math.min(activeCheckInCalendar.streak_days, 7);
+                  return (
+                    <span
+                      key={i}
+                      className={cn(
+                        'w-1.5 rounded-full transition-colors',
+                        lit ? 'bg-warning' : 'bg-muted',
+                      )}
+                      style={{ height: `${8 + i * 2}px` }}
+/>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -220,7 +253,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           {/* 目标设置 */}
           <div className="space-y-2">
             <Label>{t('daily.targetLabel')}</Label>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3">
               <Input
                 type="number"
                 min={5}
@@ -283,9 +316,33 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 className="h-2" 
 />
               {activeDailyPractice.is_completed && (
-                <div className="flex items-center gap-2 text-success">
-                  <Trophy size={16} />
-                  <span className="text-sm font-medium">{t('daily.completed')}</span>
+                <div className="relative overflow-hidden rounded-md border border-success/25 bg-success/10 px-3 py-4 text-center">
+                  {/* 完成庆祝动效（纯 CSS，prefers-reduced-motion 时自动禁用） */}
+                  <div className="relative mx-auto mb-1.5 h-10 w-10">
+                    <div className="practice-celebrate-burst">
+                      {CELEBRATION_BURSTS.map((burst, i) => (
+                        <i
+                          key={i}
+                          className={burst.className}
+                          style={{
+                            '--burst-x': burst.x,
+                            '--burst-y': burst.y,
+                            '--burst-delay': burst.delay,
+                          } as React.CSSProperties}
+/>
+                      ))}
+                    </div>
+                    <div className="practice-celebrate-pop flex h-10 w-10 items-center justify-center rounded-full bg-success/15">
+                      <Trophy size={22} weight="fill" className="text-success" />
+                    </div>
+                  </div>
+                  <div className="text-sm font-medium text-success">{t('daily.completed')}</div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {t('daily.completedDetail', {
+                      correct: activeDailyPractice.correct_count,
+                      total: activeDailyPractice.completed_count,
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -371,18 +428,20 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
             ))}
           </div>
           
-          {/* 日期格子 */}
-          <div className="grid grid-cols-7 gap-1">
+          {/* 日期格子：按月份重挂载，逐格错峰淡入的微动效 */}
+          <div key={`${calendarYear}-${calendarMonth}`} className="grid grid-cols-7 gap-1">
             {calendarDays.map((item, idx) => (
               <div
                 key={idx}
                 className={cn(
                   'relative flex aspect-square flex-col items-center justify-center rounded-md text-sm',
+                  'ui-rise-in transition-colors hover:bg-[var(--interactive-hover)]',
                   item.day === null && 'invisible',
                   item.day !== null && isToday(item.day) && 'ring-2 ring-primary',
                   item.checkIn?.target_achieved && 'bg-success/20',
                   item.checkIn && !item.checkIn.target_achieved && 'bg-warning/10',
                 )}
+                style={{ animationDelay: `${Math.min(idx * 8, 320)}ms` }}
               >
                 {item.day !== null && (
                   <>
@@ -398,7 +457,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                       </span>
                     )}
                     {item.checkIn?.target_achieved && (
-                      <CheckCircle size={12} className="absolute top-0.5 right-0.5 text-success" />
+                      <CheckCircle size={12} weight="fill" className="absolute top-0.5 right-0.5 text-success" />
                     )}
                   </>
                 )}

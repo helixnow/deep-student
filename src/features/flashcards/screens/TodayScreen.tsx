@@ -15,6 +15,7 @@ import {
   Play,
 } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { PullToRefresh } from '@/components/mobile';
 import type { FsrsStats } from '@/types';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 import { subscribeFlashcardsDueRefresh } from '../events';
@@ -108,10 +109,10 @@ export const TodayScreen: React.FC = () => {
     };
   }, [loadDue, loadStats, activity.reload]);
 
-  const handleRefresh = useCallback(() => {
-    void loadDue();
-    void loadStats();
+  // 返回 Promise：下拉刷新指示器保持到数据到位（顶栏刷新按钮亦复用）
+  const handleRefresh = useCallback(async () => {
     activity.reload(true);
+    await Promise.allSettled([loadDue(), loadStats()]);
   }, [loadDue, loadStats, activity.reload]);
 
   const dateLabel = useMemo(
@@ -162,7 +163,7 @@ export const TodayScreen: React.FC = () => {
             size="sm"
             iconOnly
             disabled={loading}
-            onClick={handleRefresh}
+            onClick={() => void handleRefresh()}
             aria-label={t('today.refresh')}
             title={t('today.refresh')}
           >
@@ -193,7 +194,12 @@ export const TodayScreen: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="wb-fcx-scroll">
+        /* 触屏下拉刷新（桌面鼠标不受影响）；PullToRefresh 自身即滚动容器 */
+        <PullToRefresh
+          onRefresh={handleRefresh}
+          className="min-h-0 flex-1"
+          contentClassName="wb-fcx-scroll"
+        >
           <section className="wb-fcx-panel wb-fcx-hero">
             <div className="wb-fcx-hero-ring">
               <ProgressRing
@@ -341,7 +347,7 @@ export const TodayScreen: React.FC = () => {
               </div>
             </section>
           )}
-        </div>
+        </PullToRefresh>
       )}
     </div>
   );

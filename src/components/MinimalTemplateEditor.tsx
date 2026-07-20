@@ -3,13 +3,14 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FileText, Code, Database, Gear, Eye, EyeSlash,
-  Plus, WarningCircle, Copy
+  WarningCircle, Copy, Info
 } from '@phosphor-icons/react';
 import {
   CustomAnkiTemplate, CreateTemplateRequest, FieldExtractionRule,
-  AnkiCardTemplate, FieldType,
+  FieldType,
 } from '../types';
-import { renderCardPreview } from './SharedPreview';
+import { TemplateRenderService } from '../services/templateRenderService';
+import type { TemplateRenderIssue } from '../services/ankiTemplateEngine';
 import { templateService } from '../services/templateService';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from './ui/shad/Input';
@@ -64,6 +65,20 @@ interface ValidationError {
 const FIELD_TYPE_OPTIONS: FieldType[] = ['Text', 'Number', 'Boolean', 'Date', 'Array', 'RichText', 'Formula'];
 const isFieldType = (value: string): value is FieldType =>
   (FIELD_TYPE_OPTIONS as string[]).includes(value);
+
+/**
+ * 笔记类型下拉选项：与前端校验（templateValidation.validateTemplate 的 validNoteTypes）
+ * 保持同一枚举；后端不强制枚举，但 Cloze 会触发 {{cloze:}} 占位符校验。
+ */
+const NOTE_TYPE_OPTIONS = [
+  'Basic',
+  'Cloze',
+  'Basic (and reversed card)',
+  'Basic (optional reversed card)',
+];
+
+/** 检测模板 HTML 中是否含 <script>（用于信息级提示，不做剥除） */
+const containsScriptTag = (html: string) => /<script[\s>]/i.test(html);
 
 const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   template,
@@ -262,11 +277,13 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     }
   }, [debouncedPreviewJson]);
 
-  // 传给渲染管线的模板数据（替代原先的 as any 转型）
-  const previewTemplateData = useMemo<AnkiCardTemplate>(() => ({
-    id: template?.id ?? '',
+  // 传给统一渲染引擎的模板数据（TemplateRenderService 接受 CustomAnkiTemplate）
+  const previewTemplateData = useMemo<CustomAnkiTemplate>(() => ({
+    id: template?.id ?? 'draft-template',
     name: debouncedFormData.name,
     description: debouncedFormData.description,
+    author: debouncedFormData.author,
+    version: debouncedFormData.version,
     preview_front: debouncedFormData.preview_front,
     preview_back: debouncedFormData.preview_back,
     preview_data_json: debouncedPreviewJson,
@@ -276,22 +293,27 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     note_type: debouncedFormData.note_type,
     generation_prompt: debouncedFormData.generation_prompt,
     fields: debouncedFormData.fields,
-  }), [debouncedFormData, debouncedPreviewJson, template?.id]);
+    field_extraction_rules: {},
+    created_at: template?.created_at ?? '',
+    updated_at: template?.updated_at ?? '',
+    is_active: debouncedFormData.is_active,
+    is_built_in: template?.is_built_in ?? false,
+  }), [debouncedFormData, debouncedPreviewJson, template]);
 
-  // 渲染预览（异常时给出内联错误信息，不白屏）
-  const preview = useMemo<{ html: string; error: string | null }>(() => {
-    try {
-      const rendered = renderCardPreview(
-        previewMode === 'front' ? debouncedFormData.front_template : debouncedFormData.back_template,
-        previewTemplateData,
-        parsedPreviewData,
-        previewMode === 'back'
-      );
-      return { html: rendered, error: null };
-    } catch (error: unknown) {
-      return { html: '', error: error instanceof Error ? error.message : String(error) };
-    }
-  }, [previewMode, debouncedFormData, parsedPreviewData, previewTemplateData]);
+  // 渲染预览：走统一的 TemplateRenderService（支持 {{FrontSide}}/{{hint:}}/{{type:}} 等
+  // Anki 语法），并把结构化渲染问题列表透出到预览面板，不再吞掉渲染问题。
+  const preview = useMemo<{ html: string; issues: TemplateRenderIssue[] }>(() => {
+    const detailed = TemplateRenderService.renderCardDetailed(
+      {
+        fields: parsedPreviewData,
+        tags: (parsedPreviewData as Record<string, unknown>).Tags
+          ?? (parsedPreviewData as Record<string, unknown>).tags,
+      },
+      previewTemplateData,
+    );
+    const side = previewMode === 'front' ? detailed.front : detailed.back;
+    return { html: side.html, issues: side.issues };
+  }, [previewMode, parsedPreviewData, previewTemplateData]);
 
   // 示例数据（未防抖，供字段级快速编辑；JSON 无效时为 null）
   const sampleDataLive = useMemo<Record<string, unknown> | null>(() => {
@@ -326,6 +348,12 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     const extraKeys = sampleDataLive ? Object.keys(sampleDataLive) : [];
     return lintTemplate(tpl, debouncedFormData.fields, extraKeys);
   }, [codeSubTab, debouncedFormData.front_template, debouncedFormData.back_template, debouncedFormData.fields, sampleDataLive]);
+
+  // 模板含 <script> 时的信息级提示（脚本会随模板保存，但应用内预览/复习不执行）
+  const hasScriptTag = useMemo(
+    () => containsScriptTag(debouncedFormData.front_template) || containsScriptTag(debouncedFormData.back_template),
+    [debouncedFormData.front_template, debouncedFormData.back_template],
+  );
 
   // 模板中实际引用到的字段集合（字段管理器的「已引用」标记）
   const usedFields = useMemo(() => {
@@ -372,12 +400,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       errors.push({ field: 'description', message: t('description_empty') });
     }
 
-    if (!formData.generation_prompt.trim()) {
-      errors.push({
-        field: 'generation_prompt',
-        message: t('generation_prompt_required_error')
-      });
-    }
+    // generation_prompt 不再必填：留空时保存前自动生成默认提示词（见 handleSubmit）
 
     if (formData.fields.length === 0) {
       errors.push({ field: 'fields', message: t('at_least_one_field') });
@@ -411,12 +434,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       });
     }
 
-    // 验证字段提取规则
-    Object.entries(fieldExtractionRules).forEach(([fieldName, rule]) => {
-      if (!rule.description || !rule.description.trim()) {
-        errors.push({ field: 'field_rules', message: t('field_missing_description', { fieldName }) });
-      }
-    });
+    // 字段提取规则的描述不再必填：留空时保存前自动补默认描述（见 handleSubmit）
 
     return errors;
   };
@@ -526,14 +544,6 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     }));
   };
 
-  // 增加版本号
-  const incrementVersion = () => {
-    const parts = formData.version.split('.');
-    const patch = parseInt(parts[2] || '0', 10);
-    parts[2] = (patch + 1).toString();
-    setFormData({ ...formData, version: parts.join('.') });
-  };
-
   // 提交表单
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -548,10 +558,25 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     setIsSubmitting(true);
 
     try {
+      // 可选字段留空时自动补默认值（后端校验要求非空，但不应阻塞用户保存）
+      const effectivePrompt = formData.generation_prompt.trim()
+        ? formData.generation_prompt
+        : t('generation_prompt_auto_default', {
+            name: formData.name,
+            fields: formData.fields.join(', '),
+          });
+      const effectiveRules: Record<string, FieldExtractionRule> = {};
+      Object.entries(fieldExtractionRules).forEach(([field, rule]) => {
+        effectiveRules[field] = rule.description && rule.description.trim()
+          ? rule
+          : { ...rule, description: t('field_description', { field }) };
+      });
+
       const templateData: CreateTemplateRequest = {
         ...formData,
+        generation_prompt: effectivePrompt,
         preview_data_json: previewDataJson,
-        field_extraction_rules: fieldExtractionRules
+        field_extraction_rules: effectiveRules
       };
 
       await onSave(templateData);
@@ -609,26 +634,34 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     is_built_in: template?.is_built_in ?? false,
   }), [formData, fieldExtractionRules, previewDataJson, template]);
 
-  // 代码子 tab 切换按钮组（桌面/移动共用）
+  // 代码子 tab 切换按钮组（桌面/移动共用），含 <script> 信息级提示
   const renderCodeSubTabs = () => (
-    <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
-      <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
-        {t('front_template_title')}
-      </NotionButton>
-      <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
-        {t('back_template_title')}
-      </NotionButton>
-      <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
-        {t('css_style_title')}
-      </NotionButton>
-    </div>
+    <>
+      <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
+        <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
+          {t('front_template_title')}
+        </NotionButton>
+        <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
+          {t('back_template_title')}
+        </NotionButton>
+        <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
+          {t('css_style_title')}
+        </NotionButton>
+      </div>
+      {hasScriptTag && (
+        <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-info/10 text-info text-xs" role="status">
+          <Info size={14} weight="bold" className="shrink-0 mt-0.5" />
+          <span>{t('script_in_template_notice')}</span>
+        </div>
+      )}
+    </>
   );
 
   const renderPreviewPanel = (compact: boolean) => (
     <TemplateEditorPreviewPanel
       html={preview.html}
       css={debouncedFormData.css_style}
-      renderError={preview.error}
+      renderIssues={preview.issues}
       previewSide={previewMode}
       onPreviewSideChange={setPreviewMode}
       darkPreview={previewDark}
@@ -719,26 +752,16 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
 
                   <div className="form-field">
                     <Label className="field-label">{t('version')}</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="text"
-                        value={formData.version}
-                        onChange={(e) => setFormData({...formData, version: e.target.value})}
-                        placeholder="1.0.0"
+                    {/* 版本号只读：由后端保存成功后自动递增；表单值不会作为乐观锁
+                        expected_version 提交（手动改版本号曾必然触发保存失败） */}
+                    <Input
+                      type="text"
+                      value={formData.version}
+                      readOnly
+                      aria-readonly="true"
+                      className="opacity-70 cursor-default"
 />
-                      {mode === 'edit' && (
-                        <NotionButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          iconOnly
-                          onClick={incrementVersion}
-                          title={t('increment_version') as string}
-                        >
-                          <Plus size={16} />
-                        </NotionButton>
-                      )}
-                    </div>
+                    <span className="field-hint">{t('version_readonly_hint')}</span>
                   </div>
 
                   <div className="form-field">
@@ -766,12 +789,24 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
 
                   <div className="form-field">
                     <Label className="field-label">{t('form_note_type')}</Label>
-                    <Input
-                      type="text"
+                    <Select
                       value={formData.note_type}
-                      onChange={(e) => setFormData({...formData, note_type: e.target.value})}
-                      placeholder={t('note_type_placeholder')}
-/>
+                      onValueChange={(value) => setFormData({...formData, note_type: value})}
+                    >
+                      <SelectTrigger className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
+                        <SelectValue placeholder={t('note_type_placeholder')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/* 历史模板可能带非标准 note_type，保留为可选项避免值被静默丢失 */}
+                        {(NOTE_TYPE_OPTIONS.includes(formData.note_type)
+                          ? NOTE_TYPE_OPTIONS
+                          : [formData.note_type, ...NOTE_TYPE_OPTIONS].filter(Boolean)
+                        ).map((noteType) => (
+                          <SelectItem key={noteType} value={noteType}>{noteType}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="field-hint">{t('note_type_hint')}</span>
                   </div>
 
                   <div className="form-field">
@@ -968,8 +1003,9 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                   {Object.entries(fieldExtractionRules).map(([fieldName, rule]) => (
                     <div key={fieldName} className="mb-4 p-4 rounded-xl border border-border bg-muted/30">
                       <h3 className="text-base font-semibold mb-4">{fieldName}</h3>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="form-field col-span-1">
+                        {/* 400px 窄屏三列过挤：<sm 单列堆叠，sm 起恢复三列（桌面视觉不变） */}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                          <div className="form-field sm:col-span-1">
                             <Label className="field-label">{t('field_type_label')}</Label>
                             <Select
                               value={isFieldType(rule.field_type) ? rule.field_type : 'Text'}
@@ -996,7 +1032,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                             </Select>
                           </div>
 
-                          <div className="form-field col-span-2">
+                          <div className="form-field sm:col-span-2">
                             <Label className="field-label">{t('field_description_label')}</Label>
                             <Textarea
                               value={rule.description}
@@ -1011,7 +1047,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
 />
                           </div>
 
-                          <div className="form-field col-span-1">
+                          <div className="form-field sm:col-span-1">
                             <Label className="field-label">{t('is_required_label')}</Label>
                             <div className="flex items-center gap-3">
                               <Switch
@@ -1029,7 +1065,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                             </div>
                           </div>
 
-                          <div className="form-field col-span-2">
+                          <div className="form-field sm:col-span-2">
                             <Label className="field-label">{t('field_default_value')}</Label>
                             <Input
                               type="text"

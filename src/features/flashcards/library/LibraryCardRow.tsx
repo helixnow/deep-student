@@ -2,11 +2,13 @@
  * 卡片库单行：hover 浮现操作、状态徽标、行内展开详情 + 原地编辑 + 行内删除确认。
  * 所有交互均内联，无任何弹窗。
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowCounterClockwise,
+  ArrowSquareOut,
   CaretDown,
+  Eraser,
   Pause,
   PencilSimple,
   Play,
@@ -17,7 +19,16 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
+import { AnkiCardPreviewPanel } from '@/components/anki/AnkiCardPreviewPanel';
+import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
+import { hasValidCloze } from '../cloze';
+import {
+  getReviewCardEditValues,
+  isClozeReviewCard,
+  type EditableReviewCard,
+  type ReviewEditTemplate,
+} from '../reviewCardEditFields';
 import {
   formatAbsoluteTime,
   formatCreatedAt,
@@ -48,6 +59,35 @@ const RATING_LABEL_KEY: Record<number, string> = {
   4: 'session.easy',
 };
 
+const RESET_DISARM_MS = 4000;
+
+/** 懒加载 workbench chat 入口，避免把整条聊天依赖链拉进库视图。 */
+function jumpToChatSession(sessionId: string): void {
+  void import('@/features/workbench/apps/chat/newSession')
+    .then(({ openChatSession }) => {
+      openChatSession(sessionId);
+    })
+    .catch(() => {
+      // 跳转失败静默降级：来源信息本身仍在展开区展示
+    });
+}
+
+/** 来源类型 → 展示文案 key；未知来源不展示。 */
+function sourceLabelKey(sourceType: string | null | undefined): string | null {
+  switch (sourceType) {
+    case 'chat_message':
+    case 'chat_session':
+      return 'library.source.chat';
+    case 'document':
+    case 'task':
+      return 'library.source.task';
+    case 'apkg_import':
+      return 'library.source.apkg';
+    default:
+      return null;
+  }
+}
+
 export interface LibraryCardRowProps {
   card: AnkiLibraryCard;
   busy: boolean;
@@ -63,8 +103,14 @@ export interface LibraryCardRowProps {
   onRequestDelete: (cardId: string) => void;
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
-  onSaveEdit: (cardId: string, patch: AnkiLibraryCardPatch) => Promise<boolean>;
+  onSaveEdit: (
+    cardId: string,
+    patch: AnkiLibraryCardPatch,
+    template?: ReviewEditTemplate | null,
+  ) => Promise<boolean>;
   onUndoReview: (cardId: string) => void;
+  /** 危险操作：清除该卡全部复习历史并重建 New 状态（行内二次确认后触发）。 */
+  onResetProgress: (cardId: string) => void;
   onRowKeyDown: (event: React.KeyboardEvent<HTMLLIElement>, cardId: string) => void;
   rowRef: (cardId: string, element: HTMLLIElement | null) => void;
 }
@@ -92,6 +138,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
   onConfirmDelete,
   onSaveEdit,
   onUndoReview,
+  onResetProgress,
   onRowKeyDown,
   rowRef,
 }) => {
@@ -105,8 +152,14 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
   const [draftTags, setDraftTags] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // 重置进度的行内二次确认（超时自动解除武装）
+  const [resetArmed, setResetArmed] = useState(false);
   // 展开内容按需挂载：收起时延迟卸载，让高度过渡先播完。
   const [renderBody, setRenderBody] = useState(expanded);
+
+  // 模板懒加载：仅展开且卡片带模板时请求（loader 内部有缓存），
+  // 用于展开区的模板化卡面预览（AnkiCardPreviewPanel）。
+  const { template } = useAnkiTemplateLoader(renderBody ? card.template_id : null);
 
   useEffect(() => {
     if (expanded) {
@@ -122,12 +175,45 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     if (!expanded) {
       setEditing(false);
       setEditError(null);
+      setResetArmed(false);
     }
   }, [expanded]);
+
+  // 重置确认超时自动解除
+  useEffect(() => {
+    if (!resetArmed) return;
+    const timer = window.setTimeout(() => setResetArmed(false), RESET_DISARM_MS);
+    return () => window.clearTimeout(timer);
+  }, [resetArmed]);
 
   const status = getCardStatus(card);
   const front = getCardFront(card);
   const back = getCardBack(card);
+
+  // 编辑视图模型：与复习会话共用字段别名映射（Cloze 卡编辑 text/Extra 而非 Front/Back）
+  const editable = useMemo<EditableReviewCard>(() => ({
+    ankiCardId: card.id,
+    front: card.front,
+    back: card.back,
+    text: card.text,
+    tags: card.tags,
+    images: card.images,
+    templateId: card.template_id ?? null,
+    extraFields: { ...(card.fields ?? {}), ...(card.extra_fields ?? {}) },
+  }), [card]);
+  const isCloze = isClozeReviewCard(editable, template);
+  const editValues = useMemo(
+    () => getReviewCardEditValues(editable, template),
+    [editable, template],
+  );
+
+  const sourceKey = sourceLabelKey(card.sourceType);
+  // 仅 chat_session 来源有干净的跳转入口（sourceId 即会话 id）
+  const sourceSessionId = card.sourceType === 'chat_session'
+    && typeof card.sourceId === 'string'
+    && card.sourceId.trim().length > 0
+    ? card.sourceId.trim()
+    : null;
   const relativeDue = card.enqueued && !card.suspended
     ? formatRelativeDue(card.dueMs, locale)
     : null;
@@ -139,24 +225,29 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     : undefined;
 
   const beginEdit = useCallback(() => {
-    setDraftFront(front);
-    setDraftBack(back);
+    setDraftFront(editValues.front);
+    setDraftBack(editValues.back);
     setDraftTags(card.tags.join(', '));
     setEditError(null);
     setEditing(true);
-  }, [front, back, card.tags]);
+  }, [editValues, card.tags]);
 
   const handleSave = useCallback(async () => {
     const nextFront = draftFront.trim();
     const nextBack = draftBack.trim();
-    if (!nextFront || !nextBack) {
+    // Cloze 卡：back（Extra）允许为空，但正面必须含有效挖空标记
+    if (!nextFront || (!isCloze && !nextBack)) {
       setEditError(translate('library.editEmpty'));
+      return;
+    }
+    if (isCloze && !hasValidCloze(nextFront)) {
+      setEditError(translate('session.invalidClozeEdit'));
       return;
     }
     const nextTags = parseTagsInput(draftTags);
     const patch: AnkiLibraryCardPatch = {};
-    if (nextFront !== front) patch.front = nextFront;
-    if (nextBack !== back) patch.back = nextBack;
+    if (nextFront !== editValues.front) patch.front = nextFront;
+    if (nextBack !== editValues.back) patch.back = nextBack;
     if (!tagsEqual(nextTags, card.tags)) patch.tags = nextTags;
     if (Object.keys(patch).length === 0) {
       setEditing(false);
@@ -165,12 +256,23 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     setSaving(true);
     setEditError(null);
     try {
-      const ok = await onSaveEdit(card.id, patch);
+      const ok = await onSaveEdit(card.id, patch, template);
       if (ok) setEditing(false);
     } finally {
       setSaving(false);
     }
-  }, [draftFront, draftBack, draftTags, front, back, card.id, card.tags, onSaveEdit, translate]);
+  }, [
+    draftFront,
+    draftBack,
+    draftTags,
+    editValues,
+    isCloze,
+    card.id,
+    card.tags,
+    onSaveEdit,
+    template,
+    translate,
+  ]);
 
   const handleMainClick = (event: React.MouseEvent) => {
     if (isInteractiveTarget(event.target)) return;
@@ -425,14 +527,21 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
               </div>
             ) : (
               <>
-                <div className="fc-lib-face">
-                  <span className="fc-lib-face-label">{t('session.front')}</span>
-                  {front || t('card.untitled')}
-                </div>
-                <div className="fc-lib-face">
-                  <span className="fc-lib-face-label">{t('session.back')}</span>
-                  {back || t('card.noBack')}
-                </div>
+                {template ? (
+                  /* 带模板的卡片：模板化正反面预览（含字段/标签），替代纯文本卡面 */
+                  <AnkiCardPreviewPanel card={card} template={template} />
+                ) : (
+                  <>
+                    <div className="fc-lib-face">
+                      <span className="fc-lib-face-label">{t('session.front')}</span>
+                      {front || t('card.untitled')}
+                    </div>
+                    <div className="fc-lib-face">
+                      <span className="fc-lib-face-label">{t('session.back')}</span>
+                      {back || t('card.noBack')}
+                    </div>
+                  </>
+                )}
                 <dl className="fc-lib-meta">
                   <div>
                     <dt>{translate('library.meta.status')}</dt>
@@ -456,7 +565,26 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                       <dd>{translate(ratingKey)}</dd>
                     </div>
                   ) : null}
-                  {card.tags.length > 0 ? (
+                  {sourceKey ? (
+                    <div>
+                      <dt>{translate('library.meta.source')}</dt>
+                      <dd className="flex items-center gap-1.5">
+                        {translate(sourceKey)}
+                        {sourceSessionId ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                            onClick={() => jumpToChatSession(sourceSessionId)}
+                          >
+                            <ArrowSquareOut size={11} aria-hidden="true" />
+                            {translate('library.viewSource')}
+                          </button>
+                        ) : null}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {/* 模板预览面板内部已展示标签，避免重复 */}
+                  {!template && card.tags.length > 0 ? (
                     <div>
                       <dt>{translate('library.meta.tags')}</dt>
                       <dd>{card.tags.join(', ')}</dd>
@@ -486,6 +614,28 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     >
                       <ArrowCounterClockwise size={13} />
                       {translate('library.undoReview')}
+                    </NotionButton>
+                  ) : null}
+                  {card.enqueued && card.stateId ? (
+                    <NotionButton
+                      type="button"
+                      variant={resetArmed ? 'danger' : 'ghost'}
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => {
+                        if (!resetArmed) {
+                          setResetArmed(true);
+                          return;
+                        }
+                        setResetArmed(false);
+                        onResetProgress(card.id);
+                      }}
+                      className="text-xs"
+                    >
+                      <Eraser size={13} />
+                      {resetArmed
+                        ? translate('library.resetProgressConfirm')
+                        : translate('library.resetProgress')}
                     </NotionButton>
                   ) : null}
                 </div>

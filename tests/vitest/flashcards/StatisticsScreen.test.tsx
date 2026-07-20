@@ -25,6 +25,7 @@ vi.mock('react-i18next', () => ({
       'statistics.title': '学习统计',
       'statistics.total': '已入队总数',
     }[key] ?? key),
+    i18n: { language: 'zh-CN' },
   }),
   initReactI18next: { type: '3rdParty', init: () => undefined },
 }));

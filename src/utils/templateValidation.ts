@@ -155,6 +155,10 @@ export function sanitizeCSS(css: string): string {
 
 /**
  * 清理 HTML 中的危险内容
+ *
+ * ⚠️ 不要在模板持久化路径调用本函数：它会把模板里的 <script> 永久剥掉，
+ * 曾导致内置交互模板脚本被写丢（数据损毁）。应用内渲染的安全性由
+ * DOMPurify + iframe 沙箱（htmlSandboxPolicy）在渲染时兜底。
  */
 export function sanitizeHTML(html: string): string {
   let sanitized = html;

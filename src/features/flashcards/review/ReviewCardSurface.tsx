@@ -91,6 +91,11 @@ export interface ReviewCardSurfaceProps {
   swipeEnabled?: boolean;
   /** 色带评分标签翻译（key 属于 flashcards 命名空间） */
   ratingLabel?: (key: string) => string;
+  /**
+   * ACR 实体锚点值（`flashcards:{ankiCardId}`）：挂到卡面容器供
+   * agentFlash 定位当前复习卡（agent 改卡/入队后的实体级演出）。
+   */
+  agentEntityId?: string;
 }
 
 type AnimPhase = 'none' | 'a' | 'b';
@@ -111,6 +116,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
   swipe,
   swipeEnabled = false,
   ratingLabel,
+  agentEntityId,
 }) => {
   const side = flipped ? 'back' : 'front';
   const isCloze = hasValidCloze(card.text);
@@ -167,6 +173,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
   return (
     <div
       className="wb-fc-card-stage relative"
+      data-agent-entity={agentEntityId}
       {...(swipe
         ? swipeEnabled
           ? swipe.handlers
@@ -206,6 +213,10 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
             data-flip={flipAnim === 'none' ? undefined : flipAnim}
             className="wb-fc-card-face flex min-h-0 min-w-0 flex-1 flex-col"
           >
+            {/* 不再对 iframe 设 max-h 上限：iframe 高度随内容自适应，
+                超长卡片由外层 .wb-fc-card（overflow-auto）统一滚动。
+                此前 55vh 截断 + pointer-events-none 会让 iframe 内部滚动不可达，
+                长内容（图片/长文/公式）被裁掉且无法查看。 */}
             <AnkiTemplateCardFace
               card={renderCard}
               template={template}
@@ -213,7 +224,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
               compact={false}
               fallbackText={fallbackText}
               emptyText={flipped ? noBackText : noFrontText}
-              className="pointer-events-none flex min-h-0 flex-1 items-center justify-center [&_iframe]:max-h-[55vh]"
+              className="pointer-events-none flex min-h-0 flex-1 items-center justify-center"
             />
           </div>
           <span className="wb-fc-card-flip-hint" aria-hidden="true">

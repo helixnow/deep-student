@@ -185,10 +185,10 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
         </div>
         
         <div className="filter-builder-footer">
-          <NotionButton variant="default" size="sm" className="btn-secondary" onClick={onClose}>
+          <NotionButton variant="default" size="sm" onClick={onClose}>
             {t('cancel')}
           </NotionButton>
-          <NotionButton variant="primary" size="sm" className="btn-primary" onClick={handleApply}>
+          <NotionButton variant="primary" size="sm" onClick={handleApply}>
             {t('apply_filters')}
           </NotionButton>
         </div>

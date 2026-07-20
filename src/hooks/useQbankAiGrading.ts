@@ -116,6 +116,8 @@ export function useQbankAiGrading() {
         });
       }
       isActiveRef.current = false;
+      // 超时可能发生在 listen 注册完成前，若不复位会永久拒绝后续 startGrading
+      isStartingRef.current = false;
       // ★ R2-2: 结束进行中的 Promise（reject），与 error 事件路径一致，避免调用方挂起
       failRef.current?.(new Error('AI 评判超时，请重试'));
     }, TIMEOUT_MS);
@@ -301,6 +303,8 @@ export function useQbankAiGrading() {
     }));
 
     isActiveRef.current = false;
+    // 取消可能发生在 startGrading 完成 listen 注册前，复位以允许重新发起
+    isStartingRef.current = false;
     // ★ R2-2: 结束进行中的 Promise 为 cancelled，避免调用方挂起
     settleRef.current?.('cancelled');
 

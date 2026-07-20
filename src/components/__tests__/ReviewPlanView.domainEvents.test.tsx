@@ -26,6 +26,17 @@ vi.mock('@/stores/reviewPlanStore', () => ({
     loadStats: mocks.loadStats,
     refreshStats: mocks.refreshStats,
     startSession: mocks.startSession,
+    session: {
+      isActive: false,
+      examId: null,
+      queue: [],
+      currentIndex: 0,
+      startTime: null,
+      questionStartTime: null,
+      results: [],
+      completedCount: 0,
+      correctCount: 0,
+    },
   }),
 }));
 

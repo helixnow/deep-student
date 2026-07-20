@@ -37,6 +37,8 @@ export interface SessionSummaryProps {
   onUndo: () => void;
   onResume: () => void;
   onBack: () => void;
+  /** 剩余到期 > 0 时的「继续复习」入口（重新 loadDue 并开新一轮） */
+  onContinue?: () => void;
   errorBanner?: React.ReactNode;
 }
 
@@ -54,10 +56,12 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
   onUndo,
   onResume,
   onBack,
+  onContinue,
   errorBanner,
 }) => {
   const { t } = useTranslation('flashcards');
   const showSummary = !empty && ratedCount > 0;
+  const showContinue = Boolean(onContinue) && remainingDue != null && remainingDue > 0;
   const maxCount = Math.max(1, ...DIST_ROWS.map(({ rating }) => ratingCounts[rating]));
 
   return (
@@ -137,7 +141,17 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
             {t('session.resume')}
           </NotionButton>
         ) : null}
-        <NotionButton type="button" variant="primary" onClick={onBack}>
+        {showContinue ? (
+          <NotionButton type="button" variant="primary" disabled={busy} onClick={onContinue}>
+            <Play size={16} />
+            {t('session.continueReview', { count: remainingDue })}
+          </NotionButton>
+        ) : null}
+        <NotionButton
+          type="button"
+          variant={showContinue ? 'default' : 'primary'}
+          onClick={onBack}
+        >
           {t('session.backToday')}
         </NotionButton>
       </div>

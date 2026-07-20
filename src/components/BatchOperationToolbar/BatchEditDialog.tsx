@@ -437,10 +437,10 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
         </div>
         
         <div className="dialog-footer">
-          <NotionButton variant="default" size="sm" className="btn-secondary" onClick={onClose}>
+          <NotionButton variant="default" size="sm" onClick={onClose}>
             {t('cancel')}
           </NotionButton>
-          <NotionButton variant="primary" size="sm" className="btn-primary" onClick={() => onSave(changes)} disabled={!hasChanges}>
+          <NotionButton variant="primary" size="sm" onClick={() => onSave(changes)} disabled={!hasChanges}>
             {t('apply_to_cards', { count: cards.length })}
           </NotionButton>
         </div>

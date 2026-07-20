@@ -152,7 +152,7 @@ export const FailedTasksPanel: React.FC<{
               variant="ghost"
               onClick={() => retryOne(task.id)}
               disabled={retryingAll || !!retryingId}
-              className="h-5 w-5 p-0 flex-shrink-0"
+              className="h-5 w-5 p-0 flex-shrink-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
               aria-label={t('taskDashboard.retryFailed')}
             >
               {retryingId === task.id

@@ -858,14 +858,22 @@ impl EnhancedAnkiService {
             None
         };
 
-        crate::apkg_exporter_service::export_cards_to_apkg_with_template(
-            simple_cards,
-            options.deck_name,
-            options.note_type,
-            output_path.clone(),
-            template_config,
-        )
+        // 导出是纯阻塞的 SQLite/zip 工作：放到 blocking 线程池执行，避免卡住 async runtime
+        let export_output_path = output_path.clone();
+        let runtime_handle = tokio::runtime::Handle::current();
+        tokio::task::spawn_blocking(move || {
+            runtime_handle.block_on(
+                crate::apkg_exporter_service::export_cards_to_apkg_with_template(
+                    simple_cards,
+                    options.deck_name,
+                    options.note_type,
+                    export_output_path,
+                    template_config,
+                ),
+            )
+        })
         .await
+        .map_err(|e| AppError::internal(format!("APKG 导出任务执行失败: {}", e)))?
         .map_err(|e| AppError::file_system(format!("导出APKG失败: {}", e)))?;
 
         if let Some(doc_id) = document_id.as_ref() {

@@ -217,7 +217,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
                     {readonly ? (
                       <span className="text-sm">
                         {currentTarget
-                          ? t(`exam_sheet:export.fields.${currentTarget}`, currentTarget)
+                          ? t(`exam_sheet:questionBank.export.fields.${currentTarget}`, currentTarget)
                           : '-'}
                       </span>
                     ) : (
@@ -231,7 +231,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
                             const isSelected = currentTarget === field.key;
                             const isUsed = !isSelected && mappedFields.has(field.key);
                             const isSuggested = !currentTarget && suggestedTarget === field.key;
-                            const fieldLabel = t(`exam_sheet:export.fields.${field.key}`, field.key);
+                            const fieldLabel = t(`exam_sheet:questionBank.export.fields.${field.key}`, field.key);
                             const suffix = field.required ? ` (${t('exam_sheet:csv.required')})` : isSuggested && !isUsed ? ` (${t('exam_sheet:csv.suggested')})` : '';
                             return {
                               value: field.key,

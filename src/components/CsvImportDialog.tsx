@@ -1,11 +1,14 @@
 /**
- * CSV 导入对话框
+ * CSV 导入面板（非模态）
  * 
  * 支持 4 个步骤的导入流程：
  * 1. 文件选择（支持拖拽上传）
  * 2. 预览和字段映射
  * 3. 去重策略选择
  * 4. 导入进度和结果
+ * 
+ * 项目已禁用模态框：CsvImportPanel 为页面内嵌形态；CsvImportDialog 保留
+ * open/onOpenChange 接口，但渲染为占满宿主容器的内联覆盖面板。
  * 
  * Notion 风格 UI：
  * - 清晰的步骤指示
@@ -18,7 +21,6 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Label } from '@/components/ui/shad/Label';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -102,10 +104,14 @@ interface CsvImportFlowProps {
   folderId?: string;
   /** 导入完成回调 */
   onImportComplete?: (result: CsvImportResult) => void;
-  /** 关闭/返回：内嵌模式返回题库列表；模态模式关闭对话框（导入中由内部先请求取消） */
+  /** 关闭/返回：内嵌模式返回题库列表；覆盖面板模式收起面板（导入中由内部先请求取消） */
   onClose: () => void;
-  /** 展示形式：dialog = 模态框（默认）；inline = 页面内嵌 */
-  layout?: 'dialog' | 'inline';
+  /**
+   * 展示形式（项目已禁用模态框，两种形式都是内联渲染）：
+   * - inline  = 页面内嵌（题目集内容区整页流程）
+   * - overlay = 占满宿主容器的内联覆盖面板（原 dialog 形态的替代，仅关闭文案不同）
+   */
+  layout?: 'overlay' | 'inline';
   /** 导入中状态上报（外层用于阻止关闭/切换视图） */
   onImportingChange?: (importing: boolean) => void;
 }
@@ -181,7 +187,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
   folderId,
   onImportComplete,
   onClose,
-  layout = 'dialog',
+  layout = 'overlay',
   onImportingChange,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common']);
@@ -234,7 +240,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
       mountedRef.current = false;
       const attempt = activeImportAttemptRef.current;
       if (attempt?.backendStarted) {
-        void invoke<boolean>('cancel_questions_csv_import', { import_id: attempt.id })
+        void invoke<boolean>('cancel_questions_csv_import', { importId: attempt.id })
           .catch(() => undefined);
       }
       if (unlistenRef.current) {
@@ -495,7 +501,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
     setIsCancelling(true);
     try {
       const accepted = await invoke<boolean>('cancel_questions_csv_import', {
-        import_id: attempt.id,
+        importId: attempt.id,
       });
       if (activeImportAttemptRef.current !== attempt || !mountedRef.current) return;
       if (!accepted) {
@@ -640,6 +646,12 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
         </div>
       </UnifiedDragDropZone>
 
+      {/* 格式说明：示例列名需与 csvHeaderAliases 别名表保持一致（自动映射依据） */}
+      <div className="rounded-md bg-muted/30 px-3 py-2 space-y-1">
+        <p className="text-xs text-muted-foreground">{t('exam_sheet:csv.format_hint')}</p>
+        <p className="font-mono text-xs text-foreground/80">{t('exam_sheet:csv.format_example')}</p>
+      </div>
+
       {/* 错误提示 */}
       {importError && (
         <Alert variant="destructive">
@@ -737,7 +749,8 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
                 <span className="font-mono text-muted-foreground">{csvCol}</span>
                 <CaretRight size={12} className="text-muted-foreground" />
                 <span className="font-medium">
-                  {t(`exam_sheet:export.fields.${target}`, target as string)}
+                  {/* Bug 修复：原 key `exam_sheet:export.fields.*` 不存在（实际在 questionBank 下），导致显示英文原始字段名 */}
+                  {t(`exam_sheet:questionBank.export.fields.${target}`, target as string)}
                 </span>
               </span>
             ))}
@@ -758,26 +771,33 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
       {isImporting && importProgress && (
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">
+            <span className="flex items-center gap-2 text-muted-foreground">
+              <CircleNotch size={14} className="animate-spin text-primary" />
               {t('exam_sheet:csv.importing')}
+              <span className="tabular-nums">
+                {importProgress.current} / {importProgress.total}
+              </span>
             </span>
-            <span className="font-medium">
+            <span className="font-medium tabular-nums">
               {progressPercent}%
             </span>
           </div>
           <Progress value={progressPercent} />
           <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1.5" title={t('exam_sheet:csv.result_success')}>
               <CheckCircle size={16} className="text-success" />
-              {importProgress.success}
+              <span className="tabular-nums">{importProgress.success}</span>
+              <span className="text-xs">{t('exam_sheet:csv.result_success')}</span>
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1.5" title={t('exam_sheet:csv.result_skipped')}>
               <Warning size={16} className="text-warning" />
-              {importProgress.skipped}
+              <span className="tabular-nums">{importProgress.skipped}</span>
+              <span className="text-xs">{t('exam_sheet:csv.result_skipped')}</span>
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1.5" title={t('exam_sheet:csv.result_failed')}>
               <XCircle size={16} className="text-destructive" />
-              {importProgress.failed}
+              <span className="tabular-nums">{importProgress.failed}</span>
+              <span className="text-xs">{t('exam_sheet:csv.result_failed')}</span>
             </span>
           </div>
           {/* 取消按钮 */}
@@ -817,15 +837,15 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
 
       {/* 结果展示 */}
       {importResult && !isImporting && (
-        <div className="space-y-4">
+        <div className="space-y-4 ui-rise-in">
           <div className={cn(
             'flex items-center gap-3 rounded-md p-4',
             importResult.cancelled || importResult.failed_count > 0 ? 'bg-warning/10' : 'bg-success/10'
           )}>
             {importResult.cancelled || importResult.failed_count > 0 ? (
-              <Warning size={20} className="text-warning" />
+              <Warning size={20} className="text-warning ui-zoom-fade-in" />
             ) : (
-              <CheckCircle size={20} className="text-success" />
+              <CheckCircle size={20} weight="fill" className="text-success ui-zoom-fade-in" />
             )}
             <div>
               <p className="font-medium">
@@ -845,19 +865,49 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
             </div>
           </div>
 
-          {/* 错误详情 */}
+          {/* 结果摘要计数 */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-md bg-success/10 p-3 text-center">
+              <div className="text-lg font-semibold tabular-nums text-success">{importResult.success_count}</div>
+              <div className="text-xs text-muted-foreground">{t('exam_sheet:csv.result_success')}</div>
+            </div>
+            <div className="rounded-md bg-warning/10 p-3 text-center">
+              <div className="text-lg font-semibold tabular-nums text-warning">{importResult.skipped_count}</div>
+              <div className="text-xs text-muted-foreground">{t('exam_sheet:csv.result_skipped')}</div>
+            </div>
+            <div className="rounded-md bg-destructive/10 p-3 text-center">
+              <div className="text-lg font-semibold tabular-nums text-destructive">{importResult.failed_count}</div>
+              <div className="text-xs text-muted-foreground">{t('exam_sheet:csv.result_failed')}</div>
+            </div>
+          </div>
+
+          {/* 错误详情：行号标红 + 原因 + 原始数据摘要 */}
           {importResult.errors.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-medium text-destructive">
-                {t('exam_sheet:csv.error_details')}
+                {t('exam_sheet:csv.error_details_count', { count: importResult.errors.length })}
               </Label>
-              <div className="max-h-[150px] space-y-2 overflow-auto rounded-md border border-destructive/30 bg-destructive/10 p-3">
-                {importResult.errors.slice(0, 10).map((error, index) => (
-                  <div key={index} className="text-xs">
-                    <span className="font-mono text-destructive">{t('exam_sheet:csv.error_row', { row: error.row, message: '' })}</span>
-                    <span className="text-destructive">{error.message}</span>
+              <div className="max-h-[200px] overflow-auto rounded-md border border-destructive/30 divide-y divide-destructive/10">
+                {importResult.errors.slice(0, 50).map((error, index) => (
+                  <div key={index} className="flex items-start gap-2 bg-destructive/5 px-3 py-2 text-xs">
+                    <span className="flex-shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 font-mono font-medium text-destructive">
+                      {t('exam_sheet:csv.error_row_label', { row: error.row })}
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="text-destructive">{error.message}</div>
+                      {error.raw_data && (
+                        <div className="truncate font-mono text-muted-foreground" title={error.raw_data}>
+                          {error.raw_data}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
+                {importResult.errors.length > 50 && (
+                  <div className="bg-destructive/5 px-3 py-2 text-xs text-muted-foreground">
+                    {t('exam_sheet:csv.error_more', { count: importResult.errors.length - 50 })}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -916,6 +966,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
                 : t('common:cancel')}
         </NotionButton>
 
+
         {/* 重试按钮（错误或已取消时显示） */}
         {canRetry && (
           <NotionButton variant="ghost" onClick={handleRetry}>
@@ -958,28 +1009,15 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
       </>
     );
 
-    // 内嵌模式使用页内页脚样式；模态模式沿用对话框页脚
-    if (layout === 'inline') {
-      return (
-        <div className="mt-4 flex items-center justify-end gap-2 border-t border-border/40 pt-4">
-          {footerContent}
-        </div>
-      );
-    }
-    return <NotionDialogFooter>{footerContent}</NotionDialogFooter>;
+    // 项目禁用模态框：inline 与 overlay 统一使用页内页脚样式
+    return (
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-border/40 pt-4">
+        {footerContent}
+      </div>
+    );
   };
 
-  const header = layout === 'dialog' ? (
-    <NotionDialogHeader>
-      <NotionDialogTitle className="flex items-center gap-2">
-        <Table size={20} />
-        {t('exam_sheet:csv.import_title')}
-      </NotionDialogTitle>
-      <NotionDialogDescription>
-        {t('exam_sheet:csv.import_description')}
-      </NotionDialogDescription>
-    </NotionDialogHeader>
-  ) : (
+  const header = (
     <div className="mb-6 space-y-1.5 text-center">
       <h2 className="flex items-center justify-center gap-2 text-lg font-semibold">
         <Table size={20} />
@@ -994,31 +1032,20 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
       {/* 步骤指示器 */}
       {renderStepIndicator()}
 
-      {/* 步骤内容（内嵌模式不强制最小高度，避免下拉区与页脚之间出现大段空白） */}
-      <div className={layout === 'dialog' ? 'min-h-[300px]' : undefined}>{renderStepContent()}</div>
+      {/* 步骤内容：key 触发步骤切换的滑动过渡动画 */}
+      <div key={currentStep} className="ui-slide-fade-in [--ui-enter-x:24px]">
+        {renderStepContent()}
+      </div>
     </>
   );
 
-  // 内嵌模式：整页内容（外层面板提供滚动与居中）
-  if (layout === 'inline') {
-    return (
-      <div className="w-full">
-        {header}
-        {body}
-        {renderFooter()}
-      </div>
-    );
-  }
-
+  // 整页内容（外层面板提供滚动与居中）
   return (
-    <>
+    <div className="w-full">
       {header}
-      <NotionDialogBody>
-        {body}
-      </NotionDialogBody>
-      {/* 底部按钮 */}
+      {body}
       {renderFooter()}
-    </>
+    </div>
   );
 };
 
@@ -1033,6 +1060,13 @@ export const CsvImportPanel: React.FC<CsvImportPanelProps> = ({ onImportingChang
   </div>
 );
 
+/**
+ * CSV 导入面板（原模态对话框形态）。
+ *
+ * 项目已禁用模态框：`open` / `onOpenChange` 的对外接口保持不变，但内部渲染为
+ * 占满宿主容器的内联覆盖面板（absolute inset-0，无遮罩、无居中弹窗）。
+ * 宿主容器需为定位上下文（relative）。
+ */
 export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   open,
   onOpenChange,
@@ -1045,33 +1079,37 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   const [isImporting, setIsImporting] = useState(false);
 
   // 导入中阻止关闭（与内嵌面板导入中阻止视图切换的行为一致）
-  const handleOpenChange = useCallback((nextOpen: boolean) => {
-    if (!nextOpen && isImporting) {
+  const handleClose = useCallback(() => {
+    if (isImporting) {
       showGlobalNotification('warning', t('exam_sheet:csv.import_in_progress_close_blocked'));
       return;
     }
-    onOpenChange(nextOpen);
+    onOpenChange(false);
   }, [isImporting, onOpenChange, t]);
 
+  // 仅在打开时挂载流程：关闭即卸载，天然重置状态并清理后端任务/监听器
+  if (!open) return null;
+
   return (
-    <NotionDialog
-      open={open}
-      onOpenChange={handleOpenChange}
-      closeOnOverlay={!isImporting}
-      maxWidth="max-w-2xl"
+    <div
+      className="absolute inset-0 z-30 flex flex-col bg-background ui-rise-in"
+      role="region"
+      aria-label={t('exam_sheet:csv.import_title')}
     >
-      {/* 仅在打开时挂载流程：关闭即卸载，天然重置状态并清理后端任务/监听器 */}
-      {open && (
-        <CsvImportFlow
-          examId={examId}
-          examName={examName}
-          folderId={folderId}
-          onImportComplete={onImportComplete}
-          onClose={() => onOpenChange(false)}
-          onImportingChange={setIsImporting}
-        />
-      )}
-    </NotionDialog>
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+        <div className="my-auto w-full max-w-2xl mx-auto py-4">
+          <CsvImportFlow
+            examId={examId}
+            examName={examName}
+            folderId={folderId}
+            onImportComplete={onImportComplete}
+            onClose={handleClose}
+            layout="overlay"
+            onImportingChange={setIsImporting}
+          />
+        </div>
+      </div>
+    </div>
   );
 };
 

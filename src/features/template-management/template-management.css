@@ -1201,6 +1201,49 @@
   border-top: none;
 }
 
+/* 触屏设备没有 hover 且指尖精度低：工具栏/卡片内的自绘小按钮统一加大触控目标
+   （NotionButton 已由 primitive contract 在 <lg 保证 44px，此处只补自绘 <button>） */
+@media (pointer: coarse) {
+  .wb-tm-chip {
+    height: 34px;
+    padding: 0 14px;
+    font-size: 12.5px;
+  }
+
+  .wb-tm-sort-select {
+    height: 38px;
+    font-size: 13px;
+  }
+
+  .wb-tm-view-toggle-btn {
+    width: 38px;
+    height: 34px;
+  }
+
+  .wb-tm-side-toggle-btn {
+    padding: 7px 12px;
+    font-size: 11px;
+  }
+
+  .wb-tm-toolbar-search {
+    height: 40px;
+  }
+
+  .wb-tm-toolbar-search-input {
+    font-size: 13px;
+  }
+
+  .wb-tm-toolbar-search-clear {
+    width: 26px;
+    height: 26px;
+  }
+
+  .wb-tm-file-clear {
+    width: 26px;
+    height: 26px;
+  }
+}
+
 @media (max-width: 767.98px) {
   /* 移动端浏览视口无横向内边距（卡片全出血），工具栏/面板补回边距 */
   .wb-tm-toolbar,

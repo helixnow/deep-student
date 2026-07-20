@@ -5,12 +5,22 @@ import {
   FieldType,
   UpdateTemplateRequest
 } from '../types';
-import { sanitizeCSS, sanitizeHTML } from '../utils/templateValidation';
+import { sanitizeCSS } from '../utils/templateValidation';
 import i18n from '@/i18n';
 
 // 模板数据已迁移到数据库，不再使用硬编码
 // ⚠️ 已彻底移除旧的 _DEPRECATED_TEMPLATE_STRUCTURE 以避免误导和臃肿
 // -----------------------------------------------------------------------------
+
+/** delete_custom_template 的返回结构（后端 commands.rs，旧调用方忽略返回值不受影响） */
+export interface TemplateDeleteResult {
+  deleted?: boolean;
+  deactivated?: boolean;
+  isBuiltIn?: boolean;
+  /** 仍引用该模板的存量卡片数（删除后这些卡片退化为纯文本渲染） */
+  referencingCards?: number;
+  message?: string;
+}
 // 统一模板管理类
 export class TemplateManager {
   private customTemplates: CustomAnkiTemplate[] = [];
@@ -230,16 +240,13 @@ export class TemplateManager {
       return templateData;
     }
     const normalizedRules = this.normalizeFieldExtractionRules(templateData.field_extraction_rules);
+    // 注意：持久化路径不再对 front/back HTML 做 sanitize。
+    // 早前在此处跑 sanitizeHTML 会把内置交互模板（design-lab 等）的 <script> 永久写丢，
+    // 属于数据损毁；而渲染端已有 DOMPurify + iframe sandbox 双保险（htmlSandboxPolicy），
+    // agent 写入路径（template_executor.rs）也从不 sanitize，两条写入路径在此统一。
+    // CSS 侧保留必要的规范化（剥 @import 外链 / expression 等）。
     return {
       ...templateData,
-      front_template:
-        typeof templateData.front_template === 'string'
-          ? sanitizeHTML(templateData.front_template)
-          : templateData.front_template,
-      back_template:
-        typeof templateData.back_template === 'string'
-          ? sanitizeHTML(templateData.back_template)
-          : templateData.back_template,
       css_style:
         typeof templateData.css_style === 'string'
           ? sanitizeCSS(templateData.css_style)
@@ -263,19 +270,23 @@ export class TemplateManager {
     return templateId;
   }
 
-  // 删除模板
-  async deleteTemplate(templateId: string): Promise<void> {
+  // 删除模板（返回后端删除结果，含仍引用该模板的卡片数，供 UI 提示）
+  async deleteTemplate(templateId: string): Promise<TemplateDeleteResult | null> {
     const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('delete_custom_template', { templateId });
+    const result = await invoke<TemplateDeleteResult | null>('delete_custom_template', { templateId });
     // 重新加载模板
     await this.loadTemplates();
+    return result ?? null;
   }
 
   // 更新模板
   async updateTemplate(templateId: string, templateData: any): Promise<void> {
     const { invoke } = await import('@tauri-apps/api/core');
     const normalizedTemplate = this.normalizeTemplatePayload(templateData);
-    let expectedVersion = normalizedTemplate?.version ?? this.getTemplateById(templateId)?.version;
+    // 乐观锁始终以「加载时的原始版本号」为准（版本由后端在更新成功后自动递增）。
+    // 不能把表单里的 version 当 expected_version：用户手动改版本号会必然触发
+    // optimistic_lock_failed，导致保存永远失败。
+    let expectedVersion = this.getTemplateById(templateId)?.version;
     if (!expectedVersion) {
       await this.loadTemplates();
       expectedVersion = this.getTemplateById(templateId)?.version;

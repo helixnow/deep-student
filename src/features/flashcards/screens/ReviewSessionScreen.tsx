@@ -11,6 +11,8 @@ import {
   ArrowLeft,
   ArrowClockwise,
   FloppyDisk,
+  Hourglass,
+  Info,
   Lightning,
   Pause,
   PencilSimple,
@@ -22,7 +24,6 @@ import {
 } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
-import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/utils/cn';
 import { hasValidCloze } from '../cloze';
@@ -94,6 +95,7 @@ export const ReviewSessionScreen: React.FC = () => {
   const { t } = useTranslation('flashcards');
   const queue = useFsrsReviewStore((state) => state.queue);
   const queueIndex = useFsrsReviewStore((state) => state.queueIndex);
+  const sessionMode = useFsrsReviewStore((state) => state.sessionMode);
   const flipped = useFsrsReviewStore((state) => state.flipped);
   const ratingBusy = useFsrsReviewStore((state) => state.ratingBusy);
   const loading = useFsrsReviewStore((state) => state.loading);
@@ -121,11 +123,19 @@ export const ReviewSessionScreen: React.FC = () => {
   const skipCurrent = useFsrsReviewStore((state) => state.skipCurrent);
   const retryBatchSession = useFsrsReviewStore((state) => state.retryBatchSession);
   const endSession = useFsrsReviewStore((state) => state.endSession);
+  const loadDue = useFsrsReviewStore((state) => state.loadDue);
+  const startDueSession = useFsrsReviewStore((state) => state.startDueSession);
 
   const [editing, setEditing] = React.useState(false);
   const [draftFront, setDraftFront] = React.useState('');
   const [draftBack, setDraftBack] = React.useState('');
   const editedCardIdentityRef = React.useRef<string | null>(null);
+
+  // 批次集中复习的一次性提示（每次会话开始时重置）
+  const [batchNoticeDismissed, setBatchNoticeDismissed] = React.useState(false);
+  React.useEffect(() => {
+    setBatchNoticeDismissed(false);
+  }, [sessionStartedAtMs]);
 
   // 键盘评分的按钮闪烁反馈
   const [pressedRating, setPressedRating] = React.useState<FsrsRating | null>(null);
@@ -170,6 +180,10 @@ export const ReviewSessionScreen: React.FC = () => {
   const cardElapsedMs = Math.max(0, now - cardShownAt);
   const sessionElapsedMs = sessionStartedAtMs != null
     ? Math.max(0, (doneAt ?? now) - sessionStartedAtMs)
+    : null;
+  // 学习步回插卡：真实 due 尚在未来时提示「提前复习」及剩余等待
+  const learningWaitMs = current?.learningDueMs != null && current.learningDueMs > now
+    ? current.learningDueMs - now
     : null;
 
   // ---- 剩余队列计数（new = 从未评过；learn = 已有复习记录） ----
@@ -234,6 +248,21 @@ export const ReviewSessionScreen: React.FC = () => {
     handleRate(rating);
   }, [handleRate]);
 
+  // 滑动评分手势：翻面后拖动卡面评分（左=Again 右=Good 上=Easy 下=Hard），
+  // 手势逻辑与视觉反馈见 useSwipeRating / ReviewCardSurface。
+  const swipeEnabled =
+    flipped && !ratingBusy && !editing && !loading && !sessionDone && Boolean(current);
+  const swipe = useSwipeRating({
+    enabled: swipeEnabled,
+    resetKey: cardKey,
+    onRate: handleRate,
+  });
+  // 评分失败（错误条出现）时把已飞出的卡片拉回原位，避免卡面空悬
+  const swipeReset = swipe.reset;
+  React.useEffect(() => {
+    if (error && errorKind === 'rate') swipeReset();
+  }, [error, errorKind, swipeReset]);
+
   const beginEdit = React.useCallback(() => {
     const live = useFsrsReviewStore.getState();
     const liveCurrent = live.queue[live.queueIndex];
@@ -247,6 +276,13 @@ export const ReviewSessionScreen: React.FC = () => {
   const saveEdit = React.useCallback(async () => {
     if (await updateCurrentCard(draftFront, draftBack, template)) setEditing(false);
   }, [draftBack, draftFront, template, updateCurrentCard]);
+
+  // 完成态「继续复习」：重新拉取到期队列并直接开新一轮，不必回 Today
+  const continueWithDue = React.useCallback(() => {
+    void loadDue().then((loaded) => {
+      if (loaded) startDueSession();
+    });
+  }, [loadDue, startDueSession]);
 
   const onKeyDown = React.useCallback((rawEvent: Event) => {
     const event = rawEvent as KeyboardEvent;
@@ -417,6 +453,7 @@ export const ReviewSessionScreen: React.FC = () => {
         onUndo={() => void undoLastReview()}
         onResume={() => void resumeLastSuspended()}
         onBack={endSession}
+        onContinue={continueWithDue}
         errorBanner={errorBanner}
       />
     );
@@ -426,8 +463,9 @@ export const ReviewSessionScreen: React.FC = () => {
     ? Math.round((Math.min(queueIndex, queue.length) / queue.length) * 100)
     : 0;
 
+  // 底部留出移动端手势导航安全区（评分栏贴屏幕底部，避免与 Home indicator 冲突）
   return (
-    <div className="wb-fc-session flex h-full min-h-0 flex-col gap-3 p-4 sm:p-5">
+    <div className="wb-fc-session flex h-full min-h-0 flex-col gap-3 px-4 pt-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:px-5 sm:pt-5 sm:pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))]">
       <div
         className="wb-fc-session-progress"
         role="progressbar"
@@ -439,6 +477,30 @@ export const ReviewSessionScreen: React.FC = () => {
         <div className="wb-fc-session-progress-fill" style={{ width: `${progressPct}%` }} />
       </div>
 
+      {sessionMode === 'batch' && !batchNoticeDismissed ? (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-2 rounded-md border border-info/40 bg-info/10 px-3 py-2 text-xs text-foreground"
+        >
+          <span className="flex min-w-0 items-start gap-1.5">
+            <Info size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-info" />
+            {t('session.batchNotice')}
+          </span>
+          <NotionButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={() => setBatchNoticeDismissed(true)}
+            aria-label={t('library.dismiss')}
+            title={t('library.dismiss')}
+            className="shrink-0"
+          >
+            <X size={13} />
+          </NotionButton>
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between gap-2">
         <NotionButton type="button" variant="ghost" size="sm" onClick={endSession} className="gap-1">
           <ArrowLeft size={14} />
@@ -449,6 +511,15 @@ export const ReviewSessionScreen: React.FC = () => {
             <span key={sessionStreak} className="wb-fc-chip wb-fc-chip--streak" title={t('review.streakTitle')}>
               <Lightning size={11} weight="fill" aria-hidden="true" />
               {t('review.streak', { count: sessionStreak })}
+            </span>
+          ) : null}
+          {learningWaitMs != null ? (
+            <span
+              className="wb-fc-chip wb-fc-chip--learn"
+              title={t('review.learningStepHint', { time: formatDuration(learningWaitMs) })}
+            >
+              <Hourglass size={11} aria-hidden="true" />
+              {t('review.learningStep')}
             </span>
           ) : null}
           {newCount > 0 ? (
@@ -600,6 +671,7 @@ export const ReviewSessionScreen: React.FC = () => {
         <ReviewCardSurface
           card={current}
           template={template}
+          agentEntityId={`flashcards:${current.ankiCardId ?? current.id}`}
           templateLoading={templateLoading}
           flipped={flipped}
           disabled={ratingBusy}
@@ -610,6 +682,9 @@ export const ReviewSessionScreen: React.FC = () => {
           flipHint={t('session.tapToFlip')}
           noFrontText={t('card.untitled')}
           noBackText={t('card.noBack')}
+          swipe={swipe}
+          swipeEnabled={swipeEnabled}
+          ratingLabel={(key) => t(key)}
         />
       )}
 

@@ -1,7 +1,9 @@
 /* 3D卡片预览容器 */
 .card-3d-preview-container {
-  width: 100vw; /* 使用视口宽度占满整个屏幕 */
-  margin-left: calc(-50vw + 50%); /* 负边距技巧，突破父容器限制 */
+  /* 受父容器约束（原 100vw + 负边距全屏技巧在窄屏会横向溢出，
+     且唯一调用方 .chat-card3d-compact 本就覆盖为 100%，这里对齐消除复用隐患） */
+  width: 100%;
+  margin-left: 0;
   /* 移除硬编码的超大最小高度，避免容器空间远大于卡片 */
   min-height: 0;
   --card-top-offset: 120px;
@@ -33,15 +35,15 @@
 .card-3d-controls {
   position: absolute;
   top: 20px;
-  right: 200px; /* 距离可视区域边缘200px */
+  right: 16px; /* 相对容器定位（原 200px/100vw 计算是全屏时代残留，窄容器下会溢出） */
   display: flex;
   align-items: center;
   gap: 16px;
-  z-index: 1000; /* SOTA修复：提高z-index确保控件始终可见 */
+  z-index: 1000; /* 容器 isolation:isolate 内的局部层级，不影响全局 */
   /* 确保控件不被遮挡 */
   isolation: isolate;
   /* 确保控件始终在可视区域内 */
-  max-width: calc(100vw - 400px);
+  max-width: calc(100% - 32px);
 }
 
 .control-btn {
@@ -394,6 +396,51 @@
 @media (min-resolution: 2dppx) {
   .card-3d-shadow {
     background: radial-gradient(ellipse at center, hsl(var(--shadow-base) / 0.15) 0%, transparent 70%);
+  }
+}
+
+/* ≤3 张卡的平铺模式：不做 3D 叠放，直接内联卡样式（点击翻面） */
+.card-3d-preview-flat {
+  padding: 12px 0;
+}
+
+.card-3d-flat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.card-3d-flat-item {
+  width: 100%;
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: 12px;
+  background: hsl(var(--card));
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-3d-flat-item:hover {
+  border-color: hsl(var(--border));
+  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 0.08);
+}
+
+.card-3d-flat-item:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.5);
+  outline-offset: 1px;
+}
+
+.card-3d-flat-item iframe {
+  width: 100%;
+  border: none;
+  background: transparent;
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-3d-flat-item {
+    transition: none;
   }
 }
 

@@ -6,18 +6,13 @@
  * 🆕 2026-01 新增
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/shad/Card';
+import { getQuestionTypeMeta } from './questionTypeMeta';
 import {
   Star,
   CircleNotch,
@@ -29,7 +24,7 @@ import {
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import type { Question as ApiQuestion, QuestionStatus } from '@/api/questionBankApi';
+import type { Question as ApiQuestion, QuestionStatus, Difficulty } from '@/api/questionBankApi';
 import type { Question as StoreQuestion } from '@/stores/questionBankStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
@@ -55,6 +50,25 @@ const statusLabelKeys: Record<QuestionStatus, string> = {
   review: 'practice:questionBank.status.review',
 };
 
+const difficultyPills: Record<Difficulty, string> = {
+  easy: 'bg-success/10 text-success',
+  medium: 'bg-warning/10 text-warning',
+  hard: 'bg-warning/15 text-warning',
+  very_hard: 'bg-destructive/10 text-destructive',
+};
+
+const difficultyLabelKeys: Record<Difficulty, string> = {
+  easy: 'practice:questionBank.difficultyShort.easy',
+  medium: 'practice:questionBank.difficultyShort.medium',
+  hard: 'practice:questionBank.difficultyShort.hard',
+  very_hard: 'practice:questionBank.difficultyShort.veryHard',
+};
+
+/** 列表进入 stagger：延迟随索引递增，封顶避免长列表尾部等待过久 */
+const staggerStyle = (index: number): React.CSSProperties => ({
+  animationDelay: `${Math.min(index, 16) * 24}ms`,
+});
+
 export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
   examId,
   onSelectQuestion,
@@ -62,13 +76,24 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
   onViewHistory,
   onBrowseQuestions,
 }) => {
-  const { t } = useTranslation(['exam_sheet', 'common', 'practice']);
+  const { t } = useTranslation(['exam_sheet', 'common', 'practice', 'learningHub']);
   const PAGE_SIZE = 500;
   const [favorites, setFavorites] = useState<ApiQuestion[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // ★ 竞态修复：请求序号递增，只有最新一次请求的响应才允许落地，
+  // 防止 examId 快速切换或连续刷新时过期响应覆盖新数据；卸载后不再 setState
+  const requestSeqRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const mapToApiQuestion = useCallback((q: StoreQuestion): ApiQuestion => ({
     id: q.id,
@@ -93,11 +118,14 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
     images: q.images,
   }), []);
 
-  const loadFavorites = useCallback(async () => {
+  const loadFavorites = useCallback(async (options?: { silent?: boolean }) => {
     if (!examId) return;
 
-    setIsLoading(true);
-    setError(null);
+    const seq = ++requestSeqRef.current;
+    if (!options?.silent) {
+      setIsLoading(true);
+      setError(null);
+    }
     try {
       const result = await invoke<{ questions: StoreQuestion[]; total: number }>('qbank_list_questions', {
         request: {
@@ -107,13 +135,20 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
           page_size: PAGE_SIZE,
         },
       });
+      // 过期响应直接丢弃
+      if (!mountedRef.current || seq !== requestSeqRef.current) return;
       setFavorites(result.questions.map(mapToApiQuestion));
       setTotalCount(result.total);
     } catch (err: unknown) {
+      if (!mountedRef.current || seq !== requestSeqRef.current) return;
       console.error('[QuestionFavoritesView] Failed to load favorites:', err);
-      setError(err instanceof Error ? err.message : String(err));
+      if (!options?.silent) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current && seq === requestSeqRef.current && !options?.silent) {
+        setIsLoading(false);
+      }
     }
   }, [examId, mapToApiQuestion]);
 
@@ -121,6 +156,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
     void loadFavorites();
   }, [loadFavorites]);
 
+  // 乐观更新：先移除卡片，失败时回滚并提示
   const handleToggleFavorite = useCallback(async (questionId: string) => {
     if (!onToggleFavorite) {
       showGlobalNotification(
@@ -129,42 +165,68 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
       );
       return;
     }
+    const prevFavorites = favorites;
+    const prevTotal = totalCount;
     setActionLoading(questionId);
+    setFavorites((current) => current.filter((q) => q.id !== questionId));
+    setTotalCount((count) => Math.max(0, count - 1));
     try {
       await onToggleFavorite(questionId);
-      await loadFavorites();
+      // 静默同步一次，修正截断计数等边缘状态（乐观结果已呈现，不闪 loading）
+      void loadFavorites({ silent: true });
     } catch (err: unknown) {
+      if (mountedRef.current) {
+        setFavorites(prevFavorites);
+        setTotalCount(prevTotal);
+      }
       showGlobalNotification(
         'error',
-        `${t('exam_sheet:questionBank.favorites.toggleFailed')}: ${err instanceof Error ? err.message : String(err)}`
+        `${t('learningHub:exam.library.unfavoriteFailedRollback')}: ${err instanceof Error ? err.message : String(err)}`
       );
     } finally {
-      setActionLoading(null);
+      if (mountedRef.current) {
+        setActionLoading(null);
+      }
     }
-  }, [onToggleFavorite, loadFavorites, t]);
+  }, [onToggleFavorite, favorites, totalCount, loadFavorites, t]);
 
-  const renderQuestionCard = (question: ApiQuestion) => (
-    <Card
+  // Notion 风格卡片：与题库列表视图统一（hover 浮起 + 微阴影 + stagger 入场）
+  const renderQuestionCard = (question: ApiQuestion, index: number) => (
+    <div
       key={question.id}
-      className="cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+      role="button"
+      tabIndex={0}
+      style={staggerStyle(index)}
       onClick={() => onSelectQuestion?.(question)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectQuestion?.(question); } }}
+      className={cn(
+        'ui-rise-in group relative cursor-pointer rounded-lg border border-border/60 bg-card p-3',
+        'transition-[background-color,border-color,color,box-shadow,transform] duration-200',
+        'hover:border-border hover:bg-[var(--interactive-hover)] hover:shadow-[var(--shadow-notion)] hover:-translate-y-0.5',
+        'motion-reduce:transition-none motion-reduce:hover:translate-y-0'
+      )}
     >
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <CardTitle className="text-sm font-medium line-clamp-1">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <Star size={13} weight="fill" className="flex-shrink-0 text-warning" />
+            <span className="truncate text-sm font-medium">
               {question.questionLabel || question.cardId}
-            </CardTitle>
-            <CardDescription className="text-xs line-clamp-2 mt-1">
-              {question.content.slice(0, 80)}
-              {question.content.length > 80 && '...'}
-            </CardDescription>
+            </span>
           </div>
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
+            {question.content.slice(0, 80)}
+            {question.content.length > 80 && '...'}
+          </p>
+        </div>
+        <div className="flex flex-shrink-0 items-center opacity-60 transition-opacity group-hover:opacity-100">
           <NotionButton
             variant="ghost"
             size="icon"
- className="w-8 h-8 flex-shrink-0"
+            iconOnly
+            className="!w-8 !h-8 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11"
             title={t('exam_sheet:questionBank.history.title')}
+            aria-label={t('exam_sheet:questionBank.history.title')}
             onClick={(e) => {
               e.stopPropagation();
               onViewHistory?.(question.id);
@@ -175,7 +237,10 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
           <NotionButton
             variant="ghost"
             size="icon"
- className="w-8 h-8 flex-shrink-0"
+            iconOnly
+            className="!w-8 !h-8 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11"
+            title={t('exam_sheet:questionBank.unfavorite')}
+            aria-label={t('exam_sheet:questionBank.unfavorite')}
             disabled={!onToggleFavorite || actionLoading === question.id}
             onClick={(e) => {
               e.stopPropagation();
@@ -185,28 +250,36 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             {actionLoading === question.id ? (
               <CircleNotch size={16} className="animate-spin" />
             ) : (
-              <Star size={16} className="text-warning" />
+              <Star size={16} weight="fill" className="text-warning" />
             )}
           </NotionButton>
         </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge className={cn('text-xs', statusColors[question.status])}>
-              {t(statusLabelKeys[question.status])}
-            </Badge>
-            {question.isCorrect === true && (
-              <CheckCircle size={14} className="text-success" />
-            )}
-            {question.isCorrect === false && (
-              <XCircle size={14} className="text-destructive" />
-            )}
-          </div>
-          <CaretRight size={16} className="text-muted-foreground" />
+      </div>
+      <div className="mt-2 flex items-center justify-between">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <Badge className={cn('text-xs', statusColors[question.status])}>
+            {t(statusLabelKeys[question.status])}
+          </Badge>
+          {question.difficulty && (
+            <span className={cn('rounded px-1.5 py-0.5 font-medium', difficultyPills[question.difficulty])}>
+              {t(difficultyLabelKeys[question.difficulty])}
+            </span>
+          )}
+          {question.questionType && question.questionType !== 'other' && (
+            <span className={cn('rounded px-1.5 py-0.5 font-medium', getQuestionTypeMeta(question.questionType).pill)}>
+              {t(getQuestionTypeMeta(question.questionType).labelKey)}
+            </span>
+          )}
+          {question.isCorrect === true && (
+            <CheckCircle size={14} className="text-success" />
+          )}
+          {question.isCorrect === false && (
+            <XCircle size={14} className="text-destructive" />
+          )}
         </div>
-      </CardContent>
-    </Card>
+        <CaretRight size={16} className="text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
+      </div>
+    </div>
   );
 
   return (
@@ -223,8 +296,19 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
         )}
       </div>
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
+        // 加载骨架：模拟收藏卡片结构，避免整屏转圈闪切
+        <div className="space-y-2 pr-2" role="status" aria-busy>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="rounded-lg border border-border/60 bg-card p-3">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-2 h-3 w-full" />
+              <Skeleton className="mt-1 h-3 w-3/4" />
+              <div className="mt-2 flex items-center gap-1.5">
+                <Skeleton className="h-4 w-12 rounded" />
+                <Skeleton className="h-4 w-10 rounded" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -264,7 +348,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
                 </span>
               </div>
             )}
-            {favorites.map((q) => renderQuestionCard(q))}
+            {favorites.map((q, index) => renderQuestionCard(q, index))}
           </div>
         </CustomScrollArea>
       )}

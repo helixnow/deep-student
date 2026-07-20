@@ -205,6 +205,7 @@
       "new": "New",
       "correctRate": "Accuracy",
       "noData": "No statistics available",
+      "noDataHint": "Practice a few questions and your progress and accuracy stats will show up here",
       "progress": "Learning Progress",
       "accuracy": "Accuracy",
       "excellent": "Excellent",
@@ -337,7 +338,14 @@
         "status": "Status",
         "attempts": "Attempts",
         "correctCount": "Correct Count"
-      }
+      },
+      "columnsPreview": "Column preview",
+      "savedTo": "Saved to",
+      "openFolder": "Reveal in folder",
+      "openFolderFailed": "Failed to reveal in folder",
+      "done": "Done",
+      "exportedCount": "Exported {{count}} questions",
+      "fieldsHint": "Click to toggle exported fields; content is required"
     },
     "search": "Search questions...",
     "empty": "No questions",
@@ -410,6 +418,7 @@
     "history": {
       "description": "Description",
       "empty": "Empty",
+      "emptyHint": "Records are created automatically as you answer and edit questions",
       "title": "Title"
     }
   },
@@ -421,6 +430,8 @@
     "select_file_failed": "Failed to select file",
     "drop_or_click": "Drop CSV file here or click to select",
     "supported_formats": "Supports UTF-8 and GBK encoding",
+    "format_hint": "The CSV must include a header row; Chinese and English column names are both supported",
+    "format_example": "content,options,answer,explanation,tags",
     "drag_not_supported": "Please click the button to select CSV file",
     "preview_failed": "Failed to preview CSV: {{error}}",
     "file_info": "{{rows}} rows, {{cols}} columns, encoding: {{encoding}}",
@@ -470,7 +481,13 @@
     "import_cancel_unavailable": "The import has finished and cannot be cancelled.",
     "import_cancelled_before_start": "Import cancelled before any data was written.",
     "import_in_progress_close_blocked": "Import is in progress. Cancel it before closing this window.",
-    "mapping_duplicate": "Duplicate mappings found. Each target field can be mapped only once."
+    "mapping_duplicate": "Duplicate mappings found. Each target field can be mapped only once.",
+    "result_success": "Imported",
+    "result_skipped": "Skipped",
+    "result_failed": "Failed",
+    "error_details_count": "Error details ({{count}} total)",
+    "error_row_label": "Row {{row}}",
+    "error_more": "{{count}} more errors not shown"
   },
   "image": {
     "alt_card": "Question card",
@@ -569,13 +586,30 @@
       "summary": "Confirm import"
     },
     "manual_create_link": "No files? Create a question manually",
-    "tips_combined": "Images are recognized via OCR; document text is parsed and structured by AI"
+    "tips_combined": "Images are recognized via OCR; document text is parsed and structured by AI",
+    "drop_active": "Release to add files",
+    "page_status_label": "Per-page recognition status",
+    "page_n": "Page {{page}}",
+    "cancel_confirm_hint": "Cancel this import? Parsed questions will be kept.",
+    "cancel_confirm_yes": "Yes, cancel",
+    "cancel_confirm_no": "Keep importing",
+    "resume_failed": "Failed to resume import: {{error}}",
+    "phases": {
+      "preparing": "Prepare",
+      "recognizing": "Recognize",
+      "parsing": "Parse",
+      "done": "Done"
+    }
   },
   "questionTypes": {
     "single_choice": "Single Choice",
     "multiple_choice": "Multiple Choice",
     "indefinite_choice": "Indefinite Choice",
+    "true_false": "True / False",
     "fill_blank": "Fill in Blank",
+    "matching": "Matching",
+    "ordering": "Ordering",
+    "numeric": "Numeric",
     "short_answer": "Short Answer",
     "essay": "Essay",
     "calculation": "Calculation",

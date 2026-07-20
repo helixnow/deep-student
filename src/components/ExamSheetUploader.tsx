@@ -36,10 +36,9 @@ import { Progress } from '@/components/ui/shad/Progress';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { useExamSheetProgress } from '@/hooks/useExamSheetProgress';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 import { emitImportDebug } from '@/debug-panel/plugins/QuestionImportDebugPlugin';
 import { UnifiedModelSelector, type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
-import { UnifiedDragDropZone, FILE_TYPES, type FileTypeDefinition } from '@/components/shared/UnifiedDragDropZone';
+import { UnifiedDragDropZone, type FileTypeDefinition } from '@/components/shared/UnifiedDragDropZone';
 import type { ApiConfig } from '@/types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
@@ -123,7 +122,19 @@ interface ImportAttempt {
   id: string;
   generation: number;
   backendStarted: boolean;
+  /**
+   * 断点续导：resume_question_import 发出的进度事件不携带 import_id，
+   * 只能按 session_id 过滤。设置该字段后事件过滤切换为 session 维度。
+   */
+  resumeSessionId?: string;
+  /** 本次流式导入创建的 session（SessionCreated 事件回填），失败时用于断点续导 */
+  createdSessionId?: string;
 }
+
+/** 智能解析内部阶段（用于处理步骤内的迷你阶段条） */
+type ProcessPhase = 'preparing' | 'recognizing' | 'parsing' | 'done';
+
+const PROCESS_PHASE_KEYS: ProcessPhase[] = ['preparing', 'recognizing', 'parsing', 'done'];
 
 const createQuestionImportId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -170,6 +181,42 @@ const UploadStepIndicator: React.FC<{ step: ProcessStep }> = ({ step }) => {
   );
 };
 
+/** 智能解析内部阶段条：准备 → 识别 → 解析 → 完成 */
+const ProcessPhaseBar: React.FC<{ phase: ProcessPhase }> = ({ phase }) => {
+  const { t } = useTranslation(['exam_sheet']);
+  const currentIndex = PROCESS_PHASE_KEYS.indexOf(phase);
+  return (
+    <ol className="flex flex-wrap items-center justify-center gap-y-1 text-[11px]">
+      {PROCESS_PHASE_KEYS.map((key, index) => {
+        const isDone = index < currentIndex || (index === currentIndex && key === 'done');
+        const isCurrent = index === currentIndex;
+        return (
+          <li key={key} className="flex items-center">
+            {index > 0 && (
+              <span className={cn('mx-1.5 h-px w-4 sm:w-6', index <= currentIndex ? 'bg-primary/50' : 'bg-border')} />
+            )}
+            <span
+              className={cn(
+                'flex items-center gap-1 rounded-full px-2 py-0.5 ui-state-colors',
+                isCurrent && key !== 'done' && 'bg-primary/10 font-medium text-primary',
+                isDone && 'text-success',
+                !isDone && !isCurrent && 'text-muted-foreground/60'
+              )}
+            >
+              {isDone ? (
+                <Check size={10} weight="bold" className="ui-zoom-fade-in" />
+              ) : isCurrent ? (
+                <CircleNotch size={10} className="animate-spin" />
+              ) : null}
+              {t(`exam_sheet:uploader.phases.${key}`)}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+};
+
 export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   sessionId,
   sessionName,
@@ -196,13 +243,28 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   
   // 文件状态
   const [selectedFiles, setSelectedFiles] = useState<FileInfo[]>([]);
+  // 拖拽悬停高亮（来自 UnifiedDragDropZone 的拖拽状态回调）
+  const [isDragActive, setIsDragActive] = useState(false);
   
   // 文档导入状态
   const [step, setStep] = useState<ProcessStep>('select');
   const [qbankName, setQbankName] = useState('');
   const [isLLMProcessing, setIsLLMProcessing] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  // 取消导入的内联二次确认（不使用模态框）
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [llmProgress, setLlmProgress] = useState({ percent: 0, message: '', parsedCount: 0 });
+  // 智能解析内部阶段（准备 → 识别 → 解析 → 完成）
+  const [processPhase, setProcessPhase] = useState<ProcessPhase>('preparing');
+  // 逐页识别状态（image_index → 是否完成）；length 为 0 时不渲染逐页视图
+  const [ocrPageDone, setOcrPageDone] = useState<boolean[]>([]);
+  // 断点续导：流式导入失败但已有 checkpoint 时提供"从断点恢复"入口
+  const [resumableSession, setResumableSession] = useState<{ sessionId: string; parsedCount: number } | null>(null);
+  const [isResumeRun, setIsResumeRun] = useState(false);
+  // 已解析题目数（ref 供异步 catch 分支读取，避免闭包读到过期 state）
+  const parsedCountRef = useRef(0);
+  // 流式题目列表容器：新题到达时自动滚动到底部
+  const parsedListRef = useRef<HTMLDivElement>(null);
   
   // 实时解析的题目列表（流式显示）
   const [parsedQuestions, setParsedQuestions] = useState<Array<{
@@ -242,7 +304,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   }, []);
 
   const beginImportAttempt = useCallback((): ImportAttempt => {
-    const attempt = {
+    const attempt: ImportAttempt = {
       id: createQuestionImportId(),
       generation: importGenerationRef.current + 1,
       backendStarted: false,
@@ -252,7 +314,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     setStep('processing');
     setIsLLMProcessing(true);
     setIsCancelling(false);
+    setShowCancelConfirm(false);
     setLlmProgress({ percent: 0, message: t('exam_sheet:uploader.reading_document'), parsedCount: 0 });
+    setProcessPhase('preparing');
+    setOcrPageDone([]);
+    setResumableSession(null);
+    setIsResumeRun(false);
+    parsedCountRef.current = 0;
     setParsedQuestions([]);
     setError(null);
     setPendingPdfImport(null);
@@ -266,7 +334,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       const attempt = activeImportAttemptRef.current;
       activeImportAttemptRef.current = null;
       if (attempt) {
-        void invoke<boolean>('cancel_question_bank_import', { import_id: attempt.id })
+        void invoke<boolean>('cancel_question_bank_import', { importId: attempt.id })
           .catch(() => undefined);
       }
     };
@@ -348,7 +416,14 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         // the active attempt so late events from a cancelled/failed import
         // cannot mutate the progress or summary of a retry.
         const activeAttempt = activeImportAttemptRef.current;
-        if (!activeAttempt || payload.import_id !== activeAttempt.id) {
+        if (!activeAttempt) {
+          return;
+        }
+        if (activeAttempt.resumeSessionId) {
+          // 断点续导：resume_question_import 事件不带 import_id，按 session 过滤
+          if (payload.import_id) return;
+          if (payload.session_id && payload.session_id !== activeAttempt.resumeSessionId) return;
+        } else if (payload.import_id !== activeAttempt.id) {
           return;
         }
 
@@ -361,6 +436,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           case 'Preprocessing': {
             const pct = payload.percent || 0;
             const msg = payload.message || t('exam_sheet:uploader.preprocessing', {  });
+            setProcessPhase(prev => (prev === 'preparing' ? prev : 'preparing'));
             setLlmProgress(prev => ({
               ...prev,
               percent: Math.max(prev.percent, pct),
@@ -384,9 +460,20 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           }
           case 'OcrImageCompleted': {
             // OCR/VLM 阶段占进度条 20~40%（DOCX 预处理已占到 20%）
-            const done = (payload.image_index || 0) + 1;
+            const doneIndex = payload.image_index || 0;
+            const done = doneIndex + 1;
             const total = payload.total_images || 1;
             const ocrPct = Math.min(20 + Math.round((done / total) * 20), 40);
+            setProcessPhase('recognizing');
+            // 逐页识别状态：乱序事件安全（按 index 置位，不依赖到达顺序）
+            setOcrPageDone(prev => {
+              const next = prev.length >= total ? [...prev] : [
+                ...prev,
+                ...Array.from({ length: total - prev.length }, () => false),
+              ];
+              if (doneIndex >= 0 && doneIndex < next.length) next[doneIndex] = true;
+              return next;
+            });
             setLlmProgress(prev => ({
               ...prev,
               percent: Math.max(prev.percent, ocrPct),
@@ -398,6 +485,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             break;
           }
           case 'OcrPhaseCompleted':
+            setProcessPhase('parsing');
+            setOcrPageDone(prev => prev.map(() => true));
             setLlmProgress(prev => ({
               ...prev,
               percent: Math.max(prev.percent, 40),
@@ -411,6 +500,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             const done = payload.current || 0;
             const total = payload.total || 1;
             const pct = total > 0 ? Math.min(40 + Math.round((done / total) * 5), 45) : 42;
+            setProcessPhase('parsing');
             setLlmProgress(prev => ({
               ...prev,
               percent: Math.max(prev.percent, pct),
@@ -424,6 +514,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           case 'StructuringQuestion': {
             const done = payload.current || 0;
             const total = payload.total || 1;
+            setProcessPhase('parsing');
             setLlmProgress(prev => ({
               ...prev,
               percent: Math.max(prev.percent, 45),
@@ -435,18 +526,26 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             break;
           }
           case 'SessionCreated':
+            // 回填本次导入创建的 session，失败时用于断点续导
+            if (payload.session_id) {
+              activeAttempt.createdSessionId = payload.session_id;
+            }
+            setProcessPhase('parsing');
             setLlmProgress(prev => ({
               ...prev,
               percent: Math.max(prev.percent, 42),
               message: t('exam_sheet:uploader.parsing_started', { chunks: payload.total_chunks }),
-              parsedCount: 0,
             }));
             break;
           case 'ChunkStart':
+            setProcessPhase('parsing');
             setLlmProgress(prev => ({
               ...prev,
-              // LLM 解析阶段占 42~90%
-              percent: Math.min(42 + ((payload.chunk_index || 0) / (payload.total_chunks || 1)) * 48, 90),
+              // LLM 解析阶段占 42~90%（Math.max 防乱序事件把进度打回去）
+              percent: Math.max(
+                prev.percent,
+                Math.min(42 + ((payload.chunk_index || 0) / (payload.total_chunks || 1)) * 48, 90)
+              ),
               message: t('exam_sheet:uploader.parsing_chunk', { current: (payload.chunk_index || 0) + 1, total: payload.total_chunks }),
             }));
             break;
@@ -466,6 +565,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 options: q.options,
               }]);
             }
+            parsedCountRef.current = payload.total_parsed || 0;
+            setProcessPhase('parsing');
             setLlmProgress(prev => ({
               ...prev,
               parsedCount: payload.total_parsed || 0,
@@ -473,15 +574,22 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             }));
             break;
           case 'ChunkCompleted':
+            parsedCountRef.current = payload.total_parsed || 0;
             setLlmProgress(prev => ({
               ...prev,
-              percent: Math.min(42 + (((payload.chunk_index || 0) + 1) / (payload.total_chunks || 1)) * 48, 90),
+              // Math.max：防迟到的 ChunkCompleted 让进度条回退
+              percent: Math.max(
+                prev.percent,
+                Math.min(42 + (((payload.chunk_index || 0) + 1) / (payload.total_chunks || 1)) * 48, 90)
+              ),
               parsedCount: payload.total_parsed || 0,
               message: t('exam_sheet:uploader.chunk_completed', { current: (payload.chunk_index || 0) + 1, total: payload.total_chunks, count: payload.total_parsed }),
             }));
             break;
           case 'Completed':
             // ★ #6(round2): VLM 中途失败但已存部分题时 partial=true，显式提示"可能缺题"（非阻塞，不触发失败态）
+            parsedCountRef.current = payload.total_questions || 0;
+            setProcessPhase('done');
             setLlmProgress({
               percent: 100,
               message: payload.partial
@@ -490,7 +598,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               parsedCount: payload.total_questions || 0,
             });
             break;
-          case 'Failed':
+          case 'Failed': {
             setError(t('exam_sheet:uploader.import_failed_prefix', { error: payload.error }));
             if ((payload.total_parsed || 0) > 0) {
               setLlmProgress(prev => ({
@@ -498,12 +606,22 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 message: t('exam_sheet:uploader.import_interrupted', { count: payload.total_parsed }),
               }));
             }
+            // 已解析部分题目且后端留有 checkpoint → 提供断点续导入口
+            const failedSessionId = payload.session_id || activeAttempt.createdSessionId;
+            if (failedSessionId && (payload.total_parsed || 0) > 0) {
+              setResumableSession({
+                sessionId: failedSessionId,
+                parsedCount: payload.total_parsed || 0,
+              });
+            }
             // 流式错误可能先于 invoke reject 到达。必须结束 processing 状态并回到
             // 文件选择页，保留选中的文件让用户可以直接重试。
             setIsLLMProcessing(false);
             setIsCancelling(false);
+            setShowCancelConfirm(false);
             setStep('select');
             break;
+          }
         }
       });
       if (disposed) {
@@ -523,6 +641,15 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     };
   }, []);
 
+  // 流式出题预览：新题目到达时自动滚动到列表底部
+  useEffect(() => {
+    if (step !== 'processing') return;
+    const el = parsedListRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [parsedQuestions.length, step]);
+
   // 使用统一的 OCR 进度 Hook（仅用于图片处理）
   const {
     isProcessing: isOCRProcessing,
@@ -530,10 +657,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     progress: ocrProgress,
     ocrProgress: ocrPhaseProgress,
     parseProgress: parsePhaseProgress,
+    pageStatuses: ocrHookPageStatuses,
     error: ocrError,
     reset: resetOCRProgress,
-    startProcessing: startOCRProcessing,
-    setError: setOCRError,
   } = useExamSheetProgress({
     sessionId: sessionId ?? null,
     onSessionUpdate: async (detail) => {
@@ -582,7 +708,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       emptyQuestions,
       warnings,
     };
-  }, []);
+  }, [t]);
 
   const executeDocumentImport = useCallback(async (
     base64Content: string,
@@ -653,6 +779,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       );
       if (!isCurrentImportAttempt(attempt)) return;
       setError(t('exam_sheet:uploader.import_failed_prefix', { error: errorMessage }));
+      // invoke reject 可能先于 Failed 事件到达（或事件缺失）：同样提供断点续导入口
+      if (attempt.createdSessionId && parsedCountRef.current > 0) {
+        setResumableSession({
+          sessionId: attempt.createdSessionId,
+          parsedCount: parsedCountRef.current,
+        });
+      }
       setStep('select');
     } finally {
       if (isCurrentImportAttempt(attempt)) {
@@ -789,13 +922,18 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   }, []);
 
   // 清理预览 URL
+  // ★ Bug 修复：原实现以 selectedFiles 为依赖，每次追加文件都会把上一批列表里
+  //   仍在展示的 previewUrl 全部 revoke，导致缩略图变空白。改为仅在卸载时
+  //   统一释放（单个移除/清空路径已各自 revoke）。
+  const selectedFilesRef = useRef(selectedFiles);
+  selectedFilesRef.current = selectedFiles;
   useEffect(() => {
     return () => {
-      selectedFiles.forEach(f => {
+      selectedFilesRef.current.forEach(f => {
         if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
       });
     };
-  }, [selectedFiles]);
+  }, []);
 
   // 图片 OCR 处理（★ 统一走 import_question_bank_stream：OCR→文本→LLM解析）
   const handleImageOCR = useCallback(async () => {
@@ -919,7 +1057,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       // 文档 → 直接调用后端导入（后端处理解析+LLM）
       await handleDocumentImport();
     }
-  }, [selectedFiles, handleImageOCR, handleDocumentImport]);
+  }, [selectedFiles, handleImageOCR, handleDocumentImport, t]);
 
   // 处理 UnifiedDragDropZone 的文件拖拽
   const handleFilesDropped = useCallback((files: File[]) => {
@@ -944,7 +1082,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     const activeAttempt = activeImportAttemptRef.current;
     activeImportAttemptRef.current = null;
     if (activeAttempt) {
-      void invoke<boolean>('cancel_question_bank_import', { import_id: activeAttempt.id })
+      void invoke<boolean>('cancel_question_bank_import', { importId: activeAttempt.id })
         .catch(() => undefined);
     }
     selectedFiles.forEach(f => {
@@ -956,6 +1094,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     setError(null);
     setParsedQuestions([]);
     setLlmProgress({ percent: 0, message: '', parsedCount: 0 });
+    setProcessPhase('preparing');
+    setOcrPageDone([]);
+    setResumableSession(null);
+    setIsResumeRun(false);
+    parsedCountRef.current = 0;
     setImportSummary(null);
     setPendingDetail(null);
     setExcludedCardIds(new Set());
@@ -963,6 +1106,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     setPendingPdfImport(null);
     setIsLLMProcessing(false);
     setIsCancelling(false);
+    setShowCancelConfirm(false);
     resetOCRProgress();
   }, [selectedFiles, resetOCRProgress]);
 
@@ -973,7 +1117,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     setIsCancelling(true);
     try {
       const accepted = await invoke<boolean>('cancel_question_bank_import', {
-        import_id: attempt.id,
+        importId: attempt.id,
       });
 
       if (!isCurrentImportAttempt(attempt)) return;
@@ -983,6 +1127,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           activeImportAttemptRef.current = null;
           setIsLLMProcessing(false);
           setIsCancelling(false);
+          setShowCancelConfirm(false);
           setStep('select');
           setParsedQuestions([]);
           setLlmProgress({ percent: 0, message: '', parsedCount: 0 });
@@ -995,6 +1140,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         }
 
         setIsCancelling(false);
+        setShowCancelConfirm(false);
         showGlobalNotification(
           'warning',
           t('exam_sheet:uploader.cancel_unavailable'),
@@ -1007,6 +1153,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       activeImportAttemptRef.current = null;
       setIsLLMProcessing(false);
       setIsCancelling(false);
+      setShowCancelConfirm(false);
       setStep('select');
       setParsedQuestions([]);
       setLlmProgress({ percent: 0, message: '', parsedCount: 0 });
@@ -1025,6 +1172,61 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       );
     }
   }, [isCancelling, isCurrentImportAttempt, t]);
+
+  // 断点续导：从后端 checkpoint 恢复中断的导入（跳过已完成的分块）
+  const handleResumeImport = useCallback(async () => {
+    const resume = resumableSession;
+    if (!resume || isLLMProcessing) return;
+
+    const attempt = beginImportAttempt();
+    attempt.resumeSessionId = resume.sessionId;
+    attempt.createdSessionId = resume.sessionId;
+    // resume 命令没有 import_id 注册，无法被 cancel_question_bank_import 取消
+    attempt.backendStarted = true;
+    setIsResumeRun(true);
+    parsedCountRef.current = resume.parsedCount;
+    setLlmProgress({
+      percent: 42,
+      message: t('exam_sheet:uploader.resuming'),
+      parsedCount: resume.parsedCount,
+    });
+    setProcessPhase('parsing');
+
+    try {
+      const response = await invoke<ExamSheetSessionDetail>('resume_question_import', {
+        sessionId: resume.sessionId,
+      });
+
+      if (!isCurrentImportAttempt(attempt)) return;
+
+      const summary = generateImportSummary(response);
+      setImportSummary(summary);
+      setPendingDetail(response);
+      setExcludedCardIds(new Set());
+      setShowQuestionFilter(false);
+      setStep('summary');
+      showGlobalNotification('success', t('exam_sheet:uploader.resume_success'));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error
+        ? err.message
+        : (typeof err === 'object' && err !== null && 'message' in err)
+          ? (err as { message: string }).message
+          : String(err);
+      debugLog.error('[ExamSheetUploader] 断点续导失败:', err);
+      if (!isCurrentImportAttempt(attempt)) return;
+      setError(t('exam_sheet:uploader.resume_failed', { error: errorMessage }));
+      // 失败后保留续导入口，允许再次尝试
+      setResumableSession(resume);
+      setStep('select');
+    } finally {
+      if (isCurrentImportAttempt(attempt)) {
+        activeImportAttemptRef.current = null;
+        setIsLLMProcessing(false);
+        setIsCancelling(false);
+        setIsResumeRun(false);
+      }
+    }
+  }, [resumableSession, isLLMProcessing, beginImportAttempt, isCurrentImportAttempt, generateImportSummary, t]);
 
   // 是否正在处理
   const isProcessing = isOCRProcessing || isLLMProcessing;
@@ -1074,11 +1276,12 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           
           {/* 文件选择步骤：dropzone flex-1 弹性填充，高窗撑开 / 矮窗压缩（min-h 保底） */}
           {step === 'select' && (
-            <div className="flex flex-1 min-h-0 flex-col gap-4">
+            <div className="flex flex-1 min-h-0 flex-col gap-4 ui-rise-in">
               {/* 拖放区域 - 使用统一的 UnifiedDragDropZone */}
               <UnifiedDragDropZone
                 zoneId="exam-sheet-uploader"
                 onFilesDropped={handleFilesDropped}
+                onDragStateChange={setIsDragActive}
                 acceptedFileTypes={[EXAM_IMAGE_TYPE, EXAM_DOCUMENT_TYPE]}
                 maxFiles={currentCategory === 'document' ? 1 : 20}
                 maxFileSize={50 * 1024 * 1024}
@@ -1094,7 +1297,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   className={cn(
                     'relative flex flex-1 flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-8 transition-all',
                     !isProcessing && 'cursor-pointer hover:border-primary/50 hover:bg-primary/5',
-                    'border-border/60 bg-card/30'
+                    isDragActive
+                      ? 'border-primary bg-primary/10 ring-2 ring-primary/20'
+                      : 'border-border/60 bg-card/30'
                   )}
                 >
                   <input
@@ -1120,18 +1325,20 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
                   <div className="flex flex-col items-center gap-4 text-center">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted transition-colors">
-                        <Image size={22} className="text-muted-foreground transition-colors" />
+                      <div className={cn('flex h-12 w-12 items-center justify-center rounded-lg transition-colors', isDragActive ? 'bg-primary/15' : 'bg-muted')}>
+                        <Image size={22} className={cn('transition-colors', isDragActive ? 'text-primary' : 'text-muted-foreground')} />
                       </div>
                       <div className="text-lg font-light text-muted-foreground/30">/</div>
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted transition-colors">
-                        <FileText size={22} className="text-muted-foreground transition-colors" />
+                      <div className={cn('flex h-12 w-12 items-center justify-center rounded-lg transition-colors', isDragActive ? 'bg-primary/15' : 'bg-muted')}>
+                        <FileText size={22} className={cn('transition-colors', isDragActive ? 'text-primary' : 'text-muted-foreground')} />
                       </div>
                     </div>
                     
                     <div className="space-y-1">
-                      <p className="text-base font-medium">
-                        {t('exam_sheet:uploader.drop_or_click')}
+                      <p className={cn('text-base font-medium transition-colors', isDragActive && 'text-primary')}>
+                        {isDragActive
+                          ? t('exam_sheet:uploader.drop_active')
+                          : t('exam_sheet:uploader.drop_or_click')}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {t('exam_sheet:uploader.supported_formats_all')}
@@ -1273,10 +1480,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
               {/* OCR 进度 */}
               {isOCRProcessing && (
-                <div className="space-y-4 rounded-md border border-border/50 bg-card p-4">
+                <div className="space-y-4 rounded-md border border-border/50 bg-card p-4 ui-rise-in">
                   <div className="flex items-center gap-3">
                     {ocrStage === 'completed' ? (
-                      <CheckCircle size={20} className="text-success" />
+                      <CheckCircle size={20} className="text-success ui-zoom-fade-in" />
                     ) : (
                       <CircleNotch size={20} className="animate-spin text-primary" />
                     )}
@@ -1295,6 +1502,28 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       </div>
                     </div>
                   )}
+                  {/* 逐页识别状态 */}
+                  {ocrHookPageStatuses.length > 1 && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs text-muted-foreground">{t('exam_sheet:uploader.page_status_label')}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ocrHookPageStatuses.map((status, idx) => (
+                          <span
+                            key={idx}
+                            title={t('exam_sheet:uploader.page_n', { page: idx + 1 })}
+                            className={cn(
+                              'flex h-6 min-w-6 items-center justify-center rounded px-1 text-[10px] font-medium ui-state-colors',
+                              status === 'parsed' && 'bg-success/15 text-success',
+                              status === 'ocr_done' && 'bg-primary/15 text-primary',
+                              status === 'pending' && 'bg-muted text-muted-foreground/60'
+                            )}
+                          >
+                            {status === 'parsed' ? <Check size={11} /> : idx + 1}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1306,40 +1535,99 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
           {/* LLM 处理步骤 - 实时显示已解析题目 */}
           {step === 'processing' && (
-            <div className="flex flex-col flex-1 min-h-0 gap-3">
+            <div className="flex flex-col flex-1 min-h-0 gap-3 ui-slide-fade-in [--ui-enter-x:24px]">
+              {/* 阶段步骤条：准备 → 识别 → 解析 → 完成 */}
+              <div className="flex-shrink-0">
+                <ProcessPhaseBar phase={processPhase} />
+              </div>
+
               {/* 进度头部 */}
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 flex-shrink-0">
                 {llmProgress.percent === 100 ? (
-                  <CheckCircle size={20} className="text-success flex-shrink-0" />
+                  <CheckCircle size={20} className="text-success flex-shrink-0 ui-zoom-fade-in" />
                 ) : (
                   <CircleNotch size={20} className="text-primary animate-spin flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">{llmProgress.message}</div>
+                  <div className="text-sm font-medium truncate">{llmProgress.message}</div>
                   <Progress value={llmProgress.percent} className="h-1.5 mt-1" />
                 </div>
                 <div className="text-sm font-bold text-primary">
-                  {parsedQuestions.length}
+                  {parsedQuestions.length || llmProgress.parsedCount || 0}
                 </div>
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void handleCancelImport()}
-                  disabled={isCancelling}
-                  className="shrink-0"
-                >
-                  <X size={14} className="mr-1" />
-                  {isCancelling
-                    ? t('exam_sheet:uploader.cancelling_import')
-                    : t('exam_sheet:uploader.cancel_import')}
-                </NotionButton>
+                {isLLMProcessing && !isResumeRun && !showCancelConfirm && (
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCancelConfirm(true)}
+                    disabled={isCancelling}
+                    className="shrink-0"
+                  >
+                    <X size={14} className="mr-1" />
+                    {isCancelling
+                      ? t('exam_sheet:uploader.cancelling_import')
+                      : t('exam_sheet:uploader.cancel_import')}
+                  </NotionButton>
+                )}
               </div>
+
+              {/* 取消导入的内联确认条 */}
+              {showCancelConfirm && isLLMProcessing && (
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 flex-shrink-0 ui-drop-in">
+                  <WarningCircle size={16} className="text-warning flex-shrink-0" />
+                  <span className="flex-1 min-w-[12rem] text-xs text-warning">
+                    {t('exam_sheet:uploader.cancel_confirm_hint')}
+                  </span>
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    className="!h-7 text-xs"
+                    onClick={() => setShowCancelConfirm(false)}
+                    disabled={isCancelling}
+                  >
+                    {t('exam_sheet:uploader.cancel_confirm_no')}
+                  </NotionButton>
+                  <NotionButton
+                    variant="danger"
+                    size="sm"
+                    className="!h-7 text-xs"
+                    onClick={() => void handleCancelImport()}
+                    disabled={isCancelling}
+                  >
+                    {isCancelling && <CircleNotch size={12} className="mr-1 animate-spin" />}
+                    {isCancelling
+                      ? t('exam_sheet:uploader.cancelling_import')
+                      : t('exam_sheet:uploader.cancel_confirm_yes')}
+                  </NotionButton>
+                </div>
+              )}
+
+              {/* 逐页识别状态（图片/页面级 OCR 进度） */}
+              {ocrPageDone.length > 1 && (
+                <div className="space-y-1.5 rounded-md border border-border/40 bg-card/50 px-3 py-2 flex-shrink-0">
+                  <div className="text-xs text-muted-foreground">{t('exam_sheet:uploader.page_status_label')}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ocrPageDone.map((done, idx) => (
+                      <span
+                        key={idx}
+                        title={t('exam_sheet:uploader.page_n', { page: idx + 1 })}
+                        className={cn(
+                          'flex h-6 min-w-6 items-center justify-center rounded px-1 text-[10px] font-medium ui-state-colors',
+                          done ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground/60'
+                        )}
+                      >
+                        {done ? <Check size={11} /> : idx + 1}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* 实时解析的题目列表 */}
               {parsedQuestions.length > 0 && (
                 <div className="flex flex-col flex-1 min-h-0">
                   <div className="text-xs text-muted-foreground px-1 mb-2 flex-shrink-0">{t('exam_sheet:uploader.parsed_questions_label')}</div>
-                  <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
+                  <div ref={parsedListRef} className="flex-1 min-h-0 overflow-y-auto space-y-2">
                     {parsedQuestions.map((q, idx) => (
                       <div
                         key={idx}
@@ -1391,10 +1679,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             const allCards = pendingDetail?.preview?.pages?.flatMap(p => p.cards || []) || [];
             const keptCount = Math.max(0, importSummary.totalQuestions - excludedCardIds.size);
             return (
-              <div className="space-y-3">
+              <div className="space-y-3 ui-slide-fade-in [--ui-enter-x:24px]">
               <div className="space-y-2 text-center">
-                <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-md bg-success/10">
-                  <CheckCircle size={20} className="text-success" />
+                <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-md bg-success/10 ui-zoom-fade-in">
+                  <CheckCircle size={20} weight="fill" className="text-success" />
                 </div>
                 <h3 className="text-base font-semibold">{t('exam_sheet:uploader.import_complete_title')}</h3>
               </div>
@@ -1580,19 +1868,39 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
           {/* 错误显示 */}
           {(error || ocrError) && (
-            <div className="flex items-start gap-3 rounded-md bg-destructive/10 p-3 text-destructive">
-              <WarningCircle size={20} className="flex-shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0 text-sm">{error || ocrError}</div>
-              {step === 'select' && selectedFiles.length > 0 && !isProcessing && (
-                <NotionButton
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleStartProcess()}
-                  className="shrink-0"
-                >
-                  <ArrowClockwise size={16} className="mr-1" />
-                  {t('common:retry')}
-                </NotionButton>
+            <div className="space-y-2 ui-drop-in">
+              <div className="flex items-start gap-3 rounded-md bg-destructive/10 p-3 text-destructive">
+                <WarningCircle size={20} className="flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0 text-sm">{error || ocrError}</div>
+                {step === 'select' && selectedFiles.length > 0 && !isProcessing && (
+                  <NotionButton
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleStartProcess()}
+                    className="shrink-0"
+                  >
+                    <ArrowClockwise size={16} className="mr-1" />
+                    {t('common:retry')}
+                  </NotionButton>
+                )}
+              </div>
+              {/* 断点续导：失败前已解析部分题目时，可跳过已完成分块继续导入 */}
+              {resumableSession && step === 'select' && !isProcessing && (
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
+                  <Info size={16} className="text-warning flex-shrink-0" />
+                  <span className="flex-1 min-w-[12rem] text-xs text-warning">
+                    {t('exam_sheet:uploader.import_interrupted', { count: resumableSession.parsedCount })}
+                  </span>
+                  <NotionButton
+                    variant="warning"
+                    size="sm"
+                    className="!h-7 text-xs"
+                    onClick={() => void handleResumeImport()}
+                  >
+                    <ArrowClockwise size={14} className="mr-1" />
+                    {t('exam_sheet:uploader.resume_import')}
+                  </NotionButton>
+                </div>
               )}
             </div>
           )}

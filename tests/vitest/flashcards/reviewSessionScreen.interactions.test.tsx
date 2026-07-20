@@ -213,6 +213,33 @@ describe('ReviewSessionScreen interactions', () => {
     expect(screen.getByText('当前没有可复习的卡片')).toBeTruthy();
   });
 
+  it('offers continue review from the completion summary when cards are still due', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'fsrs_get_due') {
+        return [{ id: 'state-next', ankiCardId: 'anki-next', front: 'Q2', back: 'A2' }];
+      }
+      if (command === 'fsrs_get_stats') return { due: 3 };
+      return null;
+    });
+    useFsrsReviewStore.setState({
+      queue: [{ id: 'state-1', ankiCardId: 'anki-1', front: 'Q', back: 'A' }],
+      queueIndex: 1,
+      sessionRatedCount: 1,
+      sessionRatingCounts: { 1: 0, 2: 0, 3: 1, 4: 0 },
+      remainingDueAfterSession: 3,
+    });
+
+    render(<ReviewSessionScreen />);
+    fireEvent.click(screen.getByRole('button', { name: 'session.continueReview' }));
+
+    await waitFor(() => {
+      const state = useFsrsReviewStore.getState();
+      expect(state.screen).toBe('session');
+      expect(state.queue.map((card) => card.id)).toEqual(['state-next']);
+      expect(state.queueIndex).toBe(0);
+    });
+  });
+
   it('supports undo from the completion page with Z', async () => {
     invokeMock.mockResolvedValueOnce({
       state: { id: 'state-1', ankiCardId: 'anki-1' },

@@ -13,6 +13,7 @@ vi.mock('react-i18next', () => ({
       'today.startReview': '开始复习',
       'today.title': '今日复习',
     }[key] ?? key),
+    i18n: { language: 'zh-CN' },
   }),
   initReactI18next: { type: '3rdParty', init: () => undefined },
 }));

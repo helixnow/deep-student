@@ -23,6 +23,13 @@ export type FsrsRating = 1 | 2 | 3 | 4;
 
 const FSRS_DIAGNOSTIC_CARD_NOT_REVIEWABLE = 'fsrs_diagnostic_card_not_reviewable';
 
+/**
+ * 学习步「稍后重现」窗口：评分后 due 落在未来且 ≤ 该窗口内的学习/重学卡
+ * 保留在本轮会话队尾（Anki 学习步语义：同轮重复直到毕业出队），
+ * 轮到时允许提前展示，而不是掉出本轮等待下次刷新。
+ */
+export const LEARNING_STEP_REQUEUE_WINDOW_MS = 15 * 60_000;
+
 export type RatingPreview = {
   dueMs: number;
   scheduledDays: number;
@@ -50,6 +57,11 @@ export interface ReviewCard {
   suspended?: boolean;
   /** 评分 CAS：进入队列时的 last_review_ms（null=从未评过） */
   lastReviewMs?: number | null;
+  /**
+   * 学习步回插卡的真实 due（未来时间）。仅在本轮「稍后重现」队列内有值，
+   * 供 UI 展示「可提前复习」；到期或毕业出队后清空。
+   */
+  learningDueMs?: number | null;
 }
 
 export type FsrsAgentReviewAction = 'undo_last_review' | 'set_suspended';
@@ -106,6 +118,8 @@ export interface BatchReviewRequest {
 
 interface FsrsReviewState {
   screen: FlashcardsScreen;
+  /** 当前会话入口：今日到期 / Chat 批次；null=无活动会话 */
+  sessionMode: 'due' | 'batch' | null;
   dueCards: ReviewCard[];
   /** 后端统计的真实到期总数（可能大于本轮 dueCards.length） */
   dueTotal: number;
@@ -572,6 +586,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   screen: 'today',
+  sessionMode: null,
   dueCards: [],
   dueTotal: 0,
   queue: [],
@@ -665,6 +680,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       // 无到期卡时不要进入假完成会话
       set({
         screen: 'today',
+        sessionMode: null,
         queue: [],
         queueIndex: 0,
         flipped: false,
@@ -690,6 +706,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     set({
       queue: dueCards,
       queueIndex: nextReviewableIndex(dueCards, 0),
+      sessionMode: 'due',
       flipped: false,
       lastRated: null,
       lastReview: null,
@@ -728,6 +745,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       error: null,
       errorKind: null,
       screen: 'session',
+      sessionMode: 'batch',
       queue: [],
       queueIndex: 0,
       flipped: false,
@@ -1129,10 +1147,23 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       const ratedLastReviewMs = cardState && typeof cardState === 'object'
         ? readFiniteNumber(cardState as Record<string, unknown>, 'lastReviewMs', 'last_review_ms')
         : null;
+      const ratedState = cardState && typeof cardState === 'object'
+        ? readFiniteNumber(cardState as Record<string, unknown>, 'state', 'state')
+        : null;
       const now = Date.now();
-      // Never show a learning card before the interval presented to the user.
-      // Cards scheduled in the future return through the next due refresh.
-      const shouldRequeue = dueMs != null && dueMs <= now;
+      // 学习步「稍后重现」：评分后仍处于 Learning/Relearning 且 due 落在
+      // ≤LEARNING_STEP_REQUEUE_WINDOW_MS 的未来窗口内的卡保留在本轮队尾
+      // （轮到时可提前展示）；毕业（Review 状态）或 due 更远的卡照常出队，
+      // 由下次到期刷新带回。已到期（dueMs <= now）的卡与历史行为一致回插。
+      const stillLearning = ratedState != null
+        ? ratedState === 1 || ratedState === 3
+        // 老响应缺 cardState.state 时的保守回退：Again/Hard 视为仍在学习步
+        : rating <= 2;
+      const isLearningStepDue = dueMs != null
+        && dueMs > now
+        && dueMs - now <= LEARNING_STEP_REQUEUE_WINDOW_MS
+        && stillLearning;
+      const shouldRequeue = (dueMs != null && dueMs <= now) || isLearningStepDue;
 
       // 队列耗尽时保持 screen=session，让 ReviewSessionScreen 展示完成态；
       // 不直接跳回 today（由用户点「返回今日」/退出）。
@@ -1150,13 +1181,18 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
             nextQueue.push({
               ...moved,
               lastReviewMs: ratedLastReviewMs ?? moved.lastReviewMs ?? null,
+              learningDueMs: isLearningStepDue ? dueMs : null,
             });
           }
           nextIndex = nextReviewableIndex(nextQueue, liveIndex);
         } else {
           nextQueue = state.queue.map((card, index) => (
-            index === liveIndex && ratedLastReviewMs != null
-              ? { ...card, lastReviewMs: ratedLastReviewMs }
+            index === liveIndex
+              ? {
+                  ...card,
+                  lastReviewMs: ratedLastReviewMs ?? card.lastReviewMs,
+                  learningDueMs: null,
+                }
               : card
           ));
           nextIndex = nextReviewableIndex(nextQueue, baseIndex + 1);
@@ -1530,6 +1566,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   endSession: () => {
     set({
       screen: 'today',
+      sessionMode: null,
       flipped: false,
       lastRated: null,
       ratingBusy: false,

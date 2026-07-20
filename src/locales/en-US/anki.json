@@ -440,6 +440,11 @@
     "prev_card": "Previous",
     "card_preview": "Card Preview"
   },
+  "apkg_import": {
+    "colpkg_unsupported": "Collection packages (.colpkg) are not supported yet. In Anki, use File → Export → Deck (.apkg) to export a single deck, then import it here.",
+    "modern_schema_unsupported": "This APKG uses the modern Anki export format and could not be parsed. In Anki, re-export with \"Support older Anki versions\" enabled and try again.",
+    "schedule_preserved": "Anki review progress has been preserved as card metadata and will be written back when re-exporting an APKG."
+  },
   "errors": {
     "rejected_files": "Rejected files",
     "no_source_selected": "Please select a source first",
@@ -490,10 +495,10 @@
     "force_import_hint": "Force import all complex template examples",
     "import_builtin": "Import Built-in Templates",
     "import_builtin_hint": "Import official built-in templates",
-    "import_builtin_hint_detail": "Click to import 6 official built-in templates",
-    "import_builtin_count": "Import Built-in Templates (6)",
+    "import_builtin_hint_detail": "Click to import 10 official built-in templates",
+    "import_builtin_count": "Import Built-in Templates (10)",
     "importing": "Importing...",
-    "import_hint_text": "You can import templates you exported or compatible JSON format; built-in button includes 6 high-quality templates like minimalist cards, code cards, cloze cards, etc."
+    "import_hint_text": "You can import templates you exported or compatible JSON format; the built-in button includes 10 carefully designed templates such as academic multiple-choice, academic cloze, and manuscript styles."
   },
   "template_editor": {
     "toolbar": "Toolbar",
@@ -703,7 +708,7 @@
     "colTime": "Updated",
     "colActions": "Actions",
     "noTasksFound": "No tasks found",
-    "footer": "Task data retained for 30 days",
+    "footer": "Task data is kept until you delete it",
     "items": "items",
     "chartStatusDistribution": "Task Status Distribution",
     "chartTopDocs": "Card Count Ranking (Top 5)",
@@ -807,8 +812,11 @@
     "skeletonHint": "Next card is on its way…",
     "editHint": "Enter to save · Shift+Enter for newline · Esc to cancel",
     "deletedCard": "Deleted card {{index}}",
+    "deletedCards": "Deleted {{count}} cards",
     "undo": "Undo",
     "deleteCommitFailed": "Delete did not apply, card restored",
+    "deleteCommittedOnLeave": "Left the view — the pending deletion of {{count}} card(s) has been applied",
+    "quoteToInput": "Quote in chat input",
     "summaryCompleted": "{{count}} cards generated",
     "summaryDuration": "in {{duration}}",
     "durationSeconds": "{{count}}s",
@@ -834,6 +842,7 @@
     "assistant_generated_summary": "AI generated template \"{{name}}\" ({{noteType}})"
   },
   "connect": {
+    "disabled": "AnkiConnect is disabled. Enable it in Settings first.",
     "no_cards_provided": "No cards provided",
     "deck_name_required": "Deck name is required",
     "note_type_required": "Note type is required"
@@ -875,6 +884,7 @@
     "switchToDarkPreview": "Switch to dark preview",
     "switchToLightPreview": "Switch to light preview",
     "renderError": "Preview failed to render",
+    "renderIssuesTitle": "{{count}} render issue(s) found",
     "renderErrorHint": "Check the template syntax; the preview recovers automatically once fixed.",
     "sampleData": "Sample data",
     "sampleDataHint": "Edit field values to update the preview in real time; separate array items with commas.",
