@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Desktop } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   persistWorkbenchModeEnabled,
   readWorkbenchModeEnabled,
@@ -51,7 +51,7 @@ export const WorkbenchModeSwitchRow: React.FC = () => {
   }, [loaded, mode]);
 
   return (
-    <NotionButton
+    <DsButton
       variant="nav"
       size="md"
       role="switch"
@@ -93,7 +93,7 @@ export const WorkbenchModeSwitchRow: React.FC = () => {
           </span>
         </span>
       </span>
-    </NotionButton>
+    </DsButton>
   );
 };
 

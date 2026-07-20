@@ -94,7 +94,7 @@ function dismissTopOverlayViaEscape(): boolean {
 export function handleAndroidBack(): boolean {
   // 显式 handler：高优先级在前，同优先级后注册在前。
   // Radix 浮层 Escape 兜底夹在 overlay 档与更低优先级档之间执行（见文件头注释）：
-  // 显式 overlay handler（含 NotionDialog/AppMenu 等自绘弹层）保持最先，
+  // 显式 overlay handler（含 DsDialog/AppMenu 等自绘弹层）保持最先，
   // 未显式接入的 Radix 浮层其次，view / navigation handler 只有在没有任何
   // 打开的浮层时才会拿到事件，保证「先关浮层再退页面」。
   const sorted = [...handlers].sort((a, b) => (b.priority - a.priority) || (b.seq - a.seq));

@@ -9,7 +9,7 @@
  * - 用户必须明确同意后方可使用
  * - 同意状态存入本地数据库
  *
- * 样式：纯 Notion 风格，不使用 shadcn Dialog
+ * 样式：纯简洁风格，不使用 shadcn Dialog
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -17,10 +17,11 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CaretRight } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 // ============================================================================
 // 常量
@@ -106,7 +107,7 @@ export function useUserAgreement() {
 }
 
 // ============================================================================
-// Notion 风格 Toggle 块组件
+// 简洁风格 Toggle 块组件
 // ============================================================================
 interface ToggleBlockProps {
   title: string;
@@ -123,9 +124,9 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
 
   return (
     <div className="select-none">
-      {/* Toggle 触发行 —— Notion 风格：无边框，hover 浅色背景 */}
-      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className={cn('!w-full !justify-start !px-2 !py-1.5 !h-auto -mx-2 !rounded-[4px] !text-left', '[@media(pointer:coarse)]:min-h-11', 'text-[14px] font-medium text-foreground/90', 'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]')}>
-        {/* 展开箭头 —— Notion 三角形风格 */}
+      {/* Toggle 触发行 —— 简洁风格：无边框，hover 浅色背景 */}
+      <DsButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className={cn('!w-full !justify-start !px-2 !py-1.5 !h-auto -mx-2 !rounded-[4px] !text-left', '[@media(pointer:coarse)]:min-h-11', 'text-[14px] font-medium text-foreground/90', 'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]')}>
+        {/* 展开箭头 —— 简洁 三角形风格 */}
         <CaretRight
           className={cn(
             'h-[18px] w-[18px] text-foreground/40 flex-shrink-0',
@@ -135,9 +136,9 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
           weight="regular"
 />
         <span className="flex-1 min-w-0 truncate">{title}</span>
-      </NotionButton>
+      </DsButton>
 
-      {/* 展开内容 —— 带左侧缩进，模拟 Notion toggle 嵌套 */}
+      {/* 展开内容 —— 带左侧缩进，模拟 简洁 toggle 嵌套 */}
       {isOpen && (
         <div className="pl-[30px] pr-1 pb-1 pt-0.5">
           <div className="text-[13px] text-foreground/70 leading-[1.65] space-y-2">
@@ -169,13 +170,13 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
   onClose,
 }) => {
   const { t } = useTranslation('common');
-  const panelRef = useRef<HTMLDivElement>(null);
 
   const isVisible = preview ? (open ?? false) : true;
 
   // 退场动画延迟卸载：先播放 200ms 退场动画，再真正卸载
   // 强制首次同意模式必须首帧可见；只有可关闭的预览模式需要延迟挂载。
   const [shouldRender, setShouldRender] = useState(isVisible);
+  const panelRef = useFocusTrap<HTMLDivElement>(shouldRender);
 
   // 动画状态
   const [mounted, setMounted] = useState(isVisible && !preview);
@@ -246,11 +247,17 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
   const dialog = (
     <div
       className={cn(
-        'fixed inset-0 flex items-center justify-center',
+        'fixed inset-0 flex items-center justify-center p-3 sm:p-4',
         'transition-opacity duration-200 ease-out',
         mounted ? 'opacity-100' : 'opacity-0',
       )}
-      style={{ zIndex: Z_INDEX.modal }}
+      style={{
+        zIndex: Z_INDEX.modal,
+        paddingTop: 'calc(0.75rem + var(--mobile-safe-area-top, 0px))',
+        paddingBottom: 'calc(0.75rem + var(--mobile-safe-area-bottom, 0px))',
+        paddingLeft: 'calc(0.75rem + var(--mobile-safe-area-left, 0px))',
+        paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
+      }}
       onClick={handleOverlayClick}
     >
       {/* 遮罩层 —— 极简，无 blur */}
@@ -265,11 +272,14 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
       {/* 面板 */}
       <div
         ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="user-agreement-title"
+        tabIndex={-1}
         className={cn(
-          'relative flex flex-col overflow-hidden',
-          'w-[94vw] max-w-[520px] max-h-[80vh]',
+          'relative flex w-full max-w-[520px] flex-col overflow-hidden outline-none',
           'bg-background',
-          // Notion 风格：极其干净的阴影，几乎无边框
+          // 简洁风格：极其干净的阴影，几乎无边框
           'rounded-lg',
           'shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)]',
           'dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.3)]',
@@ -279,10 +289,13 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
             ? 'opacity-100 scale-100 translate-y-0'
             : 'opacity-0 scale-[0.97] translate-y-2',
         )}
+        style={{
+          maxHeight: 'min(80dvh, calc(100dvh - 1.5rem - var(--mobile-safe-area-top, 0px) - var(--mobile-safe-area-bottom, 0px)))',
+        }}
       >
         {/* 标题区 */}
-        <div className="px-6 pt-6 pb-3 flex-shrink-0">
-          <h1 className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
+        <div className="flex-shrink-0 px-4 pb-3 pt-5 sm:px-6 sm:pt-6">
+          <h1 id="user-agreement-title" className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
             {t('legal.userAgreement.welcomeTitle')}
           </h1>
           <p className="mt-1.5 text-[13px] text-foreground/50 leading-relaxed">
@@ -290,12 +303,12 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
           </p>
         </div>
 
-        {/* 分隔线 —— Notion 风格极细线 */}
-        <div className="mx-6 h-px bg-foreground/[0.06]" />
+        {/* 分隔线 —— 简洁风格极细线 */}
+        <div className="mx-4 h-px bg-foreground/[0.06] sm:mx-6" />
 
         {/* 内容区 */}
         <div
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-4 scroll-area--native"
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 scroll-area--native sm:px-6"
           onWheel={(e) => e.stopPropagation()}
         >
           <div className="space-y-0.5">
@@ -381,28 +394,28 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
         </div>
 
         {/* 分隔线 */}
-        <div className="mx-6 h-px bg-foreground/[0.06]" />
+        <div className="mx-4 h-px bg-foreground/[0.06] sm:mx-6" />
 
         {/* 底部操作栏 */}
-        <div className="px-6 py-4 flex-shrink-0">
+        <div className="flex-shrink-0 px-4 py-4 sm:px-6">
           {preview ? (
-            <NotionButton
+            <DsButton
               variant="default"
               size="lg"
               className="w-full justify-center text-[13px] font-medium"
               onClick={onClose}
             >
               {t('common:close')}
-            </NotionButton>
+            </DsButton>
           ) : (
-            <NotionButton
+            <DsButton
               variant="primary"
               size="lg"
               className="w-full justify-center text-[13px] font-medium"
               onClick={onAccept}
             >
               {t('legal.userAgreement.agreeAndContinue')}
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>

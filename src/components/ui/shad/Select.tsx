@@ -88,7 +88,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       position={position}
-      // Portal 下拉必须压过所有容器层：modal(3000)/NotionDialog(3001) 与
+      // Portal 下拉必须压过所有容器层：modal(3000)/DsDialog(3001) 与
       // Sheet(4000，见 shad/Sheet.tsx——McpToolsSection 等在 Sheet 内使用 Select)，
       // 同时低于 toast(5000)
       style={{ zIndex: Z_INDEX.sheet + 10, ...style }}

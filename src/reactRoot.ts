@@ -35,6 +35,19 @@ export function getOrCreateReactRoot(container: HTMLElement): Root {
     delete registry[GLOBAL_REACT_ROOT_KEY];
   }
 
+  const bootPlaceholder = container.querySelector<HTMLElement>(
+    ':scope > [data-dstu-react-placeholder="true"]',
+  );
+  const hasOnlyBootPlaceholder =
+    container.children.length === 1 && container.firstElementChild === bootPlaceholder;
+
+  if (hasOnlyBootPlaceholder) {
+    // The server-rendered startup shell is static markup, not an unmanaged
+    // React tree. Remove it before createRoot instead of entering the dev-only
+    // recovery reload loop below.
+    container.replaceChildren();
+  }
+
   if (container.hasChildNodes()) {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
       // Migrating from an older dev entry can leave live roots whose handles

@@ -267,6 +267,10 @@ export interface BackupInfoResponse {
   size: number;
   /** 备份类型 */
   backup_type: BackupType;
+  /** 完整槽恢复点或仅用于检查/导出的部分归档（旧后端可能缺失）。 */
+  recovery_kind?: 'disaster_recovery' | 'partial_archive';
+  /** 是否满足完整槽恢复契约（旧后端可能缺失）。 */
+  restorable?: boolean;
   /** 包含的数据库列表 */
   databases: string[];
 }

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Upload, FileText, WarningCircle, CheckCircle, X } from '@phosphor-icons/react';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from './ui/NotionDialog';
-import { NotionButton } from './ui/NotionButton';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from './ui/DsDialog';
+import { DsButton } from './ui/DsButton';
 import { Input } from './ui/shad/Input';
 import { TauriAPI } from '../utils/tauriApi';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -107,17 +107,17 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
   };
 
   return (
-    <NotionDialog open={open} onOpenChange={handleClose} maxWidth="max-w-[480px]">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
+    <DsDialog open={open} onOpenChange={handleClose} maxWidth="max-w-[480px]">
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
             <Upload size={20} />
             {t('import.dialog_title')}
-          </NotionDialogTitle>
-          <NotionDialogDescription>
+          </DsDialogTitle>
+          <DsDialogDescription>
             {t('import.format_hint')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogBody>
         <div className="space-y-4">
           {/* 文件选择 */}
           <div className="space-y-2">
@@ -131,7 +131,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
                 placeholder={t('import.file_placeholder')}
                 className="flex-1"
 />
-              <NotionButton
+              <DsButton
                 type="button"
                 variant="default"
                 size="sm"
@@ -140,7 +140,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
               >
                 <FileText size={16} className="mr-1" />
                 {t('import.choose_file')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
 
@@ -187,10 +187,10 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
             </div>
           )}
         </div>
-        </NotionDialogBody>
+        </DsDialogBody>
 
-        <NotionDialogFooter>
-          <NotionButton
+        <DsDialogFooter>
+          <DsButton
             type="button"
             variant="default"
             onClick={handleClose}
@@ -204,10 +204,10 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
             ) : (
               t('import.cancel')
             )}
-          </NotionButton>
+          </DsButton>
           
           {importResult ? (
-            <NotionButton
+            <DsButton
               type="button"
               variant="primary"
               onClick={() => {
@@ -219,9 +219,9 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
               }}
             >
               {t('import.view_imported')}
-            </NotionButton>
+            </DsButton>
           ) : (
-            <NotionButton
+            <DsButton
               type="button"
               variant="primary"
               onClick={handleImport}
@@ -229,10 +229,10 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
             >
               <Upload size={16} className="mr-1" />
               {importing ? t('import.importing') : t('import.import_button')}
-            </NotionButton>
+            </DsButton>
           )}
-        </NotionDialogFooter>
-    </NotionDialog>
+        </DsDialogFooter>
+    </DsDialog>
   );
 };
 

@@ -5,14 +5,14 @@ import { useTranslation } from 'react-i18next';
 import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
-import { NotionButton, type NotionButtonVariant, type NotionButtonSize } from './NotionButton';
+import { DsButton, type DsButtonVariant, type DsButtonSize } from './DsButton';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useKeyboardHeight, getLayoutViewportObscuredHeight } from '@/hooks/useKeyboardHeight';
 
 /**
- * Android 系统返回键接入：NotionDialog 是 framer-motion 自绘弹窗（非 Radix），
+ * Android 系统返回键接入：DsDialog 是 framer-motion 自绘弹窗（非 Radix），
  * 没有 data-state="open"，androidBackCoordinator 的 Radix Escape 兜底匹配不到，
  * 必须显式注册 overlay 级返回 handler，否则移动端按返回键会穿透到底层导航。
  * 用 ref 保持注册稳定，避免回调变化导致注销重注、破坏多层弹窗的栈语义。
@@ -41,7 +41,7 @@ function useEscapeClose(open: boolean, close: () => void) {
   closeRef.current = close;
   React.useEffect(() => {
     if (!open) return;
-    const token = Symbol('notion-dialog-esc');
+    const token = Symbol('card-dialog-esc');
     escapeStack.push(token);
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -114,10 +114,10 @@ function ModalPortal({ children, open }: { children: React.ReactNode; open: bool
 }
 
 // ============================================================================
-// NotionDialog — 通用模态框
+// DsDialog — 通用模态框
 // ============================================================================
 
-export interface NotionDialogProps {
+export interface DsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
@@ -130,7 +130,7 @@ export interface NotionDialogProps {
   className?: string;
 }
 
-export function NotionDialog({
+export function DsDialog({
   open,
   onOpenChange,
   children,
@@ -138,7 +138,7 @@ export function NotionDialog({
   showClose = true,
   maxWidth = 'max-w-lg',
   className,
-}: NotionDialogProps) {
+}: DsDialogProps) {
   const { t } = useTranslation('common');
 
   // ESC 关闭（栈语义：仅最顶层弹窗响应）
@@ -235,7 +235,7 @@ export function NotionDialog({
             </div>
           )}
           {showClose && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               iconOnly
@@ -248,7 +248,7 @@ export function NotionDialog({
               onClick={() => onOpenChange(false)}
             >
               <X size={16} />
-            </NotionButton>
+            </DsButton>
           )}
           {children}
         </motion.div>
@@ -259,7 +259,7 @@ export function NotionDialog({
 
 // ---- 子组件 ----
 
-export function NotionDialogHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function DsDialogHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
       <div className={cn('flex-shrink-0 px-5 pt-5 pb-3 space-y-1 border-b border-transparent', className)} style={{ borderColor: 'var(--dialog-shell-border)' }} {...props}>
         {children}
@@ -267,7 +267,7 @@ export function NotionDialogHeader({ className, children, ...props }: React.HTML
   );
 }
 
-export function NotionDialogTitle({ className, children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
+export function DsDialogTitle({ className, children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3 className={cn('text-base font-semibold leading-tight text-foreground', className)} {...props}>
       {children}
@@ -275,7 +275,7 @@ export function NotionDialogTitle({ className, children, ...props }: React.HTMLA
   );
 }
 
-export function NotionDialogDescription({ className, children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
+export function DsDialogDescription({ className, children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p className={cn('text-[13px] text-muted-foreground leading-relaxed', className)} {...props}>
       {children}
@@ -283,12 +283,12 @@ export function NotionDialogDescription({ className, children, ...props }: React
   );
 }
 
-export interface NotionDialogBodyProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface DsDialogBodyProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
    * 启用 OverlayScrollbars（自研滚动条）。默认 false — 使用原生滚动。
    *
    * **最佳实践**：弹窗内一律使用原生滚动。原因：
-   *  1. NotionDialog 入场动画是 scale + translateY，OverlayScrollbars 的
+   *  1. DsDialog 入场动画是 scale + translateY，OverlayScrollbars 的
    *     `defer` 初始化在动画期间会读到错误的几何尺寸，可能导致 scrollbar
    *     不激活、内容被裁掉而无法滚动（见 PrivacyPolicyDialog 历史问题）。
    *  2. Modal 是 portal + overflow-hidden 容器，再嵌一层拦截 wheel 的滚动
@@ -301,7 +301,7 @@ export interface NotionDialogBodyProps extends React.HTMLAttributes<HTMLDivEleme
   overlayScroll?: boolean;
 }
 
-export function NotionDialogBody({ className, children, overlayScroll = false, ...props }: NotionDialogBodyProps) {
+export function DsDialogBody({ className, children, overlayScroll = false, ...props }: DsDialogBodyProps) {
   if (overlayScroll) {
     return (
       <CustomScrollArea className={cn('flex-1 min-h-0', className)} viewportClassName="px-5" {...props}>
@@ -325,7 +325,7 @@ export function NotionDialogBody({ className, children, overlayScroll = false, .
   );
 }
 
-export function NotionDialogFooter({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function DsDialogFooter({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
       <div
       className={cn('flex-shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-transparent', className)}
@@ -338,10 +338,10 @@ export function NotionDialogFooter({ className, children, ...props }: React.HTML
 }
 
 // ============================================================================
-// NotionAlertDialog — 确认模态框
+// DsAlertDialog — 确认模态框
 // ============================================================================
 
-export interface NotionAlertDialogProps {
+export interface DsAlertDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** 标题 */
@@ -355,9 +355,9 @@ export interface NotionAlertDialogProps {
   /** 取消按钮文字，默认 "取消" */
   cancelText?: string;
   /** 确认按钮变体，默认 danger */
-  confirmVariant?: NotionButtonVariant;
+  confirmVariant?: DsButtonVariant;
   /** 确认按钮尺寸，默认 sm */
-  confirmSize?: NotionButtonSize;
+  confirmSize?: DsButtonSize;
   /** 确认回调 */
   onConfirm?: () => void;
   /** 取消回调（不传则关闭弹窗） */
@@ -371,7 +371,7 @@ export interface NotionAlertDialogProps {
   className?: string;
 }
 
-export function NotionAlertDialog({
+export function DsAlertDialog({
   open,
   onOpenChange,
   title,
@@ -387,7 +387,7 @@ export function NotionAlertDialog({
   disabled = false,
   children,
   className,
-}: NotionAlertDialogProps) {
+}: DsAlertDialogProps) {
   const { t } = useTranslation('common');
   const resolvedConfirmText = confirmText ?? t('actions.confirm');
   const resolvedCancelText = cancelText ?? t('actions.cancel');
@@ -451,10 +451,10 @@ export function NotionAlertDialog({
 
           {/* 按钮行 */}
           <div className="mt-5 flex shrink-0 items-center justify-end gap-2">
-            <NotionButton variant="ghost" size={confirmSize} onClick={handleCancel} disabled={loading}>
+            <DsButton variant="ghost" size={confirmSize} onClick={handleCancel} disabled={loading}>
               {resolvedCancelText}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant={confirmVariant}
               size={confirmSize}
               onClick={onConfirm}
@@ -467,7 +467,7 @@ export function NotionAlertDialog({
                 </svg>
               )}
               {resolvedConfirmText}
-            </NotionButton>
+            </DsButton>
           </div>
         </motion.div>
       </motion.div>

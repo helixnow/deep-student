@@ -66,6 +66,7 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 url = "2.4"
 dirs = "4.0"
 image = "0.24"
+qrcode = { version = "0.13", default-features = false, features = ["image"] }
 zerocopy = "0.7"
 backon = "0.4"
 config = { version = "0.14", features = ["toml"] }
@@ -148,6 +149,7 @@ eventsource-stream = "0.2"
 reqwest-eventsource = "0.5"
 zstd = "0.13.3"
 tauri-plugin-clipboard-manager = "~2.2"
+fs2 = "0.4.3"
 
 # 桌面端专用插件（更新器 + 进程管理 + 单实例锁）
 # 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译
@@ -236,11 +238,13 @@ harness = false
 
 # macOS 特定依赖
 [target.'cfg(target_os = "macos")'.dependencies]
-# TD-08：根密钥种子存入 macOS Keychain（secure_store::platform keystore）。
+# TD-08（修订）：根密钥种子可选存入 macOS Keychain（secure_store::platform keystore）。
+# 默认关闭（Keychain 授权弹窗侵扰），仅用户在设置中开启后才迁入。
 # keyring 只在桌面 macOS/Linux 目标编译，Android/iOS 维持加密文件方案。
 keyring = { version = "=3.6.3", default-features = false, features = ["apple-native"] }
 cocoa = "0.25"
 objc = "0.2"
+window-vibrancy = "0.6"
 # 与 wry 0.54 对齐；仅用于 browser::bridge eval_with_result（WKWebView evaluateJavaScript）
 objc2 = "0.6.3"
 block2 = "0.6.2"
@@ -260,9 +264,9 @@ objc2-web-kit = { version = "0.3.2", default-features = false, features = [
 
 # Linux 特定依赖（browser bridge WebKitGTK evaluate_javascript）
 [target.'cfg(target_os = "linux")'.dependencies]
-# TD-08：根密钥种子优先存入 Secret Service（gnome-keyring/KWallet）。
-# vendored 静态链接 libdbus，避免用户机器缺 libdbus-1；headless/无密钥环环境
-# 默认 fail-closed，仅显式设置 DEEP_STUDENT_KEY_SEED_FILE_ONLY=1 才允许文件种子方案。
+# TD-08（修订）：根密钥种子可选存入 Secret Service（gnome-keyring/KWallet），
+# 默认关闭，仅用户在设置中开启后才迁入；曾迁入的种子在关闭时自动回迁为文件。
+# vendored 静态链接 libdbus，避免用户机器缺 libdbus-1。
 keyring = { version = "=3.6.3", default-features = false, features = ["sync-secret-service", "crypto-rust", "vendored"] }
 # 与 wry 0.54 / tauri-runtime-wry linux-body 对齐；仅用于 browser::bridge eval_with_result
 webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }

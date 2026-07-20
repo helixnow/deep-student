@@ -33,7 +33,7 @@ describe('UI style lab navigation contract', () => {
 
     expect(styleDebugSource).toContain('UI 迁移工作台');
     expect(styleDebugSource).toContain('真实扫描数据驱动');
-    expect(styleDebugSource).toContain('NotionButton (目标)');
+    expect(styleDebugSource).toContain('DsButton (目标)');
     expect(styleDebugSource).toContain('shad Button (遗留)');
     expect(styleDebugSource).toContain('原生 button');
   });

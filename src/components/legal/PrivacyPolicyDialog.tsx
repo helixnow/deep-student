@@ -7,9 +7,9 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
 import {
   ArrowsClockwise,
   Baby,
@@ -101,15 +101,15 @@ export const PrivacyPolicyDialog: React.FC<PrivacyPolicyDialogProps> = ({ open, 
   ];
 
   return (
-    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[600px]">
-        <NotionDialogHeader>
-          <NotionDialogTitle>{t('legal.privacyPolicy.title')}</NotionDialogTitle>
+    <DsDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[600px]">
+        <DsDialogHeader>
+          <DsDialogTitle>{t('legal.privacyPolicy.title')}</DsDialogTitle>
           <p className="text-xs text-muted-foreground mt-1">
             {t('legal.privacyPolicy.lastUpdated')}
           </p>
-        </NotionDialogHeader>
+        </DsDialogHeader>
 
-        <NotionDialogBody>
+        <DsDialogBody>
           <div className="divide-y divide-border/40">
             {sections.map((section) => (
               <PolicySection
@@ -120,19 +120,19 @@ export const PrivacyPolicyDialog: React.FC<PrivacyPolicyDialogProps> = ({ open, 
 />
             ))}
           </div>
-        </NotionDialogBody>
+        </DsDialogBody>
 
-        <NotionDialogFooter>
-          <NotionButton
+        <DsDialogFooter>
+          <DsButton
             variant="default"
             size="sm"
             className="w-full justify-center"
             onClick={() => onOpenChange(false)}
           >
             {t('actions.close')}
-          </NotionButton>
-        </NotionDialogFooter>
-    </NotionDialog>
+          </DsButton>
+        </DsDialogFooter>
+    </DsDialog>
   );
 };
 

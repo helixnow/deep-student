@@ -11,7 +11,7 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
  * ESC / Android 返回键关闭（2026-07 移动端审计 R6）：本组件是 framer-motion
  * 自绘弹窗（非 Radix），没有 data-state="open"，androidBackCoordinator 的
  * Radix Escape 兜底匹配不到；此前也没有任何 Escape 监听——弹窗只能点遮罩
- * 或按钮关闭，移动端按返回键会穿透到底层导航。与 NotionDialog 同语义：
+ * 或按钮关闭，移动端按返回键会穿透到底层导航。与 DsDialog 同语义：
  * 维护模块级打开栈，仅栈顶实例响应 Escape，多层弹窗一次只关最上层。
  */
 const escapeStack: symbol[] = [];

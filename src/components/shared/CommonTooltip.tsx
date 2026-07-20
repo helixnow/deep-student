@@ -30,7 +30,7 @@ export interface CommonTooltipProps {
   className?: string;
   /**
    * 快捷键角标：在提示文案右侧渲染 kbd 键位（如 "⌘K" 或 ["⌘", "K"]）。
-   * 用于让键位提示渗透到各处 Tooltip（借鉴 OpenCode 界面处处标键位）。
+   * 用于让键位提示渗透到各处 Tooltip。
    */
   shortcut?: string | string[];
   /** 子元素 */

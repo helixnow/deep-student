@@ -13,7 +13,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback, type ReactNode } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useTranslation } from 'react-i18next';
 import { Sheet, SheetContent } from '@/components/ui/shad/Sheet';
@@ -141,9 +141,9 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           {showHeader && (
             <div className="flex items-center gap-3 px-4 py-3 shrink-0 border-b border-border/50">
               {/* 关闭按钮 */}
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className={cn(shellIconButtonClassName, '-ml-1')} aria-label={t('common:sidebar.close')}>
+              <DsButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className={cn(shellIconButtonClassName, '-ml-1')} aria-label={t('common:sidebar.close')}>
                 <X size={20} weight="regular" />
-              </NotionButton>
+              </DsButton>
 
               {/* 标题区域 */}
               {(headerTitle || headerSubtitle) && (

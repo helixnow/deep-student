@@ -10,7 +10,7 @@ import { CaretLeft, CaretRight, CircleNotch, DownloadSimple, Terminal, Warning, 
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { TextSwap } from '@/components/ui/TextSwap';
 import { useUIStore } from '@/stores/uiStore';
 
@@ -20,7 +20,7 @@ import { useUIStore } from '@/stores/uiStore';
 const CloudStorageSection = React.lazy(() =>
   import('@/features/settings/components/CloudStorageSection').then(m => ({ default: m.CloudStorageSection }))
 );
-import { NotionDialog, NotionDialogBody } from './components/ui/NotionDialog';
+import { DsDialog, DsDialogBody } from './components/ui/DsDialog';
 // 🚀 性能优化：Template*, IrecInsightRecall 等页面组件改为懒加载
 const AnkiTasksApp = React.lazy(() =>
   import('@/features/anki-tasks/AnkiTasksApp').then(m => ({ default: m.AnkiTasksApp }))
@@ -39,6 +39,7 @@ import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomati
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
 import { isWindows, isMacOS, isMobilePlatform } from './utils/platform';
+import { applySidebarTranslucency, syncNativeTitlebarSidebarMaterial } from './utils/sidebarTranslucency';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 // NT-1: NoteEditorPortal（白板远程桌面模式遗留，恒 return null）已随死渲染路径移除
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
@@ -49,11 +50,11 @@ import {
 } from './features/learning-hub';
 import { setActiveOpenResourceHandler } from './dstu/openResource';
 import { pageLifecycleTracker } from './debug-panel/services/pageLifecycleTracker';
+import 'overlayscrollbars/overlayscrollbars.css';
 import './styles/tailwind.css'; // Tailwind (should be first to provide base/utility layers)
 import './styles/shadcn-variables.css'; // 设计令牌：支持亮/暗色变量（必须优先）
 import './styles/theme-colors.css';
 import './shared/styles/index.css';
-import 'overlayscrollbars/overlayscrollbars.css';
 
 import './styles/ios-safe-area.css'; // iOS安全区域适配
 import './styles/responsive-utilities.css'; // 响应式工具类
@@ -111,7 +112,14 @@ import { getHiddenDraftSessionScope } from './features/chat/pages/draftSession';
 
 import { ViewLayerRenderer } from './app/components';
 import { canonicalizeView } from './app/navigation/canonicalView';
-import { DESKTOP_SHELL, getShellSidebarWidth } from './app/shell/desktopShell';
+import {
+  DESKTOP_SHELL,
+  getShellSidebarDragLayout,
+  getShellSidebarMaxWidth,
+  getShellSidebarWidth,
+  resolveShellSidebarResize,
+} from './app/shell/desktopShell';
+import { DesktopSidebarResizeHandle } from './app/shell/DesktopSidebarResizeHandle';
 import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSidebarPortal';
 import { DesktopShellHeaderPortalProvider } from './app/shell/DesktopShellHeaderPortal';
 import { getMobileShellCssVars } from './app/shell/mobileShell';
@@ -307,14 +315,14 @@ function CommandPaletteButton({
   
   return (
     <CommonTooltip content={`${t('common:command_palette_label')} (${isMac ? '⌘' : 'Ctrl'}+K)`} position="bottom">
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         onClick={open}
         className={cn('desktop-shell-toolbar-button', className)}
       >
         <Terminal size={16} />
-      </NotionButton>
+      </DsButton>
     </CommonTooltip>
   );
 }
@@ -387,7 +395,7 @@ function DesktopSidebarAccessory({
   return (
     <div className="desktop-shell-accessory-group flex min-w-0 items-center">
       <CommonTooltip content={label} position="bottom">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           onClick={onToggle}
@@ -395,7 +403,7 @@ function DesktopSidebarAccessory({
           aria-label={label}
         >
           {collapsed ? <SidebarFrameIcon /> : <SidebarFrameWithLeftRailIcon />}
-        </NotionButton>
+        </DsButton>
       </CommonTooltip>
       <SidebarUpdateBadge
         visible={updateVisible && !collapsed}
@@ -444,7 +452,7 @@ function DesktopHeaderNavControls({
     >
       <CommonTooltip content={backTitle} position="bottom">
         <span className="inline-flex">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={onGoBack}
@@ -453,12 +461,12 @@ function DesktopHeaderNavControls({
             aria-label={backLabel}
           >
             <CaretLeft size={16} />
-          </NotionButton>
+          </DsButton>
         </span>
       </CommonTooltip>
       <CommonTooltip content={forwardTitle} position="bottom">
         <span className="inline-flex">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={onGoForward}
@@ -467,11 +475,11 @@ function DesktopHeaderNavControls({
             aria-label={forwardLabel}
           >
             <CaretRight size={16} />
-          </NotionButton>
+          </DsButton>
         </span>
       </CommonTooltip>
       <CommonTooltip content={newSessionLabel} position="bottom">
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           onMouseDown={(event) => handleDesktopToolbarButtonMouseDown(event, onTitlebarDoubleClick)}
@@ -480,7 +488,7 @@ function DesktopHeaderNavControls({
           aria-label={newSessionLabel}
         >
           <StudyComposeIcon className="h-4 w-4" />
-        </NotionButton>
+        </DsButton>
       </CommonTooltip>
     </div>
   );
@@ -691,7 +699,7 @@ function App() {
     };
   }, []);
 
-  // 侧边栏半透明：启动时从持久化设置恢复 data attribute
+  // 侧边栏半透明：启动时从持久化设置恢复（CSS 属性 + macOS 原生 vibrancy）
   useEffect(() => {
     let cancelled = false;
     const SIDEBAR_TRANSLUCENT_KEY = 'sidebar.translucent';
@@ -700,13 +708,10 @@ function App() {
       try {
         const val = await invoke<string | null>('get_setting', { key: SIDEBAR_TRANSLUCENT_KEY });
         if (cancelled) return;
-        document.documentElement.setAttribute(
-          'data-sidebar-translucent',
-          String(val ?? '').trim() === 'true' ? 'true' : 'false',
-        );
+        void applySidebarTranslucency(String(val ?? '').trim() === 'true');
       } catch {
         if (cancelled) return;
-        document.documentElement.setAttribute('data-sidebar-translucent', 'false');
+        void applySidebarTranslucency(false);
       }
     };
     void loadSidebarTranslucentSetting();
@@ -853,14 +858,26 @@ function App() {
   // ★ previousView 用于模板选择返回
   const [previousView, setPreviousView] = useState<CurrentView>('chat-v2');
   const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
-  const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
+  const leftPanelWidth = useUIStore((state) => state.leftPanelWidth);
+  const shellSidebarWidth = getShellSidebarWidth(
+    isSmallScreen,
+    leftPanelWidth,
+    typeof window === 'undefined' ? undefined : window.innerWidth
+  );
+  const [desktopSidebarMotionWidth, setDesktopSidebarMotionWidth] = useState<number | null>(null);
+  const desktopSidebarPresentationWidth = desktopSidebarMotionWidth ?? shellSidebarWidth;
   const desktopNavigationWidth = workbenchActive
     ? 0
-    : !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;
+    : !isSmallScreen && leftPanelCollapsed ? 0 : desktopSidebarPresentationWidth;
+  const desktopSidebarTranslateX = !isSmallScreen && leftPanelCollapsed ? -desktopSidebarPresentationWidth : 0;
   const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed && !workbenchActive;
+  const [isDesktopSidebarResizing, setIsDesktopSidebarResizing] = useState(false);
+  const appShellRef = useRef<HTMLDivElement | null>(null);
+  const desktopSidebarCollapsePendingRef = useRef(false);
   const shouldUseDesktopFloatingAccessory = !isSmallScreen;
   const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;
   const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar');
+  const desktopSidebarResizeLabel = t('common:navigation.resize_sidebar');
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession');
   const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label');
   const updateBadgeVisible = !updater.checking && updater.available && !!updater.info;
@@ -882,12 +899,22 @@ function App() {
       console.error('Failed to toggle desktop window maximize:', error);
     }
   }, []);
-  const desktopSidebarAccessoryContent = (
+  const desktopSidebarExpandedAccessoryContent = (
     <DesktopSidebarAccessory
       onToggle={useUIStore.getState().toggleLeftPanel}
       label={desktopSidebarToggleLabel}
-      collapsed={leftPanelCollapsed}
+      collapsed={false}
       updateVisible={updateBadgeVisible}
+      onUpdate={() => void updater.performUpdateAction()}
+      updateDownloading={updater.downloading}
+    />
+  );
+  const desktopSidebarCollapsedAccessoryContent = (
+    <DesktopSidebarAccessory
+      onToggle={useUIStore.getState().toggleLeftPanel}
+      label={desktopSidebarToggleLabel}
+      collapsed
+      updateVisible={false}
       onUpdate={() => void updater.performUpdateAction()}
       updateDownloading={updater.downloading}
     />
@@ -899,20 +926,94 @@ function App() {
   const appShellCustomProperties = useMemo(() => ({
     ...getMobileShellCssVars(),
     '--sidebar-width': `${desktopNavigationWidth}px`,
-    '--sidebar-expanded-width': `${shellSidebarWidth}px`,
+    '--sidebar-expanded-width': `${desktopSidebarPresentationWidth}px`,
     '--sidebar-collapsed-width': `${desktopNavigationWidth}px`,
     '--shell-navigation-width': `${desktopNavigationWidth}px`,
+    '--shell-sidebar-translate-x': `${desktopSidebarTranslateX}px`,
     '--shell-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
     '--desktop-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
     '--topbar-safe-area': `${workbenchActive ? 0 : topbarTopMargin}px`,
     '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
   }) as React.CSSProperties, [
     desktopNavigationWidth,
-    shellSidebarWidth,
+    desktopSidebarPresentationWidth,
+    desktopSidebarTranslateX,
     shellTitlebarOccupiedHeight,
     topbarTopMargin,
     workbenchActive,
   ]);
+  useEffect(() => {
+    if (!leftPanelCollapsed || desktopSidebarMotionWidth === null) return;
+
+    const cleanupTimer = window.setTimeout(() => {
+      setDesktopSidebarMotionWidth(null);
+    }, 360);
+
+    return () => window.clearTimeout(cleanupTimer);
+  }, [desktopSidebarMotionWidth, leftPanelCollapsed]);
+  const handleDesktopSidebarResizeStart = useCallback(() => {
+    desktopSidebarCollapsePendingRef.current = false;
+    setDesktopSidebarMotionWidth(null);
+    setIsDesktopSidebarResizing(true);
+  }, []);
+  const handleDesktopSidebarResize = useCallback((requestedWidth: number) => {
+    if (requestedWidth <= DESKTOP_SHELL.navigationCloseSnapWidth) {
+      if (desktopSidebarCollapsePendingRef.current) return;
+
+      desktopSidebarCollapsePendingRef.current = true;
+      setDesktopSidebarMotionWidth(DESKTOP_SHELL.navigationMinWidth);
+      appShellRef.current?.style.setProperty(
+        '--shell-navigation-width',
+        `${DESKTOP_SHELL.navigationMinWidth}px`
+      );
+      appShellRef.current?.style.setProperty(
+        '--sidebar-expanded-width',
+        `${DESKTOP_SHELL.navigationMinWidth}px`
+      );
+      appShellRef.current?.style.setProperty('--shell-sidebar-translate-x', '0px');
+      setIsDesktopSidebarResizing(false);
+      requestAnimationFrame(() => {
+        desktopSidebarCollapsePendingRef.current = false;
+        useUIStore.setState({
+          leftPanelCollapsed: true,
+          leftPanelWidth,
+        });
+      });
+      return;
+    }
+
+    const layout = getShellSidebarDragLayout(
+      requestedWidth,
+      leftPanelWidth,
+      typeof window === 'undefined' ? undefined : window.innerWidth
+    );
+    appShellRef.current?.style.setProperty('--shell-navigation-width', `${layout.trackWidth}px`);
+    appShellRef.current?.style.setProperty('--sidebar-expanded-width', `${layout.surfaceWidth}px`);
+    appShellRef.current?.style.setProperty('--shell-sidebar-translate-x', `${layout.translateX}px`);
+  }, [leftPanelWidth]);
+  const handleDesktopSidebarResizeEnd = useCallback((requestedWidth: number) => {
+    if (desktopSidebarCollapsePendingRef.current) return;
+
+    const result = resolveShellSidebarResize(
+      requestedWidth,
+      leftPanelWidth,
+      typeof window === 'undefined' ? undefined : window.innerWidth
+    );
+
+    setIsDesktopSidebarResizing(false);
+    useUIStore.setState({
+      leftPanelCollapsed: result.collapsed,
+      leftPanelWidth: result.width,
+    });
+  }, [leftPanelWidth]);
+  // macOS 原生 vibrancy：标题栏内的侧栏材质层宽度随侧栏可见性/宽度同步
+  useEffect(() => {
+    if (isSmallScreen || !isMacOS()) return;
+    void syncNativeTitlebarSidebarMaterial(
+      isDesktopSidebarSurfaceVisible,
+      isDesktopSidebarSurfaceVisible ? desktopNavigationWidth : 0,
+    );
+  }, [desktopNavigationWidth, isDesktopSidebarSurfaceVisible, isSmallScreen]);
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
   const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [desktopPageHeaderTarget, setDesktopPageHeaderTarget] = useState<HTMLDivElement | null>(null);
@@ -1858,7 +1959,7 @@ function App() {
     <div className="sidebar-shell-surface font-sidebar-study-ui flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
       {shouldShowDesktopPageBackButton ? (
         <div className="flex shrink-0 items-center px-3 pb-2 pt-[var(--sidebar-header-height)]">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={() => setCurrentView('chat-v2')}
@@ -1868,7 +1969,7 @@ function App() {
             <span className="desktop-shell-sidebar-row-title truncate">
               {t('common:actions.backToHome')}
             </span>
-          </NotionButton>
+          </DsButton>
         </div>
       ) : null}
       <div ref={handleDesktopPageSidebarTarget} className="min-h-0 flex-1 overflow-hidden" />
@@ -2209,7 +2310,9 @@ function App() {
 
   const desktopShellViewLabel = useMemo(() => {
     if (currentView === 'chat-v2') {
-      return currentChatHeaderTitle;
+      // 冷启动 / 新会话尚未写入标题时仍给统一移动顶栏一个稳定页面名，
+      // 避免 lazy 页面注册 useMobileHeader 前出现空白标题。
+      return currentChatHeaderTitle || t('sidebar:navigation.chat_v2');
     }
 
     const labels: Partial<Record<CurrentView, string>> = {
@@ -2392,8 +2495,10 @@ function App() {
       <DesktopShellSidebarPortalProvider value={desktopShellSidebarPortalValue}>
       <DesktopShellHeaderPortalProvider value={desktopShellHeaderPortalValue}>
       <div
+        ref={appShellRef}
         data-shell-role="app-shell"
         data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
+        data-sidebar-resizing={isDesktopSidebarResizing ? 'true' : 'false'}
         className={cn(
           'relative flex h-dvh w-full overflow-hidden font-sans text-foreground'
           // 背景由 src/shared/styles/app.css 的 [data-shell-role="app-shell"] 规则根据 data-sidebar-visible
@@ -2403,7 +2508,7 @@ function App() {
           // 注意：刻意不在此层加 `transition-colors duration-500`。
           // 工作区圆角凹陷处会透出本层背景；如果本层做颜色过渡，而相邻的 workspace、
           // titlebar 是瞬间变色，主题切换中间帧就会出现色差（左下凹角白底闪烁问题）。
-          // 业界最佳实践（Notion / Linear / VS Code）：主题切换瞬间生效，避免接缝问题。
+          // 业界最佳实践（ Linear / VS Code）：主题切换瞬间生效，避免接缝问题。
         )}
         style={appShellCustomProperties}
       >
@@ -2469,33 +2574,55 @@ function App() {
             </>
           ) : (
             <>
+              <div
+                aria-hidden="true"
+                data-shell-surface="navigation"
+                className="desktop-shell-sidebar-titlebar-surface"
+              />
+
               {shouldUseDesktopFloatingAccessory ? (
-                <div
-                  className="pointer-events-none absolute z-20 transition-[opacity,transform] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none"
-                  style={{
-                    left: `${desktopFloatingAccessoryOffset}px`,
-                    top: `${topbarTopMargin}px`,
-                    height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
-                    width: `${desktopFloatingAccessoryWidth}px`,
-                    opacity: 1,
-                  }}
-                >
-                  <div className="pointer-events-auto inline-flex h-full max-w-full items-center justify-between gap-1.5 overflow-hidden pr-1.5">
-                    <div className="flex items-center">
-                      {desktopSidebarAccessoryContent}
+                <>
+                  <div
+                    className="desktop-shell-sidebar-expanded-accessory"
+                    style={{
+                      left: `${desktopFloatingAccessoryOffset}px`,
+                      top: `${topbarTopMargin}px`,
+                      height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
+                      width: `${desktopFloatingAccessoryWidth}px`,
+                    }}
+                  >
+                    <div className="pointer-events-auto inline-flex h-full max-w-full items-center overflow-hidden pr-1.5">
+                      {desktopSidebarExpandedAccessoryContent}
                     </div>
-                    {shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
                   </div>
-                </div>
+
+                  <div
+                    className="desktop-shell-sidebar-collapsed-accessory"
+                    data-open={leftPanelCollapsed ? 'true' : 'false'}
+                    style={{
+                      left: `${desktopFloatingAccessoryOffset}px`,
+                      top: `${topbarTopMargin}px`,
+                      height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
+                      width: `${desktopFloatingAccessoryWidth}px`,
+                    }}
+                  >
+                    <div className="pointer-events-auto inline-flex h-full max-w-full items-center justify-between gap-1.5 overflow-hidden pr-1.5">
+                      <div className="flex items-center">
+                        {desktopSidebarCollapsedAccessoryContent}
+                      </div>
+                      {shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
+                    </div>
+                  </div>
+                </>
               ) : null}
 
               <div
                 className={cn(
-                  'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 shrink-0 items-center justify-end overflow-hidden transition-[width,padding] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none',
+                  'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 shrink-0 items-center justify-end overflow-hidden',
                   leftPanelCollapsed ? 'px-0' : 'px-4'
                 )}
                 style={{
-                  width: `${desktopNavigationWidth}px`,
+                  width: 'var(--shell-navigation-width)',
                 }}
               >
                 <div
@@ -2568,17 +2695,28 @@ function App() {
         {/* 桌面端：主导航侧边栏（workbench 模式下隐藏，导航职责移交 Dock，设计 §3.1） */}
         {!isSmallScreen && !workbenchActive ? (
           <div
-            className={cn(
-              'h-full flex-shrink-0',
-              'overflow-hidden transition-[width] duration-200 ease-[var(--panel-ease)]',
-              leftPanelCollapsed ? 'w-0' : 'w-[var(--shell-navigation-width)]'
-            )}
+            className="desktop-shell-sidebar-track t-resize"
+            style={{ width: 'var(--shell-navigation-width)' }}
           >
-            {/* key 按侧栏类型：整组内容替换时重挂载并播放入场动画（与视图切换同款观感） */}
-            <div key={desktopShellSidebarKind} className="desktop-shell-content-enter h-full w-full">
-              {desktopShellSidebarElement}
+            <div className="desktop-shell-sidebar-motion-surface">
+              {/* key 按侧栏类型：整组内容替换时重挂载并播放入场动画（与视图切换同款观感） */}
+              <div key={desktopShellSidebarKind} className="desktop-shell-content-enter h-full w-full">
+                {desktopShellSidebarElement}
+              </div>
             </div>
           </div>
+        ) : null}
+
+        {!isSmallScreen && !workbenchActive && !leftPanelCollapsed ? (
+          <DesktopSidebarResizeHandle
+            label={desktopSidebarResizeLabel}
+            width={desktopNavigationWidth}
+            minWidth={DESKTOP_SHELL.navigationMinWidth}
+            maxWidth={getShellSidebarMaxWidth(typeof window === 'undefined' ? undefined : window.innerWidth)}
+            onResizeStart={handleDesktopSidebarResizeStart}
+            onResize={handleDesktopSidebarResize}
+            onResizeEnd={handleDesktopSidebarResizeEnd}
+          />
         ) : null}
 
         <div
@@ -2608,7 +2746,7 @@ function App() {
               <span className="flex-1 truncate">
                 {maintenanceReason || t('common:maintenance.banner_description')}
               </span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 h-6 px-2 text-xs"
@@ -2642,7 +2780,7 @@ function App() {
                     ? 'common:maintenance.restart_now'
                     : 'common:maintenance.go_to_data_governance',
                 )}
-              </NotionButton>
+              </DsButton>
             </div>
           )}
 
@@ -2735,13 +2873,13 @@ function App() {
       <NotificationContainer />
 
       {/* 云存储配置弹窗 - 移到全局位置避免被 renderViewLayer 的 visibility 影响 */}
-      <NotionDialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings} maxWidth="max-w-[560px]">
-        <NotionDialogBody>
+      <DsDialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings} maxWidth="max-w-[560px]">
+        <DsDialogBody>
           <Suspense fallback={<PageLoadingFallback />}>
             <CloudStorageSection isDialog />
           </Suspense>
-        </NotionDialogBody>
-      </NotionDialog>
+        </DsDialogBody>
+      </DsDialog>
       {/* 全局悬浮调试面板（按需懒加载，避免生产首包引入调试模块） */}
       {shouldRenderDebugPanel && (
         <Suspense fallback={null}>

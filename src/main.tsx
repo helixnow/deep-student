@@ -15,6 +15,10 @@ import { dstuDebugLog } from './debug-panel/plugins/DstuDebugPlugin';
 import { debugMasterSwitch, debugLog } from './debug-panel/debugMasterSwitch';
 // ★ 平台检测初始化（为 Android WebView 兼容性添加 CSS 类）
 import { initPlatformClasses } from './utils/platform';
+// ★ 材质档位提前初始化：把 data-wb-material 写到 <html>，让应用壳（侧边栏毛玻璃、
+// composer/菜单 blur、全屏遮罩）在不进入工作台时也能按档位降级。
+// materialTier 模块只依赖 utils/platform，不会把 workbench 主体拖进首屏 chunk。
+import { getMaterialTier } from './features/workbench/core/materialTier';
 import { installChatV2DomainEventBridge } from './utils/chatV2DomainEventBridge';
 import { OverlayScrollbars, ClickScrollPlugin } from 'overlayscrollbars';
 import { getOrCreateReactRoot } from './reactRoot';
@@ -28,6 +32,8 @@ import {
 
 // 尽早初始化平台检测类，确保 CSS 规则在渲染前生效
 initPlatformClasses();
+// 尽早写入材质档位属性（内部自带软件渲染/系统偏好检测），供全局 CSS 降级选择器使用
+getMaterialTier();
 void installChatV2DomainEventBridge();
 
 // Dev-only：UI 自动化桥（本地 UI 审查用，生产构建不包含）。

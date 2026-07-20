@@ -11,7 +11,7 @@ import {
 } from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { commandRegistry } from '../registry/commandRegistry';
@@ -258,18 +258,18 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
             </Select>
 
             <div className="flex gap-1 ml-auto">
-              <NotionButton variant="ghost" size="sm" onClick={exportConfig} className="gap-1.5">
+              <DsButton variant="ghost" size="sm" onClick={exportConfig} className="gap-1.5">
                 <Download size={12} />
                 {t('common:actions.export')}
-              </NotionButton>
-              <NotionButton variant="ghost" size="sm" onClick={importConfig} className="gap-1.5">
+              </DsButton>
+              <DsButton variant="ghost" size="sm" onClick={importConfig} className="gap-1.5">
                 <Upload size={12} />
                 {t('common:actions.import')}
-              </NotionButton>
-              <NotionButton variant="ghost" size="sm" onClick={resetAllShortcuts} className="gap-1.5">
+              </DsButton>
+              <DsButton variant="ghost" size="sm" onClick={resetAllShortcuts} className="gap-1.5">
                 <ArrowCounterClockwise size={12} />
                 {t('command_palette:reset_all')}
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
 
@@ -322,15 +322,15 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                     <span>{editing.conflict.commands.join(', ')}</span>
                                   </div>
                                 )}
-                                <NotionButton size="sm" onClick={saveShortcut} disabled={!editing.newShortcut || !!editing.conflict}>
+                                <DsButton size="sm" onClick={saveShortcut} disabled={!editing.newShortcut || !!editing.conflict}>
                                   {t('common:save')}
-                                </NotionButton>
-                                <NotionButton size="sm" variant="ghost" onClick={() => startEditing(command.id)}>
+                                </DsButton>
+                                <DsButton size="sm" variant="ghost" onClick={() => startEditing(command.id)}>
                                   {t('command_palette:re_record')}
-                                </NotionButton>
-                                <NotionButton size="sm" variant="ghost" onClick={cancelEditing}>
+                                </DsButton>
+                                <DsButton size="sm" variant="ghost" onClick={cancelEditing}>
                                   {t('common:cancel')}
-                                </NotionButton>
+                                </DsButton>
                               </div>
                             )}
                           </div>
@@ -346,15 +346,15 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                             </span>
 
                             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity">
-                              <NotionButton
+                              <DsButton
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => startEditing(command.id)}
                               >
                                 {t('command_palette:edit_shortcut')}
-                              </NotionButton>
+                              </DsButton>
                               {hasCustom && (
-                                <NotionButton
+                                <DsButton
                                   size="sm"
                                   variant="ghost"
                                   iconOnly
@@ -362,10 +362,10 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                   title={t('command_palette:reset_shortcut')}
                                 >
                                   <ArrowCounterClockwise size={12} />
-                                </NotionButton>
+                                </DsButton>
                               )}
                               {effectiveShortcut && (
-                                <NotionButton
+                                <DsButton
                                   size="sm"
                                   variant="ghost"
                                   iconOnly
@@ -374,7 +374,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                   title={t('command_palette:disable_shortcut')}
                                 >
                                    <Trash size={12} />
-                                </NotionButton>
+                                </DsButton>
                               )}
                             </div>
                           </div>

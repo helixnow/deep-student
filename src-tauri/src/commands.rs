@@ -51,6 +51,7 @@ pub use crate::cmd::ocr::*;
 pub use crate::cmd::textbooks::*;
 pub use crate::cmd::translation::*;
 pub use crate::cmd::web_search::*; // OCR 引擎配置命令
+pub use crate::cmd::window_effects::*; // macOS 窗口毛玻璃
 
 // 教材库独立数据库
 
@@ -6998,7 +6999,8 @@ pub async fn get_learning_heatmap(
             &conn,
             "SELECT DATE(created_at) as date, COUNT(*) as count
              FROM anki_cards
-             WHERE DATE(created_at) >= ?1 AND DATE(created_at) <= ?2
+             WHERE deleted_at IS NULL
+               AND DATE(created_at) >= ?1 AND DATE(created_at) <= ?2
              GROUP BY DATE(created_at)",
             &start_date,
             &end_date,

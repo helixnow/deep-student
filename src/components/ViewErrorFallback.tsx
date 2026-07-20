@@ -1,7 +1,7 @@
 import React from 'react';
 import { WarningCircle } from '@phosphor-icons/react';
 import i18n from '@/i18n';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 const SHOW_DETAILS = import.meta.env.DEV;
 
@@ -35,9 +35,9 @@ export const ViewErrorFallback: React.FC<ViewErrorFallbackProps> = ({ error, onR
         </pre>
       )}
       {onRetry && (
-        <NotionButton variant="primary" size="sm" onClick={onRetry} className="text-xs">
+        <DsButton variant="primary" size="sm" onClick={onRetry} className="text-xs">
           {i18n.t('common:errorBoundary.retry', '重试')}
-        </NotionButton>
+        </DsButton>
       )}
     </div>
   );

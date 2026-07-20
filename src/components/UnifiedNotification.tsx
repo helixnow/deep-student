@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, CheckCircle, Copy, Info, Warning, WarningCircle, X } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import './UnifiedNotification.css';
 
@@ -262,9 +262,9 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
           </span>
         )}
         {notification.action && (
-          <NotionButton variant="ghost" size="sm" className="unified-notification-action" onClick={() => { notification.action?.onClick(); handleClose(); }}>
+          <DsButton variant="ghost" size="sm" className="unified-notification-action" onClick={() => { notification.action?.onClick(); handleClose(); }}>
             {notification.action.label}
-          </NotionButton>
+          </DsButton>
         )}
         {notification.type === 'error' && (
           <button
@@ -280,9 +280,9 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
             />
           </button>
         )}
-        <NotionButton variant="ghost" size="icon" iconOnly className="unified-notification-close" aria-label={t('close_notification')} onClick={handleClose}>
+        <DsButton variant="ghost" size="icon" iconOnly className="unified-notification-close" aria-label={t('close_notification')} onClick={handleClose}>
           <X className="unified-notification-close-icon" weight="regular" aria-hidden="true" />
-        </NotionButton>
+        </DsButton>
       </div>
       {showProgress && (
         <span key={progressKey} className="unified-notification-progress" aria-hidden="true" />

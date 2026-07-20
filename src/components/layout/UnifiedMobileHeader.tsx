@@ -9,7 +9,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { CaretLeft, CaretRight, List } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeaderContextSafe } from './MobileHeaderContext';
 import { isMobilePlatform } from '@/utils/platform';
@@ -54,10 +54,13 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   // 3. canGoBack - 显示全局返回按钮
   const showBackArrowButton = config.showBackArrow && config.onMenuClick;
   const showMenuButton = !showBackArrowButton && config.showMenu && config.onMenuClick;
-  const showBackButton = !config.suppressGlobalBackButton && !showBackArrowButton && !showMenuButton && canGoBack;
-  // 前进按钮：仅在全局历史导航语境下出现（视图子层级的返回箭头/菜单模式不显示），
-  // 且确有前向历史时才占位，避免常态下挤占标题空间
-  const showForwardButton = !config.suppressGlobalBackButton && !showBackArrowButton && !showMenuButton && canGoForward && Boolean(onForward);
+  const showGlobalNavigation =
+    !config.suppressGlobalBackButton && !showBackArrowButton && !showMenuButton;
+  const showBackButton = showGlobalNavigation && canGoBack && Boolean(onBack);
+  // 进入全局历史导航语境后保留前进按钮槽位：后退产生前向历史时按钮只切换
+  // disabled，不再让标题和右侧操作横向跳动。页内返回箭头/菜单模式仍不显示。
+  const showForwardButton =
+    showGlobalNavigation && Boolean(onForward) && (showBackButton || canGoForward);
 
   return (
     <header
@@ -83,9 +86,13 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       }}
     >
       {/* 左侧：返回箭头、菜单按钮或全局返回按钮 */}
-      <div className="flex min-w-[var(--touch-target-size)] items-center lg:min-w-10" data-no-drag>
+      <nav
+        className="flex min-w-[var(--touch-target-size)] shrink-0 items-center lg:min-w-10"
+        aria-label={t('common:navigation_label')}
+        data-no-drag
+      >
         {showBackArrowButton && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={config.onMenuClick}
@@ -93,10 +100,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             aria-label={t('common:mobile_header.back')}
           >
             <CaretLeft size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
         {showMenuButton && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={config.onMenuClick}
@@ -104,10 +111,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             aria-label={t('common:mobile_header.open_sidebar')}
           >
             <List size={21} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
         {showBackButton && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={onBack}
@@ -115,20 +122,21 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             aria-label={t('common:mobile_header.back')}
           >
             <CaretLeft size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
         {showForwardButton && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={onForward}
+            disabled={!canGoForward}
             className={cn(shellIconButtonClassName, showBackButton ? '-ml-0.5' : '-ml-1')}
             aria-label={t('common:mobile_header.forward')}
           >
             <CaretRight size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
-      </div>
+      </nav>
 
       {/* 中间：标题区域 */}
       <div className="flex-1 min-w-0 flex flex-col items-center justify-center overflow-hidden">
@@ -148,7 +156,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       </div>
 
       {/* 右侧：操作按钮 */}
-      <div className="flex min-w-[var(--touch-target-size)] items-center justify-end gap-1" data-no-drag>
+      <div className="flex min-w-[var(--touch-target-size)] shrink-0 items-center justify-end gap-1" data-no-drag>
         {config.rightActions}
       </div>
     </header>

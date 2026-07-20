@@ -262,10 +262,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
 
     const updateActiveState = () => {
       const style = window.getComputedStyle(viewLayer);
+      // opacity 是视图入场动画的一部分，激活首帧会短暂为 0；若把它当成
+      // 非活跃判据，MutationObserver 在动画结束后不会再收到属性变化，
+      // 缓存页面重进后便会永久失去返回键/全屏 claim。交互态只看壳层契约。
       setIsActiveViewLayer(
         style.visibility !== 'hidden' &&
-        style.pointerEvents !== 'none' &&
-        style.opacity !== '0'
+        style.pointerEvents !== 'none'
       );
     };
 
@@ -641,8 +643,14 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
 
     // 触摸事件
     const onTouchStart = (e: TouchEvent) => {
-      // 新一轮指针交互开始：清掉可能残留的 click 抑制标记（如上一轮 touchcancel
-      // 收尾后没有 click 消费它），避免误吞本轮的正常点击
+      // 双指缩放/旋转必须完整让给内容。第二根手指落下时 touchstart 会再次触发，
+      // 此处取消已经开始的单指跟踪，避免松开一指后布局突然跳屏。
+      if (e.touches.length !== 1) {
+        handleDragCancel();
+        return;
+      }
+      // 新一轮单指交互开始：清掉可能残留的 click 抑制标记（如上一轮
+      // touchcancel 收尾后没有 click 消费它），避免误吞本轮的正常点击。
       stateRef.current.suppressClick = false;
       if (isGestureOptOutTarget(e.target)) return;
       const touch = e.touches[0];
@@ -651,11 +659,17 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     };
 
     const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) {
+        handleDragCancel();
+        return;
+      }
       const touch = e.touches[0];
       handleDragMove(touch.clientX, touch.clientY, () => e.preventDefault());
     };
 
-    const onTouchEnd = () => {
+    const onTouchEnd = (e: TouchEvent) => {
+      // 仍有触点时不提交；多指序列已由 touchstart/touchmove 的 cancel 路径收尾。
+      if (e.touches.length > 0) return;
       handleDragEnd();
     };
 
@@ -745,15 +759,16 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     : 0;
   const isSidebarOverlayInteractive = sidebarRevealProgress > 0.98 && screenPosition === 'left' && !isDragging;
 
-  // A11y：离屏面板 inert 化。三屏内容常驻 DOM、仅靠 translate 移出视口，
+  // A11y：离屏区域 inert 化。三屏内容常驻 DOM、仅靠 translate 移出视口，
   // 不加 inert 时键盘 Tab / 读屏可到达不可见控件，且 focus 会把 overflow:hidden
   // 容器滚出偏移。React 18 的布尔 inert 序列化有问题，用空字符串写法
-  // （React 19 升级后可改回布尔属性）。主内容区不 inert：遮罩按钮在其内部，
-  // 抽屉展开时必须保持可点击。
+  // （React 19 升级后可改回布尔属性）。主内容本体单独包裹，遮罩按钮保持在
+  // inert 包裹层之外，因此抽屉展开时既能点击遮罩关闭，也不会焦点穿透到底层。
   const inertProps = (inert: boolean) =>
     // @types/react 18 尚未声明 inert，经 unknown 双重断言透传为 DOM 属性
     (inert ? { inert: '' } : {}) as unknown as React.HTMLAttributes<HTMLDivElement>;
   const isSidebarInert = hasSidebar && screenPosition !== 'left';
+  const isMainContentInert = screenPosition !== 'center';
   const isRightPanelInert = isThreeScreenMode && screenPosition !== 'right';
 
   // 计算容器总宽度
@@ -793,6 +808,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
           <div
             data-mobile-unified-drawer={isMobileLayout && hasSidebar ? '' : undefined}
             {...inertProps(isSidebarInert)}
+            aria-hidden={isSidebarInert || undefined}
             className={cn(
               'relative z-[2] flex h-full min-h-0 flex-shrink-0 flex-col font-sidebar-study-ui',
               isMobileLayout && hasSidebar
@@ -856,13 +872,20 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
               }}
             />
           )}
-          {children}
+          <div
+            {...inertProps(isMainContentInert)}
+            aria-hidden={isMainContentInert || undefined}
+            className="h-full min-h-0"
+          >
+            {children}
+          </div>
         </div>
 
         {/* 右侧面板（三屏模式） */}
         {isThreeScreenMode && (
           <div
             {...inertProps(isRightPanelInert)}
+            aria-hidden={isRightPanelInert || undefined}
             className="flex flex-col bg-background"
             style={{ width: containerWidth || '100vw', height: '100%' }}
           >

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { guardedListen } from '../utils/guardedListen';
 import { useTranslation } from 'react-i18next';
@@ -104,7 +104,7 @@ export const WindowControls: React.FC = () => {
 
   return (
     <div data-shell-window-controls>
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -118,9 +118,9 @@ export const WindowControls: React.FC = () => {
         <svg width="12" height="12" viewBox="0 0 12 12">
           <path d="M2 6h8" stroke="currentColor" strokeWidth="1" />
         </svg>
-      </NotionButton>
+      </DsButton>
       
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -140,9 +140,9 @@ export const WindowControls: React.FC = () => {
             <path d="M2 2h8v8H2V2z" stroke="currentColor" strokeWidth="1" fill="none" />
           </svg>
         )}
-      </NotionButton>
+      </DsButton>
       
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -156,7 +156,7 @@ export const WindowControls: React.FC = () => {
         <svg width="12" height="12" viewBox="0 0 12 12">
           <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1" />
         </svg>
-      </NotionButton>
+      </DsButton>
     </div>
   );
 };

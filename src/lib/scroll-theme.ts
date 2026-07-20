@@ -26,15 +26,15 @@ export function subscribeHtmlThemeChange(listener: () => void): () => void {
 
 /** @internal — exported only for tests; do not import from app code. */
 export function getHtmlTheme(): ScrollbarThemeClass {
-  if (typeof document === "undefined") return "os-theme-light";
+  if (typeof document === "undefined") return "os-theme-dark";
   return document.documentElement.dataset.theme === "dark"
-    ? "os-theme-dark"
-    : "os-theme-light";
+    ? "os-theme-light"
+    : "os-theme-dark";
 }
 
 /** @internal — exported only for tests; do not import from app code. */
 export function getHtmlThemeServerSnapshot(): ScrollbarThemeClass {
-  return "os-theme-light";
+  return "os-theme-dark";
 }
 
 export function useScrollbarTheme(): ScrollbarThemeClass {

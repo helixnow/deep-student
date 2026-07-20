@@ -40,6 +40,8 @@ const SETTINGS_TAB_MAPPING: Record<string, string> = {
   search: 'search',
   models: 'models',
   mcp: 'mcp',
+  plugins: 'plugins',
+  plugin: 'plugins',
   statistics: 'statistics',
   data: 'data-governance',
   'data-governance': 'data-governance',

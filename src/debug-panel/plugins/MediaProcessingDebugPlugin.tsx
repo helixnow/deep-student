@@ -46,7 +46,7 @@ import {
 } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { usePdfProcessingStore, type PdfProcessingStatus, type MediaType } from '@/features/pdf/stores/pdfProcessingStore';
-import { NotionButton } from '../../components/ui/NotionButton';
+import { DsButton } from '../../components/ui/DsButton';
 import {
   CHATV2_LOG_EVENT,
   type ChatV2LogEntry,
@@ -635,54 +635,54 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 顶部工具栏 */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <NotionButton
+          <DsButton
             variant={isPaused ? 'warning' : 'ghost'}
             size="sm"
             onClick={() => setIsPaused(!isPaused)}
           >
             {isPaused ? <Eye size={16} className="mr-1" /> : <EyeSlash size={16} className="mr-1" />}
             {isPaused ? '恢复' : '暂停'}
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton variant="ghost" size="sm" onClick={clearEvents}>
+          <DsButton variant="ghost" size="sm" onClick={clearEvents}>
             <Trash size={16} className="mr-1" />
             清空
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton
+          <DsButton
             variant={showStore ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => setShowStore(!showStore)}
           >
             <Lightning size={16} className="mr-1" />
             Store
-          </NotionButton>
+          </DsButton>
         </div>
 
         <div className="flex items-center gap-1">
-          <NotionButton
+          <DsButton
             variant={filter === 'all' ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => setFilter('all')}
           >
             全部
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant={filter === 'pdf' ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => setFilter('pdf')}
           >
             <FileText size={12} className="mr-1" />
             PDF
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant={filter === 'image' ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => setFilter('image')}
           >
             <FileImage size={12} className="mr-1" />
             图片
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
 

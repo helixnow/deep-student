@@ -10,8 +10,8 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
+import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Label } from '@/components/ui/shad/Label';
@@ -840,9 +840,9 @@ export function ConflictResolutionDialog({
     conflicts.database_conflicts.length + recordConflictDisplayCount;
 
   return (
-    <NotionDialog open={open} onOpenChange={(open) => !open && onClose()} maxWidth="max-w-4xl">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
+    <DsDialog open={open} onOpenChange={(open) => !open && onClose()} maxWidth="max-w-4xl">
+        <DsDialogHeader>
+          <DsDialogTitle className="flex items-center gap-2">
             <WarningCircle size={20} className="text-amber-500" />
             {t('conflict_resolution')}
             {hasConflicts && (
@@ -850,14 +850,14 @@ export function ConflictResolutionDialog({
                 {totalConflicts}
               </Badge>
             )}
-          </NotionDialogTitle>
-          <NotionDialogDescription>
+          </DsDialogTitle>
+          <DsDialogDescription>
             {hasConflicts
               ? t('conflict_description')
               : t('no_conflicts')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
+          </DsDialogDescription>
+        </DsDialogHeader>
+        <DsDialogBody>
 
         {hasConflicts ? (
           <div className="flex-1 min-h-0 flex flex-col gap-4">
@@ -977,8 +977,8 @@ export function ConflictResolutionDialog({
           </Alert>
         )}
 
-        </NotionDialogBody>
-        <NotionDialogFooter className="flex items-center justify-between">
+        </DsDialogBody>
+        <DsDialogFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {hasConflicts && (
               <>
@@ -991,11 +991,11 @@ export function ConflictResolutionDialog({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <NotionButton variant="ghost" onClick={onClose} disabled={isResolving}>
+            <DsButton variant="ghost" onClick={onClose} disabled={isResolving}>
               {t('cancel')}
-            </NotionButton>
+            </DsButton>
             {hasConflicts && (
-              <NotionButton onClick={handleResolve} disabled={isResolving}>
+              <DsButton onClick={handleResolve} disabled={isResolving}>
                 {isResolving ? (
                   <>
                     <CircleNotch size={16} className="animate-spin mr-2" />
@@ -1007,11 +1007,11 @@ export function ConflictResolutionDialog({
                     {t('apply_strategy')}
                   </>
                 )}
-              </NotionButton>
+              </DsButton>
             )}
           </div>
-        </NotionDialogFooter>
-    </NotionDialog>
+        </DsDialogFooter>
+    </DsDialog>
   );
 }
 

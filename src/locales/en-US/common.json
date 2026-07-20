@@ -745,6 +745,7 @@
     "crepe_demo": "Crepe Demo",
     "chat_v2_test": "Chat V2 Test",
     "toggle_sidebar": "Toggle sidebar",
+    "resize_sidebar": "Resize sidebar",
     "llm_playground": "LLM Playground"
   },
   "time": {
@@ -1857,7 +1858,7 @@
       "table": "Table",
       "math": "Math"
     },
-    "notionMenu": {
+    "blockMenu": {
       "groups": {
         "assistant": "Assistant",
         "suggested": "Suggested",

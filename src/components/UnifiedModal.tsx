@@ -1,5 +1,5 @@
 import React from 'react';
-import { NotionDialog } from './ui/NotionDialog';
+import { DsDialog } from './ui/DsDialog';
 
 export interface UnifiedModalProps {
   isOpen: boolean;
@@ -19,7 +19,7 @@ export interface UnifiedModalProps {
 
 /**
  * 统一模态容器
- * - 基于 NotionDialog 实现，默认启用淡入缩放动画（移动端自动 bottom-sheet 化）
+ * - 基于 DsDialog 实现，默认启用淡入缩放动画（移动端自动 bottom-sheet 化）
  * - 支持外部控制开关与遮罩点击关闭
  */
 export const UnifiedModal: React.FC<UnifiedModalProps> = ({
@@ -30,7 +30,7 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
   closeOnOverlayClick = true,
 }) => {
   return (
-    <NotionDialog
+    <DsDialog
       open={isOpen}
       onOpenChange={(next) => {
         if (!next && onClose) {
@@ -41,7 +41,7 @@ export const UnifiedModal: React.FC<UnifiedModalProps> = ({
       className={contentClassName}
     >
       {children}
-    </NotionDialog>
+    </DsDialog>
   );
 };
 

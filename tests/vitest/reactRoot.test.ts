@@ -34,6 +34,24 @@ describe('React root singleton', () => {
     expect(root.unmount).not.toHaveBeenCalled();
   });
 
+  it('replaces the static boot placeholder without reloading', () => {
+    const root = {
+      render: vi.fn(),
+      unmount: vi.fn(),
+    };
+    reactDomMocks.createRoot.mockReturnValue(root);
+    const container = document.createElement('div');
+    const placeholder = document.createElement('div');
+    placeholder.dataset.dstuReactPlaceholder = 'true';
+    container.append(placeholder);
+
+    const result = getOrCreateReactRoot(container);
+
+    expect(result).toBe(root);
+    expect(container).toBeEmptyDOMElement();
+    expect(reactDomMocks.createRoot).toHaveBeenCalledWith(container);
+  });
+
   it('unmounts a managed root before adopting a replacement container', () => {
     const firstRoot = {
       render: vi.fn(),

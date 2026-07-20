@@ -19,6 +19,39 @@ export interface TopLevelFallbackProps {
   componentStack?: string;
 }
 
+/**
+ * The fatal fallback must also work in a normal browser, where requesting a
+ * native window effect is neither possible nor desirable.  Keep this check
+ * local and dependency-free: this component is rendered precisely when other
+ * application modules may have failed to initialise.
+ */
+const isMacOSTauriDesktop = (): boolean => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+
+  const platform = navigator.platform || '';
+  // iPadOS can report MacIntel when using a desktop user agent; it cannot host
+  // the macOS NSVisualEffectView used by the desktop command.
+  const isMac = /^Mac/.test(platform) && navigator.maxTouchPoints < 2;
+  // `withGlobalTauri` is disabled, but Tauri v2 still injects this internal
+  // bridge for the official API package. Checking its callable invoke method
+  // avoids treating a browser test stub as a desktop runtime.
+  const isTauri = typeof (window as any).__TAURI_INTERNALS__?.invoke === 'function';
+
+  return isMac && isTauri;
+};
+
+/** Resolve the active app theme without relying on the app's theme provider. */
+const getErrorFallbackIsDark = (): boolean => {
+  if (typeof document !== 'undefined') {
+    const theme = document.documentElement.dataset.theme;
+    if (theme === 'dark') return true;
+    if (theme === 'light') return false;
+  }
+
+  return typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches === true;
+};
+
 export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
   error,
   componentStack,
@@ -37,6 +70,65 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
   const [copied, setCopied] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
   const [exportStatus, setExportStatus] = React.useState<string | null>(null);
+  const [isDark, setIsDark] = React.useState(getErrorFallbackIsDark);
+  const useMacOSGlass = isMacOSTauriDesktop();
+
+  React.useEffect(() => {
+    const syncTheme = () => setIsDark(getErrorFallbackIsDark());
+    const root = document.documentElement;
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+
+    const mediaQuery = window.matchMedia?.('(prefers-color-scheme: dark)');
+    mediaQuery?.addEventListener?.('change', syncTheme);
+
+    return () => {
+      observer.disconnect();
+      mediaQuery?.removeEventListener?.('change', syncTheme);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!useMacOSGlass) return;
+
+    // NSVisualEffectView lives behind WKWebView. Its material becomes visible
+    // only once the root's opaque application surface is removed. Do this only
+    // after the native command succeeds, and restore the exact inline value
+    // when the fallback unmounts.
+    const appRoot = document.getElementById('root');
+    const previousBackground = appRoot?.style.backgroundColor ?? '';
+    let cancelled = false;
+
+    void import('@tauri-apps/api/core')
+      .then(({ invoke }) => invoke<boolean>('set_sidebar_vibrancy', { enabled: true }))
+      .then((nativeApplied) => {
+        if (nativeApplied === true && !cancelled) {
+          appRoot?.style.setProperty('background-color', 'transparent');
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      appRoot?.style.setProperty('background-color', previousBackground);
+    };
+  }, [useMacOSGlass]);
+
+  const glassStyle: React.CSSProperties = useMacOSGlass
+    ? {
+        // Match the macOS-native sidebar material tint so this fallback feels
+        // like part of the same window, not a separately coloured overlay.
+        backgroundColor: isDark
+          ? 'hsl(var(--nav-background) / 0.32)'
+          : 'hsl(var(--nav-background) / 0.88)',
+      }
+    : { backgroundColor: isDark ? '#181d26' : '#fafafa' };
+
+  const secondaryButtonStyle: React.CSSProperties = {
+    color: isDark ? '#eef2f7' : '#333',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#fff',
+    border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.18)' : '#ddd'}`,
+  };
 
   const selectErrorText = () => {
     const el = document.getElementById('error-log-content');
@@ -91,8 +183,8 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
         height: '100vh',
         width: '100vw',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        backgroundColor: '#fafafa',
-        color: '#1a1a1a',
+        ...glassStyle,
+        color: isDark ? '#f4f7fb' : '#1a1a1a',
       }}
     >
       <div
@@ -133,7 +225,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
       <p
         style={{
           fontSize: 14,
-          color: '#666',
+          color: isDark ? '#c3cbd7' : '#666',
           marginBottom: 24,
           maxWidth: 400,
           textAlign: 'center',
@@ -166,9 +258,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
             padding: '10px 24px',
             fontSize: 14,
             fontWeight: 500,
-            color: '#333',
-            backgroundColor: '#fff',
-            border: '1px solid #ddd',
+            ...secondaryButtonStyle,
             borderRadius: 8,
             cursor: 'pointer',
           }}
@@ -185,9 +275,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
               padding: '10px 24px',
               fontSize: 14,
               fontWeight: 500,
-              color: '#333',
-              backgroundColor: '#fff',
-              border: '1px solid #ddd',
+              ...secondaryButtonStyle,
               borderRadius: 8,
               cursor: exporting ? 'wait' : 'pointer',
               opacity: exporting ? 0.7 : 1,
@@ -200,7 +288,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
         )}
       </div>
       {exportStatus && (
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#666' }}>{exportStatus}</p>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: isDark ? '#c3cbd7' : '#666' }}>{exportStatus}</p>
       )}
       {showDetails && (
         <div style={{ width: '100%', maxWidth: 640, padding: '0 24px' }}>
@@ -210,9 +298,8 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
               style={{
                 padding: '6px 16px',
                 fontSize: 13,
-                color: copied ? '#16a34a' : '#555',
-                backgroundColor: '#fff',
-                border: '1px solid #ddd',
+                ...secondaryButtonStyle,
+                color: copied ? '#34d399' : secondaryButtonStyle.color,
                 borderRadius: 6,
                 cursor: 'pointer',
               }}
@@ -228,8 +315,8 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
               padding: 16,
               fontSize: 12,
               lineHeight: 1.6,
-              backgroundColor: '#f5f5f5',
-              border: '1px solid #e5e5e5',
+              backgroundColor: isDark ? 'rgba(10, 14, 20, 0.58)' : '#f5f5f5',
+              border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.14)' : '#e5e5e5'}`,
               borderRadius: 8,
               overflow: 'auto',
               maxHeight: 300,

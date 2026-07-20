@@ -9,7 +9,7 @@ describe('modern sidebar typography contract', () => {
   const typographyCssSource = readFileSync(resolve(process.cwd(), 'src/styles/typography.css'), 'utf-8');
   const themeColorsSource = readFileSync(resolve(process.cwd(), 'src/styles/theme-colors.css'), 'utf-8');
   const shadcnVariablesSource = readFileSync(resolve(process.cwd(), 'src/styles/shadcn-variables.css'), 'utf-8');
-  const notionButtonSource = readFileSync(resolve(process.cwd(), 'src/components/ui/NotionButton.tsx'), 'utf-8');
+  const cardButtonSource = readFileSync(resolve(process.cwd(), 'src/components/ui/DsButton.tsx'), 'utf-8');
   const buttonPrimitiveSource = readFileSync(resolve(process.cwd(), 'src/components/ui/buttonPrimitiveContract.ts'), 'utf-8');
   const mobileSidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/MobileSidebarLayout.tsx'), 'utf-8');
 
@@ -39,8 +39,8 @@ describe('modern sidebar typography contract', () => {
     expect(appCssSource).toMatch(/\.desktop-shell-thread-row--active\s*\{[\s\S]*font-weight:\s*400 !important;/);
     expect(buttonPrimitiveSource).toMatch(/nav:\s*'[^']*text-sm[^']*'/);
     expect(buttonPrimitiveSource).toContain('export const shellNavBaseClassName =');
-    expect(notionButtonSource).toMatch(/variant === 'nav'[\s\S]*\? shellNavBaseClassName/);
-    expect(notionButtonSource).toContain("iconOnly ? buttonIconSizeClassNames[resolvedSize] : variant !== 'nav' ? buttonSizeClassNames[resolvedSize] : null");
+    expect(cardButtonSource).toMatch(/variant === 'nav'[\s\S]*\? shellNavBaseClassName/);
+    expect(cardButtonSource).toContain("iconOnly ? buttonIconSizeClassNames[resolvedSize] : variant !== 'nav' ? buttonSizeClassNames[resolvedSize] : null");
   });
 
   it('removes leftover medium sidebar copy from unified sidebar surfaces', () => {

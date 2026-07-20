@@ -90,7 +90,7 @@
   --z-dropdown: 1000;   /* = Z_INDEX.popover 档（普通下拉，低于 shell 顶栏） */
   --z-sticky: 1020;
   --z-overlay: 2000;    /* = Z_INDEX.overlay（遮罩，覆盖移动顶栏 1100） */
-  --z-modal: 3000;      /* = Z_INDEX.modal（与 NotionDialog 同档，高于 drawer 2500） */
+  --z-modal: 3000;      /* = Z_INDEX.modal（与 DsDialog 同档，高于 drawer 2500） */
   /* popover 刻意高于 modal：crepe wikilink/mention 等编辑器弹层可能出现在
      模态内的编辑器上，必须压过模态内容（3000/3001）；低于 sheet(4000)/toast(5000)。 */
   --z-popover: 3100;
@@ -109,8 +109,8 @@
   --shadow-shell-floating: 0 18px 36px hsl(var(--shadow-base) / 0.08);
   --shadow-shell-pressed: 0 8px 20px hsl(var(--shadow-base) / 0.05);
 
-  /* 兼容别名：hover:shadow-[var(--shadow-notion)] 的存量消费者（原定义在 notion-animations.css） */
-  --shadow-notion: var(--shadow-shell-soft);
+  /* 兼容别名：hover:shadow-[var(--shadow-card)] 的存量消费者（原定义在 card-animations.css） */
+  --shadow-card: var(--shadow-shell-soft);
   --shadow-content-subtle: 0 1px 3px hsl(var(--shadow-base) / 0.05);
   --shadow-content-soft: 0 2px 8px hsl(var(--shadow-base) / 0.10);
   --shadow-content-elevated: 0 6px 18px hsl(var(--shadow-base) / 0.06);
@@ -215,16 +215,18 @@
   --glass-overlay: color-mix(in hsl, hsl(var(--card)) 55%, transparent 45%);
 
   /* Scrollbar colors */
-  --scrollbar-track: color-mix(in hsl, hsl(var(--muted)) 70%, transparent 30%);
-  --scrollbar-thumb: color-mix(in hsl, hsl(var(--muted-foreground)) 85%, hsl(var(--foreground)) 15%);
-  --scrollbar-thumb-hover: color-mix(in hsl, hsl(var(--muted-foreground)) 95%, hsl(var(--foreground)) 5%);
+  --scrollbar-track: transparent;
+  --scrollbar-track-hover: color-mix(in oklab, hsl(var(--foreground)) 5%, transparent);
+  --scrollbar-thumb: color-mix(in oklab, hsl(var(--foreground)) 26%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklab, hsl(var(--foreground)) 40%, transparent);
+  --scrollbar-thumb-active: color-mix(in oklab, hsl(var(--foreground)) 54%, transparent);
 
   /* OverlayScrollbars → project scrollbar palette bridge (milestone v1.1) */
   --os-handle-bg: var(--scrollbar-thumb);
   --os-handle-bg-hover: var(--scrollbar-thumb-hover);
-  --os-handle-bg-active: var(--scrollbar-thumb-hover);
-  --os-size: 8px;
-  --os-padding-perpendicular: 2px;
+  --os-handle-bg-active: var(--scrollbar-thumb-active);
+  --os-size: 10px;
+  --os-padding-perpendicular: 3px;
   --os-padding-axis: 2px;
   --os-handle-min-size: 36px;
   --os-handle-border-radius: 999px;
@@ -326,6 +328,10 @@
   --mobile-sheet-scrim: hsl(var(--shadow-base) / 0.58);
   --citation-badge-bg-alpha: 0.15;
   --citation-badge-hover-alpha: 0.25;
+  --scrollbar-track-hover: color-mix(in oklab, hsl(var(--foreground)) 7%, transparent);
+  --scrollbar-thumb: color-mix(in oklab, hsl(var(--foreground)) 22%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklab, hsl(var(--foreground)) 36%, transparent);
+  --scrollbar-thumb-active: color-mix(in oklab, hsl(var(--foreground)) 50%, transparent);
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -356,12 +362,12 @@
               -webkit-backdrop-filter 400ms var(--ease-shell);
 }
 
-/* Light mode: "regular" material thickness */
+/* Light mode CSS fallback: retain a subtle material tint without exposing the desktop. */
 :where(:root[data-sidebar-translucent="true"]) {
-  --shell-navigation-surface: hsl(var(--nav-background) / 0.78);
-  --shell-navigation-panel: hsl(var(--nav-background) / 0.78);
-  --sidebar: hsl(var(--nav-background) / 0.78);
-  --sidebar-study-surface: hsl(var(--nav-background) / 0.78);
+  --shell-navigation-surface: hsl(var(--nav-background) / 0.94);
+  --shell-navigation-panel: hsl(var(--nav-background) / 0.94);
+  --sidebar: hsl(var(--nav-background) / 0.94);
+  --sidebar-study-surface: hsl(var(--nav-background) / 0.94);
 }
 
 /* Dark mode: thicker tint for contrast */
@@ -402,6 +408,78 @@
   --shell-navigation-border: color-mix(in oklch, hsl(var(--border)) 40%, transparent);
 }
 
+/* ===== macOS 原生 vibrancy 模式：桌面透视 =====
+   data-macos-vibrancy="true" 由前端在 set_sidebar_vibrancy 原生调用成功后设置
+   （仅 macOS + Tauri）。此时窗口底部挂载了 NSVisualEffectView（Sidebar 材质），
+   由原生层负责桌面模糊；WebView 内侧边栏图层链（#root → app-shell → 导航面）
+   必须真正透明，桌面内容才能透出。 */
+
+/* 原生材质自带 tint。亮色以近白覆盖层仅保留轻微环境感。 */
+:where(:root[data-sidebar-translucent="true"][data-macos-vibrancy="true"]) {
+  --shell-navigation-surface: hsl(var(--nav-background) / 0.88);
+  --shell-navigation-panel: hsl(var(--nav-background) / 0.88);
+  --sidebar: hsl(var(--nav-background) / 0.88);
+  --sidebar-study-surface: hsl(var(--nav-background) / 0.88);
+  --shell-navigation-border: color-mix(in oklch, hsl(var(--border)) 58%, transparent);
+}
+
+:where(:root.dark[data-sidebar-translucent="true"][data-macos-vibrancy="true"]) {
+  --shell-navigation-surface: hsl(var(--nav-background) / 0.32);
+  --shell-navigation-panel: hsl(var(--nav-background) / 0.32);
+  --sidebar: hsl(var(--nav-background) / 0.32);
+  --sidebar-study-surface: hsl(var(--nav-background) / 0.32);
+}
+
+/* 打通透明链路：html/body 已全局透明，这里打通 #root 与 app-shell 底色 */
+:root[data-sidebar-translucent="true"][data-macos-vibrancy="true"] #root {
+  background-color: transparent;
+}
+
+:root[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
+  [data-shell-role="app-shell"][data-sidebar-visible="true"] {
+  background: transparent;
+}
+
+/* 标题栏导航段透明，避免与全高侧边栏面板双重叠色（工作区段保持不透明） */
+:root[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
+  .desktop-shell-titlebar[data-sidebar-visible="true"] {
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent var(--shell-navigation-width),
+    var(--shell-workspace-panel) var(--shell-navigation-width),
+    var(--shell-workspace-panel) 100%
+  );
+}
+
+/* 桌面模糊由 NSVisualEffectView 完成；透明 WKWebView 上 backdrop-filter
+   无内容可采样且易触发合成异常，故关闭 */
+:root[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
+  [data-shell-surface="navigation"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Overlay 标题栏背后是 NSWindow 的透明 frame，而不是 contentView 内的
+   NSVisualEffectView。若继续使用侧边栏的低透明度 tint，会与黑色 frame 合成
+   成一条明显更暗的 40px 色带；单独提高这一段的 tint，令视觉亮度与下方原生
+   Sidebar 材质连续。 */
+:root.dark[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
+  .desktop-shell-sidebar-titlebar-surface {
+  background: hsl(var(--nav-background) / 0.82);
+}
+
+:root.dark[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
+  .desktop-shell-titlebar[data-sidebar-visible="true"] {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--nav-background) / 0.82) 0,
+    hsl(var(--nav-background) / 0.82) var(--shell-navigation-width),
+    var(--shell-workspace-panel) var(--shell-navigation-width),
+    var(--shell-workspace-panel) 100%
+  );
+}
+
 /* Accessibility: respect reduced transparency preference */
 @media (prefers-reduced-transparency: reduce) {
   :where(:root[data-sidebar-translucent="true"]) {
@@ -418,6 +496,59 @@
   :root.dark[data-sidebar-translucent="true"] [data-shell-surface="navigation"]::before {
     display: none;
   }
+  /* vibrancy 模式同样回退为不透明图层链 */
+  :root[data-sidebar-translucent="true"][data-macos-vibrancy="true"] #root {
+    background-color: var(--surface-root);
+  }
+  :root[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
+    [data-shell-role="app-shell"][data-sidebar-visible="true"] {
+    background: var(--shell-navigation-surface);
+  }
+  :root[data-sidebar-translucent="true"][data-macos-vibrancy="true"]
+    .desktop-shell-titlebar[data-sidebar-visible="true"] {
+    background: linear-gradient(
+      90deg,
+      var(--shell-navigation-surface) 0,
+      var(--shell-navigation-surface) var(--shell-navigation-width),
+      var(--shell-workspace-panel) var(--shell-navigation-width),
+      var(--shell-workspace-panel) 100%
+    );
+  }
+}
+
+/* ===== 材质档位降级（data-wb-material，见 workbench/core/materialTier.ts） =====
+   reduced/minimal 档（Linux/软件渲染/低配 Windows/用户手动选择）下关闭应用壳的
+   CSS 毛玻璃：全高侧边栏 backdrop-filter 是 WebView2 上最大的常驻采样面。
+   与 workbench 玻璃面（workbench.tokens.css 的 --wb-glass-blur → none）同步降级；
+   macOS 原生 vibrancy 路径不受影响（其本就不走 CSS backdrop-filter）。 */
+:where(
+  :root[data-wb-material='reduced'][data-sidebar-translucent="true"],
+  :root[data-wb-material='minimal'][data-sidebar-translucent="true"]
+):not([data-macos-vibrancy="true"]) {
+  --shell-navigation-surface: hsl(var(--nav-background));
+  --shell-navigation-panel: hsl(var(--nav-background));
+  --sidebar: hsl(var(--nav-background));
+  --sidebar-study-surface: hsl(var(--nav-background));
+}
+
+:root[data-wb-material='reduced'][data-sidebar-translucent="true"] [data-shell-surface="navigation"],
+:root[data-wb-material='minimal'][data-sidebar-translucent="true"] [data-shell-surface="navigation"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-right-color: var(--shell-navigation-border);
+}
+
+:root.dark[data-wb-material='reduced'][data-sidebar-translucent="true"] [data-shell-surface="navigation"]::before,
+:root.dark[data-wb-material='minimal'][data-sidebar-translucent="true"] [data-shell-surface="navigation"]::before {
+  display: none;
+}
+
+/* composer/菜单契约 blur：reduced/minimal 档整体置 none（AppMenu、输入栏弹层、
+   移动端工具栏、文件树拖拽预览均经 --menu-shell-backdrop-filter 级联到此变量）。
+   面板 surface 本身接近不透明，去掉 blur 只损失轻微质感。 */
+:root[data-wb-material='reduced'],
+:root[data-wb-material='minimal'] {
+  --composer-panel-backdrop-filter: none;
 }
 
 /* Accessibility: respect reduced motion preference — disable sidebar glass transitions */

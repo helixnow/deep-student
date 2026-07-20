@@ -253,6 +253,7 @@
   "resourceHome": {
     "newExam": "New question set",
     "newEssay": "New essay review",
+    "newTranslation": "New translation",
     "search": "Search",
     "loadFailed": "Unable to load content",
     "noMatches": "No matching content",
@@ -429,6 +430,7 @@
     "tileAll": "Tile all windows",
     "expose": "Window overview",
     "wallpaper": "Desktop wallpaper",
+    "manageWallpaper": "Manage Wallpapers…",
     "customWallpaper": "Custom image",
     "materialTier": "Visual material",
     "showDesktop": "Show desktop",
@@ -464,6 +466,23 @@
     "nebula": "Nebula",
     "auroraFlow": "Aurora Flow",
     "duskFlow": "Dusk Flow"
+  },
+  "wallpaperManager": {
+    "title": "Wallpaper Manager",
+    "presetsSection": "Built-in Wallpapers",
+    "customSection": "My Wallpapers",
+    "import": "Import Image",
+    "importing": "Importing…",
+    "empty": "No custom wallpapers yet. Click \"Import Image\" to add one.",
+    "remove": "Remove wallpaper",
+    "limitReached": "Wallpaper library is full ({{limit}} images). Remove some before importing.",
+    "importFailed": "Import failed. Please try again.",
+    "adjustTitle": "Image Adjustments",
+    "blur": "Blur",
+    "dim": "Dim",
+    "vignette": "Vignette",
+    "close": "Close",
+    "selectTitle": "Choose a wallpaper image"
   },
   "content": {
     "loading": "Loading content…",
@@ -586,7 +605,8 @@
       "kindImage": "Custom Image",
       "selectTitle": "Choose a wallpaper image",
       "changeImage": "Change Image",
-      "importing": "Importing…"
+      "importing": "Importing…",
+      "manage": "Manage Wallpapers"
     },
     "tileMargins": {
       "title": "Tiled Window Margins",

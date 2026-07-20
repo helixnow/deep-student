@@ -13,6 +13,7 @@ body {
 :where(:root) {
   --shell-titlebar-height: var(--desktop-titlebar-height, 40px);
   --shell-navigation-width: var(--sidebar-width, 272px);
+  --shell-sidebar-divider: color-mix(in oklab, var(--shell-seam) 68%, transparent);
   --shell-workspace-edge-radius: 24px;
   --shell-layout-gap: var(--space-shell-layout-gap);
   --shell-panel-radius: var(--radius-shell-panel);
@@ -39,6 +40,16 @@ body {
   transition: background-color var(--page-slide-dur, 200ms) var(--ease-shell);
 }
 
+[data-shell-role="app-shell"][data-sidebar-visible] {
+  transition: background-color 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] {
+  cursor: col-resize;
+  user-select: none;
+  transition: none;
+}
+
 [data-shell-role="app-shell"][data-sidebar-visible="true"] {
   background: var(--shell-navigation-surface);
 }
@@ -52,8 +63,8 @@ body {
   background:
     linear-gradient(
       90deg,
-      var(--shell-navigation-surface) 0,
-      var(--shell-navigation-surface) var(--shell-navigation-width),
+      transparent 0,
+      transparent var(--shell-navigation-width),
       var(--shell-workspace-panel) var(--shell-navigation-width),
       var(--shell-workspace-panel) 100%
     );
@@ -175,13 +186,17 @@ body {
 .desktop-shell-header-cell--nav {
   background: transparent;
   border-right: 0;
+  transition:
+    width var(--resize-dur) var(--resize-ease),
+    padding var(--resize-dur) var(--resize-ease);
+  will-change: width;
 }
 
 .desktop-shell-header-cell--workspace {
   background: transparent;
   border: 0;
   box-shadow: none;
-  transition: padding-left var(--page-slide-dur, 200ms) var(--ease-shell),
+  transition: padding-left var(--resize-dur) var(--resize-ease),
               background-color 400ms var(--ease-shell),
               backdrop-filter 400ms var(--ease-shell),
               -webkit-backdrop-filter 400ms var(--ease-shell);
@@ -374,30 +389,6 @@ body {
   );
 }
 
-/* ─── Sidebar scroll-fade (mask-image approach) ─── */
-.desktop-shell-sidebar-session-scroll-shell {
-  --desktop-shell-sidebar-session-fade-size: 28px;
-  position: relative;
-  isolation: isolate;
-}
-
-.desktop-shell-sidebar-session-scroll-viewport {
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black var(--desktop-shell-sidebar-session-fade-size),
-    black calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black var(--desktop-shell-sidebar-session-fade-size),
-    black calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
-    transparent 100%
-  );
-}
-
 .desktop-shell-header-title {
   min-width: 0;
   font-size: 14px;
@@ -494,8 +485,125 @@ body {
 
 .sidebar-shell-surface {
   background: var(--shell-navigation-surface);
-  border-right: 1px solid var(--shell-seam);
-  box-shadow: 14px 0 28px -24px hsl(var(--foreground) / 0.4);
+  border-right: 1px solid var(--shell-sidebar-divider);
+  box-shadow: 10px 0 24px -26px hsl(var(--foreground) / 0.32);
+}
+
+.desktop-shell-sidebar-titlebar-surface {
+  position: absolute;
+  z-index: 0;
+  inset-block: 0;
+  left: 0;
+  width: var(--sidebar-expanded-width);
+  background: var(--shell-navigation-surface);
+  border-right: 1px solid var(--shell-sidebar-divider);
+  pointer-events: none;
+  transform: translateX(var(--shell-sidebar-translate-x));
+  transition:
+    width var(--resize-dur) var(--resize-ease),
+    transform var(--resize-dur) var(--resize-ease);
+  will-change: width, transform;
+}
+
+.desktop-shell-sidebar-expanded-accessory,
+.desktop-shell-sidebar-collapsed-accessory {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.desktop-shell-sidebar-expanded-accessory {
+  transform: translateX(var(--shell-sidebar-translate-x));
+  transition: transform var(--resize-dur) var(--resize-ease);
+  will-change: transform;
+}
+
+.desktop-shell-sidebar-collapsed-accessory {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 120ms ease-out,
+    visibility 0s linear 120ms;
+}
+
+.desktop-shell-sidebar-collapsed-accessory[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 120ms, 0s;
+}
+
+.desktop-shell-sidebar-track {
+  position: relative;
+  height: 100%;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.desktop-shell-sidebar-motion-surface {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: var(--sidebar-expanded-width);
+  transform: translateX(var(--shell-sidebar-translate-x));
+  transition:
+    width var(--resize-dur) var(--resize-ease),
+    transform var(--resize-dur) var(--resize-ease);
+  will-change: width, transform;
+}
+
+[data-shell-role="app-shell"][data-sidebar-visible="false"]
+  .desktop-shell-sidebar-motion-surface,
+[data-shell-role="app-shell"][data-sidebar-visible="false"]
+  .desktop-shell-sidebar-expanded-accessory {
+  pointer-events: none;
+}
+
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .t-resize,
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-titlebar-surface,
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-expanded-accessory,
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-motion-surface,
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-header-cell--nav,
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-header-cell--workspace {
+  transition: none;
+}
+
+.desktop-shell-sidebar-resize-handle {
+  position: fixed;
+  z-index: 1200;
+  top: var(--shell-titlebar-height);
+  bottom: 0;
+  left: calc(var(--shell-navigation-width) - 6px);
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.desktop-shell-sidebar-resize-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 40px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--shell-navigation-foreground) 52%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scaleY(0.72);
+  transition:
+    opacity 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.desktop-shell-sidebar-resize-handle:hover .desktop-shell-sidebar-resize-indicator,
+.desktop-shell-sidebar-resize-handle:focus-visible .desktop-shell-sidebar-resize-indicator {
+  opacity: 0.56;
+  transform: translate(-50%, -50%) scaleY(1);
+}
+
+[data-shell-role="app-shell"][data-sidebar-resizing="true"] .desktop-shell-sidebar-resize-indicator {
+  opacity: 0.76;
+  transform: translate(-50%, -50%) scaleY(1);
 }
 
 :root.dark .sidebar-shell-surface {
@@ -935,6 +1043,31 @@ main {
   align-items: center !important;
   justify-content: center !important;
   z-index: var(--z-modal) !important;
+}
+
+/* 材质档位降级：reduced/minimal 档下全屏遮罩改用半透明 scrim 替代 backdrop 模糊
+   （全屏 backdrop-filter 是 WebView2 上单帧成本最高的操作之一） */
+:root[data-wb-material='reduced'] .edit-modal-overlay,
+:root[data-wb-material='minimal'] .edit-modal-overlay,
+:root[data-wb-material='reduced'] .image-viewer-overlay,
+:root[data-wb-material='minimal'] .image-viewer-overlay {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--overlay) !important;
+}
+
+:root[data-wb-material='reduced'] .modern-image-viewer-overlay,
+:root[data-wb-material='minimal'] .modern-image-viewer-overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: hsl(var(--background) / 0.88);
+}
+
+:root[data-wb-material='reduced'] .modern-image-viewer-container,
+:root[data-wb-material='minimal'] .modern-image-viewer-container {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: hsl(var(--card) / 0.97);
 }
 
 
@@ -1405,6 +1538,17 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  [data-shell-role="app-shell"],
+  [data-shell-role="app-shell"][data-sidebar-visible] {
+    transition: none;
+  }
+
+  .desktop-shell-sidebar-titlebar-surface,
+  .desktop-shell-sidebar-expanded-accessory,
+  .desktop-shell-sidebar-collapsed-accessory,
+  .desktop-shell-sidebar-motion-surface,
+  .desktop-shell-sidebar-resize-indicator,
+  .desktop-shell-header-cell--nav,
   .desktop-shell-header-cell--workspace,
   .desktop-shell-workspace {
     transition: none;

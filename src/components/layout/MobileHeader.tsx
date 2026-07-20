@@ -11,7 +11,7 @@ import React, { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { CaretLeft, List } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 
 export interface MobileHeaderProps {
@@ -67,7 +67,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       {/* 左侧：返回/菜单按钮 */}
       <div className="flex items-center">
         {showBack && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={onBack}
@@ -75,11 +75,11 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             aria-label={t('common:mobile_header.back')}
           >
             <CaretLeft size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
 
         {showMenu && !showBack && (
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={onMenuClick}
@@ -87,7 +87,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             aria-label={t('common:mobile_header.open_sidebar')}
           >
             <List size={21} weight="regular" />
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 

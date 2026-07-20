@@ -11,14 +11,14 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('@/components/ui/NotionDialog', () => ({
-  NotionDialog: ({ children }: { children: React.ReactNode }) => <div data-testid="privacy-dialog-content">{children}</div>,
-  NotionDialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  NotionDialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
-  NotionDialogBody: ({ children }: { children: React.ReactNode }) => (
+vi.mock('@/components/ui/DsDialog', () => ({
+  DsDialog: ({ children }: { children: React.ReactNode }) => <div data-testid="privacy-dialog-content">{children}</div>,
+  DsDialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DsDialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+  DsDialogBody: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="privacy-dialog-body">{children}</div>
   ),
-  NotionDialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DsDialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
 vi.mock('@/components/custom-scroll-area', () => ({

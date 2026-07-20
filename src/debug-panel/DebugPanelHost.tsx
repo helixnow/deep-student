@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Minus, ArrowsOut, X } from '@phosphor-icons/react';
 // ★ 图谱模块已废弃 - IrecAutoNotePlugin 已移除
 // import IrecAutoNotePlugin from './plugins/IrecAutoNotePlugin';
@@ -887,15 +887,15 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
             <div className="text-xs font-semibold text-[hsl(var(--foreground))] tracking-tight">Analysis Panel</div>
             {!collapsed && (
               <div className="inline-flex gap-1.5 ml-1 flex-wrap" onPointerDown={ev => ev.stopPropagation()}>
-                <NotionButton
+                <DsButton
                   onClick={() => setActivePluginId(HOME_PLUGIN_ID)}
                   variant={isHome ? 'primary' : 'ghost'}
                   size="sm"
                   className="text-[10px] h-6 px-2"
                 >
                   {t('debug_panel.home')}
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   onClick={() => {
                     window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'llm-playground' } }));
                   }}
@@ -905,8 +905,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   title="LLM 输出模拟游乐场"
                 >
                   LLM Playground
-                </NotionButton>
-                <NotionButton
+                </DsButton>
+                <DsButton
                   onClick={async () => {
                     try {
                       const { WebviewWindow } = await import('@tauri-apps/api/window');
@@ -930,14 +930,14 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   title="打开/关闭 WebView DevTools (F12)"
                 >
                   DevTools
-                </NotionButton>
+                </DsButton>
               </div>
             )}
           </div>
           <div className="flex items-center gap-1.5" onPointerDown={ev => ev.stopPropagation()}>
             {!collapsed && (
               <>
-              <NotionButton
+              <DsButton
                 onClick={handleToggleMasterSwitch}
                 variant={masterSwitchEnabled ? 'success' : 'ghost'}
                 size="sm"
@@ -951,8 +951,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   ? t('debug_panel.logs_on', '日志开') 
                   : t('debug_panel.logs_off', '日志关')
                 }
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 onClick={toggleUILab}
                 variant={uiLabEnabled ? 'warning' : 'ghost'}
                 size="sm"
@@ -963,11 +963,11 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 }
               >
                 {uiLabEnabled ? 'UI Lab 开' : 'UI Lab 关'}
-              </NotionButton>
+              </DsButton>
               </>
             )}
             {collapsed ? (
-              <NotionButton
+              <DsButton
                 onClick={() => setCollapsed(false)}
                 variant="ghost"
                 size="sm"
@@ -975,9 +975,9 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 title={t('debug_panel.expand')}
               >
                 <ArrowsOut size={12} />
-              </NotionButton>
+              </DsButton>
             ) : (
-              <NotionButton
+              <DsButton
                 onClick={() => setCollapsed(true)}
                 variant="ghost"
                 size="sm"
@@ -985,10 +985,10 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 title={t('debug_panel.minimize', '最小化')}
               >
                 <Minus size={12} />
-              </NotionButton>
+              </DsButton>
             )}
             {/* 关闭按钮：触屏没有 Alt+Shift+D 快捷键，必须有可点的关闭入口 */}
-            <NotionButton
+            <DsButton
               onClick={onClose}
               variant="ghost"
               size="sm"
@@ -997,7 +997,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
               aria-label={t('debug_panel.close', '关闭')}
             >
               <X size={12} />
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
         {!collapsed && (
@@ -1108,7 +1108,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                           </div>
                           
                           <div className="relative flex gap-2 mt-auto pt-1">
-                            <NotionButton
+                            <DsButton
                               onClick={ev => {
                                 ev.stopPropagation();
                                 toggleFavorite(plugin.id);
@@ -1120,8 +1120,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                               {favoriteIds.has(plugin.id)
                                 ? t('debug_panel.favorite_short', '已收藏')
                                 : t('debug_panel.favorite_action', '收藏')}
-                            </NotionButton>
-                            <NotionButton
+                            </DsButton>
+                            <DsButton
                               onClick={ev => {
                                 ev.stopPropagation();
                                 activatePlugin(plugin.id);
@@ -1132,7 +1132,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                               className="flex-1 text-[10px] h-7"
                             >
                               {t('debug_panel.open_plugin', '打开')}
-                            </NotionButton>
+                            </DsButton>
                           </div>
                         </div>
                       ))}

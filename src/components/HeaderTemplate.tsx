@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowsClockwise, DownloadSimple } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 
 /** Generic icon component type compatible with both Phosphor and Lucide icons */
 type IconComponent = React.ComponentType<any>;
@@ -81,7 +81,7 @@ export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
           {customRightContent && <div className="mr-2">{customRightContent}</div>}
 
           {showRefreshButton && onRefresh && (
-            <NotionButton
+            <DsButton
               variant="outline"
               size="sm"
               onClick={onRefresh}
@@ -89,18 +89,18 @@ export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
             >
               <ArrowsClockwise size={16} className={isRefreshing ? 'animate-spin' : ''} />
               {t('header.refresh')}
-            </NotionButton>
+            </DsButton>
           )}
 
           {showExportButton && onExport && (
-            <NotionButton variant="ghost" size="sm" onClick={onExport}>
+            <DsButton variant="ghost" size="sm" onClick={onExport}>
               <DownloadSimple size={16} />
               {t('header.export')}
-            </NotionButton>
+            </DsButton>
           )}
 
           {customActions.map((action, index) => (
-            <NotionButton
+            <DsButton
               key={index}
               variant="outline"
               size="sm"
@@ -110,7 +110,7 @@ export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
             >
               <action.icon size={16} />
               {action.label}
-            </NotionButton>
+            </DsButton>
           ))}
         </div>
       </header>

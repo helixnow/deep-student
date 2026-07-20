@@ -399,7 +399,7 @@
  *   （纯 CSS 实现；原 JS 侧 usePressable 因零消费已于 2026-07 移除。）
  * - .ui-press-coarse
  *   同 .ui-press，但仅在 (pointer: coarse) 下生效——共享按钮 primitive
- *   （buttonPrimitiveContract → NotionButton / shad Button）默认挂载此类，
+ *   （buttonPrimitiveContract → DsButton / shad Button）默认挂载此类，
  *   给触屏统一按压反馈而不改变桌面鼠标的 active 手感
  *   （桌面 active 由 native-feel/interaction.css 的 translateY(0.5px) 承担）。
  * - .ui-slide-up-panel

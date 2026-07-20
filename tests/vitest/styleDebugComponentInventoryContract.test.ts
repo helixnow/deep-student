@@ -10,7 +10,7 @@ describe('style debug component inventory contract', () => {
     ),
   ) as {
     components: {
-      NotionButton: { refs: number };
+      DsButton: { refs: number };
       ShadButton: { refs: number };
       NativeButton: {
         refs: number;
@@ -59,7 +59,7 @@ describe('style debug component inventory contract', () => {
     expect(nativeButton.topFiles).not.toContain(
       'src/components/anki/cardforge/hooks/useCardForge.ts',
     );
-    expect(buttonProgress?.targetRefs).toBe(scanData.components.NotionButton.refs);
+    expect(buttonProgress?.targetRefs).toBe(scanData.components.DsButton.refs);
     expect(buttonProgress?.legacyRefs).toBe(
       scanData.components.ShadButton.refs + nativeButton.refs,
     );
@@ -69,7 +69,7 @@ describe('style debug component inventory contract', () => {
   });
 
   it('surfaces the current DeepStudent UI entry systems for human page-state review', () => {
-    expect(source).toContain('NotionButton (目标)');
+    expect(source).toContain('DsButton (目标)');
     expect(source).toContain('shad Button (遗留)');
     expect(source).toContain('原生 button');
     expect(source).toContain('@/components/ui/shad/');

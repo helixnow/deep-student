@@ -25,6 +25,8 @@ interface CustomScrollAreaProps extends HTMLAttributes<HTMLDivElement> {
   trackOffsetRight?: number | string;
   trackOffsetLeft?: number | string;
   orientation?: "vertical" | "horizontal" | "both";
+  scrollAutoHide?: "never" | "scroll" | "leave" | "move";
+  scrollAutoHideSuspend?: boolean;
   /** Legacy: when true the host fills its container. Default true. */
   fullHeight?: boolean;
   /** Legacy: apply `h-full w-full` to the viewport for shadcn compatibility. */
@@ -44,6 +46,8 @@ export const CustomScrollArea = forwardRef<HTMLDivElement, CustomScrollAreaProps
       trackOffsetRight,
       trackOffsetLeft,
       orientation = "vertical",
+      scrollAutoHide,
+      scrollAutoHideSuspend,
       fullHeight = true,
       applyDefaultViewportClassName = true,
       children,
@@ -79,6 +83,8 @@ export const CustomScrollArea = forwardRef<HTMLDivElement, CustomScrollAreaProps
         viewportProps={viewportProps}
         orientation={orientation}
         scrollHideDelay={hideTrackWhenIdle ? 700 : 0}
+        scrollAutoHide={scrollAutoHide}
+        scrollAutoHideSuspend={scrollAutoHideSuspend}
         trackOffset={trackOffset}
         {...rest}
       >

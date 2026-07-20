@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, CaretUp, Check, MagnifyingGlass } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { ProviderIcon, isGenericProviderIconPath } from '../ProviderIcon';
 import { Input } from './Input';
 import { CustomScrollArea } from '../../custom-scroll-area';
@@ -94,7 +94,7 @@ export function CollapsibleModelSelector({
 
   return (
     <div className={cn('w-full', className)}>
-      <NotionButton
+      <DsButton
         type="button"
         variant="ghost"
         className={cn('w-full justify-between border border-border/30 hover:bg-[var(--interactive-hover)]', buttonClassName)}
@@ -110,7 +110,7 @@ export function CollapsibleModelSelector({
         ) : (
           <CaretDown size={16} className="opacity-70" />
         )}
-      </NotionButton>
+      </DsButton>
 
       <div 
         className={cn(

@@ -253,6 +253,7 @@
   "resourceHome": {
     "newExam": "新建题目集",
     "newEssay": "新建作文批改",
+    "newTranslation": "新建翻译",
     "search": "搜索",
     "loadFailed": "无法加载内容",
     "noMatches": "没有匹配的内容",
@@ -429,6 +430,7 @@
     "tileAll": "平铺全部窗口",
     "expose": "窗口俯瞰",
     "wallpaper": "桌面壁纸",
+    "manageWallpaper": "管理壁纸…",
     "customWallpaper": "自定义图片",
     "materialTier": "视觉材质",
     "showDesktop": "显示桌面",
@@ -464,6 +466,23 @@
     "nebula": "星云",
     "auroraFlow": "极光流动",
     "duskFlow": "暮色流动"
+  },
+  "wallpaperManager": {
+    "title": "壁纸管理",
+    "presetsSection": "内置壁纸",
+    "customSection": "我的壁纸",
+    "import": "导入图片",
+    "importing": "正在导入…",
+    "empty": "还没有自定义壁纸，点击「导入图片」添加。",
+    "remove": "删除壁纸",
+    "limitReached": "壁纸库已达上限（{{limit}} 张），请先删除部分壁纸再导入。",
+    "importFailed": "导入失败，请重试。",
+    "adjustTitle": "图片调节",
+    "blur": "模糊",
+    "dim": "压暗",
+    "vignette": "暗角",
+    "close": "关闭",
+    "selectTitle": "选择壁纸图片"
   },
   "content": {
     "loading": "正在加载内容…",
@@ -586,7 +605,8 @@
       "kindImage": "自定义图片",
       "selectTitle": "选择壁纸图片",
       "changeImage": "更换图片",
-      "importing": "正在导入…"
+      "importing": "正在导入…",
+      "manage": "管理壁纸"
     },
     "tileMargins": {
       "title": "平铺间距",

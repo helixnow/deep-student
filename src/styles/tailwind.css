@@ -35,7 +35,7 @@
   /*
    * Native-feel: chrome is not selectable by default.
    * --------------------------------------------------
-   * VS Code / Linear / Notion all default chrome (sidebar, titlebar, menus,
+   * VS Code / Linear  all default chrome (sidebar, titlebar, menus,
    * buttons, badges, timestamps) to user-select: none and explicitly opt
    * content surfaces (editors, message bodies, code) back into text selection.
    *

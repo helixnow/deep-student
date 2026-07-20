@@ -60,6 +60,12 @@
   will-change: transform, opacity;
 }
 
+/* 打开时焦点先落在菜单容器上（键盘入口），容器本身不显示焦点环 */
+.app-menu-content:focus,
+.app-menu-sub-content:focus {
+  outline: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-menu-content,
   .app-menu-sub-content {
@@ -306,10 +312,10 @@
   box-shadow: var(--menu-shell-shadow);
   backdrop-filter: var(--menu-shell-backdrop-filter);
   -webkit-backdrop-filter: var(--menu-shell-backdrop-filter);
-  animation: notion-submenu-in 0.12s ease-out;
+  animation: card-submenu-in 0.12s ease-out;
 }
 
-@keyframes notion-submenu-in {
+@keyframes card-submenu-in {
   from {
     opacity: 0;
     transform: translateX(-4px);

@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bug } from '@phosphor-icons/react';
@@ -296,7 +296,7 @@ const GlobalDebugPanel = () => {
   // 面板未显示时显示悬浮球
   const toggleButton = !visible ? (
     <CommonTooltip content={tooltipContent} className="dstu-debug-toggle__tooltip">
-      <NotionButton
+      <DsButton
         ref={toggleBtnRef}
         variant="ghost" size="icon" iconOnly
         className={clsx(
@@ -329,7 +329,7 @@ const GlobalDebugPanel = () => {
             hasUnseenEvent && 'dstu-debug-toggle__status--active',
           )}
 />
-      </NotionButton>
+      </DsButton>
     </CommonTooltip>
   ) : null;
 

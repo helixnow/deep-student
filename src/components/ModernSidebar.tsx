@@ -43,7 +43,7 @@ import type { Icon } from '@phosphor-icons/react';
 import { createNavItems } from '../config/navigation';
 import { useIsUILabEnabled } from '../utils/uiLabToggle';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { Input } from '@/components/ui/shad/Input';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
@@ -926,7 +926,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       return new Date(ts).toLocaleDateString();
     })();
 
-    // 行内重命名（替代原 NotionDialog 模态）：Enter 保存 / Esc 取消 / 失焦保存
+    // 行内重命名（替代原 DsDialog 模态）：Enter 保存 / Esc 取消 / 失焦保存
     if (!collapsed && editingRecentSessionId === session.id) {
       const isRenaming = renamingRecentSessionId === session.id;
       return (
@@ -1091,22 +1091,22 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               {t('sidebar:delete.confirm_hint')}
             </span>
             <span className="flex shrink-0 items-center gap-0.5">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="!h-6 !px-2 text-[11px]"
                 onClick={resetDeleteConfirmation}
               >
                 {t('common:cancel')}
-              </NotionButton>
-              <NotionButton
+              </DsButton>
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="!h-6 !px-2 text-[11px] text-destructive hover:bg-destructive/15 hover:text-destructive"
                 onClick={() => void handleRecentSessionDelete(session.id)}
               >
                 {t('common:delete')}
-              </NotionButton>
+              </DsButton>
             </span>
           </div>
         )}
@@ -1462,7 +1462,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const conversationHeaderAction = (
     <span className="flex shrink-0 items-center gap-1">
       <CommonTooltip content={newConversationLabel} position="right" shortcut={formatShortcut('mod+n')}>
-        <NotionButton
+        <DsButton
           variant="ghost"
           size="icon"
           iconOnly
@@ -1476,7 +1476,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           }}
         >
           <StudyComposeIcon className="w-3.5 h-3.5" />
-        </NotionButton>
+        </DsButton>
       </CommonTooltip>
     </span>
   );
@@ -1532,7 +1532,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             className="h-8 w-full rounded-[10px] border-transparent bg-[color:var(--interactive-hover)] pl-8 pr-7 text-[13px] shadow-none placeholder:text-[color:var(--shell-navigation-muted)] focus-visible:border-[color:var(--ring)]/40 focus-visible:ring-1 focus-visible:ring-ring"
           />
           {sidebarSearchQuery ? (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -1541,7 +1541,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               onClick={() => setSidebarSearchQuery('')}
             >
               <X size={12} />
-            </NotionButton>
+            </DsButton>
           ) : null}
         </div>
       </WorkbenchSidebarFixed>
@@ -1581,7 +1581,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 action: (
                   <div className="flex items-center gap-1">
                     <CommonTooltip content={toggleAllTopicsLabel} position="right">
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="icon"
                         iconOnly
@@ -1594,10 +1594,10 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         ) : (
                           <CaretDoubleDown className="size-3.5" strokeWidth={2} />
                         )}
-                      </NotionButton>
+                      </DsButton>
                     </CommonTooltip>
                     <CommonTooltip content={createTopicLabel} position="right">
-                      <NotionButton
+                      <DsButton
                         variant="ghost"
                         size="icon"
                         iconOnly
@@ -1606,7 +1606,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         onClick={handleCreateRecentGroup}
                       >
                         <FolderPlus className="size-3.5" strokeWidth={2} />
-                      </NotionButton>
+                      </DsButton>
                     </CommonTooltip>
                   </div>
                 ),

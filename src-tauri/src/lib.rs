@@ -34,6 +34,8 @@ pub mod browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策
 #[allow(dead_code)]
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 #[allow(dead_code)]
+pub mod cloud_config_commands;
+#[allow(dead_code)]
 pub mod cloud_storage;
 pub mod cross_page_merger;
 pub mod data_space;
@@ -82,6 +84,7 @@ pub mod page_rasterizer;
 pub mod pdf_ocr_service;
 pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
+pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub mod providers;
 pub mod qbank_grading;
 #[allow(dead_code)]
@@ -983,6 +986,18 @@ pub fn run() {
             )));
             app.manage(state);
 
+            // 插件系统（编译期注册；依赖 AppState）
+            {
+                let plugin_manager = crate::plugins::PluginManager::new(app.handle().clone());
+                app.manage(plugin_manager);
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // 稍延后，等 DB/LLM 就绪
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    handle.state::<crate::plugins::PluginManager>().bootstrap_enabled().await;
+                });
+                info!("✅ PluginManager 已注册");
+            }
 
             // 数据治理初始化失败时进入维护模式，阻断写入路径
             #[cfg(feature = "data_governance")]
@@ -1084,6 +1099,32 @@ pub fn run() {
                     let chat_v2_db_arc = std::sync::Arc::new(chat_v2_db);
                     app.manage(chat_v2_db_arc.clone());
 
+                    // 在任何 workspace 被重新打开前收敛上次崩溃留下的 prepared
+                    // 删除意图；否则未被本次会话访问的工作区会无限期停在中间态。
+                    let workspaces_dir = active_app_data_dir.join("workspaces");
+                    match rusqlite::Connection::open(chat_v2_db_arc.db_path()) {
+                        Ok(conn) => {
+                            match crate::data_governance::file_deletion_queue::recover_workspace_deletions(
+                                &conn,
+                                &workspaces_dir,
+                            ) {
+                                Ok(count) if count > 0 => info!(
+                                    "✅ [AppSetup] 已恢复 {} 个 prepared 工作区删除意图",
+                                    count
+                                ),
+                                Ok(_) => {}
+                                Err(error) => tracing::warn!(
+                                    "[AppSetup] 工作区删除意图恢复失败: {}",
+                                    error
+                                ),
+                            }
+                        }
+                        Err(error) => tracing::warn!(
+                            "[AppSetup] 无法打开工作区删除日志: {}",
+                            error
+                        ),
+                    }
+
                     // 🆕 先初始化 ApprovalManager（用于敏感工具审批，文档 29 P1-3）
                     // 必须在 Pipeline 之前创建，以便 Pipeline 关联
                     let approval_manager = std::sync::Arc::new(crate::chat_v2::approval_manager::ApprovalManager::new());
@@ -1092,7 +1133,6 @@ pub fn run() {
 
                     // 🔧 P0 修复：先初始化 WorkspaceCoordinator，再传入 Pipeline
                     // 这样 Pipeline 才能注册 WorkspaceToolExecutor 和 SubagentExecutor
-                    let workspaces_dir = active_app_data_dir.join("workspaces");
                     std::fs::create_dir_all(&workspaces_dir).ok();
                     let workspace_coordinator = std::sync::Arc::new(
                         crate::chat_v2::workspace::WorkspaceCoordinator::new(workspaces_dir)
@@ -1388,6 +1428,17 @@ pub fn run() {
                         } else {
                             warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
                         }
+
+                        // 在 WebView/React 接管前先挂载原生材质，让透明启动页从第一帧
+                        // 就显示系统毛玻璃；应用加载完成后由侧边栏设置继续管理该效果。
+                        if let Err(e) = window_vibrancy::apply_vibrancy(
+                            &window,
+                            window_vibrancy::NSVisualEffectMaterial::Sidebar,
+                            None,
+                            None,
+                        ) {
+                            warn!("[setup] 启动页原生毛玻璃应用失败: {}", e);
+                        }
                     }
                 } else {
                     warn!("[setup] 未找到 label=main 的主窗口");
@@ -1475,6 +1526,10 @@ pub fn run() {
             crate::commands::unpin_images,
 
             crate::commands::get_enhanced_statistics,
+
+            // macOS 窗口毛玻璃（侧边栏半透明）
+            crate::commands::set_sidebar_vibrancy,
+            crate::commands::sync_titlebar_sidebar_material,
 
             // 通用设置保存/读取命令
             crate::commands::save_setting,
@@ -1589,6 +1644,7 @@ pub fn run() {
             crate::cmd::enhanced_anki::recover_stuck_document_tasks,
             crate::cmd::enhanced_anki::list_document_sessions,
             crate::cmd::enhanced_anki::get_anki_stats,
+            crate::cmd::enhanced_anki::set_document_session_source,
             // ★ 4.2 防休眠（制卡等长任务）
             crate::cmd::power::set_prevent_sleep,
             crate::cmd::power::get_prevent_sleep,
@@ -1694,6 +1750,8 @@ pub fn run() {
             crate::secure_store::secure_get_cloud_credentials,
             crate::secure_store::secure_delete_cloud_credentials,
             crate::secure_store::secure_store_is_available,
+            crate::secure_store::secure_store_get_keystore_protection,
+            crate::secure_store::secure_store_set_keystore_protection,
             // AnkiConnect compatibility
             crate::commands::anki_get_deck_names,
             // =================================================
@@ -1939,6 +1997,9 @@ pub fn run() {
             ,crate::chat_v2::handlers::workspace_handlers::workspace_list_all
             ,crate::chat_v2::handlers::workspace_handlers::workspace_run_agent
             ,crate::chat_v2::handlers::workspace_handlers::workspace_list_agent_profiles
+            ,crate::chat_v2::handlers::workspace_handlers::workspace_read_agent_profile_file
+            ,crate::chat_v2::handlers::workspace_handlers::workspace_save_agent_profile_file
+            ,crate::chat_v2::handlers::workspace_handlers::workspace_delete_agent_profile_file
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_agent
             ,crate::chat_v2::handlers::workspace_handlers::workspace_manual_wake
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_sleep
@@ -1960,10 +2021,10 @@ pub fn run() {
             ,crate::chat_v2::skill_taps::skill_tap_catalog
             ,crate::chat_v2::skill_taps::skill_tap_install
             ,crate::chat_v2::skill_taps::skill_export_tap
-            ,crate::chat_v2::clawhub_client::clawhub_search
-            ,crate::chat_v2::clawhub_client::clawhub_skill_detail
-            ,crate::chat_v2::clawhub_client::clawhub_verify
-            ,crate::chat_v2::clawhub_client::clawhub_download_and_scan
+            ,crate::chat_v2::skill_market_client::skill_market_search
+            ,crate::chat_v2::skill_market_client::skill_market_skill_detail
+            ,crate::chat_v2::skill_market_client::skill_market_verify
+            ,crate::chat_v2::skill_market_client::skill_market_download_and_scan
             // =================================================
             // VFS 虚拟文件系统命令
             // =================================================
@@ -2425,9 +2486,9 @@ pub fn run() {
             // 恢复命令
             ,crate::data_governance::commands_restore::data_governance_restore_backup
             // 同步命令
-            ,crate::data_governance::commands_sync::data_governance_save_cloud_config_ssot
-            ,crate::data_governance::commands_sync::data_governance_get_cloud_config_ssot
-            ,crate::data_governance::commands_sync::data_governance_clear_cloud_config_ssot
+            ,crate::cloud_config_commands::cloud_config_ssot_save
+            ,crate::cloud_config_commands::cloud_config_ssot_get
+            ,crate::cloud_config_commands::cloud_config_ssot_clear
             ,crate::data_governance::commands_sync::data_governance_get_sync_status
             ,crate::data_governance::commands_sync::data_governance_detect_conflicts
             ,crate::data_governance::commands_sync::data_governance_resolve_conflicts
@@ -2479,6 +2540,20 @@ pub fn run() {
             ,crate::chat_v2::automations::chat_v2_automation_cancel_run
             ,crate::chat_v2::automations::chat_v2_automation_summary
             ,crate::chat_v2::automations::chat_v2_automation_set_background_enabled
+            // =================================================
+            // plugins (iLink Bot etc.)
+            // =================================================
+            ,crate::plugins::plugin_list
+            ,crate::plugins::plugin_start
+            ,crate::plugins::plugin_stop
+            ,crate::plugins::plugin_get_status
+            ,crate::plugins::plugin_get_config
+            ,crate::plugins::plugin_set_config
+            ,crate::plugins::plugin_set_enabled
+            ,crate::plugins::plugin_begin_login
+            ,crate::plugins::plugin_cancel_login
+            ,crate::plugins::plugin_logout
+            ,crate::plugins::plugin_unbind
         ])
         // 注册 pdfstream:// 自定义协议，用于 PDF 流式加载（支持 HTTP Range Request）
         .register_uri_scheme_protocol("pdfstream", |ctx, request| {
@@ -2542,6 +2617,9 @@ pub fn run() {
         .run(|_app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
                 crate::chat_v2::automations::mark_automation_app_exiting();
+                if let Some(pm) = _app_handle.try_state::<crate::plugins::PluginManager>() {
+                    tauri::async_runtime::block_on(pm.shutdown_all());
+                }
                 tauri::async_runtime::block_on(async {
                     crate::debug_logger::flush_global_logger().await;
                     crate::debug_log_service::flush_pending_debug_log_writes().await;
@@ -2839,7 +2917,34 @@ fn build_app_state(
     // 若上次会话在"提交后、清扫前"崩溃，残留的 0 引用 blob 在此回收。
     {
         let vfs_db_sweep = vfs_db.clone();
+        let active_dir_sweep = app_data_dir.clone();
         tauri::async_runtime::spawn_blocking(move || {
+            let _operation = match crate::backup_common::DataGovernanceOperationGuard::try_acquire(
+                crate::backup_common::DataGovernanceOperationKind::DeletePropagation,
+                None,
+            ) {
+                Ok(operation) => operation,
+                Err(error) => {
+                    tracing::warn!(
+                        "[AppSetup] 跳过启动删除恢复：另一数据治理操作正在运行: {}",
+                        error
+                    );
+                    return;
+                }
+            };
+
+            match crate::data_governance::file_deletion_queue::recover_asset_deletions(
+                &active_dir_sweep,
+            ) {
+                Ok(count) if count > 0 => {
+                    tracing::info!("[AppSetup] Recovered {} prepared asset deletions", count);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("[AppSetup] Prepared asset deletion recovery failed: {}", e);
+                }
+            }
+
             match crate::vfs::repos::VfsBlobRepo::cleanup_unreferenced(&vfs_db_sweep) {
                 Ok(count) if count > 0 => {
                     tracing::info!("[AppSetup] Swept {} unreferenced blobs", count);

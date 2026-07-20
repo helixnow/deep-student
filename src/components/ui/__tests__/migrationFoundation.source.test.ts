@@ -12,7 +12,7 @@ function readSource(relativePath: string) {
 
 const migratedFiles = [
   'src/components/ui/buttonPrimitiveContract.ts',
-  'src/components/ui/NotionButton.tsx',
+  'src/components/ui/DsButton.tsx',
   'src/components/ui/shad/Button.tsx',
   'src/components/ui/shad/Button.css',
   'src/components/ui/shad/Input.tsx',
@@ -67,9 +67,9 @@ describe('Phase 7 DeepStudent migration foundation source guards', () => {
     });
   });
 
-  it('makes NotionButton and shad Button consume one shared primitive contract', () => {
+  it('makes DsButton and shad Button consume one shared primitive contract', () => {
     const contract = readSource('src/components/ui/buttonPrimitiveContract.ts');
-    const notionButton = readSource('src/components/ui/NotionButton.tsx');
+    const cardButton = readSource('src/components/ui/DsButton.tsx');
     const shadButton = readSource('src/components/ui/shad/Button.tsx');
 
     expect(contract).toContain('export const buttonBaseClassName');
@@ -79,13 +79,13 @@ describe('Phase 7 DeepStudent migration foundation source guards', () => {
     expect(contract).toContain('h-[var(--touch-target-size)]');
     expect(contract).toContain('lg:h-[var(--button-icon-size)]');
 
-    expect(notionButton).toContain('@/components/ui/buttonPrimitiveContract');
+    expect(cardButton).toContain('@/components/ui/buttonPrimitiveContract');
     expect(shadButton).toContain('@/components/ui/buttonPrimitiveContract');
   });
 
   it('keeps migrated primitives touch-sized through tablet and compacts only at lg', () => {
     const contract = readSource('src/components/ui/buttonPrimitiveContract.ts');
-    const notionButton = readSource('src/components/ui/NotionButton.tsx');
+    const cardButton = readSource('src/components/ui/DsButton.tsx');
     const shadButton = readSource('src/components/ui/shad/Button.tsx');
     const input = readSource('src/components/ui/shad/Input.tsx');
     const switchSource = readSource('src/components/ui/shad/Switch.tsx');
@@ -106,7 +106,7 @@ describe('Phase 7 DeepStudent migration foundation source guards', () => {
     expect(switchCss).toContain('width: 1.75rem;');
     expect(buttonCss).toContain('min-height: var(--touch-target-size)');
 
-    [notionButton, shadButton].forEach((source) => {
+    [cardButton, shadButton].forEach((source) => {
       expect(source).not.toMatch(/\bmd:(?:min-)?h-/);
       expect(source).not.toMatch(/\bmd:(?:min-)?w-/);
       expect(source).not.toContain('minHeight: 36');

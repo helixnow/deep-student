@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { Input } from '@/components/ui/shad/Input';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -319,9 +319,9 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
     return (
       <div className={cn('sidebar-shell-header flex flex-col', className)}>
         <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
-          <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label={expandTitle || t('expand')}>
+          <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label={expandTitle || t('expand')}>
             <CaretRight size={16} weight="regular" />
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     );
@@ -332,9 +332,9 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
       {/* 移动端模式：显示关闭按钮行（但移动滑动模式下不显示，因为顶栏已有切换按钮） */}
       {isMobileMode && !isMobileSlidingMode && (
         <div className="flex items-center gap-3 px-3 py-3 border-b border-[color:var(--shell-navigation-border)]">
-          <NotionButton variant="utility" size="icon" iconOnly onClick={closeMobile} className={cn(shellIconButtonClassName, 'shrink-0')} aria-label={t('close')}>
+          <DsButton variant="utility" size="icon" iconOnly onClick={closeMobile} className={cn(shellIconButtonClassName, 'shrink-0')} aria-label={t('close')}>
             <X size={20} weight="regular" />
-          </NotionButton>
+          </DsButton>
           {title && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               {Icon && <Icon size={20} className="text-primary shrink-0" />}
@@ -383,24 +383,24 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {extraActions}
 
           {showRefresh && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label={refreshTitle || t('refresh')}>
+            <DsButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label={refreshTitle || t('refresh')}>
               <ArrowsClockwise className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
 
           {showCreate && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label={createTitle || t('create')}>
+            <DsButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label={createTitle || t('create')}>
               <Plus className={styles.button.iconSize} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
 
           {rightActions}
 
           {/* 只在 panel 模式下显示折叠按钮，但在移动滑动模式下不显示（使用关闭按钮代替） */}
           {showCollapse && displayMode === 'panel' && !isMobileSlidingMode && (
-            <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label={collapseTitle || t('collapse')}>
+            <DsButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label={collapseTitle || t('collapse')}>
               <CaretLeft size={16} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
         </div>
@@ -459,9 +459,9 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
       )}>
         <p>{error}</p>
         {onRetry && (
-          <NotionButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2">
+          <DsButton variant="ghost" size={isMobileMode ? 'md' : 'sm'} onClick={onRetry} className="mt-2">
             {t('retry')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     );
@@ -490,9 +490,9 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
           )}>{emptyDescription}</p>
         )}
         {emptyActionText && onEmptyAction && (
-          <NotionButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
+          <DsButton variant="ghost" size="sm" onClick={onEmptyAction} className={cn('text-primary hover:text-primary/80 hover:underline', isMobileMode ? 'text-base py-2 px-4' : 'text-xs')}>
             {emptyActionText}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
     );
@@ -669,7 +669,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
               移动端表现为"点编辑/删除 → 行被选中且抽屉直接关闭"。
               调用方无需（但可以重复）自行 stopPropagation。 */}
           {showEdit && onEditClick && (
-            <NotionButton
+            <DsButton
               variant="utility"
               size="icon"
               iconOnly
@@ -678,10 +678,10 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
               aria-label={t('actions.edit')}
             >
               <PencilSimple className={styles.actions.iconSize} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
           {showDelete && onDeleteClick && (
-            <NotionButton
+            <DsButton
               variant="utility"
               size="icon"
               iconOnly
@@ -690,7 +690,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
               aria-label={t('actions.delete')}
             >
               <Trash className={styles.actions.iconSize} weight="regular" />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       )}

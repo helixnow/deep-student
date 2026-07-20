@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 
 describe('shared primitive migration contract', () => {
   const buttonPrimitiveSource = readFileSync(resolve(process.cwd(), 'src/components/ui/buttonPrimitiveContract.ts'), 'utf-8');
-  const notionButtonSource = readFileSync(resolve(process.cwd(), 'src/components/ui/NotionButton.tsx'), 'utf-8');
-  const notionDialogSource = readFileSync(resolve(process.cwd(), 'src/components/ui/NotionDialog.tsx'), 'utf-8');
+  const cardButtonSource = readFileSync(resolve(process.cwd(), 'src/components/ui/DsButton.tsx'), 'utf-8');
+  const cardDialogSource = readFileSync(resolve(process.cwd(), 'src/components/ui/DsDialog.tsx'), 'utf-8');
   const buttonSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/Button.tsx'), 'utf-8');
   const inputSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/Input.tsx'), 'utf-8');
   const inputShellSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/inputShell.ts'), 'utf-8');
@@ -17,16 +17,16 @@ describe('shared primitive migration contract', () => {
   const sidebarSheetSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/SidebarSheet.tsx'), 'utf-8');
   const sidebarDrawerSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/SidebarDrawer.tsx'), 'utf-8');
 
-  it('adds explicit shell button roles beyond the legacy notion variants', () => {
+  it('adds explicit shell button roles beyond the legacy card variants', () => {
     expect(buttonPrimitiveSource).toContain("'utility'");
     expect(buttonPrimitiveSource).toContain("'nav'");
     expect(buttonPrimitiveSource).toContain('var(--button-tonal-hover-bg)');
-    expect(notionButtonSource).toContain('type ButtonPrimitiveVariant');
-    expect(notionButtonSource).toContain('buttonToneClassNames[variant]');
+    expect(cardButtonSource).toContain('type ButtonPrimitiveVariant');
+    expect(cardButtonSource).toContain('buttonToneClassNames[variant]');
   });
 
   it('routes dialog, input, and sheet surfaces through shell tokens', () => {
-    expect(notionDialogSource).toContain('var(--dialog-shell-surface)');
+    expect(cardDialogSource).toContain('var(--dialog-shell-surface)');
     expect(buttonSource).toContain('buttonToneClassNames.primary');
     expect(buttonPrimitiveSource).toContain('var(--button-prominent-bg)');
     expect(inputSource).toContain('inputShellClass');

@@ -6,6 +6,83 @@
     <!-- A11Y: 允许用户缩放（WCAG 1.4.4），上限 5 倍；viewport-fit=cover 保留安全区域支持 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
     <title>Deep Student</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      #root {
+        width: 100%;
+        height: 100%;
+      }
+
+      .boot-loading {
+        display: grid;
+        min-height: 100dvh;
+        place-items: center;
+        box-sizing: border-box;
+        padding: 24px;
+        background: transparent;
+      }
+
+      .boot-loading__logo-wrap {
+        position: relative;
+        width: min(54vw, 240px);
+        aspect-ratio: 409 / 147;
+      }
+
+      .boot-loading__logo {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .boot-loading__logo--shine {
+        position: absolute;
+        inset: 0;
+        opacity: 0.9;
+        filter: brightness(1.75);
+        -webkit-mask-image: linear-gradient(105deg, transparent 35%, black 48%, black 52%, transparent 65%);
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-size: 260% 100%;
+        -webkit-mask-position: 130% 0;
+        mask-image: linear-gradient(105deg, transparent 35%, black 48%, black 52%, transparent 65%);
+        mask-repeat: no-repeat;
+        mask-size: 260% 100%;
+        mask-position: 130% 0;
+        animation: boot-shimmer 2.4s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+        pointer-events: none;
+      }
+
+      @keyframes boot-shimmer {
+        0%,
+        18% {
+          -webkit-mask-position: 130% 0;
+          mask-position: 130% 0;
+        }
+        72%,
+        100% {
+          -webkit-mask-position: -130% 0;
+          mask-position: -130% 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot-loading__logo--shine {
+          animation: none;
+          display: none;
+        }
+      }
+    </style>
     <!-- ★ 2026-02-04: 最早的全局错误过滤器 - 过滤 Tauri HTTP 插件的已知 bug -->
     <script>
       (function() {
@@ -30,7 +107,32 @@
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        class="boot-loading"
+        role="status"
+        aria-label="Deep Student loading"
+        data-dstu-react-placeholder="true"
+      >
+        <div class="boot-loading__logo-wrap">
+          <img
+            class="boot-loading__logo"
+            src="/deepstudent-logo-dark.svg"
+            alt="Deep Student"
+            width="409"
+            height="147"
+          />
+          <img
+            class="boot-loading__logo boot-loading__logo--shine"
+            src="/deepstudent-logo-dark.svg"
+            alt=""
+            aria-hidden="true"
+            width="409"
+            height="147"
+          />
+        </div>
+      </div>
+    </div>
     <!-- Shared portal root to stabilize overlays and prevent DOM reparenting issues -->
     <div id="unified-modal-root"></div>
     <script type="module" src="/src/main.tsx"></script>

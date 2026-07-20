@@ -54,6 +54,16 @@
   --icon-swap-ease: ease-in-out;
 }
 
+.t-resize {
+  transition:
+    width  var(--resize-dur) var(--resize-ease),
+    height var(--resize-dur) var(--resize-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-resize { transition: none !important; }
+}
+
 .t-panel-slide {
   transform: translateY(var(--panel-translate-y));
   opacity: 0;

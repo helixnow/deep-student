@@ -1148,6 +1148,7 @@
     "crepe_demo": "Crepe Demo",
     "chat_v2_test": "Chat V2 Test",
     "toggle_sidebar": "切换边栏",
+    "resize_sidebar": "调整边栏宽度",
     "llm_playground": "LLM Playground"
   },
   "time": {
@@ -1964,7 +1965,7 @@
       "table": "表格",
       "math": "公式"
     },
-    "notionMenu": {
+    "blockMenu": {
       "groups": {
         "assistant": "助手",
         "suggested": "建议",

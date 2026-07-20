@@ -16,7 +16,7 @@ import type { EditorProps, CreateEditorProps } from '../editorTypes';
 import { dstu } from '../index';
 import { createEmpty } from '../factory';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import type { DstuNode } from '../types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
@@ -147,12 +147,12 @@ export const MindMapEditorWrapper: React.FC<
             <WarningCircle size={40} className="text-destructive/60" />
             <span className="text-sm text-destructive text-center max-w-md">{error}</span>
             {onClose && (
-              <NotionButton variant="ghost"
+              <DsButton variant="ghost"
                 className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
                 onClick={onClose}
               >
                 {t('common:actions.close')}
-              </NotionButton>
+              </DsButton>
             )}
           </>
         ) : isLoading ? (
@@ -166,12 +166,12 @@ export const MindMapEditorWrapper: React.FC<
           <>
             <span className="text-sm text-muted-foreground">{t('dstu:actions.mindMapCreated')}</span>
             {onClose && (
-              <NotionButton variant="ghost"
+              <DsButton variant="ghost"
                 className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
                 onClick={onClose}
               >
                 {t('common:actions.close')}
-              </NotionButton>
+              </DsButton>
             )}
           </>
         )}
@@ -194,13 +194,13 @@ export const MindMapEditorWrapper: React.FC<
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-4', props.className)}>
         <WarningCircle size={48} className="text-destructive/50" />
         <span className="text-destructive text-center max-w-md">{error}</span>
-        <NotionButton variant="ghost"
+        <DsButton variant="ghost"
           className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
           onClick={loadNode}
         >
           <ArrowClockwise size={16} />
           {t('common:actions.retry')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }

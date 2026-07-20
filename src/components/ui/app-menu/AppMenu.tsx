@@ -38,6 +38,14 @@ interface AppMenuContextValue {
 
 const AppMenuContext = React.createContext<AppMenuContextValue | null>(null);
 
+// 键盘导航的起始锚点：识别"当前选中"的菜单项（勾选态 / aria-checked）
+function isCheckedMenuItem(item: HTMLElement): boolean {
+  return (
+    item.getAttribute('aria-checked') === 'true' ||
+    item.classList.contains('app-menu-item-checked')
+  );
+}
+
 // ============ Root Component ============
 
 export interface AppMenuProps {
@@ -252,6 +260,10 @@ export function AppMenuContent({
   const portalContainerRef = React.useRef<HTMLElement | null>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const isOpen = !!ctx?.open;
+  const menuMode = ctx?.mode;
+  const triggerRef = ctx?.triggerRef;
+  const contextPositionX = ctx?.position.x ?? 0;
+  const contextPositionY = ctx?.position.y ?? 0;
   const [shouldRender, setShouldRender] = React.useState(isOpen);
   const [isClosing, setIsClosing] = React.useState(false);
   const closeTimeoutRef = React.useRef<number | null>(null);
@@ -301,7 +313,7 @@ export function AppMenuContent({
 
   React.useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
-    const triggerEl = ctx?.triggerRef.current;
+    const triggerEl = triggerRef?.current;
     portalContainerRef.current = triggerEl?.closest('[data-overlay-container="true"]') as HTMLElement | null;
     if (!shouldRender) return;
     
@@ -319,13 +331,13 @@ export function AppMenuContent({
       let left: number;
       let origin: 'top' | 'bottom' = 'top';
 
-      if (ctx?.mode === 'context') {
+      if (menuMode === 'context') {
         // 右键菜单模式：使用鼠标位置
-        top = ctx.position.y;
-        left = ctx.position.x;
+        top = contextPositionY;
+        left = contextPositionX;
       } else {
         // 下拉菜单模式：使用触发器位置
-        const triggerEl = ctx?.triggerRef.current;
+        const triggerEl = triggerRef?.current;
         if (!triggerEl) return;
         const triggerRect = triggerEl.getBoundingClientRect();
 
@@ -372,7 +384,7 @@ export function AppMenuContent({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [align, ctx, shouldRender]);
+  }, [align, contentRef, contextPositionX, contextPositionY, menuMode, shouldRender, triggerRef]);
 
   const getEnabledItems = React.useCallback((): HTMLElement[] => {
     const root = contentRef.current;
@@ -390,6 +402,8 @@ export function AppMenuContent({
   }, [contentRef]);
 
   // 打开后建立键盘入口；timer 必须随 close/reopen 清理，避免旧会话抢焦点。
+  // 焦点只落在菜单容器（tabIndex=-1）上，不预先聚焦任何菜单项：
+  // 鼠标打开时不会出现"假悬浮"高亮，键盘方向键仍能从容器进入导航。
   React.useEffect(() => {
     if (!isOpen || !shouldRender) return undefined;
     const timer = window.setTimeout(() => {
@@ -398,11 +412,10 @@ export function AppMenuContent({
         searchInputRef.current.focus({ preventScroll: true });
         return;
       }
-      const first = getEnabledItems()[0];
-      (first ?? contentRef.current)?.focus({ preventScroll: true });
+      contentRef.current?.focus({ preventScroll: true });
     }, showSearch ? 50 : 0);
     return () => window.clearTimeout(timer);
-  }, [contentRef, getEnabledItems, isOpen, shouldRender, showSearch]);
+  }, [contentRef, isOpen, shouldRender, showSearch]);
 
   const handleContentKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(event);
@@ -414,6 +427,8 @@ export function AppMenuContent({
         )
       : null;
     const index = active ? items.indexOf(active) : -1;
+    // 尚无聚焦项时（菜单刚打开，焦点在容器上），键盘导航从当前选中项开始
+    const checkedIndex = index < 0 ? items.findIndex(isCheckedMenuItem) : -1;
     const focusAt = (next: number) => {
       if (items.length === 0) return;
       const item = items[((next % items.length) + items.length) % items.length];
@@ -424,12 +439,12 @@ export function AppMenuContent({
       case 'ArrowDown':
         event.preventDefault();
         event.stopPropagation();
-        focusAt(index + 1);
+        focusAt(index < 0 ? (checkedIndex >= 0 ? checkedIndex : 0) : index + 1);
         break;
       case 'ArrowUp':
         event.preventDefault();
         event.stopPropagation();
-        focusAt(index < 0 ? items.length - 1 : index - 1);
+        focusAt(index < 0 ? (checkedIndex >= 0 ? checkedIndex : items.length - 1) : index - 1);
         break;
       case 'Home':
         if (event.target === searchInputRef.current) return;
@@ -507,13 +522,15 @@ export function AppMenuContent({
 />
         </div>
       )}
-      {maxHeight ? (
-        <CustomScrollArea style={{ flex: 1, minHeight: 0 }}>
-          {children}
-        </CustomScrollArea>
-      ) : (
-        children
-      )}
+      <AppMenuSubLevelProvider>
+        {maxHeight ? (
+          <CustomScrollArea style={{ flex: 1, minHeight: 0 }}>
+            {children}
+          </CustomScrollArea>
+        ) : (
+          children
+        )}
+      </AppMenuSubLevelProvider>
     </div>,
     portalContainerRef.current ?? document.body
   );
@@ -591,6 +608,27 @@ export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>
 );
 AppMenuItem.displayName = 'AppMenuItem';
 
+// ============ Sub 同级互斥协调 ============
+// 同一层级（同一个 Content / SubContent 下）的多个 AppMenuSub 互斥：
+// 打开一个时其余自动关闭。openOnClick 模式没有 mouseleave 收合路径，
+// 没有协调器时多个飞出层会同时叠加显示。
+interface AppMenuSubLevelContextValue {
+  activeSubId: string | null;
+  setActiveSubId: React.Dispatch<React.SetStateAction<string | null>>;
+}
+
+const AppMenuSubLevelContext = React.createContext<AppMenuSubLevelContextValue | null>(null);
+
+function AppMenuSubLevelProvider({ children }: { children: React.ReactNode }) {
+  const [activeSubId, setActiveSubId] = React.useState<string | null>(null);
+  const value = React.useMemo(() => ({ activeSubId, setActiveSubId }), [activeSubId]);
+  return (
+    <AppMenuSubLevelContext.Provider value={value}>
+      {children}
+    </AppMenuSubLevelContext.Provider>
+  );
+}
+
 // ============ SubMenu ============
 
 export interface AppMenuSubProps {
@@ -620,6 +658,8 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
   const triggerRef = React.useRef<HTMLDivElement>(null);
   const contentRef = React.useRef<HTMLDivElement>(null);
   const closeTimerRef = React.useRef<number | null>(null);
+  const subId = React.useId();
+  const levelCtx = React.useContext(AppMenuSubLevelContext);
 
   const clearCloseTimer = React.useCallback(() => {
     if (closeTimerRef.current !== null) {
@@ -628,35 +668,63 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
     }
   }, []);
 
+  const claimActive = React.useCallback(() => {
+    levelCtx?.setActiveSubId(subId);
+  }, [levelCtx, subId]);
+
+  const releaseActive = React.useCallback(() => {
+    levelCtx?.setActiveSubId((cur) => (cur === subId ? null : cur));
+  }, [levelCtx, subId]);
+
   const openSub = React.useCallback(() => {
     clearCloseTimer();
+    claimActive();
     setOpen(true);
-  }, [clearCloseTimer]);
+  }, [claimActive, clearCloseTimer]);
 
   const openSubWithKeyboard = React.useCallback(() => {
     clearCloseTimer();
+    claimActive();
     setOpen(true);
     setKeyboardFocusRequest((request) => request + 1);
-  }, [clearCloseTimer]);
+  }, [claimActive, clearCloseTimer]);
 
   const closeSub = React.useCallback(() => {
     clearCloseTimer();
+    releaseActive();
     setOpen(false);
-  }, [clearCloseTimer]);
+  }, [clearCloseTimer, releaseActive]);
 
   const toggleSub = React.useCallback(() => {
     clearCloseTimer();
-    setOpen((prev) => !prev);
-  }, [clearCloseTimer]);
+    const next = !open;
+    if (next) {
+      claimActive();
+    } else {
+      releaseActive();
+    }
+    setOpen(next);
+  }, [claimActive, clearCloseTimer, open, releaseActive]);
 
   const scheduleClose = React.useCallback(() => {
     if (openOnClick) return;
     clearCloseTimer();
     closeTimerRef.current = window.setTimeout(() => {
+      releaseActive();
       setOpen(false);
       closeTimerRef.current = null;
     }, 120);
-  }, [clearCloseTimer, openOnClick]);
+  }, [clearCloseTimer, openOnClick, releaseActive]);
+
+  // 同级互斥：另一个同级子菜单成为激活项时，本子菜单立即收合
+  const levelActiveSubId = levelCtx?.activeSubId;
+  React.useEffect(() => {
+    if (!levelCtx) return;
+    if (open && levelActiveSubId !== subId) {
+      clearCloseTimer();
+      setOpen(false);
+    }
+  }, [clearCloseTimer, levelActiveSubId, levelCtx, open, subId]);
 
   React.useEffect(() => {
     return () => {
@@ -780,7 +848,9 @@ export function AppMenuSubContent({
     if (!subCtx?.open || subCtx.keyboardFocusRequest === 0) return undefined;
     const timer = window.setTimeout(() => {
       if (!subCtx.open) return;
-      const target = getEnabledItems()[0] ?? subCtx.contentRef.current;
+      // 键盘展开子菜单时优先聚焦选中项，其次第一项
+      const items = getEnabledItems();
+      const target = items.find(isCheckedMenuItem) ?? items[0] ?? subCtx.contentRef.current;
       target?.focus({ preventScroll: true });
     }, 0);
     return () => window.clearTimeout(timer);
@@ -850,6 +920,7 @@ export function AppMenuSubContent({
         )
       : null;
     const index = active ? items.indexOf(active) : -1;
+    const checkedIndex = index < 0 ? items.findIndex(isCheckedMenuItem) : -1;
     const focusAt = (next: number) => {
       if (items.length === 0) return;
       const item = items[((next % items.length) + items.length) % items.length];
@@ -861,12 +932,12 @@ export function AppMenuSubContent({
       case 'ArrowDown':
         event.preventDefault();
         event.stopPropagation();
-        focusAt(index + 1);
+        focusAt(index < 0 ? (checkedIndex >= 0 ? checkedIndex : 0) : index + 1);
         break;
       case 'ArrowUp':
         event.preventDefault();
         event.stopPropagation();
-        focusAt(index < 0 ? items.length - 1 : index - 1);
+        focusAt(index < 0 ? (checkedIndex >= 0 ? checkedIndex : items.length - 1) : index - 1);
         break;
       case 'Home':
         event.preventDefault();
@@ -917,7 +988,9 @@ export function AppMenuSubContent({
       }}
       {...rest}
     >
-      {children}
+      <AppMenuSubLevelProvider>
+        {children}
+      </AppMenuSubLevelProvider>
     </div>,
     document.body
   );

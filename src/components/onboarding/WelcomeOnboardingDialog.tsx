@@ -10,7 +10,7 @@
  * 已配置过模型的老用户会被静默跳过（写入完成标记，不再查询）。
  * 完成状态存 localStorage（onboarding_completed_flows，随备份同步）。
  *
- * 样式：纯 Notion 风格，与 UserAgreementDialog 保持一致。
+ * 样式：纯简洁风格，与 UserAgreementDialog 保持一致。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -19,7 +19,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Books, ChatCircleText, Cards, Sparkle } from '@phosphor-icons/react';
 
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -228,11 +228,17 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   const dialog = (
     <div
       className={cn(
-        'fixed inset-0 flex items-center justify-center',
+        'fixed inset-0 flex items-center justify-center p-3 sm:p-4',
         'transition-opacity duration-200 ease-out',
         mounted ? 'opacity-100' : 'opacity-0',
       )}
-      style={{ zIndex: Z_INDEX.modal }}
+      style={{
+        zIndex: Z_INDEX.modal,
+        paddingTop: 'calc(0.75rem + var(--mobile-safe-area-top, 0px))',
+        paddingBottom: 'calc(0.75rem + var(--mobile-safe-area-bottom, 0px))',
+        paddingLeft: 'calc(0.75rem + var(--mobile-safe-area-left, 0px))',
+        paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
+      }}
       onKeyDown={handleKeyDown}
     >
       {/* 遮罩层 */}
@@ -248,7 +254,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         className={cn(
           'outline-none',
           'relative flex flex-col overflow-hidden',
-          'w-[94vw] max-w-[520px] max-h-[85vh]',
+          'w-full max-w-[520px]',
           'bg-background rounded-lg',
           'shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)]',
           'dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.3)]',
@@ -257,9 +263,12 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
             ? 'opacity-100 scale-100 translate-y-0'
             : 'opacity-0 scale-[0.97] translate-y-2',
         )}
+        style={{
+          maxHeight: 'min(85dvh, calc(100dvh - 1.5rem - var(--mobile-safe-area-top, 0px) - var(--mobile-safe-area-bottom, 0px)))',
+        }}
       >
         {/* 标题区 */}
-        <div className="px-6 pt-6 pb-4 flex-shrink-0">
+        <div className="flex-shrink-0 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h1 id="welcome-onboarding-title" className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
@@ -291,10 +300,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           </div>
         </div>
 
-        <div className="mx-6 h-px bg-foreground/[0.06]" />
+        <div className="mx-4 h-px bg-foreground/[0.06] sm:mx-6" />
 
         {/* 内容区 */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-4 scroll-area--native">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 scroll-area--native sm:px-6">
           {/* 三大能力速览 */}
           <div className="space-y-3">
             {features.map((f) => (
@@ -330,26 +339,26 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           </div>
         </div>
 
-        <div className="mx-6 h-px bg-foreground/[0.06]" />
+        <div className="mx-4 h-px bg-foreground/[0.06] sm:mx-6" />
 
         {/* 底部操作栏 */}
-        <div className="px-6 py-4 flex-shrink-0 space-y-2">
-          <NotionButton
+        <div className="flex-shrink-0 space-y-2 px-4 py-4 sm:px-6">
+          <DsButton
             variant="primary"
             size="lg"
             className="w-full justify-center text-[13px] font-medium"
             onClick={onConfigure}
           >
             {t('welcome_onboarding.cta_configure')}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="lg"
             className="w-full justify-center text-[13px] text-foreground/55"
             onClick={onSkip}
           >
             {t('welcome_onboarding.cta_skip')}
-          </NotionButton>
+          </DsButton>
         </div>
       </div>
     </div>

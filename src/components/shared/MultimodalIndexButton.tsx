@@ -12,7 +12,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Database, CircleNotch, CheckCircle, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import multimodalRagService, { type SourceType, MULTIMODAL_INDEX_SUPPORTED } from '@/services/multimodalRagService';
@@ -212,7 +212,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
   return (
     <div className={cn('inline-flex items-center gap-1', className)}>
       <CommonTooltip content={<p className="text-xs">{getTooltip()}</p>} position="bottom" maxWidth={320}>
-        <NotionButton
+        <DsButton
           variant={variant}
           size={size}
           onClick={handleIndex}
@@ -224,13 +224,13 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
         >
           {getIcon()}
           {showLabel && <span className="ml-1.5">{getLabel()}</span>}
-        </NotionButton>
+        </DsButton>
       </CommonTooltip>
 
       {/* 重建按钮（仅在成功后显示） */}
       {status === 'success' && (
         <CommonTooltip content={<p className="text-xs">{t('common:chat.multimodal.rebuild')}</p>} position="bottom">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             onClick={handleRebuild}
@@ -238,7 +238,7 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
             className="w-8 h-8"
           >
             <ArrowClockwise size={14} />
-          </NotionButton>
+          </DsButton>
         </CommonTooltip>
       )}
     </div>

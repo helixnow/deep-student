@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Warning, ArrowClockwise, X, ArrowCounterClockwise, Trash, Download, WifiHigh } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -119,10 +119,10 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
       {/* P0修复：批量清理按钮 */}
       {errors.length > 1 && (
         <div className="flex justify-end">
-          <NotionButton variant="ghost" size="sm" onClick={onClearAll} className="text-xs text-gray-500 hover:text-gray-700">
+          <DsButton variant="ghost" size="sm" onClick={onClearAll} className="text-xs text-gray-500 hover:text-gray-700">
             <Trash size={12} />
             {t('messages.errorHandler.clearAll', { count: errors.length })}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
 
@@ -157,18 +157,18 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                 <div className="flex items-center gap-1">
                   {/* 展开/收起按钮 */}
                   {(error.details || error.context) && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => toggleExpanded(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')} aria-label={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')}>
+                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => toggleExpanded(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')} aria-label={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')}>
                       <ArrowCounterClockwise 
                         size={14} 
                         className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
 />
-                    </NotionButton>
+                    </DsButton>
                   )}
                   
                   {/* 关闭按钮 */}
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onDismiss(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={t('actions.close')} aria-label={t('actions.close')}>
+                  <DsButton variant="ghost" size="icon" iconOnly onClick={() => onDismiss(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={t('actions.close')} aria-label={t('actions.close')}>
                     <X size={14} />
-                  </NotionButton>
+                  </DsButton>
                 </div>
               </div>
 
@@ -206,7 +206,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
               <div className="px-4 pb-4">
                 <div className="flex flex-wrap gap-2">
                   {error.recoveryActions.map((action, index) => (
-                    <NotionButton
+                    <DsButton
                       key={index}
                       variant="ghost" size="sm"
                       onClick={async () => {
@@ -223,7 +223,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                     >
                       {action.icon}
                       {action.label}
-                    </NotionButton>
+                    </DsButton>
                   ))}
                 </div>
               </div>

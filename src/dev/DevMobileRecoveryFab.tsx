@@ -4,7 +4,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowClockwise, Bug, House } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 
@@ -173,7 +173,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
       <div className="pointer-events-auto flex flex-col items-end gap-2">
         {open && !dragging && (
           <div className="flex flex-col gap-1 rounded-xl border border-border/60 bg-background/95 p-1.5 shadow-lg backdrop-blur-md">
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               className="!justify-start gap-2 !px-3"
@@ -181,8 +181,8 @@ export const DevMobileRecoveryFab: React.FC = () => {
             >
               <ArrowClockwise size={16} />
               热重载
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               className="!justify-start gap-2 !px-3"
@@ -190,8 +190,8 @@ export const DevMobileRecoveryFab: React.FC = () => {
             >
               <House size={16} />
               重置导航
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               variant="ghost"
               size="sm"
               className="!justify-start gap-2 !px-3"
@@ -199,10 +199,10 @@ export const DevMobileRecoveryFab: React.FC = () => {
             >
               <Bug size={16} />
               DevTools
-            </NotionButton>
+            </DsButton>
           </div>
         )}
-        <NotionButton
+        <DsButton
           variant="secondary"
           size="sm"
           className={cn(
@@ -218,7 +218,7 @@ export const DevMobileRecoveryFab: React.FC = () => {
           onPointerCancel={handleFabPointerUp}
         >
           DEV
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

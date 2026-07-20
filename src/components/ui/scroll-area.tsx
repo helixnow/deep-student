@@ -33,6 +33,7 @@ import { useScrollbarTheme } from "../../lib/scroll-theme";
 const SCROLL_AREA_NATIVE_CLASS = "scroll-area--native";
 
 type ScrollOrientation = "vertical" | "horizontal" | "both";
+type ScrollAutoHideMode = "never" | "scroll" | "leave" | "move";
 
 type TrackOffset = {
   top?: number | string;
@@ -49,8 +50,12 @@ export interface ScrollAreaProps
   viewportRef?: React.Ref<HTMLDivElement>;
   viewportProps?: Omit<React.HTMLAttributes<HTMLDivElement>, "className" | "ref">;
   orientation?: ScrollOrientation;
-  /** Hide delay in ms. 0 = always visible. Default 700. */
+  /** Hide delay in ms. 0 = always visible. Default 600. */
   scrollHideDelay?: number;
+  /** Controls what interaction reveals an overlay scrollbar. */
+  scrollAutoHide?: ScrollAutoHideMode;
+  /** Keep the scrollbar visible until the first scroll. Default true. */
+  scrollAutoHideSuspend?: boolean;
   trackOffset?: TrackOffset;
   /** Override platform default. iOS auto-detects to `true`. */
   nativeScrollbars?: boolean;
@@ -84,7 +89,9 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       viewportRef,
       viewportProps,
       orientation = "vertical",
-      scrollHideDelay = 700,
+      scrollHideDelay = 600,
+      scrollAutoHide,
+      scrollAutoHideSuspend = true,
       trackOffset,
       nativeScrollbars,
       style,
@@ -178,15 +185,13 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
             scrollbars: {
               theme,
               // 触屏无 hover：'leave' 策略会让滚动条永不出现（M-1），
-              // 改为滚动时显影、停止后按 delay 隐藏
+              // 改为滚动时显影、停止后按 delay 隐藏；显式传入 scrollAutoHide 时以调用方为准
               autoHide:
                 scrollHideDelay > 0
-                  ? platform.isTouchPrimary
-                    ? "scroll"
-                    : "leave"
+                  ? (scrollAutoHide ?? (platform.isTouchPrimary ? "scroll" : "leave"))
                   : "never",
               autoHideDelay: scrollHideDelay,
-              autoHideSuspend: true,
+              autoHideSuspend: scrollAutoHideSuspend,
               dragScroll: true,
               clickScroll: true,
             },

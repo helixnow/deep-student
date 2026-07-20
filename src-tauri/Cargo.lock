@@ -3112,6 +3112,7 @@ dependencies = [
  "dotenvy",
  "encoding_rs",
  "eventsource-stream",
+ "fs2",
  "fs_extra",
  "futures",
  "futures-util",
@@ -3141,6 +3142,7 @@ dependencies = [
  "pptx-to-md",
  "proptest",
  "protoc-bin-vendored",
+ "qrcode",
  "quick-xml 0.37.5",
  "r2d2",
  "r2d2_sqlite",
@@ -3197,6 +3199,7 @@ dependencies = [
  "webkit2gtk",
  "webpki-roots 0.26.11",
  "webview2-com",
+ "window-vibrancy",
  "windows 0.58.0",
  "windows-sys 0.59.0",
  "zerocopy 0.7.35",
@@ -3938,6 +3941,16 @@ dependencies = [
  "io-lifetimes",
  "rustix 1.1.3",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
 ]
 
 [[package]]
@@ -8467,6 +8480,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f6d64c71eb498fe9eae14ce4ec935c555749aef511cca85b5568910d6e48001"
 dependencies = [
  "bytemuck",
+]
+
+[[package]]
+name = "qrcode"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "166f136dfdb199f98186f3649cf7a0536534a61417a1a30221b492b4fb60ce3f"
+dependencies = [
+ "image 0.24.9",
 ]
 
 [[package]]

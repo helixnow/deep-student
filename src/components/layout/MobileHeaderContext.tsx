@@ -7,7 +7,7 @@
  * - ★ 支持视图级别的配置隔离，只有活跃视图的配置才会生效
  */
 
-import React, { createContext, useContext, useState, useCallback, useLayoutEffect, useRef, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useLayoutEffect, useRef, type ReactNode } from 'react';
 
 /** 移动端顶栏配置 */
 export interface MobileHeaderConfig {
@@ -63,6 +63,12 @@ const defaultConfig: MobileHeaderConfig = {
 
 const MobileHeaderContext = createContext<MobileHeaderContextValue | null>(null);
 
+/** 仅包含写操作的 context：引用永久稳定，供 useMobileHeader 等“只写不读”的
+ * 消费者使用，避免 config 每次变化都重渲染所有页面组件（曾导致
+ * “页面渲染 → 效果重跑 → setConfig → config 变化 → 页面再渲染”的无限循环）。 */
+type MobileHeaderActions = Omit<MobileHeaderContextValue, 'config'>;
+const MobileHeaderActionsContext = createContext<MobileHeaderActions | null>(null);
+
 /** Provider 组件 */
 export const MobileHeaderProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // 当前显示的配置
@@ -91,25 +97,38 @@ export const MobileHeaderProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   // 设置活跃视图
   const setActiveView = useCallback((viewId: string) => {
-    activeViewRef.current = viewId;
-    // 应用该视图缓存的配置
-    const cachedConfig = configCacheRef.current.get(viewId);
-    if (cachedConfig) {
-      setConfigState(cachedConfig);
-    } else {
-      // 如果没有缓存（懒加载组件还没加载），先显示空配置，页面加载后会更新
-      setConfigState(defaultConfig);
+    // 视图未变化时跳过，避免 Provider 重渲染 → effect 重跑 → setState 的无限循环
+    if (activeViewRef.current === viewId) {
+      return;
     }
+    activeViewRef.current = viewId;
+    // 应用该视图缓存的配置；没有缓存（懒加载组件还没加载）时先显示空配置，页面加载后会更新
+    const cachedConfig = configCacheRef.current.get(viewId) ?? defaultConfig;
+    setConfigState((prev) => (prev === cachedConfig ? prev : cachedConfig));
   }, []);
 
   const resetConfig = useCallback(() => {
     setConfigState(defaultConfig);
   }, []);
 
+  // 稳定 context 引用：只有 config 变化时才产生新值，防止依赖 ctx 的 effect 每次提交都重跑
+  const contextValue = useMemo(
+    () => ({ config, setConfig, clearConfig, resetConfig, setActiveView }),
+    [config, setConfig, clearConfig, resetConfig, setActiveView],
+  );
+
+  // 所有回调都是 [] 依赖的 useCallback，此对象在 Provider 生命周期内引用不变
+  const actionsValue = useMemo(
+    () => ({ setConfig, clearConfig, resetConfig, setActiveView }),
+    [setConfig, clearConfig, resetConfig, setActiveView],
+  );
+
   return (
-    <MobileHeaderContext.Provider value={{ config, setConfig, clearConfig, resetConfig, setActiveView }}>
-      {children}
-    </MobileHeaderContext.Provider>
+    <MobileHeaderActionsContext.Provider value={actionsValue}>
+      <MobileHeaderContext.Provider value={contextValue}>
+        {children}
+      </MobileHeaderContext.Provider>
+    </MobileHeaderActionsContext.Provider>
   );
 };
 
@@ -152,7 +171,8 @@ export const useMobileHeaderContextSafe = (): MobileHeaderContextValue | null =>
  * ```
  */
 export function useMobileHeader(viewId: string, config: MobileHeaderConfig, deps: React.DependencyList = []): void {
-  const ctx = useContext(MobileHeaderContext);
+  // 只订阅写操作 context：引用稳定，config 更新不会触发调用方重渲染
+  const ctx = useContext(MobileHeaderActionsContext);
   const configRef = useRef(config);
   configRef.current = config;
   const viewIdRef = useRef(viewId);
@@ -182,7 +202,7 @@ export function useMobileHeader(viewId: string, config: MobileHeaderConfig, deps
  * useSetMobileHeaderActiveView - 供 App.tsx 调用，设置当前活跃视图
  */
 export function useSetMobileHeaderActiveView(): (viewId: string) => void {
-  const ctx = useContext(MobileHeaderContext);
+  const ctx = useContext(MobileHeaderActionsContext);
   return useCallback((viewId: string) => {
     ctx?.setActiveView(viewId);
   }, [ctx]);
@@ -194,7 +214,7 @@ export function useSetMobileHeaderActiveView(): (viewId: string) => void {
  * 必须放在 MobileHeaderProvider 内部使用，因为需要访问 Context
  */
 export const MobileHeaderActiveViewSync: React.FC<{ activeView: string }> = ({ activeView }) => {
-  const ctx = useContext(MobileHeaderContext);
+  const ctx = useContext(MobileHeaderActionsContext);
 
   useLayoutEffect(() => {
     if (ctx) {

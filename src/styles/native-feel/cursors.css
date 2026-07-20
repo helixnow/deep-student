@@ -9,7 +9,7 @@
  * I-beam is browser behaviour for text-bearing nodes. That looked wrong: chrome
  * said "you can select me" while behaviour said "no you can't."
  *
- * Industry consensus (VS Code / Cursor / Linear / Notion / Obsidian / Safari):
+ * Industry consensus (VS Code / Cursor / Linear / / Safari):
  *   - chrome / shell / non-interactive areas:  cursor: default (arrow)
  *   - clickable elements (button, a, role=button): cursor: pointer
  *   - content surfaces that mirror selection.css whitelist: cursor: text
@@ -177,7 +177,7 @@ code,
 
 /* ---------------------------------------------------------------- */
 /* 5. Reinstate cursor for buttons that wrap content surfaces        */
-/* (e.g. NotionButton inside a code-block-actions toolbar)           */
+/* (e.g. DsButton inside a code-block-actions toolbar)           */
 /* Without this, child cursor:text would override the pointer on the */
 /* outer button. Re-assert pointer for actual interactive ancestors. */
 /* ---------------------------------------------------------------- */

@@ -22,6 +22,7 @@ pub mod power;
 pub mod textbooks;
 pub mod translation;
 pub mod web_search; // OCR 引擎配置命令
+pub mod window_effects; // macOS 窗口毛玻璃
 
 // Re-export AppState from the main commands module
 pub use crate::commands::AppState;

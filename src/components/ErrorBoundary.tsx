@@ -1,6 +1,6 @@
 import React from 'react';
 import { WarningCircle } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import i18n from '@/i18n';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -120,7 +120,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 {`${errorName}: ${errorMessage || 'Unknown error'}`}
               </p>
               <div className="mt-2 flex justify-end">
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={this.handleCopyError}
@@ -129,7 +129,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                   {this.state.copied
                     ? i18n.t('common:error_boundary.copied', 'Copied')
                     : i18n.t('common:error_boundary.copy_error', 'Copy Error Log')}
-                </NotionButton>
+                </DsButton>
               </div>
               {this.state.componentStack && (
                 <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-muted-foreground">
@@ -138,9 +138,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               )}
             </div>
           )}
-          <NotionButton variant="primary" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5 bg-primary text-primary-foreground hover:opacity-90">
+          <DsButton variant="primary" size="sm" onClick={() => this.setState({ hasError: false })} className="text-xs !px-3 !py-1.5 bg-primary text-primary-foreground hover:opacity-90">
             {i18n.t('common:error_boundary.refresh', 'Refresh Page')}
-          </NotionButton>
+          </DsButton>
         </div>
       );
     }

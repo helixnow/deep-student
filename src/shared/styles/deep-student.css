@@ -520,7 +520,6 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
   transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
   margin-bottom: 0;
   position: relative;
-  will-change: background-color, transform;
 }
 
 .nav-item:hover {
