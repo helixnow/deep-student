@@ -5,10 +5,9 @@
  * 无选区时：光标在链接内编辑整段链接，否则扩选当前词再 addLink；
  * 光标处无词可扩时 no-op。
  *
- * 注册（由接线代理完成，本代理不改 plugins/index.ts）：
- *   import { linkKeymapPlugin } from './linkKeymap';
- *   crepe.editor.use(linkKeymapPlugin());
- *   // 须在 crepe.create() 之前；LinkTooltip feature 须已启用
+ * 注册：已在 plugins/index.ts 中接线（linkKeymap 开关，默认开启）；
+ * `crepe.editor.use(linkKeymapPlugin())` 须在 crepe.create() 之前调用，
+ * 且 LinkTooltip feature 须已启用。
  */
 
 import type { Ctx } from '@milkdown/ctx';

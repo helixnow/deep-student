@@ -22,10 +22,11 @@
 
 .crepe-mention-suggest {
   position: fixed;
-  z-index: 10000;
+  z-index: var(--z-popover);
   min-width: 12rem;
-  max-width: 20rem;
-  max-height: 16rem;
+  /* 窄屏防溢出；软键盘弹出时按键盘遮挡高度动态收缩（变量由 MobileEditorToolbar 写在 :root） */
+  max-width: min(20rem, calc(100vw - 24px));
+  max-height: min(16rem, calc(100dvh - var(--mobile-toolbar-keyboard-offset, 0px) - 120px));
   overflow-y: auto;
   margin: 0;
   padding: 0.25rem;
@@ -146,6 +147,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 触屏：候选行放大到 ≥44px 触控目标 */
+@media (pointer: coarse) {
+  .crepe-mention-suggest__item {
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

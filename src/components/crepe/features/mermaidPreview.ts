@@ -5,6 +5,7 @@
 
 import DOMPurify from 'dompurify';
 import i18n from '@/i18n';
+import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureFlags';
 
 // 🚀 P1-1 性能优化：mermaid 改为动态导入，避免 ~1.6MB 进入 CrepeEditor chunk
 let mermaidInstance: typeof import('mermaid').default | null = null;
@@ -145,6 +146,12 @@ export const createMermaidObserver = (
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = setTimeout(() => {
       timeoutId = null;
+      // OS 模式拖/缩/settle 手势期让路：mermaid 渲染开销大，延迟重试到手势
+      // 结束再扫（结果不变只是延后；旗由 settle 桥接兜底清理，不会悬挂）
+      if (shouldPauseHeavyContent()) {
+        debouncedRender();
+        return;
+      }
       void scanAndRenderMermaidBlocks(editorRoot);
     }, debounceMs);
   };

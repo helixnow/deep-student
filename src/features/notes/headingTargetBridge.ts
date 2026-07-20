@@ -1,7 +1,20 @@
+import { normalizeWikiLinkHeading, wikiLinkHeadingsEqual } from './wikilinks';
+
 export interface NotesHeadingTarget {
   noteId: string;
   heading: string;
 }
+
+/**
+ * 编辑器侧滚动定位时用它比较文档标题与 pending 锚点，
+ * 与 `[[Note#Heading]]` 补全 / 解析共用同一套规范化（大小写、全半角、
+ * 中文标点、空白折叠），避免「补全能选到、点击跳不过去」的锚点漂移。
+ */
+export function notesHeadingTargetMatches(documentHeading: string, target: string): boolean {
+  return wikiLinkHeadingsEqual(documentHeading, target);
+}
+
+export { normalizeWikiLinkHeading };
 
 export const NOTES_HEADING_TARGET_EVENT = 'notes:heading-target';
 

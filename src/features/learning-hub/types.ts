@@ -29,8 +29,10 @@ export type WorkMode = 'canvas' | 'fullscreen';
  * 视图模式
  * - list: 列表视图（复用 DndFileTree）
  * - grid: 图标/网格视图
+ * - columns: Finder 分栏视图（仅桌面全屏宿主使用；与 stores/finderStore 的
+ *   ViewMode 保持一致，分栏 UI 落地前由 FinderFileList 回退为 grid 渲染）
  */
-export type ViewMode = 'list' | 'grid';
+export type ViewMode = 'list' | 'grid' | 'columns';
 
 /**
  * 数据视图
@@ -331,6 +333,10 @@ export const VIEW_MODE_CONFIG: Record<
   grid: {
     labelKey: 'learningHub:viewMode.grid',
     icon: 'Grid3X3',
+  },
+  columns: {
+    labelKey: 'learningHub:viewMode.columns',
+    icon: 'Columns',
   },
 };
 

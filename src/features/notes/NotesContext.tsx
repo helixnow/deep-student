@@ -39,6 +39,7 @@ import { useReferenceValidation, type UseReferenceValidationReturn } from "./hoo
 // Learning Hub - 引用到对话 (Prompt 9)
 import type { ContextRef } from "@/features/chat/resources/types";
 import { sessionManager } from "@/features/chat/core/session/sessionManager";
+import { ensureActiveChatSession } from "@/features/chat/pages/ensureActiveChatSession";
 import { NOTE_TYPE_ID } from "@/features/chat/context/definitions/note";
 import { TEXTBOOK_TYPE_ID } from "@/features/chat/context/definitions/textbook";
 import { EXAM_TYPE_ID } from "@/features/chat/context/definitions/exam";
@@ -1507,9 +1508,10 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
      * | exam_sessions | 'exam'      | 'exam'     |
      */
     const referenceToChat = useCallback(async (nodeId: string): Promise<void> => {
-        // 1. 获取当前活跃的会话
-        const sessionIds = sessionManager.getAllSessionIds();
-        if (sessionIds.length === 0) {
+        // 1. 无活动会话时先经 chat 域闭环入口建立/复用隐藏 draft 会话
+        //    （2026-07-20 移动端审计闭环：此前直接 toast 丢弃动作）
+        const activeSessionId = await ensureActiveChatSession();
+        if (!activeSessionId) {
             notify({
                 title: t('notes:reference.no_active_session'),
                 description: t('notes:reference.no_active_session_desc'),
@@ -1518,8 +1520,6 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return;
         }
 
-        // 使用最近访问的会话（第一个）
-        const activeSessionId = sessionIds[0];
         const store = sessionManager.get(activeSessionId);
         if (!store) {
             notify({

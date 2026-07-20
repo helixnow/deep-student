@@ -340,6 +340,51 @@ export function normalizeWikiLinkTitle(title: string): string {
   return title.trim().toLocaleLowerCase();
 }
 
+/** 常见 CJK 标点 → ASCII 等价（NFKC 覆盖不到的部分），锚点比较用。 */
+const HEADING_PUNCTUATION_MAP: Readonly<Record<string, string>> = {
+  '，': ',',
+  '。': '.',
+  '、': ',',
+  '「': '"',
+  '」': '"',
+  '『': '"',
+  '』': '"',
+  '“': '"',
+  '”': '"',
+  '‘': "'",
+  '’': "'",
+  '—': '-',
+  '－': '-',
+  '～': '~',
+  '·': '.',
+};
+
+/**
+ * Heading anchor normalization shared by `[[Note#Heading]]` completion and
+ * heading navigation（headingTargetBridge 消费方应使用同一规则做匹配）：
+ * NFKC 折叠全角字符 → 常见中文标点归一 → 大小写折叠 → 去除全部空白
+ * （同一笔记内标题去空白后撞车的概率可忽略，换来的是最大宽容度）。
+ * 这样 `[[笔记#第一章：绪论]]` 与文档里的 `# 第一章: 绪 论` 仍能互相命中。
+ */
+export function normalizeWikiLinkHeading(heading: string): string {
+  let text = heading.trim();
+  try {
+    text = text.normalize('NFKC');
+  } catch {
+    // 非法 surrogate 等极端输入：跳过 Unicode 归一，仍走后续规则
+  }
+  let mapped = '';
+  for (const char of text) {
+    mapped += HEADING_PUNCTUATION_MAP[char] ?? char;
+  }
+  return mapped.toLocaleLowerCase().replace(/\s+/g, '');
+}
+
+/** True when two heading anchors refer to the same heading after normalization. */
+export function wikiLinkHeadingsEqual(left: string, right: string): boolean {
+  return normalizeWikiLinkHeading(left) === normalizeWikiLinkHeading(right);
+}
+
 /**
  * Builds a reusable resolver. IDs are matched before titles (exact match, so
  * autocomplete-written IDs always win), then titles are matched after

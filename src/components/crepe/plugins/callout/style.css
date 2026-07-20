@@ -152,7 +152,8 @@
 .crepe-callout__content {
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  /* clip 而非 hidden：防拖选文本时 WebKit reveal-selection 滚动此容器造成内容错位 */
+  overflow: clip;
 }
 
 .crepe-callout__content > :first-child {

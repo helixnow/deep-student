@@ -26,8 +26,20 @@
   /* 键盘贴合：用 transform 抬升，避免 bottom 跳变 */
   --mobile-toolbar-keyboard-offset: 0px;
   transform: translateY(calc(-1 * var(--mobile-toolbar-keyboard-offset)));
-  transition: transform var(--notes-hover-transition, 120ms ease);
+  transition:
+    transform var(--notes-hover-transition, 120ms ease),
+    visibility 0s 0s;
   will-change: transform;
+}
+
+/* 滚动收起：下滑阅读时滑出屏幕；visibility 延迟到位移结束，期间不可聚焦/点按 */
+.mobile-editor-toolbar[data-collapsed='true'] {
+  transform: translateY(calc(100% + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    visibility 0s 200ms;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -160,7 +172,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mobile-editor-toolbar {
+  .mobile-editor-toolbar,
+  .mobile-editor-toolbar[data-collapsed='true'] {
     transition: none;
   }
 

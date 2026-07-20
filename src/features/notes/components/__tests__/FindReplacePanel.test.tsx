@@ -79,6 +79,30 @@ describe('FindReplacePanel empty state', () => {
   });
 });
 
+describe('FindReplacePanel regex mode', () => {
+  it('exposes a regex toggle with pressed state', () => {
+    render(<FindReplacePanel editorApi={null} onClose={vi.fn()} />);
+    const toggle = screen.getByRole('button', { name: '使用正则表达式' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows invalid-regex feedback for broken patterns', () => {
+    render(<FindReplacePanel editorApi={null} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '使用正则表达式' }));
+    const input = screen.getByRole('textbox', { name: '查找' });
+    fireEvent.change(input, { target: { value: '([' } });
+    expect(screen.getByText('无效正则表达式')).toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+
+    // 合法正则后恢复为常规无匹配提示（editorApi 为 null 时恒为 0 匹配）
+    fireEvent.change(input, { target: { value: 'a+' } });
+    expect(screen.queryByText('无效正则表达式')).not.toBeInTheDocument();
+    expect(screen.getByText('无匹配结果')).toBeInTheDocument();
+  });
+});
+
 describe('FindReplacePanel focusSignal', () => {
   it('re-focuses and selects the find input when focusSignal changes', () => {
     const { rerender } = render(

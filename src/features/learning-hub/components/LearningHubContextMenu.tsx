@@ -122,6 +122,8 @@ export interface LearningHubContextMenuProps {
   onEmptyTrash?: () => void;
   /** 导出资源 */
   onExportResource?: (resource: ResourceListItem) => void;
+  /** ★ 2026-07-20：文件夹批量导出为 ZIP */
+  onExportFolder?: (folderId: string) => void;
 }
 
 // ============================================================================
@@ -158,6 +160,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   onPermanentDeleteItem,
   onEmptyTrash,
   onExportResource,
+  onExportFolder,
 }) => {
   const { t } = useTranslation('learningHub');
   const menuRef = useRef<HTMLDivElement>(null);
@@ -194,7 +197,8 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     setMenuPosition({ x, y });
   }, [open, position, target]);
 
-  // 点击外部关闭菜单
+  // 点击外部关闭菜单；触屏补充：菜单外 touchstart（capture）或背景滚动时关闭，
+  // 避免触摸滚动穿透时菜单悬空在错误位置
   useEffect(() => {
     if (!open) return;
 
@@ -203,6 +207,14 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         onOpenChange(false);
       }
     };
+
+    const handleTouchOutside = (e: TouchEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onOpenChange(false);
+      }
+    };
+
+    const handleScroll = () => onOpenChange(false);
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -213,12 +225,16 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     // 延迟添加监听器，避免立即触发
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleTouchOutside, { capture: true, passive: true });
+      window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
       document.addEventListener('keydown', handleEscape);
     }, 0);
 
     return () => {
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleTouchOutside, { capture: true });
+      window.removeEventListener('scroll', handleScroll, { capture: true });
       document.removeEventListener('keydown', handleEscape);
     };
   }, [open, onOpenChange]);
@@ -509,7 +525,20 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       >
         {t('contextMenu.rename')}
         </AppMenuItem>
-      
+
+      {/* ★ 2026-07-20：文件夹批量导出为 ZIP */}
+      {onExportFolder && (
+        <AppMenuItem
+          icon={<Download size={16} />}
+          onClick={() => {
+            closeMenu();
+            setTimeout(() => onExportFolder(folder.folder.id), 50);
+          }}
+        >
+          {t('contextMenu.exportFolderZip')}
+        </AppMenuItem>
+      )}
+
         {/* 删除 */}
       {canDelete && onDeleteFolder && (
       <AppMenuItem
@@ -632,7 +661,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {resourceItem && (
           <AppMenuItem
             icon={isAddedToDesktop 
-              ? <CheckCircle size={16} className="text-green-500" /> 
+              ? <CheckCircle size={16} className="text-success" /> 
               : <Monitor size={16} />
             }
             onClick={() => {

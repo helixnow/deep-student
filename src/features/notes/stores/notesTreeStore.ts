@@ -13,23 +13,6 @@
  */
 
 import { create } from 'zustand';
-import { TreeData } from '../DndFileTree/types';
-
-export type DropPosition = 'before' | 'after' | 'inside';
-
-export interface FlattenedTreeNode {
-  id: string;
-  depth: number;
-  parentId: string | null;
-  isFolder: boolean;
-}
-
-export interface NotesTreePersistenceSnapshot {
-  expandedIds: string[];
-  selectedIds: string[];
-  focusedId: string | null;
-  version: number;
-}
 
 const NOTES_TREE_VIEW_VERSION = 2;
 
@@ -44,55 +27,3 @@ export const useNotesTreeStore = create<NotesTreeShellState>()(() => ({
   deprecated: true,
   viewVersion: NOTES_TREE_VIEW_VERSION,
 }));
-
-/** @deprecated 可见顺序请直接由 `DndFileTree` 内部的扁平化逻辑计算 */
-export const computeVisibleOrder = (
-  treeData: TreeData,
-  expandedIds: Set<string>,
-): FlattenedTreeNode[] => {
-  const result: FlattenedTreeNode[] = [];
-  const visit = (id: string, depth: number, parentId: string | null) => {
-    const node = treeData[id];
-    if (!node) return;
-    if (id !== 'root') {
-      result.push({ id, depth, parentId, isFolder: node.isFolder });
-    }
-    if (!node.children || (id !== 'root' && !expandedIds.has(id))) return;
-    for (const childId of node.children) {
-      visit(childId, id === 'root' ? depth : depth + 1, id === 'root' ? null : id);
-    }
-  };
-  visit('root', 0, null);
-  return result;
-};
-
-/** @deprecated 父链请通过 `TreeData` 的 children 关系推导 */
-export const getParentChain = (treeData: TreeData, id: string): string[] => {
-  const parents: Record<string, string | null> = {};
-  for (const [nodeId, node] of Object.entries(treeData)) {
-    for (const childId of node.children ?? []) {
-      parents[childId] = nodeId;
-    }
-  }
-  const chain: string[] = [];
-  const visited = new Set<string>();
-  let current: string | null = parents[id] ?? null;
-  while (current && current !== 'root' && !visited.has(current)) {
-    visited.add(current);
-    chain.unshift(current);
-    current = parents[current] ?? null;
-  }
-  return chain;
-};
-
-/** @deprecated 展开状态持久化已由 `NotesSidebarV2` 直接走 notes_set_pref */
-export const toPersistenceSnapshot = (state: {
-  expandedIds: Iterable<string>;
-  selectedIds: Iterable<string>;
-  focusedId: string | null;
-}): NotesTreePersistenceSnapshot => ({
-  expandedIds: Array.from(state.expandedIds),
-  selectedIds: Array.from(state.selectedIds),
-  focusedId: state.focusedId,
-  version: NOTES_TREE_VIEW_VERSION,
-});

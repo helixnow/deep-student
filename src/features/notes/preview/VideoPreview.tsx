@@ -358,8 +358,9 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
     <div
       ref={containerRef}
       className={cn(
+        // 全屏走系统原生 requestFullscreen（容器自身充满屏幕），
+        // 不再叠加 fixed inset-0 遮罩类（设计系统禁用全屏 scrim）
         'relative flex h-full flex-col items-center justify-center bg-black outline-none',
-        isFullscreen && 'fixed inset-0 z-50',
         className
       )}
       onMouseMove={showControlsWithTimeout}

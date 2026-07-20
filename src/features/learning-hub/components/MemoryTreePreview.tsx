@@ -141,17 +141,18 @@ const TreeNode: React.FC<{
           {directCount > 0 && (
             <div className="flex items-center gap-0.5">
               <FileText size={10} className="text-muted-foreground/40" />
-              <span className="text-[10px] tabular-nums text-muted-foreground/60">{directCount}</span>
+              <span className="text-2xs tabular-nums text-muted-foreground/60">{directCount}</span>
             </div>
           )}
           {totalCount > directCount && (
-            <span className="text-[9px] text-muted-foreground/40 tabular-nums">({totalCount})</span>
+            <span className="text-2xs text-muted-foreground/40 tabular-nums">({totalCount})</span>
           )}
 
           {/* Navigate button */}
           <NotionButton
             variant="ghost" size="icon" iconOnly
-            className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 transition-opacity"
+            // 触屏放大命中区（≥32px），负 margin 抵消占位保持行高稳定
+            className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8 [@media(pointer:coarse)]:-my-1.5 transition-opacity"
             onClick={(e) => { e.stopPropagation(); onNavigate?.(node.folder.id); }}
             title={t('memory.open_folder')}
             aria-label={t('memory.open_folder')}
@@ -250,11 +251,11 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
         <span className="text-[11px] font-medium text-muted-foreground">
           {t('memory.tree_title')}
         </span>
-        <span className="text-[10px] text-muted-foreground/50">
+        <span className="text-2xs text-muted-foreground/50">
           {totalMemories} {t('memory.items')}
         </span>
         <div className="flex-1" />
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5" aria-label={t('memory.aria.refresh')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-8 [@media(pointer:coarse)]:!w-8" aria-label={t('memory.aria.refresh')}>
           <ArrowClockwise size={12} className={cn(isLoading && 'animate-spin')} />
         </NotionButton>
       </div>

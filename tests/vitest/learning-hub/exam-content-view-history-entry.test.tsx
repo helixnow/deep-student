@@ -8,14 +8,11 @@ const { mockGetExamSheetSessionDetail } = vi.hoisted(() => ({
 
 const storeState = vi.hoisted(() => ({
   focusMode: false,
-  syncConflicts: [],
   mockExamSession: null,
   timedSession: null,
   dailyPractice: null,
   generatedPaper: null,
   setFocusMode: vi.fn(),
-  checkSyncStatus: vi.fn(),
-  getSyncConflicts: vi.fn(),
   setMockExamSession: vi.fn(),
   setTimedSession: vi.fn(),
   submitMockExam: vi.fn(),
@@ -88,6 +85,13 @@ vi.mock('@/hooks/useQuestionBankSession', () => ({
 
 vi.mock('@/stores/questionBankStore', () => ({
   useQuestionBankStore: (selector: (state: typeof storeState) => unknown) => selector(storeState),
+  // 真实签名: (value: unknown, expectedExamId: string) => QbankPracticeHandoff | PracticeHandoffHydrationFailure
+  // ExamContentView 顶层具名导入并在 hydratePracticeSession 分支调用；mock 默认返回校验失败
+  validateQbankPracticeHandoff: vi.fn((_value: unknown, _expectedExamId: string) => ({
+    ok: false as const,
+    code: 'INVALID_PRACTICE_HANDOFF' as const,
+    hint: 'mocked validator',
+  })),
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({
@@ -108,7 +112,6 @@ vi.mock('@/debug-panel/plugins/ExamSheetProcessingDebugPlugin', () => ({
   emitExamSheetDebug: vi.fn(),
 }));
 
-vi.mock('@/components/SyncConflictDialog', () => ({ default: () => null }));
 vi.mock('@/components/QuestionBankEditor', () => ({ default: () => <div data-testid="question-bank-editor" /> }));
 vi.mock('@/components/QuestionBankListView', () => ({ default: () => <div data-testid="question-bank-list-view" /> }));
 vi.mock('@/components/QuestionBankManageView', () => ({
@@ -140,10 +143,6 @@ import ExamContentView from '@/features/learning-hub/apps/views/ExamContentView'
 
 describe('ExamContentView history entry wiring', () => {
   beforeEach(() => {
-    storeState.checkSyncStatus.mockReset();
-    storeState.getSyncConflicts.mockReset();
-    storeState.checkSyncStatus.mockResolvedValue({ pending_conflict_count: 0 });
-    storeState.getSyncConflicts.mockResolvedValue([]);
     mockGetExamSheetSessionDetail.mockReset();
     mockGetExamSheetSessionDetail.mockResolvedValue({
       summary: { status: 'ready', exam_name: 'Exam 1' },

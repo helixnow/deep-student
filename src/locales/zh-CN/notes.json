@@ -255,6 +255,24 @@
     "panelLabel": "查找和替换",
     "replaceLabel": "替换为"
   },
+  "editorV2": {
+    "use_regex": "使用正则表达式",
+    "find_regex_placeholder": "查找（正则）…",
+    "find_invalid_regex": "无效正则表达式",
+    "outline_expand": "展开分组",
+    "outline_collapse": "折叠分组",
+    "conflict_compare": "对比",
+    "conflict_compare_hide": "收起对比",
+    "conflict_diff_title": "我的版本 vs 远端版本",
+    "conflict_diff_legend": "+ 我的版本 · − 远端版本",
+    "conflict_diff_identical": "两个版本内容一致",
+    "conflict_diff_loading": "正在加载远端版本…",
+    "conflict_diff_load_failed": "无法加载远端版本",
+    "conflict_diff_retry": "重试",
+    "tag_too_long": "单个标签最多 {{max}} 个字符",
+    "tag_invalid_chars": "标签不能包含控制字符",
+    "tags_limit_reached": "最多添加 {{max}} 个标签"
+  },
   "mentions": {
     "loading": "正在加载…",
     "result_title": "引用匹配",
@@ -1231,6 +1249,16 @@
   "wikilink": {
     "create": "创建 \"{{title}}\"",
     "empty": "无匹配笔记"
+  },
+  "wikilinkV2": {
+    "createConfirm": "创建新笔记「{{title}}」？",
+    "createConfirmAction": "创建",
+    "createConfirmCancel": "取消",
+    "imageResetZoom": "重置缩放",
+    "imageViewerHint": "滚轮缩放 · 拖拽平移 · 双击复位",
+    "previewRetry": "重试",
+    "recentGroup": "最近使用",
+    "allGroup": "全部"
   },
   "mention": {
     "loading": "搜索中…",

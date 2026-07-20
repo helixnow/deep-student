@@ -282,6 +282,24 @@
     "panelLabel": "Find and replace",
     "replaceLabel": "Replace with"
   },
+  "editorV2": {
+    "use_regex": "Use regular expression",
+    "find_regex_placeholder": "Find (regex)…",
+    "find_invalid_regex": "Invalid regular expression",
+    "outline_expand": "Expand section",
+    "outline_collapse": "Collapse section",
+    "conflict_compare": "Compare",
+    "conflict_compare_hide": "Hide comparison",
+    "conflict_diff_title": "My version vs remote version",
+    "conflict_diff_legend": "+ mine · − remote",
+    "conflict_diff_identical": "Both versions are identical",
+    "conflict_diff_loading": "Loading remote version…",
+    "conflict_diff_load_failed": "Could not load the remote version",
+    "conflict_diff_retry": "Retry",
+    "tag_too_long": "Tags can be at most {{max}} characters",
+    "tag_invalid_chars": "Tags can't contain control characters",
+    "tags_limit_reached": "You can add up to {{max}} tags"
+  },
   "mentions": {
     "loading": "Loading...",
     "result_title": "Reference matches",
@@ -1242,6 +1260,16 @@
   "wikilink": {
     "create": "Create \"{{title}}\"",
     "empty": "No matching notes"
+  },
+  "wikilinkV2": {
+    "createConfirm": "Create new note \"{{title}}\"?",
+    "createConfirmAction": "Create",
+    "createConfirmCancel": "Cancel",
+    "imageResetZoom": "Reset zoom",
+    "imageViewerHint": "Scroll to zoom · Drag to pan · Double-click to reset",
+    "previewRetry": "Retry",
+    "recentGroup": "Recently used",
+    "allGroup": "All"
   },
   "mention": {
     "loading": "Searching…",

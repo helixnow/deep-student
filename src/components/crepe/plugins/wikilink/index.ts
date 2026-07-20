@@ -55,6 +55,11 @@ export {
   closeWikilinkCandidatePicker,
   closeWikilinkCandidatePickerFor,
 } from './candidatePicker';
+export {
+  openWikilinkCreateConfirm,
+  closeWikilinkCreateConfirm,
+  closeWikilinkCreateConfirmFor,
+} from './createConfirm';
 export { wikilinkSchema, WIKILINK_NODE_NAME } from './schema';
 export { remarkWikilinkPlugin } from './remark';
 export { wikilinkInputRule } from './inputRule';

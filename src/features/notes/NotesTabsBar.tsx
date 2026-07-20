@@ -93,9 +93,10 @@ const SortableTab: React.FC<SortableTabProps> = ({ tab, active, onClose }) => {
           className={cn(
             "absolute right-1.5 flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/70 transition-all duration-150",
             "hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30",
+            // 触屏无 hover：非活跃标签的关闭按钮常显弱化态（对齐 Learning Hub TabBar 范式）
             active
               ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100",
+              : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60",
           )}
           onPointerDown={(event) => {
             event.stopPropagation();

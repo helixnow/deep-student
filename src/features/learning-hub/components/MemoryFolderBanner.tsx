@@ -299,7 +299,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground">
           <WarningCircle size={13} className="text-destructive/70 shrink-0" />
           <span>{t('memory.config_load_error')}</span>
-          <NotionButton variant="ghost" size="sm" onClick={loadConfig} className="!h-5 !px-1.5 text-[10px] ml-auto">
+          <NotionButton variant="ghost" size="sm" onClick={loadConfig} className="!h-5 !px-1.5 text-2xs ml-auto [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5">
             <ArrowClockwise size={11} />
             {t('common:retry')}
           </NotionButton>
@@ -317,16 +317,19 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         <span className="text-[11px] text-muted-foreground mr-1">{t('memory.auto_extract')}:</span>
         <div className="flex items-center gap-0.5">
           {([
-            { value: 'off' as const, label: t('memory.freq_off') },
-            { value: 'balanced' as const, label: t('memory.freq_balanced') },
-            { value: 'aggressive' as const, label: t('memory.freq_aggressive') },
+            { value: 'off' as const, label: t('memory.freq_off'), desc: t('memory.freq_off_desc') },
+            { value: 'balanced' as const, label: t('memory.freq_balanced'), desc: t('memory.freq_balanced_desc') },
+            { value: 'aggressive' as const, label: t('memory.freq_aggressive'), desc: t('memory.freq_aggressive_desc') },
           ]).map((opt) => (
             <button
               key={opt.value}
+              title={opt.desc}
               onClick={() => handleFrequencyChange(opt.value)}
               disabled={savingFrequency}
               className={cn(
-                'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                // 触屏放大命中区（桌面保持紧凑）
+                'px-1.5 py-0.5 rounded text-2xs transition-colors',
+                '[@media(pointer:coarse)]:min-h-9 [@media(pointer:coarse)]:px-2.5',
                 savingFrequency && 'opacity-60 cursor-wait',
                 config.autoExtractFrequency === opt.value
                   ? 'bg-primary/15 text-primary font-medium'
@@ -343,14 +346,14 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
 
         <NotionButton variant="ghost" size="icon" iconOnly
           onClick={handleToggleProfile}
-          className={cn('!h-6 !w-6', activePanel === 'profile' && 'text-primary bg-primary/10')}
+          className={cn('!h-6 !w-6 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9', activePanel === 'profile' && 'text-primary bg-primary/10')}
           title={t('memory.profile_title')}
         >
           <MemoryIcon size={13} />
         </NotionButton>
         <NotionButton variant="ghost" size="icon" iconOnly
           onClick={handleToggleAuditLog}
-          className={cn('!h-6 !w-6', activePanel === 'audit' && 'text-primary bg-primary/10')}
+          className={cn('!h-6 !w-6 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9', activePanel === 'audit' && 'text-primary bg-primary/10')}
           title={t('memory.audit_log')}
         >
           <ClockCounterClockwise size={14} />
@@ -358,7 +361,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         <NotionButton variant="ghost" size="icon" iconOnly
           onClick={handleExport}
           disabled={isExporting}
-          className="!h-6 !w-6"
+          className="!h-6 !w-6 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9"
           title={t('memory.export')}
         >
           {isExporting ? <CircleNotch size={14} className="animate-spin" /> : <Download size={14} />}
@@ -366,7 +369,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
 
         <NotionButton variant="ghost" size="icon" iconOnly
           onClick={onToggleTreeView}
-          className={cn('!h-6 !w-6', isTreeView && 'text-primary bg-primary/10')}
+          className={cn('!h-6 !w-6 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9', isTreeView && 'text-primary bg-primary/10')}
           title={isTreeView ? t('memory.list_view') : t('memory.tree_view')}
         >
           {isTreeView ? <List size={14} /> : <GitBranch size={14} />}
@@ -376,14 +379,14 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
 
         <NotionButton variant="ghost" size="sm"
           onClick={() => setActivePanel(activePanel === 'import' ? null : 'import')}
-          className={cn('!h-6 !px-1.5 text-[11px]', activePanel === 'import' && 'text-primary bg-primary/10')}
+          className={cn('!h-6 !px-1.5 text-[11px] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5', activePanel === 'import' && 'text-primary bg-primary/10')}
         >
           <ListPlus size={14} />
           {t('memory.batch_import')}
         </NotionButton>
         <NotionButton variant="ghost" size="sm"
           onClick={() => setActivePanel(activePanel === 'new' ? null : 'new')}
-          className={cn('!h-6 !px-1.5 text-[11px] text-primary', activePanel === 'new' && 'bg-primary/10')}
+          className={cn('!h-6 !px-1.5 text-[11px] text-primary [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5', activePanel === 'new' && 'bg-primary/10')}
         >
           <Plus size={14} />
           {t('memory.new')}
@@ -402,7 +405,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 <div className="flex items-center gap-2 text-[11px] text-muted-foreground py-2">
                   <WarningCircle size={12} className="text-destructive/70" />
                   <span>{t('memory.profile_load_error')}</span>
-                  <NotionButton variant="ghost" size="sm" onClick={() => { setActivePanel(null); handleToggleProfile(); }} className="!h-5 !px-1.5 text-[10px]">
+                  <NotionButton variant="ghost" size="sm" onClick={() => { setActivePanel(null); handleToggleProfile(); }} className="!h-5 !px-1.5 text-2xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5">
                     {t('common:retry')}
                   </NotionButton>
                 </div>
@@ -413,7 +416,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                   <div className="space-y-1.5">
                     {profileSections.map((section, i) => (
                       <div key={i}>
-                        <div className="text-[10px] font-medium text-muted-foreground">{section.category}</div>
+                        <div className="text-2xs font-medium text-muted-foreground">{section.category}</div>
                         <div className="text-[11px] text-foreground/80 whitespace-pre-wrap">{section.content}</div>
                       </div>
                     ))}
@@ -437,19 +440,19 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 <CustomScrollArea className="max-h-48">
                   <div className="space-y-1">
                     {auditLogs.map((log) => (
-                      <div key={log.id} className="flex items-start gap-2 text-[10px] py-0.5">
+                      <div key={log.id} className="flex items-start gap-2 text-2xs py-0.5">
                         <span className="text-muted-foreground/50 tabular-nums shrink-0">{formatAuditTime(log.timestamp)}</span>
                         {log.success ? (
-                          <CheckCircle size={11} className="text-emerald-500 shrink-0 mt-px" />
+                          <CheckCircle size={11} className="text-success shrink-0 mt-px" />
                         ) : (
-                          <XCircle size={11} className="text-rose-500 shrink-0 mt-px" />
+                          <XCircle size={11} className="text-danger shrink-0 mt-px" />
                         )}
                         <span className="text-foreground/70 truncate">{log.title || log.event}</span>
                       </div>
                     ))}
                     {hasMoreAuditLogs && (
                       <div className="flex justify-center pt-1">
-                        <NotionButton variant="ghost" size="sm" onClick={() => loadAuditLogs(auditLogs.length)} disabled={isLoadingAuditLog} className="!h-5 !px-2 text-[10px] text-muted-foreground">
+                        <NotionButton variant="ghost" size="sm" onClick={() => loadAuditLogs(auditLogs.length)} disabled={isLoadingAuditLog} className="!h-5 !px-2 text-2xs text-muted-foreground [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-3">
                           {isLoadingAuditLog ? <CircleNotch size={10} className="animate-spin" /> : null}
                           {t('memory.audit_load_more')}
                         </NotionButton>
@@ -468,7 +471,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground">{t('memory.batch_import')}</span>
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setActivePanel(null)} className="!h-5 !w-5"><X size={12} /></NotionButton>
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setActivePanel(null)} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9" aria-label={t('common:actions.close')}><X size={12} /></NotionButton>
               </div>
               <Textarea
                 placeholder={t('memory.batch_import_placeholder')}
@@ -485,16 +488,16 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
               />
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-muted-foreground">{t('memory.type')}:</span>
+                <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
                 {(['fact', 'study', 'note'] as const).map(type => (
                   <button key={type} onClick={() => setBatchImportType(type)}
-                    className={cn('px-1.5 py-0.5 rounded text-[10px]', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
+                    className={cn('px-1.5 py-0.5 rounded text-2xs', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
                   >
                     {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
                   </button>
                 ))}
                 <div className="flex-1" />
-                <NotionButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isImporting || !batchImportText.trim()} className="!h-6 !px-2 text-[11px]">
+                <NotionButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isImporting || !batchImportText.trim()} className="!h-6 !px-2 text-[11px] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-3">
                   {isImporting && <CircleNotch size={12} className="animate-spin" />}
                   {t('memory.batch_import_confirm')}
                 </NotionButton>
@@ -509,7 +512,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground">{t('memory.create_title')}</span>
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setActivePanel(null)} className="!h-5 !w-5"><X size={12} /></NotionButton>
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setActivePanel(null)} className="!h-5 !w-5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9" aria-label={t('common:actions.close')}><X size={12} /></NotionButton>
               </div>
               <Input
                 placeholder={t('memory.title_placeholder')}
@@ -534,16 +537,16 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
               />
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-muted-foreground">{t('memory.type')}:</span>
+                <span className="text-2xs text-muted-foreground">{t('memory.type')}:</span>
                 {(['fact', 'study', 'note'] as const).map(type => (
                   <button key={type} onClick={() => setNewType(type)}
-                    className={cn('px-1.5 py-0.5 rounded text-[10px]', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
+                    className={cn('px-1.5 py-0.5 rounded text-2xs', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
                   >
                     {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
                   </button>
                 ))}
                 <div className="flex-1" />
-                <NotionButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isCreating || !newTitle.trim() || !newContent.trim()} className="!h-6 !px-2 text-[11px]">
+                <NotionButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isCreating || !newTitle.trim() || !newContent.trim()} className="!h-6 !px-2 text-[11px] [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-3">
                   {isCreating && <CircleNotch size={12} className="animate-spin" />}
                   {t('common:create')}
                 </NotionButton>

@@ -49,9 +49,17 @@ function sanitizeXlsxHtml(rawHtml: string): string {
 function formatDateValue(date: Date, numFmt?: string): string {
   // 无效日期（如损坏的公式结果）直接输出空串，避免渲染 "Invalid Date"
   if (Number.isNaN(date.getTime())) return '';
-  const fmt = (numFmt ?? '').toLowerCase();
-  const hasTime = fmt.includes('h');
-  const hasDate = /[ymd]/.test(fmt.replace(/\[[^\]]*\]/g, ''));
+  // 先剥离 locale/条件方括号段（[$-th-TH] 等含 'h'/'d'，但保留 [hh] 等经过时间 token）
+  // 与引号字面量（"小时" 等），只在真正的格式 token 上探测，避免误判
+  const fmt = (numFmt ?? '')
+    .toLowerCase()
+    .replace(/\[(?![hms]+\])[^\]]*\]/g, '')
+    .replace(/"[^"]*"/g, '')
+    // am/pm 中的 'm' 会被误判为月份 token，先剥离
+    .replace(/am\/pm|a\/p/g, '');
+  const hasTime = /[hs]/.test(fmt) || /:m|m:/.test(fmt);
+  // 分钟 m 总是紧邻 ':' 或 h；剔除这些组合后剩余的 m 才是月份
+  const hasDate = /[yd]/.test(fmt) || /m/.test(fmt.replace(/:m{1,2}|m{1,2}:|h+m{1,2}/g, ''));
   if (hasTime && hasDate) return date.toLocaleString();
   if (hasTime && !hasDate) return date.toLocaleTimeString();
   return date.toLocaleDateString();
@@ -65,20 +73,22 @@ function formatNumericValue(value: number, numFmt?: string): string {
   if (!numFmt || numFmt === 'General' || numFmt === '@' || !Number.isFinite(value)) {
     return String(value);
   }
-  // 只取正数段；去掉颜色/条件段（如 [Red]）后再做 token 探测
+  // 只取正数段；token 探测在剥离引号字面量后的串上进行
+  // （如 0.0"%"、0" kg" 中引号内的 % / 数字不是格式 token）
   const fmt = numFmt.split(';')[0];
-  const fracMatch = /\.([0#]+)/.exec(fmt);
+  const tokenFmt = fmt.replace(/"[^"]*"/g, '');
+  const fracMatch = /\.([0#]+)/.exec(tokenFmt);
   const frac = fracMatch?.[1] ?? '';
   // 上限 20：超长小数段（损坏/恶意 numFmt）会让 toFixed/toLocaleString 抛 RangeError
   const minFrac = Math.min((frac.match(/0/g) ?? []).length, 20);
   const maxFrac = Math.min(Math.max(minFrac, frac.length), 20);
 
-  if (fmt.includes('%')) {
+  if (tokenFmt.includes('%')) {
     return `${(value * 100).toFixed(minFrac)}%`;
   }
-  if (!/[#0]/.test(fmt)) return String(value);
+  if (!/[#0]/.test(tokenFmt)) return String(value);
 
-  const useGrouping = /[#0],[#0]/.test(fmt);
+  const useGrouping = /[#0],[#0]/.test(tokenFmt);
   let text: string;
   try {
     text = value.toLocaleString(undefined, {
@@ -137,8 +147,15 @@ function cellToString(cell: ExcelJS.Cell): string {
       return String(r);
     }
     if ('hyperlink' in v) {
-      const text = (v as ExcelJS.CellHyperlinkValue).text;
-      return typeof text === 'string' ? text : String((v as ExcelJS.CellHyperlinkValue).hyperlink ?? '');
+      // ExcelJS 反序列化超链接时直接把原 value 塞进 text（cell-xform reconcile），
+      // 因此 text 实际可能是富文本对象或公式结果数值，而非类型声明中的 string
+      const text: unknown = (v as ExcelJS.CellHyperlinkValue).text;
+      if (typeof text === 'string') return text;
+      if (typeof text === 'number') return formatNumericValue(text, numFmt);
+      if (text && typeof text === 'object' && 'richText' in text) {
+        return (text as ExcelJS.CellRichTextValue).richText.map((rt) => rt.text).join('');
+      }
+      return String((v as ExcelJS.CellHyperlinkValue).hyperlink ?? '');
     }
   }
   return String(v);
@@ -147,9 +164,15 @@ function cellToString(cell: ExcelJS.Cell): string {
 /** 值是否为数值/日期类（Excel 默认右对齐） */
 function isNumericLike(v: ExcelJS.CellValue): boolean {
   if (typeof v === 'number' || v instanceof Date) return true;
-  if (v && typeof v === 'object' && 'result' in v) {
-    const r = (v as ExcelJS.CellFormulaValue).result;
-    return typeof r === 'number' || r instanceof Date;
+  if (v && typeof v === 'object') {
+    if ('result' in v) {
+      const r = (v as ExcelJS.CellFormulaValue).result;
+      return typeof r === 'number' || r instanceof Date;
+    }
+    // 与 cellToString 的超链接分支保持一致：text 可能是数值（reconcile 塞入原值）
+    if ('hyperlink' in v) {
+      return typeof (v as { text?: unknown }).text === 'number';
+    }
   }
   return false;
 }
@@ -809,6 +832,15 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
     });
   };
 
+  // 触屏至少支持单击选中单元格（拖选保持鼠标专属，避免与滚动手势冲突；
+  // 部分场景合成 mousedown 不触发，这里用 pointerdown 兜底）
+  const handleCellPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') return; // 鼠标走 onMouseDown（含 Shift 扩选/拖选）
+    const pos = posFromEventTarget(e.target);
+    if (!pos) return;
+    setSelection({ anchor: pos, focus: pos });
+  };
+
   const selectionInfo = useMemo(() => {
     if (!selection) return null;
     const r1 = Math.min(selection.anchor.row, selection.focus.row);
@@ -963,8 +995,11 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
     e.preventDefault();
   };
 
+  // isEmpty 守卫：totalRows>0 但 renderedRows=0（如仅有空行、columnCount 为 0）时
+  // 不显示"已显示前 0 行"这类误导性提示
   const isTruncated =
     !!currentSheet &&
+    !currentSheet.isEmpty &&
     (currentSheet.totalRows > currentSheet.renderedRows ||
       currentSheet.totalCols > currentSheet.renderedCols);
 
@@ -1020,7 +1055,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
       {/* 截断提示条：固定在表格上方，不随内容滚动 */}
       {isTruncated && currentSheet && (
         <div
-          className="flex flex-shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-700 dark:text-amber-300"
+          className="flex flex-shrink-0 items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-1.5 text-xs text-warning"
           role="status"
         >
           <Warning size={14} weight="fill" className="flex-shrink-0" aria-hidden="true" />
@@ -1038,7 +1073,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                 total: currentSheet.totalCols,
               })}
           </span>
-          <span className="text-amber-600/80 dark:text-amber-400/80">
+          <span className="text-warning/80">
             {t('learningHub:officePreview.truncatedNotice')}
           </span>
         </div>
@@ -1067,6 +1102,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
             aria-label={fileName ? t('learningHub:docPreview.xlsxPreviewLabel', { name: fileName }) : t('learningHub:docPreview.xlsxPreviewDefault')}
             onMouseDown={handleCellMouseDown}
             onMouseOver={handleCellMouseOver}
+            onPointerDown={handleCellPointerDown}
             dangerouslySetInnerHTML={{ __html: currentSheet.html }}
           />
         )}
@@ -1080,7 +1116,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 flex-shrink-0 p-0"
+                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
                 onClick={handlePrevSheet}
                 disabled={currentSheetIndex === 0}
                 title={t('learningHub:officePreview.prevSheet')}
@@ -1109,7 +1145,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                           : tab.name
                       }
                       onClick={() => setCurrentSheetIndex(index)}
-                      className={`h-6 flex-shrink-0 rounded-sm py-0 text-xs transition-colors duration-150 ${
+                      className={`h-6 [@media(pointer:coarse)]:h-10 flex-shrink-0 rounded-sm py-0 text-xs transition-colors duration-150 ${
                         compactTabs ? 'max-w-[6rem] px-1.5' : 'max-w-[10rem] px-2'
                       } ${
                         isActive
@@ -1120,7 +1156,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                       <span className="min-w-0 truncate">{tab.name}</span>
                       {tab.isBig && (
                         <span
-                          className="ml-1 inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-500"
+                          className="ml-1 inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning"
                           aria-hidden="true"
                         />
                       )}
@@ -1131,7 +1167,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 flex-shrink-0 p-0"
+                className="h-6 w-6 flex-shrink-0 p-0 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10"
                 onClick={handleNextSheet}
                 disabled={currentSheetIndex === sheetCount - 1}
                 title={t('learningHub:officePreview.nextSheet')}

@@ -36,6 +36,27 @@ import type {
 
 const PANEL_WIDTH = 360;
 const SEARCH_DEBOUNCE_MS = 300;
+const RECENT_STORAGE_PREFIX = 'notes.referenceSelector.recent.';
+const RECENT_MAX = 5;
+
+function readRecentIds(type: string): string[] {
+  try {
+    const raw = window.localStorage.getItem(`${RECENT_STORAGE_PREFIX}${type}`);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentId(type: string, id: string): void {
+  try {
+    const next = [id, ...readRecentIds(type).filter((existing) => existing !== id)].slice(0, RECENT_MAX);
+    window.localStorage.setItem(`${RECENT_STORAGE_PREFIX}${type}`, JSON.stringify(next));
+  } catch {
+    // localStorage 不可用（隐私模式等）：静默降级，无最近分组
+  }
+}
 
 /**
  * 将教材列表项转换为统一资源项
@@ -88,6 +109,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [recentIds, setRecentIds] = useState<string[]>([]);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -133,7 +155,12 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
           return;
         }
         const fallbackTitle = t('notes:reference.examSessionFallbackTitle');
-        setItems(result.value.map(s => examSessionToUnified(s, fallbackTitle)));
+        // 题目集接口不支持服务端搜索，此前 searchQuery 被静默忽略；改为客户端过滤
+        const needle = searchQuery.trim().toLocaleLowerCase();
+        const mapped = result.value.map(s => examSessionToUnified(s, fallbackTitle));
+        setItems(needle
+          ? mapped.filter(item => item.title.toLocaleLowerCase().includes(needle))
+          : mapped);
       }
     } catch (err: unknown) {
       if (seq !== requestSeqRef.current) return;
@@ -150,6 +177,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
   useEffect(() => {
     if (open) {
       setActiveIndex(-1);
+      setRecentIds(readRecentIds(type));
     } else {
       hasLoadedOnOpenRef.current = false;
       setSearchQuery('');
@@ -157,7 +185,24 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
       setError(null);
       setPosition(null);
     }
-  }, [open]);
+  }, [open, type]);
+
+  // 展示序：无搜索词时最近使用置顶成组，其余按接口顺序
+  const { displayItems, recentCount } = useMemo(() => {
+    if (searchQuery.trim() || recentIds.length === 0) {
+      return { displayItems: items, recentCount: 0 };
+    }
+    const byId = new Map(items.map(item => [item.id, item]));
+    const recent = recentIds
+      .map(id => byId.get(id))
+      .filter((item): item is UnifiedResourceItem => Boolean(item));
+    if (recent.length === 0) return { displayItems: items, recentCount: 0 };
+    const recentSet = new Set(recent.map(item => item.id));
+    return {
+      displayItems: [...recent, ...items.filter(item => !recentSet.has(item.id))],
+      recentCount: recent.length,
+    };
+  }, [items, recentIds, searchQuery]);
 
   // 单一加载路径：首次打开立即执行（0ms，可被 StrictMode 双调用清理），
   // searchQuery 变化时 300ms 防抖
@@ -174,13 +219,14 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
 
   // 数据刷新后收敛键盘高亮
   useEffect(() => {
-    setActiveIndex(prev => (prev >= items.length ? -1 : prev));
-  }, [items]);
+    setActiveIndex(prev => (prev >= displayItems.length ? -1 : prev));
+  }, [displayItems]);
 
   // 单击条目即选中确认（去掉两步 Confirm）
   const handleSelect = useCallback((item: UnifiedResourceItem) => {
     if (existingRefIds.has(item.id)) return;
 
+    pushRecentId(type, item.id);
     const result: ReferenceSelectResult = {
       sourceDb: item.sourceDb,
       sourceId: item.id,
@@ -190,20 +236,20 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
 
     onSelect(result);
     onOpenChange(false);
-  }, [existingRefIds, onSelect, onOpenChange]);
+  }, [existingRefIds, type, onSelect, onOpenChange]);
 
   // 键盘导航：跳过已引用（禁用）项
   const moveActive = useCallback((direction: 1 | -1) => {
-    if (items.length === 0) return;
+    if (displayItems.length === 0) return;
     setActiveIndex(prev => {
       let next = prev;
-      for (let step = 0; step < items.length; step++) {
-        next = (next + direction + items.length) % items.length;
-        if (!existingRefIds.has(items[next].id)) return next;
+      for (let step = 0; step < displayItems.length; step++) {
+        next = (next + direction + displayItems.length) % displayItems.length;
+        if (!existingRefIds.has(displayItems[next].id)) return next;
       }
       return prev;
     });
-  }, [items, existingRefIds]);
+  }, [displayItems, existingRefIds]);
 
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     switch (e.key) {
@@ -217,8 +263,8 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         break;
       case 'Enter':
         e.preventDefault();
-        if (activeIndex >= 0 && activeIndex < items.length) {
-          handleSelect(items[activeIndex]);
+        if (activeIndex >= 0 && activeIndex < displayItems.length) {
+          handleSelect(displayItems[activeIndex]);
         }
         break;
       case 'Escape':
@@ -228,7 +274,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
       default:
         break;
     }
-  }, [moveActive, activeIndex, items, handleSelect, onOpenChange]);
+  }, [moveActive, activeIndex, displayItems, handleSelect, onOpenChange]);
 
   // 打开时：Esc 收起 + 点击面板/锚点以外收起 + 聚焦搜索框
   useEffect(() => {
@@ -349,7 +395,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         boxShadow: 'var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 0.15))',
       };
 
-  const activeItem = activeIndex >= 0 ? items[activeIndex] : undefined;
+  const activeItem = activeIndex >= 0 ? displayItems[activeIndex] : undefined;
 
   const panel = (
     <div
@@ -454,17 +500,28 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
             </div>
           ) : (
             <div id={listboxId} role="listbox" aria-label={panelTitle} className="space-y-0.5">
-              {items.map((item, index) => (
-                <ReferenceSelectorItem
-                  key={item.id}
-                  id={`${listboxId}-${item.id}`}
-                  item={item}
-                  isReferenced={existingRefIds.has(item.id)}
-                  isSelected={activeIndex === index}
-                  isActive={activeIndex === index}
-                  onClick={() => handleSelect(item)}
-                  onHover={() => setActiveIndex(index)}
-                />
+              {displayItems.map((item, index) => (
+                <React.Fragment key={item.id}>
+                  {recentCount > 0 && index === 0 && (
+                    <div className="px-3 pb-0.5 pt-1 text-[11px] font-medium text-muted-foreground/70" aria-hidden="true">
+                      {t('notes:wikilinkV2.recentGroup')}
+                    </div>
+                  )}
+                  {recentCount > 0 && index === recentCount && (
+                    <div className="px-3 pb-0.5 pt-1.5 text-[11px] font-medium text-muted-foreground/70" aria-hidden="true">
+                      {t('notes:wikilinkV2.allGroup')}
+                    </div>
+                  )}
+                  <ReferenceSelectorItem
+                    id={`${listboxId}-${item.id}`}
+                    item={item}
+                    isReferenced={existingRefIds.has(item.id)}
+                    isSelected={activeIndex === index}
+                    isActive={activeIndex === index}
+                    onClick={() => handleSelect(item)}
+                    onHover={() => setActiveIndex(index)}
+                  />
+                </React.Fragment>
               ))}
             </div>
           )}

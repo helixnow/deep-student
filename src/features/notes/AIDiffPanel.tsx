@@ -78,6 +78,31 @@ export function groupDiffHunks(lines: readonly DiffLine[]): DiffHunk[] {
 }
 
 /**
+ * 只读 hunk 级 diff 渲染层。
+ * AI 编辑面板与保存冲突「对比」（NotesCrepeEditor）共用，
+ * 仅负责渲染，不带操作条/快捷键。
+ */
+export function DiffHunksView({ lines }: { lines: readonly DiffLine[] }) {
+  return (
+    <div className="flex flex-col px-1">
+      {groupDiffHunks(lines).map((hunk) => (
+        <div
+          key={hunk.startIndex}
+          className={cn(
+            hunk.kind === 'change' &&
+              'my-0.5 overflow-hidden rounded-[var(--notes-radius-row,6px)] border-l-2 border-[hsl(var(--primary)/0.35)]',
+          )}
+        >
+          {hunk.lines.map((line, offset) => (
+            <DiffLineView key={hunk.startIndex + offset} line={line} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * AI 编辑建议 diff 面板。
  *
  * 内联呈现（非全屏遮罩）：作为编辑器上方的有界卡片区参与布局，
@@ -195,21 +220,7 @@ export function AIDiffPanel({
                 {t('aiDiff.no_changes')}
               </div>
             ) : (
-              <div className="flex flex-col px-1">
-                {groupDiffHunks(diffLines).map((hunk) => (
-                  <div
-                    key={hunk.startIndex}
-                    className={cn(
-                      hunk.kind === 'change' &&
-                        'my-0.5 overflow-hidden rounded-[var(--notes-radius-row,6px)] border-l-2 border-[hsl(var(--primary)/0.35)]',
-                    )}
-                  >
-                    {hunk.lines.map((line, offset) => (
-                      <DiffLineView key={hunk.startIndex + offset} line={line} />
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <DiffHunksView lines={diffLines} />
             )}
           </CustomScrollArea>
         </div>

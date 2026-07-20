@@ -172,7 +172,7 @@ const SlideThumbnail: React.FC<{
       />
       <span
         aria-hidden
-        className={`absolute left-1 top-1 rounded px-1 text-[10px] font-medium leading-4 tabular-nums shadow-sm transition-colors duration-150 ${
+        className={`absolute left-1 top-1 rounded px-1 text-2xs font-medium leading-4 tabular-nums shadow-sm transition-colors duration-150 ${
           isActive
             ? 'bg-primary text-primary-foreground'
             : 'bg-background/85 text-muted-foreground'
@@ -314,6 +314,14 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         //   注册的图表（echarts）实例，否则跨挂载周期泄漏
         previewerRef.current = previewer;
         await previewer.preview(arrayBuffer);
+
+        // ★ pptx-preview 用 setTimeout(0) 延迟初始化幻灯片内的图表
+        //   （echarts SVG 渲染）。消毒会重写 innerHTML 替换全部节点，
+        //   若在图表挂载前执行，图表会渲染进已分离的旧节点而永远不可见。
+        //   先等一个宏任务（排在库的图表初始化之后）+ 一帧（zrender 绘制），
+        //   让图表 SVG 落入 DOM 后再统一消毒
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        await waitForNextFrame();
 
         if (isMounted && renderToken === renderTokenRef.current) {
           // ★ 渲染后使用 DOMPurify 进行完整安全消毒（移除危险标签+属性+协议）

@@ -21,10 +21,12 @@ import type { ViewMode } from '../../stores/finderStore';
 import { FinderFileItem, SortableFinderFileItem } from './FinderFileItem';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useSelectionBox, getSelectionBoxStyle, SelectionBoxRect } from './useSelectionBox';
 import {
   LIST_ITEM_HEIGHT,
+  LIST_ITEM_HEIGHT_TOUCH,
   LIST_PADDING_TOP,
   GRID_ITEM_WIDTH,
   GRID_GAP,
@@ -126,7 +128,9 @@ function FinderDropChip({
     <div
       ref={setNodeRef}
       className={cn(
+        // 触屏拖放目标放大到 ≥40px 高（手指拖拽命中）
         'px-2 py-0.5 rounded-md text-[11px] font-medium truncate max-w-[140px]',
+        '[@media(pointer:coarse)]:flex [@media(pointer:coarse)]:items-center [@media(pointer:coarse)]:min-h-[40px] [@media(pointer:coarse)]:px-3',
         'border border-transparent transition-colors',
         isOver ? overClass : idleClass
       )}
@@ -157,7 +161,7 @@ function FinderDragDropBar({
     >
       {hasParent && (
         <>
-          <span className="text-[10px] text-muted-foreground/80 shrink-0 whitespace-nowrap">→</span>
+          <span className="text-2xs text-muted-foreground/80 shrink-0 whitespace-nowrap">→</span>
           {parentTargets!.map((target) => (
             <FinderDropChip
               key={target.id ?? 'root'}
@@ -195,6 +199,8 @@ interface FinderFileRowProps {
   isEditing: boolean;
   enableDrag: boolean;
   compact: boolean;
+  /** ★ 多选模式（触屏单击只切换选中，不打开） */
+  multiSelectMode?: boolean;
   onSelect: (id: string, mode: 'single' | 'toggle' | 'range') => void;
   onOpen: (item: DstuNode) => void;
   onContextMenu: (e: React.MouseEvent, item: DstuNode) => void;
@@ -218,6 +224,7 @@ const FinderFileRow = React.memo(function FinderFileRow({
   isEditing,
   enableDrag,
   compact,
+  multiSelectMode,
   onSelect,
   onOpen,
   onContextMenu,
@@ -259,6 +266,7 @@ const FinderFileRow = React.memo(function FinderFileRow({
       onEditConfirm={handleEditConfirm}
       onEditCancel={handleEditCancel}
       compact={compact}
+      multiSelectMode={multiSelectMode}
     />
   );
 });
@@ -323,11 +331,13 @@ interface FinderFileListProps {
   onSpecialDrop?: (targetId: 'favorites' | 'trash', itemIds: string[]) => void;
   /** Cmd/Ctrl+↑ 或列表 ←：返回上一级 */
   onNavigateUp?: () => void;
+  /** ★ 多选模式（触屏单击只切换选中，不打开） */
+  multiSelectMode?: boolean;
 }
 
 export function FinderFileList({
   items,
-  viewMode,
+  viewMode: viewModeProp,
   selectedIds,
   onSelect,
   onOpen,
@@ -356,9 +366,16 @@ export function FinderFileList({
   specialDropTargets,
   onSpecialDrop,
   onNavigateUp,
+  multiSelectMode = false,
 }: FinderFileListProps) {
+  // columns（Finder 分栏视图）的专属 UI 尚未落地：在本组件内统一回退为 grid 渲染，
+  // 保证持久化的 viewMode='columns' 不会落入既非 list 也非 grid 的悬空分支
+  const viewMode: 'grid' | 'list' = viewModeProp === 'columns' ? 'grid' : viewModeProp;
   const { t } = useTranslation('learningHub');
   const { isSmallScreen } = useBreakpoint();
+  // 触屏行高与 FinderFileItem（coarse 常显更多按钮）同源，保证虚拟滚动行槽 / 框选命中几何一致
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+  const listItemHeight = isTouchPrimary ? LIST_ITEM_HEIGHT_TOUCH : LIST_ITEM_HEIGHT;
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -429,7 +446,7 @@ export function FinderFileList({
     if (viewMode === 'list') {
       const indices = hitTestListSelection(clientBox, {
         itemCount: items.length,
-        itemHeight: LIST_ITEM_HEIGHT,
+        itemHeight: listItemHeight,
         paddingTop: LIST_PADDING_TOP,
         scrollTop: viewport.scrollTop,
         viewportTop: viewportRect.top,
@@ -459,7 +476,7 @@ export function FinderFileList({
       viewportLeft: viewportRect.left,
     });
     return indicesToIds(indices, items);
-  }, [items, viewMode, gridColumns, gridContainerWidth]);
+  }, [items, viewMode, gridColumns, gridContainerWidth, listItemHeight]);
 
   // ★ 框选：hook 在 Shift 时已合并 baseline，此处不再二次 union selectedIds
   const handleBoxSelectionChange = useCallback((ids: Set<string>) => {
@@ -495,13 +512,18 @@ export function FinderFileList({
   // DnD 传感器配置（N-9/DND-1: 触屏长按激活，避免与滚动/单击打开冲突）
   const sensors = useTouchFriendlyDndSensors();
 
-  // ★ 列表模式虚拟滚动配置
+  // ★ 列表模式虚拟滚动配置（行高与触屏 coarse 行高同源，见 listItemHeight）
   const listVirtualizer = useVirtualizer({
     count: viewMode === 'list' ? items.length : 0,
     getScrollElement: () => viewportRef.current,
-    estimateSize: () => LIST_ITEM_HEIGHT,
+    estimateSize: () => listItemHeight,
     overscan: 5,
   });
+  // 指针类型变化（如外接鼠标插拔）时使缓存的行高测量失效
+  useEffect(() => {
+    listVirtualizer.measure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listItemHeight]);
   
   // ★ 网格模式虚拟滚动配置
   const gridRowCount = useMemo(() => {
@@ -899,7 +921,7 @@ export function FinderFileList({
         const rowsPerPage = Math.max(1, Math.floor(viewportHeight / (GRID_ROW_HEIGHT + GRID_GAP)));
         return rowsPerPage * Math.max(1, gridColumns);
       }
-      return Math.max(1, Math.floor(viewportHeight / LIST_ITEM_HEIGHT));
+      return Math.max(1, Math.floor(viewportHeight / listItemHeight));
     };
 
     switch (e.key) {
@@ -999,7 +1021,7 @@ export function FinderFileList({
         break;
       }
     }
-  }, [editingId, items, selectedIds, viewMode, gridColumns, onSelect, onSelectionChange, onOpen, onRequestRename, onNavigateUp, scrollItemIntoView]);
+  }, [editingId, items, selectedIds, viewMode, gridColumns, listItemHeight, onSelect, onSelectionChange, onOpen, onRequestRename, onNavigateUp, scrollItemIntoView]);
 
   // Finder-style loading state
   if (isLoading) {
@@ -1047,11 +1069,11 @@ export function FinderFileList({
           <FolderOpen size={40} className="text-muted-foreground/40" strokeWidth={1.2} />
         </div>
         
-        <p className="text-[15px] font-medium text-foreground/80 mb-1">
+        <p className="text-md font-medium text-foreground/80 mb-1">
           {emptyMessage || t('finder.empty.folder')}
         </p>
         {(canCreate || emptyHint) && (
-          <p className="text-[13px] text-muted-foreground/60 text-center max-w-[240px]">
+          <p className="text-ui text-muted-foreground/60 text-center max-w-[240px]">
             {canCreate
               ? t(isSmallScreen ? 'finder.empty.dropHintTouch' : 'finder.empty.dropHint')
               : emptyHint || t(isSmallScreen ? 'finder.empty.noCreateHintTouch' : 'finder.empty.noCreateHint')}
@@ -1157,6 +1179,7 @@ export function FinderFileList({
                       onEditConfirm={onEditConfirm}
                       onEditCancel={onEditCancel}
                       compact={compact}
+                      multiSelectMode={multiSelectMode}
                     />
                   </div>
                 );
@@ -1295,6 +1318,7 @@ export function FinderFileList({
                         onEditConfirm={onEditConfirm}
                         onEditCancel={onEditCancel}
                         compact={compact}
+                        multiSelectMode={multiSelectMode}
                       />
                     ))}
                   </div>

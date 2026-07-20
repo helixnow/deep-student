@@ -179,7 +179,12 @@ function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function computeDiffLines(original: string, proposed: string): DiffLine[] {
+/**
+ * 行级 diff 计算（`diff` 库 diffLines 的薄封装）。
+ * 导出复用：AI 编辑 diff 面板之外，保存冲突「对比」（NotesCrepeEditor）
+ * 也用它比较「远端版本 → 我的版本」，避免复制实现。
+ */
+export function computeDiffLines(original: string, proposed: string): DiffLine[] {
   const changes = Diff.diffLines(original, proposed);
   const result: DiffLine[] = [];
   let oldLineNum = 1;

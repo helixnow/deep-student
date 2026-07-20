@@ -1,11 +1,21 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useId } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useNotesOptional } from '../NotesContext';
 import { getPathToNote, estimateReadingMinutes, type NoteContentStats } from '../notesUtils';
-import { CaretRight, Check, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus } from '@phosphor-icons/react';
+import { CaretRight, Check, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Input } from '@/components/ui/shad/Input';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { cn } from '@/lib/utils';
+import { springSnap, motionSafe } from '@/styles/motion-springs';
+import { useTagSuggestions } from '../hooks/useTagSuggestions';
+import {
+  NOTE_TAG_MAX_CHARS,
+  NOTE_TAGS_MAX_COUNT,
+  sanitizeNoteTitleInput,
+  validateNoteTag,
+} from '../noteInputLimits';
 import './NotesEditorHeader.css';
 
 export type NotesSaveStatus = 'saved' | 'saving' | 'unsaved' | 'failed' | 'conflict';
@@ -148,7 +158,9 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (readOnly) return;
-        setTitleInput(e.target.value);
+        // 输入侧就地清洗（折叠换行、去控制字符、500 字符截断），
+        // 与后端 note_repo validate_title 限额一致；正常输入为恒等变换
+        setTitleInput(sanitizeNoteTitleInput(e.target.value));
         setIsEditing(true);
     };
 
@@ -337,7 +349,25 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     const [tagInputOpen, setTagInputOpen] = useState(false);
     const [tagInput, setTagInput] = useState('');
     const [isSavingTags, setIsSavingTags] = useState(false);
+    /** 标签前置校验的内联错误（超长 / 控制字符 / 数量达上限） */
+    const [tagError, setTagError] = useState<string | null>(null);
     const tagInputRef = useRef<HTMLInputElement>(null);
+    const tagSuggestionsListId = useId();
+    const tagErrorId = useId();
+
+    // 既有标签自动补全（输入行打开时加载；建议浮层为轻量下拉）
+    const {
+        suggestions: tagSuggestions,
+        isLoading: isLoadingTagSuggestions,
+        highlightIndex: tagHighlightIndex,
+        setHighlightIndex: setTagHighlightIndex,
+        moveHighlight: moveTagHighlight,
+        highlighted: highlightedTagSuggestion,
+    } = useTagSuggestions({
+        currentTags: effectiveTags,
+        enabled: tagInputOpen && canEditTags,
+        query: tagInput,
+    });
 
     useEffect(() => {
         if (tagInputOpen) tagInputRef.current?.focus();
@@ -356,18 +386,41 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         }
     };
 
-    const handleAddTag = async () => {
-        const normalized = tagInput.trim();
+    const handleAddTag = async (value?: string) => {
+        const normalized = (value ?? tagInput).trim();
         if (!normalized) {
+            setTagError(null);
             setTagInputOpen(false);
             return;
         }
-        if (effectiveTags.includes(normalized)) {
+        // 前置校验（与后端 note_repo validate_tags 限额一致；后端 InvalidArgument 仍兜底）
+        if (effectiveTags.length >= NOTE_TAGS_MAX_COUNT) {
+            setTagError(t('notes:editorV2.tags_limit_reached', {
+                defaultValue: 'You can add up to {{max}} tags',
+                max: NOTE_TAGS_MAX_COUNT,
+            }));
+            return;
+        }
+        const violation = validateNoteTag(normalized);
+        if (violation === 'too_long') {
+            setTagError(t('notes:editorV2.tag_too_long', {
+                defaultValue: 'Tags can be at most {{max}} characters',
+                max: NOTE_TAG_MAX_CHARS,
+            }));
+            return;
+        }
+        if (violation === 'control_chars') {
+            setTagError(t('notes:editorV2.tag_invalid_chars', 'Tags can\'t contain control characters'));
+            return;
+        }
+        setTagError(null);
+        if (effectiveTags.some((tag) => tag.toLowerCase() === normalized.toLowerCase())) {
             setTagInput('');
             return;
         }
         await applyTags([...effectiveTags, normalized]);
         setTagInput('');
+        setTagHighlightIndex(-1);
     };
 
     const handleRemoveTag = (tag: string) => {
@@ -498,52 +551,116 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     data-testid="notes-editor-tags"
                 >
                     <TagIcon className="h-3 w-3 shrink-0 text-muted-foreground/60" aria-hidden="true" />
-                    {effectiveTags.map((tag) => (
-                        <span
-                            key={tag}
-                            className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] leading-none text-primary [@media(pointer:coarse)]:py-1.5"
-                        >
-                            <span className="max-w-[140px] truncate">{tag}</span>
-                            {canEditTags ? (
-                                <button
-                                    type="button"
-                                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
-                                    onClick={() => handleRemoveTag(tag)}
-                                    disabled={isSavingTags}
-                                    aria-label={t('notes:header.remove_tag')}
-                                    title={t('notes:header.remove_tag')}
-                                >
-                                    <X className="h-2.5 w-2.5" aria-hidden="true" />
-                                </button>
-                            ) : (
-                                <span className="w-1" aria-hidden="true" />
+                    <AnimatePresence initial={false}>
+                        {effectiveTags.map((tag) => (
+                            <motion.span
+                                key={tag}
+                                layout
+                                initial={{ opacity: 0, scale: 0.85 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.85 }}
+                                transition={motionSafe(springSnap)}
+                                className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] leading-none text-primary [@media(pointer:coarse)]:py-1.5"
+                            >
+                                <span className="max-w-[140px] truncate">{tag}</span>
+                                {canEditTags ? (
+                                    <button
+                                        type="button"
+                                        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-primary/60 transition-colors duration-150 hover:bg-primary/15 hover:text-primary [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
+                                        onClick={() => handleRemoveTag(tag)}
+                                        disabled={isSavingTags}
+                                        aria-label={t('notes:header.remove_tag')}
+                                        title={t('notes:header.remove_tag')}
+                                    >
+                                        <X className="h-2.5 w-2.5" aria-hidden="true" />
+                                    </button>
+                                ) : (
+                                    <span className="w-1" aria-hidden="true" />
+                                )}
+                            </motion.span>
+                        ))}
+                    </AnimatePresence>
+                    {canEditTags && (tagInputOpen ? (
+                        <span className="relative inline-flex">
+                            <input
+                                ref={tagInputRef}
+                                value={tagInput}
+                                onChange={(e) => {
+                                    setTagInput(e.target.value);
+                                    setTagError(null);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        void handleAddTag(highlightedTagSuggestion ?? undefined);
+                                    } else if (e.key === 'Escape') {
+                                        e.preventDefault();
+                                        setTagInput('');
+                                        setTagError(null);
+                                        setTagInputOpen(false);
+                                    } else if (e.key === 'ArrowDown') {
+                                        if (moveTagHighlight(1)) e.preventDefault();
+                                    } else if (e.key === 'ArrowUp') {
+                                        if (moveTagHighlight(-1)) e.preventDefault();
+                                    }
+                                }}
+                                onBlur={() => {
+                                    // 失焦提交已输入内容；为空则收起
+                                    void handleAddTag();
+                                }}
+                                placeholder={t('notes:header.tag_placeholder')}
+                                aria-label={t('notes:header.add_tags')}
+                                disabled={isSavingTags}
+                                role="combobox"
+                                aria-expanded={tagSuggestions.length > 0}
+                                aria-controls={tagSuggestionsListId}
+                                aria-activedescendant={highlightedTagSuggestion
+                                    ? `${tagSuggestionsListId}-${tagHighlightIndex}`
+                                    : undefined}
+                                aria-autocomplete="list"
+                                aria-invalid={tagError ? true : undefined}
+                                aria-describedby={tagError ? tagErrorId : undefined}
+                                className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-40"
+                            />
+                            {(isLoadingTagSuggestions || tagSuggestions.length > 0) && (
+                                <div className="ui-rise-in absolute left-0 top-full z-30 mt-1 max-h-[176px] w-44 overflow-y-auto rounded-[var(--notes-radius-popup,12px)] border border-border bg-popover p-1 text-popover-foreground shadow-[var(--notes-popover-shadow,0_8px_24px_hsl(var(--shadow-base)/0.14))]">
+                                    {isLoadingTagSuggestions ? (
+                                        <div className="flex items-center gap-1.5 px-1.5 py-1 text-[10px] text-muted-foreground">
+                                            <CircleNotch className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                                            {t('common:loading')}
+                                        </div>
+                                    ) : (
+                                        <div
+                                            id={tagSuggestionsListId}
+                                            role="listbox"
+                                            aria-label={t('notes:header.suggestions')}
+                                            className="grid grid-cols-1 gap-0.5"
+                                        >
+                                            {tagSuggestions.map((tag, index) => (
+                                                <div
+                                                    key={tag}
+                                                    id={`${tagSuggestionsListId}-${index}`}
+                                                    role="option"
+                                                    aria-selected={tagHighlightIndex === index}
+                                                    className={cn(
+                                                        'flex cursor-pointer items-center gap-1.5 truncate rounded-sm px-1.5 py-1 text-[11px] transition-colors duration-150 motion-reduce:transition-none',
+                                                        tagHighlightIndex === index
+                                                            ? 'bg-[var(--interactive-hover)] text-foreground'
+                                                            : 'hover:bg-[var(--interactive-hover)]',
+                                                    )}
+                                                    onMouseDown={(e) => e.preventDefault()}
+                                                    onClick={() => void handleAddTag(tag)}
+                                                    onMouseEnter={() => setTagHighlightIndex(index)}
+                                                >
+                                                    <Plus className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                                    <span className="truncate">{tag}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             )}
                         </span>
-                    ))}
-                    {canEditTags && (tagInputOpen ? (
-                        <input
-                            ref={tagInputRef}
-                            value={tagInput}
-                            onChange={(e) => setTagInput(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    void handleAddTag();
-                                } else if (e.key === 'Escape') {
-                                    e.preventDefault();
-                                    setTagInput('');
-                                    setTagInputOpen(false);
-                                }
-                            }}
-                            onBlur={() => {
-                                // 失焦提交已输入内容；为空则收起
-                                void handleAddTag();
-                            }}
-                            placeholder={t('notes:header.tag_placeholder')}
-                            aria-label={t('notes:header.add_tags')}
-                            disabled={isSavingTags}
-                            className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-40"
-                        />
                     ) : (
                         <button
                             type="button"
@@ -555,6 +672,15 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                             <span>{t('notes:header.add_tags')}</span>
                         </button>
                     ))}
+                    {tagError && (
+                        <span
+                            id={tagErrorId}
+                            role="alert"
+                            className="w-full text-[11px] leading-snug text-destructive"
+                        >
+                            {tagError}
+                        </span>
+                    )}
                 </div>
             )}
 

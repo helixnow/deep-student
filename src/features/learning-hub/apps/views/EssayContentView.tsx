@@ -21,6 +21,24 @@ import {
 } from '@/dstu/adapters/essayDstuAdapter';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { registerContentAgentSurface } from '@/features/workbench/apps/content/contentAgentSurfaces';
+import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
+
+/** 段落数：按换行切分后剔除空白段（供 agent 观察投影） */
+function countParagraphs(text: string): number {
+  if (!text) return 0;
+  return text.split(/\n+/).filter((line) => line.trim()).length;
+}
+
+/** DSTU metadata 字段安全读取：旧版本/损坏数据可能写入非字符串值 */
+function metaString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+/** 时间戳安全读取：缺失/非法时降级为当前时间 */
+function safeTimestamp(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : Date.now();
+}
 
 // 懒加载作文批改工作台
 const EssayGradingWorkbench = lazy(() => 
@@ -92,13 +110,13 @@ const EssayContentView: React.FC<ContentViewProps> = ({
           id: node.id,
           title: node.name || t('learningHub:exam.untitledEssay'),
           inputText: '',
-          essayType: (node.metadata?.essayType as string) || '',
-          gradeLevel: (node.metadata?.gradeLevel as string) || '',
-          modeId: (node.metadata?.modeId as string) || 'practice',
+          essayType: metaString(node.metadata?.essayType),
+          gradeLevel: metaString(node.metadata?.gradeLevel),
+          modeId: metaString(node.metadata?.modeId) || 'practice',
           rounds: [],
           isFavorite: false,
-          createdAt: node.createdAt,
-          updatedAt: node.updatedAt,
+          createdAt: safeTimestamp(node.createdAt),
+          updatedAt: safeTimestamp(node.updatedAt),
         });
         loadedNodeIdRef.current = requestNodeId;
       }
@@ -172,6 +190,31 @@ const EssayContentView: React.FC<ContentViewProps> = ({
     };
   }, [session, node.id, t]);
 
+  // ★ ACR 4.0（A7）：注册 agent 观察投影（正文字数/段落数、批改轮次等）。
+  //   正文编辑与滚动都在懒加载工作台内部、无编程控制落点，故只提供观察。
+  const agentSurfaceStateRef = useRef({ session, isLoading });
+  agentSurfaceStateRef.current = { session, isLoading };
+  useEffect(() => {
+    const resourceId = normalizeResourceInstanceKey(node.id);
+    if (!resourceId) return undefined;
+    return registerContentAgentSurface('essay', resourceId, {
+      getSummary: () => {
+        const s = agentSurfaceStateRef.current;
+        return {
+          ready: !s.isLoading && s.session != null,
+          title: s.session?.title ?? null,
+          essayType: s.session?.essayType || null,
+          gradeLevel: s.session?.gradeLevel || null,
+          modeId: s.session?.modeId || null,
+          inputChars: s.session?.inputText.length ?? 0,
+          inputParagraphs: countParagraphs(s.session?.inputText ?? ''),
+          gradingRounds: s.session?.rounds.length ?? 0,
+          favorite: s.session?.isFavorite ?? false,
+        };
+      },
+    });
+  }, [node.id]);
+
   // 加载状态（含会话尚未就绪的兜底）
   if (isLoading || (!error && !session)) {
     return (
@@ -187,14 +230,14 @@ const EssayContentView: React.FC<ContentViewProps> = ({
   // 错误状态
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-background gap-4" role="alert">
-        <p className="text-destructive text-center">{error}</p>
+      <div className="flex flex-col items-center justify-center h-full bg-background gap-4 px-6" role="alert">
+        <p className="text-destructive text-center break-words max-w-md">{error}</p>
         <div className="flex gap-2">
-          <NotionButton variant="primary" size="sm" onClick={() => void loadSession()}>
+          <NotionButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void loadSession()}>
             {t('common:retry')}
           </NotionButton>
           {onClose && (
-            <NotionButton variant="default" size="sm" onClick={onClose}>
+            <NotionButton variant="default" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:close')}
             </NotionButton>
           )}

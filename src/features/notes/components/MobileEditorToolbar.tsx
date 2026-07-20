@@ -12,6 +12,7 @@
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
@@ -84,6 +85,11 @@ export type MobileEditorToolbarProps = {
   commands: MobileEditorToolbarCommands;
   /** 受控可见性；false 时不渲染 */
   visible: boolean;
+  /**
+   * 滚动收起态：下滑阅读时滑出屏幕（保留 DOM，避免反复挂载）。
+   * 键盘弹出（visualViewport 遮挡 > 0）期间忽略，保证输入时工具条常驻。
+   */
+  collapsed?: boolean;
   /** 可选：行内/块格式激活态，透传为 data-active */
   activeStates?: MobileEditorToolbarActiveStates;
   className?: string;
@@ -132,6 +138,7 @@ const preventFocusSteal = (event: { preventDefault: () => void }) => {
 export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   commands,
   visible,
+  collapsed = false,
   activeStates,
   className,
 }) => {
@@ -402,13 +409,22 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
     );
   };
 
-  return (
+  // Portal 到 body：宿主位于 MobileSlidingLayout 带 transform 的滑动轨道内，
+  // transform 会让 position:fixed 相对轨道而非视口定位，导致工具条随手势滑动错位。
+  // 与 suggestOverlay.ts 的 body 挂载范式一致；不改 MobileSlidingLayout 的 transform 机制。
+  if (typeof document === 'undefined') return null;
+
+  // 键盘弹出期间忽略滚动收起（输入中需要常驻的格式化入口）
+  const isCollapsed = collapsed && bottomOffset === 0;
+
+  return createPortal(
     <div
       ref={rootRef}
       className={['mobile-editor-toolbar', className].filter(Boolean).join(' ')}
       role="toolbar"
       aria-label={toolbarLabel}
       data-testid="mobile-editor-toolbar"
+      data-collapsed={isCollapsed ? 'true' : undefined}
       style={
         {
           '--mobile-toolbar-keyboard-offset': `${bottomOffset}px`,
@@ -456,7 +472,8 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
           </React.Fragment>
         ))}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 

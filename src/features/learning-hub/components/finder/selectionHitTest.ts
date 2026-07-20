@@ -5,6 +5,8 @@
  */
 
 export const LIST_ITEM_HEIGHT = 40;
+/** 触屏行高：常显更多按钮(36px) + py-1.5(12px) = 48px，需与 FinderFileItem 的 coarse 行高保持同源 */
+export const LIST_ITEM_HEIGHT_TOUCH = 48;
 export const LIST_PADDING_TOP = 4; // py-1
 
 export const GRID_ITEM_WIDTH = 88;

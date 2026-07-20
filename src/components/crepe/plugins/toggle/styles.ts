@@ -77,7 +77,9 @@ export const TOGGLE_STYLE = `
 }
 .milkdown-toggle__body-inner {
   position: relative;
-  overflow: hidden;
+  /* clip 而非 hidden：拖选跨块文本时 WebKit reveal-selection 会滚动 hidden 容器，
+     造成折叠块内文字错位重影 */
+  overflow: clip;
   min-height: 0;
 }
 .milkdown-toggle[data-open="false"] .milkdown-toggle__body-inner {
@@ -90,6 +92,11 @@ export const TOGGLE_STYLE = `
   inset: 0 auto auto 0;
   color: hsl(var(--muted-foreground, 215 16% 47%) / 0.75);
   pointer-events: none;
+}
+/* 聚焦空段落时编辑器自带 crepe-placeholder（"输入 /"）会出现在同一位置，
+   此时让位给它，避免两条提示文字重叠 */
+.milkdown-toggle[data-open="true"][data-empty="true"] .milkdown-toggle__body-inner:has(.crepe-placeholder)::before {
+  content: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .milkdown-toggle__arrow,

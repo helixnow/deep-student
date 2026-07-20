@@ -59,6 +59,19 @@ const IMAGE_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'heic', 'heif',
 ]);
 
+/**
+ * ★ 2026-07-20（P3 引导）：需要引导到专属模块导入的格式。
+ * 资源库不直接接收这类文件，拖入时给出明确的模块引导而非笼统"导入失败"。
+ */
+const MODULE_GUIDANCE_EXTENSIONS: Record<string, 'flashcards' | 'mindmap'> = {
+  apkg: 'flashcards',
+  colpkg: 'flashcards',
+  xmind: 'mindmap',
+  opml: 'mindmap',
+  mm: 'mindmap',
+  mmap: 'mindmap',
+};
+
 /** 从文件名获取扩展名 */
 const getFileExtension = (name: string): string =>
   (name.split('.').pop() || '').toLowerCase();
@@ -1229,9 +1242,20 @@ export function LearningHubSidebar({
     const imagePaths: string[] = [];
     const otherPaths: string[] = [];
 
+    const guidanceNames: Record<'flashcards' | 'mindmap', string[]> = {
+      flashcards: [],
+      mindmap: [],
+    };
+
     for (const p of paths) {
       const name = extractFileName(p);
       const ext = getFileExtension(name);
+      const guidance = MODULE_GUIDANCE_EXTENSIONS[ext];
+      if (guidance) {
+        // ★ P3 引导：apkg/xmind 等不进资源库，提示到对应模块导入
+        guidanceNames[guidance].push(name);
+        continue;
+      }
       if (DOCUMENT_EXTENSIONS.has(ext)) {
         docPaths.push(p);
       } else if (IMAGE_EXTENSIONS.has(ext)) {
@@ -1239,6 +1263,20 @@ export function LearningHubSidebar({
       } else {
         otherPaths.push(p);
       }
+    }
+
+    if (guidanceNames.flashcards.length > 0) {
+      showGlobalNotification('info', t('finder.dragDrop.guidanceFlashcards', {
+        names: guidanceNames.flashcards.join('、'),
+      }));
+    }
+    if (guidanceNames.mindmap.length > 0) {
+      showGlobalNotification('info', t('finder.dragDrop.guidanceMindmap', {
+        names: guidanceNames.mindmap.join('、'),
+      }));
+    }
+    if (docPaths.length === 0 && imagePaths.length === 0 && otherPaths.length === 0) {
+      return;
     }
 
     debugLog.log('[LearningHub] 文件分类:', {
@@ -1258,6 +1296,8 @@ export function LearningHubSidebar({
     let totalFailed = 0;
     let unlisten: UnlistenFn | null = null;
     let firstImportedNode: DstuNode | null = null;
+    // ★ 2026-07-20：失败文件明细（文件名 + 具体原因），toast 不再只报笼统"导入失败"
+    const failedDetails: { name: string; reason?: string }[] = [];
 
     try {
       const dropTargetFolderId = currentCreatableFolderId;
@@ -1341,7 +1381,9 @@ export function LearningHubSidebar({
               try {
                 const url = convertFileSrc(filePath);
                 const res = await fetch(url);
-                if (!res.ok) return { ok: false as const, name };
+                if (!res.ok) {
+                  return { ok: false as const, name, reason: t('finder.dragDrop.readFileFailed') };
+                }
 
                 const blob = await res.blob();
                 const file = new File([blob], name, {
@@ -1353,10 +1395,18 @@ export function LearningHubSidebar({
                   isImage ? 'image' : 'file',
                   currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
                 );
-                return { ok: result.ok, name };
+                if (!result.ok) {
+                  // ★ 携带后端结构化拒绝原因（如"不支持的文件类型 .xyz"）
+                  return { ok: false as const, name, reason: result.error.toUserMessage() };
+                }
+                return { ok: true as const, name };
               } catch (e) {
                 debugLog.error('[LearningHub] 附件导入失败:', name, e);
-                return { ok: false as const, name };
+                return {
+                  ok: false as const,
+                  name,
+                  reason: e instanceof Error ? e.message : undefined,
+                };
               } finally {
                 if (isMountedRef.current) {
                   setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
@@ -1371,11 +1421,22 @@ export function LearningHubSidebar({
 
         for (const r of attachResults) {
           if (r.ok) totalSuccess++;
-          else totalFailed++;
+          else {
+            totalFailed++;
+            failedDetails.push({ name: r.name, reason: r.reason });
+          }
         }
       }
 
-      // 3. 显示结果通知
+      // 3. 显示结果通知（失败时附具体文件与原因，最多 3 条）
+      const failedSummary = failedDetails.length > 0
+        ? t('finder.dragDrop.importFailedFiles', {
+            names: failedDetails
+              .slice(0, 3)
+              .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
+              .join('；'),
+          })
+        : undefined;
       if (totalSuccess > 0 && totalFailed === 0) {
         showGlobalNotification('success',
           t('finder.dragDrop.importSuccess', { count: totalSuccess })
@@ -1385,11 +1446,13 @@ export function LearningHubSidebar({
           t('finder.dragDrop.importPartial', {
             success: totalSuccess,
             failed: totalFailed,
-          })
+          }),
+          failedSummary
         );
       } else if (totalFailed > 0) {
         showGlobalNotification('error',
-          t('finder.dragDrop.importFailed')
+          t('finder.dragDrop.importFailed'),
+          failedSummary
         );
       }
 
@@ -1429,9 +1492,34 @@ export function LearningHubSidebar({
 
     debugLog.log('[LearningHub] 浏览器拖拽导入:', files.length, '个文件');
 
+    // ★ P3 引导：apkg/xmind 等不进资源库，提示到对应模块导入
+    const guidanceNames: Record<'flashcards' | 'mindmap', string[]> = {
+      flashcards: [],
+      mindmap: [],
+    };
+    const importableFiles = files.filter((file) => {
+      const guidance = MODULE_GUIDANCE_EXTENSIONS[getFileExtension(file.name)];
+      if (guidance) {
+        guidanceNames[guidance].push(file.name);
+        return false;
+      }
+      return true;
+    });
+    if (guidanceNames.flashcards.length > 0) {
+      showGlobalNotification('info', t('finder.dragDrop.guidanceFlashcards', {
+        names: guidanceNames.flashcards.join('、'),
+      }));
+    }
+    if (guidanceNames.mindmap.length > 0) {
+      showGlobalNotification('info', t('finder.dragDrop.guidanceMindmap', {
+        names: guidanceNames.mindmap.join('、'),
+      }));
+    }
+    if (importableFiles.length === 0) return;
+
     const shouldImportMarkdownAsNotes = currentQuickAccessType === 'notes';
     const { markdownItems: markdownFiles, otherItems: attachmentFiles } = partitionMarkdownNoteImports(
-      files,
+      importableFiles,
       (file) => file.name,
       shouldImportMarkdownAsNotes,
     );
@@ -1469,9 +1557,16 @@ export function LearningHubSidebar({
               isImage ? 'image' : 'file',
               currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
             );
-            return result.ok;
-          } catch {
-            return false;
+            if (!result.ok) {
+              return { ok: false as const, name: file.name, reason: result.error.toUserMessage() };
+            }
+            return { ok: true as const, name: file.name };
+          } catch (e) {
+            return {
+              ok: false as const,
+              name: file.name,
+              reason: e instanceof Error ? e.message : undefined,
+            };
           } finally {
             if (isMountedRef.current) {
               setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
@@ -1484,11 +1579,24 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
     setAttachImportProgress(null);
 
-    for (const ok of results) {
-      if (ok) totalSuccess++;
-      else totalFailed++;
+    const failedDetails: { name: string; reason?: string }[] = [];
+    for (const r of results) {
+      if (r.ok) totalSuccess++;
+      else {
+        totalFailed++;
+        failedDetails.push({ name: r.name, reason: r.reason });
+      }
     }
 
+    // ★ 失败时附具体文件与原因（最多 3 条），不再只报笼统"导入失败"
+    const failedSummary = failedDetails.length > 0
+      ? t('finder.dragDrop.importFailedFiles', {
+          names: failedDetails
+            .slice(0, 3)
+            .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
+            .join('；'),
+        })
+      : undefined;
     if (totalSuccess > 0 && totalFailed === 0) {
       showGlobalNotification('success',
         t('finder.dragDrop.importSuccess', { count: totalSuccess })
@@ -1498,10 +1606,11 @@ export function LearningHubSidebar({
         t('finder.dragDrop.importPartial', {
           success: totalSuccess,
           failed: totalFailed,
-        })
+        }),
+        failedSummary
       );
-    } else {
-      showGlobalNotification('error', t('finder.dragDrop.importFailed'));
+    } else if (totalFailed > 0) {
+      showGlobalNotification('error', t('finder.dragDrop.importFailed'), failedSummary);
     }
 
     if (totalSuccess > 0) {
@@ -1725,6 +1834,11 @@ export function LearningHubSidebar({
   // ★ 2026-07-08：实现抽取到 utils/exportResource.ts，与命令面板「导出当前笔记」共用
   const handleExportResource = useCallback(async (resource: ResourceListItem) => {
     await exportResourceById(resource.id, t);
+  }, [t]);
+
+  // 右键菜单 - 文件夹批量导出为 ZIP（后端遍历子资源打包）
+  const handleExportFolder = useCallback(async (folderId: string) => {
+    await exportResourceById(folderId, t);
   }, [t]);
 
   // 右键菜单 - 开始文件夹内联编辑
@@ -3183,6 +3297,7 @@ export function LearningHubSidebar({
                 : handleOpen
             }
             onContextMenu={mode === 'canvas' ? undefined : handleContextMenu}
+            multiSelectMode={multiSelectActive}
             onContainerClick={mode === 'canvas' ? (isMultiSelectMode ? clearSelection : undefined) : clearSelection}
             onContainerContextMenu={mode === 'canvas' ? undefined : handleContainerContextMenu}
             onMoveItem={mode === 'canvas' ? undefined : handleMoveItem}
@@ -3340,6 +3455,7 @@ export function LearningHubSidebar({
         } : undefined}
         onToggleFavorite={handleToggleFavorite}
         onExportResource={handleExportResource}
+        onExportFolder={handleExportFolder}
         onRestoreItem={handleRestoreItem}
         onPermanentDeleteItem={handlePermanentDeleteItem}
         onEmptyTrash={handleEmptyTrash}

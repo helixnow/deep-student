@@ -14,9 +14,10 @@ import React, { useCallback, useState, useRef, useEffect, useLayoutEffect, useMe
 import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash, PencilSimple, Check, X, ArrowSquareOut, Gear, FolderOpen } from '@phosphor-icons/react';
+import { Plus, Trash, PencilSimple, Check, X, ArrowSquareOut, Gear, FolderOpen, DotsThree } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
   IllustratedNoteIcon,
@@ -179,7 +180,7 @@ function DesktopContextMenu({
     setMenuPosition({ x, y });
   }, [state.open, state.position]);
 
-  // 点击外部关闭
+  // 点击外部关闭；触屏补充：菜单外 touchstart（capture）或背景滚动时关闭，避免滚动穿透时菜单悬空
   useEffect(() => {
     if (!state.open) return;
 
@@ -189,18 +190,30 @@ function DesktopContextMenu({
       }
     };
 
+    const handleTouchOutside = (e: TouchEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+
+    const handleScroll = () => onClose();
+
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
 
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleTouchOutside, { capture: true, passive: true });
+      window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
       document.addEventListener('keydown', handleEscape);
     }, 0);
 
     return () => {
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleTouchOutside, { capture: true });
+      window.removeEventListener('scroll', handleScroll, { capture: true });
       document.removeEventListener('keydown', handleEscape);
     };
   }, [state.open, onClose]);
@@ -227,7 +240,7 @@ function DesktopContextMenu({
     onClick: () => void;
     danger?: boolean;
   }) => (
-    <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-3 !py-2 [@media(pointer:coarse)]:min-h-[40px]', danger && 'text-red-500 hover:text-red-500')} onClick={() => { onClick(); onClose(); }}>
+    <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-3 !py-2 [@media(pointer:coarse)]:min-h-[40px]', danger && 'text-danger hover:text-danger')} onClick={() => { onClick(); onClose(); }}>
       {icon}
       <span>{label}</span>
     </NotionButton>
@@ -321,6 +334,8 @@ function ShortcutCard({
   const { t } = useTranslation('common');
   const [editName, setEditName] = useState(shortcut.name);
   const Icon = getShortcutIcon(shortcut);
+  // 触屏无右键：管理入口（打开/重命名/移除）需要常显「更多」按钮
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
   useEffect(() => {
     if (isEditing) {
@@ -368,6 +383,20 @@ function ShortcutCard({
       }}
       onContextMenu={onContextMenu}
     >
+      {/* 触屏常显「更多」入口：快捷方式的重命名/移除原本只有右键菜单可达 */}
+      {isTouchPrimary && !isEditing && (
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className="absolute top-0.5 right-0.5 z-10 !h-8 !w-8 !p-1 hover:bg-[var(--interactive-hover)]"
+          onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
+          aria-label={t('more')}
+        >
+          <DotsThree size={18} className="text-muted-foreground/70" />
+        </NotionButton>
+      )}
+
       {/* 图标 */}
       <div className="relative transition-transform duration-200 group-hover:scale-110">
         <Icon size={56} />
@@ -391,19 +420,20 @@ function ShortcutCard({
             }
           }}
         >
+          {/* 触屏：重命名控件放大到 ≥36px */}
           <Input
             value={editName}
             onChange={e => setEditName(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={e => e.target.select()}
-            className="h-6 w-24 text-xs text-center px-1"
+            className="h-6 w-24 text-xs text-center px-1 [@media(pointer:coarse)]:h-9"
             autoFocus
           />
-          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={commitOrCancel} aria-label={t('confirm')}>
+          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9" onClick={commitOrCancel} aria-label={t('confirm')}>
             <Check size={14} className="text-success" />
           </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={onEditCancel} aria-label={t('cancel')}>
-            <X size={14} className="text-red-500" />
+          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5 [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!w-9" onClick={onEditCancel} aria-label={t('cancel')}>
+            <X size={14} className="text-danger" />
           </NotionButton>
         </div>
       ) : (
@@ -488,7 +518,7 @@ function AddShortcutDialog({
                 {Icon && <Icon size={32} />}
                 <span className="text-xs text-center">{preset.name}</span>
                 {added && (
-                  <span className="text-[10px] text-success">{t('desktop.added')}</span>
+                  <span className="text-2xs text-success">{t('desktop.added')}</span>
                 )}
               </NotionButton>
             );
@@ -517,6 +547,8 @@ export function DesktopView({
 }: DesktopViewProps) {
   const { t } = useTranslation('learningHub');
   const { isSmallScreen } = useBreakpoint();
+  // 触屏无右键：非空态也需要常显的「添加快捷方式/设置根目录」入口（F7）
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   const {
     removeShortcut,
     renameShortcut,
@@ -663,13 +695,26 @@ export function DesktopView({
               <p className="text-xs text-muted-foreground/60 mb-4">
                 {t(isSmallScreen ? 'desktop.touchHint' : 'desktop.rightClickHint', isSmallScreen ? '点击下方按钮添加快捷方式' : '右键点击添加快捷方式')}
               </p>
-              <NotionButton
-                variant="default"
-                size="sm"
-                onClick={() => setShowAddDialog(true)}
-              >
-                {t('desktop.addFirst')}
-              </NotionButton>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <NotionButton
+                  variant="default"
+                  size="sm"
+                  className="[@media(pointer:coarse)]:min-h-11"
+                  onClick={() => setShowAddDialog(true)}
+                >
+                  {t('desktop.addFirst')}
+                </NotionButton>
+                {/* r3 建议后续#3：空态并列次级入口——此前触屏空态下「设置桌面根目录」
+                    必须先添加一个快捷方式后经「添加」卡菜单才可达 */}
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground [@media(pointer:coarse)]:min-h-11"
+                  onClick={() => setShowRootFolderPicker(true)}
+                >
+                  {t('desktop.setRootFolder')}
+                </NotionButton>
+              </div>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -687,6 +732,31 @@ export function DesktopView({
                   onEditCancel={() => setEditingId(null)}
                 />
               ))}
+              {/* 触屏常显「添加」入口：空白区菜单（添加快捷方式/设置根目录）原本仅右键可达 */}
+              {isTouchPrimary && (
+                <button
+                  type="button"
+                  aria-label={t('desktop.addShortcut')}
+                  aria-haspopup="menu"
+                  className={cn(
+                    'flex w-[88px] shrink-0 select-none flex-col items-center justify-center gap-2 rounded-xl p-4',
+                    'border border-dashed border-border/60 text-muted-foreground',
+                    'transition-colors duration-200 hover:bg-[var(--interactive-hover)] active:scale-95',
+                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40'
+                  )}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setContextMenu({
+                      open: true,
+                      position: { x: rect.left, y: rect.bottom + 4 },
+                      target: null,
+                    });
+                  }}
+                >
+                  <Plus size={32} />
+                  <span className="text-xs text-center">{t('desktop.add')}</span>
+                </button>
+              )}
             </div>
           )}
         </div>

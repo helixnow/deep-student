@@ -142,7 +142,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             </h3>
             {meta && <p className="text-xs text-muted-foreground">{meta}</p>}
             {compatibilityHint && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">{compatibilityHint}</p>
+              <p className="text-xs text-warning">{compatibilityHint}</p>
             )}
           </div>
 
@@ -255,13 +255,14 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               >
                 <VolumeIcon size={16} aria-hidden="true" />
               </NotionButton>
+              {/* 触屏隐藏 64px 微型滑杆（手指不可精确操作），保留静音钮；音量走系统控制 */}
               <Slider
                 value={[muted ? 0 : volume]}
                 max={1}
                 step={0.05}
                 onValueChange={handleVolumeSlider}
                 aria-label={t('learningHub:mediaPreview.volume')}
-                className="w-16"
+                className="w-16 [@media(pointer:coarse)]:hidden"
               />
             </div>
           </div>

@@ -16,11 +16,11 @@ import {
 } from '../utils/searchHonesty';
 import { pruneSelectionAgainstItems } from './selectionPrune';
 
-/** 视图模式 */
-export type ViewMode = 'grid' | 'list';
+/** 视图模式（columns = Finder 分栏视图，仅桌面全屏宿主使用） */
+export type ViewMode = 'grid' | 'list' | 'columns';
 
-/** 排序方式 */
-export type SortBy = 'name' | 'updatedAt' | 'createdAt' | 'type';
+/** 排序方式（size 为纯前端排序字段，后端列表选项会映射为 name） */
+export type SortBy = 'name' | 'updatedAt' | 'createdAt' | 'type' | 'size';
 export type SortOrder = 'asc' | 'desc';
 
 export type { QuickAccessType } from '../learningHubContracts';
@@ -41,39 +41,47 @@ export interface BreadcrumbItem {
 /**
  * 对资源列表进行排序
  *
+ * 对齐访达心智：任何排序字段下文件夹始终置顶（不随升降序翻转），
+ * 组内再按字段 + 方向排序。导出供测试断言。
+ *
  * @param items 待排序的资源列表
  * @param sortBy 排序字段
  * @param sortOrder 排序顺序
  * @returns 排序后的列表
  */
-function sortItems(items: DstuNode[], sortBy: SortBy, sortOrder: SortOrder): DstuNode[] {
-  const sorted = [...items].sort((a, b) => {
-    let compareResult = 0;
-
+export function sortItems(items: DstuNode[], sortBy: SortBy, sortOrder: SortOrder): DstuNode[] {
+  const compareField = (a: DstuNode, b: DstuNode): number => {
     switch (sortBy) {
       case 'name':
-        compareResult = a.name.localeCompare(b.name, i18n.language || 'en-US');
-        break;
+        return a.name.localeCompare(b.name, i18n.language || 'en-US');
       case 'updatedAt':
-        compareResult = new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime();
-        break;
+        return new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime();
       case 'createdAt':
-        compareResult = new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
-        break;
+        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
       case 'type':
-        // 文件夹优先，然后按类型排序
-        if (a.type === 'folder' && b.type !== 'folder') return -1;
-        if (a.type !== 'folder' && b.type === 'folder') return 1;
-        compareResult = a.type.localeCompare(b.type);
-        break;
+        return a.type.localeCompare(b.type);
+      case 'size':
+        // 文件夹按子项数、文件按字节数；缺失视为 0
+        return (a.type === 'folder' ? (a.childCount ?? 0) : (a.size ?? 0))
+          - (b.type === 'folder' ? (b.childCount ?? 0) : (b.size ?? 0));
       default:
-        compareResult = 0;
+        return 0;
     }
+  };
 
-    return sortOrder === 'asc' ? compareResult : -compareResult;
+  return [...items].sort((a, b) => {
+    // 文件夹永远排在文件前（访达默认「文件夹置顶」）
+    const aIsFolder = a.type === 'folder';
+    const bIsFolder = b.type === 'folder';
+    if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+
+    const compareResult = compareField(a, b);
+    const ordered = sortOrder === 'asc' ? compareResult : -compareResult;
+    // 稳定回退：主键相等时按名称，避免等值项抖动
+    return ordered !== 0
+      ? ordered
+      : a.name.localeCompare(b.name, i18n.language || 'en-US');
   });
-
-  return sorted;
 }
 
 /**
@@ -300,7 +308,9 @@ function getDstuListOptionsForPath(
   sortOrder: SortOrder,
 ): DstuListOptions {
   const options: DstuListOptions = {
-    sortBy: sortBy === 'type' ? 'name' : sortBy,
+    // type / size 为纯前端排序字段（后端仅支持 name/createdAt/updatedAt），
+    // 传给后端时降级为 name，真实排序由 sortItems 在前端完成
+    sortBy: sortBy === 'type' || sortBy === 'size' ? 'name' : sortBy,
     sortOrder,
   };
 
@@ -865,7 +875,8 @@ export const useFinderStore = create<FinderState>()(
         // ★ 根据当前路径状态构建 DSTU 列表选项
         const { currentPath, sortBy, sortOrder } = get();
         const options: DstuListOptions = {
-          sortBy: sortBy === 'type' ? 'name' : sortBy,
+          // 同 getDstuListOptionsForPath：type / size 降级为 name（前端排序兜底）
+          sortBy: sortBy === 'type' || sortBy === 'size' ? 'name' : sortBy,
           sortOrder,
         };
 

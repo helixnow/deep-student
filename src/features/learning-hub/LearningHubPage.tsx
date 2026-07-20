@@ -1216,7 +1216,10 @@ export const LearningHubPage: React.FC = () => {
               mode="fullscreen"
               hostId="page-mobile"
               sessionActive={isLearningHubViewActive && screenPosition === 'center'}
-              commandsEnabled={isLearningHubViewActive && screenPosition === 'center'}
+              // 📱 命令事件监听不能只在中屏开启：左抽屉「新建文件夹」是同步派发
+              // learningHub:create-folder，此刻 screenPosition 仍为 'left'，
+              // 若门控到 center 监听器尚未绑定，事件会被静默丢弃（点了没反应）。
+              commandsEnabled={isLearningHubViewActive && screenPosition !== 'right'}
               onOpenPreview={handleOpenApp}
               onOpenApp={handleOpenApp}
               className="h-full overflow-hidden"

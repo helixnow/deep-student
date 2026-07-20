@@ -639,7 +639,8 @@
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   box-shadow: 0 4px 12px hsl(var(--ring) / 0.15);
-  z-index: 1000;
+  /* 消费全局层级 token（fallback 保持旧值）；z-index 全局统一待全局代理处理 */
+  z-index: var(--z-popover, 1000);
 }
 
 .ds-highlight-color {
@@ -877,6 +878,44 @@
   background: hsl(var(--background));
   box-shadow: 0 2px 8px hsl(var(--ring) / 0.1);
   border-radius: 4px;
+}
+
+/* ACR 4.0（A7）：agent gotoPage 跳页后目标页高亮渐隐演出（只动 opacity） */
+.ds-pdf__page-wrapper--agent-focus::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 3px hsl(var(--primary) / 0.75),
+    inset 0 0 24px hsl(var(--primary) / 0.18);
+  opacity: 0;
+  animation: ds-pdf-agent-focus-fade 900ms ease-out forwards;
+}
+
+@keyframes ds-pdf-agent-focus-fade {
+  0% { opacity: 1; }
+  35% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* reduced-motion：无动画的静态短高亮（由 JS 定时移除类名结束） */
+@media (prefers-reduced-motion: reduce) {
+  .ds-pdf__page-wrapper--agent-focus::after {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* forced-colors：系统高亮色描边，去掉半透明投影 */
+@media (forced-colors: active) {
+  .ds-pdf__page-wrapper--agent-focus::after {
+    box-shadow: none;
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
 }
 
 /* 暗色模式下页面背景 */
@@ -1204,12 +1243,14 @@
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 9999;
+  z-index: var(--z-modal);
   background: hsl(var(--background));
 }
 
 .ds-pdf-viewer.fullscreen .ds-pdf__content {
-  height: calc(100vh - 60px);
+  /* 从工具栏/进度条/safe-area token 派生（原 60px 魔数在移动端 48px 工具栏
+     + 刘海屏 safe-area 下会算错可视高度）；dvh 跟随移动端动态视口 */
+  height: calc(100dvh - var(--ds-pdf-toolbar-h) - var(--ds-pdf-progress-h) - var(--ds-pdf-safe-bottom));
 }
 
 .ds-pdf-viewer.fullscreen .ds-pdf__toolbar {

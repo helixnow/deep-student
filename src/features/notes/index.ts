@@ -8,7 +8,6 @@ export { NotesCrepeEditor } from './NotesCrepeEditor';
 export { NotesContextPanel } from './NotesContextPanel';
 export { NotesHeader } from './NotesHeader';
 export { NotesLibraryManager } from './NotesLibraryManager';
-export { NotesSidebar } from './NotesSidebar';
 export { NotesSidebarV2 } from './NotesSidebarV2';
 export { default as NotesTabsBar } from './NotesTabsBar';
 export { PreviewPanel } from './PreviewPanel';
@@ -62,9 +61,8 @@ export {
 } from './types';
 export type { ExtendedFolderStructure, CreateReferenceNodeParams, ExtendedSourceDatabase } from './types';
 
-// Store
-export { useNotesTreeStore, computeVisibleOrder, getParentChain, toPersistenceSnapshot } from './stores/notesTreeStore';
-export type { DropPosition, FlattenedTreeNode, NotesTreePersistenceSnapshot } from './stores/notesTreeStore';
+// Store（兼容空壳，勿在新代码使用；树状态走 DndFileTree/TreeContext）
+export { useNotesTreeStore } from './stores/notesTreeStore';
 
 // Utilities
 export {
@@ -170,7 +168,6 @@ export {
   sortTreeChildren,
   getPathToNote,
   buildTreeData,
-  buildGraphTreeData,
   deriveNoteTitleText,
 } from './notesUtils';
 export type { TreeBuildParams, TreeSortMethod } from './notesUtils';

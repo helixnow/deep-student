@@ -44,7 +44,9 @@ import {
   WarningCircle,
   CursorClick,
   Question,
+  ArrowClockwise,
 } from '@phosphor-icons/react';
+import { NotionButton } from '@/components/ui/NotionButton';
 
 // ============================================================================
 // DSTU API 调用
@@ -380,11 +382,12 @@ const LoadingSkeleton: React.FC = () => (
 );
 
 /**
- * 错误状态
+ * 错误状态（提供 onRetry 时展示内联重试按钮）
  */
-const ErrorState: React.FC<{ error: string; className?: string }> = ({
+const ErrorState: React.FC<{ error: string; className?: string; onRetry?: () => void }> = ({
   error,
   className,
+  onRetry,
 }) => {
   const { t } = useTranslation(['notes']);
 
@@ -404,6 +407,17 @@ const ErrorState: React.FC<{ error: string; className?: string }> = ({
         </h3>
         <p className="max-w-xs text-xs text-muted-foreground">{error}</p>
       </div>
+      {onRetry && (
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={onRetry}
+          className="gap-1.5 text-xs text-primary"
+        >
+          <ArrowClockwise size={14} />
+          {t('notes:wikilinkV2.previewRetry')}
+        </NotionButton>
+      )}
     </div>
   );
 };
@@ -533,9 +547,9 @@ export const PreviewPanel: React.FC<PreviewPanelProps> = ({
       );
     }
 
-    // 4.3 加载错误
+    // 4.3 加载错误（内联重试，不整面板刷新）
     if (status === 'error' && error) {
-      return <ErrorState error={error} className={className} />;
+      return <ErrorState error={error} className={className} onRetry={() => void loadContent()} />;
     }
 
     // 4.4 根据 previewType 渲染对应的预览组件

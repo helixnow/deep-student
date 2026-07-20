@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   createWikiLinkIndex,
   getWikiLinkRelationships,
+  normalizeWikiLinkHeading,
   parseNoteLinks,
   parseNoteMentions,
   parseWikiLinks,
   resolveWikiLinks,
+  wikiLinkHeadingsEqual,
 } from '../wikilinks';
 
 describe('wikilinks', () => {
@@ -234,5 +236,14 @@ describe('wikilinks', () => {
       { targetId: 'note_alpha', target: 'Alpha', label: 'both padded' },
     ]);
     expect(relationships.inboundByNoteId.note_alpha).toHaveLength(3);
+  });
+
+  it('normalizes heading anchors across case, width, CJK punctuation and spaces', () => {
+    expect(normalizeWikiLinkHeading('  第一章：绪 论  ')).toBe('第一章:绪论');
+    expect(normalizeWikiLinkHeading('Ｈｅｌｌｏ　Ｗｏｒｌｄ')).toBe('helloworld');
+    expect(wikiLinkHeadingsEqual('第一章：绪论', '第一章: 绪论')).toBe(true);
+    expect(wikiLinkHeadingsEqual('Getting Started', 'getting   started')).toBe(true);
+    expect(wikiLinkHeadingsEqual('一、极限，与连续', '一,极限,与连续')).toBe(true);
+    expect(wikiLinkHeadingsEqual('第一章', '第二章')).toBe(false);
   });
 });

@@ -159,11 +159,11 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
     label = activeProgress !== null
       ? t('indexMiniBar.indexingWithProgress', { progress: Math.round(activeProgress) })
       : t('indexMiniBar.indexing');
-    toneClass = 'text-blue-600 dark:text-blue-400';
+    toneClass = 'text-info';
   } else if (failedCount > 0) {
     icon = <WarningCircle size={14} />;
     label = t('indexMiniBar.failed', { count: failedCount });
-    toneClass = 'text-red-600 dark:text-red-400';
+    toneClass = 'text-danger';
   } else {
     icon = <Clock size={14} />;
     label = t('indexMiniBar.pending', { count: pendingCount });

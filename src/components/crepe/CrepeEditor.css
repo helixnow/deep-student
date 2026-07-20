@@ -939,7 +939,8 @@
 
 .crepe-block-menu {
   position: fixed;
-  z-index: 1200;
+  /* 消费全局层级 token（fallback 保持旧值）；z-index 全局统一待全局代理处理 */
+  z-index: var(--z-popover, 1200);
   width: 216px;
   max-height: min(380px, calc(100vh - 16px));
   overflow-y: auto;
@@ -989,6 +990,18 @@
   height: 1px;
   margin: 4px;
   background: hsl(var(--border));
+}
+
+/* 触屏：slash 菜单项 / 块菜单项放大到 ≥44px 触控目标 */
+@media (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li {
+    min-height: 44px !important;
+    align-items: center !important;
+  }
+
+  .crepe-block-menu button {
+    min-height: 44px;
+  }
 }
 
 /* 🔧 关键：block handle 拖拽按钮需要 touch-action: none 才能使 pointer capture 正常工作 */
@@ -1580,6 +1593,15 @@
   }
 }
 
+/* 触屏/窄屏：划词气泡工具栏与系统文本选择菜单同位竞争，且按钮 ~30px 难以点准；
+   笔记壳内隐藏（格式操作全部走底部 MobileEditorToolbar），
+   白板等无底栏宿主保留气泡工具栏。 */
+@media (max-width: 767.98px), (pointer: coarse) {
+  .notes-crepe-shell .milkdown .milkdown-toolbar {
+    display: none !important;
+  }
+}
+
 /* 移动端：编辑器浮层（斜杠菜单/气泡工具栏/链接浮层）防超屏 */
 @media (max-width: 767.98px) {
   .crepe-editor-wrapper .milkdown .milkdown-slash-menu {
@@ -1917,6 +1939,65 @@
   }
 }
 
+/* ACR 4.0：破坏类直改（note_replace/note_set）变更段落一次渐隐 flash */
+.crepe-editor-wrapper .agent-flash {
+  border-radius: 2px;
+  animation: acr-agent-flash-fade 1.1s ease-out forwards;
+}
+
+@keyframes acr-agent-flash-fade {
+  from {
+    background-color: var(--notes-agent-flash-bg, hsl(var(--info) / 0.3));
+  }
+  to {
+    background-color: hsl(var(--info) / 0);
+  }
+}
+
+/* 大纲点击定位：目标标题一次渐隐闪烁（token 派生，明暗自适应） */
+.crepe-editor-wrapper .crepe-heading-locate-flash {
+  border-radius: 3px;
+  animation: crepe-heading-locate-fade 1.2s ease-out both;
+}
+
+@keyframes crepe-heading-locate-fade {
+  from {
+    background-color: var(--notes-search-match-bg, hsl(var(--warning) / 0.28));
+  }
+  to {
+    background-color: hsl(var(--warning) / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crepe-editor-wrapper .crepe-heading-locate-flash {
+    animation: none;
+    background-color: transparent;
+  }
+}
+
+/* ACR 4.0：差异定位失败时的退化演出——整个内容区一次轻微 opacity 脉冲
+   （时长单源 --acr-doc-pulse-ms：CrepeEditor.tsx 经 readCssTimeMs 读同值做类清理） */
+:root {
+  --acr-doc-pulse-ms: 600ms;
+}
+
+.crepe-editor-wrapper.crepe-agent-pulse .crepe-editor-container {
+  animation: acr-agent-doc-pulse var(--acr-doc-pulse-ms, 600ms) ease-out both;
+}
+
+@keyframes acr-agent-doc-pulse {
+  0% {
+    opacity: 1;
+  }
+  35% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
 .crepe-editor-wrapper .acr-ai-caret {
   position: relative;
   display: inline-block;
@@ -1933,9 +2014,15 @@
   top: 0;
   width: 2px;
   height: 100%;
-  background-color: var(--notes-agent-caret-color, hsl(var(--info)));
+  /* ACR 4.1：双色纵向渐变 + 静态微光（渐变/阴影 paint 一次，呼吸只动 opacity） */
+  background: linear-gradient(
+    180deg,
+    var(--notes-agent-caret-color, hsl(var(--acr-a, var(--primary)))),
+    hsl(var(--acr-b, var(--info, 210 90% 55%)))
+  );
+  box-shadow: 0 0 6px hsl(var(--acr-b, var(--info, 210 90% 55%)) / 0.5);
   border-radius: 1px;
-  animation: acr-ai-caret-breathe 1.6s ease-in-out infinite;
+  animation: acr-ai-caret-breathe var(--acr-breathe-ms, 2200ms) ease-in-out infinite;
 }
 
 .crepe-editor-wrapper .acr-ai-caret__label {
@@ -2001,5 +2088,33 @@
   .crepe-editor-wrapper .agent-inserted-fading {
     animation: none;
     background-color: hsl(var(--info) / 0.08);
+  }
+  /* ACR 4.0：flash 走静态短高亮（由 driver 的 clearAll 收尾清除） */
+  .crepe-editor-wrapper .agent-flash {
+    animation: none;
+    background-color: var(--notes-agent-flash-bg, hsl(var(--info) / 0.18));
+  }
+  .crepe-editor-wrapper.crepe-agent-pulse .crepe-editor-container {
+    animation: none;
+  }
+}
+
+/* ACR 4.0 forced-colors：flash/脉冲不依赖自定义色，动画关停 */
+@media (forced-colors: active) {
+  .crepe-editor-wrapper .agent-flash {
+    animation: none;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+  .crepe-editor-wrapper.crepe-agent-pulse .crepe-editor-container {
+    animation: none;
+  }
+  /* ACR 4.1：AI 光标用系统色（渐变/微光在强制色下移除） */
+  .crepe-editor-wrapper .acr-ai-caret__bar {
+    forced-color-adjust: none;
+    background: Highlight;
+    box-shadow: none;
+    animation: none;
+    opacity: 1;
   }
 }

@@ -92,8 +92,8 @@ function StatusIcon({
     plateClass = 'bg-muted/70';
   } else if (tone === 'warning') {
     glyph = <WarningCircle size={26} aria-hidden="true" />;
-    glyphClass = 'text-amber-500';
-    plateClass = 'bg-amber-500/10';
+    glyphClass = 'text-warning';
+    plateClass = 'bg-warning/10';
   } else {
     glyph = <WarningCircle size={26} aria-hidden="true" />;
     glyphClass = 'text-destructive';

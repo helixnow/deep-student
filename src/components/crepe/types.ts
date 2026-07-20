@@ -72,8 +72,18 @@ export interface CrepeEditorApi {
   /** 设置只读状态 */
   setReadonly: (readonly: boolean) => void;
   
-  /** 滚动到指定标题 */
-  scrollToHeading: (text: string, level: number, normalizedText?: string) => void;
+  /**
+   * 滚动到指定标题。
+   * @param matchesHeading 可选的精确匹配谓词（接收文档中标题的原始文本）；
+   * 提供时优先于内置的 lowercase/trim 相等比较，供调用方注入
+   * 全半角/中文标点等更强的规范化规则。未命中时仍回退内置模糊匹配。
+   */
+  scrollToHeading: (
+    text: string,
+    level: number,
+    normalizedText?: string,
+    matchesHeading?: (docHeadingText: string) => boolean
+  ) => void;
   
   /** 获取底层 Crepe 实例（高级用法） */
   getCrepe: () => Crepe | null;
@@ -103,6 +113,14 @@ export interface CrepeEditorApi {
    * ACR agent 透传 agentHighlight 插件 meta（caret / fadeRun / clearAll 等）
    */
   agentSignal: (meta: AgentHighlightMeta) => void;
+
+  /**
+   * ACR 4.0：破坏类直改（note_replace/note_set）后的变更区域演出。
+   * 依据新旧 markdown 的首个差异定位段落：滚动到该处并做一次 agent-flash
+   * 渐隐高亮；无法定位时退化为整个内容区一次轻微 opacity 脉冲。
+   * 返回是否执行了演出（两文一致或编辑器未就绪时 false）。
+   */
+  agentFlashChange?: (previousMarkdown: string, nextMarkdown: string) => boolean;
 
   /** 文档可插入末尾位置（doc.content.size） */
   getDocEndPos: () => number;

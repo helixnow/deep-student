@@ -320,12 +320,16 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     };
 
     const ghost = document.createElement('div');
-    ghost.className = 'crepe-drag-ghost';
+    // 根节点带上 crepe-editor-wrapper 类：幽灵挂到 body 后仍能命中
+    // `.crepe-editor-wrapper .milkdown` 等作用域选择器与 --crepe-* 变量
+    ghost.className = 'crepe-editor-wrapper crepe-drag-ghost';
     // 定位属性用 important 防御样式表覆盖；视觉属性走设计 token
     ghost.style.setProperty('position', 'fixed', 'important');
     ghost.style.setProperty('left', '0', 'important');
     ghost.style.setProperty('top', '0', 'important');
     ghost.style.setProperty('margin', '0', 'important');
+    // 覆盖 .crepe-editor-wrapper 基础规则的 min-height:300px
+    ghost.style.setProperty('min-height', '0', 'important');
     ghost.style.setProperty('pointer-events', 'none', 'important');
     ghost.style.setProperty('z-index', '9999', 'important');
     ghost.style.width = `${width}px`;
@@ -370,8 +374,9 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     content.appendChild(clone);
     scope.appendChild(content);
     ghost.appendChild(scope);
-    // 放在 wrapper 内部以继承样式作用域（CSS 变量与编辑器排版选择器）
-    wrapper.appendChild(ghost);
+    // 挂到 body 而非 wrapper：wrapper 可能位于带 transform 的移动端滑动轨道内，
+    // position:fixed 会相对轨道定位导致幽灵跟手错位；样式作用域由根节点类名保留
+    document.body.appendChild(ghost);
     ghostElementRef.current = ghost;
   }, [wrapperRef, removeDragGhost]);
 

@@ -83,7 +83,9 @@ const TabPanelItem = React.memo<TabPanelItemProps>(({
     <div
       className={cn(
         'absolute inset-0 min-h-0 flex-col',
-        visible ? 'flex' : 'hidden',
+        // ui-rise-in：切换标签时重新挂类，内容轻量升入（与 ExamContentView 视图切换
+        // 同一动效词汇；reduced-motion 由 ui-motion.css 统一降级）
+        visible ? 'flex ui-rise-in' : 'hidden',
       )}
     >
       <Suspense fallback={<PanelLoading label={loadingLabel} />}>

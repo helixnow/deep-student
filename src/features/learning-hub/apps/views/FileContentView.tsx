@@ -147,6 +147,10 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const needsRichPreview = isDocx || isExcel || isPptx;
   const needsBinaryPreview = needsRichPreview || isEpub || isAudio || isVideo;
   const canPreviewText = previewMode === 'text';
+  // ★ 2026-07-20：压缩包兜底预览——zip 导入时后端已生成条目清单（extracted_text），
+  // 预览页尝试加载清单只读展示；rar/7z 无解析依赖，仅展示说明文案
+  const archiveExt = (node.name.split('.').pop() || '').toLowerCase();
+  const isArchive = previewMode === 'none' && ['zip', 'rar', '7z'].includes(archiveExt);
 
   // 使用统一的 PDF 加载 Hook（支持缓存、去重、大文件检测）
   const {
@@ -546,6 +550,28 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       setMediaRenderFailed(false);
       setMediaSource(null);
 
+      // ★ 压缩包：尝试加载后端生成的条目清单（zip 导入时写入 extracted_text）
+      if (isArchive) {
+        setIsLoading(true);
+        try {
+          const manifest = await loadTextPreviewContent({
+            nodeId: node.id,
+            fileName: node.name,
+            contentHash,
+          });
+          if (!isMounted) return;
+          // 仅当返回的是清单文本时展示（区别于 "[文档: xxx]" 等注入占位）
+          if (manifest && manifest.startsWith('[压缩包清单]')) {
+            setTextContent(manifest);
+          }
+        } catch (archiveErr: unknown) {
+          console.warn('[FileContentView] load archive manifest failed:', archiveErr);
+        } finally {
+          if (isMounted) setIsLoading(false);
+        }
+        return;
+      }
+
       // PDF 有独立的加载 Hook；不可预览类型无需加载 → 跳过，避免无意义的 loading 闪烁
       if (!needsBinaryPreview && !canPreviewText) {
         return;
@@ -595,6 +621,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   }, [
     canPreviewText,
     contentHash,
+    isArchive,
     isAudio,
     isVideo,
     mimeType,
@@ -819,8 +846,10 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       <PreviewStatus
         tone="empty"
         icon="file"
-        title={t('learningHub:file.noPreview')}
-        description={t('learningHub:file.downloadHint')}
+        title={isArchive ? t('learningHub:file.archiveNoPreview') : t('learningHub:file.noPreview')}
+        description={
+          isArchive ? t('learningHub:file.archiveNoManifestHint') : t('learningHub:file.downloadHint')
+        }
         meta={`${node.name} · ${mimeType}${
           typeof node.size === 'number' && node.size > 0 ? ` · ${formatFileSize(node.size)}` : ''
         }`}

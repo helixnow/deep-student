@@ -17,7 +17,7 @@
 
 import { dstu } from '@/dstu';
 import { vfsFileApi } from '@/api/vfsFileApi';
-import { reportError } from '@/shared/result';
+import { reportError, toVfsError, type Result } from '@/shared/result';
 import type {
   Bookmark,
   ReadingProgress,
@@ -92,17 +92,15 @@ export function createPreviewPersistController(
   const setMetadataWithRetry = async (
     metadata: Record<string, unknown>,
     label: string,
-  ): Promise<{ ok: true } | { ok: false; error: unknown }> => {
+  ): Promise<Result<void>> => {
     const first = await dstu.setMetadata(currentTarget.nodePath, metadata);
-    if (first.ok) return { ok: true };
+    if (first.ok) return first;
     console.warn(
       `[previewPersistence] ${label} write failed, retrying once:`,
       currentTarget.nodePath,
       first.error,
     );
-    const second = await dstu.setMetadata(currentTarget.nodePath, metadata);
-    if (second.ok) return { ok: true };
-    return { ok: false, error: second.error };
+    return dstu.setMetadata(currentTarget.nodePath, metadata);
   };
 
   /** textbook 双写通道同样重试一次（幂等的整表覆盖写） */
@@ -203,7 +201,7 @@ export function createPreviewPersistController(
           } catch (err: unknown) {
             // ★ flush 常在关窗/切 node 前的最后一次落盘：书签双写通道失败
             // 不能连带丢掉 pending 的阅读进度，继续走 setMetadata。
-            reportError(err, '保存书签');
+            reportError(toVfsError(err, '保存书签失败'), '保存书签');
             options?.onBookmarksError?.(err);
           }
         }

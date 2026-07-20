@@ -13,6 +13,8 @@ import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 import { $prose } from '@milkdown/utils';
 
+import { normalizeWikiLinkHeading } from '@/features/notes/wikilinks';
+
 import {
   anchorRectFromView,
   appendHighlightedText,
@@ -204,7 +206,7 @@ export function buildAutocompleteItems(
   return items;
 }
 
-/** `[[target#heading` 模式：从目标笔记标题列表构建候选；始终允许插入手输标题。 */
+/** `[[target#heading` 模式：从目标笔记标题列表构建候选；无匹配时回退为手输标题项。 */
 export function buildHeadingAutocompleteItems(
   headings: readonly string[],
   parts: WikilinkQueryParts,
@@ -214,10 +216,12 @@ export function buildHeadingAutocompleteItems(
   if (!target) return [];
   const label = (parts.label ?? '').trim();
   const typed = (parts.heading ?? '').trim();
-  const headingQuery = typed.toLocaleLowerCase();
+  // 与 headingTargetBridge / wikilinks 共用锚点规范化：大小写、全半角、
+  // 中文标点、空白折叠后做子串匹配，补全可选中的锚点跳转时必然可命中
+  const headingQuery = normalizeWikiLinkHeading(typed);
 
   const matched = headings
-    .filter((heading) => !headingQuery || heading.toLocaleLowerCase().includes(headingQuery))
+    .filter((heading) => !headingQuery || normalizeWikiLinkHeading(heading).includes(headingQuery))
     .slice(0, Math.max(0, maxSuggestions));
 
   const items: WikilinkMenuItem[] = matched.map((heading) => ({
@@ -228,7 +232,8 @@ export function buildHeadingAutocompleteItems(
     query: typed,
   }));
 
-  if (typed && !matched.includes(typed)) {
+  // 有真实标题命中时不再追加手输项：避免与命中项重复，且手输锚点大概率是断链
+  if (typed && matched.length === 0) {
     items.push({
       kind: 'heading',
       heading: typed,

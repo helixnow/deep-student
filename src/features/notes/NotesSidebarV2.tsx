@@ -409,10 +409,11 @@ const NotesSidebarContent: React.FC<{
       {/* 工具栏 */}
       <div className="p-3 pb-0 space-y-3">
         <div className="flex items-center gap-1 min-h-[36px]">
+          {/* 触屏（pointer:coarse）下放大到 40px 触控目标 */}
           <NotionButton 
             variant="ghost" 
             size="icon"
-            className="h-8 w-8 text-muted-foreground/70 hover:text-foreground"
+            className="h-8 w-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 text-muted-foreground/70 hover:text-foreground"
             onClick={handleCreateNote}
             title={t('notes:sidebar.actions.new_note')}
           >
@@ -421,7 +422,7 @@ const NotesSidebarContent: React.FC<{
           <NotionButton 
             variant="ghost" 
             size="icon"
-            className="h-8 w-8 text-muted-foreground/70 hover:text-foreground"
+            className="h-8 w-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 text-muted-foreground/70 hover:text-foreground"
             onClick={handleCreateFolder}
             title={t('notes:sidebar.actions.new_folder')}
           >
@@ -431,7 +432,7 @@ const NotesSidebarContent: React.FC<{
             variant="ghost" 
             size="icon"
             className={cn(
-              "h-8 w-8 hover:text-foreground",
+              "h-8 w-8 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 hover:text-foreground",
               showFavoritesOnly ? "text-warning hover:text-warning/80" : "text-muted-foreground/70"
             )}
             onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
@@ -455,7 +456,7 @@ const NotesSidebarContent: React.FC<{
               <NotionButton 
                 variant="ghost" 
                 size="sm"
-                className="h-8 px-2 text-[11px] text-muted-foreground/70 hover:text-foreground"
+                className="h-8 [@media(pointer:coarse)]:h-10 px-2 text-[11px] text-muted-foreground/70 hover:text-foreground"
                 title={t('notes:sidebar.actions.sort')}
               >
                 {/* 显示当前排序方式，而非写死首项 */}
@@ -731,7 +732,7 @@ const NotesSidebarContent: React.FC<{
             {treeData[contextMenu.id]?.isFolder && (
               <>
                 <div className="app-menu-separator" />
-                <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { openReferenceDialog('textbook', contextMenu.id); setContextMenu(null); }}>
+                <NotionButton variant="ghost" size="sm" className="app-menu-item" onClick={() => { openFolderRefPicker(contextMenu.id); setContextMenu(null); }}>
                   <span className="app-menu-item-icon"><BookOpen className="h-4 w-4" /></span>
                   <span className="app-menu-item-content">{t('notes:reference.add_textbook')}</span>
                 </NotionButton>

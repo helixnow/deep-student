@@ -282,15 +282,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const canPersistAnnotations =
     Boolean(resourcePath) || initialHighlights !== undefined || Boolean(onHighlightsChange);
 
-  // ========== 响应式环境检测（≤640 内联子屏 / coarse 触控） ==========
+  // ========== 响应式环境检测（<640 内联子屏 / coarse 触控） ==========
+  // 断点设计意图：<640 为「内联子屏」形态；640-767 保留压缩桌面形态
+  // （App shell 移动切换点是 768）。查询用 not (min-width:640px) 与
+  // useMobileScreen 同源，避免小数视口宽度（如 639.5px）下与 CSS 断点判定不一致。
   const [isSmallViewport, setIsSmallViewport] = useState<boolean>(() =>
-    typeof window !== 'undefined' && window.matchMedia('(max-width: 639.98px)').matches
+    typeof window !== 'undefined' && window.matchMedia('not (min-width: 640px)').matches
   );
   const [isCoarsePointer, setIsCoarsePointer] = useState<boolean>(() =>
     typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
   );
   useEffect(() => {
-    const smallMq = window.matchMedia('(max-width: 639.98px)');
+    const smallMq = window.matchMedia('not (min-width: 640px)');
     const coarseMq = window.matchMedia('(pointer: coarse)');
     const onSmallChange = () => setIsSmallViewport(smallMq.matches);
     const onCoarseChange = () => setIsCoarsePointer(coarseMq.matches);
@@ -536,6 +539,28 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     currentPageRef.current = currentPage;
   });
 
+  // ACR 4.0（A7）：agent/引用 gotoPage 跳页成功后给目标页一次高亮渐隐演出。
+  // 只动 opacity；prefers-reduced-motion 下 CSS 关闭动画、走静态短高亮（定时移除）。
+  const [agentFocusPage, setAgentFocusPage] = useState<number | null>(null);
+  const agentFocusTimerRef = useRef<number | null>(null);
+  const flashAgentFocusPage = useCallback((pageNum: number) => {
+    if (agentFocusTimerRef.current !== null) {
+      window.clearTimeout(agentFocusTimerRef.current);
+    }
+    // 先清空、下一帧再置位：同页重复跳页也能重新触发 CSS 动画
+    setAgentFocusPage(null);
+    requestAnimationFrame(() => setAgentFocusPage(pageNum));
+    agentFocusTimerRef.current = window.setTimeout(() => {
+      setAgentFocusPage(null);
+      agentFocusTimerRef.current = null;
+    }, 1200);
+  }, []);
+  useEffect(() => () => {
+    if (agentFocusTimerRef.current !== null) {
+      window.clearTimeout(agentFocusTimerRef.current);
+    }
+  }, []);
+
   // 注册命令
   useEffect(() => {
     if (onRegisterCommands) {
@@ -545,10 +570,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           setCurrentPage(targetPage);
           onPageChangeRef.current?.(targetPage - 1);
           scrollToPageRef.current?.(targetPage);
+          flashAgentFocusPage(targetPage);
         }
       });
     }
-  }, [onRegisterCommands]);
+  }, [onRegisterCommands, flashAgentFocusPage]);
 
   // 监听容器尺寸
   useEffect(() => {
@@ -2506,7 +2532,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       <div
         key={pageNum}
         id={`pdf-page-${pageNum}`}
-        className="ds-pdf__page-wrapper"
+        className={`ds-pdf__page-wrapper${agentFocusPage === pageNum ? ' ds-pdf__page-wrapper--agent-focus' : ''}`}
         data-page-number={pageNum}
       >
         {/* ★ 2026-07-08（审计 M2）：旋转改用 pdf.js 的 rotate 属性（参与布局），
@@ -2577,6 +2603,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       </div>
     );
   }, [
+    agentFocusPage,
     annotationLayerRange,
     currentPage,
     enableStudyControls,

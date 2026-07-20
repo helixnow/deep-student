@@ -48,6 +48,8 @@ export interface FinderFileItemProps {
   compact?: boolean;
   /** ★ 高亮标记（如已关联/已选中） */
   isHighlighted?: boolean;
+  /** ★ 多选模式：触屏单击只切换选中，不再同时触发打开（避免文件夹 toggle+导航双触发） */
+  multiSelectMode?: boolean;
 }
 
 interface SortableFinderFileItemProps extends FinderFileItemProps {
@@ -120,6 +122,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   onEditCancel,
   compact = false,
   isHighlighted = false,
+  multiSelectMode = false,
 }: FinderFileItemProps) {
   const { t, i18n } = useTranslation(['learningHub', 'common']);
   const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || IllustratedGenericFileIcon;
@@ -141,13 +144,18 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     } else if (e.shiftKey) {
       onSelect('range');
     } else if (isTouchPrimary) {
-      // 移动端范式：单击 = 打开（文件夹进入 / 文件打开），选中态同步更新
-      onSelect('single');
-      onOpen();
+      if (multiSelectMode) {
+        // 多选模式：触屏单击只切换选中，不触发打开（否则文件夹会 toggle+导航双触发）
+        onSelect('toggle');
+      } else {
+        // 移动端范式：单击 = 打开（文件夹进入 / 文件打开），选中态同步更新
+        onSelect('single');
+        onOpen();
+      }
     } else {
       onSelect('single');
     }
-  }, [isEditing, isTouchPrimary, onSelect, onOpen]);
+  }, [isEditing, isTouchPrimary, multiSelectMode, onSelect, onOpen]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理双击事件
@@ -185,9 +193,12 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     return (
       <div
         className={cn(
+          // 触屏行高 48px（LIST_ITEM_HEIGHT_TOUCH），与虚拟滚动行槽 / 框选命中几何同源
           "group relative flex min-h-10 items-center gap-2 px-3 py-1.5 cursor-default select-none",
+          "[@media(pointer:coarse)]:min-h-12",
           "transition-[background-color,opacity] duration-100 ease-out",
-          !isSelected && "hover:bg-[var(--interactive-hover)]/70",
+          // 触屏按压即时反馈（无 hover 心智，点按瞬间需要可见响应）
+          !isSelected && "hover:bg-[var(--interactive-hover)]/70 [@media(pointer:coarse)]:active:bg-[var(--interactive-hover)]",
           isSelected && "bg-primary text-primary-foreground",
           isActive && !isSelected && "bg-[var(--interactive-selected)]",
           isDragging && "opacity-40",
@@ -222,10 +233,10 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             onCancel={handleEditCancel}
             selectNameOnly={item.type !== 'folder'}
             textClassName={cn(
-              'truncate block text-[13px] font-normal',
+              'truncate block text-ui font-normal',
               isSelected ? 'text-primary-foreground' : 'text-foreground/90'
             )}
-            inputClassName="h-6 text-[13px]"
+            inputClassName="h-6 text-ui"
           />
           {isFavorite && (
             <Star size={12} className="text-yellow-500 shrink-0" />
@@ -233,11 +244,11 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           {/* ★ 记忆 badge */}
           {memoryMeta && (
             <>
-              <span className={cn('px-1 py-0 rounded text-[9px] font-medium shrink-0', MEMORY_TYPE_STYLES[memoryMeta.memoryType] || 'bg-muted')}>
+              <span className={cn('px-1 py-0 rounded text-2xs font-medium shrink-0', MEMORY_TYPE_STYLES[memoryMeta.memoryType] || 'bg-muted')}>
                 {t(`learningHub:finder.memoryMeta.type.${memoryMeta.memoryType}`, memoryMeta.memoryType)}
               </span>
               {memoryMeta.memoryPurpose !== 'memorized' && MEMORY_PURPOSE_STYLES[memoryMeta.memoryPurpose] && (
-                <span className={cn('px-1 py-0 rounded text-[9px] shrink-0', MEMORY_PURPOSE_STYLES[memoryMeta.memoryPurpose] || 'bg-muted')}>
+                <span className={cn('px-1 py-0 rounded text-2xs shrink-0', MEMORY_PURPOSE_STYLES[memoryMeta.memoryPurpose] || 'bg-muted')}>
                   {t(`learningHub:finder.memoryMeta.purpose.${memoryMeta.memoryPurpose}`, memoryMeta.memoryPurpose)}
                 </span>
               )}
@@ -261,7 +272,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
                 )}
                 {/* 类型标签 */}
                 {typeLabel && (
-                  <span className={cn('text-[10px] shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
+                  <span className={cn('text-2xs shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
                     {typeLabel}
                   </span>
                 )}
@@ -299,7 +310,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       className={cn(
         "group relative flex flex-col items-center p-2 cursor-default select-none",
         "box-border w-[88px] max-w-[88px] h-[100px] shrink-0",
-        "transition-opacity duration-100 ease-out",
+        // ui-press-coarse：触屏按压缩放反馈（仅 pointer:coarse 生效，桌面不变）
+        "ui-press-coarse transition-opacity duration-100 ease-out",
         isDragging && "opacity-40",
         isDragOverlay && "drop-shadow-lg",
         isDropTarget && item.type === 'folder' && "rounded-lg bg-primary/10 outline outline-2 outline-primary",

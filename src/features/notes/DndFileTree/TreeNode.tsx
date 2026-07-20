@@ -647,10 +647,11 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
             )}
           </span>
 
-          {/* hover 行内操作：文件夹「+」新建子项 / 全部节点「⋯」更多菜单 */}
+          {/* hover 行内操作：文件夹「+」新建子项 / 全部节点「⋯」更多菜单；
+              触屏（pointer:coarse）无 hover，常显并放大到 ≥40px 触控目标 */}
           {!isEditing && !dndIsDragging && (
             <span
-              className="ml-1 flex shrink-0 items-center gap-0.5 opacity-0 group-hover/treerow:opacity-100 focus-within:opacity-100 transition-opacity duration-150"
+              className="ml-1 flex shrink-0 items-center gap-0.5 opacity-0 group-hover/treerow:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150"
               onPointerDown={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
@@ -661,7 +662,7 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
                 <button
                   type="button"
                   tabIndex={-1}
-                  className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
+                  className="flex h-5 w-5 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
                   title={t('notes:tree.context_menu.new_note')}
                   aria-label={t('notes:tree.context_menu.new_note')}
                   onClick={() => {
@@ -676,7 +677,7 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
                 <button
                   type="button"
                   tabIndex={-1}
-                  className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
+                  className="flex h-5 w-5 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
                   title={t('common:more')}
                   aria-label={t('common:more')}
                   onClick={() => triggerKeyboardContextMenu()}

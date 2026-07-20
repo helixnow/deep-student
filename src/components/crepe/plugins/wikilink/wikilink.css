@@ -55,10 +55,11 @@
 
 .crepe-wikilink-suggest {
   position: fixed;
-  z-index: 10000;
+  z-index: var(--z-popover);
   min-width: 12rem;
-  max-width: 20rem;
-  max-height: 16rem;
+  /* 窄屏防溢出；软键盘弹出时按键盘遮挡高度动态收缩（变量由 MobileEditorToolbar 写在 :root） */
+  max-width: min(20rem, calc(100vw - 24px));
+  max-height: min(16rem, calc(100dvh - var(--mobile-toolbar-keyboard-offset, 0px) - 120px));
   overflow-y: auto;
   margin: 0;
   padding: 0.25rem;
@@ -194,10 +195,11 @@
 
 .crepe-wikilink-candidates {
   position: fixed;
-  z-index: 10000;
+  z-index: var(--z-popover);
   min-width: 14rem;
-  max-width: 22rem;
-  max-height: 16rem;
+  /* 窄屏防溢出；软键盘弹出时按键盘遮挡高度动态收缩 */
+  max-width: min(22rem, calc(100vw - 24px));
+  max-height: min(16rem, calc(100dvh - var(--mobile-toolbar-keyboard-offset, 0px) - 120px));
   overflow-y: auto;
   margin: 0;
   padding: 0.25rem;
@@ -269,7 +271,7 @@
 
 .crepe-wikilink-preview {
   position: fixed;
-  z-index: 10000;
+  z-index: var(--z-popover);
   width: 20rem;
   max-height: 18rem;
   overflow: hidden;
@@ -324,10 +326,86 @@
   font-style: italic;
 }
 
+/* ── 未解析链接内联创建确认气泡 ── */
+
+.crepe-wikilink-create-confirm {
+  position: fixed;
+  z-index: var(--z-popover);
+  max-width: min(20rem, calc(100vw - 24px));
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--notes-radius-popup, 12px);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover, var(--card)));
+  color: hsl(var(--popover-foreground, var(--foreground)));
+  box-shadow: var(--notes-popover-shadow);
+  transform-origin: top left;
+  animation: crepe-suggest-enter var(--notes-popup-enter-duration, 150ms)
+    var(--dropdown-ease, ease-out);
+}
+
+.crepe-wikilink-create-confirm__text {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  word-break: break-word;
+  margin-bottom: 0.45rem;
+}
+
+.crepe-wikilink-create-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+/* Notion 风格小按钮（vanilla DOM 浮层，无法复用 React NotionButton） */
+.crepe-wikilink-create-confirm__button {
+  border: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--notes-radius-control, 6px);
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.crepe-wikilink-create-confirm__button:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.crepe-wikilink-create-confirm__button--primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.crepe-wikilink-create-confirm__button--primary:hover {
+  background: hsl(var(--primary) / 0.9);
+  color: hsl(var(--primary-foreground));
+}
+
+.crepe-wikilink-create-confirm__button:focus-visible {
+  outline: 2px solid hsl(var(--ring, var(--primary)));
+  outline-offset: 1px;
+}
+
+/* 触屏：候选行放大到 ≥44px 触控目标 */
+@media (pointer: coarse) {
+  .crepe-wikilink-suggest__item,
+  .crepe-wikilink-candidates__item {
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .crepe-wikilink-suggest.crepe-wikilink-suggest--enter,
   .crepe-wikilink-candidates.crepe-wikilink-candidates--enter,
-  .crepe-wikilink-preview {
+  .crepe-wikilink-preview,
+  .crepe-wikilink-create-confirm {
     animation: none;
   }
 }

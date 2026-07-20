@@ -14,6 +14,11 @@ export interface PdfFocusRequest {
   name?: string;
   pageNumber: number;
   requestId: number;
+  /**
+   * ACR 4.0（A7）：派发方（pdfFocusAck）超时/失败后返回 true。
+   * viewer 兑现 pendingFocus 前必须检查——回执已说失败的请求不得再兑现。
+   */
+  isStale?: () => boolean;
 }
 
 export interface PdfFocusEventDetail {
@@ -21,6 +26,8 @@ export interface PdfFocusEventDetail {
   pageNumber?: number;
   path?: string;
   acknowledge?: (handled: boolean) => void;
+  /** 请求是否已被派发方判定失败（超时/卸载），见 PdfFocusRequest.isStale */
+  isStale?: () => boolean;
 }
 
 interface UsePdfFocusListenerOptions {
@@ -87,23 +94,41 @@ export function usePdfFocusListener({
         name: nodeName,
         pageNumber,
         requestId,
+        isStale: customEvent.detail?.isStale,
       });
     };
 
     document.addEventListener('pdf-ref:focus', handler);
     return () => {
       document.removeEventListener('pdf-ref:focus', handler);
-      // ★ 卸载/依赖变化重订阅时对 pending ack 保持静默（不回 false）：
-      // - 立即回 false 会在视图切换 / StrictMode 重挂载时误报"跳转失败"，
-      //   即使跳转随后被重挂载的实例正常完成；
-      // - 唯一带 acknowledge 的派发方 requestPdfPageFocus（pdfFocusAck.ts）
-      //   自带 1.5s 超时兜底并对 resolve 做了幂等保护，静默等价于
-      //   "让真实结果（或超时）说话"；
-      // - 其余派发方（useChatPageEvents / WorkbenchEventBridge）不传
-      //   acknowledge，无影响。
+      // ★ 依赖变化重订阅时对 pending ack 保持静默（不回 false）：
+      // - 立即回 false 会在视图切换（同实例换 node）时误报"跳转失败"，
+      //   即使跳转随后被同实例的 viewer 正常完成；
+      // - 派发方 requestPdfPageFocus（pdfFocusAck.ts）自带 1.5s 超时兜底并对
+      //   resolve 做了幂等保护，静默等价于"让真实结果（或超时）说话"；
+      // - 真实卸载的显式失败回执见下面的 unmount-only effect。
       // pendingAcksRef 存于 ref，重订阅后 handleFocusHandled 仍可回 true。
     };
   }, [enabled, nodeId, nodeSourceId, nodePath, nodeName]);
+
+  // ★ ACR 4.0（A7）：组件真实卸载时对所有 pending ack 显式回失败，
+  // 不再留给 1.5s 超时——派发方立即拿到失败回执并把请求标记 stale，
+  // 后续挂载的 viewer 也不会再兑现（消除「回执失败但跳页仍发生」竞态）。
+  // 空依赖 effect 的 cleanup 只在卸载（含 StrictMode 探测性卸载，彼时
+  // pendingAcks 必为空）时运行，不影响上面 effect 的重订阅语义。
+  useEffect(() => {
+    const pendingAcks = pendingAcksRef.current;
+    return () => {
+      for (const ack of pendingAcks.values()) {
+        try {
+          ack(false);
+        } catch {
+          /* 非关键：ack 通知失败不影响卸载 */
+        }
+      }
+      pendingAcks.clear();
+    };
+  }, []);
 
   return [focusRequest, handleFocusHandled];
 }

@@ -12,6 +12,7 @@
  */
 
 import React, { useRef, useEffect, useLayoutEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
+import { createPortal } from 'react-dom';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { EditorView } from '@codemirror/view';
 import { editorViewCtx, commandsCtx, parserCtx } from '@milkdown/kit/core';
@@ -32,6 +33,7 @@ import 'katex/contrib/mhchem';
 
 // 本地模块
 import type { CrepeEditorProps, CrepeEditorApi } from './types';
+import { readCssTimeMs } from '@/shared/utils/cssTime';
 import { agentHighlightKey, type AgentHighlightMeta } from './plugins/agentHighlight';
 import {
   createImageBlockConfig,
@@ -58,6 +60,8 @@ import { useCrepeBlockDrag } from './hooks/useCrepeBlockDrag';
 import { useSlashMenuCustomScrollbar } from './hooks/useSlashMenuCustomScrollbar';
 import { createAgentInsertTransaction } from './useCrepeEditor';
 import { scrollSelectionIntoEditorViewport } from './scrollSelectionIntoEditorViewport';
+import { AgentScrollFollower } from './agentScrollFollow';
+import { resolveFlashSnippet } from './agentDiffFlash';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { isNonEmptyHref } from './plugins/imageLightbox/nonEmptyHref';
 import {
@@ -195,6 +199,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const pluginsOptionsRef = useRef(pluginsOptions);
   const defaultValueRef = useRef(defaultValue);
   const exposeTimeoutsRef = useRef<number[]>([]);
+  // ACR 4.0：AI 打字机演出的节流滚动跟随（每实例一个，unmount 时 dispose）
+  const agentFollowerRef = useRef<AgentScrollFollower | null>(null);
+  const agentPulseTimerRef = useRef<number | null>(null);
 
   // 🔧 使用基于 Pointer Events 的块拖拽（替代失效的原生 Drag & Drop）
   const { handlers: blockDragHandlers, cleanup: cleanupBlockDrag } = useCrepeBlockDrag({
@@ -505,7 +512,12 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         crepeRef.current?.setReadonly(value);
       },
       
-      scrollToHeading: (text: string, level: number, normalizedText?: string) => {
+      scrollToHeading: (
+        text: string,
+        level: number,
+        normalizedText?: string,
+        matchesHeading?: (docHeadingText: string) => boolean
+      ) => {
         const crepe = crepeRef.current;
         if (!crepe) {
           emitOutlineDebugLog({
@@ -644,10 +656,11 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           doc.descendants((node, pos) => {
             // 检查是否是标题节点
             if (node.type.name === 'heading' && (level < 1 || node.attrs?.level === level)) {
-              const nodeText = node.textContent.toLowerCase().trim();
+              const rawText = node.textContent;
+              const nodeText = rawText.toLowerCase().trim();
               
-              // 精确匹配优先
-              if (nodeText === searchText) {
+              // 精确匹配优先（调用方谓词可注入全半角/中文标点规范化）
+              if (matchesHeading ? matchesHeading(rawText) : nodeText === searchText) {
                 targetPos = pos;
                 return false; // 精确匹配，立即停止
               }
@@ -768,6 +781,15 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               
               if (headingElement) {
                 headingElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // 定位闪烁：帮助用户在长文档中锁定跳转目标（reduced-motion 由 CSS 关停）
+                headingElement.classList.remove('crepe-heading-locate-flash');
+                // 强制 reflow 以便连续点击同一标题时重新播放动画
+                void (headingElement as HTMLElement).offsetWidth;
+                headingElement.classList.add('crepe-heading-locate-flash');
+                const flashTarget = headingElement;
+                window.setTimeout(() => {
+                  flashTarget.classList.remove('crepe-heading-locate-flash');
+                }, 1300);
                 emitOutlineDebugLog({
                   category: 'dom',
                   action: 'crepe:scrollToHeading:domScroll',
@@ -887,6 +909,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               } satisfies AgentHighlightMeta));
             }
             result = { from, to, cursor };
+            // ACR 4.0：打字机演出的节流滚动跟随（AI 光标越出视口时温和滚入）
+            const follower = agentFollowerRef.current
+              ?? (agentFollowerRef.current = new AgentScrollFollower());
+            follower.followPos(view, cursor);
           });
         } catch (e) {
           debugLog.error('[CrepeEditor] agentInsert failed:', e);
@@ -926,6 +952,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             } satisfies AgentHighlightMeta);
             view.dispatch(tr);
             result = { from, to, cursor: to };
+            // ACR 4.0：结构化插入同样参与滚动跟随
+            const follower = agentFollowerRef.current
+              ?? (agentFollowerRef.current = new AgentScrollFollower());
+            follower.followPos(view, to);
           });
           return result;
         } catch (e) {
@@ -948,10 +978,87 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             if (!view) return;
             const tr = view.state.tr.setMeta(agentHighlightKey, meta);
             view.dispatch(tr);
+            // ACR 4.0：caret 落点（run 起始/重定位）也做一次跟随
+            if (meta.type === 'caret') {
+              const follower = agentFollowerRef.current
+                ?? (agentFollowerRef.current = new AgentScrollFollower());
+              follower.followPos(view, meta.pos);
+            }
           });
         } catch (e) {
           debugLog.error('[CrepeEditor] agentSignal failed:', e);
         }
+      },
+
+      // ACR 4.0：破坏类直改（note_replace/note_set）后的变更区域演出
+      agentFlashChange: (previousMarkdown: string, nextMarkdown: string) => {
+        const crepe = crepeRef.current;
+        if (!crepe) return false;
+        const located = resolveFlashSnippet(previousMarkdown, nextMarkdown);
+        if (!located) return false; // 两文一致，无需演出
+
+        let performed = false;
+        try {
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view) return;
+
+            // 在文档 textblock 中检索差异片段 → 高亮承载段落并滚入视口
+            let blockFrom = -1;
+            let blockTo = -1;
+            if (located.snippet) {
+              view.state.doc.descendants((node: any, pos: number) => {
+                if (blockFrom >= 0) return false;
+                if (node.isTextblock && typeof node.textContent === 'string'
+                  && node.textContent.includes(located.snippet)) {
+                  blockFrom = pos + 1;
+                  blockTo = pos + node.nodeSize - 1;
+                  return false;
+                }
+                return true;
+              });
+            }
+
+            if (blockFrom >= 0 && blockTo > blockFrom) {
+              view.dispatch(view.state.tr.setMeta(agentHighlightKey, {
+                type: 'flash',
+                from: blockFrom,
+                to: blockTo,
+              } satisfies AgentHighlightMeta));
+              const follower = agentFollowerRef.current
+                ?? (agentFollowerRef.current = new AgentScrollFollower());
+              follower.followPos(view, blockFrom, true);
+              performed = true;
+              return;
+            }
+
+            // 退化路径：整个内容区一次轻微 opacity 脉冲（reduced-motion 下 CSS 关停）
+            const wrapper = wrapperRef.current;
+            if (wrapper) {
+              wrapper.classList.remove('crepe-agent-pulse');
+              // 强制重排以便连续调用能重启动画
+              void wrapper.offsetWidth;
+              wrapper.classList.add('crepe-agent-pulse');
+              if (agentPulseTimerRef.current != null) {
+                window.clearTimeout(agentPulseTimerRef.current);
+              }
+              // 时长单源：CSS --acr-doc-pulse-ms + 缓冲（旧值 900 与 CSS 0.6s 双源漂移）
+              agentPulseTimerRef.current = window.setTimeout(() => {
+                agentPulseTimerRef.current = null;
+                wrapper.classList.remove('crepe-agent-pulse');
+              }, readCssTimeMs('--acr-doc-pulse-ms', 600) + 250);
+              performed = true;
+            }
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] agentFlashChange failed:', e);
+        }
+        return performed;
       },
 
       getDocEndPos: () => {
@@ -2860,6 +2967,13 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       emitCrepeDebug('lifecycle', 'info', '开始清理编辑器', { noteId });
       destroyed = true;
       clearExposeTimeouts();
+      // ACR 4.0：解绑滚动跟随监听 / 清掉未完成的内容脉冲
+      agentFollowerRef.current?.dispose();
+      agentFollowerRef.current = null;
+      if (agentPulseTimerRef.current != null) {
+        window.clearTimeout(agentPulseTimerRef.current);
+        agentPulseTimerRef.current = null;
+      }
       if (crepeRef.current) {
         // 内容监听器 / mermaid observer / 调试拖拽 / 图片上传修复 统一清理
         runStashedCrepeCleanups(crepeRef.current);
@@ -2914,7 +3028,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         ref={dropIndicatorRef}
         className="crepe-drop-indicator"
       />
-      {blockMenu && (
+      {/* Portal 到 body：编辑器可能位于带 transform 的移动端滑动轨道内，
+          position:fixed 会相对轨道定位导致菜单错位（外点关闭仍按 .crepe-block-menu 类判定，不受影响） */}
+      {blockMenu && createPortal(
         <div
           ref={blockMenuElRef}
           className="crepe-block-menu"
@@ -2951,7 +3067,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             }
             return button;
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

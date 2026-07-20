@@ -30,7 +30,14 @@ interface TextbookPdfViewerProps {
   /** @deprecated 导出功能已移除，保留接口兼容性 */
   onExportSelectedPages?: () => void;
   maxSelections?: number; // 最大选择页数限制
-  focusRequest?: { path?: string; name?: string; pageNumber: number; requestId: number } | null;
+  focusRequest?: {
+    path?: string;
+    name?: string;
+    pageNumber: number;
+    requestId: number;
+    /** ACR 4.0（A7）：派发方超时/卸载后为 true；stale 请求不得再兑现 */
+    isStale?: () => boolean;
+  } | null;
   onFocusHandled?: (requestId: number) => void;
   readingProgress?: ReadingProgress;
   onProgressChange?: (progress: ReadingProgress) => void;
@@ -66,7 +73,13 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
   const [pageNumber, setPageNumber] = useState<number>(1);
 
   const viewerCommandsRef = useRef<{ jumpToPage: (pageIndex: number) => void } | null>(null);
-  const pendingFocusRef = useRef<{ path?: string; name?: string; pageNumber: number; requestId: number } | null>(null);
+  const pendingFocusRef = useRef<{
+    path?: string;
+    name?: string;
+    pageNumber: number;
+    requestId: number;
+    isStale?: () => boolean;
+  } | null>(null);
   const lastReportedPageRef = useRef<number | null>(null);
 
   // ★ Blob URL 生命周期由 effect 管理（而非 useMemo 副作用）：
@@ -127,6 +140,13 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
   const tryHandlePendingFocus = useCallback(() => {
     const request = pendingFocusRef.current;
     if (!request) return;
+    // ACR 4.0（A7）：派发方已按超时/卸载回执失败的请求不得再兑现——
+    // 「回执说失败就真的不会发生」，避免 LLM 重试导致双跳。
+    // clearPendingFocus 内的 ack 此时已 settled，是无害 no-op（纯清理）。
+    if (request.isStale?.()) {
+      clearPendingFocus(request.requestId);
+      return;
+    }
     const matchesPath = request.path ? (request.path === resourcePath || request.path === filePath) : true;
     const matchesName = request.name ? request.name === fileName : true;
     if (!matchesPath && !matchesName) {

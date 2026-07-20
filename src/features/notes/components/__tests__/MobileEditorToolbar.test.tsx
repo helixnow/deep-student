@@ -235,6 +235,17 @@ describe('MobileEditorToolbar', () => {
     expect(prevented || ev.defaultPrevented).toBe(true);
   });
 
+  it('collapsed 时透传 data-collapsed（滚动收起态）', () => {
+    const commands = mockCommands();
+    const { rerender } = render(
+      <MobileEditorToolbar commands={commands} visible collapsed />,
+    );
+    expect(screen.getByTestId('mobile-editor-toolbar').getAttribute('data-collapsed')).toBe('true');
+
+    rerender(<MobileEditorToolbar commands={commands} visible collapsed={false} />);
+    expect(screen.getByTestId('mobile-editor-toolbar').getAttribute('data-collapsed')).toBeNull();
+  });
+
 });
 
 describe('computeViewportBottomOffset', () => {

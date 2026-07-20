@@ -364,7 +364,7 @@ interface FileMetaBarProps {
 /** 顶部元信息条：扩展名徽标 + 行数/字数等轻量统计，安静内联一行 */
 const FileMetaBar: React.FC<FileMetaBarProps> = ({ ext, items, copyText, children }) => (
   <div className="flex select-none flex-wrap items-center gap-x-2 gap-y-1 px-4 pb-2 pt-3 text-xs text-muted-foreground">
-    <span className="inline-flex items-center rounded border border-border bg-muted/60 px-1.5 py-px font-mono text-[10px] font-medium uppercase tracking-wider text-foreground/70">
+    <span className="inline-flex items-center rounded border border-border bg-muted/60 px-1.5 py-px font-mono text-2xs font-medium uppercase tracking-wider text-foreground/70">
       {ext || 'txt'}
     </span>
     {items.map((item, i) => (
@@ -431,7 +431,7 @@ const MarkdownCodeBlock: React.FC<{ language: string | null; code: string }> = (
         </span>
         <CopyTextButton text={code} />
       </div>
-      <pre className={cn('m-0 overflow-x-auto p-3 font-mono text-[13px] leading-6 text-foreground', html && 'tfp-syntax')}>
+      <pre className={cn('m-0 overflow-x-auto p-3 font-mono text-ui leading-6 text-foreground', html && 'tfp-syntax')}>
         {html ? <code dangerouslySetInnerHTML={{ __html: html }} /> : <code>{code}</code>}
       </pre>
     </div>
@@ -738,7 +738,8 @@ const CsvTable: React.FC<CsvTableProps> = ({ parsed, hasHeader, revealFull }) =>
                   ) : (
                     <ArrowsDownUp
                       size={12}
-                      className="ui-state-colors shrink-0 text-muted-foreground opacity-0 group-hover:opacity-70"
+                      // 触屏无 hover：排序指示常显低透明度，提示表头可点排序
+                      className="ui-state-colors shrink-0 text-muted-foreground opacity-0 group-hover:opacity-70 [@media(pointer:coarse)]:opacity-50"
                       aria-hidden="true"
                     />
                   )}

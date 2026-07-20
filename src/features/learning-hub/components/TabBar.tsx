@@ -9,7 +9,7 @@
 
 import React, { useCallback, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { CaretLeft, CaretRight, PushPin, PushPinSlash, SidebarSimple, X } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, DotsThree, PushPin, PushPinSlash, SidebarSimple, X } from '@phosphor-icons/react';
 import {
   DndContext,
   closestCenter,
@@ -163,20 +163,29 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
     dndKeyDown?.(e);
   }, [onSwitch, onClose, dndKeyDown]);
 
-  // 点击外部 / Escape 关闭右键菜单
+  // 点击外部 / Escape 关闭右键菜单；
+  // 触屏补充：菜单外 touchstart（capture）或背景滚动时关闭，避免滚动穿透时菜单悬空
   useEffect(() => {
     if (!ctxMenu) return;
     const close = () => setCtxMenu(null);
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
     };
+    const onTouchStart = (e: TouchEvent) => {
+      if (ctxMenuRef.current?.contains(e.target as Node)) return;
+      close();
+    };
     document.addEventListener('click', close, { once: true });
     document.addEventListener('contextmenu', close, { once: true });
     document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+    window.addEventListener('scroll', close, { capture: true, passive: true });
     return () => {
       document.removeEventListener('click', close);
       document.removeEventListener('contextmenu', close);
       document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('touchstart', onTouchStart, { capture: true });
+      window.removeEventListener('scroll', close, { capture: true });
     };
   }, [ctxMenu]);
 
@@ -224,13 +233,14 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         title={tab.dstuPath}
         className={cn(
           // Tahoe Finder tab strip: one continuous row with a single active capsule.
-          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 hover:pr-7 h-[30px] [@media(pointer:coarse)]:h-[36px] [@media(pointer:coarse)]:pr-7 rounded-lg cursor-default select-none my-[3px]',
+          // 触屏 pr-12：为常显的「更多 + 关闭」两个入口留出空间
+          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 hover:pr-7 h-[30px] [@media(pointer:coarse)]:h-[36px] [@media(pointer:coarse)]:pr-12 rounded-lg cursor-default select-none my-[3px]',
           'text-[13px] leading-none whitespace-nowrap min-w-0 max-w-[200px] shrink-0 border-r border-border/40 last:border-r-0',
           'transition-[background-color,color,opacity] duration-150',
           isActive
             ? 'text-[var(--foreground)] font-medium bg-[var(--interactive-selected)] border-r-transparent'
             : 'text-[var(--foreground)]/60 hover:text-[var(--foreground)]/90 hover:bg-[var(--interactive-hover)]',
-          isSplitRight && !isActive && 'text-[#2383e2] dark:text-[#3b82f6] bg-[#2383e2]/10 hover:bg-[#2383e2]/15 hover:text-[#2383e2]',
+          isSplitRight && !isActive && 'text-primary bg-primary/10 hover:bg-primary/15 hover:text-primary',
           isDragging && 'opacity-60 shadow-md z-50',
         )}
       >
@@ -250,7 +260,30 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           <SidebarSimple size={13} className="ml-0.5 opacity-60 shrink-0" />
         )}
         
-        {/* 关闭按钮脱离标题排版；伪元素扩大点击热区，视觉尺寸不变 */}
+        {/* 触屏常显「更多」入口：长按被 dnd-kit 250ms 拖拽抢占，
+            标签菜单（固定/关闭其他/分屏等）需要显式按钮（对齐 FinderFileItem N-4 范式） */}
+        {isTouchPrimary && (
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={t('common:more')}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              setCtxMenu({ x: rect.left, y: rect.bottom + 4 });
+            }}
+            className={cn(
+              'absolute right-6 top-1/2 -translate-y-1/2 rounded-md bg-inherit p-[3px] opacity-60',
+              'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
+              'before:absolute before:-inset-[8px] before:content-[""]',
+            )}
+          >
+            <DotsThree size={14} weight="bold" />
+          </span>
+        )}
+
+        {/* 关闭按钮脱离标题排版；伪元素扩大点击热区，视觉尺寸不变（触屏热区更大） */}
         <span
           role="button"
           tabIndex={-1}
@@ -260,7 +293,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             'absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-inherit p-[3px] transition-opacity duration-100',
             'opacity-0 group-hover/tab:opacity-100 [@media(pointer:coarse)]:opacity-60',
             'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
-            'before:absolute before:-inset-[5px] before:content-[""]',
+            'before:absolute before:-inset-[5px] before:content-[""] [@media(pointer:coarse)]:before:-inset-[10px]',
           )}
         >
           <X size={12} />
@@ -272,7 +305,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         <div
           ref={ctxMenuRef}
           role="menu"
-          className="fixed z-[9999] min-w-[160px] py-1 bg-popover border border-transparent ring-1 ring-border/40 rounded-lg shadow-lg"
+          className="fixed z-popover min-w-[160px] py-1 bg-popover border border-transparent ring-1 ring-border/40 rounded-lg shadow-lg"
           style={{
             left: (ctxMenuPos ?? ctxMenu).x,
             top: (ctxMenuPos ?? ctxMenu).y,

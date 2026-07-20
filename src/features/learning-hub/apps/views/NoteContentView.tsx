@@ -622,8 +622,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             else showGlobalNotification('error', restore.error.toUserMessage());
           })();
         };
+        // serverContent：可选新增字段（向后兼容——旧监听方忽略即可）。
+        // 上方 OCC 快照刚读到的磁盘最新内容即远端胜出版本，随事件带给
+        // 编辑器冲突横幅的「对比」直接展示；读取失败时缺省，监听方降级自行拉取。
         window.dispatchEvent(new CustomEvent('notes:content-conflict', {
-          detail: { noteId: conflictNoteId, restoreMine },
+          detail: { noteId: conflictNoteId, restoreMine, serverContent: latestStr ?? undefined },
         }));
         showGlobalNotification(
           'warning',

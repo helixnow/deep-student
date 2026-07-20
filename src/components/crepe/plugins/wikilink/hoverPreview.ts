@@ -10,7 +10,8 @@ import i18next from 'i18next';
 import { buildPreviewSnippet, loadNoteContent } from './noteContent';
 
 const CLASS = 'crepe-wikilink-preview';
-const SHOW_DELAY_MS = 400;
+/** 对齐 Obsidian page preview 的悬停延迟心智：约 800ms，避免扫过链接时频闪 */
+const SHOW_DELAY_MS = 800;
 const HIDE_DELAY_MS = 200;
 
 let card: HTMLDivElement | null = null;
@@ -130,6 +131,11 @@ export function scheduleWikilinkPreview(
   options: WikilinkPreviewOptions = {},
 ): void {
   if (!noteId) return;
+  // 从链接 A 直接扫到链接 B：立即收起 A 的卡片，
+  // 否则旧内容会挂在屏幕上直到 B 的展示延迟到期
+  if (card && card.style.display !== 'none' && currentAnchor && currentAnchor !== anchor) {
+    hideWikilinkPreviewNow();
+  }
   clearTimers();
   currentAnchor = anchor;
   const token = ++requestToken;

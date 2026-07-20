@@ -75,6 +75,23 @@ describe('fuzzyMatchNotes / buildAutocompleteItems', () => {
     expect(created?.insert).toEqual({ target: '新笔记', label: 'alias' });
   });
 
+  it('matches whitespace-separated tokens after contiguous substrings', () => {
+    const tokenNotes = [
+      { id: 't1', title: '线性代数学习笔记' },
+      { id: 't2', title: '代数 笔记' },
+      { id: 't3', title: '概率论' },
+    ];
+    // 分词命中：每个词都是子串即可，顺序无关
+    expect(fuzzyMatchNotes(tokenNotes, '代数 笔记', 8).map((n) => n.id)).toEqual(['t2', 't1']);
+    expect(fuzzyMatchNotes(tokenNotes, '笔记 线性', 8).map((n) => n.id)).toEqual(['t1']);
+    // 连续子串（rank 2）仍排在分词命中（rank 3）之前
+    const mixed = [
+      { id: 'sub', title: 'Machine Learning Notes' },
+      { id: 'tok', title: 'Notes on Machine-based Learning' },
+    ];
+    expect(fuzzyMatchNotes(mixed, 'learning notes', 8).map((n) => n.id)).toEqual(['sub', 'tok']);
+  });
+
   it('ranks recently edited notes first inside the same match tier', () => {
     const dated = [
       { id: 'a', title: '数学一', updatedAt: 100 },

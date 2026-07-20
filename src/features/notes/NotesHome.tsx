@@ -85,9 +85,10 @@ export default function NotesHome() {
     >
       <NotesHeader
       />
-      <NotesCrepeEditor />
+      {/* 抽屉打开时隐藏 body 上 fixed 的底部工具条，避免盖住抽屉底部/误触编辑命令 */}
+      <NotesCrepeEditor suppressMobileToolbar={isMobileSidebarOpen} />
     </div>
-  ), [isSmallScreen]);
+  ), [isSmallScreen, isMobileSidebarOpen]);
 
   // ===== 移动端布局：DeepSeek 风格推拉式侧边栏 =====
   if (isMobile) {

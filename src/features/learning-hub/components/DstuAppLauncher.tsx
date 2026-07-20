@@ -248,7 +248,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
     }
     return (
       <div key={title} className="px-3 pt-4 pb-1.5">
-        <span className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+        <span className="text-ui font-semibold uppercase tracking-wider text-muted-foreground/50">
           {title}
         </span>
       </div>
@@ -281,7 +281,10 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
         />
         <Input
           type="search"
-          placeholder={t('learningHub:finder.search.placeholder')}
+          // 禁用时给出原因（此前直接 disabled 无解释，用户不知为何不可用）
+          placeholder={searchDisabled
+            ? t('learningHub:finder.search.placeholderDisabled')
+            : t('learningHub:finder.search.placeholder')}
           value={searchQuery}
           onChange={(e) => onSearchChange?.(e.target.value)}
           onFocus={() => setIsSearchFocused(true)}
@@ -295,7 +298,8 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           disabled={searchDisabled}
           className={cn(
             'w-full pl-9 pr-9',
-            embedded ? 'h-9 text-sm sidebar-shell-search' : 'h-[41px] text-[16px]',
+            // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放
+            embedded ? 'h-9 text-[16px] sidebar-shell-search' : 'h-[41px] text-[16px]',
           )}
         />
         {searchQuery && (
@@ -328,8 +332,9 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
         >
           <Plus size={embedded ? 18 : 20} />
         </NotionButton>
+        {/* z-dropdown：走全局浮层阶梯，替换裸 z-50 */}
         {showCreateMenu && (
-          <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-48 ui-zoom-fade-in rounded-lg border border-border bg-popover py-1 shadow-lg">
+          <div role="menu" className="absolute right-0 top-full z-dropdown mt-1 w-48 ui-zoom-fade-in rounded-lg border border-border bg-popover py-1 shadow-lg">
             <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
               {t('learningHub:quickCreate.title')}
             </div>

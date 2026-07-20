@@ -10,14 +10,11 @@ const { mockGetExamSheetSessionDetail, mockResumeQuestionImport, mockInvoke } = 
 
 const storeState = vi.hoisted(() => ({
   focusMode: false,
-  syncConflicts: [],
   mockExamSession: null,
   timedSession: null,
   dailyPractice: null,
   generatedPaper: null,
   setFocusMode: vi.fn(),
-  checkSyncStatus: vi.fn(),
-  getSyncConflicts: vi.fn(),
   setMockExamSession: vi.fn(),
 }));
 
@@ -96,6 +93,13 @@ vi.mock('@/hooks/useQuestionBankSession', () => ({
 
 vi.mock('@/stores/questionBankStore', () => ({
   useQuestionBankStore: (selector: (state: typeof storeState) => unknown) => selector(storeState),
+  // 真实签名: (value: unknown, expectedExamId: string) => QbankPracticeHandoff | PracticeHandoffHydrationFailure
+  // ExamContentView 顶层具名导入并在 hydratePracticeSession 分支调用；mock 默认返回校验失败
+  validateQbankPracticeHandoff: vi.fn((_value: unknown, _expectedExamId: string) => ({
+    ok: false as const,
+    code: 'INVALID_PRACTICE_HANDOFF' as const,
+    hint: 'mocked validator',
+  })),
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({
@@ -114,10 +118,6 @@ vi.mock('@/debug-panel/debugMasterSwitch', () => ({
 
 vi.mock('@/debug-panel/plugins/ExamSheetProcessingDebugPlugin', () => ({
   emitExamSheetDebug: vi.fn(),
-}));
-
-vi.mock('@/components/SyncConflictDialog', () => ({
-  default: () => null,
 }));
 
 vi.mock('@/components/QuestionBankEditor', () => ({
@@ -213,17 +213,12 @@ const openSecondaryMenuItem = async (patterns: RegExp[]) => {
 describe('ExamContentView secondary entry points', () => {
   beforeEach(() => {
     storeState.focusMode = false;
-    storeState.syncConflicts = [];
     storeState.mockExamSession = null;
     storeState.timedSession = null;
     storeState.dailyPractice = null;
     storeState.generatedPaper = null;
     storeState.setFocusMode.mockReset();
-    storeState.checkSyncStatus.mockReset();
-    storeState.getSyncConflicts.mockReset();
     storeState.setMockExamSession.mockReset();
-    storeState.checkSyncStatus.mockResolvedValue({ pending_conflict_count: 0 });
-    storeState.getSyncConflicts.mockResolvedValue([]);
 
     mockInvoke.mockReset();
     mockGetExamSheetSessionDetail.mockReset();

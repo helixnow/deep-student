@@ -33,9 +33,18 @@ interface OutlineHeading {
     id: string;
     /** 标题后的首行正文（hover 预览用），可能为空 */
     preview: string;
+    /** 同级同文本标题的文档序号（0 起），供滚动跟随去歧义 */
+    occurrence: number;
+    /** 折叠状态的稳定 key（level:searchText:occurrence，跨重新解析保持） */
+    collapseKey: string;
 }
 
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
+import { addTypedEventListener } from '@/events/registry';
+import {
+    NOTES_ACTIVE_HEADING_EVENT,
+    type NotesActiveHeadingDetail,
+} from './components/outlineActiveHeadingBridge';
 import './NotesContextPanel.css';
 
 // ============================================================================
@@ -99,10 +108,14 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         }
         : contextActive;
     
-    const [headings, setHeadings] = useState<Array<{ level: number; text: string; searchText: string; id: string }>>([]);
+    const [headings, setHeadings] = useState<OutlineHeading[]>([]);
     const [tagInput, setTagInput] = useState("");
     const [isAddingTag, setIsAddingTag] = useState(false);
     const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
+    // 折叠的大纲分组（key = collapseKey，跨重新解析稳定）
+    const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
+    // 大纲行 DOM（滚动跟随时把高亮行滚入面板可视区）
+    const outlineRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const tagInputRef = useRef<HTMLInputElement>(null);
     // 标签行内重命名（双击 chip / 铅笔按钮进入；跨笔记全局传播）
     const [editingTag, setEditingTag] = useState<string | null>(null);
@@ -128,9 +141,27 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     const parseHeadings = useCallback((content: string) => {
         const start = performance.now();
         const lines = content.split('\n');
-        const extractedHeadings: Array<{ level: number; text: string; searchText: string; id: string }> = [];
+        const extractedHeadings: OutlineHeading[] = [];
+        const occurrenceCounter = new Map<string, number>();
         let inFence = false;
         let headingCount = 0;
+
+        /** 标题后首个非空正文行（hover 预览）；最多向后看 6 行，跳过代码围栏 */
+        const extractPreview = (headingIndex: number): string => {
+            let fenced = false;
+            for (let i = headingIndex + 1; i < Math.min(headingIndex + 7, lines.length); i++) {
+                const line = lines[i];
+                if (isFenceLine(line)) {
+                    fenced = !fenced;
+                    continue;
+                }
+                if (fenced) continue;
+                if (/^(#{1,6})\s+/.test(line)) return '';
+                const preview = normalizePreviewLine(line);
+                if (preview) return preview;
+            }
+            return '';
+        };
 
         lines.forEach((line, index) => {
             if (isFenceLine(line)) {
@@ -144,12 +175,20 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 const rawText = match[2].trim();
                 const normalized = normalizeHeadingText(rawText);
                 const displayText = normalized || rawText;
+                const searchText = (normalized || rawText).toLowerCase();
+                const level = match[1].length;
+                const occurrenceKey = `${level}:${searchText}`;
+                const occurrence = occurrenceCounter.get(occurrenceKey) ?? 0;
+                occurrenceCounter.set(occurrenceKey, occurrence + 1);
                 headingCount++;
                 extractedHeadings.push({
-                    level: match[1].length,
+                    level,
                     text: displayText,
-                    searchText: (normalized || rawText).toLowerCase(),
+                    searchText,
                     id: `heading-${headingCount}-${index}`,
+                    preview: extractPreview(index),
+                    occurrence,
+                    collapseKey: `${occurrenceKey}:${occurrence}`,
                 });
             }
         });
@@ -195,6 +234,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     useEffect(() => {
         setLiveContent(null);
         setActiveHeadingId(null);
+        setCollapsedKeys(new Set());
         setIsAddingTag(false);
         setTagInput("");
         setEditingTag(null);
@@ -244,8 +284,76 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         }
     }, [headings, activeHeadingId]);
 
+    // 编辑器滚动跟随：高亮视口顶部附近的标题，并把大纲行滚入面板可视区
+    const headingsRef = useRef(headings);
+    headingsRef.current = headings;
+    // 点击定位后的平滑滚动窗口内不接受滚动跟随（避免高亮被"上一个标题"抢走）
+    const scrollFollowSuppressedUntilRef = useRef(0);
+    useEffect(() => {
+        const noteIdForScroll = effectiveActive?.id;
+        if (!noteIdForScroll) return;
+        return addTypedEventListener<NotesActiveHeadingDetail>(
+            NOTES_ACTIVE_HEADING_EVENT,
+            (detail) => {
+                if (detail.noteId !== noteIdForScroll) return;
+                if (Date.now() < scrollFollowSuppressedUntilRef.current) return;
+                const list = headingsRef.current;
+                const matched =
+                    list.find((h) =>
+                        h.level === detail.level &&
+                        h.searchText === detail.text &&
+                        h.occurrence === detail.occurrence) ??
+                    list.find((h) => h.level === detail.level && h.searchText === detail.text) ??
+                    list.find((h) => h.searchText === detail.text) ??
+                    null;
+                if (!matched) return;
+                setActiveHeadingId((prev) => (prev === matched.id ? prev : matched.id));
+            },
+        );
+    }, [effectiveActive?.id]);
+
+    // 高亮行随滚动跟随时保持在面板可视区内（block: nearest 不打扰无关滚动）
+    useEffect(() => {
+        if (!activeHeadingId) return;
+        const row = outlineRowRefs.current.get(activeHeadingId);
+        row?.scrollIntoView({ block: 'nearest' });
+    }, [activeHeadingId]);
+
+    const toggleCollapsed = useCallback((collapseKey: string) => {
+        setCollapsedKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(collapseKey)) next.delete(collapseKey);
+            else next.add(collapseKey);
+            return next;
+        });
+    }, []);
+
+    // 折叠过滤：被折叠标题之后、更深层级的行全部隐藏
+    const visibleHeadings = useMemo(() => {
+        const result: OutlineHeading[] = [];
+        let hideDeeperThan: number | null = null;
+        for (const heading of headings) {
+            if (hideDeeperThan !== null && heading.level > hideDeeperThan) continue;
+            hideDeeperThan = null;
+            result.push(heading);
+            if (collapsedKeys.has(heading.collapseKey)) hideDeeperThan = heading.level;
+        }
+        return result;
+    }, [headings, collapsedKeys]);
+
+    /** 是否存在子级（决定折叠箭头的展示） */
+    const hasChildrenById = useMemo(() => {
+        const map = new Map<string, boolean>();
+        headings.forEach((heading, index) => {
+            map.set(heading.id, (headings[index + 1]?.level ?? 0) > heading.level);
+        });
+        return map;
+    }, [headings]);
+
     const handleHeadingClick = (heading: { id: string; text: string; searchText: string; level: number }) => {
         setActiveHeadingId(heading.id);
+        // 平滑滚动约需 <1s；期间编辑器滚动事件不得改写点击选中的高亮
+        scrollFollowSuppressedUntilRef.current = Date.now() + 1000;
         emitOutlineDebugLog({
             category: 'event',
             action: 'outline:headingClick',
@@ -624,31 +732,23 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 <CustomScrollArea className="flex-1">
                     <div className="px-3 pb-3 pt-0 space-y-0.5">
                         {headings.length > 0 ? (
-                            headings.map((heading) => {
+                            visibleHeadings.map((heading) => {
                                 const isActive = activeHeadingId === heading.id;
+                                const hasChildren = hasChildrenById.get(heading.id) ?? false;
+                                const isCollapsed = collapsedKeys.has(heading.collapseKey);
                                 return (
-                                    <NotionButton
+                                    <div
                                         key={heading.id}
-                                        variant="ghost" size="sm"
+                                        ref={(el) => {
+                                            if (el) outlineRowRefs.current.set(heading.id, el);
+                                            else outlineRowRefs.current.delete(heading.id);
+                                        }}
                                         className={cn(
-                                            "!h-7 !w-full !justify-start !rounded-sm !px-2 !py-1 !text-left text-xs",
-                                            "[@media(pointer:coarse)]:!py-2.5",
-                                            heading.level === 1 && "font-medium",
+                                            "notes-outline-row flex items-stretch transition-colors duration-150 motion-reduce:transition-none",
                                             isActive
-                                                ? "bg-[var(--interactive-hover)] text-foreground font-medium shadow-[inset_2px_0_0_hsl(var(--primary))]"
-                                                : cn(
-                                                    "hover:bg-[var(--interactive-hover)] hover:text-foreground",
-                                                    heading.level === 1 && "text-foreground",
-                                                    heading.level === 2 && "text-muted-foreground",
-                                                    heading.level === 3 && "text-muted-foreground/80",
-                                                    heading.level === 4 && "text-muted-foreground/70",
-                                                    heading.level === 5 && "text-muted-foreground/60",
-                                                    heading.level === 6 && "text-muted-foreground/50",
-                                                ),
+                                                ? "bg-[var(--interactive-hover)] shadow-[inset_2px_0_0_hsl(var(--primary))]"
+                                                : "hover:bg-[var(--interactive-hover)]",
                                         )}
-                                        onClick={() => handleHeadingClick(heading)}
-                                        title={heading.text}
-                                        aria-current={isActive ? 'true' : undefined}
                                     >
                                         {/* 层级缩进线：每深一级增加一条竖向导轨 */}
                                         {heading.level > 1 && Array.from({ length: heading.level - 1 }).map((_, guideIndex) => (
@@ -658,8 +758,60 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                 aria-hidden="true"
                                             />
                                         ))}
-                                        <span className="min-w-0 flex-1 truncate">{heading.text}</span>
-                                    </NotionButton>
+                                        {hasChildren ? (
+                                            <NotionButton
+                                                variant="ghost" iconOnly size="sm"
+                                                className="notes-outline-caret !h-auto !w-4 !min-w-0 shrink-0 self-stretch !rounded-sm !p-0 text-muted-foreground/70 hover:text-foreground hover:!bg-transparent"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toggleCollapsed(heading.collapseKey);
+                                                }}
+                                                aria-expanded={!isCollapsed}
+                                                aria-label={isCollapsed
+                                                    ? t('notes:editorV2.outline_expand', { defaultValue: '展开分组' })
+                                                    : t('notes:editorV2.outline_collapse', { defaultValue: '折叠分组' })}
+                                            >
+                                                <CaretRight
+                                                    className={cn("w-3 h-3", !isCollapsed && "rotate-90")}
+                                                    aria-hidden="true"
+                                                />
+                                            </NotionButton>
+                                        ) : (
+                                            <span className="w-4 shrink-0" aria-hidden="true" />
+                                        )}
+                                        <NotionButton
+                                            variant="ghost" size="sm"
+                                            className={cn(
+                                                "!h-auto !w-auto min-w-0 flex-1 !flex-col !items-start !justify-start gap-0 !rounded-sm !px-1 !py-1 !text-left text-xs hover:!bg-transparent",
+                                                "[@media(pointer:coarse)]:!py-2.5",
+                                                heading.level === 1 && "font-medium",
+                                                isActive
+                                                    ? "text-foreground font-medium"
+                                                    : cn(
+                                                        "hover:text-foreground",
+                                                        heading.level === 1 && "text-foreground",
+                                                        heading.level === 2 && "text-muted-foreground",
+                                                        heading.level === 3 && "text-muted-foreground/80",
+                                                        heading.level === 4 && "text-muted-foreground/70",
+                                                        heading.level === 5 && "text-muted-foreground/60",
+                                                        heading.level === 6 && "text-muted-foreground/50",
+                                                    ),
+                                            )}
+                                            onClick={() => handleHeadingClick(heading)}
+                                            title={heading.text}
+                                            aria-current={isActive ? 'true' : undefined}
+                                        >
+                                            <span className="w-full min-w-0 truncate">{heading.text}</span>
+                                            {heading.preview && (
+                                                <span
+                                                    className="notes-outline-preview w-full min-w-0 truncate text-[10px] font-normal leading-[18px] text-muted-foreground/60"
+                                                    aria-hidden="true"
+                                                >
+                                                    {heading.preview}
+                                                </span>
+                                            )}
+                                        </NotionButton>
+                                    </div>
                                 );
                             })
                         ) : (

@@ -24,6 +24,11 @@ type LocalSuggestionDisposition =
 
 type LocalCanvasAIEditRequest = CanvasAIEditRequest & {
   onLocalDisposition?: (disposition: LocalSuggestionDisposition) => void;
+  /**
+   * ACR 4.0：建议生命周期终结回调（Accept/Reject/切换笔记/编辑器卸载）。
+   * noteDriver 用它清除 reviewing presence。
+   */
+  onSettled?: () => void;
 };
 
 /** ★ 2.1 AI 编辑检查点：接受后仍可回滚整轮 */
@@ -65,7 +70,18 @@ export function useCanvasAIEditHandler({
   const { state: aiEditState, startEdit, accept, reject, clear } = useAIEditState();
   const [isApplying, setIsApplying] = useState(false);
   const isApplyingRef = useRef(false);
-  const pendingRequestRef = useRef<CanvasAIEditRequest | null>(null);
+  const pendingRequestRef = useRef<LocalCanvasAIEditRequest | null>(null);
+
+  // ACR 4.0：建议生命周期终结（清 pending 引用 + 通知 noteDriver 清 reviewing presence）
+  const settlePendingRequest = useCallback(() => {
+    const pending = pendingRequestRef.current;
+    pendingRequestRef.current = null;
+    try {
+      pending?.onSettled?.();
+    } catch (err) {
+      console.warn('[useCanvasAIEditHandler] onSettled callback failed:', err);
+    }
+  }, []);
 
   // ★ 2.1 AI 编辑检查点
   const [checkpoint, setCheckpoint] = useState<AIEditCheckpoint | null>(null);
@@ -135,7 +151,7 @@ export function useCanvasAIEditHandler({
         const recomputed = computeProposedContent(request, contentBeforeApply);
         if (recomputed.error) {
           clear();
-          pendingRequestRef.current = null;
+          settlePendingRequest();
           await sendResult({
             requestId: result.requestId,
             success: false,
@@ -195,7 +211,7 @@ export function useCanvasAIEditHandler({
       }
 
       clear();
-      pendingRequestRef.current = null;
+      settlePendingRequest();
       if (noteIdRef.current) {
         setCheckpoint({
           originalContent: contentBeforeApply,
@@ -208,7 +224,7 @@ export function useCanvasAIEditHandler({
       isApplyingRef.current = false;
       setIsApplying(false);
     }
-  }, [accept, clear, sendResult]);
+  }, [accept, clear, sendResult, settlePendingRequest]);
 
   // ★ 2.1 回滚到检查点
   const rollbackCheckpoint = useCallback(async () => {
@@ -254,9 +270,9 @@ export function useCanvasAIEditHandler({
     const result = reject();
     if (!result) return;
 
-    pendingRequestRef.current = null;
+    settlePendingRequest();
     await sendResult(result);
-  }, [reject, sendResult]);
+  }, [reject, sendResult, settlePendingRequest]);
 
   const handleEditRequest = useCallback(
     async (request: LocalCanvasAIEditRequest) => {
@@ -300,7 +316,7 @@ export function useCanvasAIEditHandler({
 
       const editor = editorApiRef.current;
       if (!editor) {
-        pendingRequestRef.current = null;
+        settlePendingRequest();
         request.onLocalDisposition?.({ accepted: false, reason: '编辑器未就绪' });
         const result: CanvasAIEditResult = {
           requestId: request.requestId,
@@ -312,10 +328,14 @@ export function useCanvasAIEditHandler({
       }
 
       const originalContent = editor.getFullMarkdown?.() ?? editor.getMarkdown();
-      const { onLocalDisposition: _onLocalDisposition, ...stateRequest } = request;
+      const {
+        onLocalDisposition: _onLocalDisposition,
+        onSettled: _onSettled,
+        ...stateRequest
+      } = request;
       const immediateFailure = startEdit(stateRequest, originalContent);
       if (immediateFailure) {
-        pendingRequestRef.current = null;
+        settlePendingRequest();
         request.onLocalDisposition?.({
           accepted: false,
           reason: immediateFailure.error ?? '建议内容无效',
@@ -335,7 +355,7 @@ export function useCanvasAIEditHandler({
       }
 
     },
-    [startEdit, sendResult]
+    [startEdit, sendResult, settlePendingRequest]
   );
 
   useEffect(() => {
@@ -388,11 +408,11 @@ export function useCanvasAIEditHandler({
     if (aiEditState.isActive && aiEditState.request?.noteId !== noteIdRef.current) {
       const result = reject();
       if (result) {
-        pendingRequestRef.current = null;
+        settlePendingRequest();
         sendResult(result);
       }
     }
-  }, [noteId, aiEditState.isActive, aiEditState.request?.noteId, reject, sendResult]);
+  }, [noteId, aiEditState.isActive, aiEditState.request?.noteId, reject, sendResult, settlePendingRequest]);
 
   // ★ F3 修复：编辑器卸载（关闭 tab/切换笔记）时若仍有待确认的 AI 编辑，
   // 立即向后端发送拒绝结果，避免 AI 干等 30 秒超时。
@@ -414,9 +434,9 @@ export function useCanvasAIEditHandler({
         });
       }
       clear();
-      pendingRequestRef.current = null;
+      settlePendingRequest();
     };
-  }, [clear]);
+  }, [clear, settlePendingRequest]);
 
   return {
     aiEditState,

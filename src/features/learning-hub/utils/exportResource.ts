@@ -28,7 +28,7 @@ export function isExportUnsupportedPlatform(): boolean {
 export async function exportResourceById(resourceId: string, t: TFunction): Promise<boolean> {
   try {
     if (isExportUnsupportedPlatform()) {
-      showGlobalNotification('warning', t('contextMenu.exportFailed') + ': 移动端暂不支持导出');
+      showGlobalNotification('warning', `${t('contextMenu.exportFailed')}: ${t('contextMenu.exportUnsupportedMobile')}`);
       return false;
     }
 
@@ -46,7 +46,17 @@ export async function exportResourceById(resourceId: string, t: TFunction): Prom
       return false;
     }
 
-    const format = (formats.includes('markdown') ? 'markdown' : formats[0]) as 'markdown' | 'original' | 'zip';
+    // ★ 2026-07-20：file/textbook 现在也支持 markdown（提取文本）导出。
+    // 文本原生资源（笔记/翻译/作文）优先 markdown；二进制资源（教材/文件/图片）
+    // 保持原始格式优先，避免"导出 PDF 变成 md 文本"的意外行为。
+    const isTextNativeResource = /^(note_|tr_|essay_)/.test(resourceId);
+    const format = (
+      isTextNativeResource && formats.includes('markdown')
+        ? 'markdown'
+        : formats.includes('original')
+          ? 'original'
+          : formats[0]
+    ) as 'markdown' | 'original' | 'zip';
 
     showGlobalNotification('info', t('contextMenu.exporting'));
     const exportResult = await dstu.exportResource(resourcePath, format);

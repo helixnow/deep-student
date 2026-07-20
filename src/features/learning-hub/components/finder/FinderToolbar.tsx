@@ -52,6 +52,7 @@ const SORT_OPTIONS: { value: SortBy; labelKey: string }[] = [
   { value: 'updatedAt', labelKey: 'finder.sort.updatedAt' },
   { value: 'createdAt', labelKey: 'finder.sort.createdAt' },
   { value: 'type', labelKey: 'finder.sort.type' },
+  { value: 'size', labelKey: 'finder.sort.size' },
 ];
 
 /** 可点击压缩面包屑：根 / 中间可点，末级文本；深度大时 Home › … › current */
@@ -84,7 +85,7 @@ function CompressedBreadcrumbs({
       size="sm"
       onClick={() => (onNavigateHome ? onNavigateHome() : onBreadcrumbClick(-1))}
       className={cn(
-        '!h-auto !min-w-0 !px-1 !py-0 text-[13px] font-medium tracking-tight',
+        '!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight',
         breadcrumbs.length === 0
           ? 'text-foreground/85 cursor-default'
           : 'text-foreground/55 hover:text-foreground'
@@ -99,8 +100,8 @@ function CompressedBreadcrumbs({
 
   if (breadcrumbs.length === 0) {
     return (
-      <nav className="pointer-events-auto flex min-w-0 items-center justify-center gap-0.5" aria-label={rootLabel}>
-        <span className="block w-full truncate text-center text-[13px] font-medium tracking-tight text-foreground/85">
+      <nav data-agent-entity="files:path" className="pointer-events-auto flex min-w-0 items-center justify-center gap-0.5 rounded-md" aria-label={rootLabel}>
+        <span className="block w-full truncate text-center text-ui font-medium tracking-tight text-foreground/85">
           {title}
         </span>
       </nav>
@@ -112,14 +113,14 @@ function CompressedBreadcrumbs({
     const parentIndex = breadcrumbs.length - 2;
     const parentCrumb = breadcrumbs[parentIndex];
     return (
-      <nav className="pointer-events-auto flex min-w-0 max-w-full items-center justify-center gap-0.5" aria-label={title}>
+      <nav data-agent-entity="files:path" className="pointer-events-auto flex min-w-0 max-w-full items-center justify-center gap-0.5 rounded-md" aria-label={title}>
         {homeButton}
         {sep}
         <NotionButton
           variant="ghost"
           size="sm"
           onClick={() => onBreadcrumbClick(0)}
-          className="!h-auto !min-w-0 !px-1 !py-0 text-[13px] font-medium tracking-tight text-foreground/55 hover:text-foreground"
+          className="!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground"
           title={parentCrumb?.name}
           aria-label={parentCrumb?.name || '…'}
         >
@@ -131,14 +132,14 @@ function CompressedBreadcrumbs({
             variant="ghost"
             size="sm"
             onClick={() => onBreadcrumbClick(parentIndex)}
-            className="!h-auto !min-w-0 !px-1 !py-0 text-[13px] font-medium tracking-tight text-foreground/55 hover:text-foreground"
+            className="!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground"
             title={parentCrumb.name}
           >
             <span className="truncate max-w-[72px]">{parentCrumb.name}</span>
           </NotionButton>
         ) : null}
         {parentCrumb ? sep : null}
-        <span className="min-w-0 truncate text-[13px] font-medium tracking-tight text-foreground/85">
+        <span className="min-w-0 truncate text-ui font-medium tracking-tight text-foreground/85">
           {lastCrumb?.name || title}
         </span>
       </nav>
@@ -146,7 +147,7 @@ function CompressedBreadcrumbs({
   }
 
   return (
-    <nav className="pointer-events-auto flex min-w-0 max-w-full items-center justify-center gap-0.5" aria-label={title}>
+    <nav data-agent-entity="files:path" className="pointer-events-auto flex min-w-0 max-w-full items-center justify-center gap-0.5 rounded-md" aria-label={title}>
       {homeButton}
       {breadcrumbs.map((crumb, index) => {
         const isLast = index === breadcrumbs.length - 1;
@@ -154,7 +155,7 @@ function CompressedBreadcrumbs({
           <React.Fragment key={crumb.id}>
             {sep}
             {isLast ? (
-              <span className="min-w-0 truncate text-[13px] font-medium tracking-tight text-foreground/85">
+              <span className="min-w-0 truncate text-ui font-medium tracking-tight text-foreground/85">
                 {crumb.name}
               </span>
             ) : (
@@ -162,7 +163,7 @@ function CompressedBreadcrumbs({
                 variant="ghost"
                 size="sm"
                 onClick={() => onBreadcrumbClick(index)}
-                className="!h-auto !min-w-0 !px-1 !py-0 text-[13px] font-medium tracking-tight text-foreground/55 hover:text-foreground"
+                className="!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground"
                 title={crumb.name}
               >
                 <span className="truncate max-w-[88px]">{crumb.name}</span>
@@ -201,7 +202,10 @@ export const FinderToolbar = React.memo(function FinderToolbar({
   const { t } = useTranslation('learningHub');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const rootLabel = t('folder.root');
-  const resolvedSearchPlaceholder = searchPlaceholder || t('finder.search.placeholder');
+  // 禁用时给出原因（此前直接 disabled 无解释，用户不知为何不可用）
+  const resolvedSearchPlaceholder = searchDisabled
+    ? t('finder.search.placeholderDisabled')
+    : searchPlaceholder || t('finder.search.placeholder');
 
   const navButtons = (
     <div className="finder-toolbar-control-group flex shrink-0 items-center gap-0.5 rounded-xl bg-[color:var(--interactive-hover)]/70 p-0.5">
@@ -338,7 +342,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         disabled={searchDisabled}
         placeholder={resolvedSearchPlaceholder}
         aria-label={resolvedSearchPlaceholder}
-        className="h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-[13px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden"
+        className="h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-ui text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden"
       />
     </div>
   ) : null;

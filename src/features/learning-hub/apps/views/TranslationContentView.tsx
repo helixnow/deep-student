@@ -28,6 +28,15 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { IconSwap } from '@/components/ui/IconSwap';
+import { reportFrontendError } from '@/logging/errorReporter';
+import { registerContentAgentSurface } from '@/features/workbench/apps/content/contentAgentSurfaces';
+import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
+
+/** 段落数：按空行/换行切分后剔除空白段（供 agent 观察投影） */
+function countParagraphs(text: string): number {
+  if (!text) return 0;
+  return text.split(/\n+/).filter((line) => line.trim()).length;
+}
 
 // 懒加载翻译工作台。
 // 工厂形式：React.lazy 会缓存失败的 import promise，chunk 加载失败后
@@ -122,6 +131,7 @@ const CopyButton: React.FC<{
       aria-label={ariaLabel}
       disabled={!text}
       onClick={() => void handleCopy()}
+      className="[@media(pointer:coarse)]:min-h-11"
     >
       <IconSwap
         active={copied}
@@ -218,6 +228,11 @@ class WorkbenchErrorBoundary extends React.Component<
 
   componentDidCatch(error: unknown, info: React.ErrorInfo) {
     console.error('[TranslationContentView] Workbench crashed:', error, info.componentStack);
+    void reportFrontendError(error, {
+      kind: 'REACT_ERROR_BOUNDARY',
+      component: 'translation-workbench',
+      extra: { componentStack: info.componentStack },
+    }).catch(() => undefined);
   }
 
   render() {
@@ -446,6 +461,28 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
     };
   }, [session, node.id, performSave]);
 
+  // ★ ACR 4.0（A7）：注册 agent 观察投影（源/译文字数与段落数、保存态）。
+  //   滚动位置在懒加载工作台内部、无编程控制落点，故只提供观察不声明动作。
+  const agentSurfaceStateRef = useRef({ session, isLoading, saveStatus: saveState.status });
+  agentSurfaceStateRef.current = { session, isLoading, saveStatus: saveState.status };
+  useEffect(() => {
+    const resourceId = normalizeResourceInstanceKey(node.id);
+    if (!resourceId) return undefined;
+    return registerContentAgentSurface('translation', resourceId, {
+      getSummary: () => {
+        const s = agentSurfaceStateRef.current;
+        return {
+          ready: !s.isLoading && s.session != null,
+          sourceChars: s.session?.sourceText.length ?? 0,
+          translatedChars: s.session?.translatedText.length ?? 0,
+          sourceParagraphs: countParagraphs(s.session?.sourceText ?? ''),
+          translatedParagraphs: countParagraphs(s.session?.translatedText ?? ''),
+          saveStatus: s.saveStatus,
+        };
+      },
+    });
+  }, [node.id]);
+
   // 加载中状态：双栏结构骨架
   if (isLoading) {
     return <TranslationSkeleton label={t('translation:contentView.skeleton_loading')} />;
@@ -462,11 +499,11 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           {t('translation:errors.load_failed', { error: loadError })}
         </p>
         <div className="flex gap-2">
-          <NotionButton variant="primary" onClick={() => void loadSession()}>
+          <NotionButton variant="primary" className="[@media(pointer:coarse)]:min-h-11" onClick={() => void loadSession()}>
             {t('common:retry')}
           </NotionButton>
           {onClose && (
-            <NotionButton variant="ghost" onClick={onClose}>
+            <NotionButton variant="ghost" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:back')}
             </NotionButton>
           )}
@@ -484,9 +521,10 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   // 工作台不可用（chunk 加载失败 / 渲染崩溃）时的内联降级
   const workbenchFallback = (
     <div className="flex flex-col h-full bg-background overflow-y-auto ui-fade-in" role="alert">
-      <div className="flex items-start gap-3 px-4 py-3 border-b border-destructive/20 bg-destructive/10">
+      {/* 📱 400px：操作按钮换行到文案下方（sm 以上保持右侧同排），避免标题被挤压截断 */}
+      <div className="flex flex-wrap items-start gap-3 px-4 py-3 border-b border-destructive/20 bg-destructive/10">
         <Warning size={18} className="text-destructive shrink-0 mt-0.5" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-48">
           <p className="text-sm font-medium text-destructive">
             {t('translation:contentView.workbench_error_title')}
           </p>
@@ -496,13 +534,13 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
               : t('translation:contentView.workbench_error_desc_empty')}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <NotionButton variant="primary" size="sm" onClick={reloadWorkbench}>
+        <div className="flex items-center gap-2 shrink-0 max-sm:w-full max-sm:justify-end">
+          <NotionButton variant="primary" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={reloadWorkbench}>
             <ArrowClockwise size={14} aria-hidden="true" />
             {t('translation:contentView.workbench_error_retry')}
           </NotionButton>
           {onClose && (
-            <NotionButton variant="ghost" size="sm" onClick={onClose}>
+            <NotionButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:min-h-11" onClick={onClose}>
               {t('common:back')}
             </NotionButton>
           )}
@@ -534,7 +572,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <NotionButton
             variant="ghost"
             size="sm"
-            className="shrink-0"
+            className="shrink-0 [@media(pointer:coarse)]:min-h-11"
             onClick={retrySave}
           >
             {/* 着色放在子 span：直接类优先于按钮继承色，svg 再从 span 继承 */}
@@ -546,7 +584,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <NotionButton
             variant="ghost"
             size="icon"
-            className="shrink-0"
+            className="shrink-0 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
             aria-label={t('translation:contentView.save_error_dismiss')}
             onClick={() => setSaveState({ status: 'idle' })}
           >
@@ -565,7 +603,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <NotionButton
             variant="ghost"
             size="icon"
-            className="shrink-0"
+            className="shrink-0 [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10"
             aria-label={t('translation:contentView.empty_hint_dismiss')}
             onClick={() => setEmptyHintDismissed(true)}
           >

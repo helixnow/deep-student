@@ -47,6 +47,7 @@ import {
   X,
   Star,
   Clock,
+  Archive,
   ClockCounterClockwise,
   CheckCircle,
   XCircle,
@@ -77,6 +78,8 @@ import {
   writeMemoryBatch,
   listMemory,
   deleteMemory,
+  restoreStaleMemory,
+  restoreArchivedMemory,
   updateMemoryById,
   exportAllMemories,
   getMemoryProfile,
@@ -652,6 +655,38 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     }
   }, [confirmingDeleteId, executeDeleteMemory, armDeleteConfirm]);
 
+  // ========== 恢复过时记忆（摘除 _stale 标记） ==========
+  const handleRestoreStale = useCallback(async (noteId: string) => {
+    setIsMutating(true);
+    try {
+      const restored = await restoreStaleMemory(noteId);
+      showGlobalNotification('success', t(restored ? 'memory.restore_success' : 'memory.restore_not_needed'));
+      // 乐观更新：立即摘除本地列表的 stale 标记，避免等整页刷新
+      setMemories(prev => prev.map(m => (m.id === noteId ? { ...m, isStale: false } : m)));
+    } catch (error: unknown) {
+      console.error('[MemoryView] Restore stale failed:', error);
+      showGlobalNotification('error', t('memory.restore_error'));
+    } finally {
+      setIsMutating(false);
+    }
+  }, [t]);
+
+  // ========== 恢复已归档记忆（摘除 _archived 并重建索引） ==========
+  const handleRestoreArchived = useCallback(async (noteId: string) => {
+    setIsMutating(true);
+    try {
+      const restored = await restoreArchivedMemory(noteId);
+      showGlobalNotification('success', t(restored ? 'memory.restore_success' : 'memory.restore_not_needed'));
+      // 乐观更新：归档恢复连带摘除过时标记（与后端 restore_archived 一致）
+      setMemories(prev => prev.map(m => (m.id === noteId ? { ...m, isArchived: false, isStale: false } : m)));
+    } catch (error: unknown) {
+      console.error('[MemoryView] Restore archived failed:', error);
+      showGlobalNotification('error', t('memory.restore_error'));
+    } finally {
+      setIsMutating(false);
+    }
+  }, [t]);
+
   // ========== 批量删除（行内二次确认） ==========
   const executeBatchDelete = useCallback(async () => {
     if (selectedIds.size === 0) return;
@@ -771,6 +806,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     setEditingMemoryId(null);
     setEditContent('');
   }, []);
+
+  // 归档记忆沉底展示（稳定分区，组内保持后端返回的 updated_at DESC 顺序）
+  const displayMemories = useMemo(() => {
+    if (!memories.some(m => m.isArchived)) return memories;
+    return [...memories.filter(m => !m.isArchived), ...memories.filter(m => m.isArchived)];
+  }, [memories]);
 
   // ★ 性能：树状视图的 note 元数据映射与折叠回调保持稳定引用，
   // 避免每次渲染都重建导致 MemoryTreeNode 的 React.memo 失效
@@ -1122,10 +1163,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // ========== 渲染：主视图 ==========
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      {/* 顶部工具栏 - Notion 风格 */}
-      <div data-wb-blur-surface className="flex items-center gap-2 px-4 py-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl">
-        {/* 搜索框 */}
-        <div className="flex-1 relative">
+      {/* 顶部工具栏 - Notion 风格（窄容器允许折行，避免单行溢出） */}
+      <div data-wb-blur-surface className="flex flex-wrap items-center gap-2 gap-y-1.5 px-4 py-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl">
+        {/* 搜索框：保留最小可用宽度，不足时让后续按钮折行 */}
+        <div className="flex-1 min-w-[9rem] relative">
           <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={16} />
           <Input
             type="search"
@@ -1201,7 +1242,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <NotionButton
               variant="ghost" size="sm"
               onClick={isBatchImporting ? handleCancelBatchImport : handleOpenBatchImport}
-              className={cn('text-emerald-600 hover:bg-emerald-500/10', isBatchImporting && 'bg-emerald-500/10')}
+              className={cn('text-success hover:bg-success/10', isBatchImporting && 'bg-success/10')}
             >
               <ListPlus size={16} />
               {t('memory.batch_import')}
@@ -1231,8 +1272,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 onClick={handleBatchDelete}
                 disabled={isMutating}
                 className={cn(
-                  'text-rose-500 hover:bg-rose-500/10 transition-colors',
-                  confirmingBatchDelete && 'bg-rose-500/15 font-medium'
+                  'text-danger hover:bg-danger/10 transition-colors',
+                  confirmingBatchDelete && 'bg-danger/15 font-medium'
                 )}
               >
                 {isMutating ? <CircleNotch size={16} className="animate-spin" /> : <Trash size={16} />}
@@ -1270,12 +1311,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           <span>{t('memory.auto_extract')}:</span>
           <div className="flex items-center gap-0.5 ml-1">
             {([
-              { value: 'off' as const, label: t('memory.freq_off') },
-              { value: 'balanced' as const, label: t('memory.freq_balanced') },
-              { value: 'aggressive' as const, label: t('memory.freq_aggressive') },
+              { value: 'off' as const, label: t('memory.freq_off'), desc: t('memory.freq_off_desc') },
+              { value: 'balanced' as const, label: t('memory.freq_balanced'), desc: t('memory.freq_balanced_desc') },
+              { value: 'aggressive' as const, label: t('memory.freq_aggressive'), desc: t('memory.freq_aggressive_desc') },
             ]).map((opt) => (
               <button
                 key={opt.value}
+                title={opt.desc}
                 onClick={() => handleFrequencyChange(opt.value)}
                 className={cn(
                   'px-2 py-0.5 rounded text-[11px] transition-colors',
@@ -1345,7 +1387,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
       {/* 统计栏 */}
       {memories.length > 0 && !isSearchMode && (
-        <div className="px-4 py-1.5 text-[10px] text-muted-foreground/70 border-b border-border/20 flex items-center gap-3">
+        <div className="px-4 py-1.5 text-2xs text-muted-foreground/70 border-b border-border/20 flex items-center gap-3">
           <span className="font-medium text-muted-foreground">{t('memory.count', { count: memories.length })}</span>
           {Object.entries(memoryStats.purposeCounts).map(([key, count]) => (
             <span key={key} className={cn('px-1.5 py-0 rounded', PURPOSE_BADGE_STYLES[key] || 'bg-muted')}>
@@ -1414,7 +1456,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <div className="ml-auto flex items-center gap-1.5">
                       {/* 来源筛选 */}
                       <Select value={auditSourceFilter} onValueChange={setAuditSourceFilter}>
-                        <SelectTrigger className="h-6 px-1.5 text-[10px] bg-muted/40 border-none rounded w-auto min-h-0">
+                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1423,11 +1465,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           <SelectItem value="auto_extract">{t('memory.audit_source_auto')}</SelectItem>
                           <SelectItem value="handler">{t('memory.audit_source_handler')}</SelectItem>
                           <SelectItem value="evolution">{t('memory.audit_source_evolution')}</SelectItem>
+                          <SelectItem value="semantic_dedup">{t('memory.audit_source_semantic_dedup')}</SelectItem>
                         </SelectContent>
                       </Select>
                       {/* 成功/失败筛选 */}
                       <Select value={auditSuccessFilter} onValueChange={setAuditSuccessFilter}>
-                        <SelectTrigger className="h-6 px-1.5 text-[10px] bg-muted/40 border-none rounded w-auto min-h-0">
+                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1446,7 +1489,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <CircleNotch size={16} className="animate-spin text-muted-foreground" />
                     </div>
                   ) : auditLoadError ? (
-                    <div className="px-4 py-4 text-xs text-red-500 text-center space-y-2">
+                    <div className="px-4 py-4 text-xs text-danger text-center space-y-2">
                       <div>{auditLoadError}</div>
                       <div>
                         <NotionButton variant="ghost" size="sm" onClick={() => loadAuditLogs(0)} className="text-xs">
@@ -1798,7 +1841,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           )}
                           <FileText size={14} className="text-muted-foreground" />
                           <span className="text-sm font-medium truncate">{result.noteTitle}</span>
-                          <span className="text-[10px] text-muted-foreground/60 ml-auto tabular-nums">
+                          <span className="text-2xs text-muted-foreground/60 ml-auto tabular-nums">
                             {(result.score * 100).toFixed(0)}%
                           </span>
                         </div>
@@ -1849,7 +1892,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           ) : viewMode === 'list' ? (
             // 记忆列表 - 内联展开布局 + 批量选择 + 内联编辑
             <div className="space-y-0.5">
-              {memories.map((memory) => {
+              {displayMemories.map((memory) => {
                 const isExpanded = expandedMemoryId === memory.id;
                 const isSelected = selectedIds.has(memory.id);
                 const isConfirmingDelete = confirmingDeleteId === memory.id;
@@ -1886,26 +1929,26 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         <div className="flex items-center gap-1.5">
                           <span className="text-sm font-medium truncate">{memory.title}</span>
                           {memory.memoryType === 'fact' && (
-                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-amber-500/10 text-amber-600 text-[9px] font-medium flex-shrink-0">
+                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-amber-500/10 text-amber-600 text-2xs font-medium flex-shrink-0">
                               <Sparkle size={10} />
                               {t('memory.type_fact')}
                             </span>
                           )}
                           {memory.memoryType === 'note' && (
-                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-blue-500/10 text-blue-600 text-[9px] font-medium flex-shrink-0">
+                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-blue-500/10 text-blue-600 text-2xs font-medium flex-shrink-0">
                               <BookOpen size={10} />
                               {t('memory.type_note')}
                             </span>
                           )}
                           {memory.memoryType === 'study' && (
-                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-emerald-500/10 text-emerald-600 text-[9px] font-medium flex-shrink-0">
+                            <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-emerald-500/10 text-emerald-600 text-2xs font-medium flex-shrink-0">
                               <FileText size={10} />
                               {t('memory.type_study')}
                             </span>
                           )}
                           {memory.memoryPurpose && memory.memoryPurpose !== 'memorized' && (
                             <span className={cn(
-                              'px-1.5 py-0 rounded text-[9px] font-medium flex-shrink-0',
+                              'px-1.5 py-0 rounded text-2xs font-medium flex-shrink-0',
                               PURPOSE_BADGE_STYLES[memory.memoryPurpose] || 'bg-muted text-muted-foreground'
                             )}>
                               {purposeLabel(t, memory.memoryPurpose)}
@@ -1914,17 +1957,46 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           {memory.isImportant && (
                             <Star size={12} className="text-amber-500 flex-shrink-0" weight="fill" />
                           )}
-                          {memory.isStale && (
-                            <Clock size={12} className="text-muted-foreground/40 flex-shrink-0" />
+                          {memory.isStale && !memory.isArchived && (
+                            <NotionButton
+                              variant="ghost" size="sm"
+                              className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0"
+                              title={t('memory.stale_tooltip')}
+                              onClick={(event) => { event.stopPropagation(); handleRestoreStale(memory.id); }}
+                              aria-label={t('memory.restore_stale')}
+                            >
+                              <Clock size={10} />
+                              {t('memory.restore_stale')}
+                            </NotionButton>
+                          )}
+                          {memory.isArchived && (
+                            <NotionButton
+                              variant="ghost" size="sm"
+                              className="!h-auto !px-1.5 !py-0 text-2xs text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0"
+                              title={t('memory.archived_tooltip')}
+                              onClick={(event) => { event.stopPropagation(); handleRestoreArchived(memory.id); }}
+                              aria-label={t('memory.restore_archived')}
+                            >
+                              <Archive size={10} />
+                              {t('memory.archived_badge')}
+                            </NotionButton>
+                          )}
+                          {memory.needsDedupReview && (
+                            <span
+                              className="px-1.5 py-0 rounded bg-warning/10 text-warning text-2xs font-medium flex-shrink-0"
+                              title={t('memory.needs_dedup_review_tooltip')}
+                            >
+                              {t('memory.needs_dedup_review')}
+                            </span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <span>{new Date(memory.updatedAt).toLocaleDateString()}</span>
                           {memory.folderPath && (
-                            <span className="px-1.5 py-0 rounded bg-muted/50 text-[10px]">{memory.folderPath}</span>
+                            <span className="px-1.5 py-0 rounded bg-muted/50 text-2xs">{memory.folderPath}</span>
                           )}
                           {memory.hits > 0 && (
-                            <span className="text-[10px] text-muted-foreground/50">{memory.hits} {t('memory.hits')}</span>
+                            <span className="text-2xs text-muted-foreground/50">{memory.hits} {t('memory.hits')}</span>
                           )}
                         </div>
                       </div>
@@ -1932,7 +2004,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         isConfirmingDelete ? (
                           <NotionButton
                             variant="ghost" size="sm"
-                            className="!h-auto !px-2 !py-1 text-[11px] text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 font-medium flex-shrink-0"
+                            className="!h-auto !px-2 !py-1 text-[11px] text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0"
                             onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }}
                             aria-label={t('memory.aria.delete')}
                           >
@@ -1940,7 +2012,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             {t('memory.confirm_delete')}
                           </NotionButton>
                         ) : (
-                          <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label={t('memory.aria.delete')}>
+                          // 触屏无 hover：删除钮常显弱化态（[@media(pointer:coarse)]），避免隐形可点
+                          <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground hover:text-danger hover:bg-danger/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label={t('memory.aria.delete')}>
                             <Trash size={14} />
                           </NotionButton>
                         )
@@ -2063,7 +2136,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
           <Folder size={14} className="text-amber-500 flex-shrink-0" />
           <span className="text-sm font-medium truncate">{node.folder.title}</span>
           {hasChildren && (
-            <span className="text-[10px] text-muted-foreground/50 ml-auto">
+            <span className="text-2xs text-muted-foreground/50 ml-auto">
               {node.items.length}
             </span>
           )}
@@ -2134,7 +2207,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     <span className="text-sm truncate flex-1">{noteTitle}</span>
                     {meta?.memoryPurpose && meta.memoryPurpose !== 'memorized' && (
                       <span className={cn(
-                        'px-1.5 py-0 rounded text-[9px] font-medium flex-shrink-0',
+                        'px-1.5 py-0 rounded text-2xs font-medium flex-shrink-0',
                         PURPOSE_BADGE_STYLES[meta.memoryPurpose] || 'bg-muted text-muted-foreground'
                       )}>
                         {purposeLabel(t, meta.memoryPurpose)}
@@ -2146,7 +2219,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     {isConfirmingDelete ? (
                       <NotionButton
                         variant="ghost" size="sm"
-                        className="!h-auto !px-1.5 !py-0.5 text-[10px] text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 font-medium flex-shrink-0"
+                        className="!h-auto !px-1.5 !py-0.5 text-2xs text-danger bg-danger/10 hover:bg-danger/20 font-medium flex-shrink-0"
                         onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                         aria-label={t('memory.aria.delete')}
                       >
@@ -2156,7 +2229,8 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     ) : (
                       <NotionButton
                         variant="ghost" size="icon" iconOnly
-                        className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
+                        // 触屏无 hover：删除钮常显弱化态，避免隐形可点
+                        className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(pointer:coarse)]:text-muted-foreground hover:text-danger hover:bg-danger/10"
                         onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                         aria-label={t('memory.aria.delete')}
                       >
@@ -2307,8 +2381,8 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 variant="ghost" size="sm"
                 onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                 className={cn(
-                  'text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs transition-colors',
-                  confirmingDelete && 'bg-rose-500/15 font-medium'
+                  'text-danger hover:bg-danger/10 !h-auto !px-2 !py-1 text-xs transition-colors',
+                  confirmingDelete && 'bg-danger/15 font-medium'
                 )}
               >
                 <Trash size={12} />
@@ -2359,6 +2433,7 @@ const SOURCE_META: Record<string, { labelKey: string; icon: React.ReactNode; col
   auto_extract: { labelKey: 'memory.audit_source_auto', icon: <Lightning className="w-3 h-3" />, color: 'text-amber-500' },
   handler: { labelKey: 'memory.audit_source_handler', icon: <User size={12} />, color: 'text-emerald-500' },
   evolution: { labelKey: 'memory.audit_source_evolution', icon: <ArrowClockwise className="w-3 h-3" />, color: 'text-purple-500' },
+  semantic_dedup: { labelKey: 'memory.audit_source_semantic_dedup', icon: <ArrowClockwise className="w-3 h-3" />, color: 'text-teal-500' },
 };
 
 const OPERATION_I18N_KEYS: Record<string, string> = {
@@ -2375,15 +2450,23 @@ const OPERATION_I18N_KEYS: Record<string, string> = {
   update_tags: 'memory.operation.update_tags',
   add_relation: 'memory.operation.add_relation',
   remove_relation: 'memory.operation.remove_relation',
+  decision_breaker: 'memory.operation.decision_breaker',
+  semantic_merge: 'memory.operation.semantic_merge',
 };
 
 const EVENT_COLORS: Record<string, string> = {
-  ADD: 'bg-emerald-500/15 text-emerald-600',
-  UPDATE: 'bg-blue-500/15 text-blue-600',
-  APPEND: 'bg-sky-500/15 text-sky-600',
-  DELETE: 'bg-rose-500/15 text-rose-600',
+  ADD: 'bg-success/15 text-success',
+  UPDATE: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
+  APPEND: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
+  DELETE: 'bg-danger/15 text-danger',
   NONE: 'bg-muted text-muted-foreground',
-  FILTERED: 'bg-amber-500/15 text-amber-600',
+  FILTERED: 'bg-warning/15 text-warning',
+  SKIPPED: 'bg-muted text-muted-foreground',
+  STALE_DEMOTE: 'bg-warning/15 text-warning',
+  STALE_RESTORE: 'bg-success/15 text-success',
+  ARCHIVE: 'bg-warning/15 text-warning',
+  ARCHIVE_RESTORE: 'bg-success/15 text-success',
+  SEMANTIC_MERGE: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
 };
 
 const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) => {
@@ -2422,24 +2505,24 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
 
         {/* 成功/失败图标 */}
         {log.success ? (
-          <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
+          <CheckCircle size={14} className="text-success flex-shrink-0" />
         ) : (
-          <XCircle size={14} className="text-rose-500 flex-shrink-0" />
+          <XCircle size={14} className="text-danger flex-shrink-0" />
         )}
 
         {/* 来源 */}
-        <span className={cn('flex items-center gap-1 text-[10px] font-medium flex-shrink-0', sourceMeta.color)}>
+        <span className={cn('flex items-center gap-1 text-2xs font-medium flex-shrink-0', sourceMeta.color)}>
           {sourceMeta.icon}
           {sourceLabel}
         </span>
 
         {/* 操作 */}
-        <span className="text-[10px] text-muted-foreground flex-shrink-0">{operationLabel}</span>
+        <span className="text-2xs text-muted-foreground flex-shrink-0">{operationLabel}</span>
 
         {/* 事件标签 */}
         {log.event && (
           <span className={cn(
-            'px-1.5 py-0 rounded text-[9px] font-medium flex-shrink-0',
+            'px-1.5 py-0 rounded text-2xs font-medium flex-shrink-0',
             EVENT_COLORS[log.event] ?? 'bg-muted text-muted-foreground'
           )}>
             {log.event}
@@ -2452,13 +2535,13 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
         </span>
 
         {/* 时间 */}
-        <span className="text-[10px] text-muted-foreground/60 flex-shrink-0 tabular-nums">
+        <span className="text-2xs text-muted-foreground/60 flex-shrink-0 tabular-nums">
           {timeStr}
         </span>
 
         {/* 耗时 */}
         {log.durationMs != null && (
-          <span className="text-[10px] text-muted-foreground/40 flex-shrink-0 tabular-nums w-12 text-right">
+          <span className="text-2xs text-muted-foreground/40 flex-shrink-0 tabular-nums w-12 text-right">
             {log.durationMs}ms
           </span>
         )}
@@ -2470,45 +2553,45 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = React.memo(({ log }) 
           <motion.div key="detail" {...disclosureMotion} className="overflow-hidden">
             <div className="px-4 pb-3 ml-7 space-y-1.5">
               {log.noteId && (
-                <div className="text-[10px]">
+                <div className="text-2xs">
                   <span className="text-muted-foreground/60">{t('memory.audit_field.note_id')}: </span>
-                  <code className="text-[10px] bg-muted/50 px-1 rounded">{log.noteId}</code>
+                  <code className="text-2xs bg-muted/50 px-1 rounded">{log.noteId}</code>
                 </div>
               )}
               {log.contentPreview && (
-                <div className="text-[10px]">
+                <div className="text-2xs">
                   <span className="text-muted-foreground/60">{t('memory.audit_field.content')}: </span>
                   <span className="text-muted-foreground">{log.contentPreview}</span>
                 </div>
               )}
               {log.folder && (
-                <div className="text-[10px]">
+                <div className="text-2xs">
                   <span className="text-muted-foreground/60">{t('memory.audit_field.folder')}: </span>
                   <span className="text-muted-foreground">{log.folder}</span>
                 </div>
               )}
               {log.confidence != null && (
-                <div className="text-[10px]">
+                <div className="text-2xs">
                   <span className="text-muted-foreground/60">{t('memory.audit_field.confidence')}: </span>
                   <span className={cn(
                     'font-medium',
-                    log.confidence >= 0.8 ? 'text-emerald-600' :
-                    log.confidence >= 0.5 ? 'text-amber-600' : 'text-rose-600'
+                    log.confidence >= 0.8 ? 'text-success' :
+                    log.confidence >= 0.5 ? 'text-warning' : 'text-danger'
                   )}>
                     {(log.confidence * 100).toFixed(0)}%
                   </span>
                 </div>
               )}
               {log.reason && (
-                <div className="text-[10px]">
+                <div className="text-2xs">
                   <span className="text-muted-foreground/60">{t('memory.audit_field.reason')}: </span>
                   <span className="text-muted-foreground">{log.reason}</span>
                 </div>
               )}
               {log.sessionId && (
-                <div className="text-[10px]">
+                <div className="text-2xs">
                   <span className="text-muted-foreground/60">{t('memory.audit_field.session')}: </span>
-                  <code className="text-[10px] bg-muted/50 px-1 rounded">{log.sessionId}</code>
+                  <code className="text-2xs bg-muted/50 px-1 rounded">{log.sessionId}</code>
                 </div>
               )}
             </div>

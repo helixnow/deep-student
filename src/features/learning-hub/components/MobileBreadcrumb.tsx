@@ -14,6 +14,13 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { CaretRight } from '@phosphor-icons/react';
 import type { BreadcrumbItem } from '../stores/finderStore';
 
+/**
+ * 触屏面包屑命中区扩展：padding 撑出 ≥40px 高的点击热区，
+ * 负 margin 抵消占位，标题行排版与桌面完全一致（r3 建议后续#5）。
+ */
+const CRUMB_TOUCH_HIT_CLASS =
+  '[@media(pointer:coarse)]:!px-1.5 [@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!-mx-1.5 [@media(pointer:coarse)]:!-my-2.5';
+
 export interface MobileBreadcrumbProps {
   /** 根目录标题 */
   rootTitle: string;
@@ -110,8 +117,8 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
         )}
         aria-hidden={displayMode !== 'full'}
       >
-        {/* 根目录 */}
-        <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className="!h-auto !p-0 hover:text-primary truncate max-w-[120px]">
+        {/* 根目录（触屏用 padding+负 margin 扩大命中区，视觉排版不变） */}
+        <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className={cn('!h-auto !p-0 hover:text-primary truncate max-w-[120px]', CRUMB_TOUCH_HIT_CLASS)}>
           {rootTitle}
         </NotionButton>
 
@@ -124,7 +131,7 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
               <span className="truncate max-w-[120px]">{item.name}</span>
             ) : (
               // 中间层级（可点击）
-              <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(index)} className="!h-auto !p-0 hover:text-primary truncate max-w-[120px]">
+              <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(index)} className={cn('!h-auto !p-0 hover:text-primary truncate max-w-[120px]', CRUMB_TOUCH_HIT_CLASS)}>
                 {item.name}
               </NotionButton>
             )}
@@ -142,7 +149,7 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
           )}
           aria-hidden={displayMode !== 'collapsed'}
         >
-          <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className="!h-auto !p-0 hover:text-primary truncate max-w-[80px]">
+          <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className={cn('!h-auto !p-0 hover:text-primary truncate max-w-[80px]', CRUMB_TOUCH_HIT_CLASS)}>
             {rootTitle}
           </NotionButton>
           <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />

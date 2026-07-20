@@ -50,6 +50,11 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { base64ToBlob, base64ToUint8Array } from '@/utils/base64FileUtils';
 import { fileManager } from '@/utils/fileManager';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import {
+  registerContentAgentSurface,
+  type ContentSurfaceActionResult,
+} from '@/features/workbench/apps/content/contentAgentSurfaces';
+import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
 import { formatFileSize } from './previewUtils';
 import { PreviewStatus } from './PreviewStatus';
 
@@ -128,7 +133,6 @@ const computeFitZoom = (
  */
 const ImageContentView: React.FC<ContentViewProps> = ({
   node,
-  onClose,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
 
@@ -688,6 +692,99 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     }
   }, [applyZoom, enterFitMode]);
 
+  // ★ ACR 4.0（A7）：把真实可得的观察投影（尺寸/缩放态）与 setZoom 动作
+  //   注册为 workbench agent 表面；卸载即注销，视图不在场时 agent 得到诚实失败。
+  const agentSurfaceStateRef = useRef({
+    loadingStage,
+    naturalSize,
+    effectiveZoom,
+    fitMode,
+    rotation: normalizedRotation,
+    fileSize,
+    formatLabel,
+  });
+  agentSurfaceStateRef.current = {
+    loadingStage,
+    naturalSize,
+    effectiveZoom,
+    fitMode,
+    rotation: normalizedRotation,
+    fileSize,
+    formatLabel,
+  };
+  useEffect(() => {
+    const resourceId = normalizeResourceInstanceKey(node.id);
+    if (!resourceId) return undefined;
+    return registerContentAgentSurface('image', resourceId, {
+      getSummary: () => {
+        const s = agentSurfaceStateRef.current;
+        return {
+          ready: s.loadingStage === 'done',
+          naturalWidth: s.naturalSize?.w ?? null,
+          naturalHeight: s.naturalSize?.h ?? null,
+          zoomPercent: Math.round(s.effectiveZoom),
+          fitMode: s.fitMode,
+          rotation: s.rotation,
+          format: s.formatLabel || null,
+          fileSizeBytes: s.fileSize > 0 ? s.fileSize : null,
+        };
+      },
+      getZoomState: () => ({
+        zoomPercent: Math.round(agentSurfaceStateRef.current.effectiveZoom),
+        fitMode: agentSurfaceStateRef.current.fitMode,
+      }),
+      setZoom: (zoom): ContentSurfaceActionResult => {
+        const s = agentSurfaceStateRef.current;
+        if (s.loadingStage !== 'done' || !s.naturalSize) {
+          return {
+            handled: false,
+            code: 'ACTION_UNAVAILABLE',
+            hint: '图片尚未加载完成，无法缩放',
+          };
+        }
+        const before = { zoomPercent: Math.round(s.effectiveZoom), fitMode: s.fitMode };
+        if (zoom === 'fit') {
+          enterFitMode();
+          return { handled: true, changed: !before.fitMode };
+        }
+        if (!Number.isFinite(zoom) || zoom < ZOOM_MIN || zoom > ZOOM_MAX) {
+          return {
+            handled: false,
+            code: 'INVALID_ARGS',
+            hint: `zoom 百分比须在 ${ZOOM_MIN}–${ZOOM_MAX} 之间，或传 'fit'`,
+          };
+        }
+        applyZoom(zoom);
+        // applyZoom 内部按 min(ZOOM_MIN, fitZoom) 下限收敛，这里按请求值估算变化
+        const changed = before.fitMode || Math.abs(before.zoomPercent - zoom) >= 0.5;
+        return { handled: true, changed };
+      },
+      // A45-5（docs/dev/acr/ACR-4.5.md）：顺时针旋转落点。与工具栏/快捷键 R 的
+      // 90° 步进同一条 setRotation 路径（累计角度，过渡动画永远正向）；
+      // 90/180/270 的增量对归一化角必然产生变化，changed 恒为 true。
+      rotate: (degrees): ContentSurfaceActionResult => {
+        const s = agentSurfaceStateRef.current;
+        if (s.loadingStage !== 'done' || !s.naturalSize) {
+          return {
+            handled: false,
+            code: 'ACTION_UNAVAILABLE',
+            hint: '图片尚未加载完成，无法旋转',
+          };
+        }
+        if (degrees !== 90 && degrees !== 180 && degrees !== 270) {
+          return {
+            handled: false,
+            code: 'INVALID_ARGS',
+            hint: 'rotate 的 degrees 仅支持 90/180/270（顺时针）',
+          };
+        }
+        setRotation((prev) => prev + degrees);
+        return { handled: true, changed: true };
+      },
+      getRotation: () => agentSurfaceStateRef.current.rotation,
+    });
+  }, [node.id, applyZoom, enterFitMode]);
+
   // 检查文件大小中
   if (loadingStage === 'checking') {
     return (
@@ -706,11 +803,16 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         title={t('learningHub:image.largeFileWarning')}
         description={t('learningHub:image.largeFileDescription', { size: formatFileSize(fileSize) })}
         actions={[
+          // ★ r3 建议后续#2：原「取消」直接关闭整个 tab，移动端会意外退回中屏。
+          // 改为「保存到本地」逃生通道（不加载进内存也能拿到文件），警告态本身保留，
+          // 关闭标签走 TabBar 常显关闭按钮。
           {
-            id: 'cancel',
-            label: t('common:cancel'),
-            onClick: () => { onClose?.(); },
+            id: 'saveToDevice',
+            label: t('learningHub:image.saveToDevice'),
+            onClick: () => { void handleSaveToDevice(); },
             variant: 'default',
+            loading: isSaving,
+            disabled: isSaving,
           },
           {
             id: 'loadAnyway',
@@ -861,7 +963,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
                 <button
                   type="button"
                   role="menuitem"
-                  className="w-full px-3 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                  className="flex w-full items-center px-3 py-1.5 text-left text-sm transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none [@media(pointer:coarse)]:min-h-11"
                   onClick={() => selectZoomPreset('fit')}
                 >
                   {t('learningHub:image.fitToWindow')}
@@ -872,7 +974,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
                     key={preset}
                     type="button"
                     role="menuitem"
-                    className="w-full px-3 py-1.5 text-left text-sm tabular-nums transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                    className="flex w-full items-center px-3 py-1.5 text-left text-sm tabular-nums transition-colors duration-150 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none [@media(pointer:coarse)]:min-h-11"
                     onClick={() => selectZoomPreset(preset)}
                   >
                     {preset}%
@@ -936,7 +1038,8 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             <ArrowCounterClockwise size={16} />
           </NotionButton>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        {/* 文件名：移动端隐藏（顶栏标签页标题已展示，400px 下 7 个 ≥44px 控件已占满工具栏） */}
+        <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground min-w-0">
           <span className="truncate max-w-[200px]">{node.name}</span>
         </div>
       </div>
@@ -961,6 +1064,9 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           className={`flex min-h-full min-w-full p-4 select-none ${
             isPanning ? 'cursor-grabbing' : isPannable ? 'cursor-grab' : ''
           }`}
+          // 📱 放大溢出后，单指横向拖动是图片平移，不应被三屏布局手势劫持
+          // （对齐 PDF/导图的豁免范式；未放大时不豁免，保留边缘滑屏返回）
+          {...(isPannable ? { 'data-no-screen-swipe': true } : null)}
           onPointerDown={handlePanPointerDown}
           onPointerMove={handlePanPointerMove}
           onPointerUp={handlePanPointerEnd}

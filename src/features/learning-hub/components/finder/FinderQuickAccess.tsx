@@ -106,7 +106,10 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 }: FinderQuickAccessProps) {
   const { t } = useTranslation(['learningHub', 'common']);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const resolvedSearchPlaceholder = searchPlaceholder || t('finder.search.placeholder');
+  // 禁用时给出原因（此前直接 disabled 无解释，用户不知为何不可用）
+  const resolvedSearchPlaceholder = searchDisabled
+    ? t('finder.search.placeholderDisabled')
+    : searchPlaceholder || t('finder.search.placeholder');
 
   const quickAccessItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
     { type: 'desktop', icon: Desktop, label: t('finder.quickAccess.desktop') },
@@ -200,7 +203,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
         {!collapsed && (
           <>
             <span className={cn(
-              "flex-1 text-left truncate text-[13px]",
+              "flex-1 text-left truncate text-ui",
               isActive ? "font-medium" : "font-normal"
             )}>
               {label}
@@ -295,7 +298,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
     }
     return (
       <div className="px-2.5 pt-3 pb-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+        <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground/50">
           {title}
         </span>
       </div>
@@ -345,7 +348,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     disabled={searchDisabled}
                     className={cn(
                       'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
-                      'pl-8 pr-8 text-[13px] text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
+                      'pl-8 pr-8 text-ui text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
                       'outline-none transition-colors focus:border-[color:var(--border)] focus:bg-background',
                       '[&::-webkit-search-cancel-button]:hidden'
                     )}
@@ -366,7 +369,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     onFocus={() => setIsSearchFocused(true)}
                     onBlur={() => setIsSearchFocused(false)}
                     disabled={searchDisabled}
-                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-[13px] placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20"
+                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-ui placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20"
                   />
                 )}
                 {searchQuery && (

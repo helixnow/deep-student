@@ -21,6 +21,10 @@ import { getResourceRefsV2 } from '@/features/chat/context/vfsRefApi';
 import type { VfsContextRefData, VfsResourceType } from '@/features/chat/context/types';
 import type { ContextRef } from '@/features/chat/resources/types';
 import type { AttachmentMeta } from '@/features/chat/core/types/common';
+import {
+  getAttachmentMediaType,
+  buildDefaultInjectModes,
+} from '@/features/chat/components/input-bar/injectModeUtils';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { VfsErrorCode } from '@/shared/result';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -186,34 +190,49 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
         debugLog.log(LOG_PREFIX, 'Resource created/reused:', createResult);
 
         // 4. 构建 ContextRef 并添加到 Store
-        const contextRef: ContextRef = {
-          resourceId: createResult.resourceId,
-          hash: createResult.hash,
-          typeId: sourceType,
-          displayName: name,
-        };
-
-        store.getState().addContextRef(contextRef);
-
+        // ★ P1 物质化补全：真实 mime/type、sourceId、显式 injectModes、可用的预览 URL
         const vfsMimeTypes: Record<string, string> = {
           note: 'text/markdown',
           textbook: 'application/pdf',
           exam: 'application/json',
           translation: 'text/markdown',
           essay: 'text/markdown',
-          image: 'image/*',
+          image: 'image/png',
           file: 'application/octet-stream',
           mindmap: 'application/json',
         };
+        // 优先使用资源元数据中的真实 MIME，兜底走类型映射
+        const realMimeType = (typeof metadata?.mimeType === 'string' && metadata.mimeType)
+          || vfsMimeTypes[sourceType]
+          || 'application/octet-stream';
+        // SSOT 媒体识别：MIME OR 扩展名（覆盖空 mime 的 .png 等）
+        const mediaType = getAttachmentMediaType(realMimeType, name);
+        // ★ P0 契约：PDF/图片引用创建时显式写入 UI 默认注入模式，
+        // 后端「缺省 text+image 双开」兜底逻辑不再触发
+        const injectModes = buildDefaultInjectModes(mediaType);
+        const previewUrl = typeof metadata?.previewUrl === 'string' ? metadata.previewUrl : undefined;
+
+        const contextRef: ContextRef = {
+          resourceId: createResult.resourceId,
+          hash: createResult.hash,
+          typeId: sourceType,
+          displayName: name,
+          ...(injectModes ? { injectModes } : {}),
+        };
+
+        store.getState().addContextRef(contextRef);
 
         const attachmentMeta: AttachmentMeta = {
           id: `vfs-${sourceId}-${Date.now()}`,
           name,
-          type: 'document',
-          mimeType: vfsMimeTypes[sourceType] || 'application/octet-stream',
-          size: 0,
+          type: mediaType === 'image' || sourceType === 'image' ? 'image' : 'document',
+          mimeType: realMimeType,
+          size: typeof metadata?.size === 'number' ? metadata.size : 0,
           status: 'ready',
           resourceId: createResult.resourceId,
+          sourceId,
+          ...(previewUrl ? { previewUrl } : {}),
+          ...(injectModes ? { injectModes } : {}),
         };
         store.getState().addAttachment(attachmentMeta);
 

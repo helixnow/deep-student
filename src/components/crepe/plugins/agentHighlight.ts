@@ -26,6 +26,8 @@ import { $prose } from '@milkdown/utils';
 export type AgentHighlightMeta =
   | { type: 'caret'; pos: number }
   | { type: 'insert'; from: number; to: number }
+  /** ACR 4.0：破坏类直改后的变更区域一次性渐隐高亮（不参与 fadeRun） */
+  | { type: 'flash'; from: number; to: number }
   | { type: 'clearAll' }
   | { type: 'fadeRun' };
 
@@ -35,9 +37,16 @@ export interface AgentInsertedRange {
   fading: boolean;
 }
 
+export interface AgentFlashRange {
+  from: number;
+  to: number;
+}
+
 export interface AgentHighlightState {
   caretPos: number | null;
   ranges: AgentInsertedRange[];
+  /** ACR 4.0：flash 高亮区（agent-flash class，CSS 自行渐隐；clearAll 清除） */
+  flashes: AgentFlashRange[];
   decorations: DecorationSet;
 }
 
@@ -72,6 +81,7 @@ function buildDecorations(
   doc: ProseNode,
   caretPos: number | null,
   ranges: AgentInsertedRange[],
+  flashes: AgentFlashRange[],
 ): DecorationSet {
   const decos: Decoration[] = [];
 
@@ -85,6 +95,14 @@ function buildDecorations(
         class: range.fading ? 'agent-inserted-fading' : 'agent-inserted',
       }),
     );
+  }
+
+  for (const flash of flashes) {
+    if (flash.from >= flash.to) continue;
+    const from = clampPos(doc, flash.from);
+    const to = clampPos(doc, flash.to);
+    if (from >= to) continue;
+    decos.push(Decoration.inline(from, to, { class: 'agent-flash' }));
   }
 
   if (caretPos != null) {
@@ -104,6 +122,7 @@ function emptyState(): AgentHighlightState {
   return {
     caretPos: null,
     ranges: [],
+    flashes: [],
     decorations: DecorationSet.empty,
   };
 }
@@ -112,12 +131,24 @@ function withDecorations(
   doc: ProseNode,
   caretPos: number | null,
   ranges: AgentInsertedRange[],
+  flashes: AgentFlashRange[],
 ): AgentHighlightState {
   return {
     caretPos,
     ranges,
-    decorations: buildDecorations(doc, caretPos, ranges),
+    flashes,
+    decorations: buildDecorations(doc, caretPos, ranges, flashes),
   };
+}
+
+function mapFlashes(
+  tr: { docChanged: boolean; mapping: { map: (pos: number, assoc?: number) => number } },
+  flashes: AgentFlashRange[],
+): AgentFlashRange[] {
+  if (!tr.docChanged) return flashes;
+  return flashes
+    .map((f) => ({ from: tr.mapping.map(f.from, -1), to: tr.mapping.map(f.to, 1) }))
+    .filter((f) => f.from < f.to);
 }
 
 export const agentHighlightPlugin = $prose(() =>
@@ -141,7 +172,7 @@ export const agentHighlightPlugin = $prose(() =>
                     fading: r.fading,
                   }))
                 : value.ranges;
-              return withDecorations(tr.doc, caretPos, ranges);
+              return withDecorations(tr.doc, caretPos, ranges, mapFlashes(tr, value.flashes));
             }
             case 'insert': {
               const from = clampPos(tr.doc, meta.from);
@@ -158,12 +189,32 @@ export const agentHighlightPlugin = $prose(() =>
                   ? [...mappedExisting, { from, to, fading: false }]
                   : mappedExisting;
               // 插入后 AI 光标落在新文本末尾
-              return withDecorations(tr.doc, to, ranges);
+              return withDecorations(tr.doc, to, ranges, mapFlashes(tr, value.flashes));
+            }
+            case 'flash': {
+              const from = clampPos(tr.doc, meta.from);
+              const to = clampPos(tr.doc, meta.to);
+              const flashes =
+                from < to
+                  ? [...mapFlashes(tr, value.flashes), { from, to }]
+                  : mapFlashes(tr, value.flashes);
+              const caretPos =
+                value.caretPos != null && tr.docChanged
+                  ? tr.mapping.map(value.caretPos, 1)
+                  : value.caretPos;
+              const ranges = tr.docChanged
+                ? value.ranges.map((r) => ({
+                    from: tr.mapping.map(r.from, -1),
+                    to: tr.mapping.map(r.to, 1),
+                    fading: r.fading,
+                  }))
+                : value.ranges;
+              return withDecorations(tr.doc, caretPos, ranges, flashes);
             }
             case 'fadeRun': {
               const ranges = value.ranges.map((r) => ({ ...r, fading: true }));
               const caretPos = value.caretPos;
-              return withDecorations(tr.doc, caretPos, ranges);
+              return withDecorations(tr.doc, caretPos, ranges, value.flashes);
             }
             default:
               break;
@@ -171,7 +222,11 @@ export const agentHighlightPlugin = $prose(() =>
         }
 
         if (tr.docChanged) {
-          if (value.caretPos == null && value.ranges.length === 0) {
+          if (
+            value.caretPos == null &&
+            value.ranges.length === 0 &&
+            value.flashes.length === 0
+          ) {
             return value;
           }
           const caretPos =
@@ -183,7 +238,7 @@ export const agentHighlightPlugin = $prose(() =>
               fading: r.fading,
             }))
             .filter((r) => r.from < r.to);
-          return withDecorations(tr.doc, caretPos, ranges);
+          return withDecorations(tr.doc, caretPos, ranges, mapFlashes(tr, value.flashes));
         }
 
         return value;

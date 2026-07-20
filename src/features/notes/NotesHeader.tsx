@@ -10,6 +10,7 @@ import {
     FileArchive,
     Printer,
     Link,
+    Copy,
     Trash,
     ArrowRight,
     FolderOpen,
@@ -232,7 +233,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                         <NotionButton 
                             variant="ghost" 
                             iconOnly size="sm" 
-                            className="h-7 w-7 shrink-0 text-muted-foreground/70 hover:text-foreground md:hidden"
+                            className="h-7 w-7 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9 shrink-0 text-muted-foreground/70 hover:text-foreground md:hidden"
                             onClick={onMobileMenuClick}
                         >
                             <SidebarSimple className="h-4 w-4" />
@@ -268,12 +269,13 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                     {index > 0 && (
                                         <CaretRight className="h-3 w-3 shrink-0 text-muted-foreground/40" aria-hidden="true" />
                                     )}
+                                    {/* 触屏下扩大面包屑命中区（父容器 h-12，垂直方向有富余） */}
                                     <button
                                         type="button"
                                         className={
                                             isLast
                                                 ? "truncate max-w-[220px] font-medium text-foreground/80 cursor-default"
-                                                : "truncate max-w-[140px] rounded px-0.5 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
+                                                : "truncate max-w-[140px] rounded px-0.5 [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:px-1.5 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150"
                                         }
                                         title={segment.title}
                                         onClick={() => {
@@ -307,10 +309,11 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
 
 
                     <div className="flex items-center gap-1 ml-2">
+                        {/* 触屏（pointer:coarse）下放大到 40px 触控高度 */}
                         <NotionButton
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground hidden sm:flex"
+                            className="h-7 [@media(pointer:coarse)]:h-10 px-2 text-xs font-medium text-muted-foreground hover:text-foreground hidden sm:flex"
                             disabled={saving}
                             onClick={() => { void handleForceSave(); }}
                         >
@@ -324,7 +327,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                             <NotionButton
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                                className="h-7 [@media(pointer:coarse)]:h-10 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
                                 onClick={() => { void handleCopyMarkdown(); }}
                             >
                                 <span className="flex items-center gap-1.5">
@@ -336,7 +339,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                             <NotionButton
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                                className="h-7 [@media(pointer:coarse)]:h-10 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
                                 onClick={() => setLibraryOpen(true)}
                             >
                                 <span className="flex items-center gap-1.5">
@@ -350,7 +353,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
 
                         <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
                             <AppMenuTrigger asChild>
-                                <NotionButton variant="ghost" iconOnly size="sm" className="h-7 w-7 text-muted-foreground">
+                                <NotionButton variant="ghost" iconOnly size="sm" className="h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 text-muted-foreground">
                                     <DotsThreeVertical className="h-3.5 w-3.5" />
                                 </NotionButton>
                             </AppMenuTrigger>

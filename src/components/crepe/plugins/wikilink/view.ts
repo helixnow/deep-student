@@ -18,6 +18,12 @@ import {
   openWikilinkCandidatePicker,
 } from './candidatePicker';
 import {
+  closeWikilinkCreateConfirm,
+  closeWikilinkCreateConfirmFor,
+  isWikilinkCreateConfirmOpenFor,
+  openWikilinkCreateConfirm,
+} from './createConfirm';
+import {
   cancelWikilinkPreview,
   hideWikilinkPreviewNow,
   scheduleWikilinkPreview,
@@ -110,7 +116,16 @@ function createWikilinkView(
       if (!noteTarget) return;
       const resolution = normalizeResolve(resolve, noteTarget);
       if (!resolution.resolved) {
-        dispatchCreateFromWikilink(noteTarget);
+        // 内联确认气泡：误触不再静默建出空笔记；再次点击同一链接则收起
+        if (isWikilinkCreateConfirmOpenFor(dom)) {
+          closeWikilinkCreateConfirm();
+          return;
+        }
+        openWikilinkCreateConfirm({
+          anchor: dom,
+          title: noteTarget,
+          onConfirm: () => dispatchCreateFromWikilink(noteTarget),
+        });
         return;
       }
       const candidateIds = resolution.candidateIds ?? [];
@@ -183,8 +198,9 @@ function createWikilinkView(
         dom.removeEventListener('mousedown', onMouseDown);
         window.removeEventListener('notes:wikilink-index-updated', onIndexUpdated);
         cancelWikilinkPreview(dom);
-        // 只关自己锚定的候选浮层，别的实例（其它链接/编辑器）的浮层不受影响
+        // 只关自己锚定的浮层，别的实例（其它链接/编辑器）的浮层不受影响
         closeWikilinkCandidatePickerFor(dom);
+        closeWikilinkCreateConfirmFor(dom);
       },
     };
   };

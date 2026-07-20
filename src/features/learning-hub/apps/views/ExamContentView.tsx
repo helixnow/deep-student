@@ -1,10 +1,10 @@
-import React, { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
-import { CircleNotch, WarningCircle, ArrowClockwise, Scan, ArrowCounterClockwise, ListNumbers, Shuffle, Tag, Clock, CalendarBlank, FileText, Timer, BookOpen, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon } from '@phosphor-icons/react';
+import { CircleNotch, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { percentOf, ratioToPercent } from '@/components/stats';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { 
   getNextQuestionIndex,
@@ -13,6 +13,7 @@ import {
   type QuestionType,
   type QuestionStatus,
   type Difficulty,
+  type QuestionBankStats,
 } from '@/api/questionBankApi';
 import { invoke } from '@tauri-apps/api/core';
 import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
@@ -23,9 +24,7 @@ import {
 } from '@/stores/questionBankStore';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { cn } from '@/lib/utils';
-import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import SyncConflictDialog from '@/components/SyncConflictDialog';
 import { AppSelect, AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
@@ -40,7 +39,7 @@ import {
   isQbankInlineEditorActive,
 } from '@/features/workbench/agent/drivers/qbankDriver';
 import { collectDomainEntityIds } from '@/features/workbench/agent/domainEvents';
-import { agentFlash } from '@/features/workbench/agent/visuals/agentFlash';
+import { agentFlash, agentFlashMany } from '@/features/workbench/agent/visuals/agentFlash';
 import type { DomainChangePayload } from '@/features/workbench/agent/types';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 
@@ -84,7 +83,7 @@ const LAUNCHER_REQUIRED_MODES = new Set<LauncherRequestedMode>([
  * 有活跃复习会话时渲染 ReviewSession（答题打分），否则渲染 ReviewPlanView
  * （今日到期/复习队列/开始复习）。会话由 reviewPlanStore 全局管理。
  */
-const Sm2ReviewPanel: React.FC<{ examId: string }> = ({ examId }) => {
+const Sm2ReviewPanel: React.FC<{ examId: string; isActive?: boolean }> = ({ examId, isActive }) => {
   const session = useReviewPlanStore((s) => s.session);
   const startSession = useReviewPlanStore((s) => s.startSession);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -100,7 +99,7 @@ const Sm2ReviewPanel: React.FC<{ examId: string }> = ({ examId }) => {
             onClose={() => setShowCalendar(false)}
           />
         ) : isSessionActive ? (
-          <ReviewSession />
+          <ReviewSession examId={examId} isActive={isActive} />
         ) : (
           <ReviewPlanView
             examId={examId}
@@ -154,16 +153,132 @@ function matchesPracticeTag(question: Question, tag: string): boolean {
   return question.tags?.includes(tag) ?? false;
 }
 
-const MODE_CONFIG: Record<PracticeMode, { labelKey: string; icon: React.ElementType; descKey: string }> = {
-  sequential: { labelKey: 'learningHub:exam.mode.sequential', icon: ListNumbers, descKey: 'learningHub:exam.mode.sequentialDesc' },
-  random: { labelKey: 'learningHub:exam.mode.random', icon: Shuffle, descKey: 'learningHub:exam.mode.randomDesc' },
-  review_first: { labelKey: 'learningHub:exam.mode.reviewFirst', icon: ArrowCounterClockwise, descKey: 'learningHub:exam.mode.reviewFirstDesc' },
-  review_only: { labelKey: 'learningHub:exam.mode.reviewOnly', icon: ArrowCounterClockwise, descKey: 'learningHub:exam.mode.reviewOnlyDesc' },
-  by_tag: { labelKey: 'learningHub:exam.mode.byTag', icon: Tag, descKey: 'learningHub:exam.mode.byTagDesc' },
-  daily: { labelKey: 'learningHub:exam.mode.daily', icon: CalendarBlank, descKey: 'learningHub:exam.mode.dailyDesc' },
-  paper: { labelKey: 'learningHub:exam.mode.paper', icon: FileText, descKey: 'learningHub:exam.mode.paperDesc' },
-  timed: { labelKey: 'learningHub:exam.mode.timed', icon: Timer, descKey: 'learningHub:exam.mode.timedDesc' },
-  mock_exam: { labelKey: 'learningHub:exam.mode.mockExam', icon: BookOpen, descKey: 'learningHub:exam.mode.mockExamDesc' },
+const MODE_LABEL_KEYS: Record<PracticeMode, string> = {
+  sequential: 'learningHub:exam.mode.sequential',
+  random: 'learningHub:exam.mode.random',
+  review_first: 'learningHub:exam.mode.reviewFirst',
+  review_only: 'learningHub:exam.mode.reviewOnly',
+  by_tag: 'learningHub:exam.mode.byTag',
+  daily: 'learningHub:exam.mode.daily',
+  paper: 'learningHub:exam.mode.paper',
+  timed: 'learningHub:exam.mode.timed',
+  mock_exam: 'learningHub:exam.mode.mockExam',
+};
+
+/** 数字滚动动效：以 rAF 缓动逼近目标值，reduced-motion 时直接跳变 */
+function useAnimatedNumber(target: number, duration = 600): number {
+  const [value, setValue] = useState(target);
+  const valueRef = useRef(target);
+
+  useEffect(() => {
+    const from = valueRef.current;
+    if (from === target) return;
+    if (typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      valueRef.current = target;
+      setValue(target);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = from + (target - from) * eased;
+      valueRef.current = next;
+      setValue(next);
+      if (progress < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+
+  return value;
+}
+
+/** 轻量 SVG 进度环（颜色随 currentColor） */
+const ProgressRing: React.FC<{ ratio: number; size?: number; className?: string }> = ({ ratio, size = 18, className }) => {
+  const stroke = 2.5;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.min(1, Math.max(0, ratio));
+  const center = size / 2;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={className} aria-hidden="true">
+      <circle cx={center} cy={center} r={r} fill="none" stroke="currentColor" strokeOpacity={0.18} strokeWidth={stroke} />
+      <circle
+        cx={center}
+        cy={center}
+        r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={c * (1 - clamped)}
+        transform={`rotate(-90 ${center} ${center})`}
+        className="transition-[stroke-dashoffset] duration-500 ease-out motion-reduce:transition-none"
+      />
+    </svg>
+  );
+};
+
+/** 顶栏统计摘要：掌握率进度环 + 正确率，数字滚动 */
+const StatsSummary: React.FC<{ stats: QuestionBankStats }> = ({ stats }) => {
+  const { t } = useTranslation('learningHub');
+  const masteryRatio = stats.total > 0 ? stats.mastered / stats.total : 0;
+  const masteryPercent = Math.round(useAnimatedNumber(percentOf(stats.mastered, stats.total)));
+  const correctPercent = Math.round(useAnimatedNumber(ratioToPercent(stats.correctRate)));
+
+  return (
+    <div
+      className="hidden md:flex items-center gap-3 pr-1 select-none"
+      role="group"
+      aria-label={t('exam.shell.statsSummary')}
+    >
+      <div className="flex items-center gap-1.5" title={`${t('exam.shell.mastery')} ${stats.mastered}/${stats.total}`}>
+        <ProgressRing ratio={masteryRatio} className="text-success" />
+        <div className="flex items-baseline gap-1 leading-none">
+          <span className="text-xs font-semibold tabular-nums text-foreground">{masteryPercent}%</span>
+          <span className="text-[10px] text-muted-foreground">{t('exam.shell.mastery')}</span>
+        </div>
+      </div>
+      <div className="w-px h-3.5 bg-border/60" aria-hidden="true" />
+      <div className="flex items-baseline gap-1 leading-none" title={t('exam.shell.correctRate')}>
+        <span className="text-xs font-semibold tabular-nums text-foreground">{correctPercent}%</span>
+        <span className="text-[10px] text-muted-foreground">{t('exam.shell.correctRate')}</span>
+      </div>
+    </div>
+  );
+};
+
+/** Suspense 骨架屏：模拟工具行 + 列表行，替代空白/转圈 */
+const ViewSkeleton: React.FC = () => {
+  const { t } = useTranslation('learningHub');
+  return (
+    <div className="h-full overflow-hidden px-4 py-4" role="status" aria-label={t('exam.shell.viewLoading')}>
+      <div className="animate-pulse space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="h-7 w-36 rounded-md bg-muted/70" />
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-20 rounded-md bg-muted/50" />
+            <div className="h-7 w-14 rounded-md bg-muted/50" />
+          </div>
+        </div>
+        <div className="space-y-2.5">
+          {[0, 1, 2, 3, 4, 5].map((row) => (
+            <div key={row} className="rounded-lg border border-border/40 px-3 py-3">
+              <div className="h-4 rounded bg-muted/60" style={{ width: `${[72, 58, 84, 64, 76, 52][row]}%` }} />
+              <div className="mt-2.5 flex items-center gap-2">
+                <div className="h-3 w-12 rounded bg-muted/40" />
+                <div className="h-3 w-16 rounded bg-muted/40" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const ExamContentView: React.FC<ContentViewProps> = ({
@@ -172,10 +287,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   isActive,
   onSaveStateChange,
 }) => {
-  const { t } = useTranslation(['exam_sheet', 'common', 'learningHub']);
+  // 'review' 需显式加入：secondaryTabs 与退出确认使用 review:* 文案，
+  // 避免命名空间未加载时首帧回退为 key 本身
+  const { t } = useTranslation(['exam_sheet', 'common', 'learningHub', 'review']);
 
   const MODE_OPTIONS = useMemo(() =>
-    Object.entries(MODE_CONFIG).map(([value, { labelKey }]) => ({ value, label: t(labelKey) })),
+    Object.entries(MODE_LABEL_KEYS).map(([value, labelKey]) => ({ value, label: t(labelKey) })),
     [t]
   );
 
@@ -201,6 +318,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     practiceMode,
     refreshStats,
     refreshQuestion,
+    toggleFavorite: toggleFavoriteInSession,
   } = useQuestionBankSession({ examId: sessionId });
   const hasQuestions = questions.length > 0;
 
@@ -217,9 +335,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 专注模式（从 Store 获取 — 全局 UI 偏好，不需要本地化）
   const focusMode = useQuestionBankStore(state => state.focusMode);
   const setFocusMode = useQuestionBankStore(state => state.setFocusMode);
-  const checkSyncStatus = useQuestionBankStore(state => state.checkSyncStatus);
-  const getSyncConflicts = useQuestionBankStore(state => state.getSyncConflicts);
-  const syncConflicts = useQuestionBankStore(state => state.syncConflicts);
   const setMockExamSession = useQuestionBankStore(state => state.setMockExamSession);
   const setTimedSession = useQuestionBankStore(state => state.setTimedSession);
   const submitMockExam = useQuestionBankStore(state => state.submitMockExam);
@@ -250,13 +365,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     [generatedPaper, sessionId],
   );
 
-  // 移动端（<768）：确认改行内条、导出/冲突面板改全屏内联子屏
-  const { isSmallScreen } = useBreakpoint();
-
   // UI 状态（保留在组件内）
   const [sessionDetail, setSessionDetail] = useState<ExamSheetSessionDetail | null>(null);
   const [sessionDetailError, setSessionDetailError] = useState<string | null>(null);
-  const [showSyncConflictDialog, setShowSyncConflictDialog] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedTag, setSelectedTag] = useState<string>('');
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -284,6 +395,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const pendingQbankRefreshRef = useRef<DomainChangePayload | undefined>(undefined);
   const hasPendingQbankRefreshRef = useRef(false);
   const flushPendingQbankRefreshRef = useRef<(() => void) | null>(null);
+  // 域刷新去抖队列：批量变更会连发多个 qbank:refresh，合并为一次刷新。
+  // 放 ref 而非 effect 局部变量：监听 effect 依赖频繁变化会重建，队列必须存活
+  const qbankRefreshDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queuedRefreshEntityIdsRef = useRef<string[]>([]);
+  const queuedRefreshPayloadRef = useRef<DomainChangePayload | undefined>(undefined);
+  // 行内编辑聚焦时的 800ms 延迟重试 timer：同样必须跨 effect 重建存活，
+  // 否则 deps（questions 等）一变就取消，被延迟的刷新会静默丢失
+  const qbankDeferredEditorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // CSV 内嵌导入的进行中标记（导入中阻止切换到其他视图）
   const csvImportingRef = useRef(false);
   activeDraftExamIdRef.current = sessionId;
@@ -338,9 +457,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     pendingQbankRefreshRef.current = undefined;
     hasPendingQbankRefreshRef.current = false;
     flushPendingQbankRefreshRef.current = null;
+    // 会话切换：清空上一会话排队中的域刷新（entityIds 属于旧会话，不能串台）
+    if (qbankRefreshDebounceTimerRef.current) {
+      clearTimeout(qbankRefreshDebounceTimerRef.current);
+      qbankRefreshDebounceTimerRef.current = null;
+    }
+    if (qbankDeferredEditorTimerRef.current) {
+      clearTimeout(qbankDeferredEditorTimerRef.current);
+      qbankDeferredEditorTimerRef.current = null;
+    }
+    queuedRefreshEntityIdsRef.current = [];
+    queuedRefreshPayloadRef.current = undefined;
     setDraftState({ examId: sessionId, dirty: false });
     setPendingDraftNavigation(null);
   }, [sessionId]);
+
+  // 卸载时清理仍在排队的域刷新 timer（防止卸载后触发无意义的刷新）
+  useEffect(() => () => {
+    if (qbankRefreshDebounceTimerRef.current) {
+      clearTimeout(qbankRefreshDebounceTimerRef.current);
+      qbankRefreshDebounceTimerRef.current = null;
+    }
+    if (qbankDeferredEditorTimerRef.current) {
+      clearTimeout(qbankDeferredEditorTimerRef.current);
+      qbankDeferredEditorTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => registerContentDirtyChecker(
     'exam',
@@ -421,7 +563,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     type SettingsRequest = {
       targetResourceId?: string;
       open?: boolean;
-      acknowledge?: (result: { handled: boolean; code?: string; hint?: string }) => void;
+      acknowledge?: (result: {
+        handled: boolean;
+        code?: string;
+        hint?: string;
+        /** ACR 4.0（A7）：诚实回执——面板状态是否真的变化 */
+        changed?: boolean;
+        /** ACR 4.0（A7）：供 agent undo 的前值 */
+        previousOpen?: boolean;
+      }) => void;
     };
     const handleSettingsChange = (event: Event) => {
       const detail = (event as CustomEvent<SettingsRequest>).detail;
@@ -437,7 +587,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         return;
       }
       if (open === true && !requestViewMode('practice')) {
-        setPendingSettingsOpen(true);
+        // CSV 导入中被硬性阻断（无确认面板可解），不留待开请求；
+        // 复习/草稿确认路径才记 pending，用户确认后由 effect 兑现
+        const blockedByCsvImport = viewMode === 'csvImport' && csvImportingRef.current;
+        if (!blockedByCsvImport) setPendingSettingsOpen(true);
         detail?.acknowledge?.({
           handled: false,
           code: 'CONFIRMATION_REQUIRED',
@@ -446,14 +599,82 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         return;
       }
 
-      setSettingsPanelOpen((current) => (
-        typeof open === 'boolean' ? open : !current
-      ));
-      detail?.acknowledge?.({ handled: true });
+      const next = typeof open === 'boolean' ? open : !settingsPanelOpen;
+      setSettingsPanelOpen(next);
+      detail?.acknowledge?.({
+        handled: true,
+        changed: next !== settingsPanelOpen,
+        previousOpen: settingsPanelOpen,
+      });
     };
     window.addEventListener('exam:openSettings', handleSettingsChange);
     return () => window.removeEventListener('exam:openSettings', handleSettingsChange);
-  }, [hasQuestions, requestViewMode, sessionId, t]);
+  }, [hasQuestions, requestViewMode, sessionId, settingsPanelOpen, t, viewMode]);
+
+  // ACR 4.0（A7）：setFocusMode 的表面 ACK。专注视图只在练习面存在意义，
+  // 与 settings 同款守卫：开启前必须能进入练习视图，回执诚实报告 changed。
+  useEffect(() => {
+    type FocusModeRequest = {
+      targetResourceId?: string;
+      enabled?: boolean;
+      acknowledge?: (result: {
+        handled: boolean;
+        code?: string;
+        hint?: string;
+        changed?: boolean;
+        previousEnabled?: boolean;
+      }) => void;
+    };
+    const handleFocusModeChange = (event: Event) => {
+      const detail = (event as CustomEvent<FocusModeRequest>).detail;
+      if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
+
+      const enabled = detail?.enabled;
+      if (typeof enabled !== 'boolean') {
+        detail?.acknowledge?.({
+          handled: false,
+          code: 'INVALID_ARGS',
+          hint: 'setFocusMode 需要 enabled',
+        });
+        return;
+      }
+      if (enabled && !hasQuestions) {
+        detail?.acknowledge?.({
+          handled: false,
+          code: 'QUESTION_NOT_FOUND',
+          hint: t('learningHub:exam.controlHints.noQuestionsForFocusMode'),
+        });
+        return;
+      }
+      if (enabled && !requestViewMode('practice')) {
+        detail?.acknowledge?.({
+          handled: false,
+          code: 'CONFIRMATION_REQUIRED',
+          hint: t('learningHub:exam.controlHints.confirmEndReviewForFocusMode'),
+        });
+        return;
+      }
+      const previous = useQuestionBankStore.getState().focusMode;
+      setFocusMode(enabled);
+      detail?.acknowledge?.({
+        handled: true,
+        changed: previous !== enabled,
+        previousEnabled: previous,
+      });
+    };
+    window.addEventListener('exam:setFocusMode', handleFocusModeChange);
+    return () => window.removeEventListener('exam:setFocusMode', handleFocusModeChange);
+  }, [hasQuestions, requestViewMode, sessionId, setFocusMode, t]);
+
+  // 待开的练习设置：进入练习视图后统一兑现。settings 请求可能被「退出复习」
+  // 或「丢弃草稿」两条确认路径拦下，此前只有复习路径在确认后会补开设置面板，
+  // 草稿路径确认后请求被静默丢弃
+  useEffect(() => {
+    if (pendingSettingsOpen && viewMode === 'practice') {
+      setSettingsPanelOpen(true);
+      setPendingSettingsOpen(false);
+    }
+  }, [pendingSettingsOpen, viewMode]);
 
   // 管理视图筛选（搜索逐键触发大列表过滤）降级为 transition，保持输入流畅
   const handleFilterChange = useCallback((filters: ManageFilters) => {
@@ -489,13 +710,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setViewMode('list');
     setSelectedTag('');
     setManageFilters({});
-    setShowSyncConflictDialog(false);
     setShowExportDialog(false);
     setShowHistoryDialog(false);
     setHistoryQuestionId(null);
     setSettingsPanelOpen(false);
     setPendingSettingsOpen(false);
     setPendingUploadFiles(null);
+    // 上一会话残留的「退出复习确认」与「启动台预选模式」不得带入新会话
+    setPendingReviewExitView(null);
+    setLauncherRequestedMode(null);
+    // CSV 导入进行中标记随面板卸载失效，防止残留 true 阻塞新会话的视图切换
+    csvImportingRef.current = false;
   }, [sessionId]);
   
   const toggleTimer = useCallback(() => {
@@ -696,38 +921,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     void loadSessionDetail();
   }, [loadSessionDetail]);
 
-  // M-025: 加载时检查同步状态（每个会话只检查一次，避免语言切换等重渲染触发重复通知）
-  const syncCheckedSessionRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!sessionId || syncCheckedSessionRef.current === sessionId) return;
-    syncCheckedSessionRef.current = sessionId;
-    checkSyncStatus(sessionId).then(status => {
-      // 会话已切换：不要把旧会话的冲突提示/弹窗带到新会话
-      if (latestSessionIdRef.current !== sessionId) return;
-      if (status && status.pending_conflict_count > 0) {
-        showGlobalNotification('warning', t('learningHub:exam.syncConflictWarning', {
-          count: status.pending_conflict_count,
-        }));
-        void getSyncConflicts(sessionId)
-          .then((conflicts) => {
-            if (latestSessionIdRef.current !== sessionId) return;
-            if (conflicts.some((conflict) => conflict.status === 'pending')) {
-              setShowSyncConflictDialog(true);
-            }
-          })
-          .catch((err: unknown) => {
-            debugLog.warn('[ExamContentView] load sync conflicts failed:', err);
-            showGlobalNotification(
-              'warning',
-              t('learningHub:exam.syncConflictsLoadFailed')
-            );
-          });
-      }
-    }).catch(err => {
-      debugLog.warn('[ExamContentView] sync status check failed:', err);
-      showGlobalNotification('warning', t('learningHub:exam.syncStatusCheckFailed'));
-    });
-  }, [sessionId, checkSyncStatus, getSyncConflicts, t]);
+  // COMPAT-REMOVED 2026-07-20: 题库专属 sync conflict UI 已移除（无生产生产者）。
+  // 真冲突源见设置 → 数据治理 RecordConflictsPanel（__sync_conflicts）。
 
   const handleSessionUpdate = useCallback(async (detail: ExamSheetSessionDetail) => {
     if (latestSessionIdRef.current !== sessionId) return;
@@ -804,16 +999,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     });
   }, [questions, currentIndex, navigate, requestViewMode, setStorePracticeMode]);
 
+  // 模式下拉不带 tag：launcher 必配模式的分流已由 handleModeChange 统一处理
   const handleSelectMode = useCallback((value: string) => {
-    const mode = value as PracticeMode;
-    if (LAUNCHER_REQUIRED_MODES.has(mode as LauncherRequestedMode)) {
-      requestViewMode('launcher', () => {
-        setLauncherRequestedMode(mode as LauncherRequestedMode);
-      });
-      return;
-    }
-    handleModeChange(mode);
-  }, [handleModeChange, requestViewMode]);
+    handleModeChange(value as PracticeMode);
+  }, [handleModeChange]);
 
   const handleStartPracticeByTag = useCallback((tag: string) => {
     requestViewMode('practice', () => {
@@ -839,8 +1028,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     const index = questions.findIndex((question) => question.id === questionId);
     if (index >= 0) {
       handleQuestionClick(index);
+      return;
     }
-  }, [handleQuestionClick, questions]);
+    // 目标题已被删除/尚未同步（如收藏视图里的过期条目）：给出反馈而非静默无响应
+    showGlobalNotification('warning', t('learningHub:exam.controlHints.questionNotFound'));
+  }, [handleQuestionClick, questions, t]);
 
   const handleOpenHistory = useCallback((questionId: string) => {
     setHistoryQuestionId(questionId);
@@ -1013,7 +1205,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           });
           return;
         }
-        agentFlash('exam', target.id);
+        agentFlash('exam', target.id, { scope: agentFlashRootRef.current });
         acknowledge(detail, { handled: true, currentQuestionId: target.id });
         return;
       }
@@ -1142,7 +1334,16 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           handled: true,
           currentQuestionId: target?.id ?? null,
         });
+        return;
       }
+
+      // 未知 action 兜底回执：driver 侧新增动作而本视图尚未支持时，
+      // 明确报告 unhandled，而不是静默无响应（会被误判为视图未挂载）
+      acknowledge(detail, {
+        handled: false,
+        code: 'UNSUPPORTED_ACTION',
+        hint: t('learningHub:exam.controlHints.unsupportedAction'),
+      });
     };
 
     window.addEventListener(QBANK_CONTROL_EVENT, onControl);
@@ -1198,15 +1399,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       debugLog.warn('[ExamContentView] retry load questions failed:', err);
     });
   }, [refreshQuestionsAndStats]);
-
-  const handleSyncConflictResolved = useCallback(() => {
-    void refreshQuestionsAndStats().catch((err: unknown) => {
-      debugLog.warn('[ExamContentView] refresh after conflict resolve failed:', err);
-    });
-    void getSyncConflicts(sessionId).catch((err: unknown) => {
-      debugLog.warn('[ExamContentView] reload sync conflicts failed:', err);
-    });
-  }, [refreshQuestionsAndStats, getSyncConflicts, sessionId]);
 
   const handleImportComplete = useCallback(() => {
     handleRetryQuestions();
@@ -1318,6 +1510,44 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     [executeMutation, t]
   );
 
+  // ========== 批量管理 / 标签重命名（2026-07 store 新增 action 的中枢接线） ==========
+  // 通知责任在子视图（ManageView/TagNavigationView 自带成功/失败通知），
+  // 此处只调 store action（出错 rethrow 给子视图呈现）+ 刷新本地会话数据。
+  // 直连 qbank_batch_update_questions 不派发 qbank://changed（仅 agent 工具链会），
+  // 因此这里的显式刷新与域刷新去抖链不会双重触发。
+  const refreshAfterExternalMutation = useCallback(async () => {
+    try {
+      await refreshQuestionsAndStats();
+    } catch (refreshErr: unknown) {
+      // 变更已成功，刷新失败不能伪装成变更失败（否则子视图会误报操作失败）
+      debugLog.warn('[ExamContentView] refresh after batch mutation failed:', refreshErr);
+      showGlobalNotification('warning', t('learningHub:exam.mutationRefreshFailed'));
+    }
+  }, [refreshQuestionsAndStats, t]);
+
+  const handleBatchUpdateDifficulty = useCallback(async (questionIds: string[], difficulty: Difficulty) => {
+    await useQuestionBankStore.getState().batchUpdateDifficulty(questionIds, difficulty);
+    await refreshAfterExternalMutation();
+  }, [refreshAfterExternalMutation]);
+
+  const handleBatchUpdateTags = useCallback(async (
+    questionIds: string[],
+    op: { add?: string[]; remove?: string[] },
+  ) => {
+    // ManageView 的 op 字段可选，store 契约要求两个数组齐备
+    await useQuestionBankStore.getState().batchUpdateTags(questionIds, {
+      add: op.add ?? [],
+      remove: op.remove ?? [],
+    });
+    await refreshAfterExternalMutation();
+  }, [refreshAfterExternalMutation]);
+
+  const handleRenameTag = useCallback(async (oldTag: string, newTag: string) => {
+    // TagNavigationView 签名是 (oldTag, newTag)，store 是 (examId, oldTag, newTag)：examId 由中枢闭包补齐
+    await useQuestionBankStore.getState().renameTag(sessionId, oldTag, newTag);
+    await refreshAfterExternalMutation();
+  }, [refreshAfterExternalMutation, sessionId]);
+
   const handleUpdateQuestion = useCallback(
     async (id: string, data: { answer?: string; explanation?: string; difficulty?: string; tags?: string[]; userNote?: string }) => {
       await executeMutation(
@@ -1409,6 +1639,82 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 当前是否处于「更多」菜单中的二级视图（用于菜单触发器的高亮与文案）
   const activeSecondaryTab = secondaryTabs.find((tab) => tab.mode === viewMode);
 
+  // ACR 演出优化轮：flash 限定在本视图 DOM 内（qbank 可多窗，全局查找会闪错窗口）
+  const agentFlashRootRef = useRef<HTMLDivElement | null>(null);
+
+  // ========== Tab 栏滑动选中指示器 + 方向键可达 ==========
+  const tabListRef = useRef<HTMLDivElement | null>(null);
+  const [tabIndicator, setTabIndicator] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  // 顶部三个一级入口的激活归属：题库 / 做题(含启动台) / 更多(二级视图)
+  const activeTopTab: 'list' | 'practice' | 'more' | null =
+    viewMode === 'list' ? 'list'
+      : (viewMode === 'practice' || viewMode === 'launcher') ? 'practice'
+        : activeSecondaryTab ? 'more'
+          : null;
+
+  // 指示器几何测量：布局阶段同步测量避免首帧闪跳；
+  // 标签文案（语言/二级视图标题）与容器尺寸变化时重测
+  useLayoutEffect(() => {
+    const list = tabListRef.current;
+    if (!list) return;
+
+    const measure = () => {
+      const active = list.querySelector<HTMLElement>('[data-exam-tab][data-active="true"]');
+      if (!active) {
+        setTabIndicator(null);
+        return;
+      }
+      // 用 rect 差值而非 offsetLeft：「更多」按钮嵌在 AppMenu 的 relative 包裹层里，
+      // offsetLeft 相对的是包裹层而不是 Tab 列表
+      const listRect = list.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      const next = {
+        left: Math.round(activeRect.left - listRect.left + list.scrollLeft),
+        top: Math.round(activeRect.top - listRect.top + list.scrollTop),
+        width: Math.round(activeRect.width),
+        height: Math.round(activeRect.height),
+      };
+      setTabIndicator((prev) => (
+        prev && prev.left === next.left && prev.top === next.top
+          && prev.width === next.width && prev.height === next.height
+          ? prev
+          : next
+      ));
+    };
+
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(list);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+    // sessionDetail / isLoading / isResuming 参与早退分支：Tab 栏从「加载中」早退恢复挂载时必须重测
+  }, [activeTopTab, activeSecondaryTab?.label, hasQuestions, t, sessionDetail, isLoading, isResuming]);
+
+  // 方向键在一级 Tab 之间移动焦点（Home/End 跳到首尾）
+  const handleTabListKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const list = tabListRef.current;
+    if (!list) return;
+    const tabs = Array.from(list.querySelectorAll<HTMLElement>('[data-exam-tab]'))
+      .filter((el) => !el.hasAttribute('disabled'));
+    if (tabs.length === 0) return;
+    const current = document.activeElement instanceof HTMLElement
+      ? tabs.indexOf(document.activeElement)
+      : -1;
+    if (current < 0) return;
+    event.preventDefault();
+    let next = current;
+    if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+    else if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
+    else if (event.key === 'Home') next = 0;
+    else next = tabs.length - 1;
+    tabs[next]?.focus();
+  }, []);
+
   useEffect(() => {
     emitExamSheetDebug('debug', 'frontend:hook-state',
       `[ExamContentView] 渲染决策: isEmptySession=${isEmptySession}, hasQuestions=${hasQuestions}, viewMode=${viewMode}, isLoading=${isLoading}, sessionDetail.status=${sessionStatus ?? 'null'}, error=${error ?? 'null'}`,
@@ -1473,18 +1779,20 @@ const ExamContentView: React.FC<ContentViewProps> = ({
    * - 聚焦：打开对应题目并 flash
    */
   useEffect(() => {
-    let deferredTimer: ReturnType<typeof setTimeout> | null = null;
-
     const flashIds = (entityIds: string[] | undefined, payload?: DomainChangePayload) => {
+      // 刷新是异步的：视图可能已卸载（ref 置空）——此时目标行不在本视图，
+      // 不能回退全局查找（会闪到别的窗口），直接跳过
+      const scope = agentFlashRootRef.current;
+      if (!scope) return;
       const ids =
         (entityIds?.length ? entityIds : null) ??
         (payload ? collectDomainEntityIds(payload) : []);
-      for (const id of ids) {
-        if (typeof id === 'string' && id) agentFlash('exam', id);
-      }
+      // 演出优化轮：批量走 agentFlashMany（只滚一次、整批一次重排），
+      // 此前逐条 agentFlash 每条都 scrollIntoView + 强制重排，批量刷新连环跳视口
+      agentFlashMany('exam', ids, { scope });
     };
 
-    const runLocalRefresh = (payload?: DomainChangePayload) => {
+    const runLocalRefresh = (payload?: DomainChangePayload, mergedEntityIds?: string[]) => {
       const currentDraft = draftStateRef.current;
       if (currentDraft.examId === sessionId && currentDraft.dirty) {
         // Multiple mutations can arrive while a form is dirty. Refreshing only
@@ -1497,17 +1805,22 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       // Keep the short focus debounce for an editor that has just received a
       // keystroke. It is supplementary only; dirty state above is the durable
       // guard once focus leaves the form.
+      // ★ timer 存组件级 ref：此前存 effect 局部变量，effect 因 deps
+      //   （questions/currentIndex）频繁重建时 cleanup 会取消延迟刷新，
+      //   编辑器聚焦期间到达的域变更会被静默丢弃
       if (isQbankInlineEditorActive()) {
-        if (deferredTimer) clearTimeout(deferredTimer);
-        deferredTimer = setTimeout(() => {
-          deferredTimer = null;
-          runLocalRefresh(payload);
+        if (qbankDeferredEditorTimerRef.current) {
+          clearTimeout(qbankDeferredEditorTimerRef.current);
+        }
+        qbankDeferredEditorTimerRef.current = setTimeout(() => {
+          qbankDeferredEditorTimerRef.current = null;
+          runLocalRefresh(payload, mergedEntityIds);
         }, 800);
         return;
       }
       void refreshQuestionsAndStats()
         .then(() => {
-          flashIds(payload?.entityIds, payload);
+          flashIds(mergedEntityIds?.length ? mergedEntityIds : payload?.entityIds, payload);
         })
         .catch((err: unknown) => {
           debugLog.warn('[ExamContentView] qbank://changed refresh failed:', err);
@@ -1529,9 +1842,27 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     };
     flushPendingQbankRefreshRef.current = flushPendingRefresh;
 
+    // 域刷新去抖：批量变更（agent 连续写入）会在短时间内派发多个 qbank:refresh，
+    // 此前每个事件都触发一次全量重载。合并为一次刷新，entityIds 取并集保证
+    // flash 不丢批量中的任何一条。队列存放在组件级 ref 上：本 effect 因依赖
+    // （questions/currentIndex 等）频繁重建，effect 局部队列会被重建丢弃。
     const onRefresh = (ev: Event) => {
       const detail = (ev as CustomEvent<DomainChangePayload>).detail;
-      runLocalRefresh(detail);
+      if (detail) {
+        queuedRefreshEntityIdsRef.current.push(...collectDomainEntityIds(detail));
+        queuedRefreshPayloadRef.current = detail;
+      }
+      if (qbankRefreshDebounceTimerRef.current) {
+        clearTimeout(qbankRefreshDebounceTimerRef.current);
+      }
+      qbankRefreshDebounceTimerRef.current = setTimeout(() => {
+        qbankRefreshDebounceTimerRef.current = null;
+        const mergedIds = Array.from(new Set(queuedRefreshEntityIdsRef.current));
+        const payload = queuedRefreshPayloadRef.current;
+        queuedRefreshEntityIdsRef.current = [];
+        queuedRefreshPayloadRef.current = undefined;
+        runLocalRefresh(payload, mergedIds);
+      }, 200);
     };
 
     const onFocus = (ev: Event) => {
@@ -1543,7 +1874,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       const handled = index >= 0 && requestViewMode('practice', () => navigate(index));
       const previousQuestionId = questions[currentIndex]?.id ?? null;
       if (handled) {
-        agentFlash('exam', questionId);
+        agentFlash('exam', questionId, { scope: agentFlashRootRef.current });
       }
       detail.acknowledge?.({ handled, previousQuestionId });
     };
@@ -1553,7 +1884,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     return () => {
       window.removeEventListener(QBANK_REFRESH_EVENT, onRefresh);
       window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
-      if (deferredTimer) clearTimeout(deferredTimer);
+      // 去抖/延迟 timer 不在这里清：本 effect 依赖变化频繁，重建时清掉会吞掉
+      // 已排队的刷新；跨闭包只经由 ref/稳定回调，旧闭包触发也安全。
+      // 卸载与会话切换时的清理由专门的 effect 负责。
       if (flushPendingQbankRefreshRef.current === flushPendingRefresh) {
         flushPendingQbankRefreshRef.current = null;
       }
@@ -1576,12 +1909,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   if ((sessionDetailError || error) && !sessionDetail && !isLoading) {
     const loadErrorMessage = sessionDetailError || error;
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <WarningCircle size={32} className="text-destructive" />
-        <span className="text-muted-foreground text-center max-w-md" role="alert">
-          {t('exam_sheet:errors.loadFailed')}: {loadErrorMessage}
-        </span>
-        <NotionButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2">
+      <div className="flex flex-col items-center justify-center h-full gap-4 px-6 ui-rise-in">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+          <WarningCircle size={26} className="text-destructive" />
+        </div>
+        <div className="flex flex-col items-center gap-1 text-center max-w-md" role="alert">
+          <span className="text-sm font-medium text-foreground">{t('exam_sheet:errors.loadFailed')}</span>
+          <span className="text-xs text-muted-foreground break-words">{loadErrorMessage}</span>
+        </div>
+        <NotionButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:min-h-11">
           <ArrowClockwise size={16} />
           {t('common:actions.retry')}
         </NotionButton>
@@ -1593,25 +1929,19 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 恢复导入期间保持横幅与 Tab 栏挂载，按钮自带"恢复中"反馈）
   if (!sessionDetail || (isLoading && !hasQuestions && !isResuming)) {
     return (
-      <div className="flex items-center justify-center h-full" role="status">
-        <CircleNotch size={24} className="animate-spin text-muted-foreground" aria-hidden="true" />
-        <span className="ml-2 text-muted-foreground">
-          {t('common:loading')}
-        </span>
+      <div className="h-full ui-fade-in-slow">
+        <ViewSkeleton />
       </div>
     );
   }
 
-  // 退出复习 / 丢弃草稿确认的共享动作（移动端行内确认条与桌面模态 Alert 复用）
+  // 退出复习 / 丢弃草稿确认的共享动作（行内确认条全端复用）
   const confirmReviewExit = () => {
     const nextView = pendingReviewExitView;
     setPendingReviewExitView(null);
     endReviewSession();
+    // 待开的练习设置由 pendingSettingsOpen effect 在到达练习视图后统一兑现
     if (nextView) switchViewMode(nextView);
-    if (nextView === 'practice' && pendingSettingsOpen) {
-      setSettingsPanelOpen(true);
-      setPendingSettingsOpen(false);
-    }
   };
   const cancelReviewExit = () => {
     setPendingReviewExitView(null);
@@ -1624,10 +1954,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     clearCurrentExamDraft();
     pending.proceed();
   };
-  const cancelDiscardDraft = () => setPendingDraftNavigation(null);
+  const cancelDiscardDraft = () => {
+    setPendingDraftNavigation(null);
+    // 用户取消导航即取消整个链条：残留的待开设置请求不能在之后手动进入练习时突然弹面板
+    setPendingSettingsOpen(false);
+  };
 
   return (
-    <div className="relative flex flex-col h-full bg-background">
+    <div ref={agentFlashRootRef} className="relative flex flex-col h-full bg-background">
       {/* ★ 断点续导：importing 状态横幅 */}
       {isImportingSession && (
         <div className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 sm:px-4">
@@ -1649,7 +1983,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 size="sm"
                 onClick={handleResumeImport}
                 disabled={isResuming}
-                className="gap-1.5 text-warning hover:bg-warning/10"
+                className="gap-1.5 text-warning hover:bg-warning/10 [@media(pointer:coarse)]:min-h-11"
               >
                 {isResuming ? (
                   <CircleNotch size={14} className="animate-spin" />
@@ -1672,7 +2006,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <span className="text-sm text-destructive truncate" title={error}>
               {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
             </span>
-            <NotionButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5">
+            <NotionButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5 [@media(pointer:coarse)]:min-h-11">
               <ArrowClockwise size={14} />
               {t('common:actions.retry')}
             </NotionButton>
@@ -1683,17 +2017,39 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       {/* Tab 栏 */}
       <div className="flex-shrink-0 px-3 sm:px-4 py-2.5 border-b border-border/40">
         <div className="flex items-center justify-between gap-2">
-          {/* 左侧 Tab - 允许横向滚动；移动端右缘渐隐提示还有更多 */}
-          <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
+          {/* 左侧 Tab - 允许横向滚动；移动端右缘渐隐提示还有更多；方向键在一级入口间移动焦点 */}
+          <div
+            ref={tabListRef}
+            role="toolbar"
+            aria-label={t('learningHub:exam.shell.primaryNav')}
+            aria-orientation="horizontal"
+            onKeyDown={handleTabListKeyDown}
+            className="relative flex items-center gap-1 min-w-0 overflow-x-auto overscroll-x-contain scrollbar-none max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]"
+          >
+            {/* 滑动选中指示器（在按钮下层随激活项平移/变宽） */}
+            {tabIndicator && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute z-0 rounded-md bg-accent transition-[left,top,width,height] duration-200 ease-out motion-reduce:transition-none"
+                style={{
+                  left: tabIndicator.left,
+                  top: tabIndicator.top,
+                  width: tabIndicator.width,
+                  height: tabIndicator.height,
+                }}
+              />
+            )}
             <NotionButton
               variant="ghost"
               size="sm"
               onClick={() => requestViewMode('list')}
-              aria-pressed={viewMode === 'list'}
+              data-exam-tab=""
+              data-active={activeTopTab === 'list' || undefined}
+              aria-pressed={activeTopTab === 'list'}
               className={cn(
-                'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                viewMode === 'list' 
-                  ? 'bg-accent text-accent-foreground font-medium'
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:min-h-11',
+                activeTopTab === 'list'
+                  ? 'text-accent-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
               )}
             >
@@ -1708,11 +2064,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 }
               }}
               disabled={!hasQuestions}
-              aria-pressed={viewMode === 'practice' || viewMode === 'launcher'}
+              data-exam-tab=""
+              data-active={activeTopTab === 'practice' || undefined}
+              aria-pressed={activeTopTab === 'practice'}
               className={cn(
-                'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                (viewMode === 'practice' || viewMode === 'launcher')
-                  ? 'bg-accent text-accent-foreground font-medium'
+                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:min-h-11',
+                activeTopTab === 'practice'
+                  ? 'text-accent-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
                 !hasQuestions && 'opacity-50 cursor-not-allowed'
               )}
@@ -1726,17 +2084,22 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   <NotionButton
                     variant="ghost"
                     size="sm"
-                    aria-pressed={Boolean(activeSecondaryTab)}
+                    data-exam-tab=""
+                    data-active={activeTopTab === 'more' || undefined}
+                    aria-pressed={activeTopTab === 'more'}
                     aria-label={t('learningHub:exam.tab.more')}
                     className={cn(
-                      'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1',
-                      activeSecondaryTab
-                        ? 'bg-accent text-accent-foreground font-medium'
+                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:min-h-11',
+                      activeTopTab === 'more'
+                        ? 'text-accent-foreground font-medium hover:bg-transparent'
                         : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                     )}
                   >
                     {activeSecondaryTab?.label ?? t('learningHub:exam.tab.more')}
-                    <CaretDown size={12} className="opacity-60" />
+                    <CaretDown
+                      size={12}
+                      className="opacity-60 transition-transform duration-200 ease-out motion-reduce:transition-none group-aria-expanded:rotate-180"
+                    />
                   </NotionButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="start" width={180}>
@@ -1746,7 +2109,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                       onClick={() => requestViewMode(mode)}
                       icon={<Icon size={16} />}
                       checked={viewMode === mode}
-                      suffix={badge > 0 ? <span className="text-xs text-warning">{badge}</span> : undefined}
+                      suffix={badge > 0 ? (
+                        <span className="min-w-[18px] rounded-full bg-warning/15 px-1.5 py-px text-center text-[10px] font-medium tabular-nums text-warning">
+                          {badge > 99 ? '99+' : badge}
+                        </span>
+                      ) : undefined}
                     >
                       {label}
                     </AppMenuItem>
@@ -1762,7 +2129,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   options={MODE_OPTIONS}
                   size="sm"
                   variant="ghost"
-                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)]"
+                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:h-11"
                 />
                 
                 <NotionButton
@@ -1778,7 +2145,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                         : t('learningHub:exam.timer.resume')
                   }
                   className={cn(
-                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0',
+                    'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0 [@media(pointer:coarse)]:min-h-11',
                     isAdvancedRuntimeTimer
                       ? 'bg-destructive/10 text-destructive hover:bg-destructive/10'
                       : isTimerRunning
@@ -1808,16 +2175,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             )}
           </div>
           
-          {/* 右侧：导出 + 添加题目菜单（只读模式下隐藏添加） */}
+          {/* 右侧：统计摘要 + 导出 + 添加题目菜单（只读模式下隐藏添加） */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {hasQuestions && stats && <StatsSummary stats={stats} />}
             {hasQuestions && (
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowExportDialog(true)}
+                onClick={handleOpenExport}
                 aria-label={t('learningHub:exam.tab.export')}
                 title={t('learningHub:exam.tab.export')}
-                className="h-7 gap-1.5 px-2.5 sm:px-3"
+                className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
               >
                 <Download size={14} />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
@@ -1831,7 +2199,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     size="sm"
                     aria-label={t('learningHub:exam.tab.addQuestion')}
                     title={t('learningHub:exam.tab.addQuestion')}
-                    className="h-7 gap-1.5 px-2.5 sm:px-3"
+                    className="h-7 gap-1.5 px-2.5 sm:px-3 ui-press [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
                   >
                     <Plus size={14} />
                     <span className="hidden sm:inline">{t('learningHub:exam.tab.addQuestion')}</span>
@@ -1865,10 +2233,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         </div>
       </div>
 
-      {/* 移动端行内确认条：退出复习 / 丢弃草稿（桌面端为模态 AlertDialog，见文末） */}
-      {isSmallScreen && pendingReviewExitView !== null && (
+      {/* 行内确认条：退出复习 / 丢弃草稿（全端统一为 Tab 栏下方的内联确认，不再使用模态） */}
+      {pendingReviewExitView !== null && (
         <div
-          className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2"
+          className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 ui-drop-in"
           role="alert"
           aria-label={t('review:session.exitTitle')}
         >
@@ -1880,18 +2248,18 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             </div>
           </div>
           <div className="mt-2 flex items-center justify-end gap-2">
-            <NotionButton variant="ghost" size="sm" className="!h-9 px-3 text-xs" onClick={cancelReviewExit}>
+            <NotionButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelReviewExit}>
               {t('common:cancel')}
             </NotionButton>
-            <NotionButton variant="warning" size="sm" className="!h-9 px-3 text-xs" onClick={confirmReviewExit}>
+            <NotionButton variant="warning" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmReviewExit}>
               {t('review:session.exitConfirm')}
             </NotionButton>
           </div>
         </div>
       )}
-      {isSmallScreen && pendingDraftNavigation !== null && (
+      {pendingDraftNavigation !== null && (
         <div
-          className="flex-shrink-0 border-b border-destructive/30 bg-destructive/5 px-3 py-2"
+          className="flex-shrink-0 border-b border-destructive/30 bg-destructive/5 px-3 py-2 ui-drop-in"
           role="alert"
           aria-label={t('editor.discardDraftTitle')}
         >
@@ -1903,28 +2271,21 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             </div>
           </div>
           <div className="mt-2 flex items-center justify-end gap-2">
-            <NotionButton variant="ghost" size="sm" className="!h-9 px-3 text-xs" onClick={cancelDiscardDraft}>
+            <NotionButton variant="ghost" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelDiscardDraft}>
               {t('common:cancel')}
             </NotionButton>
-            <NotionButton variant="danger" size="sm" className="!h-9 px-3 text-xs" onClick={confirmDiscardDraft}>
+            <NotionButton variant="danger" size="sm" className="!h-9 px-3 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmDiscardDraft}>
               {t('common:actions.discard')}
             </NotionButton>
           </div>
         </div>
       )}
 
-      {/* 内容区 */}
+      {/* 内容区：viewMode 变化时以淡入 + 轻微上移过渡（懒加载 chunk 未就绪时
+          startTransition 保持旧视图；首次挂载由骨架屏兜底，避免空白/转圈闪切） */}
       <div className="flex-1 overflow-hidden">
-        <Suspense
-          fallback={
-            <div className="flex items-center justify-center h-full">
-              <CircleNotch size={24} className="animate-spin text-muted-foreground" />
-              <span className="ml-2 text-muted-foreground">
-                {t('common:loading')}
-              </span>
-            </div>
-          }
-        >
+        <Suspense fallback={<ViewSkeleton />}>
+          <div key={viewMode} className="h-full ui-rise-in">
           {viewMode === 'launcher' && hasQuestions ? (
             /* 练习启动页 — 选择练习模式 */
             <PracticeLauncher
@@ -1943,6 +2304,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onDelete={readOnly ? undefined : handleDeleteQuestions}
               onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
               onResetProgress={readOnly ? undefined : handleResetProgress}
+              onBatchUpdateDifficulty={readOnly ? undefined : handleBatchUpdateDifficulty}
+              onBatchUpdateTags={readOnly ? undefined : handleBatchUpdateTags}
               onViewDetail={handleViewQuestionDetail}
               onViewHistory={handleOpenHistory}
               onFilterChange={handleFilterChange}
@@ -1969,10 +2332,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               questions={questions}
               onQuestionClick={handleQuestionClick}
               onStartPracticeByTag={handleStartPracticeByTag}
+              onRenameTag={readOnly ? undefined : handleRenameTag}
             />
           ) : viewMode === 'sm2' && hasQuestions ? (
             /* ★ I1 修复：SM-2 间隔复习视图（计划面板 + 复习会话） */
-            <Sm2ReviewPanel examId={sessionId} />
+            <Sm2ReviewPanel examId={sessionId} isActive={isActive} />
           ) : viewMode === 'review' && hasQuestions ? (
             /* 错题本视图 */
             <ReviewQuestionsView
@@ -2042,6 +2406,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onQuestionClick={handleQuestionClick}
               onDelete={readOnly ? undefined : handleDeleteQuestions}
               onResetProgress={readOnly ? undefined : handleResetProgress}
+              onToggleFavorite={readOnly ? undefined : toggleFavoriteInSession}
               onUpdateQuestion={readOnly ? undefined : handleListChanged}
               onCreateQuestion={readOnly ? undefined : handleListChanged}
               onUploadQuestions={readOnly ? undefined : handleOpenUploadEntry}
@@ -2054,51 +2419,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               }}
             />
           )}
+          </div>
         </Suspense>
       </div>
 
-      <SyncConflictDialog
-        open={showSyncConflictDialog}
-        onOpenChange={setShowSyncConflictDialog}
-        examId={sessionId}
-        conflicts={syncConflicts}
-        onResolved={handleSyncConflictResolved}
-        inline={isSmallScreen}
-      />
-
-      {/* 桌面端模态确认；移动端改为 Tab 栏下方的行内确认条（见上方） */}
-      {!isSmallScreen && (
-        <NotionAlertDialog
-          open={pendingReviewExitView !== null}
-          onOpenChange={(open) => {
-            if (!open) cancelReviewExit();
-          }}
-          icon={<WarningCircle size={20} className="text-warning" />}
-          title={t('review:session.exitTitle')}
-          description={t('review:session.exitDescription')}
-          confirmText={t('review:session.exitConfirm')}
-          cancelText={t('common:cancel')}
-          confirmVariant="warning"
-          onConfirm={confirmReviewExit}
-        />
-      )}
-
-      {!isSmallScreen && (
-        <NotionAlertDialog
-          open={pendingDraftNavigation !== null}
-          onOpenChange={(open) => {
-            if (!open) cancelDiscardDraft();
-          }}
-          icon={<WarningCircle size={20} className="text-warning" />}
-          title={t('editor.discardDraftTitle')}
-          description={t('editor.discardDraftDescription')}
-          confirmText={t('common:actions.discard')}
-          cancelText={t('common:cancel')}
-          confirmVariant="danger"
-          onConfirm={confirmDiscardDraft}
-        />
-      )}
-
+      {/* 导出 / 历史：全端统一走组件自带的内联子屏形态（absolute inset-0） */}
       <Suspense fallback={null}>
         <QuestionBankExportDialog
           open={showExportDialog}
@@ -2106,13 +2431,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           questions={questions}
           examName={sessionDetail?.summary?.exam_name || node.name}
           examId={sessionId}
-          inline={isSmallScreen}
+          inline
         />
+        {/* onJumpToQuestion 直连宿主导航而不走 QBANK_FOCUS_EVENT 回退：
+            该事件不带 targetResourceId，同一题目集多窗（标签页保活）时会让
+            所有挂载实例同时导航；直连还能在题目已删除时给出提示 */}
         <QuestionHistoryView
           questionId={historyQuestionId}
           open={showHistoryDialog}
           onOpenChange={handleHistoryOpenChange}
-          inline={isSmallScreen}
+          inline
+          onJumpToQuestion={handleOpenQuestion}
         />
       </Suspense>
     </div>
