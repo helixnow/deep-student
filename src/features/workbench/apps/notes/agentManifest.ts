@@ -364,12 +364,37 @@ export function createNotesAgentManifest(
             currentSearchIndex: after?.currentSearchIndex ?? null,
           });
       if (!result.changed) {
-        return {
-          handled: false,
-          changed: false,
-          code: 'ACTION_UNAVAILABLE',
-          hint: `${action.name} 未改变 Notes 工作区状态`,
-        };
+        // 幂等动作的目标终态已满足时（如 openResource 的目标标签本就激活），
+        // no-op 也是成功；只有终态确实未达成才按 ACTION_UNAVAILABLE 失败。
+        const endStateSatisfied = (() => {
+          switch (action.name) {
+            case 'openResource':
+              return afterActive?.type === args.resourceType
+                && afterActive?.id === args.resourceId;
+            case 'focusNode':
+              return typeof args.nodeId === 'string'
+                && after?.focusedNodeId === args.nodeId;
+            case 'setView':
+              return typeof args.view === 'string'
+                && after?.currentView === args.view;
+            case 'search':
+              return (after?.searchQuery ?? '') === (typeof args.query === 'string' ? args.query : '');
+            case 'clearSearch':
+              return (after?.searchQuery ?? '') === '';
+            default:
+              return false;
+          }
+        })();
+        if (!endStateSatisfied) {
+          return {
+            handled: false,
+            changed: false,
+            code: 'ACTION_UNAVAILABLE',
+            hint: `${action.name} 未改变 Notes 工作区状态`,
+          };
+        }
+        result.handled = true;
+        result.message = result.message ?? `${action.name} 目标状态已满足（幂等 no-op）`;
       }
       result.acknowledged = true;
       if (action.name === 'openResource') {

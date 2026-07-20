@@ -3,6 +3,7 @@ import {
   ArrowClockwise,
   ClockCounterClockwise,
   ClipboardText,
+  GearSix,
   MagnifyingGlass,
   PenNib,
   Plus,
@@ -74,6 +75,9 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   selectedIdRef.current = selectedId;
 
   const isExam = type === 'exam';
+  // 作文/翻译：设置以独立标签页进入（侧边栏入口 + 工作台整页视图），不再侧滑
+  const hasSettingsEntry = type === 'essay' || type === 'translation';
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const title = t(`workbench:apps.${type}`);
   const ResourceIcon = isExam ? ClipboardText : type === 'translation' ? Translate : PenNib;
   const newLabel = isExam
@@ -193,6 +197,35 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     setResourceWorkspaceActive(type, selectedId);
     return () => clearResourceWorkspaceActive(type, selectedId);
   }, [selectedId, type]);
+
+  // 侧边栏"设置"标签选中态：作文/翻译工作台在设置页开合时广播 settingsVisibility
+  useEffect(() => {
+    if (!hasSettingsEntry) return;
+    const eventName = `${type}:settingsVisibility`;
+    const handler = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ resourceId?: string; open?: boolean }>).detail;
+      if (!detail?.resourceId || detail.resourceId !== selectedIdRef.current) return;
+      setSettingsOpen(Boolean(detail.open));
+    };
+    window.addEventListener(eventName, handler);
+    return () => window.removeEventListener(eventName, handler);
+  }, [hasSettingsEntry, type]);
+
+  // 切换/取消选中资源时复位设置态（新挂载的工作台默认关闭设置页）
+  useEffect(() => {
+    setSettingsOpen(false);
+  }, [selectedId]);
+
+  // 点击侧边栏"设置"标签：toggle 当前会话工作台的设置整页视图
+  const toggleSettings = useCallback(() => {
+    const resourceId = selectedIdRef.current;
+    if (!resourceId) return;
+    window.dispatchEvent(new CustomEvent(`${type}:openSettings`, {
+      detail: { targetResourceId: resourceId },
+    }));
+    // 紧凑窗：设置显示在主区/工作台内，收起抽屉让位
+    if (sizeClass === 'compact') setSidebarOpen(false);
+  }, [type, sizeClass]);
 
   const createResourceNow = useCallback(async () => {
     if (creating) return;
@@ -394,6 +427,21 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           >
             <WorkbenchSidebarRowLabel>{t('workbench:resourceHome.recent')}</WorkbenchSidebarRowLabel>
           </WorkbenchSidebarRow>
+          {hasSettingsEntry && (
+            <WorkbenchSidebarRow
+              isActive={settingsOpen}
+              onClick={toggleSettings}
+              disabled={!selectedItem}
+              title={selectedItem ? undefined : t('workbench:resourceHome.settingsNeedSelection')}
+              leftSlot={<GearSix size={14} />}
+            >
+              <WorkbenchSidebarRowLabel>
+                {type === 'translation'
+                  ? t('workbench:resourceHome.translationSettings')
+                  : t('workbench:resourceHome.essaySettings')}
+              </WorkbenchSidebarRowLabel>
+            </WorkbenchSidebarRow>
+          )}
         </nav>
 
         <CustomScrollArea

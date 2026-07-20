@@ -628,7 +628,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       }
     }
     return (
-      <h1 className="text-base font-semibold truncate">
+      <h1 className="text-lg font-semibold truncate">
         {text}
       </h1>
     );
@@ -1047,7 +1047,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             {[3, 2, 3].map((rows, groupIdx) => (
               <div key={groupIdx} className="rounded-2xl border border-border/40 bg-background p-2">
                 {Array.from({ length: rows }).map((_, rowIdx) => (
-                  <div key={rowIdx} className="flex min-h-11 items-center gap-3 px-2">
+                  <div key={rowIdx} className="flex min-h-12 items-center gap-3 px-2">
                     <div className="h-5 w-5 rounded-md bg-muted animate-pulse" />
                     <div className="h-4 flex-1 max-w-[60%] rounded bg-muted animate-pulse" />
                   </div>
@@ -1110,7 +1110,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             onChange={(e) => setMobileSearchQuery(e.target.value)}
             placeholder={t('settings:sidebar.search_placeholder')}
             aria-label={t('settings:sidebar.search_placeholder')}
-            className="h-11 rounded-[14px] border-border/40 bg-muted/30 pl-10"
+            className="h-11 rounded-[14px] border-border/40 bg-muted/30 pl-10 text-base"
           />
         </div>
 
@@ -1118,7 +1118,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           // 搜索结果态：扁平列表，点击直达对应分区
           <div className="rounded-2xl border border-border/40 bg-background px-1.5 py-1.5">
             {mobileSearchResults.length === 0 ? (
-              <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+              <div className="px-3 py-8 text-center text-base text-muted-foreground">
                 {t('settings:sidebar.no_results')}
               </div>
             ) : (
@@ -1131,16 +1131,16 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                     type="button"
                     onClick={() => openMobileSection(item.tab)}
                     className={cn(
-                      'flex w-full min-h-11 items-center gap-3 px-3 py-1.5 text-left ui-press',
+                      'flex w-full min-h-12 items-center gap-3 px-3 py-1.5 text-left ui-press',
                       settingsQuietInteractiveRowClassName,
                       settingsQuietHoverClassName
                     )}
                   >
                     {SectionIcon && <SectionIcon className="h-4 w-4 shrink-0 text-muted-foreground" />}
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm text-foreground">{item.label}</span>
+                      <span className="block truncate text-base font-medium text-foreground">{item.label}</span>
                       {sectionItem && (
-                        <span className="block truncate text-xs text-muted-foreground/70">{sectionItem.label}</span>
+                        <span className="block truncate text-sm text-muted-foreground/70">{sectionItem.label}</span>
                       )}
                     </span>
                     <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
@@ -1150,7 +1150,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             )}
           </div>
         ) : (
-          // 分组列表态：五组分区，行高 44px + chevron
+          // 分组列表态：五组分区，行高 48px + chevron
           sidebarNavGroups.map((group, groupIndex) => (
             <nav
               key={groupIndex}
@@ -1167,7 +1167,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                     data-tour-id={item.tourId}
                     onClick={() => openMobileSection(item.value)}
                     className={cn(
-                      'flex w-full min-h-11 items-center gap-3 px-3 text-left ui-press',
+                      'flex w-full min-h-12 items-center gap-3 px-3 text-left ui-press',
                       settingsQuietInteractiveRowClassName,
                       settingsQuietHoverClassName
                     )}
@@ -1179,7 +1179,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                         isActive ? 'text-primary' : 'text-muted-foreground'
                       )}
                     />
-                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">{item.label}</span>
+                    <span className="min-w-0 flex-1 truncate text-base font-medium text-foreground">{item.label}</span>
                     <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
                   </button>
                 );

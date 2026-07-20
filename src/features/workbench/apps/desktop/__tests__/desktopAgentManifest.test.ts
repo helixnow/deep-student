@@ -510,15 +510,42 @@ describe('desktop 虚拟目标 — agentRuntime 解析与发现', () => {
     expect(useWindowStore.getState().windows[a].minimized).toBe(false);
   });
 
-  it('act：过期 revision 与未知能力被拒绝', async () => {
-    openTestWindow('desk-note', 'A', 'na');
+  it('act：过期 revision 在批次仍可校验时软重基执行', async () => {
+    const a = openTestWindow('desk-note', 'A', 'na');
     const before = await observeAgentWindow({ typeId: 'desktop' });
     openTestWindow('desk-note', 'B', 'nb'); // 使 revision 过期
+    const receipt = await actOnAgentWindow({
+      typeId: 'desktop',
+      observationRevision: before.revision,
+      actions: [{
+        name: 'minimizeWindow',
+        args: { windowId: a },
+        targetRef: desktopWindowRef(a),
+      }],
+    });
+    expect(receipt.status).toBe('completed');
+    expect(receipt.rebasedFromRevision).toBe(before.revision);
+    expect(useWindowStore.getState().windows[a].minimized).toBe(true);
+  });
+
+  it('act：过期 revision 且目标 ref 失效时拒绝（附最新 observation）；未知能力被拒绝', async () => {
+    const a = openTestWindow('desk-note', 'A', 'na');
+    const before = await observeAgentWindow({ typeId: 'desktop' });
+    useWindowStore.getState().closeWindow(a); // revision 过期且 ref 失效 → 不可重基
     await expect(actOnAgentWindow({
       typeId: 'desktop',
       observationRevision: before.revision,
-      actions: [{ name: 'tileWindows' }],
-    })).rejects.toMatchObject({ code: 'STALE_OBSERVATION' });
+      actions: [{
+        name: 'minimizeWindow',
+        args: { windowId: a },
+        targetRef: desktopWindowRef(a),
+      }],
+    })).rejects.toMatchObject({
+      code: 'STALE_OBSERVATION',
+      details: expect.objectContaining({
+        observation: expect.objectContaining({ typeId: 'desktop' }),
+      }),
+    });
 
     const fresh = await observeAgentWindow({ typeId: 'desktop' });
     await expect(actOnAgentWindow({

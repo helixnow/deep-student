@@ -83,11 +83,7 @@ interface GradingMainProps {
   };
 }
 
-/** 桌面端内联设置列宽度（≥1024 略宽于 768-1024） */
-const SETTINGS_WIDTH_LG = 340;
-const SETTINGS_WIDTH_MD = 320;
-
-/** 主区（不含设置列）窄于该宽度时退回上下分栏（与翻译工作台同阈值） */
+/** 主区窄于该宽度时退回上下分栏（与翻译工作台同阈值） */
 const NARROW_LAYOUT_THRESHOLD = 500;
 
 export type GradingPhase = 'preparing' | 'annotating' | 'scoring' | 'polishing' | 'model_essay';
@@ -154,11 +150,10 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   const { t } = useTranslation(['essay_grading']);
   const { ref: layoutRef, sizeClass } = useWbSysSize();
   const isSmallScreen = sizeClass === 'compact';
-  const isLg = sizeClass === 'wide';
 
   // 左右 / 上下分栏：与翻译工作台同一口径——非小屏默认左右，仅当主区
-  // （不含右侧设置列）实测窄于阈值时退回上下。此前要求容器 ≥880(wide)
-  // 才左右，浮窗扣掉资源侧栏后常年落在 medium，被迫上下分栏。
+  // 实测窄于阈值时退回上下。此前要求容器 ≥880(wide) 才左右，
+  // 浮窗扣掉资源侧栏后常年落在 medium，被迫上下分栏。
   const mainAreaRef = React.useRef<HTMLDivElement>(null);
   const [mainAreaWidth, setMainAreaWidth] = React.useState(0);
 
@@ -189,7 +184,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   );
 
   // 移动端设置区展开时注册 Android 返回键（返回 = 收起内联设置区块）。
-  // 桌面端设置列是普通文档流列，不属于 overlay，不劫持返回键。
+  // 桌面端设置是独立整页视图（标签页语义），不属于 overlay，不劫持返回键。
   useEffect(() => {
     if (!isSmallScreen || !showPromptEditor) return;
     return registerBackHandler(() => {
@@ -283,7 +278,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     />
   );
 
-  // ========== 设置区（内联，无抽屉 / 无遮罩 / 无 absolute 滑板） ==========
+  // ========== 设置区 ==========
   // 移动端：主分栏上方高度过渡展开的内联区块，推挤内容而非遮挡。
   // 关闭态经 visibility 过渡转为 hidden，退出焦点链与无障碍树。
   const mobileSettingsSection = (
@@ -300,24 +295,17 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     </div>
   );
 
-  // 桌面端：右侧文档流内联列，width/visibility 过渡展开收起；
-  // 内层固定宽度并右对齐（ml-auto），过渡期间内容不挤压、呈滑入观感；
-  // 主分栏 flex-1 自动平滑让位。
-  const settingsWidth = isLg ? SETTINGS_WIDTH_LG : SETTINGS_WIDTH_MD;
-  const desktopSettingsColumn = (
+  // 桌面端：设置以独立整页视图占满主区（由侧边栏"批改设置"标签或设置按钮进入），
+  // 不再使用右侧滑入列；批改主界面保持挂载（display:none），保留分栏比例与滚动位置。
+  const desktopSettingsPage = (
     <div
       className={cn(
-        'h-full min-h-0 shrink-0 overflow-hidden',
-        'transition-[width,visibility] duration-[var(--panel-open-dur,250ms)] ease-[var(--panel-ease,ease-out)] motion-reduce:transition-none',
-        showPromptEditor ? 'visible' : 'invisible',
+        'flex-1 min-h-0 overflow-hidden bg-background',
+        showPromptEditor ? 'ui-rise-in' : 'hidden',
       )}
-      style={{ width: showPromptEditor ? settingsWidth : 0 }}
       aria-hidden={!showPromptEditor}
     >
-      <div
-        className="h-full min-h-0 ml-auto border-l border-border/40 bg-background"
-        style={{ width: settingsWidth }}
-      >
+      <div className="mx-auto h-full min-h-0 w-full max-w-3xl">
         {settingsPanel}
       </div>
     </div>
@@ -325,12 +313,13 @@ export const GradingMain: React.FC<GradingMainProps> = ({
 
   // ========== 统一布局：所有断点共用一个结构 ==========
   // 小屏：设置区块在上（高度过渡）+ 上下分栏；
-  // 中屏：上下分栏 + 右侧内联设置列；大屏：左右分栏 + 右侧内联设置列。
+  // 非小屏：设置打开时整页视图替换主分栏（主分栏保持挂载）。
   return (
     <div ref={layoutRef} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {isSmallScreen && mobileSettingsSection}
+      {!isSmallScreen && desktopSettingsPage}
 
-      <div className="flex flex-1 min-h-0">
+      <div className={cn('flex flex-1 min-h-0', !isSmallScreen && showPromptEditor && 'hidden')}>
         <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
           {isSplit ? (
             <HorizontalResizable
@@ -364,8 +353,6 @@ export const GradingMain: React.FC<GradingMainProps> = ({
             />
           )}
         </div>
-
-        {!isSmallScreen && desktopSettingsColumn}
       </div>
     </div>
   );

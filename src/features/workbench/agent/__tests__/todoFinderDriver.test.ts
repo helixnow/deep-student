@@ -17,6 +17,8 @@ const { setActiveList, selectItem, setViewFilter, setWorkspaceView, loadItems, r
   const finderState = {
     currentPath: { folderId: 'root-old' },
     inlineEdit: { editingId: null as string | null },
+    searchQuery: '',
+    selectedIds: new Set<string>(),
   };
   return {
   todoState,
@@ -30,7 +32,7 @@ const { setActiveList, selectItem, setViewFilter, setWorkspaceView, loadItems, r
   initialize: vi.fn(async () => undefined),
   enterFolder: vi.fn(async (id: string) => { finderState.currentPath = { folderId: id }; }),
   navigateTo: vi.fn((path: { folderId: string }) => { finderState.currentPath = path; }),
-  setSelectedIds: vi.fn(),
+  setSelectedIds: vi.fn((ids: Set<string>) => { finderState.selectedIds = ids; }),
   agentFlash: vi.fn(),
   };
 });
@@ -58,7 +60,7 @@ vi.mock('@/features/learning-hub/stores/finderStore', () => ({
       navigateTo,
       setSelectedIds,
       setCurrentPathWithoutHistory: vi.fn(async () => undefined),
-      setSearchQuery: vi.fn(),
+      setSearchQuery: vi.fn((query: string) => { finderState.searchQuery = query; }),
       executeSearch: vi.fn(async () => undefined),
       loadItems: vi.fn(async () => undefined),
       ...finderState,
@@ -121,6 +123,8 @@ describe('todo / files onActivation', () => {
     todoState.filter.view = 'all';
     finderState.currentPath = { folderId: 'root-old' };
     finderState.inlineEdit.editingId = null;
+    finderState.searchQuery = '';
+    finderState.selectedIds = new Set();
   });
 
   it('todo showAutomations -> 切换到定时任务工作区', async () => {
@@ -188,7 +192,7 @@ describe('todo / files onActivation', () => {
       action: 'search',
       payload: { query: 'note' },
     });
-    expect(result).toEqual({ handled: true });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(agentFlash).toHaveBeenCalledWith('files', 'results', { scroll: false });
   });
 
@@ -203,7 +207,7 @@ describe('todo / files onActivation', () => {
         action: 'reveal',
         payload: { resourceId: 'res-42' },
       });
-      expect(result).toEqual({ handled: true });
+      expect(result).toEqual({ handled: true, acknowledged: true });
       expect(enterFolder).toHaveBeenCalledWith('folder-parent');
       expect(setSelectedIds).toHaveBeenCalled();
       expect(agentFlash).toHaveBeenCalledWith('files', 'res-42');

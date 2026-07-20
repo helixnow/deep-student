@@ -156,11 +156,14 @@ export function useSlashMenuCustomScrollbar({
           Math.max((clientHeight / scrollHeight) * clientHeight, getMinThumbSize()),
         );
         const maxOffset = clientHeight - size;
-        const offset =
+        const rawOffset =
           maxOffset <= 0 ? 0 : (scrollTop / (scrollHeight - clientHeight)) * maxOffset;
+        // WKWebView rubber-band scrolling can temporarily report a negative
+        // or over-max scrollTop; never let the visual thumb leave its track.
+        const offset = Math.max(0, Math.min(rawOffset, maxOffset));
 
         thumb.style.height = `${size}px`;
-        thumb.style.transform = `translateY(${Math.max(0, offset)}px)`;
+        thumb.style.transform = `translateY(${offset}px)`;
       };
 
       const showTrack = () => {
@@ -227,8 +230,18 @@ export function useSlashMenuCustomScrollbar({
         updateThumb();
       });
 
+      const contentObserver = new MutationObserver(() => {
+        updateTrackLayout();
+        updateThumb();
+      });
+
       resizeObserver.observe(menuGroups);
       resizeObserver.observe(menuRoot);
+      contentObserver.observe(menuGroups, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
 
       menuGroups.addEventListener('scroll', handleScroll, { passive: true });
       menuGroups.addEventListener('wheel', handleWheel, { passive: false });
@@ -248,6 +261,7 @@ export function useSlashMenuCustomScrollbar({
         stopWheelAnimation();
         menuGroups.style.scrollBehavior = '';
         resizeObserver.disconnect();
+        contentObserver.disconnect();
         menuGroups.removeEventListener('scroll', handleScroll);
         menuGroups.removeEventListener('wheel', handleWheel);
         menuGroups.removeEventListener('pointerenter', showTrack);

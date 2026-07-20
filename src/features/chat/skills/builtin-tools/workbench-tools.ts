@@ -178,7 +178,7 @@ export const workbenchToolsSkill: SkillDefinition = {
 2. **观察精确窗口**：调用 \`builtin-workbench_observe\`，取得 \`windowId\`、\`revision\`、稳定 \`ref\`、selection、state 和当前可用 actions。后续都使用这次返回的确切 \`windowId\`；多窗时不得只靠 typeId/resourceId 猜目标。
 3. **同窗执行并验证**：调用 \`builtin-workbench_act\`，传入步骤 2 的 \`windowId\` 和 \`observationRevision\`；capability.targetKinds 非空且 targetOptional 不为 true 时，必须传本次 observation 返回的稳定 \`targetRef\`，并声明 \`expect\` 后置条件。
 4. **等待**：只有状态会异步变化时才调用 \`builtin-workbench_wait_for\`；它会轮询结构化 observation，不执行动作。
-5. **确认**：以 act/wait_for 返回的 \`verified\`、\`failedConditions\` 和最新 \`observation\` 为准。收到 \`STALE_OBSERVATION\` 时重新 observe 后重新规划，不能原样重试。
+5. **确认**：以 act/wait_for 返回的 \`verified\`、\`failedConditions\` 和最新 \`observation\` 为准。revision 过期但整批动作仍能通过最新观察校验（且风险 ≤ medium）时，运行时会自动重基执行并在回执标注 \`rebasedFromRevision\`；无法重基才返回 \`STALE_OBSERVATION\`，此时错误体已附带最新 \`observation\`，直接基于它重新规划即可，无需再单独 observe，也不能原样重试。
 6. **处理取消/未知终态**：取消或超时后运行时会 bounded drain 等待权威终态。\`cancelled/partial\` 的 \`done/undone\` 才能作为已知前缀；\`RESULT_UNKNOWN\` / \`resultUnknown:true\` 必须先重新 observe 或用领域 read 读取目标，禁止原样重试，禁止改走后台写入。
 7. **撤销**：act 返回 \`undoToken\` 且用户要求撤销时，调用 \`builtin-workbench_undo\` 原样传入。undo 是 **High** 风险，每次都要单独确认，不能记忆授权；token 成功后一次性失效，不要自行构造或并发/重复消费。
 
@@ -260,9 +260,9 @@ export const workbenchToolsSkill: SkillDefinition = {
         '【目的】读取学习子应用实时注册的 Agent manifest：能力名、输入 schema、风险、是否改状态、是否可逆/幂等及目标类型。',
         '【何时用】首次操控某类应用、切换应用、或 UNKNOWN_ACTION/能力变化后；先发现再行动，不要凭硬编码清单猜测。',
         '【副作用】只读。off 档仍允许；feature flag 硬闸关闭时拒绝。',
-        '【目标】可按 typeId 或 windowId 过滤；都省略时返回所有已注册 Agent 能力的应用。',
+        '【目标】可按 typeId 或 windowId 过滤；都省略时返回所有已注册 Agent 能力的应用，但只含能力概要（name/description/risk/mutates/targetKinds，省略 inputSchema，回执带 schemasOmitted:true）。执行 act 前请带 typeId 或 windowId 重新调用获取完整参数 schema。',
         `【分工】${DIVISION}`,
-        '【成功返回】{ apps: [{ typeId, windowId?, manifestVersion, description?, capabilities: [...] }] }。只返回应用真实声明的能力。',
+        '【成功返回】{ apps: [{ typeId, windowId?, manifestVersion, description?, capabilities: [...] }], schemasOmitted? }。只返回应用真实声明的能力。',
       ].join(' '),
       inputSchema: {
         type: 'object',
@@ -319,7 +319,7 @@ export const workbenchToolsSkill: SkillDefinition = {
         '【前置】必须先 get_capabilities + observe；windowId 与 observationRevision 必须来自目标当前同一次 observation。',
         '【目标】多窗场景必须传精确 windowId；capability.targetKinds 非空且 targetOptional 不为 true 时，必须传本次 observation 返回的 targetRef。禁止编造 ref 或 action。',
         '【副作用】Medium 敏感度，可信风险上限为 medium；manifest risk=high 会在副作用前拒绝并要求改用 workbench_act_high。审批针对本次完整 actions 参数。',
-        '【竞态】revision 已变化时返回 STALE_OBSERVATION；重新 observe/规划，不要原样重试。',
+        '【竞态】revision 已变化但整批动作仍通过最新观察校验（风险 ≤ medium）时自动重基执行，回执带 rebasedFromRevision；无法重基才返回 STALE_OBSERVATION，错误体附带最新 observation，直接据其重新规划，不要原样重试。',
         '【取消】取消/超时会先 bounded drain；RESULT_UNKNOWN 表示无权威终态，必须重新观察目标，禁止原样重试或后台写回落。',
         '【验证】expect 未满足会返回 partial/failed、failedConditions 和最新 observation，不得宣称成功。',
         `【分工】${DIVISION}`,
@@ -484,7 +484,7 @@ export const workbenchToolsSkill: SkillDefinition = {
         '【副作用】可能聚焦目标窗并改变其 UI 状态（滚动位置、当前列表等）；不直接改持久化业务数据（除非该 action 本身触发应用内逻辑）。',
         '【action 清单】workbench: focusWindow/minimizeWindow/unminimizeWindow/maximizeWindow/restoreWindow/tileLeft/tileRight/tileTopLeft/tileTopRight/tileBottomLeft/tileBottomRight/tileAll/showDesktop；chat: setInput/focusInput/scrollToMessage；browser: navigate/focusAddress/takeOver/showContent；mindmap: focusNode/setView；note: scrollToHeading；exam: focusQuestion/nextQuestion/previousQuestion/setFilters/resetFilters/setPracticeMode/setFocusMode/showSettings；todo: showList/focusItem/showView/search/setFilters；files: openFolder/reveal/goBack/goForward/goUp/search/setViewMode/setSorting/select/selectAll/clearSelection/refresh；flashcards: startReview/showScreen/startDueReview/flipCard/endReview/searchLibrary/setLibraryPage/editCard/enqueueCard/setSuspended/undoLastReview/deleteCard（undoLastReview/deleteCard 为 High，必须 observe + act_high；rate/score 不开放）；pomodoro: start/pause/resume（stop 为 High，兼容接口拒绝）；sandbox: refresh/setViewport/setInspector/closeSession（setMode 为 High，兼容接口拒绝）；High 动作必须 observe + act_high；textbook/file: scrollToHeading（需 payload.page）。',
         `【分工】${DIVISION}`,
-        '【成功返回】{ handled: boolean }；未处理时看 message/hint。',
+        '【成功返回】{ handled: true }。目标应用未处理（未知指令、无 ACK、窗口缺失等）时按工具错误返回，错误体含 code/message/hint；UNKNOWN_ACTION 的 hint 会列出该应用真实声明的能力，请改走 observe + act，不要换个名字继续猜。',
       ].join(' '),
       inputSchema: {
         type: 'object',

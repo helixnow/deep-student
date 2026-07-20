@@ -38,7 +38,7 @@ import { setMaterialTier, useMaterialTier, type MaterialTierSetting } from '../c
 import {
   computeTiledFrame,
   getActiveTilingPair,
-  hasVisibleMaximizedWindow,
+  hasDockObstructedWindow,
   MAX_TILING_RATIO,
   MIN_TILING_RATIO,
 } from '../core/tiling';
@@ -497,9 +497,10 @@ export const WorkbenchDesktop: React.FC = () => {
     return pair ? { leftId: pair.left.id, rightId: pair.right.id } : null;
   }, [orderedWindows]);
 
-  // 任一子应用最大化（全屏）时 Dock 强制默认收起（macOS 全屏语义）；
+  // 任一子应用铺到底缘（最大化 / 左右平铺 / 下半四分屏）时 Dock 强制默认收起，
+  // 否则悬浮 Dock 会遮住窗口底部内容却不让位；
   // 弹出/收起走 Dock 自身的 autohide 热区机制，与用户设置项取或
-  const dockForceAutohide = useMemo(() => hasVisibleMaximizedWindow(orderedWindows), [orderedWindows]);
+  const dockForceAutohide = useMemo(() => hasDockObstructedWindow(orderedWindows), [orderedWindows]);
 
   return (
     <div

@@ -111,9 +111,6 @@ function loadLayoutMode(): LayoutMode {
   }
 }
 
-/** 桌面端内联设置列宽度（文档流内，非 overlay） */
-const SETTINGS_PANEL_WIDTH = 320;
-
 /** 主区窄于该宽度时强制上下布局 */
 const NARROW_LAYOUT_THRESHOLD = 500;
 
@@ -464,8 +461,8 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
     />
   );
 
-  // ========== 设置区（内联，无抽屉 / 无 overlay） ==========
-  // 移动端：工具栏下方高度过渡展开；桌面端：右侧文档流列宽度过渡展开。
+  // ========== 设置区 ==========
+  // 移动端：工具栏下方高度过渡展开的内联区块；桌面端：独立整页视图。
   // 关闭态经 visibility 过渡转为 hidden，退出焦点链与无障碍树。
   const mobileSettingsSection = (
     <div
@@ -500,18 +497,17 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
     </div>
   );
 
-  const desktopSettingsColumn = (
+  // 桌面端：设置以独立整页视图占满主区（由侧边栏"翻译设置"标签或齿轮按钮进入），
+  // 不再使用右侧滑入列；翻译主界面保持挂载（display:none），保留分栏比例与滚动位置。
+  const desktopSettingsPage = (
     <div
       className={cn(
-        'relative h-full shrink-0 overflow-hidden',
-        'transition-[width,visibility] duration-[var(--panel-open-dur)] ease-[var(--panel-ease)] motion-reduce:transition-none',
-        showPromptEditor ? 'visible' : 'invisible'
+        'flex-1 min-h-0 overflow-hidden bg-background',
+        showPromptEditor ? 'ui-rise-in' : 'hidden'
       )}
-      style={{ width: showPromptEditor ? SETTINGS_PANEL_WIDTH : 0 }}
       aria-hidden={!showPromptEditor}
     >
-      {/* 内层固定宽度并锚定右侧：过渡期间内容不回流，呈现滑入效果 */}
-      <div className="absolute inset-y-0 right-0 h-full" style={{ width: SETTINGS_PANEL_WIDTH }}>
+      <div className="mx-auto h-full min-h-0 w-full max-w-3xl">
         <PromptPanel
           customPrompt={customPrompt}
           setCustomPrompt={setCustomPrompt}
@@ -525,6 +521,10 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           setDomain={setDomain}
           glossary={glossary}
           setGlossary={setGlossary}
+          isAutoTranslate={isAutoTranslate}
+          setIsAutoTranslate={setIsAutoTranslate}
+          isSyncScroll={isSyncScroll}
+          setIsSyncScroll={setIsSyncScroll}
         />
       </div>
     </div>
@@ -537,7 +537,10 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       {/* 移动端：设置区内联展开在工具栏下方，推挤内容而非遮挡 */}
       {isSmallScreen && mobileSettingsSection}
 
-      <div className="flex-1 min-h-0 flex">
+      {/* 桌面端：设置打开时整页视图替换双栏区（双栏保持挂载） */}
+      {!isSmallScreen && desktopSettingsPage}
+
+      <div className={cn('flex-1 min-h-0 flex', !isSmallScreen && showPromptEditor && 'hidden')}>
         <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
           {effectiveStacked ? (
             <VerticalResizable
@@ -559,9 +562,6 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
             />
           )}
         </div>
-
-        {/* 桌面端：设置区为文档流内联列（宽度过渡），不遮挡主内容 */}
-        {!isSmallScreen && desktopSettingsColumn}
       </div>
     </div>
   );

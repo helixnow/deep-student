@@ -261,6 +261,16 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     };
   }, [dstuMode.resourceId]);
 
+  // 向宿主（资源工作区侧边栏的"翻译设置"标签）回报设置页开合状态，
+  // 使侧边栏入口能正确渲染选中态
+  useEffect(() => {
+    const resourceId = dstuMode.resourceId;
+    if (!resourceId) return;
+    window.dispatchEvent(new CustomEvent('translation:settingsVisibility', {
+      detail: { resourceId, open: showPromptEditor },
+    }));
+  }, [showPromptEditor, dstuMode.resourceId]);
+
   // 使用流式状态
   const translatedText = translationStream.translatedText;
   const isTranslating = translationStream.isTranslating;

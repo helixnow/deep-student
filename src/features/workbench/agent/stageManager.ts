@@ -496,11 +496,12 @@ function bridgeErr(
   message: string,
   hint: string,
   retryable = false,
+  details?: Record<string, unknown>,
 ): AcrBridgeResponse {
   return {
     correlationId,
     ok: false,
-    error: JSON.stringify({ code, message, hint, retryable }),
+    error: JSON.stringify({ ...(details ?? {}), code, message, hint, retryable }),
   };
 }
 
@@ -705,6 +706,7 @@ function bridgeAgentRuntimeError(
       error.message,
       error.hint,
       error.retryable,
+      error.details,
     );
   }
   throw error;
@@ -1357,6 +1359,24 @@ function handleOpenApp(req: AcrBridgeRequest): AcrBridgeResponse {
   return bridgeOk(req.correlationId, { windowId, created });
 }
 
+/**
+ * UNKNOWN_ACTION 时把应用真实声明的 manifest 能力名附到 hint 里，
+ * 避免模型继续盲猜指令名（能力经 observe+act 或 get_capabilities 使用）。
+ */
+function appendManifestActionsHint(
+  typeId: string,
+  hint: string | undefined,
+): string | undefined {
+  const manifest = appRegistry.getAgentManifest(typeId);
+  const names = manifest?.capabilities
+    .map((capability) => capability.name)
+    .filter(Boolean) ?? [];
+  const suffix = names.length
+    ? `；该应用声明的能力：${names.join(' / ')}（建议 observe 后用 workbench_act 执行；参数 schema 用 get_capabilities 查询）`
+    : '；请先用 get_capabilities 查询该应用声明的能力，不要猜测指令名';
+  return `${hint ?? ''}${suffix}`;
+}
+
 async function handleAppCommand(req: AcrBridgeRequest): Promise<AcrBridgeResponse> {
   if (!workbenchBus.isEnabled()) {
     return bridgeGateErr(req.correlationId, gateDisabledOs());
@@ -1423,7 +1443,9 @@ async function handleAppCommand(req: AcrBridgeRequest): Promise<AcrBridgeRespons
     return bridgeOk(req.correlationId, {
       handled: false,
       code: detail.code,
-      hint: detail.hint,
+      hint: detail.code === 'UNKNOWN_ACTION'
+        ? appendManifestActionsHint(typeId, detail.hint)
+        : detail.hint,
       message: detail.message ?? detail.hint,
     });
   }

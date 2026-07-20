@@ -7,7 +7,7 @@
  * 3. [折叠] 自定义提示词：保存后就地成功反馈
  * 4. [折叠] 模式管理：编辑/复制/新建/重置/删除（内联二段式确认）+ 内联编辑表单
  *
- * 定位/显隐由父级 GradingMain 负责（移动端顶部高度过渡区块、桌面端右侧宽度过渡内联列），
+ * 定位/显隐由父级 GradingMain 负责（移动端顶部高度过渡区块、桌面端独立整页视图），
  * 本组件只渲染可滚动的面板内容；折叠区采用 grid-template-rows 过渡实现顺滑展开/收起。
  */
 import React, { useState, useCallback, useEffect, useRef } from 'react';

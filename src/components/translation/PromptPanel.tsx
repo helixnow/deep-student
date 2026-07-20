@@ -752,9 +752,9 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
     );
   }
 
-  // 桌面端：内联面板内容（由 TranslationMain 以文档流内联方式承载）
+  // 桌面端：设置整页视图内容（由 TranslationMain 以占满主区的独立页承载）
   return (
-    <div className="h-full flex flex-col bg-background border-l border-border/40">
+    <div className="h-full flex flex-col bg-background">
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 h-12 border-b border-border/30 shrink-0">
         <span className="text-sm font-medium text-foreground/80">

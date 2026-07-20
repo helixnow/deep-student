@@ -114,6 +114,23 @@
   --os-handle-interactive-area-offset: var(--scrollbar-thumb-inset);
 }
 
+/* Per-surface track insets supplied by the unified ScrollArea wrapper. */
+[data-slot="scroll-area"][data-native-scrollbars="false"]
+  > [data-overlayscrollbars="host"]
+  > .os-scrollbar-vertical {
+  top: var(--scroll-area-track-top, 0);
+  right: var(--scroll-area-track-right, 0);
+  bottom: var(--scroll-area-track-bottom, 0);
+}
+
+[data-slot="scroll-area"][data-native-scrollbars="false"]
+  > [data-overlayscrollbars="host"]
+  > .os-scrollbar-horizontal {
+  right: var(--scroll-area-track-right, 0);
+  bottom: var(--scroll-area-track-bottom, 0);
+  left: var(--scroll-area-track-left, 0);
+}
+
 /* ---------------------------------------------------------------- */
 /* Native ScrollArea fallback: preserve iOS momentum and rubber-band */
 /* ---------------------------------------------------------------- */

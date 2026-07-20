@@ -53,7 +53,11 @@ export function CodeMirrorScrollOverlay({ containerRef }: CodeMirrorScrollOverla
     const trackHeight = trackRef.current?.clientHeight ?? clientHeight;
     const size = Math.min(trackHeight, Math.max(trackHeight * ratio, 40));
     const maxOffset = trackHeight - size;
-    const offset = maxOffset <= 0 ? 0 : (scrollTop / (scrollHeight - clientHeight)) * maxOffset;
+    const rawOffset =
+      maxOffset <= 0 ? 0 : (scrollTop / (scrollHeight - clientHeight)) * maxOffset;
+    // WKWebView rubber-band scrolling can temporarily report offsets outside
+    // 0..maxScrollTop. Keep the visual thumb inside its fixed track.
+    const offset = Math.max(0, Math.min(rawOffset, maxOffset));
     metricsRef.current = { size, offset };
     setThumbMetrics({ size, offset });
     if (show) setTrackActive(true);

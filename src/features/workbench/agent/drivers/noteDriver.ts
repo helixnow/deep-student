@@ -191,6 +191,107 @@ export function splitTextIntoBatches(
 }
 
 /**
+ * 把 Markdown 切成可逐块流式演出的顶层片段（R2-03 增补）。
+ *
+ * 结构必须保真：代码围栏、表格、列表（含宽松列表的空行）、引用块、多行公式
+ * 各自保持原子，避免分段插入改变解析结果；标题、水平线、段落按块切分。
+ * 片段之间按块边界顺序插入（agentInsertMarkdown），等价于整段一次性解析。
+ * 导出供单测。
+ */
+export function splitMarkdownIntoSegments(markdown: string): string[] {
+  if (!markdown.trim()) return [];
+  const lines = markdown.split('\n');
+  const segments: string[] = [];
+
+  const isBlank = (line: string): boolean => line.trim() === '';
+  const fenceMarker = (line: string): string | null => {
+    const match = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+    return match ? match[1]! : null;
+  };
+  const isListLine = (line: string): boolean =>
+    /^\s{0,3}(?:[-+*]|\d{1,9}[.)])\s/.test(line);
+  const isIndentedContinuation = (line: string): boolean =>
+    /^(?: {2,}|\t)/.test(line);
+  const isTableLine = (line: string): boolean => /^\s{0,3}\|/.test(line);
+  const isQuoteLine = (line: string): boolean => /^\s{0,3}>/.test(line);
+  const isHeading = (line: string): boolean => /^\s{0,3}#{1,6}\s/.test(line);
+  const isThematicBreak = (line: string): boolean =>
+    /^\s{0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/.test(line);
+  const isMathFenceLine = (line: string): boolean => /^\s{0,3}\$\$/.test(line);
+  const startsBlock = (line: string): boolean =>
+    fenceMarker(line) !== null
+    || isHeading(line)
+    || isListLine(line)
+    || isTableLine(line)
+    || isQuoteLine(line)
+    || isMathFenceLine(line);
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    if (isBlank(line)) {
+      i += 1;
+      continue;
+    }
+    const start = i;
+    const fence = fenceMarker(line);
+    if (fence) {
+      i += 1;
+      const closer = fence[0]!;
+      while (i < lines.length && !new RegExp(`^\\s{0,3}\\${closer}{3,}\\s*$`).test(lines[i]!)) {
+        i += 1;
+      }
+      if (i < lines.length) i += 1;
+    } else if (isMathFenceLine(line) && !/^\s{0,3}\$\$.*\$\$\s*$/.test(line)) {
+      i += 1;
+      while (i < lines.length && !/\$\$\s*$/.test(lines[i]!)) i += 1;
+      if (i < lines.length) i += 1;
+    } else if (isHeading(line) || isThematicBreak(line)) {
+      i += 1;
+    } else if (isListLine(line)) {
+      i += 1;
+      while (i < lines.length) {
+        const next = lines[i]!;
+        if (isListLine(next) || isIndentedContinuation(next)) {
+          i += 1;
+          continue;
+        }
+        if (isBlank(next)) {
+          // 宽松列表：空行后仍是列表项/缩进续行则属于同一列表
+          let j = i + 1;
+          while (j < lines.length && isBlank(lines[j]!)) j += 1;
+          if (j < lines.length
+            && (isListLine(lines[j]!) || isIndentedContinuation(lines[j]!))) {
+            i = j;
+            continue;
+          }
+        }
+        break;
+      }
+    } else if (isTableLine(line)) {
+      i += 1;
+      while (i < lines.length && isTableLine(lines[i]!)) i += 1;
+    } else if (isQuoteLine(line)) {
+      i += 1;
+      // 懒续行：引用块内非空的普通行仍属于引用
+      while (i < lines.length && !isBlank(lines[i]!)
+        && (isQuoteLine(lines[i]!) || !startsBlock(lines[i]!))) {
+        i += 1;
+      }
+    } else {
+      // 段落：直到空行或下一个明确的块起始（setext 下划线随段落吸收）
+      i += 1;
+      while (i < lines.length && !isBlank(lines[i]!) && !startsBlock(lines[i]!)) {
+        i += 1;
+      }
+    }
+    const segment = lines.slice(start, i).join('\n').replace(/[\s\n]+$/, '');
+    if (segment.trim()) segments.push(segment);
+  }
+  return segments;
+}
+
+/**
  * 多行或含 Markdown 标记的内容必须走结构化解析插入。
  * ProseMirror insertText 只适用于单行纯文本，否则会把 Markdown 语法当字面量。
  */
@@ -620,30 +721,83 @@ async function applyNoteInsert(
   let inserted = 0;
 
   if (requiresStructuredMarkdownInsertion(text) && api.agentInsertMarkdown) {
-    const cost =
+    // 块级流式：按顶层 Markdown 块逐段解析插入，保留结构的同时呈现
+    // 渐进演出（AI 光标、滚动跟随、节奏与逐块进度），替代一次性整段落地。
+    const segments = splitMarkdownIntoSegments(text);
+    const baseCost =
       profile.opIntervalMs > 0
         ? profile.typeIntervalMs / profile.opIntervalMs
         : 1;
-    await run.pacing.tick(profile.instant ? 0 : Math.max(0.05, cost));
-    if (abortFlags.get(run.runId)) {
-      return { ok: false, reason: 'aborted', startPos, endPos: startPos };
-    }
+    let structuredChars = 0;
+    let structuredFrom: number | null = null;
+    let structuredFailed: string | null = null;
 
-    const mappedPos = remapInsertPos(api, startPos);
-    const structured = api.agentInsertMarkdown(text, mappedPos);
-    if (structured) {
+    for (let si = 0; si < segments.length; si++) {
+      if (abortFlags.get(run.runId)) {
+        return {
+          ok: false,
+          reason: 'aborted',
+          startPos: structuredFrom ?? startPos,
+          endPos: pos,
+        };
+      }
+      const pause = await run.checkPaused();
+      if (pause === 'abort') {
+        abortFlags.set(run.runId, true);
+        return {
+          ok: false,
+          reason: 'aborted',
+          startPos: structuredFrom ?? startPos,
+          endPos: pos,
+        };
+      }
+
+      // 节拍按片段长度加权（限制在 0.5–6 倍批间隔），长列表/代码块停顿更久
+      const weight = Math.max(
+        0.5,
+        Math.min(6, segments[si]!.length / Math.max(1, profile.typeBatchMax)),
+      );
+      await run.pacing.tick(profile.instant ? 0 : Math.max(0.05, baseCost * weight));
+      if (abortFlags.get(run.runId)) {
+        return {
+          ok: false,
+          reason: 'aborted',
+          startPos: structuredFrom ?? startPos,
+          endPos: pos,
+        };
+      }
+
+      const mappedPos = remapInsertPos(api, pos);
+      const insertedRange = api.agentInsertMarkdown(segments[si]!, mappedPos);
+      if (!insertedRange || insertedRange.to <= insertedRange.from) {
+        structuredFailed = `编辑器未确认第 ${si + 1}/${segments.length} 段结构化插入`;
+        break;
+      }
+      if (structuredFrom == null) structuredFrom = insertedRange.from;
+      pos = insertedRange.to;
+      structuredChars += segments[si]!.length;
       run.reportProgress(
         stepIndex,
         totalOps,
-        `${op.label}（Markdown 结构已应用）`,
+        `${op.label}（${Math.min(structuredChars, text.length)}/${text.length}）`,
         run.target.resourceId,
       );
+    }
+
+    if (structuredFailed == null && structuredFrom != null) {
+      return { ok: true, startPos: structuredFrom, endPos: pos };
+    }
+    if (structuredFrom != null) {
+      // 中途失败：已插入的前缀如实返回区间，交由调用方记账/报告
       return {
-        ok: true,
-        startPos: structured.from,
-        endPos: structured.to,
+        ok: false,
+        reason: structuredFailed ?? '结构化插入失败',
+        startPos: structuredFrom,
+        endPos: pos,
       };
     }
+    // 首段即失败：回落到纯文本打字机路径（与旧行为一致）
+    pos = startPos;
   }
 
   for (let bi = 0; bi < batches.length; bi++) {
@@ -1136,6 +1290,19 @@ export const noteDriver: CollabDriver = {
         }
         break;
       } else {
+        // 非中止失败也可能已经插入了前缀（块级流式中途失败）：如实记账并持久化，
+        // 避免编辑器里出现无账本、未保存确认的“幽灵内容”。
+        const afterInsert = readCompleteMarkdown(api);
+        if (afterInsert !== beforeInsert) {
+          applied += 1;
+          done.push(`${op.label}（部分）`);
+          recordMarkdownInverse(run, api, beforeInsert, afterInsert, `${op.label}（部分）`);
+          try {
+            await flushRequired(api);
+          } catch (error) {
+            persistenceError = error instanceof Error ? error.message : String(error);
+          }
+        }
         undone.push(op.label);
         run.reportProgress(
           i + 1,
@@ -1143,6 +1310,10 @@ export const noteDriver: CollabDriver = {
           result.reason ?? '插入失败',
           resourceId,
         );
+        if (persistenceError) {
+          for (let j = i + 1; j < ops.length; j++) undone.push(ops[j]!.label);
+          break;
+        }
       }
     }
 

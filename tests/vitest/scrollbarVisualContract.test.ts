@@ -23,6 +23,14 @@ const shadScrollAreaSource = readFileSync(
 );
 const scrollPlatformSource = readFileSync(resolve(srcRoot, 'lib/scroll-platform.ts'), 'utf-8');
 const sharedAppCssSource = readFileSync(resolve(srcRoot, 'shared/styles/app.css'), 'utf-8');
+const responsiveUtilitiesSource = readFileSync(
+  resolve(srcRoot, 'styles/responsive-utilities.css'),
+  'utf-8',
+);
+const slashMenuScrollbarSource = readFileSync(
+  resolve(srcRoot, 'components/crepe/hooks/useSlashMenuCustomScrollbar.ts'),
+  'utf-8',
+);
 const skillsListSource = readFileSync(
   resolve(srcRoot, 'components/skills-management/SkillsManagementPage.tsx'),
   'utf-8',
@@ -202,6 +210,17 @@ describe('unified scroll primitive contract', () => {
     expect(scrollAreaSource).toContain('theme,');
     expect(scrollAreaSource).toContain('dragScroll: true');
     expect(scrollAreaSource).toContain('clickScroll: true');
+    expect(scrollAreaSource).toContain('flowDirectionStyles: () => ({})');
+    expect(scrollAreaSource).toContain('refreshScrollTimelineHandleGeometry');
+    expect(scrollAreaSource).toContain('effect.setKeyframes(effect.getKeyframes())');
+    expect(scrollAreaSource).toContain('scroll: (_instance, event) =>');
+    expect(nativeScrollbarSource).toContain('var(--scroll-area-track-top, 0)');
+    expect(nativeScrollbarSource).toContain('var(--scroll-area-track-bottom, 0)');
+    expect(responsiveUtilitiesSource).toContain("[data-overlayscrollbars='host']");
+    expect(responsiveUtilitiesSource).toContain('[data-overlayscrollbars-viewport]');
+    expect(responsiveUtilitiesSource).not.toContain('.os-viewport');
+    expect(slashMenuScrollbarSource).toContain('contentObserver.observe(menuGroups');
+    expect(slashMenuScrollbarSource).toContain('Math.min(rawOffset, maxOffset)');
   });
 
   it('keeps iOS on the native momentum-scrolling fallback', () => {

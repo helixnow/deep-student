@@ -3,7 +3,7 @@
  *
  * 进入 = maximize + 菜单栏强制 autohide（menuBarAutohideStore.forceAutohide，
  * StatusBar 已实现顶缘热区 reveal/conceal）+ Dock 强制 autohide（免费获得：
- * WorkbenchDesktop 的 dockForceAutohide 由 hasVisibleMaximizedWindow 派生，
+ * WorkbenchDesktop 的 dockForceAutohide 由 hasDockObstructedWindow 派生，
  * 窗口进入 maximized 即触发，无需额外通道）。
  *
  * 退出路径：Esc（跳过可编辑焦点，复用 core/shortcuts 的 isEditableTarget）、

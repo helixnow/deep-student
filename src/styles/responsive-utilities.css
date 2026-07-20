@@ -73,14 +73,17 @@
     overflow: visible !important;
   }
 
-  [data-mobile-unified-drawer] [data-mobile-drawer-page] .os-host-flexbox,
-  [data-mobile-unified-drawer] [data-mobile-drawer-page] .os-host {
+  [data-mobile-unified-drawer]
+    [data-mobile-drawer-page]
+    [data-overlayscrollbars='host'] {
     flex: 0 0 auto !important;
     height: auto !important;
     max-height: none !important;
   }
 
-  [data-mobile-unified-drawer] [data-mobile-drawer-page] .os-viewport {
+  [data-mobile-unified-drawer]
+    [data-mobile-drawer-page]
+    [data-overlayscrollbars-viewport] {
     overflow: visible !important;
     max-height: none !important;
   }

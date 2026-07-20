@@ -71,6 +71,34 @@ function assignRef<T>(ref: React.Ref<T> | undefined, value: T | null): void {
   else (ref as React.MutableRefObject<T | null>).current = value;
 }
 
+const pendingScrollTimelineHandleRefreshes = new WeakSet<HTMLElement>();
+
+function refreshScrollTimelineHandleGeometry(handles: readonly HTMLElement[]): void {
+  const pendingHandles = handles.filter((handle) => {
+    if (pendingScrollTimelineHandleRefreshes.has(handle)) return false;
+    pendingScrollTimelineHandleRefreshes.add(handle);
+    return true;
+  });
+  if (pendingHandles.length === 0) return;
+
+  requestAnimationFrame(() => {
+    for (const handle of pendingHandles) {
+      pendingScrollTimelineHandleRefreshes.delete(handle);
+      if (!handle.isConnected || typeof KeyframeEffect === "undefined") continue;
+      for (const animation of handle.getAnimations()) {
+        if (animation.timeline?.constructor.name !== "ScrollTimeline") continue;
+        const effect = animation.effect;
+        if (!(effect instanceof KeyframeEffect)) continue;
+
+        // Chromium can keep container-query units from the size at which the
+        // ScrollTimeline keyframes were created. Re-applying the same frames
+        // makes 100cqh / 100cqw resolve against the current track geometry.
+        effect.setKeyframes(effect.getKeyframes());
+      }
+    }
+  });
+}
+
 type ScrollAreaCssVars = {
   "--scroll-area-track-top"?: string;
   "--scroll-area-track-bottom"?: string;
@@ -132,6 +160,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
     void _dataSlotDrop;
     const {
       className: viewportPropsClassName,
+      onScroll: viewportOnScroll,
       ...resolvedViewportProps
     } = viewportProps ?? {};
 
@@ -160,6 +189,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
               viewportClassName,
               viewportPropsClassName,
             )}
+            onScroll={viewportOnScroll}
             {...resolvedViewportProps}
           >
             {children}
@@ -210,6 +240,23 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
           events={{
             initialized: (instance) => {
               assignRef(viewportRef, instance.elements().viewport as HTMLDivElement);
+              const elements = instance.elements();
+              refreshScrollTimelineHandleGeometry([
+                elements.scrollbarHorizontal.handle,
+                elements.scrollbarVertical.handle,
+              ]);
+            },
+            updated: (instance) => {
+              const elements = instance.elements();
+              refreshScrollTimelineHandleGeometry([
+                elements.scrollbarHorizontal.handle,
+                elements.scrollbarVertical.handle,
+              ]);
+            },
+            scroll: (_instance, event) => {
+              viewportOnScroll?.(
+                event as unknown as React.UIEvent<HTMLDivElement>,
+              );
             },
             destroyed: () => {
               assignRef(viewportRef, null);

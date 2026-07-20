@@ -239,6 +239,16 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ ds
     };
   }, [dstuMode.resourceId]);
 
+  // 向宿主（资源工作区侧边栏的"批改设置"标签）回报设置页开合状态，
+  // 使侧边栏入口能正确渲染选中态
+  useEffect(() => {
+    const resourceId = dstuMode.resourceId;
+    if (!resourceId) return;
+    window.dispatchEvent(new CustomEvent('essay:settingsVisibility', {
+      detail: { resourceId, open: showPromptEditor },
+    }));
+  }, [showPromptEditor, dstuMode.resourceId]);
+
   // 批阅模式状态
   const [modes, setModes] = useState<GradingMode[]>([]);
   const [modeId, setModeIdRaw] = useState(

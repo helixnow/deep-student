@@ -280,7 +280,18 @@ fn map_bridge_error(raw: &str) -> String {
     if code == "RESULT_UNKNOWN" {
         return workbench_result_unknown(message);
     }
-    structured_error(code, message, hint, retryable)
+    // 保留桥层附带的结构化上下文（如 STALE_OBSERVATION 的最新 observation），
+    // 避免模型为拿到新状态再额外 observe 一轮。
+    let mut out = parsed
+        .as_ref()
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    out.insert("code".to_string(), json!(code));
+    out.insert("message".to_string(), json!(message));
+    out.insert("hint".to_string(), json!(hint));
+    out.insert("retryable".to_string(), json!(retryable));
+    Value::Object(out).to_string()
 }
 
 fn extract_error_code(raw: &str) -> Option<&'static str> {
@@ -436,6 +447,29 @@ fn is_legacy_high_risk_command(args: &Value) -> bool {
     )
 }
 
+/// app_command 桥回执 handled:false 时构造结构化工具错误（None = 正常回执）。
+fn app_command_business_error(data: &Value) -> Option<String> {
+    if data.get("handled").and_then(Value::as_bool) != Some(false) {
+        return None;
+    }
+    let code = data
+        .get("code")
+        .and_then(Value::as_str)
+        .filter(|code| !code.trim().is_empty())
+        .unwrap_or("ACTION_FAILED");
+    let message = data
+        .get("message")
+        .and_then(Value::as_str)
+        .filter(|message| !message.trim().is_empty())
+        .unwrap_or("app_command 未被目标应用处理");
+    let hint = data
+        .get("hint")
+        .and_then(Value::as_str)
+        .filter(|hint| !hint.trim().is_empty())
+        .unwrap_or("检查 typeId/action/payload；建议改走 observe + workbench_act 执行 manifest 能力");
+    Some(structured_error(code, message, hint, false))
+}
+
 fn bridge_command_and_timeout(stripped: &str) -> Option<(&'static str, u64)> {
     match stripped {
         tool_names::GET_CAPABILITIES => Some(("get_capabilities", TIMEOUT_QUERY_MS)),
@@ -522,8 +556,16 @@ impl WorkbenchToolExecutor {
                     let msg = resp.error.unwrap_or_else(|| "桥层返回失败".to_string());
                     Err(map_bridge_error(&msg))
                 } else {
-                    // 业务失败也在 data.status 中（DESIGN §2.1），原样交给 LLM
-                    Ok(resp.data.unwrap_or_else(|| json!({})))
+                    let data = resp.data.unwrap_or_else(|| json!({}));
+                    // app_command 的 handled:false 是业务失败：映射为工具错误，
+                    // 让块状态/UI 如实标红，而不是看起来成功却什么都没发生。
+                    // act 等回执仍把业务终态留在 data.status（DESIGN §2.1）原样交给 LLM。
+                    if stripped == tool_names::APP_COMMAND {
+                        if let Some(err) = app_command_business_error(&data) {
+                            return Err(err);
+                        }
+                    }
+                    Ok(data)
                 }
             }
         }
@@ -895,5 +937,44 @@ mod tests {
             serde_json::from_str(&undo_progress).expect("structured undo error");
         assert_eq!(undo_progress["code"], "UNDO_IN_PROGRESS");
         assert_eq!(undo_progress["retryable"], true);
+    }
+
+    #[test]
+    fn map_bridge_error_passes_through_attached_observation() {
+        let raw = json!({
+            "code": "STALE_OBSERVATION",
+            "message": "观察已过期",
+            "hint": "直接基于附带 observation 重新规划",
+            "retryable": true,
+            "observation": { "revision": "acr:next", "windowId": "w1" },
+        })
+        .to_string();
+        let mapped: Value = serde_json::from_str(&map_bridge_error(&raw)).expect("structured");
+        assert_eq!(mapped["code"], "STALE_OBSERVATION");
+        assert_eq!(mapped["retryable"], true);
+        assert_eq!(mapped["observation"]["revision"], "acr:next");
+        assert_eq!(mapped["observation"]["windowId"], "w1");
+    }
+
+    #[test]
+    fn app_command_unhandled_maps_to_tool_error() {
+        assert!(app_command_business_error(&json!({ "handled": true })).is_none());
+        assert!(app_command_business_error(&json!({})).is_none());
+
+        let err = app_command_business_error(&json!({
+            "handled": false,
+            "code": "UNKNOWN_ACTION",
+            "hint": "note 不支持指令 search",
+        }))
+        .expect("business failure maps to error");
+        let err: Value = serde_json::from_str(&err).expect("structured error");
+        assert_eq!(err["code"], "UNKNOWN_ACTION");
+        assert_eq!(err["hint"], "note 不支持指令 search");
+        assert_eq!(err["retryable"], false);
+
+        let fallback = app_command_business_error(&json!({ "handled": false }))
+            .expect("fallback error");
+        let fallback: Value = serde_json::from_str(&fallback).expect("structured error");
+        assert_eq!(fallback["code"], "ACTION_FAILED");
     }
 }

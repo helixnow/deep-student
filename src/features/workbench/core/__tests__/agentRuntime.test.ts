@@ -178,17 +178,45 @@ describe('ACR 2.0 core runtime', () => {
     });
   });
 
-  it('rejects stale observations and stable refs that are no longer available', async () => {
+  it('soft-rebases stale observations when the batch still validates against the fresh state', async () => {
     const windowId = openFixture();
     const stale = await observeAgentWindow({ windowId });
     value = 7;
+    appRevision += 1;
+    const rebased = await actOnAgentWindow({
+      windowId,
+      observationRevision: stale.revision,
+      actions: [{ name: 'setValue', args: { value: 8 }, targetRef: 'counter:item:main' }],
+    });
+    expect(rebased.status).toBe('completed');
+    expect(rebased.rebasedFromRevision).toBe(stale.revision);
+    expect(value).toBe(8);
+  });
+
+  it('rejects stale observations with the fresh observation attached when rebase is impossible', async () => {
+    const windowId = openFixture();
+    const stale = await observeAgentWindow({ windowId });
+    value = 7;
+    refAvailable = false;
     appRevision += 1;
     await expect(actOnAgentWindow({
       windowId,
       observationRevision: stale.revision,
       actions: [{ name: 'setValue', args: { value: 8 }, targetRef: 'counter:item:main' }],
-    })).rejects.toMatchObject({ code: 'STALE_OBSERVATION', retryable: true });
+    })).rejects.toMatchObject({
+      code: 'STALE_OBSERVATION',
+      retryable: true,
+      details: expect.objectContaining({
+        observation: expect.objectContaining({ windowId }),
+      }),
+    });
+    expect(value).toBe(7);
+  });
 
+  it('rejects stable refs that are no longer available', async () => {
+    const windowId = openFixture();
+    value = 7;
+    appRevision += 1;
     const current = await observeAgentWindow({ windowId });
     const missingRef = await actOnAgentWindow({
       windowId,

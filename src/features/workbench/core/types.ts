@@ -289,17 +289,30 @@ export interface AgentWindowTarget {
   instanceKey?: string;
 }
 
+/** 广查询（不带 typeId/windowId）时的能力概要：省略 schema 以控制回执体积。 */
+export interface AgentCapabilitySummary {
+  name: string;
+  description?: string;
+  risk: AgentCapabilityRisk;
+  mutates: boolean;
+  requiresFocus?: boolean;
+  targetKinds?: string[];
+}
+
 export interface AgentAppCapabilities {
   typeId: string;
   windowId?: string;
   instanceKey?: string | null;
   manifestVersion: string | number;
   description?: string;
-  capabilities: AgentCapability[];
+  capabilities: AgentCapability[] | AgentCapabilitySummary[];
 }
 
 export interface AgentCapabilitiesResult {
   apps: AgentAppCapabilities[];
+  /** True when a broad query omitted per-capability inputSchema (summary mode). */
+  schemasOmitted?: boolean;
+  hint?: string;
 }
 
 export interface AgentActRequest extends AgentWindowTarget {
@@ -355,6 +368,11 @@ export interface AgentActReceipt {
   undoToken?: string;
   undoDurability?: AgentUndoDurability;
   observation: AgentObservation;
+  /**
+   * Present when the caller's observationRevision was stale but the whole batch
+   * still validated against the fresh observation and was executed on it（软重基）。
+   */
+  rebasedFromRevision?: string;
 }
 
 export interface AgentWaitForRequest extends AgentWindowTarget {

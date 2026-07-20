@@ -76,9 +76,9 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
     {!hideHeader && (
       <div className="flex flex-col gap-1 mb-6 md:flex-row md:items-start md:justify-between">
         <div className="space-y-1 min-w-0 flex-1">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+          <h2 className="text-xl font-semibold text-foreground md:text-lg">{title}</h2>
           {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p className="text-[15px] leading-relaxed text-muted-foreground md:text-sm">{description}</p>
           )}
         </div>
         {rightSlot && <div className="ml-0 md:ml-4 flex-shrink-0">{rightSlot}</div>}
@@ -102,7 +102,7 @@ export const SettingItem: React.FC<SettingItemProps> = ({ label, description, ch
     <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-sm font-medium text-foreground">{label}</label>
+          <label className="text-base font-medium text-foreground md:text-sm">{label}</label>
           {badge && (
             <span className={`px-2 py-0.5 text-xs rounded-full ${
               badge === 'Beta' ? 'bg-primary/20 text-primary' :
@@ -114,7 +114,7 @@ export const SettingItem: React.FC<SettingItemProps> = ({ label, description, ch
           )}
         </div>
         {description && (
-          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{description}</p>
+          <p className="mt-1 text-sm text-muted-foreground leading-relaxed md:text-xs">{description}</p>
         )}
       </div>
       <div className="md:ml-4 flex-shrink-0 w-full md:w-auto">

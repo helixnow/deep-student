@@ -19,6 +19,7 @@ import {
   requiresStructuredMarkdownInsertion,
   remapInsertPos,
   resolveNoteAnchorPos,
+  splitMarkdownIntoSegments,
   splitTextIntoBatches,
   unregisterNoteEditor,
   type NoteAnchor,
@@ -71,6 +72,68 @@ describe('splitTextIntoBatches', () => {
     const batches = splitTextIntoBatches(text, 4, 5);
     expect(batches.join('')).toBe(text);
     expect(batches.every((b) => b.length <= 5)).toBe(true);
+  });
+});
+
+describe('splitMarkdownIntoSegments', () => {
+  it('空/纯空白返回空数组', () => {
+    expect(splitMarkdownIntoSegments('')).toEqual([]);
+    expect(splitMarkdownIntoSegments('  \n\n  ')).toEqual([]);
+  });
+
+  it('标题、段落、水平线按块切分', () => {
+    expect(splitMarkdownIntoSegments('## 标题\n\n第一段\n仍是第一段\n\n---\n\n第二段')).toEqual([
+      '## 标题',
+      '第一段\n仍是第一段',
+      '---',
+      '第二段',
+    ]);
+  });
+
+  it('列表整体原子（含宽松列表空行与缩进续行）', () => {
+    expect(splitMarkdownIntoSegments('前言\n\n- a\n- b\n\n- c\n  续行\n\n结尾')).toEqual([
+      '前言',
+      '- a\n- b\n\n- c\n  续行',
+      '结尾',
+    ]);
+    expect(splitMarkdownIntoSegments('1. one\n2. two\n\n段落')).toEqual([
+      '1. one\n2. two',
+      '段落',
+    ]);
+  });
+
+  it('代码围栏与表格保持原子', () => {
+    expect(splitMarkdownIntoSegments('```ts\nconst a = 1;\n\nconst b = 2;\n```\n\n后文')).toEqual([
+      '```ts\nconst a = 1;\n\nconst b = 2;\n```',
+      '后文',
+    ]);
+    expect(splitMarkdownIntoSegments('| a | b |\n|---|---|\n| 1 | 2 |\n\n后文')).toEqual([
+      '| a | b |\n|---|---|\n| 1 | 2 |',
+      '后文',
+    ]);
+  });
+
+  it('引用块（含懒续行）与多行公式保持原子', () => {
+    expect(splitMarkdownIntoSegments('> 引用第一行\n仍属引用\n\n后文')).toEqual([
+      '> 引用第一行\n仍属引用',
+      '后文',
+    ]);
+    expect(splitMarkdownIntoSegments('$$\nE = mc^2\n$$\n\n后文')).toEqual([
+      '$$\nE = mc^2\n$$',
+      '后文',
+    ]);
+  });
+
+  it('setext 下划线随段落吸收，不切成水平线', () => {
+    expect(splitMarkdownIntoSegments('标题文本\n---\n\n正文')).toEqual([
+      '标题文本\n---',
+      '正文',
+    ]);
+  });
+
+  it('片段按 \\n\\n 连接可还原为语义等价文档', () => {
+    const source = '## 计划\n\n- 项一\n- 项二\n\n> 提示\n\n收尾段';
+    expect(splitMarkdownIntoSegments(source).join('\n\n')).toBe(source);
   });
 });
 
@@ -505,7 +568,7 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(api.signals.some((s) => s.type === 'fadeRun')).toBe(true);
   });
 
-  it('多行 Markdown 走结构化解析插入，不作为纯文本写入', async () => {
+  it('多行 Markdown 走块级流式结构化插入，不作为纯文本写入', async () => {
     const api = makeEditorApi();
     registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
     const markdown = '## 小结\n\n- **要点一**\n- $F=ma$';
@@ -522,8 +585,10 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     ]);
 
     expect(receipt.status).toBe('completed');
+    // 顶层块逐段插入：标题一段、列表整体一段（列表原子，保证解析等价）
     expect(api.markdownInsertCalls).toEqual([
-      { markdown, pos: expectedPos },
+      { markdown: '## 小结', pos: expectedPos },
+      { markdown: '- **要点一**\n- $F=ma$', pos: expectedPos + '## 小结'.length },
     ]);
     expect(api.insertCalls).toHaveLength(0);
     expect(api.flushPendingSave).toHaveBeenCalledTimes(1);

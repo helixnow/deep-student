@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   getActiveTilingPair,
   getTilingRatioForWindow,
+  hasDockObstructedWindow,
   resetActiveTilingPairCacheForTests,
   tilingPairKey,
 } from '../tiling';
@@ -101,5 +102,27 @@ describe('tiling — active pair 单槽缓存', () => {
     expect(getTilingRatioForWindow(windows, ratios, left.id)).toBe(0.7);
     expect(getTilingRatioForWindow(windows, ratios, right.id)).toBe(0.7);
     expect(getTilingRatioForWindow(windows, ratios, other.id)).toBeUndefined();
+  });
+});
+
+describe('tiling — hasDockObstructedWindow（Dock 强制自动隐藏判定）', () => {
+  it('触底受管模式（maximized / 左右平铺 / 下半四分屏）触发', () => {
+    for (const mode of ['maximized', 'tiled-left', 'tiled-right', 'tiled-bl', 'tiled-br'] as const) {
+      expect(hasDockObstructedWindow([makeWin({ displayMode: mode })])).toBe(true);
+    }
+  });
+
+  it('不触底模式（floating / 上半四分屏）不触发', () => {
+    for (const mode of ['floating', 'tiled-tl', 'tiled-tr'] as const) {
+      expect(hasDockObstructedWindow([makeWin({ displayMode: mode })])).toBe(false);
+    }
+  });
+
+  it('最小化窗口不触发；map 入参语义一致', () => {
+    const win = makeWin({ displayMode: 'tiled-left', minimized: true });
+    expect(hasDockObstructedWindow([win])).toBe(false);
+    expect(hasDockObstructedWindow({ [win.id]: win })).toBe(false);
+    const visible = makeWin({ displayMode: 'maximized' });
+    expect(hasDockObstructedWindow({ [visible.id]: visible })).toBe(true);
   });
 });

@@ -70,6 +70,10 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       : null;
   };
 
+  /** 同步 store 写入后的读回校验：命中即返回 authoritative ack，避免 ACTION_UNVERIFIED 假阴性。 */
+  const ackIf = (verified: boolean): ActivationResult =>
+    verified ? { handled: true, acknowledged: true } : { handled: true };
+
   switch (ctx.action) {
     case 'openFolder': {
       const folderId = payloadString(ctx.payload, 'folderId');
@@ -78,7 +82,7 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       const failed = finderError();
       if (failed) return failed;
       await flashNavigationAnchor('path');
-      return { handled: true };
+      return ackIf(useFinderStore.getState().currentPath.folderId === folderId);
     }
     case 'reveal': {
       const resourceId = payloadString(ctx.payload, 'resourceId');
@@ -91,15 +95,17 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
         if (failed) return failed;
       }
       useFinderStore.getState().setSelectedIds(new Set([resourceId]));
+      const selected = useFinderStore.getState().selectedIds.has(resourceId);
       // ACR 4.0（A6）：flash 目标行可能不在虚拟化可视区/当前页——agentFlash 对缺失
       // 元素静默 no-op，这里显式查 DOM 兜底，回执不假装完成了定位。
       await afterNextPaint();
       if (findAgentEntityElement(resourceId)) {
         agentFlash('files', resourceId);
-        return { handled: true };
+        return { handled: true, acknowledged: selected };
       }
       return {
         handled: true,
+        acknowledged: selected,
         message: '已进入所在目录并选中该资源，但目标行当前不在可视区/当前页，未执行定位高亮',
       };
     }
@@ -109,27 +115,33 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       if (!type) return invalid('openQuickAccess 需要合法的 payload.type');
       store.quickAccessNavigate(type);
       await flashNavigationAnchor('path');
-      return { handled: true };
+      return ackIf(useFinderStore.getState().currentPath.folderId === null);
     }
-    case 'goBack':
+    case 'goBack': {
       if (store.historyIndex <= 0) return unavailable('当前没有可返回的浏览位置');
+      const beforeIndex = store.historyIndex;
       store.goBack();
       await flashNavigationAnchor('path');
-      return { handled: true };
-    case 'goForward':
+      return ackIf(useFinderStore.getState().historyIndex === beforeIndex - 1);
+    }
+    case 'goForward': {
       if (store.historyIndex >= store.history.length - 1) {
         return unavailable('当前没有可前进的浏览位置');
       }
+      const beforeIndex = store.historyIndex;
       store.goForward();
       await flashNavigationAnchor('path');
-      return { handled: true };
-    case 'goUp':
+      return ackIf(useFinderStore.getState().historyIndex === beforeIndex + 1);
+    }
+    case 'goUp': {
       if (store.currentPath.breadcrumbs.length === 0) {
         return unavailable('当前已在文件根位置');
       }
+      const beforeFolderId = store.currentPath.folderId;
       store.goUp();
       await flashNavigationAnchor('path');
-      return { handled: true };
+      return ackIf(useFinderStore.getState().currentPath.folderId !== beforeFolderId);
+    }
     case 'search': {
       const query = payloadString(ctx.payload, 'query') ?? '';
       store.setSearchQuery(query);
@@ -138,13 +150,13 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       const failed = finderError();
       if (failed) return failed;
       await flashNavigationAnchor('results');
-      return { handled: true };
+      return ackIf(useFinderStore.getState().searchQuery === query);
     }
     case 'setViewMode': {
       const mode = payloadString(ctx.payload, 'mode') as ViewMode | null;
       if (mode !== 'grid' && mode !== 'list') return invalid('mode 必须为 grid 或 list');
       store.setViewMode(mode);
-      return { handled: true };
+      return ackIf(useFinderStore.getState().viewMode === mode);
     }
     case 'setSorting': {
       const payload = payloadRecord(ctx.payload);
@@ -153,30 +165,35 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       if (!SORT_FIELDS.has(sortBy)) return invalid('sortBy 值无效');
       if (sortOrder && !SORT_ORDERS.has(sortOrder)) return invalid('sortOrder 值无效');
       store.setSorting(sortBy, sortOrder);
-      return { handled: true };
+      const after = useFinderStore.getState();
+      return ackIf(
+        after.sortBy === sortBy && (!sortOrder || after.sortOrder === sortOrder),
+      );
     }
     case 'select': {
       const resourceId = payloadString(ctx.payload, 'resourceId');
       if (!resourceId) return invalid('select 需要 payload.resourceId');
       store.select(resourceId, 'single');
       agentFlash('files', resourceId);
-      return { handled: true };
+      return ackIf(useFinderStore.getState().selectedIds.has(resourceId));
     }
     case 'selectAll':
       if (store.items.length === 0 || store.selectedIds.size === store.items.length) {
         return unavailable(store.items.length === 0 ? '当前没有可选择的资源' : '当前资源已全部选中');
       }
       store.selectAll();
-      return { handled: true };
+      return ackIf(
+        useFinderStore.getState().selectedIds.size === useFinderStore.getState().items.length,
+      );
     case 'clearSelection':
       if (store.selectedIds.size === 0) return unavailable('当前没有资源选择');
       store.clearSelection();
-      return { handled: true };
+      return ackIf(useFinderStore.getState().selectedIds.size === 0);
     case 'refresh': {
       await store.refresh({ silent: true });
       const failed = finderError();
       if (failed) return failed;
-      return { handled: true };
+      return { handled: true, acknowledged: true };
     }
     default:
       return {

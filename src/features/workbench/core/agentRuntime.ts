@@ -12,6 +12,7 @@ import type {
   AgentCapabilitiesResult,
   AgentCapabilityRisk,
   AgentCapability,
+  AgentCapabilitySummary,
   AgentConditionFailure,
   AgentEntitySummary,
   AgentJsonSchema,
@@ -61,6 +62,8 @@ export class AgentRuntimeError extends Error {
     message: string,
     public readonly hint: string,
     public readonly retryable = false,
+    /** 附加的结构化上下文（如 STALE_OBSERVATION 时的最新 observation），随桥层错误透传给调用方。 */
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'AgentRuntimeError';
@@ -215,8 +218,9 @@ function runtimeError(
   message: string,
   hint: string,
   retryable = false,
+  details?: Record<string, unknown>,
 ): never {
-  throw new AgentRuntimeError(code, message, hint, retryable);
+  throw new AgentRuntimeError(code, message, hint, retryable, details);
 }
 
 function resolveAgentWindow(target: AgentWindowTarget = {}): ResolvedAgentWindow {
@@ -374,12 +378,14 @@ export function getAgentCapabilities(
     return { apps };
   }
 
+  // 广查询（全部应用）返回能力概要：省略每个 capability 的 inputSchema/outputSchema，
+  // 避免回执超出工具输出预算被截断，导致模型丢失能力总览后开始盲猜动作名。
   for (const { typeId, manifest } of appRegistry.listAgentManifests()) {
     apps.push({
       typeId,
       manifestVersion: manifest.version,
       description: manifest.description,
-      capabilities: cloneCapabilities(manifest),
+      capabilities: summarizeCapabilities(manifest),
     });
   }
   for (const [typeId, manifest] of virtualAgentManifests) {
@@ -388,11 +394,36 @@ export function getAgentCapabilities(
       typeId,
       manifestVersion: manifest.version,
       description: manifest.description,
-      capabilities: cloneCapabilities(manifest),
+      capabilities: summarizeCapabilities(manifest),
     });
   }
   apps.sort((a, b) => a.typeId.localeCompare(b.typeId));
-  return { apps };
+  return {
+    apps,
+    schemasOmitted: true,
+    hint: '广查询仅返回能力概要（无 inputSchema）；执行 act 前请带 typeId 或 windowId 重新调用以获取完整参数 schema',
+  };
+}
+
+function summarizeCapabilities(manifest: AppAgentManifest): AgentCapabilitySummary[] {
+  const seen = new Set<string>();
+  const summaries: AgentCapabilitySummary[] = [];
+  for (const capability of manifest.capabilities) {
+    const name = capability.name?.trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    summaries.push({
+      name,
+      ...(capability.description ? { description: capability.description } : {}),
+      risk: capability.risk,
+      mutates: capability.mutates,
+      ...(capability.requiresFocus ? { requiresFocus: true } : {}),
+      ...(capability.targetKinds?.length
+        ? { targetKinds: [...capability.targetKinds] }
+        : {}),
+    });
+  }
+  return summaries;
 }
 
 function jsonClone<T>(value: T, fallback: T): T {
@@ -1164,13 +1195,32 @@ export async function actOnAgentWindow(
   let current = await observeAgentWindow(request, options);
   throwIfAgentOperationAborted(options);
   const before = current;
+  let rebasedFromRevision: string | undefined;
   if (current.revision !== request.observationRevision) {
-    runtimeError(
-      'STALE_OBSERVATION',
-      `观察已过期（期望 ${request.observationRevision}，当前 ${current.revision}）`,
-      '重新 observe，基于最新 revision/ref 重新规划动作',
-      true,
+    // 软重基：桌面聚焦/最小化等操作会异步刷新 revision，严格相等会让紧接着的
+    // act 频繁 STALE。若整批动作风险 ≤ medium 且每个动作（含 targetRef/可用性）
+    // 都能通过最新 observation 校验，则直接在新 observation 上执行并在回执中
+    // 标注 rebasedFromRevision；High 风险批次的审批绑定当时状态，保持严格失败。
+    const batchRisk = maxAgentRisk(
+      request.actions.map((action) => capabilities.get(action.name)?.risk),
     );
+    const rebasable = AGENT_RISK_RANK[batchRisk] <= AGENT_RISK_RANK.medium
+      && request.actions.every((action) => validateActionAgainstObservation(
+        action,
+        capabilities.get(action.name)!,
+        current,
+      ) === null);
+    if (rebasable) {
+      rebasedFromRevision = request.observationRevision;
+    } else {
+      runtimeError(
+        'STALE_OBSERVATION',
+        `观察已过期（期望 ${request.observationRevision}，当前 ${current.revision}）`,
+        '错误已附带最新 observation（error.observation）；直接基于它重新规划动作，无需再次 observe',
+        true,
+        { observation: current },
+      );
+    }
   }
 
   const outcomes: AgentActionOutcome[] = [];
@@ -1292,6 +1342,7 @@ export async function actOnAgentWindow(
     verified: complete,
     failedConditions,
     observation: current,
+    ...(rebasedFromRevision ? { rebasedFromRevision } : {}),
   };
 
   const inverse: AgentActionCall[] = [];
