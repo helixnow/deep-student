@@ -191,6 +191,120 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D clippy::correctness
 
+  # Real provider behavior is a required contract, not an optional local check.
+  # This job deliberately runs every ignored test in sync_provider_contract_tests.
+  provider-contract:
+    name: Cloud Provider Contract Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: 0
+      DS_SYNC_TEST_DOCKER: '1'
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: src-tauri
+          shared-key: provider-contract
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+
+      - name: Validate pinned provider composition
+        run: |
+          set -euo pipefail
+          docker compose -f scripts/dev/docker-compose.sync-test.yml config --quiet
+          IMAGES_FILE="$RUNNER_TEMP/provider-contract-images.txt"
+          docker compose -f scripts/dev/docker-compose.sync-test.yml config --images > "$IMAGES_FILE"
+          test "$(awk 'NF { count++ } END { print count+0 }' "$IMAGES_FILE")" -ge 4
+          if awk '/:latest$/ { found=1 } END { exit(found ? 0 : 1) }' "$IMAGES_FILE"; then
+            echo "::error::Provider contract images must not use mutable latest tags"
+            exit 1
+          fi
+
+      - name: Start healthy provider services
+        run: |
+          set -euo pipefail
+          docker compose -f scripts/dev/docker-compose.sync-test.yml \
+            up --detach --build --wait --wait-timeout 180 minio webdav ftp
+          docker compose -f scripts/dev/docker-compose.sync-test.yml run --rm minio-init
+          for service in minio webdav ftp; do
+            container_id="$(docker compose -f scripts/dev/docker-compose.sync-test.yml ps -q "$service")"
+            test -n "$container_id"
+            test "$(docker inspect --format '{{.State.Health.Status}}' "$container_id")" = healthy
+          done
+
+      - name: Run every provider contract test
+        working-directory: src-tauri
+        run: |
+          set -euo pipefail
+          LIST_FILE="$RUNNER_TEMP/provider-contract-tests.txt"
+          RUN_FILE="$RUNNER_TEMP/provider-contract-run.txt"
+
+          # Write the complete harness list before parsing it. Avoid a
+          # cargo|filter pipeline whose downstream close/truncation could hide
+          # tests or turn a broken stream into a misleading count.
+          cargo test --test sync_provider_contract_tests -- --ignored --list > "$LIST_FILE"
+          TEST_COUNT="$(awk '/: test$/ { count++ } END { print count+0 }' "$LIST_FILE")"
+          LIST_SUMMARY_COUNT="$(
+            awk '/^[0-9]+ tests?, 0 benchmarks$/ { summaries++; listed=$1 }
+                 END {
+                   if (summaries != 1) exit 2;
+                   print listed+0
+                 }' "$LIST_FILE"
+          )"
+          if [ "$TEST_COUNT" -le 0 ]; then
+            echo "::error::sync_provider_contract_tests selected zero ignored tests"
+            exit 1
+          fi
+          if [ "$TEST_COUNT" -ne "$LIST_SUMMARY_COUNT" ]; then
+            echo "::error::Provider contract list was truncated or malformed: parsed=$TEST_COUNT summary=$LIST_SUMMARY_COUNT"
+            exit 1
+          fi
+          for provider in webdav s3 ftp; do
+            if ! awk -v prefix="${provider}_" \
+              'index($0, prefix) == 1 && /: test$/ { found=1 } END { exit(found ? 0 : 1) }' \
+              "$LIST_FILE"; then
+              echo "::error::Provider contract list contains no ${provider} tests"
+              exit 1
+            fi
+          done
+
+          echo "Running $TEST_COUNT provider contract tests"
+          cargo test --test sync_provider_contract_tests -- --ignored --test-threads=1 --nocapture \
+            2>&1 | tee "$RUN_FILE"
+          PASSED_COUNT="$(
+            awk '/^test result: ok\./ { summaries++; passed=$4 }
+                 END {
+                   if (summaries != 1) exit 2;
+                   print passed+0
+                 }' "$RUN_FILE"
+          )"
+          if [ "$PASSED_COUNT" -ne "$TEST_COUNT" ]; then
+            echo "::error::Not every listed provider contract ran: listed=$TEST_COUNT passed=$PASSED_COUNT"
+            exit 1
+          fi
+
+      - name: Provider service logs
+        if: always()
+        run: docker compose -f scripts/dev/docker-compose.sync-test.yml logs --no-color
+
+      - name: Stop provider services
+        if: always()
+        run: docker compose -f scripts/dev/docker-compose.sync-test.yml down --volumes --remove-orphans
+
   windows-shell-sandbox:
     name: Windows Shell Sandbox
     runs-on: windows-latest

@@ -42,7 +42,7 @@ export default tseslint.config(
       // 参见: AGENTS.md
       // ============================================================
 
-      // 1. 禁止使用 shadcn Button - 必须使用 NotionButton
+      // 1. 禁止使用 shadcn Button - 必须使用 DsButton
       // 2. 禁止使用 shadcn Tooltip - 必须使用 CommonTooltip
       // 3. 禁止使用 react-tooltip - 必须使用 CommonTooltip
       'no-restricted-imports': ['error', {
@@ -50,12 +50,12 @@ export default tseslint.config(
           // === Button 相关 ===
           {
             name: '@/components/ui/shad/Button',
-            message: '❌ 禁止使用 shadcn Button。请使用 NotionButton (@/components/ui/NotionButton)。参见 AGENTS.md 规范。'
+            message: '❌ 禁止使用 shadcn Button。请使用 DsButton (@/components/ui/DsButton)。参见 AGENTS.md 规范。'
           },
           {
             name: '@/components/ui/button',
             importNames: ['Button'],
-            message: '❌ 禁止使用 shadcn Button。请使用 NotionButton (@/components/ui/NotionButton)。参见 AGENTS.md 规范。'
+            message: '❌ 禁止使用 shadcn Button。请使用 DsButton (@/components/ui/DsButton)。参见 AGENTS.md 规范。'
           },
           
           // === Tooltip 相关 ===
@@ -79,7 +79,7 @@ export default tseslint.config(
           // Button 模式匹配（相对路径导入）
           {
             group: ['**/shad/Button', '**/shad/Button.tsx'],
-            message: '❌ 禁止使用 shadcn Button。请使用 NotionButton (@/components/ui/NotionButton)。参见 AGENTS.md 规范。'
+            message: '❌ 禁止使用 shadcn Button。请使用 DsButton (@/components/ui/DsButton)。参见 AGENTS.md 规范。'
           },
           // Tooltip 模式匹配（相对路径导入）
           {
@@ -102,7 +102,7 @@ export default tseslint.config(
         }
       ],
 
-      // 6. 禁止使用原生 <button> 元素 - 必须使用 NotionButton（设为 warn 便于逐步修复）
+      // 6. 禁止使用原生 <button> 元素 - 必须使用 DsButton（设为 warn 便于逐步修复）
       'ds-components/no-native-button': 'warn',
 
       // 禁用与 TypeScript 不兼容的规则（TypeScript 已处理）
@@ -196,10 +196,10 @@ export default tseslint.config(
     }
   },
 
-  // NotionButton、SimpleTooltip 和 CommonTooltip 组件本身
+  // DsButton、SimpleTooltip 和 CommonTooltip 组件本身
   {
     files: [
-      'src/components/ui/NotionButton.tsx',
+      'src/components/ui/DsButton.tsx',
       'src/components/ui/SimpleTooltip.tsx',
       'src/components/shared/CommonTooltip.tsx'
     ],

@@ -33,6 +33,91 @@
           ]
         },
         {
+          "model_id": "gpt-5.6-sol",
+          "release_date": "2026-07-09",
+          "status": "confirmed",
+          "source_url": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+          "verified_at": "2026-07-16",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1050000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "reasoning.mode", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "notes": "GPT-5.6 旗舰型号；支持 Responses 与 Chat Completions，优先使用 Responses API。公开别名 gpt-5.6 当前路由到本型号。"
+          },
+          "quirks": [
+            "reasoning_effort 支持 none/low/medium/high/xhigh/max，默认 medium；verbosity 支持 low/medium/high。",
+            "不存在公开的 gpt-5.6-pro 模型 ID；Responses API 的高计算行为使用 reasoning.mode=pro。",
+            "模型专属文档未明确各种推理档位下的 temperature/top_p 兼容边界。"
+          ]
+        },
+        {
+          "model_id": "gpt-5.6-terra",
+          "release_date": "2026-07-09",
+          "status": "confirmed",
+          "source_url": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+          "verified_at": "2026-07-16",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1050000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "reasoning.mode", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "notes": "GPT-5.6 均衡型号；支持 Responses 与 Chat Completions，优先使用 Responses API。"
+          },
+          "quirks": [
+            "reasoning_effort 支持 none/low/medium/high/xhigh/max，默认 medium；verbosity 支持 low/medium/high。",
+            "模型专属文档未明确各种推理档位下的 temperature/top_p 兼容边界。"
+          ]
+        },
+        {
+          "model_id": "gpt-5.6-luna",
+          "release_date": "2026-07-09",
+          "status": "confirmed",
+          "source_url": "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+          "verified_at": "2026-07-16",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1050000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "reasoning.mode", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "notes": "GPT-5.6 快速低成本型号；支持 Responses 与 Chat Completions，优先使用 Responses API。"
+          },
+          "quirks": [
+            "reasoning_effort 支持 none/low/medium/high/xhigh/max，默认 medium；verbosity 支持 low/medium/high。",
+            "模型专属文档未明确各种推理档位下的 temperature/top_p 兼容边界。"
+          ]
+        },
+        {
           "model_id": "gpt-5.5",
           "release_date": "2026-06",
           "status": "confirmed",
@@ -58,6 +143,31 @@
           ]
         },
         {
+          "model_id": "gpt-5.5-pro",
+          "release_date": "2026-07",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "response_format", "tools", "tool_choice"],
+            "notes": "高精度推理档，与内置配置的 high reasoning effort 默认值保持一致；正式能力边界待官方文档复核。"
+          },
+          "quirks": [
+            "默认面向高计算任务，不应假设与标准版具有相同延迟。"
+          ]
+        },
+        {
           "model_id": "gpt-5.4",
           "release_date": "2026-04",
           "status": "confirmed",
@@ -80,6 +190,77 @@
           },
           "quirks": [
             "Chat Completions 需用 max_completion_tokens（max_tokens 会 400，调研 01 要点 3）。"
+          ]
+        },
+        {
+          "model_id": "gpt-5.4-mini",
+          "release_date": "2026-07",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "notes": "成本优化变体，与当前内置参数保持一致。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "gpt-5.4-nano",
+          "release_date": "2026-07",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "notes": "高吞吐变体，与当前内置 low reasoning effort/low verbosity 默认值保持一致。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "gpt-5.4-pro",
+          "release_date": "2026-07",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "response_format", "tools", "tool_choice"],
+            "notes": "高计算变体，与内置配置的 high reasoning effort 默认值保持一致。"
+          },
+          "quirks": [
+            "高计算档不应沿用标准版的延迟假设。"
           ]
         },
         {
@@ -2412,6 +2593,164 @@
           "quirks": [
             "M2.x 不使用 M3 的 adaptive/disabled thinking 开关。"
           ]
+        },
+        {
+          "model_id": "MiniMax-M2.5",
+          "release_date": "2026-02-12",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 204800,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["reasoning_split", "max_completion_tokens", "temperature", "top_p", "tools", "tool_choice", "service_tier"],
+            "notes": "官方推荐 Anthropic 兼容端点 /anthropic。"
+          },
+          "quirks": [
+            "官方已归类为 Legacy Models，仍可调用"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "字节豆包",
+      "series": "Seed 2.x",
+      "models": [
+        {
+          "model_id": "doubao-seed-2-1-pro-260628",
+          "release_date": "2026-06-23",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "thinking.type 支持 enabled/disabled/auto，思维链经 reasoning_content 返回。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "doubao-seed-2-1-turbo-260628",
+          "release_date": "2026-06-23",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "低成本低时延档。thinking.type 支持 enabled/disabled/auto，思维链经 reasoning_content 返回。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "doubao-seed-1-8-251228",
+          "release_date": "2025-12-28",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["reasoning_effort", "max_completion_tokens", "tools", "tool_choice"],
+            "notes": "Seed 1.8 用 reasoning_effort（minimal/low/medium/high）与 max_completion_tokens。"
+          },
+          "quirks": [
+            "旧快照 doubao-seed-1-8-251215 已失效(NotFound)"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "腾讯混元",
+      "series": "Hunyuan 2.0",
+      "models": [
+        {
+          "model_id": "hunyuan-2.0-think",
+          "release_date": "2025-11-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "tencent_hunyuan_native_proxy",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
+            "notes": "最新明确版本主要在 2025 末，2026 未见新独立代号。"
+          },
+          "quirks": [
+            "产品动态页更新到 2025-12，后续若有 2026 patch 先在此列表添加新条目。"
+          ]
+        },
+        {
+          "model_id": "hunyuan-2.0-instruct",
+          "release_date": "2025-11-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "tencent_hunyuan_native_proxy",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
+            "notes": "偏指令跟随，作为 Instruct 侧替代。"
+          },
+          "quirks": [
+            "2026 若仅是版本微调，不要重命名为新型号。"
+          ]
         }
       ]
     },
@@ -2442,6 +2781,31 @@
           },
           "quirks": [
             "多模态需用 glm-5v 系（GLM-5 系唯一多模态线）。"
+          ]
+        },
+        {
+          "model_id": "glm-5",
+          "release_date": "2026-02-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "tool_stream", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "744B MoE。thinking.type=enabled 表示模型自动判断。"
+          },
+          "quirks": [
+            "采样默认 temperature 1.0 / top_p 0.95"
           ]
         },
         {
@@ -2734,6 +3098,64 @@
       ]
     },
     {
+      "vendor": "Xiaomi MiMo",
+      "series": "MiMo V2.5",
+      "models": [
+        {
+          "model_id": "mimo-v2.5-pro",
+          "release_date": "2026-04-22",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "max_tokens", "tools", "tool_choice"],
+            "notes": "文本推理旗舰档。"
+          },
+          "quirks": [
+            "V2 系列(mimo-v2-pro/omni/flash)已于 2026-06-30 全部下线",
+            "思考模式下含 tool_calls 的 assistant 消息必须完整回传 reasoning_content 否则 400"
+          ]
+        },
+        {
+          "model_id": "mimo-v2.5",
+          "release_date": "2026-04-22",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "max_tokens", "tools", "tool_choice"],
+            "notes": "全模态版本。"
+          },
+          "quirks": [
+            "V2 系列(mimo-v2-pro/omni/flash)已于 2026-06-30 全部下线",
+            "思考模式下含 tool_calls 的 assistant 消息必须完整回传 reasoning_content 否则 400"
+          ]
+        }
+      ]
+    },
+    {
       "vendor": "NVIDIA",
       "series": "Nemotron 3",
       "models": [
@@ -2761,6 +3183,52 @@
           "quirks": [
             "参数封装依赖 NIM/NVIDIA 推理层，非所有平台都提供 openai 风格字段。"
           ]
+        },
+        {
+          "model_id": "nvidia/nemotron-3-super-120b-a12b",
+          "release_date": "2026-03-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["chat_template_kwargs.enable_thinking", "reasoning_budget", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "reasoning 经 chat_template_kwargs {\"enable_thinking\": true} 控制（extra_body）。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "nvidia/nemotron-3-ultra-550b-a55b",
+          "release_date": "2026-06-04",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["chat_template_kwargs.enable_thinking", "reasoning_budget", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "notes": "reasoning 经 chat_template_kwargs {\"enable_thinking\": true} 控制（extra_body）。"
+          },
+          "quirks": []
         }
       ]
     }
