@@ -354,20 +354,20 @@ const KnowledgeItem: React.FC<KnowledgeItemProps> = ({ item, index, highlighted,
       onMouseLeave={() => onHover(null)}
     >
       {/* 序号 */}
-      <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground flex-shrink-0">
+      <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-border/40 bg-muted/50 text-xs font-medium tabular-nums text-muted-foreground">
         {index + 1}
       </div>
 
       {/* 知识点名称 */}
-      <div className="flex-1 min-w-0">
-        <div className="font-medium truncate">{item.tag}</div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-foreground">{item.tag}</div>
         <div className="text-xs text-muted-foreground">
           {t('knowledgeRadar.itemDetail', { total: item.total, mastered: item.mastered })}
         </div>
       </div>
 
       {/* 掌握度 */}
-      <div className={cn('px-2 py-1 rounded-md text-sm font-medium tabular-nums flex-shrink-0', tone.text, tone.bg)}>
+      <div className={cn('flex-shrink-0 rounded px-1.5 py-0.5 text-xs font-medium tabular-nums', tone.text, tone.bg)}>
         {rate}%
       </div>
 
@@ -411,17 +411,13 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
   const { t } = useTranslation('stats');
 
   return (
-    <div className="flex flex-col items-center justify-center h-64 text-center">
-      <Brain size={48} className="text-muted-foreground/30 mb-3" weight="light" />
-      <p className="text-muted-foreground mb-4">
-        {t('knowledgeRadar.noData')}
-      </p>
-      <p className="text-xs text-muted-foreground mb-4">
-        {t('knowledgeRadar.noDataHint')}
-      </p>
+    <div className="ui-rise-in flex h-64 flex-col items-center justify-center text-center text-muted-foreground">
+      <Brain size={28} className="mb-3 opacity-40" weight="light" />
+      <p className="text-sm">{t('knowledgeRadar.noData')}</p>
+      <p className="mt-1 text-xs text-muted-foreground/70">{t('knowledgeRadar.noDataHint')}</p>
       {onRefresh && (
-        <DsButton variant="ghost" size="sm" onClick={onRefresh}>
-          <ArrowsClockwise size={16} className="mr-2" />
+        <DsButton variant="ghost" size="sm" className="mt-3" onClick={onRefresh}>
+          <ArrowsClockwise size={14} />
           {t('knowledgeRadar.refreshData')}
         </DsButton>
       )}
@@ -503,7 +499,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
 
   if (isLoading) {
     return (
-      <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+      <div className={cn('rounded-lg border border-border/50 bg-muted/20 p-4', className)}>
         <RadarSkeleton />
       </div>
     );
@@ -512,46 +508,44 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
   const hasData = radarData.length > 0;
 
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-lg border border-border/50 bg-muted/20 p-4', className)}>
       {/* 标题栏 */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Brain size={20} className="text-primary" />
-          <h3 className="font-semibold">{t('knowledgeRadar.title')}</h3>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm">
+          <Brain size={16} className="text-muted-foreground" />
+          <span className="font-medium text-foreground">{t('knowledgeRadar.title')}</span>
         </div>
 
         <DsButton
           variant="ghost"
           size="icon"
-          className="w-8 h-8"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
           onClick={handleRefresh}
           aria-label={t('knowledgeRadar.refreshData')}
         >
-          <ArrowsClockwise size={16} />
+          <ArrowsClockwise size={14} />
         </DsButton>
       </div>
 
       {/* 总体统计 */}
       {hasData && (
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="rounded-lg bg-primary/10 p-3 text-center transition-transform duration-200 hover:-translate-y-0.5">
-            <div className="text-xl font-bold text-primary tabular-nums">
-              {overallStats.avgMastery}%
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          {([
+            { value: `${overallStats.avgMastery}%`, label: t('knowledgeRadar.avgMastery'), dot: 'bg-primary' },
+            { value: `${overallStats.avgCorrectRate}%`, label: t('knowledgeRadar.avgCorrectRate'), dot: 'bg-success' },
+            { value: `${overallStats.totalKnowledgePoints}`, label: t('knowledgeRadar.knowledgePoints'), dot: 'bg-info' },
+          ] as const).map(({ value, label, dot }) => (
+            <div
+              key={label}
+              className="rounded-md border border-border/40 bg-background/40 p-2.5 transition-colors hover:border-border/80"
+            >
+              <div className="text-base font-semibold tabular-nums text-foreground">{value}</div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full', dot)} />
+                <span className="truncate">{label}</span>
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground">{t('knowledgeRadar.avgMastery')}</div>
-          </div>
-          <div className="rounded-lg bg-success/10 p-3 text-center transition-transform duration-200 hover:-translate-y-0.5">
-            <div className="text-xl font-bold text-success tabular-nums">
-              {overallStats.avgCorrectRate}%
-            </div>
-            <div className="text-xs text-muted-foreground">{t('knowledgeRadar.avgCorrectRate')}</div>
-          </div>
-          <div className="rounded-lg bg-info/10 p-3 text-center transition-transform duration-200 hover:-translate-y-0.5">
-            <div className="text-xl font-bold text-info tabular-nums">
-              {overallStats.totalKnowledgePoints}
-            </div>
-            <div className="text-xs text-muted-foreground">{t('knowledgeRadar.knowledgePoints')}</div>
-          </div>
+          ))}
         </div>
       )}
 
@@ -590,10 +584,10 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
 
       {/* 知识点详情列表 */}
       {showDetailList && hasData && (
-        <div className="border-t border-border/50 pt-4 mt-4">
-          <div className="flex items-center gap-2 mb-3">
+        <div className="mt-4 border-t border-border/40 pt-4">
+          <div className="mb-3 flex items-center gap-2 text-sm">
             <BookOpen size={16} className="text-muted-foreground" />
-            <span className="text-sm font-medium">{t('knowledgeRadar.details')}</span>
+            <span className="font-medium text-foreground">{t('knowledgeRadar.details')}</span>
           </div>
           <div className="space-y-1 max-h-64 overflow-y-auto">
             {knowledgeStats?.current.map((item, index) => (

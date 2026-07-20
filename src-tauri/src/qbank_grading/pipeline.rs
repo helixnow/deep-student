@@ -300,6 +300,23 @@ pub async fn run_qbank_grading(
         }
     }
 
+    // AI 判错时自动创建（或复用）SM-2 复习计划，与 question_bank_service.rs
+    // submit_answer 自动判分路径的 I1 修复对称：此前 AI 判错的题只置 status='review'
+    // 而不进复习计划，错题永远不会出现在间隔复习队列里。失败不阻塞评判流程。
+    if request.mode == QbankGradingMode::Grade
+        && verdict.as_ref().is_some_and(|v| !v.is_correct())
+    {
+        let review_service =
+            crate::review_plan_service::ReviewPlanService::new(Arc::clone(&deps.vfs_db));
+        if let Err(e) = review_service.get_or_create_plan(&request.question_id, &question.exam_id) {
+            log::warn!(
+                "[QbankGrading] AI 判错后创建复习计划失败: question_id={}, err={}",
+                request.question_id,
+                e
+            );
+        }
+    }
+
     let verdict_str = verdict.as_ref().map(|v| match v {
         Verdict::Correct => "correct".to_string(),
         Verdict::Partial => "partial".to_string(),

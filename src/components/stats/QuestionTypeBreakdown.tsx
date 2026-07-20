@@ -110,21 +110,21 @@ export const QuestionTypeBreakdown: React.FC<QuestionTypeBreakdownProps> = ({ cl
   const maxCount = Math.max(...rows.map(r => r.count));
 
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-lg border border-border/50 bg-muted/20 p-4', className)}>
       {/* 标题栏 */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <ChartBarHorizontal size={20} className="text-primary" />
-          <h3 className="font-semibold">{t('typeBreakdown.title')}</h3>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm">
+          <ChartBarHorizontal size={16} className="text-muted-foreground" />
+          <span className="font-medium text-foreground">{t('typeBreakdown.title')}</span>
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {t('typeBreakdown.typeCount', { count: rows.length })}
         </span>
       </div>
 
       {/* 分页未取全提示 */}
       {hasMore && (
-        <p className="text-xs text-muted-foreground mb-3">
+        <p className="mb-3 text-xs text-muted-foreground/70">
           {t('typeBreakdown.partialHint')}
         </p>
       )}

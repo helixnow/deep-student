@@ -1193,6 +1193,8 @@
       "randomDesc": "Randomize question order",
       "reviewFirst": "Review First",
       "reviewFirstDesc": "Prioritize incorrectly answered questions",
+      "reviewOnly": "Wrong Only",
+      "reviewOnlyDesc": "Practice only questions answered incorrectly",
       "byTag": "By Tag",
       "byTagDesc": "Practice by knowledge point tags",
       "daily": "Daily",

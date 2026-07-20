@@ -42,6 +42,7 @@ import type { Question, QuestionBankStats, QuestionStatus, Difficulty, QuestionT
 import { ratioToPercent } from '@/components/stats';
 import { QuestionInlineEditor } from './QuestionInlineEditor';
 import { UnifiedDragDropZone } from '@/components/shared/UnifiedDragDropZone';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { EXAM_DOCUMENT_TYPE, EXAM_IMAGE_TYPE } from './ExamSheetUploader';
 import { getQuestionTypeMeta, QUESTION_TYPE_ORDER, type ExtendedQuestionType } from './questionTypeMeta';
 
@@ -176,35 +177,37 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
   return (
     <div className="hidden sm:flex items-center justify-between gap-6 px-1">
       <div className="flex items-center gap-6">
-        {/* 进度环和掌握数 */}
+        {/* 进度环和掌握数（轨道用 currentColor + strokeOpacity，进度平滑过渡） */}
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 relative">
-            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 40 40">
-              <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/30" />
+          <div className="w-10 h-10 relative text-success">
+            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 40 40" aria-hidden="true">
+              <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeOpacity={0.18} strokeWidth="3" />
               <circle
                 cx="20" cy="20" r="16"
                 fill="none" stroke="currentColor" strokeWidth="3"
                 strokeDasharray={`${progressPercent * 1.005} 100.5`}
-                className="text-success"
                 strokeLinecap="round"
+                className="transition-[stroke-dasharray] duration-500 ease-out motion-reduce:transition-none"
 />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-[10px] font-semibold tabular-nums">{Math.round(progressPercent)}%</span>
+              <span className="text-[10px] font-semibold tabular-nums text-foreground">{Math.round(progressPercent)}%</span>
             </div>
           </div>
           <div className="text-sm whitespace-nowrap">
             <span className="text-muted-foreground">{t('questionBank.masteredLabel')} </span>
-            <span className="font-medium">{stats.mastered}</span>
-            <span className="text-muted-foreground">/ {stats.total}</span>
+            <span className="font-medium tabular-nums">{stats.mastered}</span>
+            <span className="text-muted-foreground tabular-nums">/ {stats.total}</span>
           </div>
         </div>
-        
+
+        <div className="w-px h-3.5 bg-border/60" aria-hidden="true" />
+
         {/* 待复习 */}
         {stats.review > 0 && (
           <div className="flex items-center gap-1.5 text-sm text-warning">
-            <span className="w-1.5 h-1.5 rounded-full bg-warning" />
-            <span>{t('questionBank.pendingReview', { count: stats.review })}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-warning" aria-hidden="true" />
+            <span className="tabular-nums">{t('questionBank.pendingReview', { count: stats.review })}</span>
           </div>
         )}
         
@@ -342,7 +345,7 @@ const QuestionGridCard: React.FC<{
         // 长列表渲染优化：视口外卡片跳过渲染（记忆上次尺寸避免滚动条跳动）
         '[content-visibility:auto] [contain-intrinsic-size:auto_150px]',
         'transition-[background-color,border-color,color,box-shadow,transform] duration-200',
-        'border border-transparent hover:border-border/60 hover:bg-[var(--interactive-hover)]',
+        'border border-border/40 bg-card/30 hover:border-border/70 hover:bg-[var(--interactive-hover)]',
         'hover:shadow-[var(--shadow-card)] hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0',
         status === 'mastered' && 'bg-success/5',
         status === 'review' && 'bg-warning/5',
@@ -1057,9 +1060,25 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   }, [onUpdateQuestion]);
   
   if (isLoading && questions.length === 0) {
+    // 加载骨架：模拟工具行 + 列表行结构，与管理视图同款，避免整屏转圈闪切
     return (
-      <div className={cn('flex h-full items-center justify-center text-muted-foreground', className)} role="status">
-        <CircleNotch size={22} className="animate-spin" />
+      <div className={cn('h-full overflow-hidden px-3 sm:px-4 py-3', className)} role="status" aria-busy>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-8 flex-1 rounded-md" />
+          <Skeleton className="h-8 w-16 rounded-md" />
+          <Skeleton className="h-7 w-7 rounded-md" />
+        </div>
+        <div className="mt-3 space-y-2">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="rounded-lg border border-border/40 px-3 py-3">
+              <Skeleton className="h-4" style={{ width: `${[72, 58, 84, 64, 76, 52][i]}%` }} />
+              <div className="mt-2.5 flex items-center gap-2">
+                <Skeleton className="h-3 w-12" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -1174,21 +1193,24 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       {/* 移动端：紧凑单行统计 */}
       {stats && (
         <div className="flex sm:hidden flex-shrink-0 items-center justify-between gap-2 px-3 py-2 border-b border-border/40 text-xs">
-          <span className="text-muted-foreground">
+          <span className="text-muted-foreground tabular-nums">
             {t('practice:questionBank.all')} {stats.total}
           </span>
-          <span className="text-success">
+          <span className="flex items-center gap-1 text-success tabular-nums">
+            <span className="w-1.5 h-1.5 rounded-full bg-success" aria-hidden="true" />
             {t('practice:questionBank.masteredFilter')} {stats.mastered}
           </span>
-          <span className="text-warning">
+          <span className="flex items-center gap-1 text-warning tabular-nums">
+            <span className="w-1.5 h-1.5 rounded-full bg-warning" aria-hidden="true" />
             {t('practice:questionBank.needsReview')} {stats.review}
           </span>
           <DsButton
             variant="primary"
             size="sm"
             onClick={() => handleQuestionClick(0)}
-            className="!h-8 !px-2.5 !py-0 text-xs"
+            className="!h-8 !px-2.5 !py-0 text-xs gap-1"
           >
+            <Play size={12} weight="fill" />
             {t('practice:questionBank.startPractice')}
           </DsButton>
         </div>

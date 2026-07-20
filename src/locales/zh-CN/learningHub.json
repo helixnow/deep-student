@@ -1193,6 +1193,8 @@
       "randomDesc": "随机打乱题目顺序",
       "reviewFirst": "错题优先",
       "reviewFirstDesc": "优先练习答错的题目",
+      "reviewOnly": "仅练错题",
+      "reviewOnlyDesc": "只练习已经答错的题目",
       "byTag": "按标签",
       "byTagDesc": "按知识点标签分类练习",
       "daily": "每日",

@@ -1925,9 +1925,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   
   if (!sessionId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <WarningCircle size={32} className="text-muted-foreground mb-2" />
-        <span className="text-muted-foreground">
+      <div className="ui-rise-in flex flex-col items-center justify-center h-full gap-3 px-6">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
+          <WarningCircle size={26} className="text-muted-foreground" />
+        </div>
+        <span className="text-sm text-muted-foreground">
           {t('exam_sheet:errors.noSession')}
         </span>
       </div>

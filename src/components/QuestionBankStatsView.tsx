@@ -28,7 +28,6 @@ import {
   Fire,
   Lightning,
   TrendUp,
-  Star,
   ChartBar,
   CaretDown,
   CaretUp,
@@ -137,31 +136,24 @@ const StatCard: React.FC<StatCardProps> = ({
   return (
     <div
       className={cn(
-        'group flex items-center gap-3 p-3 rounded-xl ui-rise-in',
+        'ui-rise-in flex items-center gap-3 rounded-lg p-3',
         'border border-border/50 bg-muted/30',
-        'transition-all duration-200 ease-out',
-        'hover:border-border hover:bg-[var(--interactive-hover)] hover:-translate-y-0.5 hover:shadow-sm'
+        'transition-colors hover:border-border/80 hover:bg-[var(--interactive-hover)]'
       )}
       style={{ animationDelay: `${index * 40}ms` }}
     >
-      <div
-        className={cn(
-          'p-2 rounded-lg bg-background shadow-sm',
-          'transition-transform duration-200 ease-out group-hover:scale-110',
-          color
-        )}
-      >
+      <div className={cn('flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-border/40 bg-background/60', color)}>
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-muted-foreground truncate">{label}</p>
+        <p className="truncate text-xs text-muted-foreground">{label}</p>
         <div className="flex items-baseline gap-1.5">
-          <span className={cn('text-lg font-semibold tabular-nums', color)}>
+          <span className="text-lg font-semibold tabular-nums text-foreground">
             {animatedValue}
             {suffix}
           </span>
           {description && (
-            <span className="text-xs text-muted-foreground tabular-nums truncate">{description}</span>
+            <span className="truncate text-xs tabular-nums text-muted-foreground/70">{description}</span>
           )}
         </div>
       </div>
@@ -178,10 +170,10 @@ const SectionHeader: React.FC<{
   title: string;
   right?: React.ReactNode;
 }> = ({ icon, title, right }) => (
-  <div className="flex items-center justify-between text-sm">
-    <div className="flex items-center gap-2">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="font-medium">{title}</span>
+  <div className="flex items-center justify-between gap-2 text-sm">
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="flex-shrink-0 text-muted-foreground">{icon}</span>
+      <span className="truncate font-medium text-foreground">{title}</span>
     </div>
     {right}
   </div>
@@ -295,14 +287,14 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
     return <StatsSkeleton className={className} />;
   }
 
-  // 有 stats 但确实没有任何题目 → 空状态占位
+  // 有 stats 但确实没有任何题目 → 空状态占位（对齐管理页空态：图标 + 主文案 + 弱化提示）
   if (stats.total === 0) {
     return (
-      <div className={cn('flex items-center justify-center p-8', className)}>
-        <div className="text-center text-muted-foreground">
-          <ChartBar size={28} className="mx-auto mb-2 opacity-50" />
-          <p>{t('exam_sheet:questionBank.stats.noData')}</p>
-          <p className="mt-1 text-xs">
+      <div className={cn('flex h-full items-center justify-center p-8', className)}>
+        <div className="ui-rise-in flex flex-col items-center text-muted-foreground">
+          <ChartBar size={28} className="mb-3 opacity-40" />
+          <p className="text-sm">{t('exam_sheet:questionBank.stats.noData')}</p>
+          <p className="mt-1 text-xs text-muted-foreground/70">
             {t('exam_sheet:questionBank.stats.noDataHint')}
           </p>
         </div>
@@ -317,14 +309,14 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
       {/* 核心 KPI 卡（总题数/掌握率/连续天数/今日完成） */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <StatCard
-          icon={<BookOpen size={20} />}
+          icon={<BookOpen size={16} />}
           label={t('stats:overview.total')}
           value={stats.total}
           color="text-primary"
           index={0}
         />
         <StatCard
-          icon={<CheckCircle size={20} />}
+          icon={<CheckCircle size={16} />}
           label={t('stats:overview.masteryRate')}
           value={progressData.masteredPercent}
           suffix="%"
@@ -333,7 +325,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
           index={1}
         />
         <StatCard
-          icon={<Fire size={20} />}
+          icon={<Fire size={16} />}
           label={t('stats:overview.streak')}
           value={activityKpi.streak}
           description={t('stats:overview.daySuffix')}
@@ -341,7 +333,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
           index={2}
         />
         <StatCard
-          icon={<Lightning size={20} />}
+          icon={<Lightning size={16} />}
           label={t('stats:overview.todayDone')}
           value={activityKpi.todayCount}
           description={t('stats:overview.questionSuffix')}
@@ -350,82 +342,64 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
         />
       </div>
 
-      {/* 学习进度条 */}
-      <div className="space-y-3">
-        <SectionHeader
-          icon={<Crosshair size={16} />}
-          title={t('exam_sheet:questionBank.stats.progress')}
-          right={
-            <span className="text-muted-foreground tabular-nums">{progressData.masteredPercent}%</span>
-          }
-        />
+      {/* 学习进度（与正确率合并为同一层级的分区卡，对齐管理页 border-border/50 + bg-muted/30 层次） */}
+      <div className="ui-rise-in rounded-lg border border-border/50 bg-muted/20 p-4" style={{ animationDelay: '160ms' }}>
+        <div className="space-y-3">
+          <SectionHeader
+            icon={<Crosshair size={16} />}
+            title={t('exam_sheet:questionBank.stats.progress')}
+            right={
+              <span className="text-xs tabular-nums text-muted-foreground">{progressData.masteredPercent}%</span>
+            }
+          />
 
-        {/* 进度条 */}
-        <div className="relative h-2 rounded-full bg-muted/50 overflow-hidden">
-          <div
-            className="absolute left-0 top-0 h-full bg-success transition-all duration-500 ease-out"
-            style={{ width: `${progressData.masteredPercent}%` }}
-          />
-          <div
-            className="absolute top-0 h-full bg-warning transition-all duration-500 ease-out"
-            style={{
-              left: `${progressData.masteredPercent}%`,
-              width: `${progressData.inProgressPercent}%`,
-            }}
-          />
-          <div
-            className="absolute top-0 h-full bg-destructive transition-all duration-500 ease-out"
-            style={{
-              left: `${progressData.masteredPercent + progressData.inProgressPercent}%`,
-              width: `${progressData.reviewPercent}%`,
-            }}
-          />
+          {/* 分段进度条 */}
+          <div className="relative h-1.5 overflow-hidden rounded-full bg-muted/50">
+            <div
+              className="absolute left-0 top-0 h-full bg-success transition-all duration-500 ease-out"
+              style={{ width: `${progressData.masteredPercent}%` }}
+            />
+            <div
+              className="absolute top-0 h-full bg-warning transition-all duration-500 ease-out"
+              style={{
+                left: `${progressData.masteredPercent}%`,
+                width: `${progressData.inProgressPercent}%`,
+              }}
+            />
+            <div
+              className="absolute top-0 h-full bg-destructive/80 transition-all duration-500 ease-out"
+              style={{
+                left: `${progressData.masteredPercent + progressData.inProgressPercent}%`,
+                width: `${progressData.reviewPercent}%`,
+              }}
+            />
+          </div>
+
+          {/* 图例（带各状态计数） */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+            {([
+              { dot: 'bg-success', label: t('exam_sheet:questionBank.stats.mastered'), count: stats.mastered },
+              { dot: 'bg-warning', label: t('exam_sheet:questionBank.stats.inProgress'), count: stats.inProgress },
+              { dot: 'bg-destructive/80', label: t('exam_sheet:questionBank.stats.review'), count: stats.review },
+              { dot: 'bg-muted-foreground/30', label: t('exam_sheet:questionBank.stats.new'), count: stats.newCount },
+            ] as const).map(({ dot, label, count }) => (
+              <span key={label} className="flex items-center gap-1.5 text-muted-foreground">
+                <span className={cn('h-1.5 w-1.5 rounded-full', dot)} />
+                {label}
+                <span className="tabular-nums text-muted-foreground/70">{count}</span>
+              </span>
+            ))}
+          </div>
         </div>
 
-        {/* 图例（带各状态计数） */}
-        <div className="flex items-center gap-4 text-xs flex-wrap">
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-success" />
-            <span className="text-muted-foreground">
-              {t('exam_sheet:questionBank.stats.mastered')}
-              <span className="tabular-nums"> · {stats.mastered}</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-warning" />
-            <span className="text-muted-foreground">
-              {t('exam_sheet:questionBank.stats.inProgress')}
-              <span className="tabular-nums"> · {stats.inProgress}</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-destructive" />
-            <span className="text-muted-foreground">
-              {t('exam_sheet:questionBank.stats.review')}
-              <span className="tabular-nums"> · {stats.review}</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />
-            <span className="text-muted-foreground">
-              {t('exam_sheet:questionBank.stats.new')}
-              <span className="tabular-nums"> · {stats.newCount}</span>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* 正确率 */}
-      <div className="space-y-1">
-        <SectionHeader
-          icon={<TrendUp size={16} />}
-          title={t('exam_sheet:questionBank.stats.accuracy')}
-          right={
-            <div className="flex items-center gap-3">
-              <AccuracyRing percent={correctRatePercent} />
-              <div className="flex items-center gap-1 text-xs">
-                <Star size={12} className="text-warning" />
-                <span className="text-muted-foreground">
+        {/* 正确率 */}
+        <div className="mt-4 border-t border-border/40 pt-4">
+          <SectionHeader
+            icon={<TrendUp size={16} />}
+            title={t('exam_sheet:questionBank.stats.accuracy')}
+            right={
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground">
                   {correctRatePercent >= 80
                     ? t('exam_sheet:questionBank.stats.excellent')
                     : correctRatePercent >= 60
@@ -434,29 +408,36 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
                     ? t('exam_sheet:questionBank.stats.needsWork')
                     : t('exam_sheet:questionBank.stats.keepGoing')}
                 </span>
+                <AccuracyRing percent={correctRatePercent} />
               </div>
-            </div>
-          }
-        />
+            }
+          />
+        </div>
       </div>
 
       {/* 详细统计图表区域 */}
       {showDetailCharts && !compact && (
         <>
-          {/* 展开/收起按钮 */}
-          <DsButton variant="ghost" size="sm" onClick={() => setExpandedCharts(!expandedCharts)} className="w-full justify-center !py-2 text-muted-foreground hover:text-foreground border-t border-border/50">
-            <ChartBar size={16} />
-            <span>{expandedCharts ? t('exam_sheet:questionBank.stats.collapseCharts') : t('exam_sheet:questionBank.stats.expandCharts')}</span>
-            {expandedCharts ? (
-              <CaretUp size={16} />
-            ) : (
-              <CaretDown size={16} />
-            )}
-          </DsButton>
+          {/* 展开/收起：弱化为分隔线上的文字开关，避免整宽按钮的预制感 */}
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border/50" />
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpandedCharts(!expandedCharts)}
+              className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
+              aria-expanded={expandedCharts}
+            >
+              <ChartBar size={14} />
+              <span>{expandedCharts ? t('exam_sheet:questionBank.stats.collapseCharts') : t('exam_sheet:questionBank.stats.expandCharts')}</span>
+              {expandedCharts ? <CaretUp size={12} /> : <CaretDown size={12} />}
+            </DsButton>
+            <div className="h-px flex-1 bg-border/50" />
+          </div>
 
           {/* 图表内容 */}
           {expandedCharts && (
-            <div className="space-y-6 ui-drop-in">
+            <div className="ui-drop-in space-y-4">
               {/* 学习趋势图 */}
               <LearningTrendChart
                 examId={examId}
@@ -464,7 +445,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
               />
 
               {/* 两列布局：热力图 + 雷达图 / 题型分布 */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
                 {/* 学习活跃度热力图 */}
                 <LearningHeatmapChart examId={examId} />
 

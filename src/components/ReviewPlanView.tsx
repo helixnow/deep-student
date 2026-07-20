@@ -1,21 +1,19 @@
 /**
  * 复习计划主视图
  *
- * 简洁风格 UI，包含：
+ * 简洁风格 UI（与题目集管理页 QuestionBankManageView 同一设计语言），包含：
  * - 今日复习卡片：醒目但不焦虑的到期数量呈现 + 开始复习引导
  * - 复习队列列表：显示待复习题目，按到期时间排序
  * - 复习进度条
  * - 空状态：今日无复习时的纯 CSS 完成态插画
  *
- * 🆕 2026-01 新增；2026-07 复习体验改造
+ * 🆕 2026-01 新增；2026-07 复习体验改造；2026-07 美术对齐管理页
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Progress } from '@/components/ui/shad/Progress';
-import { Badge } from '@/components/ui/shad/Badge';
-import { Card } from '@/components/ui/shad/Card';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { CustomScrollArea } from './custom-scroll-area';
 import {
@@ -37,6 +35,7 @@ import {
   ListPlus,
 } from '@phosphor-icons/react';
 import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTypeMeta';
+import { ReviewStatTile } from '@/components/review/ReviewStatTile';
 import { useTranslation } from 'react-i18next';
 import {
   useReviewPlanStore,
@@ -61,6 +60,11 @@ const formatLocalDate = (d: Date): string => {
   return `${y}-${m}-${day}`;
 };
 
+/** 列表进入 stagger：延迟随索引递增，封顶避免长列表尾部等待过久（与管理页同节奏） */
+const staggerStyle = (index: number): React.CSSProperties => ({
+  animationDelay: `${Math.min(index, 16) * 20}ms`,
+});
+
 interface ReviewPlanViewProps {
   /**
    * 本视图所属题目集。传入后视图数据与会话操作以该题目集为准（多窗口隔离）：
@@ -72,51 +76,6 @@ interface ReviewPlanViewProps {
   onViewCalendar?: () => void;
   onReviewItemClick?: (item: ReviewItemWithQuestion) => void;
 }
-
-interface StatCardProps {
-  icon: React.ReactNode;
-  label: string;
-  value: number | string;
-  description?: string;
-  color?: string;
-  className?: string;
-}
-
-// ============================================================================
-// 统计卡片组件
-// ============================================================================
-
-const StatCard: React.FC<StatCardProps> = ({
-  icon,
-  label,
-  value,
-  description,
-  color = 'text-primary',
-  className,
-}) => (
-  <div
-    className={cn(
-      'group relative flex flex-col gap-2 p-3 rounded-lg',
-      'bg-muted/20',
-      'border border-border/50 hover:border-border',
-      'transition-[background-color,border-color] duration-150 ease-standard',
-      className
-    )}
-  >
-    <div className="flex items-center justify-between">
-      <div className={cn('p-1.5 rounded-md bg-muted/50', color)}>{icon}</div>
-      <span className={cn('text-xl font-semibold tabular-nums leading-none', color)}>
-        {value}
-      </span>
-    </div>
-    <div>
-      <p className="text-sm font-medium text-foreground">{label}</p>
-      {description && (
-        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-      )}
-    </div>
-  </div>
-);
 
 // ============================================================================
 // 复习队列项组件
@@ -132,6 +91,8 @@ interface ReviewQueueItemProps {
   /** 暂停该计划（可选；提供时行尾显示暂停按钮） */
   onSuspend?: () => void;
   suspendDisabled?: boolean;
+  /** 列表入场 stagger 索引 */
+  index?: number;
 }
 
 const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
@@ -142,25 +103,25 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
   onClick,
   onSuspend,
   suspendDisabled,
+  index = 0,
 }) => {
   const { t } = useTranslation(['review']);
   const typeMeta = getReviewQuestionTypeMeta(question?.question_type);
   const TypeIcon = typeMeta.Icon;
 
-  const statusColor = useMemo(() => {
-    if (isOverdue) return 'text-destructive bg-destructive/10';
-    if (plan.is_difficult) return 'text-warning bg-warning/10';
+  const statusTone = useMemo(() => {
+    if (isOverdue) return { text: 'text-destructive', bar: 'bg-destructive' };
+    if (plan.is_difficult) return { text: 'text-warning', bar: 'bg-warning' };
     switch (plan.status) {
       case 'new':
-        return 'text-primary bg-primary/10';
+        return { text: 'text-primary', bar: 'bg-primary' };
       case 'learning':
-        return 'text-warning bg-warning/10';
+        return { text: 'text-warning', bar: 'bg-warning' };
       case 'reviewing':
-        return 'text-success bg-success/10';
+        return { text: 'text-success', bar: 'bg-success' };
       case 'graduated':
-        return 'text-muted-foreground bg-muted';
       default:
-        return 'text-muted-foreground bg-muted';
+        return { text: 'text-muted-foreground', bar: 'bg-muted-foreground/50' };
     }
   }, [plan.status, plan.is_difficult, isOverdue]);
 
@@ -183,12 +144,13 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
 
   return (
     <div
+      style={staggerStyle(index)}
       className={cn(
-        'group flex w-full items-center gap-1 rounded-lg',
-        'bg-muted/20 hover:bg-[var(--interactive-hover)]',
-        'border border-transparent hover:border-border/50',
-        'transition-[background-color,border-color,color,box-shadow] duration-200 ease-standard',
-        isOverdue && 'border-destructive/30 bg-destructive/5'
+        'ui-rise-in group flex w-full items-center gap-1 rounded-lg border bg-card',
+        'transition-[background-color,border-color,box-shadow] duration-200 ease-standard motion-reduce:transition-none',
+        isOverdue
+          ? 'border-destructive/30 bg-destructive/5 hover:border-destructive/50'
+          : 'border-border/60 hover:border-border hover:bg-[var(--interactive-hover)]'
       )}
     >
       <button
@@ -196,50 +158,40 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
         onClick={onClick}
         disabled={!onClick}
         className={cn(
-          'flex min-w-0 flex-1 items-center gap-3 p-3 rounded-lg text-left',
+          'flex min-w-0 flex-1 items-center gap-3 rounded-lg p-3 text-left',
           'cursor-pointer disabled:cursor-default',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
         )}
       >
-        {/* 状态指示器 */}
-        <div
-          className={cn(
-            'flex-shrink-0 w-1.5 h-8 rounded-full',
-            isOverdue ? 'bg-destructive' : plan.is_difficult ? 'bg-warning' : 'bg-success'
-          )}
-        />
+        {/* 状态指示条 */}
+        <div className={cn('h-9 w-1 flex-shrink-0 rounded-full', statusTone.bar)} />
 
         {/* 题目信息 */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground line-clamp-2">
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm leading-snug text-foreground">
             {question?.content?.slice(0, 80) || t('review:unknownQuestion')}
             {(question?.content?.length || 0) > 80 && '...'}
           </p>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-            <Badge variant="secondary" className={cn('text-xs px-1.5 py-0', statusColor)}>
-              {statusLabel}
-            </Badge>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+            <span className={cn('font-medium', statusTone.text)}>{statusLabel}</span>
             {question && (
-              <Badge
-                variant="secondary"
-                className="gap-1 bg-muted px-1.5 py-0 text-xs text-muted-foreground"
-              >
-                <TypeIcon size={11} />
+              <span className="inline-flex items-center gap-1 text-muted-foreground">
+                <TypeIcon size={12} className="opacity-70" />
                 {t(typeMeta.labelKey)}
-              </Badge>
+              </span>
             )}
             {/* 逾期高亮：显示逾期天数 */}
             {isOverdue && overdueDays > 0 && (
-              <span className="text-xs font-medium text-destructive">
+              <span className="font-medium tabular-nums text-destructive">
                 {t('review:queue.overdueDays', { count: overdueDays })}
               </span>
             )}
-            <span className="text-xs text-muted-foreground">
+            <span className="tabular-nums text-muted-foreground/80">
               {t('review:interval')}: {plan.interval_days}
               {t('review:days')}
             </span>
             {plan.total_reviews > 0 && (
-              <span className="hidden sm:inline text-xs text-muted-foreground">
+              <span className="hidden tabular-nums text-muted-foreground/80 sm:inline">
                 {t('review:accuracy')}:{' '}
                 {Math.round((plan.total_correct / plan.total_reviews) * 100)}%
               </span>
@@ -248,7 +200,10 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
         </div>
 
         {/* 箭头 */}
-        <CaretRight size={16} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
+        <CaretRight
+          size={14}
+          className="flex-shrink-0 text-muted-foreground/50 transition-[color,transform] duration-200 ease-standard group-hover:translate-x-0.5 group-hover:text-foreground motion-reduce:transition-none"
+        />
       </button>
 
       {/* 暂停计划（内联操作，暂停可随时恢复，无需二次确认） */}
@@ -261,7 +216,7 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
           disabled={suspendDisabled}
           aria-label={t('review:actions.suspend')}
           title={t('review:actions.suspend')}
-          className="mr-1.5 h-9 w-9 shrink-0 text-muted-foreground opacity-60 hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+          className="mr-1.5 h-9 w-9 shrink-0 text-muted-foreground opacity-60 hover:bg-[var(--interactive-hover)] hover:text-foreground hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
         >
           <Pause size={14} />
         </DsButton>
@@ -281,47 +236,52 @@ const AllDoneState: React.FC<{
   const { t } = useTranslation(['review']);
 
   return (
-    <div className="ui-rise-in flex flex-col items-center justify-center py-14 text-center">
+    <div className="ui-rise-in flex flex-col items-center justify-center rounded-lg border border-border/50 bg-muted/10 px-6 py-14 text-center">
       {/* 同心圆 + 对勾 + 星点插画 */}
-      <div className="relative mb-6 h-28 w-28" aria-hidden="true">
+      <div className="relative mb-6 h-24 w-24" aria-hidden="true">
         <div className="absolute inset-0 rounded-full bg-success/10" />
         <div className="absolute inset-3 rounded-full bg-success/15" />
         <div className="absolute inset-6 flex items-center justify-center rounded-full bg-success/20">
-          <CheckCircle size={40} weight="fill" className="text-success" />
+          <CheckCircle size={36} weight="fill" className="text-success" />
         </div>
         <Sparkle
-          size={16}
+          size={15}
           weight="fill"
           className="absolute -top-1 right-3 text-warning motion-safe:animate-pulse"
         />
         <Star
-          size={12}
+          size={11}
           weight="fill"
           className="absolute bottom-2 -left-2 text-primary/60 motion-safe:animate-pulse [animation-delay:400ms]"
         />
         <Sparkle
-          size={12}
+          size={11}
           weight="fill"
           className="absolute top-8 -right-3 text-success/70 motion-safe:animate-pulse [animation-delay:800ms]"
         />
       </div>
 
-      <h3 className="text-lg font-semibold text-foreground mb-1.5">
+      <h3 className="mb-1.5 text-base font-semibold text-foreground">
         {t('review:empty.title')}
       </h3>
-      <p className="text-sm text-muted-foreground max-w-sm">
+      <p className="max-w-sm text-sm text-muted-foreground">
         {t('review:empty.description')}
       </p>
 
       <div className="mt-5 flex items-center gap-3">
         {masteredCount > 0 && (
-          <span className="inline-flex items-center gap-1.5 rounded-pill bg-success/10 px-3 py-1 text-xs font-medium text-success">
-            <Award size={14} weight="fill" />
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-success/20 bg-success/10 px-3 py-1 text-xs font-medium text-success">
+            <Award size={13} weight="fill" />
             {t('review:empty.masteredChip', { count: masteredCount })}
           </span>
         )}
         {onViewCalendar && (
-          <DsButton variant="ghost" size="sm" onClick={onViewCalendar} className="gap-1.5 text-xs">
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={onViewCalendar}
+            className="gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+          >
             <Calendar size={14} />
             {t('review:empty.viewCalendar')}
           </DsButton>
@@ -545,19 +505,26 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
     }
   }, [createReviewItem, examId, onReviewItemClick, startSession, t]);
 
-  // 加载状态
+  // 加载状态：骨架模拟真实布局（统计卡 / 今日卡 / 队列行），避免整屏转圈闪切
   if (isLoading && !stats) {
     return (
-      <div className={cn('space-y-6 p-4', className)}>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className={cn('space-y-5 p-4', className)} role="status" aria-busy>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-3.5 w-44" />
+          </div>
+          <Skeleton className="h-8 w-24 rounded-md" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-20 rounded-md" />
+            <Skeleton key={i} className="h-[86px] rounded-lg" />
           ))}
         </div>
-        <Skeleton className="h-28 rounded-md" />
+        <Skeleton className="h-32 rounded-lg" />
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-16 rounded-lg" />
+            <Skeleton key={i} className="h-[68px] rounded-lg" />
           ))}
         </div>
       </div>
@@ -567,25 +534,25 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
   const hasDue = dueReviews.length > 0;
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn('space-y-5', className)}>
       {/* 头部标题和刷新按钮 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-foreground">
             {t('review:title')}
           </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             {t('review:subtitle')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           <DsButton
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={onViewCalendar}
-            className="gap-1.5"
+            className="!h-auto !px-2.5 !py-1.5 gap-1.5 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
           >
-            <Calendar size={16} />
+            <Calendar size={14} />
             {t('review:calendar.title')}
           </DsButton>
           <DsButton
@@ -594,19 +561,21 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             onClick={handleRefresh}
             disabled={isRefreshing}
             aria-label={t('common:refresh', 'Refresh')}
-            className="w-8 h-8"
+            className="h-8 w-8 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
           >
             <ArrowClockwise
-              className={cn('w-4 h-4', isRefreshing && 'animate-spin')}
+              className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
             />
           </DsButton>
         </div>
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          icon={<Clock size={18} />}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <ReviewStatTile
+          className="ui-rise-in"
+          style={staggerStyle(0)}
+          icon={<Clock size={16} />}
           label={t('review:stats.dueToday')}
           value={todayCount}
           description={
@@ -618,8 +587,10 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
           }
           color={overdueCount > 0 ? 'text-destructive' : 'text-primary'}
         />
-        <StatCard
-          icon={<Flame size={18} />}
+        <ReviewStatTile
+          className="ui-rise-in"
+          style={staggerStyle(1)}
+          icon={<Flame size={16} />}
           label={t('review:stats.totalDue')}
           value={dueReviews.length}
           description={
@@ -631,15 +602,19 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
           }
           color="text-warning"
         />
-        <StatCard
-          icon={<Award size={18} />}
+        <ReviewStatTile
+          className="ui-rise-in"
+          style={staggerStyle(2)}
+          icon={<Award size={16} />}
           label={t('review:stats.mastered')}
           value={stats?.graduated_count || 0}
           description={`${progressPercent}% ${t('review:stats.ofTotal')}`}
           color="text-success"
         />
-        <StatCard
-          icon={<TrendingUp size={18} />}
+        <ReviewStatTile
+          className="ui-rise-in"
+          style={staggerStyle(3)}
+          icon={<TrendingUp size={16} />}
           label={t('review:stats.accuracy')}
           value={`${Math.round((stats?.avg_correct_rate || 0) * 100)}%`}
           description={`${stats?.total_reviews || 0} ${t(
@@ -650,41 +625,45 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       </div>
 
       {/* 今日复习卡片 */}
-      <Card
+      <div
         className={cn(
-          'relative overflow-hidden p-5',
-          hasDue ? 'bg-primary/5 border-primary/20' : 'bg-muted/20 border-border/50'
+          'ui-rise-in relative overflow-hidden rounded-lg border p-4 sm:p-5',
+          hasDue
+            ? 'border-primary/20 bg-primary/5'
+            : 'border-border/50 bg-muted/20'
         )}
       >
         {/* 装饰性光晕（纯 CSS） */}
         {hasDue && (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-primary/10 blur-2xl"
+            className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-primary/10 blur-2xl"
           />
         )}
 
         <div className="relative flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
+          <div className="flex min-w-0 items-center gap-3.5">
             <div
               className={cn(
-                'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl',
-                hasDue ? 'bg-primary/10' : 'bg-success/10'
+                'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border',
+                hasDue
+                  ? 'border-primary/20 bg-primary/10'
+                  : 'border-success/20 bg-success/10'
               )}
             >
               {hasDue ? (
-                <Target size={22} className="text-primary" />
+                <Target size={20} className="text-primary" />
               ) : (
-                <CheckCircle size={22} weight="fill" className="text-success" />
+                <CheckCircle size={20} weight="fill" className="text-success" />
               )}
             </div>
             <div className="min-w-0">
-              <h3 className="font-semibold text-foreground">
+              <h3 className="text-sm font-semibold text-foreground">
                 {t('review:todayReview.title')}
               </h3>
               {hasDue ? (
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  <span className="text-2xl font-semibold tabular-nums text-primary align-middle mr-1">
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  <span className="mr-1 align-middle text-2xl font-semibold tabular-nums text-primary">
                     {dueReviews.length}
                   </span>
                   {t('review:todayReview.itemsUnit')}
@@ -692,7 +671,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
                   {t('review:todayReview.estimatedTime', { count: estimatedMinutes })}
                 </p>
               ) : (
-                <p className="text-sm text-muted-foreground mt-0.5">
+                <p className="mt-0.5 text-sm text-muted-foreground">
                   {t('review:todayReview.noDue')}
                 </p>
               )}
@@ -703,7 +682,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             <DsButton
               variant="primary"
               onClick={handleStartReview}
-              className="gap-2 min-h-10 px-4 shadow-soft"
+              className="min-h-10 gap-2 px-4 shadow-soft"
             >
               <Play size={16} weight="fill" />
               {t('review:startReview')}
@@ -722,50 +701,55 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
           </div>
         )}
 
-        {/* 进度条 */}
+        {/* 进度条 + SM-2 状态分布 */}
         {stats && stats.total_plans > 0 && (
-          <div className="relative space-y-2 mt-4">
-            <div className="flex items-center justify-between text-sm">
+          <div className="relative mt-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">
                 {t('review:progress.label')}
               </span>
-              <span className="font-medium tabular-nums">
-                {stats.graduated_count} / {stats.total_plans}
+              <span className="font-medium tabular-nums text-foreground">
+                {stats.graduated_count}
+                <span className="text-muted-foreground/70"> / {stats.total_plans}</span>
               </span>
             </div>
-            <Progress value={progressPercent} className="h-2" />
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-primary" />
-                  {t('review:status.new')} {stats.new_count}
+            <Progress value={progressPercent} className="h-1.5" />
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-0.5 text-[11px] text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  {t('review:status.new')}
+                  <span className="tabular-nums text-foreground/80">{stats.new_count}</span>
                 </span>
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-warning" />
-                  {t('review:status.learning')} {stats.learning_count}
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+                  {t('review:status.learning')}
+                  <span className="tabular-nums text-foreground/80">{stats.learning_count}</span>
                 </span>
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-success" />
-                  {t('review:status.reviewing')} {stats.reviewing_count}
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                  {t('review:status.reviewing')}
+                  <span className="tabular-nums text-foreground/80">{stats.reviewing_count}</span>
                 </span>
               </div>
-              <span className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-muted-foreground" />
-                {t('review:status.graduated')} {stats.graduated_count}
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+                {t('review:status.graduated')}
+                <span className="tabular-nums text-foreground/80">{stats.graduated_count}</span>
               </span>
             </div>
           </div>
         )}
-      </Card>
+      </div>
 
       {/* 复习队列 */}
       {hasDue && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-foreground">
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between px-0.5">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t('review:queue.title')}
             </h3>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-[11px] text-muted-foreground/70">
               {t('review:queue.sortedByDue')}
             </span>
           </div>
@@ -804,13 +788,14 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
                     onClick={() => handleReviewItemClick(plan)}
                     onSuspend={() => void handleSuspendPlan(plan.id)}
                     suspendDisabled={isProcessing}
+                    index={index}
                   />
                 </React.Fragment>
               );
             })}
             {dueReviews.length > 20 && (
-              <div className="text-center py-2">
-                <span className="text-xs text-muted-foreground">
+              <div className="py-2 text-center">
+                <span className="text-xs text-muted-foreground/70">
                   {t('review:queue.andMore', {
                     count: dueReviews.length - 20,
                   })}
@@ -825,9 +810,9 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
           否则显示今日无复习的完成态 */}
       {!hasDue && !isLoading && (
         examId && stats && stats.total_plans === 0 ? (
-          <Card className="ui-rise-in flex flex-col items-center gap-3 p-6 text-center border-dashed">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-              <ListPlus size={22} className="text-primary" />
+          <div className="ui-rise-in flex flex-col items-center gap-3 rounded-lg border border-dashed border-border/60 bg-muted/10 p-8 text-center">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-primary/20 bg-primary/10">
+              <ListPlus size={20} className="text-primary" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">
@@ -851,7 +836,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               {!isCreatingPlans && <Play size={14} weight="fill" />}
               {t('review:setup.createAll')}
             </DsButton>
-          </Card>
+          </div>
         ) : (
           <AllDoneState
             masteredCount={stats?.graduated_count || 0}
@@ -861,7 +846,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       )}
 
       {/* 间隔重复原理说明：帮助新用户理解"间隔/状态"从哪来 */}
-      <div className="flex items-start gap-2 rounded-md bg-info/10 px-3 py-2 text-xs text-muted-foreground">
+      <div className="flex items-start gap-2 rounded-lg border border-info/15 bg-info/5 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
         <Info size={14} className="mt-0.5 shrink-0 text-info" />
         <span>
           <span className="font-medium text-info">{t('review:tips.sm2Title')}</span>{' '}

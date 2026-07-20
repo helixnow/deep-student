@@ -509,6 +509,25 @@ impl QuestionBankService {
             }
         }
 
+        // 手动改判去重：用户在"需人工批改"的结果卡上点"我答对了/我答错了"时，
+        // 前端会带 is_correct_override 重新提交同一份答案。此前该路径会插入第二条
+        // submission 并把 attempt_count 再 +1，导致做题次数被双计、正确率统计失真。
+        // 若该题最近一次提交仍未判定（is_correct IS NULL）且答案相同，则按
+        // "对该次提交改判"处理（与 AI 评判 qbank_grading/pipeline.rs 的落库口径一致），
+        // 不新增作答记录、不重复递增 attempt_count。
+        if let Some(override_val) = is_correct_override {
+            let latest_submission =
+                VfsQuestionRepo::get_submissions_with_conn(&tx, question_id, 1)
+                    .map_err(|e| AppError::database(e.to_string()))?
+                    .into_iter()
+                    .next();
+            if let Some(latest) = latest_submission {
+                if latest.is_correct.is_none() && latest.user_answer == user_answer {
+                    return self.regrade_pending_submission_in_tx(tx, question, latest, override_val);
+                }
+            }
+        }
+
         // 判断正确性
         let (raw_is_correct, needs_manual_grading) = if let Some(override_val) = is_correct_override
         {
@@ -634,6 +653,124 @@ impl QuestionBankService {
             updated_question,
             updated_stats,
             submission_id,
+        })
+    }
+
+    /// 对"待人工批改"的最近一次提交做改判落库（submit_answer 的手动改判去重分支）。
+    ///
+    /// 语义与 AI 评判管线（qbank_grading/pipeline.rs 的 persist 段）保持一致：
+    /// - 更新既有 submission 的 is_correct/grading_method，不新插记录；
+    /// - 题目侧不重复递增 attempt_count；correct_count 仅在此前未判定时按改判结果补记；
+    /// - 状态转换与 submit_answer_with_conn 同口径（错→review，correct_count>=2→mastered）；
+    /// - 同事务内补记 mastery 事件（以 submission_id 为幂等键）并刷新统计；
+    /// - 提交后：改判为"错"时确保存在 SM-2 复习计划（与自动判分路径的 I1 修复对称）。
+    fn regrade_pending_submission_in_tx(
+        &self,
+        tx: rusqlite::Transaction<'_>,
+        question: Question,
+        submission: AnswerSubmission,
+        is_correct: bool,
+    ) -> Result<SubmitAnswerResult, AppError> {
+        let question_id = question.id.clone();
+        let now = chrono::Utc::now().to_rfc3339();
+        let is_correct_val: i32 = if is_correct { 1 } else { 0 };
+
+        tx.execute(
+            "UPDATE answer_submissions SET is_correct = ?1, grading_method = 'manual' \
+             WHERE id = ?2 AND question_id = ?3",
+            rusqlite::params![is_correct_val, submission.id, question_id],
+        )
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        // correct_count 仅在题目当前仍未判定（is_correct IS NULL）时补记，防重复计数；
+        // 状态转换与 submit_answer_with_conn / pipeline.rs 保持同一 CASE 口径。
+        tx.execute(
+            r#"
+            UPDATE questions SET
+                is_correct = ?1,
+                correct_count = CASE
+                    WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1
+                    ELSE correct_count
+                END,
+                status = CASE
+                    WHEN ?1 = 0 THEN 'review'
+                    WHEN (CASE WHEN is_correct IS NULL AND ?1 = 1 THEN correct_count + 1 ELSE correct_count END) >= 2 THEN 'mastered'
+                    ELSE 'in_progress'
+                END,
+                updated_at = ?2
+            WHERE id = ?3 AND deleted_at IS NULL
+            "#,
+            rusqlite::params![is_correct_val, now, question_id],
+        )
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        // S-030 口径：改判修改了 is_correct/status，需标记同步并重算内容哈希
+        crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(
+            &tx,
+            &question_id,
+        )
+        .map_err(|e| AppError::database(e.to_string()))?;
+        crate::question_sync_service::QuestionSyncService::update_content_hash_with_conn(
+            &tx,
+            &question_id,
+        )
+        .map_err(|e| AppError::database(e.to_string()))?;
+
+        // 首次提交因未判定跳过了 mastery 事件，这里以 submission_id 为幂等键补记
+        let mastery_state = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db))
+            .record_qbank_answer_with_conn(
+                &tx,
+                &submission.id,
+                &question_id,
+                &question.tags,
+                is_correct,
+            )?;
+
+        let updated_question = VfsQuestionRepo::get_question_with_conn(&tx, &question_id)
+            .map_err(|e| AppError::database(e.to_string()))?
+            .ok_or_else(|| AppError::not_found(format!("Question not found: {}", question_id)))?;
+        let updated_stats = VfsQuestionRepo::refresh_stats_with_conn(&tx, &question.exam_id)
+            .map_err(|e| AppError::database(e.to_string()))?;
+
+        tx.commit().map_err(|e| AppError::database(e.to_string()))?;
+
+        // 改判为"错"时接通 SM-2 闭环（失败不阻塞，与 submit_answer 主路径一致）
+        if !is_correct {
+            let review_service =
+                crate::review_plan_service::ReviewPlanService::new(Arc::clone(&self.vfs_db));
+            if let Err(e) = review_service.get_or_create_plan(&question_id, &question.exam_id) {
+                warn!(
+                    "[QuestionBankService] Failed to auto-create review plan after regrade for question_id={}: {}",
+                    question_id, e
+                );
+            }
+        }
+
+        let mastery = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db));
+        if let Err(e) = mastery.sync_learner_profile(&mastery_state) {
+            warn!(
+                "[QuestionBankService] mastery profile reflux failed for question_id={}: {}",
+                question_id, e
+            );
+        }
+
+        info!(
+            "[QuestionBankService] Regraded pending submission id={} for question id={}, is_correct={}",
+            submission.id, question_id, is_correct
+        );
+
+        Ok(SubmitAnswerResult {
+            is_correct: Some(is_correct),
+            correct_answer: question.answer,
+            needs_manual_grading: false,
+            message: if is_correct {
+                "回答正确！".to_string()
+            } else {
+                "回答错误".to_string()
+            },
+            updated_question,
+            updated_stats,
+            submission_id: submission.id,
         })
     }
 

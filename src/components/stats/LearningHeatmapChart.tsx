@@ -74,18 +74,18 @@ function resolveHsla(varName: string, alpha: number): string {
   return `hsla(${h}, ${s}, ${l}, ${alpha})`;
 }
 
-/** 根据当前主题生成热力图颜色（GitHub 风格 5 级色阶） */
+/** 根据当前主题生成热力图颜色（GitHub 风格 5 级色阶；变量缺失时回退 currentColor 系灰阶） */
 function computeHeatmapColors() {
-  const empty = resolveHsl('--secondary');
+  const empty = resolveHsl('--secondary') || 'hsl(0, 0%, 92%)';
   return {
     panelColors: [
       empty,
-      resolveHsla('--primary', 0.25),
-      resolveHsla('--primary', 0.5),
-      resolveHsla('--primary', 0.75),
-      resolveHsl('--primary'),
+      resolveHsla('--primary', 0.25) || empty,
+      resolveHsla('--primary', 0.5) || empty,
+      resolveHsla('--primary', 0.75) || empty,
+      resolveHsl('--primary') || empty,
     ],
-    textColor: resolveHsl('--muted-foreground'),
+    textColor: resolveHsl('--muted-foreground') || 'hsl(0, 0%, 45%)',
     emptyColor: empty,
   };
 }
@@ -101,42 +101,21 @@ interface StatsCardProps {
   variant: 'total' | 'active' | 'streak';
 }
 
-const STAT_STYLES = {
-  total: {
-    bg: 'bg-primary/10',
-    iconBg: 'bg-primary/20',
-    iconColor: 'text-primary',
-    valueColor: 'text-primary',
-  },
-  active: {
-    bg: 'bg-success/10',
-    iconBg: 'bg-success/20',
-    iconColor: 'text-success',
-    valueColor: 'text-success',
-  },
-  streak: {
-    bg: 'bg-warning/10',
-    iconBg: 'bg-warning/20',
-    iconColor: 'text-warning',
-    valueColor: 'text-warning',
-  },
+const STAT_ICON_COLORS: Record<StatsCardProps['variant'], string> = {
+  total: 'text-primary',
+  active: 'text-success',
+  streak: 'text-warning',
 };
 
-const StatsCard: React.FC<StatsCardProps> = ({ icon, label, value, variant }) => {
-  const styles = STAT_STYLES[variant];
-
-  return (
-    <div className={cn('rounded-lg p-3 flex items-center gap-3 transition-transform duration-200 hover:-translate-y-0.5', styles.bg)}>
-      <div className={cn('p-2 rounded-lg', styles.iconBg)}>
-        <span className={styles.iconColor}>{icon}</span>
-      </div>
-      <div className="min-w-0">
-        <div className={cn('text-lg font-bold tabular-nums truncate', styles.valueColor)}>{value}</div>
-        <div className="text-xs text-muted-foreground truncate">{label}</div>
-      </div>
+const StatsCard: React.FC<StatsCardProps> = ({ icon, label, value, variant }) => (
+  <div className="flex items-center gap-2.5 rounded-md border border-border/40 bg-background/40 p-2.5 transition-colors hover:border-border/80">
+    <span className={cn('flex-shrink-0', STAT_ICON_COLORS[variant])}>{icon}</span>
+    <div className="min-w-0">
+      <div className="truncate text-base font-semibold tabular-nums text-foreground">{value}</div>
+      <div className="truncate text-xs text-muted-foreground">{label}</div>
     </div>
-  );
-};
+  </div>
+);
 
 // ============================================================================
 // 自定义 Tooltip 内容
@@ -232,10 +211,12 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
 
   // 本地状态
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  // Theme-aware colors computed from CSS custom properties
-  const [panelColors, setPanelColors] = useState<string[]>(['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39']);
-  const [themeTextColor, setThemeTextColor] = useState('#52525b');
-  const [themeEmptyColor, setThemeEmptyColor] = useState('#ebedf0');
+  // Theme-aware colors computed from CSS custom properties.
+  // 首帧即从主题变量取色（惰性初始化），避免暗色主题下闪一帧预制的 GitHub 绿。
+  const [initialColors] = useState(() => computeHeatmapColors());
+  const [panelColors, setPanelColors] = useState<string[]>(initialColors.panelColors);
+  const [themeTextColor, setThemeTextColor] = useState(initialColors.textColor);
+  const [themeEmptyColor, setThemeEmptyColor] = useState(initialColors.emptyColor);
 
   // 监听主题变化 & 计算主题颜色
   useEffect(() => {
@@ -325,19 +306,19 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
 
   if (isLoading) {
     return (
-      <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+      <div className={cn('rounded-lg border border-border/50 bg-muted/20 p-4', className)}>
         <HeatmapSkeleton />
       </div>
     );
   }
 
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-lg border border-border/50 bg-muted/20 p-4', className)}>
       {/* 标题栏 */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Fire size={20} className="text-warning" />
-          <h3 className="font-semibold">{t('heatmapChart.title')}</h3>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm">
+          <Fire size={16} className="text-muted-foreground" />
+          <span className="font-medium text-foreground">{t('heatmapChart.title')}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -371,17 +352,17 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="w-8 h-8"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
             onClick={handleRefresh}
             aria-label={t('heatmapChart.title')}
           >
-            <ArrowsClockwise size={16} />
+            <ArrowsClockwise size={14} />
           </DsButton>
         </div>
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="mb-4 grid grid-cols-3 gap-2">
         <StatsCard
           icon={<Fire size={16} />}
           label={t('heatmapChart.totalQuestions')}
@@ -404,8 +385,8 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
 
       {/* 全年无数据：空态引导提示条（不影响热力图本身渲染） */}
       {stats.totalCount === 0 && (
-        <div className="flex items-start gap-2 rounded-md bg-info/10 px-3 py-2 text-xs text-muted-foreground mb-4">
-          <Info size={14} className="mt-0.5 shrink-0 text-info" />
+        <div className="mb-4 flex items-start gap-2 rounded-md border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <Info size={14} className="mt-0.5 shrink-0 opacity-60" />
           <span>{t('heatmapChart.emptyHint')}</span>
         </div>
       )}
@@ -465,18 +446,18 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
       </div>
 
       {/* 图例 */}
-      <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-border/50">
-        <span className="text-xs text-muted-foreground">{t('heatmapChart.legendLess')}</span>
+      <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/40 pt-3">
+        <span className="text-xs text-muted-foreground/70">{t('heatmapChart.legendLess')}</span>
         <div className="flex gap-1">
           {panelColors.map((color, index) => (
             <div
               key={index}
-              className="w-3 h-3 rounded-sm transition-transform hover:scale-125"
+              className="h-2.5 w-2.5 rounded-sm"
               style={{ backgroundColor: color }}
             />
           ))}
         </div>
-        <span className="text-xs text-muted-foreground">{t('heatmapChart.legendMore')}</span>
+        <span className="text-xs text-muted-foreground/70">{t('heatmapChart.legendMore')}</span>
       </div>
 
     </div>

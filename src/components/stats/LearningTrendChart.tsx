@@ -119,14 +119,12 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
   const { t } = useTranslation('stats');
 
   return (
-    <div className="flex flex-col items-center justify-center h-64 text-center">
-      <TrendUp size={48} className="text-muted-foreground/30 mb-3" />
-      <p className="text-muted-foreground mb-4">
-        {t('trendChart.noRecord')}
-      </p>
+    <div className="ui-rise-in flex h-64 flex-col items-center justify-center text-center text-muted-foreground">
+      <TrendUp size={28} className="mb-3 opacity-40" />
+      <p className="text-sm">{t('trendChart.noRecord')}</p>
       {onRefresh && (
-        <DsButton variant="ghost" size="sm" onClick={onRefresh}>
-          <ArrowsClockwise size={16} className="mr-2" />
+        <DsButton variant="ghost" size="sm" className="mt-3" onClick={onRefresh}>
+          <ArrowsClockwise size={14} />
           {t('trendChart.refreshData')}
         </DsButton>
       )}
@@ -593,7 +591,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
   // 初次加载：整卡骨架屏；已有数据后的重取（如切换范围）：图表区平滑降透明度过渡
   if (isLoading && !hasLoadedOnceRef.current) {
     return (
-      <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+      <div className={cn('rounded-lg border border-border/50 bg-muted/20 p-4', className)}>
         <ChartSkeleton />
       </div>
     );
@@ -602,29 +600,30 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
   const hasData = trendData && trendData.length > 0 && summary.totalAttempts > 0;
 
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-lg border border-border/50 bg-muted/20 p-4', className)}>
       {/* 标题栏 */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <TrendUp size={20} className="text-primary" />
-          <h3 className="font-semibold">{t('trendChart.title')}</h3>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm">
+          <TrendUp size={16} className="text-muted-foreground" />
+          <span className="font-medium text-foreground">{t('trendChart.title')}</span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* 日期范围选择器 */}
+        <div className="flex items-center gap-1.5">
+          {/* 日期范围选择器（对齐管理页筛选按钮组样式） */}
           {showDateRangeSelector && (
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/50">
+            <div className="flex items-center gap-0.5 rounded-md bg-muted/30 p-0.5">
               {DATE_RANGE_OPTIONS.map((value) => (
                 <DsButton
                   key={value}
                   variant="ghost" size="sm"
                   onClick={() => handleDateRangeChange(value)}
                   className={cn(
-                    '!px-3 !py-1.5 !h-auto text-xs font-medium !rounded-md ui-state-colors',
+                    'ui-state-colors !h-auto !px-2 !py-1 text-xs',
                     selectedRange === value
-                      ? 'bg-background text-foreground shadow-sm'
+                      ? 'bg-background font-medium shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
+                  aria-pressed={selectedRange === value}
                 >
                   {dateRangeLabels[value]}
                 </DsButton>
@@ -636,36 +635,34 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
           <DsButton
             variant="ghost"
             size="icon"
-            className="w-8 h-8"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
             onClick={handleRefresh}
             aria-label={t('trendChart.refreshData')}
           >
-            <ArrowsClockwise size={16} className={cn(isLoading && 'animate-spin')} />
+            <ArrowsClockwise size={14} className={cn(isLoading && 'animate-spin')} />
           </DsButton>
         </div>
       </div>
 
       {/* 统计摘要 */}
       {hasData && (
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="rounded-lg bg-primary/10 p-3 transition-transform duration-200 hover:-translate-y-0.5">
-            <div className="text-xl font-bold text-primary tabular-nums">
-              {summary.totalAttempts}
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          {([
+            { value: `${summary.totalAttempts}`, label: t('trendChart.totalQuestions'), dot: 'bg-primary' },
+            { value: `${summary.avgCorrectRate}%`, label: t('trendChart.avgCorrectRate'), dot: 'bg-success' },
+            { value: `${summary.activeDays}`, label: t('trendChart.activeDays'), dot: 'bg-warning' },
+          ] as const).map(({ value, label, dot }) => (
+            <div
+              key={label}
+              className="rounded-md border border-border/40 bg-background/40 p-2.5 transition-colors hover:border-border/80"
+            >
+              <div className="text-base font-semibold tabular-nums text-foreground">{value}</div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className={cn('h-1.5 w-1.5 flex-shrink-0 rounded-full', dot)} />
+                <span className="truncate">{label}</span>
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground">{t('trendChart.totalQuestions')}</div>
-          </div>
-          <div className="rounded-lg bg-success/10 p-3 transition-transform duration-200 hover:-translate-y-0.5">
-            <div className="text-xl font-bold text-success tabular-nums">
-              {summary.avgCorrectRate}%
-            </div>
-            <div className="text-xs text-muted-foreground">{t('trendChart.avgCorrectRate')}</div>
-          </div>
-          <div className="rounded-lg bg-warning/10 p-3 transition-transform duration-200 hover:-translate-y-0.5">
-            <div className="text-xl font-bold text-warning tabular-nums">
-              {summary.activeDays}
-            </div>
-            <div className="text-xs text-muted-foreground">{t('trendChart.activeDays')}</div>
-          </div>
+          ))}
         </div>
       )}
 
