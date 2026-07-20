@@ -67,15 +67,15 @@ cd src-tauri && cargo tree --format "{p} {l}"
 - **lancedb** v0.22.1（`src-tauri/vendor/lancedb/`）
   - 上游仓库：https://github.com/lancedb/lancedb
   - 许可证：Apache-2.0
-  - 修改目的：解决 chrono/arrow trait 方法冲突（参见 `Cargo.toml` 注释）
-  - 修改范围：Cargo.toml 依赖版本约束调整
+  - 修改目的：裁剪未使用的存储后端 feature（DynamoDB / 云端 object store），缩小依赖树
+  - 修改范围：仅 `Cargo.toml` 三处 feature 调整，源码零改动；详见 `vendor/lancedb/PATCHES.md`
 
 - **object_store** v0.12.4（`src-tauri/vendor/object_store/`）
   - 上游仓库：https://github.com/apache/arrow-rs-object-store
   - 许可证：MIT/Apache-2.0（双许可证）
   - NOTICE：`vendor/object_store/NOTICE.txt`（Apache Arrow Object Store, Copyright 2020-2024 The Apache Software Foundation）
-  - 修改目的：与 vendored lancedb 的版本兼容
-  - 修改范围：Cargo.toml 依赖版本约束调整
+  - 修改目的：为不支持 rename/hard_link 的文件系统（如 exFAT）增加 copy 回退，使 Lance 数据可存放于此类卷
+  - 修改范围：仅 `src/local.rs` 运行时行为（PermissionDenied/Unsupported 回退分支，含临时文件 + 同目录 rename 的原子性保障），带 `DEEP-STUDENT PATCH` 行内标记；详见 `vendor/object_store/PATCHES.md`
 
 - **rs-fsrs** v1.2.1（`src-tauri/vendor/rs-fsrs/`）
   - 上游仓库：https://github.com/open-spaced-repetition/rs-fsrs

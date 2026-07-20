@@ -477,8 +477,8 @@ For more build and packaging info, see [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md)
 
 | Document | Description |
 |------|------|
-| [Quick Start](https://deepstudent.cn/docs/) | 5-minute getting started guide |
-| [User Guide](https://deepstudent.cn/docs/) | Complete feature documentation |
+| [Quick Start](./docs/user-guide/01-快速上手.md) | 10-minute getting started guide (Chinese, [online version](https://deepstudent.cn/docs/)) |
+| [User Guide](./docs/user-guide/README.md) | Complete feature documentation for desktop & mobile (Chinese, [online version](https://deepstudent.cn/docs/)) |
 | [Build Configuration](./docs/BUILD-CONFIG.md) | Cross-platform build & packaging |
 | [Changelog](./CHANGELOG.md) | Version change history |
 | [Security Policy](./.github/SECURITY.md) | Vulnerability reporting process |

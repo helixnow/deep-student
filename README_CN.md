@@ -477,8 +477,8 @@ npm run tauri dev
 
 | 文档 | 说明 |
 |------|------|
-| [快速入门](https://deepstudent.cn/docs/) | 5 分钟上手指南 |
-| [用户手册](https://deepstudent.cn/docs/) | 完整功能使用说明 |
+| [快速入门](./docs/user-guide/01-快速上手.md) | 10 分钟上手指南（[在线版](https://deepstudent.cn/docs/)） |
+| [用户手册](./docs/user-guide/README.md) | 完整功能使用说明，覆盖桌面 + 移动双端（[在线版](https://deepstudent.cn/docs/)） |
 | [构建配置](./docs/BUILD-CONFIG.md) | 全平台构建与打包 |
 | [更新日志](./CHANGELOG.md) | 版本变更记录 |
 | [安全政策](./.github/SECURITY.md) | 漏洞报告流程 |
