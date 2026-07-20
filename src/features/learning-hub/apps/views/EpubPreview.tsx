@@ -15,6 +15,7 @@ import {
   TextAa,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
@@ -102,7 +103,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
   const initialState = useMemo(() => loadReaderState(storageKey), [storageKey]);
   const rootRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const tocRef = useRef<HTMLElement>(null);
+  const tocRef = useRef<HTMLDivElement>(null);
   const iframeCleanupRef = useRef<(() => void) | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const pendingFragmentRef = useRef<string | null>(null);
@@ -812,23 +813,25 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
               </DsButton>
             </div>
             {sidebarMode === 'toc' ? (
-              <nav ref={tocRef} className="epub-preview-toc ui-rise-in">
-                {book.toc.map((entry, index) => (
-                  <DsButton
-                    key={`${entry.chapterIndex}:${entry.fragment ?? ''}:${index}`}
-                    variant="ghost"
-                    size="sm"
-                    className={entry.chapterIndex === chapterIndex ? 'is-active' : ''}
-                    style={{ paddingInlineStart: `${12 + Math.min(entry.depth, 4) * 14}px` }}
-                    onClick={() => {
-                      navigateToChapter(entry.chapterIndex, entry.fragment);
-                      if (isNarrow) setSidebarOpen(false);
-                    }}
-                  >
-                    {entry.title}
-                  </DsButton>
-                ))}
-              </nav>
+              <CustomScrollArea className="epub-preview-toc min-h-0 flex-1 ui-rise-in" viewportRef={tocRef}>
+                <nav aria-label={t('learningHub:epubPreview.contents')}>
+                  {book.toc.map((entry, index) => (
+                    <DsButton
+                      key={`${entry.chapterIndex}:${entry.fragment ?? ''}:${index}`}
+                      variant="ghost"
+                      size="sm"
+                      className={entry.chapterIndex === chapterIndex ? 'is-active' : ''}
+                      style={{ paddingInlineStart: `${12 + Math.min(entry.depth, 4) * 14}px` }}
+                      onClick={() => {
+                        navigateToChapter(entry.chapterIndex, entry.fragment);
+                        if (isNarrow) setSidebarOpen(false);
+                      }}
+                    >
+                      {entry.title}
+                    </DsButton>
+                  ))}
+                </nav>
+              </CustomScrollArea>
             ) : (
               <div className="epub-preview-search ui-rise-in">
                 <label className="epub-preview-search-input">
@@ -864,7 +867,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
                     </DsButton>
                   </div>
                 )}
-                <div className="epub-preview-search-results">
+                <CustomScrollArea className="epub-preview-search-results min-h-0 flex-1">
                   {searchResults.map((result, index) => (
                     <DsButton
                       key={`${result.chapterIndex}:${result.matchIndex}:${index}`}
@@ -880,7 +883,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
                       <span>{renderExcerpt(result.excerpt)}</span>
                     </DsButton>
                   ))}
-                </div>
+                </CustomScrollArea>
               </div>
             )}
           </div>

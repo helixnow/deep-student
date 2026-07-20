@@ -419,7 +419,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           )}
         </div>}
 
-        <CustomScrollArea className="flex-1" viewportClassName={fillContainer ? 'px-2 py-1' : 'px-1.5 pb-2'}>
+        <CustomScrollArea className="min-h-0 flex-1" viewportClassName={fillContainer ? 'px-2 py-1' : 'px-1.5 pb-2'}>
           <div className="space-y-0.5">
             {quickAccessItems.map((item) => (
               <React.Fragment key={item.type}>

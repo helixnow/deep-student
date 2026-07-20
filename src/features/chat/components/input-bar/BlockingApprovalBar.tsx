@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { ShieldCheck, Clock, CaretDown, CaretUp, ChatCircleText, Check, X, Warning } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -523,14 +524,18 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       {/* Row 2: 参数预览（可折叠） */}
       {argsText !== '{}' && (
         <div>
-          <pre className={cn(
-            'overflow-hidden rounded bg-muted px-2 py-1 text-xs font-mono text-muted-foreground',
-            isArgsExpanded ? 'max-h-40 overflow-y-auto' : 'max-h-16',
-          )}>
-            {isArgsExpanded || !needsTruncation
-              ? argsText
-              : argsText.slice(0, ARGS_TRUNCATE_THRESHOLD) + ' …'}
-          </pre>
+          <CustomScrollArea
+            orientation="both"
+            fullHeight={false}
+            className={cn('rounded bg-muted', isArgsExpanded ? 'max-h-40' : 'max-h-16')}
+            viewportClassName={isArgsExpanded ? 'max-h-40' : 'max-h-16'}
+          >
+            <pre className="px-2 py-1 text-xs font-mono text-muted-foreground">
+              {isArgsExpanded || !needsTruncation
+                ? argsText
+                : argsText.slice(0, ARGS_TRUNCATE_THRESHOLD) + ' …'}
+            </pre>
+          </CustomScrollArea>
           {needsTruncation && (
             <DsButton
               variant="ghost"

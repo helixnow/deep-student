@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { cn } from '@/lib/utils';
@@ -487,7 +488,13 @@ export function AgentControlDockEntry({
               aria-label={t('agentControlCenter.title')}
               className="wb-agent-control-popover wb-glass wb-glass-highlight wb-glass-lens"
             >
-              <div className="wb-agent-control-scroll">
+              <CustomScrollArea
+                className="wb-agent-control-scroll"
+                onWheel={(event) => event.stopPropagation()}
+                trackOffsetTop={6}
+                trackOffsetBottom={6}
+                trackOffsetRight={3}
+              >
                 <div className="wb-agent-control-header">
                   <div className="wb-agent-control-identity">
                     <span className="wb-agent-control-mark" data-mode={mode} aria-hidden="true">
@@ -711,7 +718,7 @@ export function AgentControlDockEntry({
                 </div>
 
                 <AgentCapabilitySummary />
-              </div>
+              </CustomScrollArea>
 
               <div className="wb-agent-control-actions">
                 <DsButton

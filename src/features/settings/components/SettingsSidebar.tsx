@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, MagnifyingGlass } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   WorkbenchSidebarRow,
   WorkbenchSidebarRowLabel,
@@ -133,9 +134,13 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
         </div>
       )}
 
-      <nav
+      <CustomScrollArea
         aria-label={t('sidebar.navigation_label')}
-        className={cn('flex-1 overflow-y-auto py-1', isCollapsed ? 'pointer-events-none opacity-0 px-0' : 'px-2')}
+        role="navigation"
+        className={cn('min-h-0 flex-1', isCollapsed && 'pointer-events-none opacity-0')}
+        viewportClassName={cn('py-1', isCollapsed ? 'px-0' : 'px-2')}
+        trackOffsetTop={4}
+        trackOffsetBottom={4}
       >
         {searchQuery ? (
           searchResults.length > 0 ? (
@@ -195,7 +200,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
           })}
         </ul>
         )}
-      </nav>
+      </CustomScrollArea>
     </WorkbenchSidebarSurface>
   );
 

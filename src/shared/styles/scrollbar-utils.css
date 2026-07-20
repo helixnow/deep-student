@@ -1,9 +1,14 @@
-/* 隐藏滚动条的工具类 - 用于横向滚动的 Tab 栏等 */
+/* 唯一的隐藏滚动条工具类：滚动能力保留，仅隐藏视觉轨道。 */
 .scrollbar-none {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .scrollbar-none::-webkit-scrollbar {
-  display: none;  /* Chrome, Safari and Opera */
+  display: none;
+}
+
+/* 同一工具类也可挂在 OverlayScrollbars host 上。 */
+.scrollbar-none .os-scrollbar {
+  display: none !important;
 }

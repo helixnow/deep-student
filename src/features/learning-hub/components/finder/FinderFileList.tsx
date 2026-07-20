@@ -153,39 +153,45 @@ function FinderDragDropBar({
   if (!hasParent && !hasSpecial) return null;
 
   return (
-    <div
-      className="flex items-center gap-1.5 px-2 py-1.5 border-b bg-muted/30 shrink-0 overflow-x-auto"
-      data-finder-drag-drop-bar
-      role="toolbar"
-      aria-label="Drop targets"
+    <CustomScrollArea
+      className="shrink-0 border-b bg-muted/30"
+      orientation="horizontal"
+      fullHeight={false}
     >
-      {hasParent && (
-        <>
-          <span className="text-2xs text-muted-foreground/80 shrink-0 whitespace-nowrap">→</span>
-          {parentTargets!.map((target) => (
+      <div
+        className="flex w-max min-w-full items-center gap-1.5 px-2 py-1.5"
+        data-finder-drag-drop-bar
+        role="toolbar"
+        aria-label="Drop targets"
+      >
+        {hasParent && (
+          <>
+            <span className="text-2xs text-muted-foreground/80 shrink-0 whitespace-nowrap">→</span>
+            {parentTargets!.map((target) => (
+              <FinderDropChip
+                key={target.id ?? 'root'}
+                droppableId={target.id == null ? 'parent:root' : `parent:${target.id}`}
+                label={target.label}
+                data={{ kind: 'parent-folder', folderId: target.id }}
+              />
+            ))}
+          </>
+        )}
+        {hasParent && hasSpecial && (
+          <span className="w-px h-3.5 bg-border shrink-0 mx-0.5" aria-hidden />
+        )}
+        {hasSpecial &&
+          specialTargets!.map((target) => (
             <FinderDropChip
-              key={target.id ?? 'root'}
-              droppableId={target.id == null ? 'parent:root' : `parent:${target.id}`}
+              key={target.id}
+              droppableId={`special:${target.id}`}
               label={target.label}
-              data={{ kind: 'parent-folder', folderId: target.id }}
+              data={{ kind: 'special-target', targetId: target.id }}
+              tone={target.id === 'trash' ? 'danger' : 'favorite'}
             />
           ))}
-        </>
-      )}
-      {hasParent && hasSpecial && (
-        <span className="w-px h-3.5 bg-border shrink-0 mx-0.5" aria-hidden />
-      )}
-      {hasSpecial &&
-        specialTargets!.map((target) => (
-          <FinderDropChip
-            key={target.id}
-            droppableId={`special:${target.id}`}
-            label={target.label}
-            data={{ kind: 'special-target', targetId: target.id }}
-            tone={target.id === 'trash' ? 'danger' : 'favorite'}
-          />
-        ))}
-    </div>
+      </div>
+    </CustomScrollArea>
   );
 }
 
@@ -1129,7 +1135,7 @@ export function FinderFileList({
         <CustomScrollArea
           ref={scrollAreaRef}
           viewportRef={viewportRef}
-          className="flex-1 bg-background h-full outline-none"
+          className="h-full min-h-0 flex-1 bg-background outline-none"
           onClick={handleContainerClick}
           onDoubleClick={handleContainerDoubleClick}
           onContextMenu={handleContainerContextMenu}
@@ -1263,7 +1269,7 @@ export function FinderFileList({
       <CustomScrollArea
         ref={scrollAreaRef}
         viewportRef={viewportRef}
-        className="flex-1 bg-background h-full outline-none"
+        className="h-full min-h-0 flex-1 bg-background outline-none"
         viewportClassName="py-3 pr-3 pl-1.5 sm:pl-3"
         onClick={handleContainerClick}
         onDoubleClick={handleContainerDoubleClick}

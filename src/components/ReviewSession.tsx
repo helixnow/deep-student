@@ -19,6 +19,7 @@ import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card } from '@/components/ui/shad/Card';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { CustomScrollArea } from './custom-scroll-area';
 import {
   X,
   Eye,
@@ -796,7 +797,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
       </div>
 
       {/* 卡片内容区（切题时轻入场，key 驱动重挂载） */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-4 py-6">
         <Card
           key={`${session.startTime ?? 0}-${session.currentIndex}`}
           className="ui-rise-in max-w-2xl mx-auto p-4 shadow-sm"
@@ -857,7 +858,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             </div>
           </div>
         </Card>
-      </div>
+      </CustomScrollArea>
 
       {/* 底部操作区（移动端手势导航安全区） */}
       <div className="flex-shrink-0 border-t border-border/50 bg-muted/20 p-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]">

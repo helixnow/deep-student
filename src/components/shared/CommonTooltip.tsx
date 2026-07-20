@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useOverlayCoordinator } from './OverlayCoordinator';
+import { CustomScrollArea } from '../custom-scroll-area';
 import './CommonTooltip.css';
 
 export type TooltipPosition = 'top' | 'bottom' | 'left' | 'right';
@@ -299,8 +300,13 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
       }}
       role="tooltip"
       aria-hidden={!isVisible}
+      onWheel={(event) => event.stopPropagation()}
     >
-      <div className="common-tooltip__content">
+      <CustomScrollArea
+        className="common-tooltip__content"
+        viewportClassName="common-tooltip__viewport"
+        fullHeight={false}
+      >
         {shortcut ? (
           <span className="common-tooltip__row">
             <span>{content}</span>
@@ -313,7 +319,7 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
         ) : (
           content
         )}
-      </div>
+      </CustomScrollArea>
       {showArrow && <div className="common-tooltip__arrow" />}
     </div>
   );

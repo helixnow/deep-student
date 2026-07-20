@@ -3,6 +3,7 @@ import { X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { SandboxSession, SandboxViewportPreset } from '../types';
 
 interface SandboxInspectorPanelProps {
@@ -38,7 +39,7 @@ export function SandboxInspectorPanel({
         'flex min-w-0 flex-col bg-[color:var(--shell-inspector-panel)]',
         // compact（小屏纵向堆叠）限高 45dvh：不限高时 h-auto 会把上方预览区挤没
         compact
-          ? 'h-auto max-h-[45dvh] overflow-y-auto border-t border-border'
+          ? 'h-auto max-h-[45dvh] border-t border-border'
           : 'h-full border-l border-border',
         className,
       ].filter(Boolean).join(' ')}
@@ -59,7 +60,10 @@ export function SandboxInspectorPanel({
           </DsButton>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto px-4 py-4 text-sm text-muted-foreground">
+      <CustomScrollArea
+        className="min-h-0 flex-1"
+        viewportClassName="px-4 py-4 text-sm text-muted-foreground"
+      >
         <div className="space-y-4">
           <div>
             <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.source')}</p>
@@ -141,7 +145,7 @@ export function SandboxInspectorPanel({
             {t('sandbox.iframeNotice')}
           </div>
         </div>
-      </div>
+      </CustomScrollArea>
     </aside>
   );
 }

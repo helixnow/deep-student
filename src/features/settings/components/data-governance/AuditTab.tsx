@@ -18,6 +18,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
 import { AppSelect } from '@/components/ui/app-menu';
@@ -182,7 +183,11 @@ export const AuditTab: React.FC<AuditTabProps> = ({
       </div>
 
       {/* 日志列表 */}
-      <div className="rounded-lg border border-border/40 overflow-x-auto">
+      <CustomScrollArea
+        orientation="horizontal"
+        fullHeight={false}
+        className="rounded-lg border border-border/40"
+      >
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-border/40">
@@ -229,7 +234,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
             )}
           </TableBody>
         </Table>
-      </div>
+      </CustomScrollArea>
 
       {/* 分页信息和加载更多 */}
       {logs.length > 0 && (

@@ -33,6 +33,7 @@ import {
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Progress } from '@/components/ui/shad/Progress';
+import { CustomScrollArea } from './custom-scroll-area';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { useExamSheetProgress } from '@/hooks/useExamSheetProgress';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -1261,7 +1262,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="flex flex-col p-4">
         {/* min-h-full 列：内容矮时撑满高度让 dropzone 弹性扩展；内容高时自然向下滚动 */}
         <div className="w-full max-w-2xl mx-auto flex min-h-full flex-col gap-6">
           
@@ -1409,9 +1410,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <div className="text-xs text-muted-foreground">
                     {t('exam_sheet:uploader.pdf_quality_description')}
                   </div>
-                  <div className="max-h-40 overflow-y-auto rounded bg-background/70 p-2 text-xs whitespace-pre-wrap border border-border/40">
+                  <CustomScrollArea
+                    className="max-h-40 rounded border border-border/40 bg-background/70"
+                    viewportClassName="whitespace-pre-wrap p-2 text-xs"
+                    fullHeight={false}
+                  >
                     {pendingPdfImport.inspection.preview_text || t('exam_sheet:uploader.pdf_quality_empty_preview')}
-                  </div>
+                  </CustomScrollArea>
                   <div className="flex gap-2">
                     <DsButton
                       variant="ghost"
@@ -1627,7 +1632,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               {parsedQuestions.length > 0 && (
                 <div className="flex flex-col flex-1 min-h-0">
                   <div className="text-xs text-muted-foreground px-1 mb-2 flex-shrink-0">{t('exam_sheet:uploader.parsed_questions_label')}</div>
-                  <div ref={parsedListRef} className="flex-1 min-h-0 overflow-y-auto space-y-2">
+                  <CustomScrollArea
+                    className="min-h-0 flex-1"
+                    viewportClassName="space-y-2"
+                    viewportRef={parsedListRef}
+                  >
                     {parsedQuestions.map((q, idx) => (
                       <div
                         key={idx}
@@ -1660,7 +1669,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         </div>
                       </div>
                     ))}
-                  </div>
+                  </CustomScrollArea>
                 </div>
               )}
 
@@ -1773,7 +1782,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         </DsButton>
                       </div>
                       {/* 滚动列表 */}
-                      <div className="max-h-[280px] overflow-y-auto divide-y divide-border/20">
+                      <CustomScrollArea
+                        className="max-h-[280px]"
+                        viewportClassName="divide-y divide-border/20"
+                        fullHeight={false}
+                      >
                         {allCards.map((card, idx) => {
                           const isExcluded = excludedCardIds.has(card.card_id);
                           return (
@@ -1828,7 +1841,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                             </div>
                           );
                         })}
-                      </div>
+                      </CustomScrollArea>
                     </div>
                   )}
                 </div>
@@ -1964,7 +1977,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
           {/* 提示信息已合并到拖放区下方（tips_combined），未选文件时显示 */}
         </div>
-      </div>
+      </CustomScrollArea>
     </div>
   );
 };

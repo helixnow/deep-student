@@ -44,7 +44,7 @@ const SettingsAppWindow: React.FC<AppWindowProps> = ({
   return (
     <div
       ref={ref}
-      className="h-full w-full min-w-0 overflow-hidden bg-background"
+      className="h-full min-h-0 w-full min-w-0 overflow-hidden bg-background"
       style={SHELL_VAR_RESET}
       data-wb-sys-app="settings"
       data-wb-settings-host

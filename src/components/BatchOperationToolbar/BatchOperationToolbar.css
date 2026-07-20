@@ -242,10 +242,12 @@
 .batch-cards-list {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
   background: hsl(var(--muted));
-  padding: 16px;
   max-height: calc(100dvh - 200px);
+}
+
+.batch-cards-list-viewport {
+  padding: 16px;
 }
 
 /* 卡片项 */
@@ -400,23 +402,4 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/* 滚动条样式 */
-.batch-cards-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.batch-cards-list::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
-  border-radius: 4px;
-}
-
-.batch-cards-list::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 4px;
-}
-
-.batch-cards-list::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground));
 }

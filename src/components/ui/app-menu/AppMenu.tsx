@@ -332,9 +332,12 @@ export function AppMenuContent({
       let origin: 'top' | 'bottom' = 'top';
 
       if (menuMode === 'context') {
-        // 右键菜单模式：使用鼠标位置
-        top = contextPositionY;
+        // 默认以点击点为左上角向下展开；下方空间不足时，改用同一点击点
+        // 作为左下角向上展开。最后仍走统一边界钳位，处理菜单高于视口等极端情况。
+        const fitsBelow = contextPositionY + contentRect.height <= window.innerHeight - 8;
+        top = fitsBelow ? contextPositionY : contextPositionY - contentRect.height;
         left = contextPositionX;
+        if (!fitsBelow) origin = 'bottom';
       } else {
         // 下拉菜单模式：使用触发器位置
         const triggerEl = triggerRef?.current;

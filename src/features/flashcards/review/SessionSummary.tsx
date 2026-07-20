@@ -11,6 +11,7 @@ import {
   Play,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { FsrsRating, SessionRatingCounts } from '../store/fsrsReviewStore';
 import { formatDuration } from './useSessionClock';
 
@@ -65,7 +66,10 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
   const maxCount = Math.max(1, ...DIST_ROWS.map(({ rating }) => ratingCounts[rating]));
 
   return (
-    <div className="wb-fc-summary flex h-full flex-col items-center justify-center gap-4 overflow-auto p-6 text-center">
+    <CustomScrollArea
+      className="wb-fc-summary h-full min-h-0"
+    >
+      <div className="flex min-h-full flex-col items-center justify-center gap-4 p-6 text-center">
       <div className={empty ? 'wb-fc-summary-icon wb-fc-summary-icon--empty' : 'wb-fc-summary-icon'}>
         {empty ? (
           <CardsThree size={34} weight="duotone" aria-hidden="true" />
@@ -156,6 +160,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
         </DsButton>
       </div>
       {errorBanner}
-    </div>
+      </div>
+    </CustomScrollArea>
   );
 };

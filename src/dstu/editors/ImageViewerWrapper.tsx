@@ -135,7 +135,7 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
 
   // 图片查看器 UI
   return (
-    <div className={cn('flex flex-col h-full', props.className)}>
+    <div className={cn('flex min-h-0 flex-col h-full', props.className)}>
       {/* 工具栏 */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
         <div className="flex items-center gap-2">
@@ -179,7 +179,11 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
       </div>
 
       {/* 图片内容 */}
-      <CustomScrollArea className="flex-1 flex items-center justify-center bg-muted/20" viewportClassName="p-4">
+      <CustomScrollArea
+        className="flex-1 min-h-0 bg-muted/20"
+        viewportClassName="flex min-h-full items-center justify-center p-4"
+        orientation="both"
+      >
         {imageUrl ? (
           <img
             src={imageUrl}

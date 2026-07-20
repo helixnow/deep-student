@@ -15,6 +15,7 @@ import {
   WarningCircle,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { getFsrsStats } from '@/utils/chatApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { FsrsStats } from '@/types';
@@ -295,7 +296,10 @@ export const StatisticsScreen: React.FC = () => {
       ) : loading && !stats ? (
         <div className="wb-fc-loading">{t('statistics.loading')}</div>
       ) : stats ? (
-        <div className="wb-fcx-scroll">
+        <CustomScrollArea
+          className="min-h-0 flex-1"
+        >
+          <div className="wb-fcx-scroll">
           <SchedulerSettingsSection />
           <section className="wb-fcx-panel" data-testid="fsrs-statistics">
             <div className="wb-fcx-panel-head">
@@ -467,7 +471,8 @@ export const StatisticsScreen: React.FC = () => {
               </div>
             </section>
           </div>
-        </div>
+          </div>
+        </CustomScrollArea>
       ) : null}
     </div>
   );

@@ -261,7 +261,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
           </div>
         </div>
       )}
-      <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
+      <div className="flex flex-wrap gap-1.5 px-4 pb-2">
         {changes.map((item) => {
           const ChangeIcon = item.kind === 'note' ? Notebook : FileIcon;
           const isReverted = revertedIds.has(item.id);
@@ -487,7 +487,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
               {t('agentPanel.previewFailed')}: {preview.error}
             </div>
           ) : previewDiffLines ? (
-            <pre className="m-0 max-h-60 overflow-auto px-2.5 py-1.5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all">
+            <pre className="m-0 px-2.5 py-1.5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all">
               {previewDiffLines.map((line, idx) => (
                 <div
                   key={idx}
@@ -504,7 +504,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
               ))}
             </pre>
           ) : (
-            <pre className="m-0 max-h-60 overflow-auto px-2.5 py-1.5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all text-[color:var(--text-secondary)]">
+            <pre className="m-0 px-2.5 py-1.5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all text-[color:var(--text-secondary)]">
               {preview?.content ?? ''}
             </pre>
           )}

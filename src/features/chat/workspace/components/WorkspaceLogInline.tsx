@@ -9,6 +9,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
@@ -333,7 +334,11 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
             {...disclosureMotion}
             className="border-t border-border/30"
           >
-            <div className="max-h-80 overflow-y-auto px-3">
+            <CustomScrollArea
+              fullHeight={false}
+              className="max-h-80"
+              viewportClassName="max-h-80 px-3"
+            >
               {sortedMessages.map((msg) => (
                 <LogMessageItem
                   key={msg.id}
@@ -341,7 +346,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
                   agents={agentMap}
                 />
               ))}
-            </div>
+            </CustomScrollArea>
             {filteredMessages.length > maxMessages && (
               <div className="px-3 py-1.5 text-center text-2xs text-muted-foreground border-t border-border/30">
                 {t('workspace.log.moreMessages', {

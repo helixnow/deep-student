@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { Trash, UploadSimple, X } from '@phosphor-icons/react';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 import {
   CUSTOM_WALLPAPER_LIBRARY_LIMIT,
@@ -302,7 +303,13 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
           </button>
         </header>
 
-        <div className="wb-wpm-body">
+        <CustomScrollArea
+          className="wb-wpm-body"
+          viewportClassName="wb-wpm-body-viewport"
+          trackOffsetTop={4}
+          trackOffsetBottom={12}
+          trackOffsetRight={5}
+        >
           {/* ==== 内置壁纸 ==== */}
           <section className="wb-wpm-section" aria-label={t('wallpaperManager.presetsSection')}>
             <div className="wb-wpm-section-head">
@@ -479,7 +486,7 @@ export const WallpaperManagerDialog: React.FC<WallpaperManagerDialogProps> = ({
               </div>
             </section>
           )}
-        </div>
+        </CustomScrollArea>
       </div>
     </div>,
     document.body,

@@ -610,7 +610,7 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
         <DsButton variant="ghost" size="sm" className="nav-btn nav-prev" onClick={handlePrevious} disabled={cards.length <= 1}>
           <CaretLeft size={18} />
         </DsButton>
-        <div className="nav-dots">
+        <div className="nav-dots scrollbar-none">
           {cards.map((_, index) => (
             <DsButton
               key={index}

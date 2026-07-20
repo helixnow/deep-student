@@ -463,7 +463,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           </DsButton>
       </div>
 
-      <CustomScrollArea className="flex-1">
+      <CustomScrollArea className="min-h-0 flex-1">
         <div className="max-w-3xl mx-auto px-5 py-8 md:px-8 md:py-10 space-y-6 md:space-y-8 mt-10 md:mt-12">
           
           {/* Title Section */}

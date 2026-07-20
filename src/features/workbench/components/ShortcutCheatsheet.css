@@ -62,6 +62,8 @@
   flex-direction: column;
   width: min(880px, 100%);
   max-height: min(620px, 100%);
+  min-height: 0;
+  overflow: hidden;
   border-radius: var(--wb-overlay-radius, 18px);
   /* 中央玻璃件走 overlay 档阴影（O1 token 注释点名速查表用此档） */
   box-shadow: var(--wb-shadow-overlay, var(--wb-dock-shadow));
@@ -141,26 +143,18 @@
 
 /* ==== 分组网格 ========================================================== */
 
-.wb-cheat-groups {
+.wb-cheat-scroll {
   flex: 1 1 auto;
-  overflow-y: auto;
+  min-height: 0;
+}
+
+.wb-cheat-groups {
   overscroll-behavior: contain;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 14px 26px;
   padding: 4px 20px 8px;
   align-items: start;
-  scrollbar-width: thin;
-}
-
-/* 细滚动条（与切换条图标区一致） */
-.wb-cheat-groups::-webkit-scrollbar {
-  width: 6px;
-}
-
-.wb-cheat-groups::-webkit-scrollbar-thumb {
-  border-radius: 3px;
-  background: color-mix(in hsl, hsl(var(--foreground)) 22%, transparent 78%);
 }
 
 .wb-cheat-group-title {

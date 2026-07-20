@@ -1,8 +1,5 @@
 import * as React from "react";
-import {
-  OverlayScrollbarsComponent,
-  type OverlayScrollbarsComponentRef,
-} from "overlayscrollbars-react";
+import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
 
 import { cn } from "../../lib/utils";
 import { detectScrollPlatform } from "../../lib/scroll-platform";
@@ -16,8 +13,8 @@ import { useScrollbarTheme } from "../../lib/scroll-theme";
  * - Windows / macOS / Linux → overlay scrollbars synced to app theme
  *
  * Moved from study-ui so DeepStudent can run independently without the
- * `@study-ui` alias. The `.scroll-area--native` styles live in
- * src/shared/styles/app.css.
+ * `@study-ui` alias. Overlay and native fallback visuals share the contract in
+ * src/styles/native-feel/scrollbars.css.
  *
  * ## Migration checklist (when replacing `.custom-scrollbar` or legacy CustomScrollArea)
  * - Do NOT wrap CodeMirror `.cm-scroller`, Crepe/Milkdown editor body,
@@ -48,7 +45,8 @@ export interface ScrollAreaProps
   className?: string;
   viewportClassName?: string;
   viewportRef?: React.Ref<HTMLDivElement>;
-  viewportProps?: Omit<React.HTMLAttributes<HTMLDivElement>, "className" | "ref">;
+  /** Applied to the scrolling host; className is merged with viewportClassName. */
+  viewportProps?: React.HTMLAttributes<HTMLDivElement>;
   orientation?: ScrollOrientation;
   /** Hide delay in ms. 0 = always visible. Default 600. */
   scrollHideDelay?: number;
@@ -132,8 +130,10 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
     const dataSlot = rest["data-slot"] ?? "scroll-area";
     const { "data-slot": _dataSlotDrop, ...restProps } = rest;
     void _dataSlotDrop;
-
-    const osRef = React.useRef<OverlayScrollbarsComponentRef | null>(null);
+    const {
+      className: viewportPropsClassName,
+      ...resolvedViewportProps
+    } = viewportProps ?? {};
 
     if (useNative) {
       const overflowClass = cn(
@@ -147,7 +147,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
           data-slot={dataSlot}
           data-orientation={orientation}
           data-native-scrollbars="true"
-          className={cn("relative", className)}
+          className={cn("relative min-h-0 min-w-0", className)}
           style={offsetStyle}
           {...restProps}
         >
@@ -155,11 +155,12 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
             ref={viewportRef}
             className={cn(
               SCROLL_AREA_NATIVE_CLASS,
-              "h-full w-full",
+              "h-full min-h-0 w-full min-w-0",
               overflowClass,
               viewportClassName,
+              viewportPropsClassName,
             )}
-            {...viewportProps}
+            {...resolvedViewportProps}
           >
             {children}
           </div>
@@ -173,15 +174,24 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
         data-slot={dataSlot}
         data-orientation={orientation}
         data-native-scrollbars="false"
-        className={cn("relative", className)}
+        className={cn("relative min-h-0 min-w-0", className)}
         style={offsetStyle}
         {...restProps}
       >
         <OverlayScrollbarsComponent
-          ref={osRef}
           element="div"
-          className={cn("h-full w-full", viewportClassName)}
+          className={cn(
+            "h-full min-h-0 w-full min-w-0",
+            viewportClassName,
+            viewportPropsClassName,
+          )}
           options={{
+            update: {
+              // DeepStudent 的统一 ScrollArea 都使用标准顺向流。关闭库对
+              // reverse-flow 的坐标探测，避免 Chromium 舍入误判后让滑块
+              // 以负方向移动（笔记文件树滚动时滑块会越出固定轨道）。
+              flowDirectionStyles: () => ({}),
+            },
             scrollbars: {
               theme,
               // 触屏无 hover：'leave' 策略会让滚动条永不出现（M-1），
@@ -205,7 +215,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
               assignRef(viewportRef, null);
             },
           }}
-          {...(viewportProps ?? {})}
+          {...resolvedViewportProps}
         >
           {children}
         </OverlayScrollbarsComponent>

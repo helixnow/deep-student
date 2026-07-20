@@ -10,6 +10,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ShadowDomPreview } from '@/components/ShadowDomPreview';
 import { TemplateRenderService } from '@/services/templateRenderService';
 import type { TemplateRenderIssue } from '@/services/ankiTemplateEngine';
@@ -483,9 +484,11 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
         )}
       >
         {showRawJson ? (
-          <pre className="text-xs whitespace-pre-wrap break-words font-mono text-muted-foreground max-h-60 overflow-auto">
-            {JSON.stringify(output, null, 2)}
-          </pre>
+          <CustomScrollArea fullHeight={false} className="max-h-60" viewportClassName="max-h-60">
+            <pre className="text-xs whitespace-pre-wrap break-words font-mono text-muted-foreground">
+              {JSON.stringify(output, null, 2)}
+            </pre>
+          </CustomScrollArea>
         ) : isDiff ? (
           <DiffView
             before={output.before!}
@@ -507,9 +510,11 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
             />
           </div>
         ) : (
-          <pre className="text-xs whitespace-pre-wrap break-words font-mono text-muted-foreground max-h-60 overflow-auto">
-            {JSON.stringify(output, null, 2)}
-          </pre>
+          <CustomScrollArea fullHeight={false} className="max-h-60" viewportClassName="max-h-60">
+            <pre className="text-xs whitespace-pre-wrap break-words font-mono text-muted-foreground">
+              {JSON.stringify(output, null, 2)}
+            </pre>
+          </CustomScrollArea>
         )}
       </div>
     </div>

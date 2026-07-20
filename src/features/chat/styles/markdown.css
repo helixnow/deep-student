@@ -420,7 +420,7 @@
   padding: 14px 16px;
   border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
   margin: 0;
-  overflow-x: auto;
+  overflow: visible;
   border: none;
   box-shadow: none; /* 移除阴影 */
 }
@@ -484,7 +484,7 @@
   padding: 1.2em;
   border-radius: 8px;
   margin: 0.5em 0;
-  overflow-x: auto; /* 滚动只在最外层pre出现 */
+  overflow: visible; /* 滚动由外层 ScrollArea 统一管理 */
   box-shadow: none; /* 移除阴影 */
   border: none; /* 移除边框 */
   max-width: 100%;
@@ -615,7 +615,7 @@
   max-width: 100%;
   margin: calc(var(--chat-md-table-gap) * 0.5) 0;
   margin-block: calc(var(--chat-md-table-gap) * 0.575) calc(var(--chat-md-table-gap) * 0.8);
-  overflow-x: auto;
+  overflow: visible;
 }
 
 /* 只做表格区块与相邻正文的外部间距强化，不引入任何内部 padding。
@@ -923,12 +923,16 @@
 }
 
 /* 降级代码显示 */
+.chat-v2 .mermaid-fallback-scroll-area {
+  max-height: 300px;
+}
+
 .chat-v2 .mermaid-fallback-code {
   margin: 0 !important;
   border: none !important;
   border-radius: 0 !important;
-  max-height: 300px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 /* 渲染错误提示（在预览区域内显示） */
@@ -1197,16 +1201,12 @@
   flex-shrink: 0;
 }
 
-/* ============================================================================
-   KaTeX 块级公式 - 超宽公式横向滚动（★ 消息区-中5 修复）
-   .katex-display 不在 chat 全宽例外清单内，长公式会撑破消息气泡；
-   chat 作用域内补横向滚动，不动全局 app.css
-   ============================================================================ */
+/* KaTeX 块级公式由 MarkdownRenderer 的横向 ScrollArea 统一承载。 */
+.chat-v2 .markdown-content .math-scroll-area {
+  max-width: 100%;
+  padding-bottom: 0.25em;
+}
 
 .chat-v2 .markdown-content .katex-display {
-  overflow-x: auto;
-  overflow-y: hidden;
-  max-width: 100%;
-  /* 滚动条贴公式太近，留一点呼吸空间 */
-  padding-bottom: 0.25em;
+  overflow: visible;
 }

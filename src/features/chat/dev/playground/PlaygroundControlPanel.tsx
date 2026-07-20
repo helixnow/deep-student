@@ -8,6 +8,7 @@ import React, { useState, useCallback } from 'react';
 import type { StoreApi } from 'zustand';
 import { useStore } from 'zustand';
 import { cn } from '@/utils/cn';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   Play,
   Square,
@@ -378,7 +379,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
           </div>
 
           {/* 可滚动内容区 */}
-          <div className="flex-1 overflow-y-auto">
+          <CustomScrollArea className="min-h-0 flex-1">
             <CollapsibleSection
               title="预设场景"
               icon={<Lightning size={14} />}
@@ -505,7 +506,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 </button>
               </div>
             </CollapsibleSection>
-          </div>
+          </CustomScrollArea>
         </div>
       )}
 

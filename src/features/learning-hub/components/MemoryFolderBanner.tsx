@@ -412,7 +412,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
               ) : profileSections.length === 0 ? (
                 <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.no_profile')}</div>
               ) : (
-                <CustomScrollArea className="max-h-40">
+                <CustomScrollArea className="max-h-40 min-h-0" fullHeight={false}>
                   <div className="space-y-1.5">
                     {profileSections.map((section, i) => (
                       <div key={i}>
@@ -437,7 +437,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
               ) : auditLogs.length === 0 ? (
                 <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.audit_empty')}</div>
               ) : (
-                <CustomScrollArea className="max-h-48">
+                <CustomScrollArea className="max-h-48 min-h-0" fullHeight={false}>
                   <div className="space-y-1">
                     {auditLogs.map((log) => (
                       <div key={log.id} className="flex items-start gap-2 text-2xs py-0.5">

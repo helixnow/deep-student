@@ -355,7 +355,11 @@ const TagGroupCard: React.FC<{
           </div>
 
           {/* 题目列表 - 超紧凑 */}
-          <div className="max-h-48 overflow-y-auto space-y-0">
+          <CustomScrollArea
+            className="max-h-48"
+            viewportClassName="space-y-0"
+            fullHeight={false}
+          >
             {group.questions.map((q) => {
               const status = q.status || 'new';
               const statusConfig = STATUS_CONFIG[status];
@@ -391,7 +395,7 @@ const TagGroupCard: React.FC<{
                 </DsButton>
               );
             })}
-          </div>
+          </CustomScrollArea>
         </div>
       )}
     </div>

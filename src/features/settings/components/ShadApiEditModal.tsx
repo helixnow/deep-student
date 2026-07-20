@@ -2213,7 +2213,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   // 嵌入模式：直接返回表单内容，不使用 Dialog 包裹
   if (embeddedMode) {
     return (
-      <div className="h-full flex flex-col">
+      <div className="flex h-full min-h-0 flex-col">
         {formContent}
       </div>
     );
@@ -2228,7 +2228,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       closeOnOverlay={false}
       showClose={false}
       maxWidth="max-w-[672px]"
-      className="p-0 overflow-hidden"
+      className="h-[min(85dvh,720px)] max-h-[min(85dvh,720px)] min-h-0 overflow-hidden p-0"
     >
       {formContent}
     </DsDialog>

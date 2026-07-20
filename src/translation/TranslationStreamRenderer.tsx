@@ -112,7 +112,7 @@ export const TranslationStreamRenderer: React.FC<TranslationStreamRendererProps 
   }, [content, isStreaming]);
 
   return (
-    <div className={`translation-stream-renderer flex flex-col h-full ${className || ''}`}>
+    <div className={`translation-stream-renderer flex min-h-0 flex-col h-full ${className || ''}`}>
       {/* 流式状态提示 */}
       {isStreaming && (
         <div className="flex items-center gap-2 mb-3 px-4 text-sm text-primary">

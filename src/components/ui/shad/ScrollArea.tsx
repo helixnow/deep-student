@@ -1,10 +1,11 @@
 import { forwardRef } from 'react';
-import type { HTMLAttributes } from 'react';
+import type { HTMLAttributes, Ref } from 'react';
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { cn } from '../../../lib/utils';
 
 export interface ScrollAreaProps extends HTMLAttributes<HTMLDivElement> {
   viewportClassName?: string;
+  viewportRef?: Ref<HTMLDivElement>;
   hideTrackWhenIdle?: boolean;
   trackOffsetTop?: number | string;
   trackOffsetBottom?: number | string;
@@ -14,6 +15,9 @@ export interface ScrollAreaProps extends HTMLAttributes<HTMLDivElement> {
   variant?: 'default' | 'dense';
   applyDefaultViewportClassName?: boolean;
   viewportProps?: HTMLAttributes<HTMLDivElement>;
+  scrollAutoHide?: 'never' | 'scroll' | 'leave' | 'move';
+  scrollAutoHideSuspend?: boolean;
+  nativeScrollbars?: boolean;
 }
 
 export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(
@@ -23,6 +27,7 @@ export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(
       style,
       children,
       viewportClassName,
+      viewportRef,
       hideTrackWhenIdle = true,
       trackOffsetTop,
       trackOffsetBottom,
@@ -32,12 +37,15 @@ export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(
       variant = 'default',
       applyDefaultViewportClassName = true,
       viewportProps,
+      scrollAutoHide,
+      scrollAutoHideSuspend,
+      nativeScrollbars,
       ...props
     },
     ref,
   ) => {
     const resolvedViewportClassName = applyDefaultViewportClassName
-      ? cn('max-h-[420px] pr-1', viewportClassName)
+      ? cn('min-h-0 min-w-0 max-h-[420px] pr-1', viewportClassName)
       : viewportClassName;
 
     return (
@@ -47,8 +55,12 @@ export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(
         data-variant={variant === 'dense' ? 'dense' : undefined}
         orientation={orientation}
         viewportClassName={resolvedViewportClassName}
+        viewportRef={viewportRef}
         viewportProps={viewportProps}
         hideTrackWhenIdle={hideTrackWhenIdle}
+        scrollAutoHide={scrollAutoHide}
+        scrollAutoHideSuspend={scrollAutoHideSuspend}
+        nativeScrollbars={nativeScrollbars}
         trackOffsetTop={trackOffsetTop}
         trackOffsetBottom={trackOffsetBottom}
         trackOffsetRight={trackOffsetRight}

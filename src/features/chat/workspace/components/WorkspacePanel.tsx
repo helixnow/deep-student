@@ -325,7 +325,11 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
             onClose={() => setShowCreateAgent(false)}
           />
         )}
-        <CustomScrollArea className="max-h-[400px]">
+        <CustomScrollArea
+          fullHeight={false}
+          className="max-h-[400px]"
+          viewportClassName="max-h-[400px]"
+        >
           <div className="flex flex-col gap-2">
             {workerAgents.map((agent) => (
               <AgentOutputDrawer

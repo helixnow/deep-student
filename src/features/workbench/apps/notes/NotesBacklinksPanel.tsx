@@ -30,6 +30,7 @@ import {
   type NoteBacklinkDto,
 } from './backlinksBackend';
 import { cn } from '@/lib/utils';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import './NotesBacklinksPanel.css';
 import './notes-backlinks-extras.css';
 
@@ -1114,12 +1115,17 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
           {propertiesContent}
         </div>
       ) : (
-      <div
+      <CustomScrollArea
         className="notes-backlinks-panel-body"
-        aria-live="polite"
-        {...(hasPropertiesTab
-          ? { role: 'tabpanel' as const, 'aria-labelledby': `${titleId}-tab-links` }
-          : {})}
+        viewportProps={{
+          'aria-live': 'polite',
+          ...(hasPropertiesTab
+            ? { role: 'tabpanel' as const, 'aria-labelledby': `${titleId}-tab-links` }
+            : {}),
+        }}
+        trackOffsetTop={4}
+        trackOffsetBottom={6}
+        trackOffsetRight={3}
       >
         {!canShowLinks ? (
           <div className="notes-backlinks-panel-message">
@@ -1361,7 +1367,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
           </>
         )}
         {openError && <p className="notes-backlinks-panel-open-error" role="alert">{openError}</p>}
-      </div>
+      </CustomScrollArea>
       )}
     </aside>
   );

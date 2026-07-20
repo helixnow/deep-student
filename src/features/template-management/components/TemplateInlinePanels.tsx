@@ -7,6 +7,7 @@ import {
   Upload, Download, X, FileArrowUp, CheckCircle, WarningCircle,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { cn } from '@/lib/utils';
 import type { CustomAnkiTemplate } from '@/types';
@@ -220,26 +221,31 @@ export const TemplateExportPanel: React.FC<TemplateExportPanelProps> = ({
       {templates.length === 0 ? (
         <div className="wb-tm-panel-desc">{t('no_exportable_templates')}</div>
       ) : (
-        <div className="wb-tm-export-list">
-          {templates.map((template) => (
-            <label key={template.id} className="wb-tm-export-item">
-              <Checkbox
-                checked={selection.has(template.id)}
-                onCheckedChange={(checked) => onToggleSelection(template.id, checked === true)}
-                disabled={isExporting}
-              />
-              <span className="wb-tm-export-item-body">
-                <span className="wb-tm-export-item-name">{template.name}</span>
-                <span className="wb-tm-export-item-meta">
-                  {t('field_count_meta', { count: template.fields.length })}
-                  {' · '}
-                  {t('type_meta', { type: template.note_type })}
-                  {template.is_built_in ? ` · ${t('builtin_badge')}` : ''}
+        <CustomScrollArea
+          className="wb-tm-export-list"
+          fullHeight={false}
+        >
+          <div className="wb-tm-export-list-grid">
+            {templates.map((template) => (
+              <label key={template.id} className="wb-tm-export-item">
+                <Checkbox
+                  checked={selection.has(template.id)}
+                  onCheckedChange={(checked) => onToggleSelection(template.id, checked === true)}
+                  disabled={isExporting}
+                />
+                <span className="wb-tm-export-item-body">
+                  <span className="wb-tm-export-item-name">{template.name}</span>
+                  <span className="wb-tm-export-item-meta">
+                    {t('field_count_meta', { count: template.fields.length })}
+                    {' · '}
+                    {t('type_meta', { type: template.note_type })}
+                    {template.is_built_in ? ` · ${t('builtin_badge')}` : ''}
+                  </span>
                 </span>
-              </span>
-            </label>
-          ))}
-        </div>
+              </label>
+            ))}
+          </div>
+        </CustomScrollArea>
       )}
 
       {error && (

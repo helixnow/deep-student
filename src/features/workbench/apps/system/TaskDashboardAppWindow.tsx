@@ -46,7 +46,7 @@ const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleCha
   return (
     <div
       ref={ref}
-      className="relative h-full w-full min-w-0 overflow-hidden bg-background"
+      className="relative h-full min-h-0 w-full min-w-0 overflow-hidden bg-background"
       data-wb-sys-app="taskDashboard"
     >
       <WbSysActivityStrip

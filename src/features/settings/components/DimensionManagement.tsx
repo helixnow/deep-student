@@ -541,7 +541,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           <>
             {/* 桌面端表格 */}
             <div className="hidden md:block border rounded-md overflow-hidden bg-background/50">
-              <CustomScrollArea className="max-h-[400px]">
+              <CustomScrollArea className="h-[min(400px,50dvh)]">
                 <Table>
                   <TableHeader className="bg-muted/30 sticky top-0 z-10">
                     <TableRow className="hover:bg-transparent border-b">

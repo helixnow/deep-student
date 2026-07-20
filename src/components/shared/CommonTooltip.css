@@ -20,7 +20,6 @@
 
 /* Tooltip内容 */
 .common-tooltip__content {
-  padding: 8px 12px;
   border-radius: 8px;
   font-size: 12px;
   line-height: 1.5;
@@ -32,6 +31,10 @@
     0 2px 4px hsl(var(--shadow-base) / 0.04);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.common-tooltip__viewport {
+  padding: 8px 12px;
 }
 
 /* 深色主题（默认） */
@@ -159,7 +162,7 @@
     max-width: calc(100vw - 32px) !important;
   }
   
-  .common-tooltip__content {
+  .common-tooltip__viewport {
     font-size: 11px;
     padding: 5px 8px;
   }
@@ -203,26 +206,6 @@
 
 /* 长文本处理 */
 .common-tooltip__content {
-  max-height: min(400px, 80vh);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--foreground) / 0.3) transparent;
-}
-
-.common-tooltip__content::-webkit-scrollbar {
-  width: 4px;
-}
-
-.common-tooltip__content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.common-tooltip__content::-webkit-scrollbar-thumb {
-  background: hsl(var(--foreground) / 0.3);
-  border-radius: 2px;
-}
-
-.common-tooltip__content::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--foreground) / 0.5);
+  max-height: min(400px, calc(100dvh - 16px));
 }
 

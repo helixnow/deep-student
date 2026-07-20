@@ -23,6 +23,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { DsButton } from "@/components/ui/DsButton";
+import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { Badge } from "@/components/ui/shad/Badge";
 import {
   Table,
@@ -196,7 +197,11 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
         </div>
 
-        <div className="rounded-lg border border-border/40 overflow-x-auto">
+        <CustomScrollArea
+          orientation="horizontal"
+          fullHeight={false}
+          className="rounded-lg border border-border/40"
+        >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-border/40">
@@ -268,7 +273,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               )}
             </TableBody>
           </Table>
-        </div>
+        </CustomScrollArea>
       </div>
 
       <div className="border-t border-border/40" />

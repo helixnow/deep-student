@@ -263,7 +263,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         </Card>
         
         {/* 试卷内容 */}
-        <CustomScrollArea className="max-h-[min(60vh,520px)]">
+        <CustomScrollArea className="max-h-[min(60vh,520px)]" fullHeight={false}>
           <div className="space-y-4 pr-0 sm:pr-4">
             {generatedPaper.questions.map((question, idx) => (
               <Card key={question.id} className="overflow-hidden [content-visibility:auto] [contain-intrinsic-size:auto_72px]">

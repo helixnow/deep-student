@@ -10,6 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   LineChart,
   Line,
@@ -288,7 +289,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="p-3 space-y-3">
         {tab === 'overview' ? (
           <>
             {/* Metric cards（窄屏两列） */}
@@ -402,7 +403,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = ({ className, embedde
             )}
           </div>
         )}
-      </div>
+      </CustomScrollArea>
     </div>
   );
 };

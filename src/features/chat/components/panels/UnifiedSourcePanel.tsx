@@ -975,7 +975,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
         {detailItem.origin === 'multimodal' && (
           <SourceThumb item={detailItem} className="w-full h-32 mb-2 shrink-0" iconSize={20} />
         )}
-        <CustomScrollArea className="max-h-60 min-h-0" fullHeight={false} hideTrackWhenIdle={false}>
+        <CustomScrollArea
+          className="max-h-60 min-h-0"
+          viewportClassName="max-h-60"
+          fullHeight={false}
+          hideTrackWhenIdle={false}
+        >
           <div className="text-muted-foreground text-xs leading-relaxed whitespace-pre-wrap">
             {detailItem.snippet || t('common:chat.sources.multimodal.noSnippet')}
           </div>

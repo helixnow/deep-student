@@ -74,7 +74,7 @@ export const PlanSteps: React.FC<PlanStepsProps> = ({ steps }) => {
   };
 
   return (
-    <div className="py-1 max-h-[260px] overflow-y-auto">
+    <div className="py-1">
       {steps.map((step, idx) => {
         const key = step.id || String(idx);
         const hasDetail = !!step.result?.trim() && EXPANDABLE_STATUSES.has(step.status);
@@ -142,7 +142,6 @@ export const PlanSteps: React.FC<PlanStepsProps> = ({ steps }) => {
                   step.status === 'failed'
                     ? 'text-[color:hsl(var(--destructive))] border-[color:hsl(var(--destructive)/0.28)] bg-[color:hsl(var(--destructive)/0.06)]'
                     : 'text-[color:var(--text-secondary)]',
-                  'max-h-40 overflow-y-auto',
                 )}
               >
                 {step.result}

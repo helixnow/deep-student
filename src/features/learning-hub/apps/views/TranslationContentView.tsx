@@ -28,6 +28,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { registerContentAgentSurface } from '@/features/workbench/apps/content/contentAgentSurfaces';
 import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
@@ -190,17 +191,19 @@ const BilingualPreview: React.FC<{ session: TranslationSession }> = ({ session }
               />
             </div>
           </header>
-          <div className="p-3 max-h-72 overflow-y-auto">
-            {section.text ? (
-              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">
-                {section.text}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {t('translation:contentView.empty_content')}
-              </p>
-            )}
-          </div>
+          <CustomScrollArea className="max-h-72 min-h-0" fullHeight={false}>
+            <div className="p-3">
+              {section.text ? (
+                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">
+                  {section.text}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {t('translation:contentView.empty_content')}
+                </p>
+              )}
+            </div>
+          </CustomScrollArea>
         </section>
       ))}
     </div>
@@ -521,7 +524,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
 
   // 工作台不可用（chunk 加载失败 / 渲染崩溃）时的内联降级
   const workbenchFallback = (
-    <div className="flex flex-col h-full bg-background overflow-y-auto ui-fade-in" role="alert">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background ui-fade-in" role="alert">
       {/* 📱 400px：操作按钮换行到文案下方（sm 以上保持右侧同排），避免标题被挤压截断 */}
       <div className="flex flex-wrap items-start gap-3 px-4 py-3 border-b border-destructive/20 bg-destructive/10">
         <Warning size={18} className="text-destructive shrink-0 mt-0.5" aria-hidden="true" />
@@ -548,15 +551,17 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
         </div>
       </div>
       {hasPreviewContent && session && (
-        <div className="p-3 sm:p-4">
-          <BilingualPreview session={session} />
-        </div>
+        <CustomScrollArea className="min-h-0 flex-1">
+          <div className="p-3 sm:p-4">
+            <BilingualPreview session={session} />
+          </div>
+        </CustomScrollArea>
       )}
     </div>
   );
 
   return (
-    <div className="relative flex flex-col h-full bg-background">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {/* 保存失败内联错误条：保留 dirty 的同时提供就地重试 */}
       {saveState.status === 'error' && (
         <div

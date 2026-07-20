@@ -9,6 +9,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { CaretDown, CaretRight, CodeBlock } from '@phosphor-icons/react';
 
 // ============================================================================
@@ -151,13 +152,15 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
 
       {/* 内容区域 */}
       {isExpanded && (
-        <div
+        <CustomScrollArea
+          orientation="both"
+          fullHeight={false}
           className={cn(
-            'mt-1 p-2 rounded',
+            'mt-1 max-h-48 rounded',
             'bg-muted/30 dark:bg-muted/20',
             'border border-border/30',
-            'overflow-auto max-h-48'
           )}
+          viewportClassName="max-h-48 p-2"
         >
           {/* 简洁模式：键值对列表 */}
           <div className="space-y-1">
@@ -182,7 +185,7 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
               </pre>
             </details>
           )}
-        </div>
+        </CustomScrollArea>
       )}
     </div>
   );

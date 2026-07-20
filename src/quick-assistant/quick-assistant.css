@@ -44,7 +44,7 @@ button, input { letter-spacing: 0; font: inherit; }
 .qa-icon-button:hover, .qa-icon-button.is-active { background: var(--qa-raised); color: var(--qa-ink); }
 .qa-icon-button.is-active { color: var(--qa-accent); }
 
-.qa-content { min-height: 0; display: flex; flex-direction: column; gap: 7px; overflow: auto; padding: 8px 8px 7px; scrollbar-width: thin; }
+.qa-content { min-height: 0; display: flex; flex-direction: column; gap: 7px; overflow: auto; padding: 8px 8px 7px; }
 
 .qa-input-row { flex: 0 0 auto; }
 .qa-input { width: 100%; height: 34px; border: 1px solid var(--qa-line); border-radius: 9px; outline: none; padding: 0 11px; background: color-mix(in srgb, hsl(var(--muted)) 42%, transparent); color: var(--qa-ink); font-size: var(--font-size-ui); }
@@ -58,7 +58,7 @@ button, input { letter-spacing: 0; font: inherit; }
 .qa-capture-clear { display: grid; place-items: center; width: 20px; height: 20px; border: 0; border-radius: 6px; background: transparent; color: var(--qa-muted); cursor: pointer; }
 .qa-capture-clear:hover { background: var(--qa-raised); color: var(--qa-ink); }
 
-.qa-menu { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.qa-menu { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow: auto; }
 .qa-menu-divider { flex: 0 0 auto; height: 1px; margin: 3px 6px; background: var(--qa-soft-line); }
 .qa-menu-item { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--qa-ink); text-align: left; cursor: pointer; }
 .qa-menu-item.is-active { background: var(--qa-raised); box-shadow: inset 0 0 0 1px var(--qa-soft-line); }
@@ -78,9 +78,9 @@ button, input { letter-spacing: 0; font: inherit; }
 .qa-subhead-meta { color: var(--qa-muted); font-size: var(--font-size-2xs); white-space: nowrap; }
 
 .qa-asked { flex: 0 0 auto; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding: 5px 8px; border: 0; border-left: 2px solid color-mix(in srgb, var(--qa-accent) 45%, transparent); border-radius: 4px; background: var(--qa-raised); color: var(--qa-muted); text-align: left; font-size: var(--font-size-xs); line-height: 1.45; white-space: pre-wrap; word-break: break-all; cursor: pointer; }
-.qa-asked.is-expanded { display: block; -webkit-line-clamp: unset; max-height: 38%; overflow: auto; scrollbar-width: thin; }
+.qa-asked.is-expanded { display: block; -webkit-line-clamp: unset; max-height: 38%; overflow: auto; }
 
-.qa-answer { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--qa-soft-line); border-radius: 8px; background: var(--qa-raised); font-size: var(--font-size-sm); line-height: 1.6; overflow-wrap: anywhere; scrollbar-width: thin; }
+.qa-answer { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--qa-soft-line); border-radius: 8px; background: var(--qa-raised); font-size: var(--font-size-sm); line-height: 1.6; overflow-wrap: anywhere; }
 .qa-answer > :first-child { margin-top: 0; } .qa-answer > :last-child { margin-bottom: 0; } .qa-answer p { margin: .4em 0; } .qa-answer ul, .qa-answer ol { padding-left: 1.35em; }
 .qa-answer pre { overflow: auto; padding: 7px 9px; border-radius: 7px; background: var(--qa-raised-strong); font-size: var(--font-size-xs); line-height: 1.5; }
 .qa-answer code { padding: 1px 4px; border-radius: 4px; background: var(--qa-raised-strong); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
@@ -97,7 +97,7 @@ button, input { letter-spacing: 0; font: inherit; }
 .qa-primary-button:hover { filter: brightness(.96); }
 button:disabled { cursor: not-allowed; opacity: .42; }
 
-.qa-results { display: grid; gap: 4px; align-content: start; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.qa-results { display: grid; gap: 4px; align-content: start; min-height: 0; overflow: auto; }
 .qa-result { display: grid; grid-template-columns: 24px minmax(0, 1fr) 16px; align-items: center; gap: 7px; width: 100%; min-height: 40px; padding: 5px 8px; border: 1px solid var(--qa-soft-line); border-radius: 8px; background: transparent; color: var(--qa-ink); text-align: left; cursor: pointer; }
 .qa-result:hover { background: var(--qa-raised); }
 .qa-result-icon { display: grid; place-items: center; color: var(--qa-accent); }

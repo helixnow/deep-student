@@ -80,6 +80,24 @@ const NOTE_TYPE_OPTIONS = [
 /** 检测模板 HTML 中是否含 <script>（用于信息级提示，不做剥除） */
 const containsScriptTag = (html: string) => /<script[\s>]/i.test(html);
 
+const EditorContent: React.FC<{
+  codeMode: boolean;
+  children: React.ReactNode;
+}> = ({ codeMode, children }) => {
+  const className = `editor-content ${codeMode ? 'editor-content-code' : ''}`;
+  if (codeMode) {
+    return <div className={className}>{children}</div>;
+  }
+  return (
+    <CustomScrollArea
+      className={className}
+      viewportClassName="editor-content-viewport"
+    >
+      {children}
+    </CustomScrollArea>
+  );
+};
+
 const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
   template,
   mode,
@@ -678,7 +696,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       {/* 侧边栏导航 - 可隐藏 */}
       {!hideSidebar && (
         <div className="editor-sidebar">
-          <nav className="editor-nav">
+          <nav className="editor-nav scrollbar-none">
             <DsButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'basic' ? 'active' : ''}`} onClick={() => setActiveTab('basic')}>
               <FileText size={18} />
               {t('basic_info')}
@@ -706,7 +724,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       {/* 主内容区 */}
       <div className="editor-main">
         {/* 内容区域 */}
-        <div className={`editor-content ${(activeTab === 'templates' || activeTab === 'styles') ? 'editor-content-code' : ''}`}>
+        <EditorContent codeMode={activeTab === 'templates' || activeTab === 'styles'}>
           {/* 错误提示 */}
           {validationErrors.length > 0 && (
             <div className="validation-alert">
@@ -855,11 +873,9 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
               {isSmallScreen ? (
                 <>
                   {/* 中屏：实时预览面板 */}
-                  <div className="flex-1 min-h-0 overflow-y-auto">
-                    <div className="p-3">
-                      {renderPreviewPanel(true)}
-                    </div>
-                  </div>
+                  <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-3">
+                    {renderPreviewPanel(true)}
+                  </CustomScrollArea>
                   {/* 右屏：代码编辑器（portal 到 MobileSlidingLayout 的 rightPanel） */}
                   {mobileEditorPortalTarget && createPortal(
                     <div className="h-full flex flex-col">
@@ -1124,15 +1140,19 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                     <h2 className="text-base font-semibold text-foreground">{t('full_prompt_preview')}</h2>
                     <p className="text-xs text-muted-foreground mt-0.5">{t('full_prompt_preview_desc')}</p>
                   </div>
-                    <div className="preview-content font-mono text-sm bg-muted p-4 rounded-md">
+                    <CustomScrollArea
+                      className="prompt-preview-scroll max-h-[min(600px,60dvh)] rounded-md bg-muted"
+                      viewportClassName="p-4 font-mono text-sm"
+                      fullHeight={false}
+                    >
                       {templateService.generatePrompt(promptPreviewTemplate)}
-                    </div>
+                    </CustomScrollArea>
                 </div>
               )}
             </>
           )}
 
-        </div>
+        </EditorContent>
 
         {/* 底部操作栏 - 固定在 editor-main 底部，不参与滚动 */}
         <div className="flex-none px-4 py-1.5 border-t border-border/40 flex items-center justify-between gap-3">

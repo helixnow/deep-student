@@ -239,7 +239,7 @@
 .epub-preview-toc,
 .epub-preview-search-results {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
 }
 
 .epub-preview-toc {

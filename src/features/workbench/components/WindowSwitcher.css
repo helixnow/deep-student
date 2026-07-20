@@ -111,6 +111,19 @@
  * 图标条：换行 + 三行封顶纵向滚动（大量窗口）
  * ========================================================================== */
 
+.wb-switcher-scroll {
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(3 * (var(--wb-switcher-cell-h) + var(--wb-switcher-gap)) + 4px);
+  min-height: 0;
+}
+
+.wb-switcher-scroll [data-overlayscrollbars-viewport],
+.wb-switcher-scroll .scroll-area--native {
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
 .wb-switcher-strip {
   position: relative;
   display: flex;
@@ -118,22 +131,8 @@
   justify-content: center;
   align-content: flex-start;
   gap: var(--wb-switcher-gap);
-  max-width: 100%;
-  max-height: calc(3 * (var(--wb-switcher-cell-h) + var(--wb-switcher-gap)) + 4px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scroll-behavior: smooth;
+  min-width: 0;
   padding: 2px;
-  scrollbar-width: thin;
-}
-
-.wb-switcher-strip::-webkit-scrollbar {
-  width: 6px;
-}
-
-.wb-switcher-strip::-webkit-scrollbar-thumb {
-  border-radius: 3px;
-  background: color-mix(in hsl, hsl(var(--foreground)) 22%, transparent 78%);
 }
 
 /* ==========================================================================
@@ -377,7 +376,8 @@
     --wb-switcher-commit-duration: 0ms;
   }
 
-  .wb-switcher-strip {
+  .wb-switcher-scroll [data-overlayscrollbars-viewport],
+  .wb-switcher-scroll .scroll-area--native {
     scroll-behavior: auto;
   }
 }

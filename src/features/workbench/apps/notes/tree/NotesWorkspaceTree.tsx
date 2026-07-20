@@ -20,6 +20,7 @@ import {
 } from '@dnd-kit/sortable';
 import { FileText, FolderSimple, TreeStructure } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import { cn } from '@/lib/utils';
 import { calculateDropPosition, isInvalidFolderDrop } from './dropPosition';
@@ -717,14 +718,20 @@ export function NotesWorkspaceTree({
       autoScroll={{ enabled: true, threshold: { x: 1, y: 0.25 }, ...SHELL_SAFE_AUTO_SCROLL }}
     >
       <SortableContext items={visibleIds} strategy={verticalListSortingStrategy}>
-        <div
-          ref={treeRef}
-          className={cn('nwt-tree', className)}
-          role="tree"
-          aria-label={ariaLabel ?? t('workbench:notesWorkspace.tree.aria')}
-          aria-busy={ariaBusy}
-          aria-multiselectable="true"
-          onKeyDown={handleTreeKeyDown}
+        <CustomScrollArea
+          className={cn('nwt-scroll', className)}
+          viewportRef={treeRef}
+          viewportClassName="nwt-tree"
+          viewportProps={{
+            role: 'tree',
+            'aria-label': ariaLabel ?? t('workbench:notesWorkspace.tree.aria'),
+            'aria-busy': ariaBusy,
+            'aria-multiselectable': true,
+            onKeyDown: handleTreeKeyDown,
+          }}
+          trackOffsetTop={1}
+          trackOffsetBottom={8}
+          trackOffsetRight={3}
         >
           <div ref={dropIndicatorRef} className="nwt-drop-indicator" style={{ display: 'none' }} />
 
@@ -773,7 +780,7 @@ export function NotesWorkspaceTree({
               />
             );
           })}
-        </div>
+        </CustomScrollArea>
       </SortableContext>
 
       {typeof document !== 'undefined'

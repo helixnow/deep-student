@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Slider } from '@/components/ui/shad/Slider';
@@ -808,17 +809,24 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 <X size={14} />
               </DsButton>
             </div>
-            <div className="-mr-1 max-h-[min(48vh,420px)] overflow-y-auto overscroll-contain pr-1">
-              {renderedPanel === 'settings' ? (
-                <div className="mx-auto max-w-xl">
-                  <PomodoroSettingsContent />
-                </div>
-              ) : (
-                <div className="mx-auto max-w-xl">
-                  <PomodoroStatsContent showTitle={false} />
-                </div>
-              )}
-            </div>
+            <CustomScrollArea
+              className="-mr-1 max-h-[min(48vh,420px)] min-h-0"
+              viewportClassName="overscroll-contain"
+              fullHeight={false}
+              trackOffsetRight={1}
+            >
+              <div className="pr-1">
+                {renderedPanel === 'settings' ? (
+                  <div className="mx-auto max-w-xl">
+                    <PomodoroSettingsContent />
+                  </div>
+                ) : (
+                  <div className="mx-auto max-w-xl">
+                    <PomodoroStatsContent showTitle={false} />
+                  </div>
+                )}
+              </div>
+            </CustomScrollArea>
           </div>
         )}
       </div>
@@ -1111,7 +1119,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
 
           {/* 行 3：次要操作横滑区（运行中常显；空闲态由 ⋯ 展开），全部 ≥44px 触控 */}
           {(mode !== 'idle' || mobileMoreOpen) && (
-            <div className="ui-rise-in -mx-1 flex items-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="scrollbar-none ui-rise-in -mx-1 flex items-center gap-1 overflow-x-auto px-1">
               {renderStopControl(true)}
               {renderDurationPresets(true)}
               {isCountUpWork && isRunning && (

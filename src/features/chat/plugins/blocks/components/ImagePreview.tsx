@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import './image-preview.css';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { openUrl } from '@/utils/urlOpener';
 import { fileManager } from '@/utils/fileManager';
 import {
@@ -194,7 +195,12 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
         </div>
 
         {/* 原始尺寸滚动区（内联展开，非模态） */}
-        <div className="max-h-[70vh] overflow-auto">
+        <CustomScrollArea
+          orientation="both"
+          fullHeight={false}
+          className="max-h-[70vh]"
+          viewportClassName="max-h-[70vh]"
+        >
           <img
             src={src}
             alt={alt || 'Generated image'}
@@ -202,7 +208,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             onClick={handleCollapse}
             draggable={false}
           />
-        </div>
+        </CustomScrollArea>
       </div>
     );
   }

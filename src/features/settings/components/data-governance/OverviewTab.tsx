@@ -23,6 +23,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import type {
@@ -341,7 +342,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
 
-        <div className="rounded-lg border border-border/40 overflow-x-auto">
+        <CustomScrollArea
+          orientation="horizontal"
+          fullHeight={false}
+          className="rounded-lg border border-border/40"
+        >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-border/40">
@@ -432,7 +437,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               )}
             </TableBody>
           </Table>
-        </div>
+        </CustomScrollArea>
       </div>
 
       {/* 依赖检查结果 */}

@@ -244,7 +244,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
   const totalMemories = countRecursive(treeData);
 
   return (
-    <div className={cn('flex flex-col h-full', className)}>
+    <div className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
         <GitBranch size={14} className="text-muted-foreground" />
@@ -261,7 +261,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
       </div>
 
       {/* Tree */}
-      <CustomScrollArea className="flex-1">
+      <CustomScrollArea className="min-h-0 flex-1">
         <div className="py-1" data-memory-tree-root role="tree">
           <TreeNode
             node={treeData}

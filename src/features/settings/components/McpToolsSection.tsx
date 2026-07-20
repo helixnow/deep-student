@@ -1876,16 +1876,19 @@ export function PresetServerSelector({
               </div>
             </div>
           ) : (
-            <div
+            <CustomScrollArea
               ref={selectorPanelRef}
-              className="mt-1 max-h-[60vh] w-full overflow-y-auto rounded-lg border border-border bg-popover p-2 ui-zoom-fade-in motion-reduce:animate-none mcp-preset-selector"
+              className="mt-1 h-[min(60dvh,30rem)] w-full rounded-lg border border-border bg-popover ui-zoom-fade-in motion-reduce:animate-none mcp-preset-selector"
+              viewportClassName="p-2"
+              trackOffsetTop={4}
+              trackOffsetBottom={4}
               role="group"
               aria-label={t('settings:mcp_presets.title')}
               tabIndex={-1}
               data-testid="mcp-preset-selector"
             >
               {selectorContent}
-            </div>
+            </CustomScrollArea>
           )
         ) : (
           <>
@@ -1895,9 +1898,12 @@ export function PresetServerSelector({
               aria-hidden="true"
               data-testid="mcp-preset-selector-backdrop"
             />
-            <div
+            <CustomScrollArea
               ref={selectorPanelRef}
-              className="absolute top-full right-0 mt-1 z-50 w-[380px] max-w-[calc(100vw-3rem)] max-h-[480px] overflow-y-auto p-2 bg-popover border border-border rounded-lg shadow-lg ui-zoom-fade-in mcp-preset-selector"
+              className="absolute right-0 top-full z-50 mt-1 h-[min(60dvh,30rem)] w-[380px] max-w-[calc(100vw-3rem)] rounded-lg border border-border bg-popover shadow-lg ui-zoom-fade-in mcp-preset-selector"
+              viewportClassName="p-2"
+              trackOffsetTop={4}
+              trackOffsetBottom={4}
               role="dialog"
               aria-modal="true"
               aria-label={t('settings:mcp_presets.title')}
@@ -1905,7 +1911,7 @@ export function PresetServerSelector({
               data-testid="mcp-preset-selector"
             >
               {selectorContent}
-            </div>
+            </CustomScrollArea>
           </>
         )
       )}
@@ -1915,9 +1921,10 @@ export function PresetServerSelector({
         <Sheet open={Boolean(pendingPreset)} onOpenChange={(open) => { if (!open) closePermissionDrawer(); }}>
           <SheetContent
             side="right"
-            className="w-full sm:max-w-md mcp-preset-permission-drawer"
+            className="flex min-h-0 w-full flex-col overflow-hidden sm:max-w-md mcp-preset-permission-drawer"
             data-testid="mcp-preset-permission-drawer"
             aria-describedby="mcp-preset-permission-summary"
+            onWheel={(event) => event.stopPropagation()}
           >
             {pendingPreset && (
               <>
@@ -1930,10 +1937,17 @@ export function PresetServerSelector({
                     {t(pendingPreset.descriptionKey)}
                   </SheetDescription>
                 </SheetHeader>
-                <div className="mt-4 space-y-4 text-sm">
-                  {permissionBody}
-                </div>
-                <SheetFooter className="mt-6 flex gap-2 sm:justify-end">
+                <CustomScrollArea
+                  className="mt-4 min-h-0 flex-1"
+                  viewportClassName="pr-2 text-sm"
+                  trackOffsetTop={4}
+                  trackOffsetBottom={4}
+                >
+                  <div className="space-y-4">
+                    {permissionBody}
+                  </div>
+                </CustomScrollArea>
+                <SheetFooter className="mt-6 shrink-0 flex gap-2 sm:justify-end">
                   {permissionFooterButtons}
                 </SheetFooter>
               </>
@@ -3539,9 +3553,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                       </div>
                     ) : (
                       <CustomScrollArea
-                        fullHeight={false}
-                        className="border-x border-b border-border/30 rounded-b-md"
-                        viewportProps={{ style: { maxHeight: 480 } }}
+                        className="h-[min(480px,60dvh)] rounded-b-md border-x border-b border-border/30"
                       >
                         <div className="divide-y divide-border/20">
                           {capabilityGroups.flatMap(group => group.tools).map(tool => {

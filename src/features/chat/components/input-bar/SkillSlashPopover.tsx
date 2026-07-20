@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Lightning, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { isSkillDisabled, SKILL_ENABLED_CHANGED_EVENT } from '../../skills/skillEnableStorage';
 
@@ -331,7 +332,12 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
       </div>
 
       {/* 技能列表 */}
-      <div ref={listRef} className="max-h-72 overflow-y-auto p-1">
+      <CustomScrollArea
+        viewportRef={listRef}
+        fullHeight={false}
+        className="max-h-72"
+        viewportClassName="max-h-72 p-1"
+      >
         {suggestions.map((skill, index) => (
           <div
             key={skill.id}
@@ -385,7 +391,7 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
             )}
           </div>
         ))}
-      </div>
+      </CustomScrollArea>
 
       {/* 底部按键提示 */}
       <div className="flex items-center gap-2 border-t border-border/50 px-3 py-1.5 text-2xs text-muted-foreground">

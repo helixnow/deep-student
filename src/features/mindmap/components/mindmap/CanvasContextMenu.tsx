@@ -34,6 +34,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { tweenFast, transitionInstant } from '@/styles/motion-springs';
 import {
   BACK_PRIORITY,
@@ -70,8 +71,7 @@ interface CanvasContextMenuProps {
 /** 菜单外壳：对齐 AppMenu 的 --menu-shell-* 语言（与全局下拉/右键菜单同族） */
 const MENU_SHELL_CLASS = cn(
   'mindmap-container fixed min-w-[200px] max-w-[248px]',
-  'max-h-[calc(100vh-16px)] overflow-y-auto overscroll-contain',
-  'p-[var(--menu-shell-padding)] rounded-[var(--menu-shell-radius)]',
+  'max-h-[calc(100vh-16px)] rounded-[var(--menu-shell-radius)]',
   'border border-[var(--menu-shell-border)] bg-[var(--menu-shell-surface)]',
   'text-[var(--menu-shell-foreground)] shadow-[var(--menu-shell-shadow)]',
   '[backdrop-filter:var(--menu-shell-backdrop-filter)]',
@@ -347,12 +347,14 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 
   if (isAssociationMenu && association) {
     return createPortal(
-      <div
+      <CustomScrollArea
         ref={menuRef}
         role="menu"
         tabIndex={-1}
         aria-label={t('association.menuLabel', { defaultValue: '关联线菜单' })}
         className={MENU_SHELL_CLASS}
+        viewportClassName="max-h-[inherit] overscroll-contain p-[var(--menu-shell-padding)]"
+        fullHeight={false}
         style={menuStyle}
         onKeyDown={handleMenuKeyDown}
       >
@@ -369,7 +371,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           destructive
           onClick={() => exec(() => onDeleteAssociation?.(association.id))}
         />
-      </div>,
+      </CustomScrollArea>,
       window.document.body,
     );
   }
@@ -377,12 +379,14 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   // 画布空白处右键菜单：新建主题 / 粘贴 / 适应视图 / 全部展开折叠
   if (paneMenu && !nodeId && !associationId) {
     return createPortal(
-      <div
+      <CustomScrollArea
         ref={menuRef}
         role="menu"
         tabIndex={-1}
         aria-label={t('contextMenu.paneMenuLabel', { defaultValue: '画布菜单' })}
         className={MENU_SHELL_CLASS}
+        viewportClassName="max-h-[inherit] overscroll-contain p-[var(--menu-shell-padding)]"
+        fullHeight={false}
         style={menuStyle}
         onKeyDown={handleMenuKeyDown}
       >
@@ -429,7 +433,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           label={t('toolbar.collapseAll', { defaultValue: '折叠全部' })}
           onClick={() => exec(() => collapseAll())}
         />
-      </div>,
+      </CustomScrollArea>,
       window.document.body,
     );
   }
@@ -444,12 +448,14 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   );
 
   return createPortal(
-    <div
+    <CustomScrollArea
       ref={menuRef}
       role="menu"
       tabIndex={-1}
       aria-label={t('contextMenu.nodeMenuLabel', { defaultValue: '节点菜单' })}
       className={MENU_SHELL_CLASS}
+      viewportClassName="max-h-[inherit] overscroll-contain p-[var(--menu-shell-padding)]"
+      fullHeight={false}
       style={menuStyle}
       onKeyDown={handleMenuKeyDown}
     >
@@ -705,7 +711,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           </AnimatePresence>
         </>
       )}
-    </div>,
+    </CustomScrollArea>,
     window.document.body
   );
 };

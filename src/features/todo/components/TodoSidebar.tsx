@@ -20,6 +20,7 @@
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   Tray,
   Star,
@@ -978,6 +979,84 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
     );
   };
 
+  const listSectionContent = (
+    <>
+      {/* 新建列表输入（有内容时失焦即提交，避免丢输入） */}
+      {isCreating && (
+        <div className="px-0.5 pb-1">
+          <Input
+            autoFocus
+            value={newListTitle}
+            onChange={(e) => setNewListTitle(e.target.value)}
+            onKeyDown={handleCreateKeyDown}
+            onBlur={() => void handleCreateList()}
+            placeholder={t('todo:actions.newListPlaceholder')}
+            className={cn(
+              'h-8 w-full rounded-[var(--radius-shell-control)] border',
+              'border-[color:var(--shell-navigation-border)]',
+              'bg-[color:var(--interactive-hover)] px-2.5 text-ui',
+              'text-[color:var(--shell-navigation-foreground)]',
+              'outline-none placeholder:text-[color:var(--shell-navigation-muted)]',
+            )}
+          />
+        </div>
+      )}
+
+      <DndContext
+        sensors={sensors}
+        autoScroll={SHELL_SAFE_AUTO_SCROLL}
+        collisionDetection={closestCenter}
+        modifiers={[restrictToVerticalAxis]}
+        onDragStart={() => setDragActive(true)}
+        onDragCancel={() => setDragActive(false)}
+        onDragEnd={handleListDragEnd}
+      >
+        {favoriteLists.length > 0 && (
+          <>
+            <SectionHeader
+              label={t('todo:sections.favorites')}
+              collapsed={favoritesCollapsed}
+              onToggle={() => toggleSection('favorites')}
+              controlsId={favoritesBodyId}
+              className="pb-1 pt-0.5"
+            />
+            <CollapsibleBody
+              id={favoritesBodyId}
+              collapsed={favoritesCollapsed}
+              innerClassName={dragActive && !favoritesCollapsed ? 'overflow-visible' : undefined}
+            >
+              <SortableContext
+                items={favoriteLists.map((l) => l.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-0.5 pb-1.5">
+                  {favoriteLists.map(renderListRow)}
+                </div>
+              </SortableContext>
+            </CollapsibleBody>
+          </>
+        )}
+
+        <SortableContext
+          items={regularLists.map((l) => l.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-0.5">
+            {regularLists.map(renderListRow)}
+          </div>
+        </SortableContext>
+      </DndContext>
+
+      {filteredLists.length === 0 && !isCreating && (
+        <div className="px-2 py-6 text-center text-sm text-[color:var(--shell-navigation-muted)]">
+          {searchQuery
+            ? t('todo:empty.noMatchingLists', '没有匹配的列表')
+            : t('todo:empty.noLists', '暂无列表')}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <aside
       ref={asideRef}
@@ -1122,83 +1201,13 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
           collapsed={listsCollapsed}
           className={cn(!unifiedDrawer && 'min-h-0 flex-1')}
         >
-          <div className={cn(unifiedDrawer ? '' : 'h-full min-h-0 overflow-y-auto')}>
-            {/* 新建列表输入（有内容时失焦即提交，避免丢输入） */}
-            {isCreating && (
-              <div className="px-0.5 pb-1">
-                <Input
-                  autoFocus
-                  value={newListTitle}
-                  onChange={(e) => setNewListTitle(e.target.value)}
-                  onKeyDown={handleCreateKeyDown}
-                  onBlur={() => void handleCreateList()}
-                  placeholder={t('todo:actions.newListPlaceholder')}
-                  className={cn(
-                    'h-8 w-full rounded-[var(--radius-shell-control)] border',
-                    'border-[color:var(--shell-navigation-border)]',
-                    'bg-[color:var(--interactive-hover)] px-2.5 text-ui',
-                    'text-[color:var(--shell-navigation-foreground)]',
-                    'outline-none placeholder:text-[color:var(--shell-navigation-muted)]',
-                  )}
-                />
-              </div>
-            )}
-
-            <DndContext
-              sensors={sensors}
-              autoScroll={SHELL_SAFE_AUTO_SCROLL}
-              collisionDetection={closestCenter}
-              modifiers={[restrictToVerticalAxis]}
-              onDragStart={() => setDragActive(true)}
-              onDragCancel={() => setDragActive(false)}
-              onDragEnd={handleListDragEnd}
-            >
-              {/* 收藏清单置顶分组（可折叠；拖普通清单到收藏行上 = 收藏） */}
-              {favoriteLists.length > 0 && (
-                <>
-                  <SectionHeader
-                    label={t('todo:sections.favorites')}
-                    collapsed={favoritesCollapsed}
-                    onToggle={() => toggleSection('favorites')}
-                    controlsId={favoritesBodyId}
-                    className="pb-1 pt-0.5"
-                  />
-                  <CollapsibleBody
-                    id={favoritesBodyId}
-                    collapsed={favoritesCollapsed}
-                    // 拖拽中放开裁剪：跨组移动的行不被收藏分区边界剪断
-                    innerClassName={dragActive && !favoritesCollapsed ? 'overflow-visible' : undefined}
-                  >
-                    <SortableContext
-                      items={favoriteLists.map((l) => l.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="space-y-0.5 pb-1.5">
-                        {favoriteLists.map(renderListRow)}
-                      </div>
-                    </SortableContext>
-                  </CollapsibleBody>
-                </>
-              )}
-
-              <SortableContext
-                items={regularLists.map((l) => l.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-0.5">
-                  {regularLists.map(renderListRow)}
-                </div>
-              </SortableContext>
-            </DndContext>
-
-            {filteredLists.length === 0 && !isCreating && (
-              <div className="px-2 py-6 text-center text-sm text-[color:var(--shell-navigation-muted)]">
-                {searchQuery
-                  ? t('todo:empty.noMatchingLists', '没有匹配的列表')
-                  : t('todo:empty.noLists', '暂无列表')}
-              </div>
-            )}
-          </div>
+          {unifiedDrawer ? (
+            <div>{listSectionContent}</div>
+          ) : (
+            <CustomScrollArea className="h-full min-h-0" trackOffsetRight={1}>
+              {listSectionContent}
+            </CustomScrollArea>
+          )}
         </CollapsibleBody>
       </div>
 

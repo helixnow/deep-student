@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useNotes } from "../NotesContext";
 import { getErrorMessage } from "../../../utils/errorUtils";
 import { Trash, ArrowCounterClockwise, ArrowsClockwise, X } from "@phosphor-icons/react";
@@ -214,7 +215,10 @@ export function TrashDialog() {
                 t('notes:trash.confirm_empty_desc'),
             )}
 
-            <div className="min-h-0 flex-1 overflow-auto border-t border-border/60">
+            <CustomScrollArea
+                className="min-h-0 flex-1 border-t border-border/60"
+                viewportClassName="pr-1"
+            >
                 {loading ? (
                     <div className="flex justify-center py-8">
                         <span className="loading loading-spinner loading-md" />
@@ -266,7 +270,7 @@ export function TrashDialog() {
                         ))}
                     </div>
                 )}
-            </div>
+            </CustomScrollArea>
         </section>
     );
 }

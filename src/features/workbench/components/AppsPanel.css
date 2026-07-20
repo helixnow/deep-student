@@ -55,6 +55,7 @@
   flex-direction: column;
   width: min(720px, 100%);
   max-height: min(560px, 100%);
+  min-height: 0;
   border-radius: var(--wb-radius-xl, 18px);
   /* 中央玻璃件走 overlay 阴影档（--wb-dock-shadow 是 Dock 条专用，层级语义不同） */
   box-shadow: var(--wb-shadow-overlay, 0 32px 96px hsl(var(--shadow-base, 0 0% 0%) / 0.30));
@@ -227,16 +228,10 @@
 .wb-apps-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  padding: 4px 12px 16px;
-  scrollbar-gutter: auto;
 }
 
-/* 玻璃面板内使用悬浮滚动条，避免 WebKit 为 stable gutter 绘制不透明原生槽。 */
-.wb-apps-body::-webkit-scrollbar,
-.wb-apps-body::-webkit-scrollbar-track,
-.wb-apps-body::-webkit-scrollbar-corner {
-  background: transparent;
+.wb-apps-body-viewport {
+  padding: 4px 12px 16px;
 }
 
 .wb-apps-grid {

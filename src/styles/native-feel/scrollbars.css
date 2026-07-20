@@ -7,19 +7,19 @@
  * - A 10px interaction lane carries a restrained 4px visual thumb.
  * - Native scrollbars stay invisible until hover / keyboard focus.
  * - OverlayScrollbars appears while scrolling or interacting, then auto-hides.
- * - Light and dark themes use separate perceptual neutral ramps.
- * - Touch surfaces keep the always-visible thin thumb（M-1 审计决策，见文件尾）.
+ * - Both paths consume the same geometry and semantic color tokens.
+ * - Touch surfaces keep a visible thumb because CSS cannot reveal a native
+ *   scrollbar only while scrolling.
  *
  * Tokens:
  *   --scrollbar-thumb        — visible thumb colour (defined in theme-colors.css)
  *   --scrollbar-thumb-hover  — thumb hovered colour
  *   --scrollbar-thumb-active — thumb dragged colour
- *   --scrollbar-track        — preserved for inset / always-visible scrollbars
- *   --scrollbar-track-hover  — quiet track feedback
+ *   --scrollbar-track        — transparent in every interaction state
+ *   --scrollbar-interaction-size / --scrollbar-thumb-inset — shared geometry
  *
- * Escape hatches:
- *   .scroll-hidden  — completely no scrollbar (mobile / overlay panes)
- *   .scroll-always  — always-visible thin scrollbar (e.g. forms with long lists)
+ * The sole scrollbar-hiding utility is `.scrollbar-none`, defined in
+ * src/shared/styles/scrollbar-utils.css.
  *
  * Design doc: docs/plans/2026-05-14-native-feel-migration-design.md
  */
@@ -47,8 +47,8 @@
 /* WebKit: hidden by default, visible on container hover            */
 /* ---------------------------------------------------------------- */
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: var(--scrollbar-interaction-size);
+  height: var(--scrollbar-interaction-size);
   background: transparent;
 }
 
@@ -60,8 +60,9 @@
 *::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 999px;
-  border: 3px solid transparent;
+  border: var(--scrollbar-thumb-inset) solid transparent;
   background-clip: padding-box;
+  transition: background-color 160ms ease-out;
 }
 
 *:hover::-webkit-scrollbar-thumb,
@@ -97,52 +98,27 @@
 /* ---------------------------------------------------------------- */
 /* OverlayScrollbars: project-owned visual system                    */
 /* ---------------------------------------------------------------- */
-.os-theme-dark,
-.os-theme-light {
-  --os-size: 10px;
-  --os-padding-perpendicular: 3px;
-  --os-padding-axis: 2px;
+.os-theme-deep-student {
+  --os-size: var(--scrollbar-interaction-size);
+  --os-padding-perpendicular: var(--scrollbar-thumb-inset);
+  --os-padding-axis: var(--scrollbar-thumb-axis-inset);
   --os-track-border-radius: 999px;
   --os-track-bg: var(--scrollbar-track);
-  --os-track-bg-hover: var(--scrollbar-track-hover);
-  --os-track-bg-active: var(--scrollbar-track-hover);
+  --os-track-bg-hover: var(--scrollbar-track);
+  --os-track-bg-active: var(--scrollbar-track);
   --os-handle-border-radius: 999px;
   --os-handle-bg: var(--scrollbar-thumb);
   --os-handle-bg-hover: var(--scrollbar-thumb-hover);
   --os-handle-bg-active: var(--scrollbar-thumb-active);
-  --os-handle-min-size: 40px;
-  --os-handle-interactive-area-offset: 3px;
+  --os-handle-min-size: var(--scrollbar-thumb-min-size);
+  --os-handle-interactive-area-offset: var(--scrollbar-thumb-inset);
 }
 
 /* ---------------------------------------------------------------- */
-/* Utility classes                                                   */
+/* Native ScrollArea fallback: preserve iOS momentum and rubber-band */
 /* ---------------------------------------------------------------- */
-.scroll-hidden {
-  scrollbar-width: none;
-}
-
-.scroll-hidden::-webkit-scrollbar {
-  display: none;
-}
-
-.scroll-always {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-}
-
-.scroll-always::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb);
-  background-clip: padding-box;
-}
-
-/* ---------------------------------------------------------------- */
-/* iOS / WebView fallback — touch devices keep momentum scrolling   */
-/* ---------------------------------------------------------------- */
-@supports (-webkit-touch-callout: none) {
-  *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
+.scroll-area--native {
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ---------------------------------------------------------------- */
@@ -160,14 +136,8 @@
     scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
-  *::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
-  }
-
   *::-webkit-scrollbar-thumb {
     background-color: var(--scrollbar-thumb);
-    border-width: 1px;
     background-clip: padding-box;
   }
 
@@ -178,6 +148,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  *::-webkit-scrollbar-thumb,
   .os-scrollbar,
   .os-scrollbar-track,
   .os-scrollbar-handle {

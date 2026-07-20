@@ -22,6 +22,7 @@ import {
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { PulseDot } from '@/components/ui/PulseDot';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { TextShimmer } from '../../components/ui/TextShimmer';
 import { cn } from '@/utils/cn';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
@@ -286,7 +287,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
 
   // ACR 4.0（A8）：步骤流自动滚底——流式追加时跟随最新一条；
   // 用户上滚即暂停跟随，滚回底部附近恢复；prefers-reduced-motion 时瞬滚。
-  const stepsListRef = useRef<HTMLUListElement | null>(null);
+  const stepsListRef = useRef<HTMLDivElement | null>(null);
   const followStepsRef = useRef(true);
   const programmaticStepScrollRef = useRef(false);
 
@@ -304,6 +305,13 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
   }, []);
 
   const stepCount = progressSteps.length;
+  useEffect(() => {
+    const el = stepsListRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', handleStepsScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleStepsScroll);
+  }, [handleStepsScroll, stepCount]);
+
   useEffect(() => {
     if (stepCount === 0 || !followStepsRef.current) return;
     const el = stepsListRef.current;
@@ -533,21 +541,24 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             <span>{t('blocks.workbenchOps.steps')}</span>
           </div>
           {progressSteps.length > 0 ? (
-            <ul
-              ref={stepsListRef}
-              onScroll={handleStepsScroll}
-              className="space-y-1 max-h-40 overflow-auto"
+            <CustomScrollArea
+              viewportRef={stepsListRef}
+              fullHeight={false}
+              className="max-h-40"
+              viewportClassName="max-h-40"
               data-testid="workbench-ops-steps-list"
             >
-              {progressSteps.map((step, index) => (
-                <li
-                  key={`${index}-${step.slice(0, 24)}`}
-                  className="text-xs text-muted-foreground font-mono leading-relaxed pl-3 border-l border-border/40 break-all"
-                >
-                  {step}
-                </li>
-              ))}
-            </ul>
+              <ul className="space-y-1">
+                {progressSteps.map((step, index) => (
+                  <li
+                    key={`${index}-${step.slice(0, 24)}`}
+                    className="text-xs text-muted-foreground font-mono leading-relaxed pl-3 border-l border-border/40 break-all"
+                  >
+                    {step}
+                  </li>
+                ))}
+              </ul>
+            </CustomScrollArea>
           ) : (
             <TextShimmer className="text-xs text-muted-foreground" duration={1.5} spread={3}>
               {t('blocks.workbenchOps.status.running')}

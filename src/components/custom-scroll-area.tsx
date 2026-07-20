@@ -27,6 +27,8 @@ interface CustomScrollAreaProps extends HTMLAttributes<HTMLDivElement> {
   orientation?: "vertical" | "horizontal" | "both";
   scrollAutoHide?: "never" | "scroll" | "leave" | "move";
   scrollAutoHideSuspend?: boolean;
+  /** Force or bypass the platform-native fallback selected by ScrollArea. */
+  nativeScrollbars?: boolean;
   /** Legacy: when true the host fills its container. Default true. */
   fullHeight?: boolean;
   /** Legacy: apply `h-full w-full` to the viewport for shadcn compatibility. */
@@ -48,6 +50,7 @@ export const CustomScrollArea = forwardRef<HTMLDivElement, CustomScrollAreaProps
       orientation = "vertical",
       scrollAutoHide,
       scrollAutoHideSuspend,
+      nativeScrollbars,
       fullHeight = true,
       applyDefaultViewportClassName = true,
       children,
@@ -70,14 +73,15 @@ export const CustomScrollArea = forwardRef<HTMLDivElement, CustomScrollAreaProps
     }, [trackOffsetTop, trackOffsetBottom, trackOffsetLeft, trackOffsetRight]);
 
     const resolvedViewportClassName = cn(
-      applyDefaultViewportClassName && "h-full w-full",
+      applyDefaultViewportClassName &&
+        "h-full max-h-[inherit] min-h-0 w-full min-w-0",
       viewportClassName,
     );
 
     return (
       <ScrollArea
         ref={ref}
-        className={cn(fullHeight && "h-full", className)}
+        className={cn("min-h-0 min-w-0", fullHeight && "h-full", className)}
         viewportClassName={resolvedViewportClassName}
         viewportRef={viewportRef}
         viewportProps={viewportProps}
@@ -85,6 +89,7 @@ export const CustomScrollArea = forwardRef<HTMLDivElement, CustomScrollAreaProps
         scrollHideDelay={hideTrackWhenIdle ? 700 : 0}
         scrollAutoHide={scrollAutoHide}
         scrollAutoHideSuspend={scrollAutoHideSuspend}
+        nativeScrollbars={nativeScrollbars}
         trackOffset={trackOffset}
         {...rest}
       >

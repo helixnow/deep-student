@@ -222,7 +222,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   }, [activeTab, isStreaming, viewportEl]);
 
   return (
-    <div className={`grading-stream-renderer flex flex-col h-full ${className || ''}`}>
+    <div className={`grading-stream-renderer flex min-h-0 flex-col h-full ${className || ''}`}>
       {/* 顶部流式状态提示 - 简洁风格简洁 */}
       {!hideToolbar && !hideStreamingIndicator && isStreaming && (
         <div className="flex items-center gap-2 px-5 py-2 border-b border-border/20">
@@ -235,7 +235,12 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
 
       {/* Section Tabs + Filter Bar */}
       {content && !hideToolbar && tabs.length > 1 && (
-        <div className="px-4 py-1 border-b border-border/20 flex items-center gap-1 overflow-x-auto">
+        <CustomScrollArea
+          className="shrink-0 border-b border-border/20"
+          viewportClassName="flex items-center gap-1 px-4 py-1"
+          orientation="horizontal"
+          fullHeight={false}
+        >
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -254,7 +259,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
               )}
             </button>
           ))}
-        </div>
+        </CustomScrollArea>
       )}
 
       {contentHasInlineMarkers && !hideToolbar && activeTab === 'overview' && (

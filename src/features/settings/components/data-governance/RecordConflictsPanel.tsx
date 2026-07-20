@@ -17,6 +17,7 @@ import { Warning, CheckCircle, PencilSimple, CircleNotch, ArrowClockwise, Trash 
 import * as DataGovernanceApi from '@/api/dataGovernance';
 import type { RecordConflictRow } from '@/api/dataGovernance';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -386,15 +387,17 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     {t('data:governance.local')} {latestLocal?.winning_device_id && <span>（{latestLocal.winning_device_id.slice(0, 8)}...）</span>}
                     {latestLocal?.detected_at && <span className="ml-1">{latestLocal.detected_at.slice(0, 19)}</span>}
                   </div>
-                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">
-                    {latestLocal ? tryFormatJson(latestLocal.data_json) : t('data:governance.none')}
-                  </pre>
+                  <CustomScrollArea className="h-40">
+                    <pre className="whitespace-pre-wrap break-words">
+                      {latestLocal ? tryFormatJson(latestLocal.data_json) : t('data:governance.none')}
+                    </pre>
+                  </CustomScrollArea>
                 </div>
                 <div className="space-y-2">
                   {p.clouds.length === 0 && (
                     <div className="rounded border border-border/30 bg-muted/20 p-2">
                       <div className="text-muted-foreground mb-1">{t('data:governance.cloud')}</div>
-                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">{t('data:governance.none')}</pre>
+                      <pre className="whitespace-pre-wrap break-words">{t('data:governance.none')}</pre>
                     </div>
                   )}
                   {p.clouds.map((cloud, index) => (
@@ -407,9 +410,11 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                           <span className="ml-1">{t('data:governance.latest')}</span>
                         )}
                       </div>
-                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">
-                        {tryFormatJson(cloud.data_json)}
-                      </pre>
+                      <CustomScrollArea className="h-40">
+                        <pre className="whitespace-pre-wrap break-words">
+                          {tryFormatJson(cloud.data_json)}
+                        </pre>
+                      </CustomScrollArea>
                     </div>
                   ))}
                 </div>
@@ -420,7 +425,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     {t('data:governance.merge_hint')}
                   </div>
                   <Textarea
-                    className="w-full h-32 text-xs font-mono"
+                    className="scroll-area--native h-32 w-full text-xs font-mono"
                     value={mergeText}
                     onChange={(e) => setMergeText(e.target.value)}
                     spellCheck={false}

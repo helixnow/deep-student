@@ -455,7 +455,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
               placeholder={t('settings:vendor_modal.backup_api_keys_placeholder', {
                 defaultValue: 'One API key per line',
               })}
-              className="mt-2 font-mono"
+              className="scroll-area--native mt-2 font-mono"
               rows={3}
             />
             <p className="mt-1.5 text-xs text-muted-foreground">
@@ -475,7 +475,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
             value={formData.notes ?? ''}
             onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
             placeholder={t('settings:vendor_modal.notes_placeholder')}
-            className="mt-2"
+            className="scroll-area--native mt-2"
             rows={3}
           />
         </div>
@@ -485,7 +485,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
             value={headersInput}
             onChange={e => setHeadersInput(e.target.value)}
             placeholder={t('settings:vendor_modal.headers_placeholder')}
-            className="mt-2 font-mono"
+            className="scroll-area--native mt-2 font-mono"
             rows={3}
           />
         </div>
@@ -496,7 +496,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
   // 嵌入模式：直接返回内容，不使用 Dialog 包裹（标题和保存按钮由全局移动端顶栏提供）
   if (embeddedMode) {
     return (
-      <div className="h-full flex flex-col bg-background">
+      <div className="flex h-full min-h-0 flex-col bg-background">
         <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-4 py-4 pb-safe">
           {formContent}
         </CustomScrollArea>
@@ -513,7 +513,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           </DsDialogTitle>
           <DsDialogDescription>{t('settings:vendor_modal.subtitle')}</DsDialogDescription>
         </DsDialogHeader>
-        <DsDialogBody>
+        <DsDialogBody overlayScroll>
           {formContent}
         </DsDialogBody>
         <DsDialogFooter className="!border-t-0">

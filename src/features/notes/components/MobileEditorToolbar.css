@@ -58,17 +58,12 @@
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
   padding: 4px 6px 0;
   overscroll-behavior-x: contain;
   border-bottom: 1px solid hsl(var(--border) / 0.5);
   padding-bottom: 4px;
   animation: mobile-toolbar-insert-enter var(--notes-popup-enter-duration, 150ms)
     var(--notes-popup-enter-easing, var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)));
-}
-
-.mobile-editor-toolbar__insert-row::-webkit-scrollbar {
-  display: none;
 }
 
 @keyframes mobile-toolbar-insert-enter {
@@ -91,7 +86,6 @@
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
   padding: 4px 6px;
   overscroll-behavior-x: contain;
   /* 横向滚动边缘渐隐，提示可滑 */
@@ -109,10 +103,6 @@
     #000 calc(100% - 16px),
     transparent 100%
   );
-}
-
-.mobile-editor-toolbar__scroller::-webkit-scrollbar {
-  display: none;
 }
 
 .mobile-editor-toolbar__sep {

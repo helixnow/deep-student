@@ -20,6 +20,7 @@ import {
   BookOpen,
 } from '@phosphor-icons/react';
 import type { Question, QuestionStatus, Difficulty } from '@/api/questionBankApi';
+import { CustomScrollArea } from './custom-scroll-area';
 
 interface VirtualQuestionListProps {
   questions: Question[];
@@ -95,10 +96,10 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
   }
 
   return (
-    <div
-      ref={parentRef}
-      className={cn('overflow-auto', className)}
-      style={{ contain: 'strict' }}
+    <CustomScrollArea
+      viewportRef={parentRef}
+      viewportProps={{ style: { contain: 'strict' } }}
+      className={className}
     >
       <div
         style={{
@@ -194,7 +195,7 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
           );
         })}
       </div>
-    </div>
+    </CustomScrollArea>
   );
 };
 

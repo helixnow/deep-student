@@ -1021,12 +1021,16 @@ const MessageListInner: React.FC<MessageListProps> = ({
           className
         )}
       >
-        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3 md:px-8 md:pb-8 md:pt-4">
+        <CustomScrollArea
+          className="min-h-0 flex-1"
+          viewportClassName="px-4 pb-6 pt-3 md:px-8 md:pb-8 md:pt-4"
+          hideTrackWhenIdle
+        >
           <ThreadEmptyStateShell
             title={emptyStatePrimaryAction}
             contentClassName={isSmallScreen ? 'py-10' : 'py-16'}
           />
-        </div>
+        </CustomScrollArea>
       </div>
     );
   }

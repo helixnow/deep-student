@@ -206,7 +206,7 @@ function DesktopContextMenu({
       role="menu"
       data-wb-blur-surface
       className={cn(
-        'wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden',
+        'scroll-area--native wb-desk-menu wb-glass-lens max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden',
         isTouchPrimary && 'max-w-none rounded-t-2xl',
       )}
       style={isTouchPrimary
@@ -651,9 +651,9 @@ export function DesktopView({
   }, []);
 
   return (
-    <div className="relative flex h-full flex-1 flex-col overflow-hidden bg-background">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {/* 快捷方式网格 */}
-      <CustomScrollArea className="flex-1">
+      <CustomScrollArea className="min-h-0 flex-1">
         <div
           className="min-h-full p-4"
           style={{

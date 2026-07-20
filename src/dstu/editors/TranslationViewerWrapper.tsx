@@ -306,7 +306,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
 
   // 翻译查看器 UI
   return (
-    <div className={cn('flex flex-col h-full bg-background ui-fade-in', props.className)}>
+    <div className={cn('flex min-h-0 flex-col h-full bg-background ui-fade-in', props.className)}>
       {/* 工具栏 */}
       <div className="flex-shrink-0 flex items-center gap-2 h-12 px-3 sm:px-4 border-b border-border/50">
         <Translate size={18} className="text-muted-foreground shrink-0" aria-hidden="true" />
@@ -375,7 +375,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
       </div>
 
       {/* 翻译内容 */}
-      <CustomScrollArea className="flex-1" viewportClassName="p-3 sm:p-4">
+      <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-3 sm:p-4">
         {isEmpty ? (
           // 空态：无原文也无译文
           <div className="flex flex-col items-center justify-center h-full min-h-[12rem] gap-3 py-8">

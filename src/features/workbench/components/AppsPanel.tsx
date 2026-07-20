@@ -26,6 +26,7 @@ import type { AppDefinition } from '../core/types';
 import { useCommandPaletteSafe } from '@/command-palette/CommandPaletteProvider';
 import { formatShortcut } from '@/command-palette/registry/shortcutUtils';
 import type { Command } from '@/command-palette/registry/types';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   CONTENT_SEARCH_MIN_CHARS,
   GLOBAL_SEARCH_DEBOUNCE_MS,
@@ -619,7 +620,14 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
           />
         </div>
 
-        <div className="wb-apps-body" ref={listRef}>
+        <CustomScrollArea
+          className="wb-apps-body"
+          viewportRef={listRef}
+          viewportClassName="wb-apps-body-viewport"
+          trackOffsetTop={4}
+          trackOffsetBottom={12}
+          trackOffsetRight={4}
+        >
           {showContentLoading ? (
             <div className="wb-apps-loading" data-testid="wb-apps-loading" role="status">
               {t('workbench:appsPanel.searching')}
@@ -698,7 +706,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
               )}
             </div>
           )}
-        </div>
+        </CustomScrollArea>
 
         {searching ? (
           <div

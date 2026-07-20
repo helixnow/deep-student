@@ -433,7 +433,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
     >
       {insertOpen && (
         <div
-          className="mobile-editor-toolbar__insert-row"
+          className="mobile-editor-toolbar__insert-row scrollbar-none"
           role="group"
           aria-label={insertLabel}
           data-testid="mobile-editor-toolbar-insert-row"
@@ -446,7 +446,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
           }))}
         </div>
       )}
-      <div className="mobile-editor-toolbar__scroller" data-testid="mobile-editor-toolbar-scroller">
+      <div className="mobile-editor-toolbar__scroller scrollbar-none" data-testid="mobile-editor-toolbar-scroller">
         <button
           type="button"
           className="mobile-editor-toolbar__btn"

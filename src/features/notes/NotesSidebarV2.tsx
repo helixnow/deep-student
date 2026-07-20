@@ -127,6 +127,7 @@ const NotesSidebarContent: React.FC<{
   // 搜索结果键盘导航：当前高亮索引（-1 = 未选中）
   const [activeResultIndex, setActiveResultIndex] = useState(-1);
   const searchListRef = useRef<HTMLDivElement>(null);
+  const treeViewportRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   // 展开状态持久化：磁盘偏好加载完成前禁止回写
   const expandedPrefLoadedRef = useRef(false);
@@ -588,8 +589,13 @@ const NotesSidebarContent: React.FC<{
             </div>
           </div>
         ) : (
-          <CustomScrollArea className="h-full" viewportClassName="pl-1 pr-1">
+          <CustomScrollArea
+            className="h-full"
+            viewportRef={treeViewportRef}
+            viewportClassName="pl-1 pr-1"
+          >
             <DndFileTree
+              scrollViewportRef={treeViewportRef}
               treeData={treeData}
               selectedIds={selectedIds}
               onSelect={(ids) => {

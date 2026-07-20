@@ -2685,7 +2685,11 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       )}
 
       {/* 附件列表 */}
-      <CustomScrollArea viewportClassName="max-h-56" className="flex flex-col gap-2">
+      <CustomScrollArea
+        fullHeight={false}
+        className="max-h-56"
+        viewportClassName="max-h-56 flex flex-col gap-2"
+      >
         {attachments.length === 0 ? (
           <div className="flex items-center justify-center rounded-lg border border-dashed border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-6 text-sm text-[color:var(--composer-panel-muted-foreground)]">
             {t('analysis:input_bar.attachments.empty')}
@@ -3644,7 +3648,11 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                                     onClick={(event) => event.stopPropagation()}
                                   />
                                 </div>
-                                <div className="max-h-[220px] overflow-y-auto">
+                                <CustomScrollArea
+                                  fullHeight={false}
+                                  className="max-h-[220px]"
+                                  viewportClassName="max-h-[220px]"
+                                >
                                   {groupedRuntimeModelOptions.length > 0 ? (
                                     groupedRuntimeModelOptions.map((group) => (
                                       <AppMenuGroup key={group.providerLabel} label={group.providerLabel}>
@@ -3681,7 +3689,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
                                       {t('chatV2:inputBar.runtimeModelNoResults', '未找到匹配模型')}
                                     </AppMenuItem>
                                   )}
-                                </div>
+                                </CustomScrollArea>
                                 <AppMenuSeparator />
                                 <AppMenuItem onClick={() => handleOpenRuntimeModelPanel('compare')}>
                                   {runtimeCompareModeLabel}

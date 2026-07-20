@@ -14,6 +14,7 @@ import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, Copy, Terminal } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -113,9 +114,9 @@ const SuggestedCommand: React.FC<{ command: string; compact?: boolean }> = ({ co
           {t('completion.copy')}
         </DsButton>
       </div>
-      <code className="block overflow-x-auto rounded bg-background px-2 py-1.5 font-mono text-sm">
-        {command}
-      </code>
+      <CustomScrollArea orientation="horizontal" fullHeight={false} className="rounded bg-background">
+        <code className="block px-2 py-1.5 font-mono text-sm">{command}</code>
+      </CustomScrollArea>
     </div>
   );
 };

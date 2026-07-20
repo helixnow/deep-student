@@ -25,7 +25,7 @@ export const OutlineBreadcrumb: React.FC<{
 
   return (
     <div
-      className="outline-breadcrumb flex items-center gap-0.5 px-4 py-2 text-sm text-[var(--mm-text-secondary)] select-none sticky top-0 bg-[var(--mm-bg)] z-10 overflow-x-auto overscroll-x-contain"
+      className="outline-breadcrumb scrollbar-none flex items-center gap-0.5 px-4 py-2 text-sm text-[var(--mm-text-secondary)] select-none sticky top-0 bg-[var(--mm-bg)] z-10 overflow-x-auto overscroll-x-contain"
     >
       <CommonTooltip
         content={t('outlineV2.breadcrumbHome', { defaultValue: '返回完整大纲' })}

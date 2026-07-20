@@ -190,7 +190,11 @@ export const CreateAgentCard: React.FC<CreateAgentCardProps> = ({
       {/* 技能选择 */}
       <div className="space-y-1.5">
         <Label className="text-xs">{t('chatV2:workspace.createAgent.skill')}</Label>
-        <CustomScrollArea className="max-h-44 rounded-[var(--chat-radius-sm,8px)] border border-border/60 p-1.5">
+        <CustomScrollArea
+          fullHeight={false}
+          className="max-h-44 rounded-[var(--chat-radius-sm,8px)] border border-border/60"
+          viewportClassName="max-h-44 p-1.5"
+        >
           <div className="space-y-0.5">
             {builtinSkills.map((skill) => (
               <DsButton

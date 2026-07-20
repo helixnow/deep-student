@@ -25,6 +25,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '@/components/ui/shad/Label';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
+import { CustomScrollArea } from './custom-scroll-area';
 import {
   Table,
   CaretRight,
@@ -887,7 +888,11 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
               <Label className="text-sm font-medium text-destructive">
                 {t('exam_sheet:csv.error_details_count', { count: importResult.errors.length })}
               </Label>
-              <div className="max-h-[200px] overflow-auto rounded-md border border-destructive/30 divide-y divide-destructive/10">
+              <CustomScrollArea
+                className="max-h-[200px] rounded-md border border-destructive/30"
+                viewportClassName="divide-y divide-destructive/10"
+                fullHeight={false}
+              >
                 {importResult.errors.slice(0, 50).map((error, index) => (
                   <div key={index} className="flex items-start gap-2 bg-destructive/5 px-3 py-2 text-xs">
                     <span className="flex-shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 font-mono font-medium text-destructive">
@@ -908,7 +913,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
                     {t('exam_sheet:csv.error_more', { count: importResult.errors.length - 50 })}
                   </div>
                 )}
-              </div>
+              </CustomScrollArea>
             </div>
           )}
         </div>
@@ -1052,11 +1057,11 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
 /** CSV 导入内嵌面板：在题目集内容区直接渲染完整导入流程（非模态） */
 export const CsvImportPanel: React.FC<CsvImportPanelProps> = ({ onImportingChange, ...rest }) => (
   <div className="flex h-full flex-col bg-background">
-    <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+    <CustomScrollArea className="min-h-0 flex-1" viewportClassName="flex flex-col p-4">
       <div className="my-auto w-full max-w-2xl mx-auto py-4">
         <CsvImportFlow {...rest} layout="inline" onImportingChange={onImportingChange} />
       </div>
-    </div>
+    </CustomScrollArea>
   </div>
 );
 
@@ -1096,7 +1101,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       role="region"
       aria-label={t('exam_sheet:csv.import_title')}
     >
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col">
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="flex flex-col p-4">
         <div className="my-auto w-full max-w-2xl mx-auto py-4">
           <CsvImportFlow
             examId={examId}
@@ -1108,7 +1113,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
             onImportingChange={setIsImporting}
           />
         </div>
-      </div>
+      </CustomScrollArea>
     </div>
   );
 };

@@ -12,6 +12,7 @@ import { trashApi, type DstuNode } from '@/dstu';
 import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import './NotesTrashDialog.css';
 
 /** Workspace trash supports notes, mind maps, and folders. */
@@ -460,11 +461,13 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
                 </button>
               )}
             </div>
-            <div
-              ref={listRef}
+            <CustomScrollArea
+              viewportRef={listRef}
               className="ntd-list"
-              role="list"
-              onKeyDown={onListKeyDown}
+              viewportProps={{ role: 'list', onKeyDown: onListKeyDown }}
+              trackOffsetTop={4}
+              trackOffsetBottom={6}
+              trackOffsetRight={3}
             >
             {groups.map((group) => (
               <React.Fragment key={group.label || 'undated'}>
@@ -554,7 +557,7 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
                 })}
               </React.Fragment>
             ))}
-            </div>
+            </CustomScrollArea>
           </>
         )}
       </div>

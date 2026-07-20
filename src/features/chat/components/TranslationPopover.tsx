@@ -44,6 +44,7 @@ import { cn } from '@/utils/cn';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { DsButton } from '@/components/ui/DsButton';
 import { PulseDot } from '@/components/ui/PulseDot';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { AppSelect } from '@/components/ui/app-menu/AppSelect';
 import type { ApiConfig, ModelAssignments } from '@/types';
@@ -843,7 +844,11 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
       <div className="chat-collapse" data-open={collapsed ? 'false' : 'true'}>
         <div className={cn(collapsed && 'pointer-events-none')} aria-hidden={collapsed}>
           {/* 内容区 */}
-          <div className="max-h-[min(360px,50vh)] overflow-y-auto border-t border-border/30">
+          <CustomScrollArea
+            fullHeight={false}
+            className="max-h-[min(360px,50vh)] border-t border-border/30"
+            viewportClassName="max-h-[min(360px,50vh)]"
+          >
             {error ? (
               <div className="flex items-center gap-2 px-3 py-3">
                 <p className="text-xs text-destructive flex-1">{error}</p>
@@ -933,7 +938,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 <TranslationLoading label={t('translation:popover.translating')} />
               ) : null
             )}
-          </div>
+          </CustomScrollArea>
 
           {/* 底部操作栏：流式中可见但禁用（明确"翻译中"），完成后可交互 */}
           {hasContent && !error && (

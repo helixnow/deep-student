@@ -23,6 +23,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/utils/cn';
@@ -612,10 +613,11 @@ export const ReviewSessionScreen: React.FC = () => {
       </div>
 
       {editing ? (
-        <div
-          className="wb-fc-edit-panel flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4"
+        <CustomScrollArea
+          className="wb-fc-edit-panel min-h-0 flex-1"
           onKeyDown={onEditKeyDown}
         >
+          <div className="flex min-h-full flex-col gap-3 p-4">
           <label className="flex min-h-0 flex-1 flex-col gap-1.5 text-left text-xs font-medium text-muted-foreground">
             {t('session.front')}
             <textarea
@@ -666,7 +668,8 @@ export const ReviewSessionScreen: React.FC = () => {
               </DsButton>
             </div>
           </div>
-        </div>
+          </div>
+        </CustomScrollArea>
       ) : (
         <ReviewCardSurface
           card={current}

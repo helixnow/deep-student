@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   FileText,
   GitBranch,
@@ -1646,12 +1647,15 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               </DsButton>
               <span className="font-medium text-sm">{t('mindmap:selectStructure')}</span>
             </div>
-            <div className="mm-mobile-subview-scroll flex-1 min-h-0 overflow-y-auto p-2">
+            <CustomScrollArea
+              className="flex-1 min-h-0"
+              viewportClassName="mm-mobile-subview-scroll p-2"
+            >
               <StructureSelector 
                 placement="inline"
                 onSelect={() => setShowMobileStructure(false)}
               />
-            </div>
+            </CustomScrollArea>
           </div>
         )}
         
@@ -1668,9 +1672,12 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               </DsButton>
               <span className="font-medium text-sm">{t('mindmap:toolbar.styleSettings')}</span>
             </div>
-            <div className="mm-mobile-subview-scroll flex-1 min-h-0 overflow-y-auto p-2">
+            <CustomScrollArea
+              className="flex-1 min-h-0"
+              viewportClassName="mm-mobile-subview-scroll p-2"
+            >
               <StyleSettings placement="inline" />
-            </div>
+            </CustomScrollArea>
           </div>
         )}
 
@@ -1720,7 +1727,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 </DsButton>
                 <span className="font-medium text-sm">{t('mindmap:toolbar.moreActions')}</span>
               </div>
-              <div className="mm-mobile-subview-scroll flex-1 min-h-0 overflow-y-auto px-1 py-1">
+              <CustomScrollArea
+                className="flex-1 min-h-0"
+                viewportClassName="mm-mobile-subview-scroll px-1 py-1"
+              >
                 <MenuGroup title={t('mindmap:menu.groupView', { defaultValue: '视图' })}>
                   <MenuRow icon={<GitBranch size={18} />} label={t('mindmap:toolbar.structure')} onClick={openMobileStructure} />
                   <MenuRow icon={<Gear size={18} />} label={t('mindmap:toolbar.style')} onClick={openMobileStyle} />
@@ -1774,7 +1784,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                   <MenuRow icon={<FilePdf size={18} />} label={t('mindmap:export.exportPdf')} onClick={closeThen(() => void handleExport('pdf'))} />
                 </MenuGroup>
                 {/* 快捷键帮助为键盘场景功能，移动端不提供入口（P0-4） */}
-              </div>
+              </CustomScrollArea>
             </div>
           );
         })()}

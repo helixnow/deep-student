@@ -399,7 +399,7 @@ function renderMathHtml(latex: string, displayMode: boolean): React.ReactNode {
       displayMode,
     });
     return displayMode ? (
-      <div className="not-prose overflow-x-auto py-1" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="scroll-area--native not-prose overflow-x-auto py-1" dangerouslySetInnerHTML={{ __html: html }} />
     ) : (
       <span dangerouslySetInnerHTML={{ __html: html }} />
     );
@@ -432,7 +432,7 @@ const MarkdownCodeBlock: React.FC<{ language: string | null; code: string }> = (
         </span>
         <CopyTextButton text={code} />
       </div>
-      <pre className={cn('m-0 overflow-x-auto p-3 font-mono text-ui leading-6 text-foreground', html && 'tfp-syntax')}>
+      <pre className={cn('scroll-area--native m-0 overflow-x-auto p-3 font-mono text-ui leading-6 text-foreground', html && 'tfp-syntax')}>
         {html ? <code dangerouslySetInnerHTML={{ __html: html }} /> : <code>{code}</code>}
       </pre>
     </div>
@@ -472,7 +472,7 @@ const markdownComponents = {
     return <code className={className} {...props}>{children}</code>;
   },
   table: ({ children, node: _node, ...props }: any) => (
-    <div className="not-prose my-3 w-fit max-w-full overflow-x-auto rounded-lg border border-border">
+    <div className="scroll-area--native not-prose my-3 w-fit max-w-full overflow-x-auto rounded-lg border border-border">
       <table className="m-0 w-max border-collapse text-sm" {...props}>{children}</table>
     </div>
   ),

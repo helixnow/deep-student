@@ -17,6 +17,7 @@ import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card } from '@/components/ui/shad/Card';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
+import { CustomScrollArea } from './custom-scroll-area';
 import {
   Play,
   Clock,
@@ -769,7 +770,11 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             </span>
           </div>
 
-          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+          <CustomScrollArea
+            className="max-h-[400px]"
+            viewportClassName="space-y-2 pr-1"
+            fullHeight={false}
+          >
             {/* 视觉分组：逾期在前（列表本身按到期日排序，逾期天然靠前） */}
             {overdueCount > 0 && (
               <p className="flex items-center gap-1.5 px-1 pt-1 text-xs font-medium text-destructive">
@@ -812,7 +817,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
                 </span>
               </div>
             )}
-          </div>
+          </CustomScrollArea>
         </div>
       )}
 

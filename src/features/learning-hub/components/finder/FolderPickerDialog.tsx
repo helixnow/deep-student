@@ -281,7 +281,7 @@ export function FolderPickerDialog({
     if (!open) return null;
     return (
       <div
-        className="absolute inset-0 z-40 flex flex-col bg-background finder-fade-in"
+        className="absolute inset-0 z-40 flex min-h-0 flex-col overflow-hidden bg-background finder-fade-in"
         role="dialog"
         aria-label={resolvedTitle}
       >

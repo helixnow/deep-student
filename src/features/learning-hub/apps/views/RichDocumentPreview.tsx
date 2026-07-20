@@ -152,8 +152,8 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
   }, []);
 
   return (
-    <div ref={rootRef} className={cn('flex flex-col h-full overflow-hidden', rootClassName)}>
-      <div className={cn('flex-1 overflow-hidden', bodyClassName)}>
+    <div ref={rootRef} className={cn('flex h-full min-h-0 flex-col overflow-hidden', rootClassName)}>
+      <div className={cn('min-h-0 flex-1 overflow-hidden', bodyClassName)}>
         <Suspense fallback={fallback}>
           {kind === 'docx' && (
             <DocxPreview

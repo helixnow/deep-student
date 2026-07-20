@@ -214,22 +214,16 @@
   --glass-border: color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
   --glass-overlay: color-mix(in hsl, hsl(var(--card)) 55%, transparent 45%);
 
-  /* Scrollbar colors */
+  /* Unified native / OverlayScrollbars contract.
+     10px interaction lane - 3px inset on each side = 4px visual thumb. */
+  --scrollbar-interaction-size: 10px;
+  --scrollbar-thumb-inset: 3px;
+  --scrollbar-thumb-axis-inset: 2px;
+  --scrollbar-thumb-min-size: 40px;
   --scrollbar-track: transparent;
-  --scrollbar-track-hover: color-mix(in oklab, hsl(var(--foreground)) 5%, transparent);
   --scrollbar-thumb: color-mix(in oklab, hsl(var(--foreground)) 26%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklab, hsl(var(--foreground)) 40%, transparent);
   --scrollbar-thumb-active: color-mix(in oklab, hsl(var(--foreground)) 54%, transparent);
-
-  /* OverlayScrollbars → project scrollbar palette bridge (milestone v1.1) */
-  --os-handle-bg: var(--scrollbar-thumb);
-  --os-handle-bg-hover: var(--scrollbar-thumb-hover);
-  --os-handle-bg-active: var(--scrollbar-thumb-active);
-  --os-size: 10px;
-  --os-padding-perpendicular: 3px;
-  --os-padding-axis: 2px;
-  --os-handle-min-size: 36px;
-  --os-handle-border-radius: 999px;
 
   /* Text semantics */
   --text-primary: hsl(var(--foreground));
@@ -328,7 +322,6 @@
   --mobile-sheet-scrim: hsl(var(--shadow-base) / 0.58);
   --citation-badge-bg-alpha: 0.15;
   --citation-badge-hover-alpha: 0.25;
-  --scrollbar-track-hover: color-mix(in oklab, hsl(var(--foreground)) 7%, transparent);
   --scrollbar-thumb: color-mix(in oklab, hsl(var(--foreground)) 22%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklab, hsl(var(--foreground)) 36%, transparent);
   --scrollbar-thumb-active: color-mix(in oklab, hsl(var(--foreground)) 50%, transparent);

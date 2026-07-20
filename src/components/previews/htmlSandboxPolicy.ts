@@ -124,6 +124,10 @@ export function buildHtmlSandboxDocument({
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <style>
+  :root {
+    --preview-scrollbar-thumb: color-mix(in srgb, CanvasText 28%, transparent);
+    --preview-scrollbar-track: transparent;
+  }
   html, body {
     margin: 0;
     padding: 0;
@@ -133,6 +137,8 @@ export function buildHtmlSandboxDocument({
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable both-edges;
+    scrollbar-color: var(--scrollbar-thumb, var(--preview-scrollbar-thumb))
+      var(--scrollbar-track, var(--preview-scrollbar-track));
     max-width: 100%;
     min-height: 100%;
     word-wrap: break-word;

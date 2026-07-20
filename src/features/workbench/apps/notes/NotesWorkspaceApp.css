@@ -183,7 +183,7 @@
   margin: 0 8px 6px;
   flex: 0 0 auto;
   max-height: 88px;
-  overflow: auto;
+  min-height: 0;
 }
 
 .notes-explorer .nfs-favorites {
@@ -194,7 +194,7 @@
 .notes-tree-host {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .notes-tree-root {
@@ -231,7 +231,6 @@
 
 .notes-tree {
   flex: 1;
-  overflow: auto;
   padding: 1px 6px 12px;
 }
 
@@ -462,7 +461,6 @@
   overflow-x: auto;
   border-bottom: 1px solid hsl(var(--border));
   background: hsl(var(--muted) / 30%);
-  scrollbar-width: none;
 }
 
 .notes-titlebar-tabs {
@@ -502,13 +500,15 @@
   z-index: 2200;
   width: min(280px, calc(100vw - 24px));
   max-height: min(420px, calc(100vh - 64px));
-  padding: 4px;
-  overflow-y: auto;
   border: 1px solid hsl(var(--border));
   border-radius: var(--notes-radius-control);
   background: hsl(var(--popover));
   color: hsl(var(--popover-foreground));
   box-shadow: 0 10px 28px hsl(var(--shadow-base) / 0.2);
+}
+
+.notes-tabs-overflow-menu-viewport {
+  padding: 4px;
 }
 
 .notes-tabs-overflow-menu button {
@@ -938,7 +938,6 @@
 .notes-trash-list {
   min-height: 0;
   max-height: min(420px, 55vh);
-  overflow: auto;
   border-top: 1px solid hsl(var(--border));
 }
 

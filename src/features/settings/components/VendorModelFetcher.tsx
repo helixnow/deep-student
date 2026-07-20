@@ -12,6 +12,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
@@ -30,8 +31,8 @@ interface VendorModelFetcherProps {
   existingModelIds: string[];
   onAddModels: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
   /**
-   * 'card' (default): 内嵌卡片样式（圆角边框 + bg-muted/10 外壳，列表 max-h-60）。
-   * 'dialog': 由外层 Dialog 提供边框/背景，组件移除外壳并放宽列表高度至 max-h-[60vh]。
+   * 'card' (default): 内嵌卡片样式（圆角边框 + bg-muted/10 外壳，列表高 15rem）。
+   * 'dialog': 由外层 Dialog 提供边框/背景，列表填满弹窗剩余高度。
    */
   embedded?: 'card' | 'dialog';
 }
@@ -221,7 +222,9 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     <div
       className={cn(
         'overflow-hidden',
-        embedded === 'card' && 'rounded-lg border border-border/50 bg-muted/10'
+        embedded === 'card'
+          ? 'rounded-lg border border-border/50 bg-muted/10'
+          : 'flex h-full min-h-0 flex-col'
       )}
     >
       {/* 头部：搜索框 + 获取按钮 */}
@@ -288,12 +291,14 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
             )}
           </div>
 
-          {/* 列表：使用原生 overflow，避免 OverlayScrollbars 在 max-height（无固定 height）父级下高度解析失败导致不滚动。 */}
-          <div
+          {/* 卡片给明确高度；Dialog 通过完整 flex/min-h-0 链获得可收缩视口。 */}
+          <CustomScrollArea
             className={cn(
-              'overflow-y-auto overscroll-contain',
-              embedded === 'dialog' ? 'max-h-[60vh]' : 'max-h-60'
+              embedded === 'dialog' ? 'min-h-0 flex-1' : 'h-60'
             )}
+            viewportClassName="overscroll-contain"
+            trackOffsetTop={4}
+            trackOffsetBottom={4}
           >
             <div className="py-1">
               {/* 可添加的模型 - 按家族分组 */}
@@ -398,7 +403,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                 </div>
               )}
             </div>
-          </div>
+          </CustomScrollArea>
         </>
       ) : !loading ? (
         /* 空状态：未获取 */

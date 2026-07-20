@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useNoteTags, type NoteTagItem } from './hooks/useNoteTags';
 import './TagFilter.css';
 
@@ -175,25 +176,37 @@ export const TagFilter: React.FC<TagFilterProps> = ({
           {t('workbench:notesWorkspace.tagFilter.empty')}
         </div>
       ) : (
-        <div className="notes-tag-filter-chips" role="group" aria-label={t('workbench:notesWorkspace.tagFilter.label')}>
-          {groups.map((group) => (
-            <div
-              key={group.prefix ?? ''}
-              className="notes-tag-filter-row"
-              data-prefix={group.prefix ?? undefined}
-            >
-              {group.prefix !== null && (
-                <span className="notes-tag-filter-group-label" aria-hidden="true">
-                  {group.prefix}/
-                </span>
-              )}
-              {group.tags.map((tag) => renderChip(
-                tag,
-                group.prefix !== null ? tag.name.slice(group.prefix.length + 1) : tag.name,
-              ))}
-            </div>
-          ))}
-        </div>
+        <CustomScrollArea
+          className="notes-tag-filter-scroll"
+          fullHeight={false}
+          viewportProps={{
+            role: 'group',
+            'aria-label': t('workbench:notesWorkspace.tagFilter.label'),
+          }}
+          trackOffsetTop={2}
+          trackOffsetBottom={2}
+          trackOffsetRight={1}
+        >
+          <div className="notes-tag-filter-chips">
+            {groups.map((group) => (
+              <div
+                key={group.prefix ?? ''}
+                className="notes-tag-filter-row scrollbar-none"
+                data-prefix={group.prefix ?? undefined}
+              >
+                {group.prefix !== null && (
+                  <span className="notes-tag-filter-group-label" aria-hidden="true">
+                    {group.prefix}/
+                  </span>
+                )}
+                {group.tags.map((tag) => renderChip(
+                  tag,
+                  group.prefix !== null ? tag.name.slice(group.prefix.length + 1) : tag.name,
+                ))}
+              </div>
+            ))}
+          </div>
+        </CustomScrollArea>
       )}
     </div>
   );

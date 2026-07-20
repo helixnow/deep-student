@@ -93,7 +93,7 @@ export const RuntimeSection: React.FC<RuntimeSectionProps> = ({ items, environme
             transition={{ duration: 0.14, ease: 'easeOut' }}
             className="overflow-hidden"
           >
-            <div className="ml-6 max-h-[220px] overflow-y-auto border-l border-[color:var(--border-soft)] py-1 pl-2">
+            <div className="ml-6 border-l border-[color:var(--border-soft)] py-1 pl-2">
               {environment && (
                 <div className="mb-1 border-b border-[color:var(--border-soft)] pb-1">
                   {boundary && (
@@ -214,7 +214,7 @@ export const RuntimeSection: React.FC<RuntimeSectionProps> = ({ items, environme
                       {isCommandExpanded && (
                         <pre
                           className={cn(
-                            'mt-1 max-h-32 overflow-auto rounded-[6px] px-2 py-1.5',
+                            'mt-1 rounded-[6px] px-2 py-1.5',
                             'border font-mono text-2xs leading-relaxed whitespace-pre-wrap break-all',
                             isDangerous
                               ? 'border-[color:hsl(var(--destructive)/0.28)] bg-[color:hsl(var(--destructive)/0.05)] text-[color:hsl(var(--destructive))]'

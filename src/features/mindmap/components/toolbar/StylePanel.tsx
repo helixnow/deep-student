@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 're
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   BACK_PRIORITY,
   registerBackHandler,
@@ -418,7 +419,7 @@ export const StyleSettings: React.FC<{
 
       {/* 弹出面板（桌面锚定 popover；窄屏由外壳的 inline 子屏承载，不再走底部 sheet + 遮罩） */}
       {isOpen && (
-        <div
+        <CustomScrollArea
           ref={panelRef}
           className={cn(
             'absolute z-50',
@@ -426,12 +427,14 @@ export const StyleSettings: React.FC<{
             'mm-settings-popover mm-style-popover',
             'ui-zoom-fade-in'
           )}
+          viewportClassName="mm-settings-popover-viewport p-2"
           style={clampOffset !== 0 ? { translate: `${clampOffset}px 0` } : undefined}
           role="dialog"
           aria-label={t('style.globalTheme')}
+          fullHeight={false}
         >
           {panelContent}
-        </div>
+        </CustomScrollArea>
       )}
     </div>
   );

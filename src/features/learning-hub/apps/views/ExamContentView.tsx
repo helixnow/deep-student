@@ -4,6 +4,7 @@ import i18n from '@/i18n';
 import { CircleNotch, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { percentOf, ratioToPercent } from '@/components/stats';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { 
@@ -90,7 +91,7 @@ const Sm2ReviewPanel: React.FC<{ examId: string; isActive?: boolean }> = ({ exam
   const isSessionActive = session.isActive && session.examId === examId;
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
+    <CustomScrollArea className="min-h-0 flex-1">
       <Suspense fallback={null}>
         {showCalendar ? (
           <ReviewCalendarView
@@ -109,7 +110,7 @@ const Sm2ReviewPanel: React.FC<{ examId: string; isActive?: boolean }> = ({ exam
           />
         )}
       </Suspense>
-    </div>
+    </CustomScrollArea>
   );
 };
 
@@ -1988,7 +1989,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   };
 
   return (
-    <div ref={agentFlashRootRef} className="relative flex flex-col h-full bg-background">
+    <div ref={agentFlashRootRef} className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {/* ★ 断点续导：importing 状态横幅 */}
       {isImportingSession && (
         <div className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 sm:px-4">

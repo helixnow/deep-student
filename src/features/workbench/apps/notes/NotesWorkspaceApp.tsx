@@ -30,6 +30,7 @@ import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { getMindMapStoreForInstance } from '@/features/mindmap/store';
 import { exportResourceById } from '@/features/learning-hub/utils/exportResource';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import {
   NOTES_WORKSPACE_COMMAND_EVENT,
@@ -687,7 +688,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   <div className="notes-titlebar-tabs" style={{ paddingLeft: leftOffset }}>
     <div
       ref={stripRef}
-      className="notes-tabstrip"
+      className="notes-tabstrip scrollbar-none"
       data-notes-tabstrip
       role="tablist"
       aria-label={t('notesWorkspace.tabs.aria', 'Open files')}
@@ -814,11 +815,16 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
           <List size={15} />
         </IconButton>
         {overflowOpen && overflowMenuPosition && createPortal(
-          <div
+          <CustomScrollArea
             ref={overflowMenuRef}
             className="notes-tabs-overflow-menu"
-            role="menu"
+            viewportClassName="notes-tabs-overflow-menu-viewport"
+            viewportProps={{ role: 'menu' }}
             style={overflowMenuPosition}
+            fullHeight={false}
+            trackOffsetTop={4}
+            trackOffsetBottom={4}
+            trackOffsetRight={2}
           >
             {tabs.map((tab) => {
               const overflowSaveState = saveStates.get(tab.key) ?? 'saved';
@@ -845,7 +851,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
                 </button>
               );
             })}
-          </div>,
+          </CustomScrollArea>,
           document.body,
         )}
       </div>

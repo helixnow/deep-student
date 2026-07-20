@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useLearningHeatmap, type LearningActivity } from '../../hooks/useLearningHeatmap';
 import { ArrowsClockwise, TrendUp, Calendar, Lightning, Pulse } from '@phosphor-icons/react';
 import { cn } from '../../lib/utils';
+import { CustomScrollArea } from '../custom-scroll-area';
 import './LearningHeatmap.css';
 
 // ============================================================================
@@ -349,10 +350,12 @@ export function LearningHeatmap({
           ))}
         </div>
 
-        <div
-          ref={scrollRef}
-          className="lh-scroll min-w-0 flex-1 overflow-x-auto overflow-y-hidden pb-1.5"
-          onScroll={clearHover}
+        <CustomScrollArea
+          viewportRef={scrollRef}
+          viewportProps={{ onScroll: clearHover }}
+          className="lh-scroll min-w-0 flex-1"
+          viewportClassName="pb-1.5"
+          orientation="horizontal"
         >
           {loading ? (
             <HeatmapSkeleton weeksCount={grid.weeks.length} />
@@ -403,7 +406,7 @@ export function LearningHeatmap({
               {hover && <HeatmapTooltip hover={hover} />}
             </div>
           )}
-        </div>
+        </CustomScrollArea>
       </div>
 
       {/* 图例 */}

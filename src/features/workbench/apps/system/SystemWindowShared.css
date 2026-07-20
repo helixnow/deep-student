@@ -167,6 +167,7 @@
   height: 100%;
   width: 100%;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -285,6 +286,7 @@
   z-index: calc(var(--wb-z-window-content, 0) + 7);
   display: flex;
   flex-direction: column;
+  min-height: 0;
   width: min(248px, 82%);
   border-right: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
   background: var(--wb-window-bg, hsl(var(--card)));
@@ -356,7 +358,9 @@
 .wb-sys-drawer-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+}
+
+.wb-sys-drawer-body-viewport {
   /* 抽屉滚到边缘不把滚动链传给底下的内容区 */
   overscroll-behavior: contain;
 }

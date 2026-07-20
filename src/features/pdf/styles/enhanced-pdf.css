@@ -5,6 +5,7 @@
 
 .ds-pdf-viewer {
   position: relative;
+  min-height: 0;
   background: transparent;
   color: hsl(var(--foreground));
   container-type: inline-size;
@@ -378,13 +379,16 @@
   margin-bottom: 4px;
   min-width: 120px;
   max-height: min(52vh, 420px);
-  overflow-y: auto;
-  padding: 4px;
   border-radius: var(--radius-shell-control, 12px);
   background: hsl(var(--popover));
   border: 1px solid hsl(var(--border));
   box-shadow: 0 4px 12px hsl(var(--ring) / 0.1);
   z-index: 100;
+}
+
+.ds-zoom-dropdown-viewport {
+  max-height: inherit;
+  padding: 4px;
 }
 
 .ds-zoom-option {
@@ -452,6 +456,7 @@
 .ds-pdf__main {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -461,10 +466,11 @@
 
 .ds-pdf__sidebar {
   width: 200px;
+  min-height: 0;
   /* 对话标准 token：透明面 + 右缘软分隔线（阅读器内部面板保留 200px 层级宽度） */
   background: transparent;
   border-right: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 0.55));
-  overflow-y: auto;
+  overflow: hidden;
   flex-shrink: 0;
 }
 
@@ -753,7 +759,10 @@
 
 .ds-highlights-list {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+}
+
+.ds-highlights-list-viewport {
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -1353,7 +1362,10 @@
 
 .ds-bookmarks-list {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+}
+
+.ds-bookmarks-list-viewport {
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -1696,7 +1708,10 @@
 .ds-pdf__mobile-panel .ds-bookmarks-list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+}
+
+.ds-pdf__mobile-panel .ds-highlights-list-viewport,
+.ds-pdf__mobile-panel .ds-bookmarks-list-viewport {
   padding: 8px 12px calc(8px + var(--ds-pdf-safe-bottom));
 }
 

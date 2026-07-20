@@ -10,6 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { InlineImageViewer } from '../InlineImageViewer';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import type { AttachmentMeta, PdfProcessingStatus } from '../../core/types/common';
@@ -238,14 +239,19 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
 
   return (
     <>
-      <div
+      <CustomScrollArea
         role="list"
         aria-label={t('analysis:input_bar.attachments.title')}
+        orientation="both"
+        fullHeight={false}
         className={cn(
+          'attachment-preview-chips mb-2 max-h-[76px]',
+          className
+        )}
+        viewportClassName={cn(
           // ★ M6 修复：换行断点从 sm(640) 对齐到 md(768)——与移动端布局断点一致，
           // 避免 640-767px 区间"移动端布局 + 桌面 wrap 行为"的分裂
-          'attachment-preview-chips mb-2 flex max-h-[76px] flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pr-1 md:flex-wrap md:content-start md:overflow-y-auto',
-          className
+          'flex max-h-[76px] flex-nowrap items-center gap-2 pr-1 md:flex-wrap md:content-start'
         )}
       >
         {attachments.map((attachment) => {
@@ -409,7 +415,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
             </div>
           );
         })}
-      </div>
+      </CustomScrollArea>
 
       {/* 图片预览器 */}
       {imageUrls.length > 0 && (

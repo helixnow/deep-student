@@ -197,7 +197,6 @@
 .notes-backlinks-panel-body {
   min-height: 0;
   flex: 1;
-  overflow: auto;
 }
 
 .notes-backlinks-panel-section {

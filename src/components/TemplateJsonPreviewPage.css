@@ -202,15 +202,18 @@
   background: hsl(var(--muted) / 0.7);
 }
 
-.data-pre {
+.data-pre-scroll {
   margin: 4px 0 0;
   max-height: 240px;
-  overflow: auto;
   font-size: 12px;
   background: hsl(var(--foreground) / 0.95);
   color: hsl(var(--border));
   border-radius: 6px;
-  padding: 8px;
+}
+
+.data-pre {
+  margin: 0;
+  min-width: max-content;
 }
 
 .empty {
@@ -316,9 +319,8 @@
     padding: 6px;
   }
 
-  .data-pre {
+  .data-pre-scroll {
     font-size: 11px;
-    padding: 6px;
     max-height: 180px;
   }
 

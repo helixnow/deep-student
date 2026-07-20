@@ -1082,7 +1082,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         {folderList.length > 0 ? (
           <div className="w-full max-w-sm mb-4">
             <p className="text-xs text-muted-foreground mb-2">{t('memory.select_folder')}:</p>
-            <CustomScrollArea className="rounded-lg bg-muted/30 max-h-40">
+            <CustomScrollArea className="max-h-40 min-h-0 rounded-lg bg-muted/30" fullHeight={false}>
               <div className="p-1">
                 {folderList.map((folder) => (
                   <DsButton
@@ -1162,7 +1162,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
   // ========== 渲染：主视图 ==========
   return (
-    <div className={cn('flex flex-col h-full', className)}>
+    <div className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
       {/* 顶部工具栏 - 简洁风格（窄容器允许折行，避免单行溢出） */}
       <div data-wb-blur-surface className="flex flex-wrap items-center gap-2 gap-y-1.5 px-4 py-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl">
         {/* 搜索框：保留最小可用宽度，不足时让后续按钮折行 */}
@@ -1354,7 +1354,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <X size={12} />
                   </DsButton>
                 </div>
-                <CustomScrollArea className="max-h-48">
+                <CustomScrollArea className="max-h-48 min-h-0" fullHeight={false}>
                   <div className="p-1">
                     {filteredFolderList.length === 0 ? (
                       <div className="px-3 py-3 text-[11px] text-muted-foreground/60 text-center">
@@ -1404,7 +1404,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       )}
 
       {/* 记忆列表 */}
-      <CustomScrollArea className="flex-1">
+      <CustomScrollArea className="min-h-0 flex-1">
         <div className="p-3 space-y-3" ref={scrollHostRef}>
           {/* 画像汇总 */}
           <AnimatePresence initial={false}>

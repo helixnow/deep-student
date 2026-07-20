@@ -13,6 +13,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Card } from '@/components/ui/shad/Card';
+import { CustomScrollArea } from './custom-scroll-area';
 import {
   CaretLeft,
   CaretRight,
@@ -205,27 +206,29 @@ const DayDetail: React.FC<DayDetailProps> = ({
             <Target size={13} />
             {t('review:calendar.dueQueue', { count: duePlans.length })}
           </p>
-          <ul className="space-y-1 max-h-52 overflow-y-auto pr-1">
-            {duePlans.slice(0, 30).map((plan) => {
-              const question = questionMap.get(plan.question_id);
-              const typeMeta = getReviewQuestionTypeMeta(question?.question_type);
-              const TypeIcon = typeMeta.Icon;
-              return (
-                <li
-                  key={plan.id}
-                  className="flex items-center gap-2 rounded-md bg-muted/30 px-2.5 py-1.5"
-                >
-                  <TypeIcon size={13} className="shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate text-xs text-foreground/85">
-                    {question?.content || t('review:unknownQuestion')}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {t(`review:status.${plan.status}`, plan.status)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <CustomScrollArea className="max-h-52" viewportClassName="pr-1" fullHeight={false}>
+            <ul className="space-y-1">
+              {duePlans.slice(0, 30).map((plan) => {
+                const question = questionMap.get(plan.question_id);
+                const typeMeta = getReviewQuestionTypeMeta(question?.question_type);
+                const TypeIcon = typeMeta.Icon;
+                return (
+                  <li
+                    key={plan.id}
+                    className="flex items-center gap-2 rounded-md bg-muted/30 px-2.5 py-1.5"
+                  >
+                    <TypeIcon size={13} className="shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-xs text-foreground/85">
+                      {question?.content || t('review:unknownQuestion')}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {t(`review:status.${plan.status}`, plan.status)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </CustomScrollArea>
           {duePlans.length > 30 && (
             <p className="text-center text-[10px] text-muted-foreground">
               {t('review:calendar.dueMore', { count: duePlans.length - 30 })}

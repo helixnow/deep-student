@@ -1013,7 +1013,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
   // 错误以覆盖层形式展示，结构保持挂载，切换到正常文件后可直接恢复
   return (
     <div
-      className={`relative flex flex-col h-full ${className}`}
+      className={`relative flex h-full min-h-0 flex-col overflow-hidden ${className}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       aria-busy={isLoading && !error}
@@ -1080,7 +1080,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
       )}
 
       {/* 表格内容 */}
-      <CustomScrollArea className="xlsx-scroll-area flex-1" orientation="both" viewportRef={viewportRef}>
+      <CustomScrollArea className="xlsx-scroll-area min-h-0 flex-1" orientation="both" viewportRef={viewportRef}>
         {!isLoading && !error && sheetCount === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 p-12 text-muted-foreground">
             <TableIcon size={24} aria-hidden="true" />
@@ -1127,7 +1127,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
               <div
                 role="tablist"
                 aria-label={t('learningHub:officePreview.sheetTabs')}
-                className="xlsx-tabstrip flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1"
+                className="xlsx-tabstrip scrollbar-none flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1"
               >
                 {sheetTabs.map((tab, index) => {
                   const isActive = index === currentSheetIndex;
@@ -1294,10 +1294,6 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
         .xlsx-tabstrip {
           -webkit-mask-image: linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%);
           mask-image: linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%);
-          scrollbar-width: none;
-        }
-        .xlsx-tabstrip::-webkit-scrollbar {
-          display: none;
         }
       `}</style>
     </div>

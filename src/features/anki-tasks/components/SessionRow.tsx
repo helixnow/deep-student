@@ -488,7 +488,7 @@ export const SessionRow: React.FC<{
                 </div>
               )}
               {/* 表头+卡片列表 — 可水平滚动，避免窄容器多列时列宽坍缩 */}
-              <div className="overflow-x-auto">
+              <CustomScrollArea className="min-w-0" orientation="horizontal" fullHeight={false}>
                 <div style={!isFallback && columns.length > 2 ? { minWidth: `${columns.length * 120 + 36}px` } : undefined}>
                   {/* 表头 — 根据模板字段动态生成列 */}
                   <div className="flex items-center gap-3 px-2 py-1.5 text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider">
@@ -505,7 +505,10 @@ export const SessionRow: React.FC<{
                     )}
                   </div>
                   {/* show-more 分页 — 展开后解除高度限制 */}
-                  <CustomScrollArea className={showAllCards ? 'max-h-[600px]' : 'max-h-[280px]'}>
+                  <CustomScrollArea
+                    className={showAllCards ? 'max-h-[600px] min-h-0' : 'max-h-[280px] min-h-0'}
+                    fullHeight={false}
+                  >
                     {visibleCards.map((c, i) => (
                       <div key={c.id || i} className="flex items-start gap-3 px-2 py-2 hover:bg-[var(--interactive-hover)] transition-colors">
                         <span className="text-[10px] text-muted-foreground/30 mt-0.5 w-6 text-right flex-shrink-0 tabular-nums">
@@ -534,7 +537,7 @@ export const SessionRow: React.FC<{
                     ))}
                   </CustomScrollArea>
                 </div>
-              </div>
+              </CustomScrollArea>
               {hasMoreCards && (
                 <DsButton variant="ghost" size="sm" onClick={() => setShowAllCards(v => !v)} className="w-full !py-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground">
                   {showAllCards

@@ -1090,7 +1090,10 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         </div>
       </div>
     ) : (
-      <div className={cn('flex h-full flex-col items-center justify-center overflow-y-auto px-4 py-10', className)}>
+      <CustomScrollArea
+        className={cn('h-full', className)}
+        viewportClassName="flex min-h-full flex-col items-center justify-center px-4 py-10"
+      >
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
             <ExamIcon size={28} className="opacity-80" />
@@ -1138,7 +1141,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             )}
           </>
         )}
-      </div>
+      </CustomScrollArea>
     );
 
     // 整个启动台都是拖放目标：拖入文件直接进入识别导入流程

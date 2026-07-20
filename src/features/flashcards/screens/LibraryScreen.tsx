@@ -18,6 +18,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
@@ -577,7 +578,7 @@ export const LibraryScreen: React.FC = () => {
         </div>
       ) : null}
 
-      <div className="wb-fc-list">
+      <CustomScrollArea className="wb-fc-list min-h-0 flex-1">
         {loadError ? (
           <div role="alert" className="wb-fc-empty">
             <p className="break-words text-destructive">{loadError}</p>
@@ -652,7 +653,7 @@ export const LibraryScreen: React.FC = () => {
             </ul>
           </div>
         )}
-      </div>
+      </CustomScrollArea>
 
       <footer className="flex shrink-0 items-center justify-between gap-3 text-xs text-muted-foreground">
         <span>{translate('library.page', { page, pages: pageCount })}</span>

@@ -169,11 +169,6 @@
   height: auto;
 }
 
-.chat-v2 .chat-empty-composer-layout__message-list .custom-scrollbar {
-  overflow: visible;
-  padding: 0;
-}
-
 .chat-v2 .chat-empty-composer-layout__message-list [data-slot="thread-empty-state"] {
   padding-top: 0;
   padding-bottom: 1.125rem;

@@ -84,19 +84,25 @@
 
 /* ==== Hero 区 ========================================================= */
 
-.wb-sys-pomo-hero {
-  position: relative;
+.wb-sys-pomo-hero-scroll {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+}
+
+.wb-sys-pomo-hero-viewport {
+  overscroll-behavior: contain;
+}
+
+.wb-sys-pomo-hero {
+  position: relative;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 16px;
   padding: 22px 20px;
-  overflow-y: auto;
-  /* hero 自滚到边缘不把滚动链传给窗外 */
-  overscroll-behavior: contain;
 }
 
 /* 短窗：纵向节奏收紧，把空间还给控制坞 */
@@ -662,9 +668,14 @@
 .wb-sys-pomo-view-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+}
+
+.wb-sys-pomo-view-body-viewport {
   /* 子视图滚到边缘不把滚动链传给底下的主视图 */
   overscroll-behavior: contain;
+}
+
+.wb-sys-pomo-view-body-content {
   padding: 2px 14px 16px;
 }
 

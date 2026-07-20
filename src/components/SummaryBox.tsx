@@ -7,6 +7,7 @@ import './SummaryBox.css';
 import ChatCollapsible from './shared/ChatCollapsible';
 import { Badge } from './ui/shad/Badge';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from './custom-scroll-area';
 
 interface SummaryBoxProps {
   chatHistory: ChatMessage[];
@@ -136,7 +137,12 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
       forceMount
     >
       {isExpanded && (
-        <div className="summary-content" ref={summaryContentRef}>
+        <CustomScrollArea
+          className="summary-content"
+          viewportClassName="summary-content-viewport"
+          viewportRef={summaryContentRef}
+          fullHeight={false}
+        >
           {isGenerating && (
             <div className="loading-row">
               <div className="loading-spinner" />
@@ -159,7 +165,7 @@ export const SummaryBox: React.FC<SummaryBoxProps> = ({
               <div className="skeleton-line" style={{ width: '64%' }} />
             </div>
           )}
-        </div>
+        </CustomScrollArea>
       )}
     </ChatCollapsible>
   );

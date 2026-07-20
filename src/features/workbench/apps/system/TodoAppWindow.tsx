@@ -198,7 +198,7 @@ const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange 
   return (
     <div
       ref={rootRef}
-      className="relative h-full w-full min-w-0 overflow-hidden bg-background"
+      className="relative h-full min-h-0 w-full min-w-0 overflow-hidden bg-background"
       style={{
         ...SHELL_VAR_RESET,
         '--wb-sidebar-width': `${effectiveSidebarWidth}px`,

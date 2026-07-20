@@ -10,6 +10,7 @@ import {
 import * as DataGovernanceApi from "@/api/dataGovernance";
 import type { SyncQuarantineRow } from "@/api/dataGovernance";
 import { DsButton } from "@/components/ui/DsButton";
+import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { DsAlertDialog } from "@/components/ui/DsDialog";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
 import {
@@ -324,9 +325,9 @@ export const SyncQuarantinePanel: React.FC<{
                   <summary className="cursor-pointer text-muted-foreground">
                     {t("data:governance.quarantine_payload_label")}
                   </summary>
-                  <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted/40 p-2 text-xs leading-5">
-                    {formatPayload(row.payload_json)}
-                  </pre>
+                  <CustomScrollArea orientation="both" className="mt-2 h-48 rounded-md bg-muted/40" viewportClassName="p-2">
+                    <pre className="text-xs leading-5">{formatPayload(row.payload_json)}</pre>
+                  </CustomScrollArea>
                 </details>
               )}
             </div>

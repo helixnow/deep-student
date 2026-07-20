@@ -27,6 +27,7 @@ import type { WorkbenchWindow } from '../core/types';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
 import { useLiquidGlassLens } from '../core/liquidGlassLens';
 import { prefetchFrozenWindow } from '../core/wakePrefetchIntent';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import './WindowSwitcher.css';
 
 export interface WindowSwitcherProps {
@@ -229,64 +230,72 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
         aria-activedescendant={selectedId ? `wb-switcher-item-${selectedId}` : undefined}
         onAnimationEnd={handleBarAnimationEnd}
       >
-        <div ref={stripRef} className="wb-switcher-strip" data-testid="wb-switcher-strip">
-          <div
-            ref={frameRef}
-            className="wb-switcher-frame"
-            data-testid="wb-switcher-frame"
-            aria-hidden="true"
-          />
-          {entries.map(({ id, index, win }) => {
-            const def = appRegistry.get(win.typeId);
-            const isSelected = index === session.index;
-            const label = win.title || (def ? t(def.nameKey, win.typeId) : win.typeId);
-            const icon = def?.icon ?? (
-              <span className="wb-switcher-icon-fallback">
-                {(label || win.typeId).slice(0, 1)}
-              </span>
-            );
-            const thumbRatio = win.frame.h > 0
-              ? Math.min(THUMB_RATIO_MAX, Math.max(THUMB_RATIO_MIN, win.frame.w / win.frame.h))
-              : 4 / 3;
-            return (
-              <button
-                key={id}
-                id={`wb-switcher-item-${id}`}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                data-minimized={win.minimized ? 'true' : undefined}
-                title={label}
-                className="wb-switcher-item"
-                tabIndex={-1}
-                onMouseEnter={() => handleHover(index)}
-                onClick={() => handlePick(id, index)}
-              >
-                <span className="wb-switcher-tile">
-                  {thumbnails ? (
-                    <span
-                      className="wb-switcher-thumb"
-                      data-testid={`wb-switcher-thumb-${id}`}
-                      style={{ aspectRatio: `${thumbRatio}` }}
-                    >
-                      <span className="wb-switcher-thumb-bar" />
-                      <span className="wb-switcher-thumb-body" />
-                      <span className="wb-switcher-thumb-icon">{icon}</span>
-                    </span>
-                  ) : (
-                    <span className="wb-switcher-icon">{icon}</span>
-                  )}
+        <CustomScrollArea
+          className="wb-switcher-scroll"
+          fullHeight={false}
+          trackOffsetTop={2}
+          trackOffsetBottom={2}
+          trackOffsetRight={1}
+        >
+          <div ref={stripRef} className="wb-switcher-strip" data-testid="wb-switcher-strip">
+            <div
+              ref={frameRef}
+              className="wb-switcher-frame"
+              data-testid="wb-switcher-frame"
+              aria-hidden="true"
+            />
+            {entries.map(({ id, index, win }) => {
+              const def = appRegistry.get(win.typeId);
+              const isSelected = index === session.index;
+              const label = win.title || (def ? t(def.nameKey, win.typeId) : win.typeId);
+              const icon = def?.icon ?? (
+                <span className="wb-switcher-icon-fallback">
+                  {(label || win.typeId).slice(0, 1)}
                 </span>
-                {win.minimized && (
-                  <span
-                    className="wb-switcher-min-dot"
-                    aria-label={t('workbench:switcher.minimized')}
-                  />
-                )}
-              </button>
-            );
-          })}
-        </div>
+              );
+              const thumbRatio = win.frame.h > 0
+                ? Math.min(THUMB_RATIO_MAX, Math.max(THUMB_RATIO_MIN, win.frame.w / win.frame.h))
+                : 4 / 3;
+              return (
+                <button
+                  key={id}
+                  id={`wb-switcher-item-${id}`}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  data-minimized={win.minimized ? 'true' : undefined}
+                  title={label}
+                  className="wb-switcher-item"
+                  tabIndex={-1}
+                  onMouseEnter={() => handleHover(index)}
+                  onClick={() => handlePick(id, index)}
+                >
+                  <span className="wb-switcher-tile">
+                    {thumbnails ? (
+                      <span
+                        className="wb-switcher-thumb"
+                        data-testid={`wb-switcher-thumb-${id}`}
+                        style={{ aspectRatio: `${thumbRatio}` }}
+                      >
+                        <span className="wb-switcher-thumb-bar" />
+                        <span className="wb-switcher-thumb-body" />
+                        <span className="wb-switcher-thumb-icon">{icon}</span>
+                      </span>
+                    ) : (
+                      <span className="wb-switcher-icon">{icon}</span>
+                    )}
+                  </span>
+                  {win.minimized && (
+                    <span
+                      className="wb-switcher-min-dot"
+                      aria-label={t('workbench:switcher.minimized')}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </CustomScrollArea>
         <div className="wb-switcher-caption">
           <div key={selectedId ?? 'none'} className="wb-switcher-title">
             {selectedTitle || '\u00A0'}

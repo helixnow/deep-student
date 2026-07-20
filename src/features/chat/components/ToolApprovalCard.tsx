@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Check, X, Clock, Warning, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import { cn } from '@/lib/utils';
@@ -71,12 +72,14 @@ const ArgumentsPreview: React.FC<{
 
   return (
     <>
-      <pre className={cn(
-        'mt-1 overflow-auto rounded bg-muted p-2 text-xs',
-        isExpanded ? 'max-h-64' : 'max-h-32',
-      )}>
-        {displayText}
-      </pre>
+      <CustomScrollArea
+        orientation="both"
+        fullHeight={false}
+        className={cn('mt-1 rounded bg-muted', isExpanded ? 'max-h-64' : 'max-h-32')}
+        viewportClassName={isExpanded ? 'max-h-64' : 'max-h-32'}
+      >
+        <pre className="p-2 text-xs">{displayText}</pre>
+      </CustomScrollArea>
       {needsTruncation && (
         <DsButton variant="ghost" size="sm" onClick={onToggle} className="mt-1 text-primary hover:underline">
           {isExpanded ? (

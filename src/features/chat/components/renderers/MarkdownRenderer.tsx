@@ -12,6 +12,7 @@ import type { KatexOptions } from 'katex';
 import { getLoadedKatex, ensureKatexLoaded, scheduleKatexIdlePrefetch } from './lazyKatex';
 import { CodeBlock } from './CodeBlock';
 import { TableBlockShell } from '../ui/TableBlockShell';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { sanitizeDanglingMarkdown } from './sanitizeDanglingMarkdown';
 import { openUrl } from '@/utils/urlOpener';
@@ -463,6 +464,17 @@ function setCachedKatex(latex: string, displayMode: boolean, html: string): void
  * - katex 未加载：先渲染原文降级（与流式期间未闭合公式的表现一致），
  *   触发加载并在完成后重渲染接管
  */
+const MathScrollShell: React.FC<{ displayMode: boolean; children: React.ReactNode }> = ({
+  displayMode,
+  children,
+}) => displayMode ? (
+  <ScrollArea orientation="horizontal" className="math-scroll-area">
+    {children}
+  </ScrollArea>
+) : (
+  <>{children}</>
+);
+
 const LazyMath: React.FC<{
   latex: string;
   displayMode: boolean;
@@ -489,28 +501,40 @@ const LazyMath: React.FC<{
   }, [needsLoad]);
 
   if (cached !== undefined) {
-    return <span dangerouslySetInnerHTML={{ __html: cached }} />;
+    return (
+      <MathScrollShell displayMode={displayMode}>
+        <span dangerouslySetInnerHTML={{ __html: cached }} />
+      </MathScrollShell>
+    );
   }
 
   if (!katex) {
     // 加载中降级：显示原文（KaTeX 到位后自动补渲）
     return (
-      <span className="katex-loading" style={{ display: displayMode ? 'block' : 'inline' }}>
-        {latex}
-      </span>
+      <MathScrollShell displayMode={displayMode}>
+        <span className="katex-loading" style={{ display: displayMode ? 'block' : 'inline' }}>
+          {latex}
+        </span>
+      </MathScrollShell>
     );
   }
 
   try {
     const html = katex.renderToString(latex, { ...options, displayMode });
     setCachedKatex(latex, displayMode, html);
-    return <span dangerouslySetInnerHTML={{ __html: html }} />;
+    return (
+      <MathScrollShell displayMode={displayMode}>
+        <span dangerouslySetInnerHTML={{ __html: html }} />
+      </MathScrollShell>
+    );
   } catch (error: unknown) {
     console.error('[MarkdownRenderer] KaTeX render failed:', error, 'latex=', latex);
     return (
-      <span className="katex-error" style={{ display: displayMode ? 'block' : 'inline' }}>
-        {latex}
-      </span>
+      <MathScrollShell displayMode={displayMode}>
+        <span className="katex-error" style={{ display: displayMode ? 'block' : 'inline' }}>
+          {latex}
+        </span>
+      </MathScrollShell>
     );
   }
 };

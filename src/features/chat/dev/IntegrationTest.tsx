@@ -12,6 +12,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { CircleNotch, Check, X, Warning, Info } from '@phosphor-icons/react';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 // Chat V2 组件
 import { ChatContainer } from '../components/ChatContainer';
@@ -412,7 +413,7 @@ export const IntegrationTest: React.FC = () => {
               </div>
 
               {/* 测试结果列表 */}
-              <div className="max-h-80 overflow-auto">
+              <CustomScrollArea fullHeight={false} className="max-h-80" viewportClassName="max-h-80">
                 {testResults.map((result, index) => (
                   <div
                     key={index}
@@ -447,7 +448,7 @@ export const IntegrationTest: React.FC = () => {
                     )}
                   </div>
                 ))}
-              </div>
+              </CustomScrollArea>
 
               {/* 测试日志 */}
               {testLogs.length > 0 && (
@@ -455,13 +456,17 @@ export const IntegrationTest: React.FC = () => {
                   <div className="px-3 py-1.5 bg-muted/30 text-xs text-muted-foreground">
                     测试日志
                   </div>
-                  <div className="p-2 max-h-32 overflow-auto text-xs font-mono bg-muted/20">
+                  <CustomScrollArea
+                    fullHeight={false}
+                    className="max-h-32 bg-muted/20"
+                    viewportClassName="max-h-32 p-2 text-xs font-mono"
+                  >
                     {testLogs.map((log, i) => (
                       <div key={i} className="py-0.5">
                         {log}
                       </div>
                     ))}
-                  </div>
+                  </CustomScrollArea>
                 </div>
               )}
             </div>

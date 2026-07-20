@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Warning, ArrowClockwise } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { reportFrontendError } from '@/logging/errorReporter';
 
 interface ChatErrorBoundaryProps {
@@ -75,9 +76,9 @@ const ErrorFallback: React.FC<ErrorFallbackProps> = ({ error, title, onRetry, re
           <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
             {t('errorBoundary.viewErrorDetails')}
           </summary>
-          <pre className="mt-2 p-3 bg-muted rounded-md text-xs overflow-auto max-h-40">
-            {errorStack}
-          </pre>
+          <CustomScrollArea orientation="both" fullHeight={false} className="mt-2 max-h-40 rounded-md bg-muted" viewportClassName="max-h-40">
+            <pre className="p-3 text-xs">{errorStack}</pre>
+          </CustomScrollArea>
         </details>
       )}
     </div>

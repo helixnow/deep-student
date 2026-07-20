@@ -304,7 +304,7 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
           <SortableContext items={items} strategy={horizontalListSortingStrategy}>
             <TabsList
               ref={scrollRef as any}
-              className="notes-tabs-scroll flex h-full w-full items-stretch gap-0 overflow-x-auto overflow-y-hidden rounded-none border-none bg-transparent px-7 !justify-start"
+              className="notes-tabs-scroll scrollbar-none flex h-full w-full items-stretch gap-0 overflow-x-auto overflow-y-hidden rounded-none border-none bg-transparent px-7 !justify-start"
             >
               {tabs.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-muted-foreground/60">

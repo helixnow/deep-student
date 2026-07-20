@@ -1782,9 +1782,11 @@ export const IndexStatusView: React.FC = () => {
                             </div>
                           </div>
                           {chunk.textContent ? (
-                            <pre className="px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-sans leading-relaxed text-foreground/80">
-                              {chunk.textContent}
-                            </pre>
+                            <CustomScrollArea className="max-h-40 min-h-0" fullHeight={false}>
+                              <pre className="px-3 py-2 text-xs whitespace-pre-wrap break-words font-sans leading-relaxed text-foreground/80">
+                                {chunk.textContent}
+                              </pre>
+                            </CustomScrollArea>
                           ) : (
                             <div className="px-3 py-2 text-xs text-muted-foreground italic">{t('indexStatus.detail.noTextContent')}</div>
                           )}
@@ -1856,9 +1858,10 @@ export const IndexStatusView: React.FC = () => {
                                 <div className="text-xs font-medium text-muted-foreground mb-2">
                                   {t('indexStatus.detail.pageOcrResultsWithCount', { count: ocrInfo.ocrPages.length })}
                                 </div>
-                                <div className="space-y-2 max-h-80 overflow-y-auto">
-                                  {ocrInfo.ocrPages.map((page) => (
-                                    <div key={page.pageIndex} className={cn('border rounded-lg', page.isFailed ? 'border-danger/40 bg-danger/10' : 'border-border/50')}>
+                                <CustomScrollArea className="max-h-80 min-h-0" fullHeight={false}>
+                                  <div className="space-y-2">
+                                    {ocrInfo.ocrPages.map((page) => (
+                                      <div key={page.pageIndex} className={cn('border rounded-lg', page.isFailed ? 'border-danger/40 bg-danger/10' : 'border-border/50')}>
                                       <div className={cn('flex items-center justify-between px-3 py-1.5 text-xs border-b', page.isFailed ? 'border-danger/30' : 'border-border/30')}>
                                         <span className="font-medium">{t('indexStatus.detail.pageLabel', { n: page.pageIndex + 1 })}</span>
                                         <span className={cn('tabular-nums', page.isFailed ? 'text-danger' : 'text-muted-foreground')}>
@@ -1866,13 +1869,16 @@ export const IndexStatusView: React.FC = () => {
                                         </span>
                                       </div>
                                       {!page.isFailed && page.text && (
-                                        <pre className="px-3 py-2 text-xs text-foreground/80 whitespace-pre-wrap break-words max-h-32 overflow-y-auto font-sans leading-relaxed">
-                                          {page.text}
-                                        </pre>
+                                        <CustomScrollArea className="max-h-32 min-h-0" fullHeight={false}>
+                                          <pre className="px-3 py-2 text-xs text-foreground/80 whitespace-pre-wrap break-words font-sans leading-relaxed">
+                                            {page.text}
+                                          </pre>
+                                        </CustomScrollArea>
                                       )}
-                                    </div>
-                                  ))}
-                                </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </CustomScrollArea>
                               </div>
                             )}
 
@@ -1880,9 +1886,11 @@ export const IndexStatusView: React.FC = () => {
                             {!ocrInfo.ocrPages && ocrInfo.ocrText && (
                               <div>
                                 <div className="text-xs font-medium text-muted-foreground mb-2">{t('indexStatus.detail.ocrTextContent')}</div>
-                                <pre className="border rounded-lg px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-80 overflow-y-auto font-sans leading-relaxed bg-muted/30">
-                                  {ocrInfo.ocrText}
-                                </pre>
+                                <CustomScrollArea className="max-h-80 min-h-0 rounded-lg border bg-muted/30" fullHeight={false}>
+                                  <pre className="px-3 py-2 text-xs whitespace-pre-wrap break-words font-sans leading-relaxed">
+                                    {ocrInfo.ocrText}
+                                  </pre>
+                                </CustomScrollArea>
                               </div>
                             )}
 
@@ -1890,9 +1898,11 @@ export const IndexStatusView: React.FC = () => {
                             {ocrInfo.extractedText && (
                               <div>
                                 <div className="text-xs font-medium text-muted-foreground mb-2">{t('indexStatus.detail.extractedTextContent')}</div>
-                                <pre className="border rounded-lg px-3 py-2 text-xs whitespace-pre-wrap break-words max-h-80 overflow-y-auto font-sans leading-relaxed bg-muted/30">
-                                  {ocrInfo.extractedText}
-                                </pre>
+                                <CustomScrollArea className="max-h-80 min-h-0 rounded-lg border bg-muted/30" fullHeight={false}>
+                                  <pre className="px-3 py-2 text-xs whitespace-pre-wrap break-words font-sans leading-relaxed">
+                                    {ocrInfo.extractedText}
+                                  </pre>
+                                </CustomScrollArea>
                               </div>
                             )}
 
@@ -1972,7 +1982,7 @@ export const IndexStatusView: React.FC = () => {
   if (!summary) return null;
 
   return (
-    <div ref={rootContainerRef} className="flex flex-col flex-1 min-h-0 bg-background">
+    <div ref={rootContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <style>{SHIMMER_KEYFRAMES}</style>
       {/* 顶部概览区 */}
       {useCompactHeader ? (
@@ -2485,7 +2495,7 @@ export const IndexStatusView: React.FC = () => {
 
               {testResults.length > 0 && (
                 <div className="rounded-lg border bg-background/50 overflow-hidden">
-                  <CustomScrollArea className="max-h-[400px]">
+                  <CustomScrollArea className="max-h-[400px] min-h-0" fullHeight={false}>
                     <div className="divide-y divide-border/50">
                       {testResults.map((result, idx) => (
                         <div key={result.embeddingId} className="p-4 hover:bg-[var(--interactive-hover)] transition-colors">
@@ -2525,31 +2535,33 @@ export const IndexStatusView: React.FC = () => {
 
       {/* 筛选栏 — macOS segmented / capsule 风格 */}
       <div data-wb-blur-surface className="flex items-center gap-3 px-3 md:px-4 py-2 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/70 backdrop-blur-xl sticky top-0 z-10">
-        <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto">
-          <span className="text-[11px] font-medium text-muted-foreground/80 shrink-0">{t('indexStatus.filter.typeFilter')}</span>
-          <div className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-muted/50 border border-black/[0.04] dark:border-white/[0.06]">
-            {['all', 'note', 'textbook', 'exam', 'translation', 'essay', 'mindmap', 'file', 'image'].map((type) => {
-              const isActive = selectedType === type;
-              const label = type === 'all' ? t('indexStatus.filter.all') : (RESOURCE_TYPE_CONFIG[type]?.labelKey ? t(RESOURCE_TYPE_CONFIG[type].labelKey) : type);
-              return (
-                <DsButton
-                  key={type}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedType(type)}
-                  className={cn(
-                    '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent',
-                    isActive
-                      ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
-                  )}
-                >
-                  {label}
-                </DsButton>
-              );
-            })}
+        <CustomScrollArea className="min-w-0 flex-1" orientation="horizontal" fullHeight={false}>
+          <div className="flex w-max min-w-full items-center gap-2">
+            <span className="text-[11px] font-medium text-muted-foreground/80 shrink-0">{t('indexStatus.filter.typeFilter')}</span>
+            <div className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-muted/50 border border-black/[0.04] dark:border-white/[0.06]">
+              {['all', 'note', 'textbook', 'exam', 'translation', 'essay', 'mindmap', 'file', 'image'].map((type) => {
+                const isActive = selectedType === type;
+                const label = type === 'all' ? t('indexStatus.filter.all') : (RESOURCE_TYPE_CONFIG[type]?.labelKey ? t(RESOURCE_TYPE_CONFIG[type].labelKey) : type);
+                return (
+                  <DsButton
+                    key={type}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedType(type)}
+                    className={cn(
+                      '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent',
+                      isActive
+                        ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
+                    )}
+                  >
+                    {label}
+                  </DsButton>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </CustomScrollArea>
         {!useCompactHeader && (
           <div className="text-[11px] tabular-nums text-muted-foreground shrink-0 pl-3 border-l border-black/[0.06] dark:border-white/[0.08] whitespace-nowrap">
             <span className="font-semibold text-foreground/90">{summary.resources.length}</span>
@@ -2561,7 +2573,7 @@ export const IndexStatusView: React.FC = () => {
 
       
 {/* 分组资源列表 */}
-      <CustomScrollArea className="flex-1">
+      <CustomScrollArea className="min-h-0 flex-1">
         {summary.resources.length === 0 ? (
           selectedState === 'all' && selectedType === 'all' ? (
             /* 真空态：没有任何可索引资源，给引导文案 */

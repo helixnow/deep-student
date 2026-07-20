@@ -68,14 +68,17 @@
   pointer-events: none;
 }
 
+.wb-docklist-items-scroll {
+  max-height: calc(100vh - 48px);
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
 .wb-docklist-items {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   justify-content: center;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
   align-content: flex-start;
 }
 

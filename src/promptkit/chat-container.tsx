@@ -48,7 +48,7 @@ export function ChatContainerRoot({
 
   return (
     <CustomScrollArea
-      className={cn('h-full w-full', className)}
+      className={cn('h-full min-h-0 w-full', className)}
       viewportClassName="flex h-full w-full flex-col"
       viewportRef={containerRef}
       viewportProps={{ role, onScroll }}

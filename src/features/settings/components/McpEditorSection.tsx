@@ -1051,7 +1051,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       }
     };
 
-    const modalContentClassName = 'flex w-[min(96vw,960px)] max-h-[85vh] flex-col overflow-hidden p-0';
+    const modalContentClassName = 'flex h-[min(85dvh,720px)] max-h-[min(85dvh,720px)] min-h-0 w-[min(96vw,960px)] flex-col overflow-hidden p-0';
 
     return (
       <UnifiedModal isOpen={true} onClose={handleClose} closeOnOverlayClick={false} contentClassName={modalContentClassName}>
@@ -1068,11 +1068,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             <div className="mt-1.5 flex-1 overflow-hidden min-h-0">
           <TabsContent value="form" className="h-full min-h-0 data-[state=inactive]:hidden">
             <CustomScrollArea
-              className="h-full"
+              className="h-full min-h-0"
               viewportClassName="pr-2"
               trackOffsetTop={8}
               trackOffsetBottom={8}
-              viewportProps={{ style: { maxHeight: 'calc(85vh - 180px)' } }}
             >
             <div className="space-y-2">
             <div className="grid gap-3 md:grid-cols-2">
@@ -1474,7 +1473,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
     return (
       <div
-        className="h-full flex flex-col bg-background [&_input]:min-h-11"
+        className="flex h-full min-h-0 flex-col bg-background [&_input]:min-h-11"
         style={{
           paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
@@ -1487,7 +1486,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
           <div className="flex-1 overflow-hidden min-h-0 mt-3">
             <TabsContent value="form" className="h-full min-h-0 data-[state=inactive]:hidden">
-              <CustomScrollArea className="h-full" viewportClassName="pr-2">
+              <CustomScrollArea className="h-full min-h-0" viewportClassName="pr-2">
                 <div className="space-y-4 pb-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">{t('settings:placeholders.server_name')} *</label>
@@ -1635,7 +1634,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             </TabsContent>
 
             <TabsContent value="json" className="h-full min-h-0 data-[state=inactive]:hidden">
-              <div className="h-full flex flex-col">
+              <div className="flex h-full min-h-0 flex-col">
                 <UnifiedCodeEditor
                   value={mcpToolModal.jsonInput}
                   onChange={(value) => setMcpToolModal(prev => ({ ...prev, jsonInput: value }))}
@@ -1716,12 +1715,12 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
     return (
       <div
-        className="h-full flex flex-col bg-background [&_input]:min-h-11"
+        className="flex h-full min-h-0 flex-col bg-background [&_input]:min-h-11"
         style={{
           paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
-        <CustomScrollArea className="flex-1" viewportClassName="px-4 py-4">
+        <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-4 py-4">
           <div className="space-y-4">
             {/* 广告所有工具 */}
             <div className="flex items-center gap-2">

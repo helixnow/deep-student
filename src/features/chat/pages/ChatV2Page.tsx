@@ -15,6 +15,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ChatContainer } from '../components/ChatContainer';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { ThreadEmptyStateShell } from '../components/ui/ThreadEmptyStateShell';
@@ -1070,31 +1071,34 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     // 加载完成仍无会话（自动创建失败等）：与会话内空态共用 ThreadEmptyStateShell
     // 统一内容模型（品牌 → 标题 → 描述 → CTA → hint）
     return (
-      <div
+      <CustomScrollArea
         data-slot="chat-page-empty-state"
-        className="chat-thread-enter flex flex-1 items-center justify-center overflow-y-auto px-6 py-8"
+        className="chat-thread-enter min-h-0 flex-1"
+        viewportClassName="px-6 py-8"
       >
-        <ThreadEmptyStateShell
-          title={t('page.welcome')}
-          brandIcon={<Chat size={26} weight="duotone" />}
-          description={t('page.emptyPage.subtitle')}
-          hint={t('page.emptyPage.hint')}
-          actions={
-            <>
-              <DsButton variant="primary" size="sm" onClick={() => void createSession()}>
-                <Plus size={14} />
-                {t('page.newChat')}
-              </DsButton>
-              {!isSmallScreen && sessions.length > 0 && (
-                <DsButton variant="outline" size="sm" onClick={() => setViewMode('browser')}>
-                  <SquaresFour size={14} />
-                  {t('browser.title')}
+        <div className="flex min-h-full items-center justify-center">
+          <ThreadEmptyStateShell
+            title={t('page.welcome')}
+            brandIcon={<Chat size={26} weight="duotone" />}
+            description={t('page.emptyPage.subtitle')}
+            hint={t('page.emptyPage.hint')}
+            actions={
+              <>
+                <DsButton variant="primary" size="sm" onClick={() => void createSession()}>
+                  <Plus size={14} />
+                  {t('page.newChat')}
                 </DsButton>
-              )}
-            </>
-          }
-        />
-      </div>
+                {!isSmallScreen && sessions.length > 0 && (
+                  <DsButton variant="outline" size="sm" onClick={() => setViewMode('browser')}>
+                    <SquaresFour size={14} />
+                    {t('browser.title')}
+                  </DsButton>
+                )}
+              </>
+            }
+          />
+        </div>
+      </CustomScrollArea>
     );
   };
 

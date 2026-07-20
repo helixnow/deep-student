@@ -484,7 +484,14 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                           <div className="data-block-title">
                             <Badge variant="outline">{t('json_preview.data_title')}</Badge>
                           </div>
-                          <pre className="data-pre">{JSON.stringify(entry.data, null, 2)}</pre>
+                          <CustomScrollArea
+                            className="data-pre-scroll"
+                            viewportClassName="p-2"
+                            orientation="both"
+                            fullHeight={false}
+                          >
+                            <pre className="data-pre">{JSON.stringify(entry.data, null, 2)}</pre>
+                          </CustomScrollArea>
                         </div>
                       </>
                     )}

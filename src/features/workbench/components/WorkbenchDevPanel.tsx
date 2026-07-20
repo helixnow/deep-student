@@ -23,6 +23,7 @@
  */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useWindowStore } from '../core/windowStore';
 import { appRegistry } from '../core/appRegistry';
 import { getMemoryBudget } from '../core/scheduler';
@@ -518,6 +519,20 @@ const FrameChart: React.FC<{ frames: number[]; placeholder: string }> = ({
   );
 };
 
+const HudScrollList: React.FC<
+  React.HTMLAttributes<HTMLUListElement> & { variant: 'interactions' | 'windows' }
+> = ({ variant, className, children, ...props }) => (
+  <CustomScrollArea
+    className={`wb-hud-list-scroll wb-hud-${variant}-scroll`}
+    fullHeight={false}
+    trackOffsetTop={2}
+    trackOffsetBottom={2}
+    trackOffsetRight={1}
+  >
+    <ul className={className} {...props}>{children}</ul>
+  </CustomScrollArea>
+);
+
 // ============================================================================
 // HUD 主体
 // ============================================================================
@@ -884,7 +899,13 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
         </div>
 
         {!collapsed && (
-          <div className="wb-hud-body">
+          <CustomScrollArea
+            className="wb-hud-body-scroll"
+            trackOffsetTop={2}
+            trackOffsetBottom={8}
+            trackOffsetRight={2}
+          >
+            <div className="wb-hud-body">
             {/* 帧耗时曲线 + 掉帧标记 */}
             <div className="wb-hud-section">
               <div className="wb-hud-label">
@@ -928,7 +949,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                   {t('workbench:devPanel.interactionsEmpty')}
                 </div>
               ) : (
-                <ul className="wb-hud-ixlist">
+                <HudScrollList variant="interactions" className="wb-hud-ixlist">
                   {[...interactions].reverse().map((s) => (
                     <li
                       key={s.id}
@@ -944,7 +965,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                       {formatInteractionLine(s)}
                     </li>
                   ))}
-                </ul>
+                </HudScrollList>
               )}
               <div className="wb-hud-ix-actions">
                 <button
@@ -1005,7 +1026,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
               {rows.length === 0 ? (
                 <div className="wb-hud-empty">{t('workbench:devPanel.noWindows')}</div>
               ) : (
-                <ul className="wb-hud-winlist">
+                <HudScrollList variant="windows" className="wb-hud-winlist">
                   {rows.map(({ win, lifecycle, weight }) => (
                     <li key={win.id} className="wb-hud-winrow" data-lifecycle={lifecycle}>
                       <span className="wb-hud-dot" data-lc={lifecycle} aria-hidden="true" />
@@ -1020,7 +1041,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                       </span>
                     </li>
                   ))}
-                </ul>
+                </HudScrollList>
               )}
             </div>
 
@@ -1136,7 +1157,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                   {acrDiagnostics.transactions.length === 0 ? (
                     <div className="wb-hud-empty">（无活跃 transaction）</div>
                   ) : (
-                    <ul className="wb-hud-winlist" data-testid="wb-hud-acr-transaction-list">
+                    <HudScrollList variant="windows" className="wb-hud-winlist" data-testid="wb-hud-acr-transaction-list">
                       {acrDiagnostics.transactions.map((transaction) => (
                         <li
                           key={`${transaction.sessionId}:${transaction.correlationId}:${transaction.kind}`}
@@ -1158,7 +1179,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                           </span>
                         </li>
                       ))}
-                    </ul>
+                    </HudScrollList>
                   )}
 
                   <div className="wb-hud-label" style={{ marginTop: 6 }}>
@@ -1168,7 +1189,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                   {presenceList.length === 0 ? (
                     <div className="wb-hud-empty">（无活跃 presence）</div>
                   ) : (
-                    <ul className="wb-hud-winlist">
+                    <HudScrollList variant="windows" className="wb-hud-winlist">
                       {presenceList.map((p) => (
                         <li key={p.windowId} className="wb-hud-winrow" data-acr-status={p.status}>
                           <span
@@ -1191,7 +1212,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                           <span className="wb-hud-winrow-meta">{p.label}</span>
                         </li>
                       ))}
-                    </ul>
+                    </HudScrollList>
                   )}
 
                   <div className="wb-hud-label" style={{ marginTop: 6 }}>
@@ -1201,7 +1222,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                   {recentReceipts.length === 0 ? (
                     <div className="wb-hud-empty">（尚无回执 · StageManager 接线后可见）</div>
                   ) : (
-                    <ul className="wb-hud-winlist" data-testid="wb-hud-acr-receipts">
+                    <HudScrollList variant="windows" className="wb-hud-winlist" data-testid="wb-hud-acr-receipts">
                       {[...recentReceipts].reverse().map((r, i) => (
                         <li
                           key={`${r.at}-${r.runId}-${i}`}
@@ -1226,7 +1247,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                           </span>
                         </li>
                       ))}
-                    </ul>
+                    </HudScrollList>
                   )}
 
                   <div className="wb-hud-label" style={{ marginTop: 6 }}>
@@ -1236,7 +1257,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                   {recentDomainEvents.length === 0 ? (
                     <div className="wb-hud-empty">（尚无域事件）</div>
                   ) : (
-                    <ul className="wb-hud-winlist">
+                    <HudScrollList variant="windows" className="wb-hud-winlist">
                       {[...recentDomainEvents].reverse().map((ev, i) => (
                         <li
                           key={`${ev.at}-${ev.eventName}-${i}`}
@@ -1251,12 +1272,13 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                           </span>
                         </li>
                       ))}
-                    </ul>
+                    </HudScrollList>
                   )}
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          </CustomScrollArea>
         )}
       </div>
     </div>

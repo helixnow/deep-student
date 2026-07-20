@@ -278,7 +278,11 @@ export const TemplateInlinePicker: React.FC<TemplatePickerDialogProps> = ({
 
           {/* 主体：模板网格 + 迷你预览 */}
           <div className="flex gap-3 px-4 py-3">
-            <CustomScrollArea className="flex-1 min-w-0 max-h-[360px]">
+            <CustomScrollArea
+              className="min-w-0 flex-1 max-h-[360px]"
+              fullHeight={false}
+              onWheel={(event) => event.stopPropagation()}
+            >
               {loading && templates.length === 0 && (
                 <div className="text-sm text-muted-foreground py-8 text-center">
                   {t('templatePicker.loading')}

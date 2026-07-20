@@ -578,7 +578,7 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
   // 否则切换到正常文件后 effect 因拿不到容器而无法恢复渲染）
   return (
     <div
-      className={`relative flex flex-col h-full bg-muted/30 ${className}`}
+      className={`relative flex h-full min-h-0 flex-col overflow-hidden bg-muted/30 ${className}`}
       aria-busy={isLoading && !error}
       tabIndex={0}
       onKeyDown={handleKeyDown}
@@ -608,10 +608,10 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
         {/* 幻灯片缩略图导航栏：文档流内的内联侧栏（非覆盖式），md 及以上显示 */}
         {showThumbRail && (
           <nav
-            className="pptx-thumb-rail ui-rise-in hidden w-[8.5rem] shrink-0 flex-col border-r border-border/60 bg-muted/20 md:flex"
+            className="pptx-thumb-rail ui-rise-in hidden min-h-0 w-[8.5rem] shrink-0 flex-col overflow-hidden border-r border-border/60 bg-muted/20 md:flex"
             aria-label={t('learningHub:docPreview.pptxThumbnails')}
           >
-            <CustomScrollArea className="flex-1" orientation="vertical">
+            <CustomScrollArea className="min-h-0 flex-1" orientation="vertical">
               <div className="flex flex-col items-center gap-2.5 px-3 py-3">
                 {Array.from({ length: totalSlides }, (_, index) => (
                   <SlideThumbnail
@@ -629,9 +629,9 @@ export const PptxPreview: React.FC<PptxPreviewProps> = ({
           </nav>
         )}
 
-        <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <CustomScrollArea
-            className="pptx-container flex-1"
+            className="pptx-container min-h-0 flex-1"
             viewportRef={viewportRef}
             orientation="both"
           >

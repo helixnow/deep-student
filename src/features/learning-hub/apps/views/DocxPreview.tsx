@@ -383,7 +383,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
   // 否则切换到正常文件后 effect 因拿不到容器而无法恢复渲染）
   return (
     <div
-      className={`relative ${className}`}
+      className={`relative min-h-0 overflow-hidden ${className}`}
       data-docx-instance={instanceId}
       aria-busy={isLoading && !error}
       tabIndex={0}
@@ -433,7 +433,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
       {/* docx-preview 生成的文档样式（<style> 标签），与被消毒的内容容器隔离 */}
       <div ref={styleContainerRef} aria-hidden="true" />
       <CustomScrollArea
-        className="docx-container h-full"
+        className="docx-container h-full min-h-0"
         orientation="both"
         viewportRef={viewportRef}
       >

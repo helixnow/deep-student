@@ -177,30 +177,6 @@
   animation: lh-breathe 1.6s ease-in-out infinite;
 }
 
-/* ------------------------------------------------------------ 滚动条 */
-
-.lh-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--border)) transparent;
-}
-
-.lh-scroll::-webkit-scrollbar {
-  height: 4px;
-}
-
-.lh-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.lh-scroll::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 2px;
-}
-
-.lh-scroll::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
-}
-
 /* -------------------------------------------------------------- 动画 */
 
 @keyframes lh-fade-in {

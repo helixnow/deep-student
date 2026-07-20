@@ -22,6 +22,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Slider } from '@/components/ui/shad/Slider';
 import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
@@ -115,21 +116,22 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const showSpinner = !isReady || isBuffering;
 
   return (
-    <div className="flex h-full items-center justify-center overflow-auto bg-background p-6">
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- 播放器容器承载快捷键 */}
-      <div
-        role="group"
-        aria-label={fileName}
-        tabIndex={0}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          'ui-rise-in w-full max-w-md rounded-2xl border border-border bg-background p-6',
-          'outline-none focus-visible:ring-2 focus-visible:ring-ring/30',
-        )}
-      >
-        <audio ref={mediaRef} src={src} preload="metadata" />
+    <CustomScrollArea className="h-full min-h-0 bg-background" orientation="both">
+      <div className="flex min-h-full min-w-full items-center justify-center p-6">
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- 播放器容器承载快捷键 */}
+        <div
+          role="group"
+          aria-label={fileName}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+          className={cn(
+            'ui-rise-in w-full max-w-md rounded-2xl border border-border bg-background p-6',
+            'outline-none focus-visible:ring-2 focus-visible:ring-ring/30',
+          )}
+        >
+          <audio ref={mediaRef} src={src} preload="metadata" />
 
-        <div className="flex flex-col items-center gap-5">
+          <div className="flex flex-col items-center gap-5">
           {/* 封面占位 */}
           <div className="flex h-36 w-36 items-center justify-center rounded-2xl bg-muted">
             <MusicNotes size={56} className="text-muted-foreground/60" aria-hidden="true" />
@@ -266,9 +268,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               />
             </div>
           </div>
+          </div>
         </div>
       </div>
-    </div>
+    </CustomScrollArea>
   );
 };
 

@@ -1,9 +1,13 @@
 /* Notes Workspace Tree — visual tokens aligned with NotesWorkspaceApp.css (.notes-tree-*) */
 
+.nwt-scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
 .nwt-tree {
   position: relative;
-  flex: 1;
-  overflow: auto;
   padding: 1px 6px 12px;
   outline: none;
 }

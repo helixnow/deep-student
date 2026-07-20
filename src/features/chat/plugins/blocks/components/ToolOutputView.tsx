@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { CheckCircle, FileJs, FileText, Table, Image as ImageIcon, Copy, Check } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
@@ -148,15 +149,15 @@ const JsonOutput: React.FC<{ data: unknown }> = ({ data }) => {
   }, [data]);
 
   return (
-    <pre
-      className={cn(
-        'text-xs whitespace-pre-wrap break-words font-mono',
-        'text-muted-foreground',
-        'max-h-60 overflow-auto'
-      )}
+    <CustomScrollArea
+      fullHeight={false}
+      className="max-h-60"
+      viewportClassName="max-h-60"
     >
-      {formattedJson}
-    </pre>
+      <pre className="text-xs whitespace-pre-wrap break-words font-mono text-muted-foreground">
+        {formattedJson}
+      </pre>
+    </CustomScrollArea>
   );
 };
 
@@ -171,17 +172,19 @@ const TextOutput: React.FC<{ text: string }> = ({ text }) => {
   const [expanded, setExpanded] = useState(false);
   const isLong = text.length > TEXT_OUTPUT_COLLAPSE_CHARS;
   const displayText = !isLong || expanded ? text : text.slice(0, TEXT_OUTPUT_COLLAPSE_CHARS) + '…';
+  const content = (
+    <div className="text-sm text-foreground whitespace-pre-wrap break-words">
+      {displayText}
+    </div>
+  );
 
   return (
     <div>
-      <div
-        className={cn(
-          'text-sm text-foreground whitespace-pre-wrap break-words',
-          isLong && expanded && 'max-h-96 overflow-auto'
-        )}
-      >
-        {displayText}
-      </div>
+      {isLong && expanded ? (
+        <CustomScrollArea fullHeight={false} className="max-h-96" viewportClassName="max-h-96">
+          {content}
+        </CustomScrollArea>
+      ) : content}
       {isLong && (
         <DsButton
           variant="ghost"
@@ -211,7 +214,12 @@ const TableOutput: React.FC<{ data: Record<string, unknown>[] }> = ({ data }) =>
   const hasMore = data.length > maxRows;
 
   return (
-    <div className="overflow-auto max-h-60">
+    <CustomScrollArea
+      orientation="both"
+      fullHeight={false}
+      className="max-h-60"
+      viewportClassName="max-h-60"
+    >
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr className="bg-muted/50">
@@ -248,7 +256,7 @@ const TableOutput: React.FC<{ data: Record<string, unknown>[] }> = ({ data }) =>
           ... and {data.length - maxRows} more rows
         </div>
       )}
-    </div>
+    </CustomScrollArea>
   );
 };
 

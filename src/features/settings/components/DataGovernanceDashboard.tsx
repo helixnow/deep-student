@@ -31,6 +31,7 @@ import {
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/Tabs';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { SettingSection } from './SettingsCommon';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -359,9 +360,9 @@ export const DebugTab: React.FC = () => {
               : t('data:governance.debug_slot_no_log')}
           </p>
           {slotCResult && (
-            <pre className="text-xs rounded-md border border-border/40 bg-muted/20 p-2 max-h-48 overflow-auto whitespace-pre-wrap break-words">
-              {slotCResult.report}
-            </pre>
+            <CustomScrollArea className="h-48 rounded-md border border-border/40 bg-muted/20" viewportClassName="p-2">
+              <pre className="whitespace-pre-wrap break-words text-xs">{slotCResult.report}</pre>
+            </CustomScrollArea>
           )}
         </div>
 
@@ -390,9 +391,9 @@ export const DebugTab: React.FC = () => {
               : t('data:governance.debug_slot_no_log')}
           </p>
           {slotDResult && (
-            <pre className="text-xs rounded-md border border-border/40 bg-muted/20 p-2 max-h-48 overflow-auto whitespace-pre-wrap break-words">
-              {slotDResult.report}
-            </pre>
+            <CustomScrollArea className="h-48 rounded-md border border-border/40 bg-muted/20" viewportClassName="p-2">
+              <pre className="whitespace-pre-wrap break-words text-xs">{slotDResult.report}</pre>
+            </CustomScrollArea>
           )}
         </div>
       </div>
@@ -1643,7 +1644,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   const content = (
     <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
-      <TabsList className="mb-4 flex h-auto min-h-11 w-full max-w-full justify-start overflow-x-auto">
+      <TabsList className="scrollbar-none mb-4 flex h-auto min-h-11 w-full max-w-full justify-start overflow-x-auto">
         <TabsTrigger value="overview" className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0">
           <Gauge className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_overview')}</span>

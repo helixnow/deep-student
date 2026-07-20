@@ -30,6 +30,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
 import { AppSelect } from '@/components/ui/app-menu';
@@ -775,7 +776,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </p>
         </div>
 
-        <div className="rounded-lg border border-border/40 overflow-x-auto">
+        <CustomScrollArea
+          orientation="horizontal"
+          fullHeight={false}
+          className="rounded-lg border border-border/40"
+        >
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-border/40">
@@ -957,7 +962,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               )}
             </TableBody>
           </Table>
-        </div>
+        </CustomScrollArea>
       </div>
 
       {/* 确认对话框 */}
@@ -1051,7 +1056,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               : t('data:governance.verify_result_failed')}
           </DsDialogDescription>
         </DsDialogHeader>
-        <DsDialogBody>
+        <DsDialogBody overlayScroll>
 
           {verifyResult && (
             <div className="space-y-3">

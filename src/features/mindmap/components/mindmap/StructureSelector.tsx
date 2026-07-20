@@ -9,6 +9,7 @@ import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMe
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   BACK_PRIORITY,
   registerBackHandler,
@@ -426,7 +427,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
 
       {/* 弹出面板（桌面锚定 popover；窄屏由外壳的 inline 子屏承载，不再走底部 sheet + 遮罩） */}
       {isOpen && (
-        <div
+        <CustomScrollArea
           ref={panelRef}
           className={cn(
             'absolute z-50',
@@ -434,12 +435,14 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
             'mm-settings-popover mm-structure-popover',
             'ui-zoom-fade-in'
           )}
+          viewportClassName="mm-settings-popover-viewport p-2"
           style={clampOffset !== 0 ? { translate: `${clampOffset}px 0` } : undefined}
           role="dialog"
           aria-label={t('structure.selectorLabel')}
+          fullHeight={false}
         >
           {panelContent}
-        </div>
+        </CustomScrollArea>
       )}
     </div>
   );

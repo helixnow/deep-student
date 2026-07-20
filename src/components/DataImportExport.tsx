@@ -63,22 +63,6 @@ import {
 } from 'recharts';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
-// 简洁风格设计系统 - 使用 CSS 变量，支持亮暗模式
-const DESIGN = {
-  // 图表颜色使用柔和的色调
-  chart: [
-    'hsl(var(--primary))',
-    'hsl(var(--primary) / 0.8)',
-    'hsl(var(--primary) / 0.6)',
-    'hsl(var(--primary) / 0.4)',
-    'hsl(217 91% 60%)',
-    'hsl(142 76% 36%)',
-    'hsl(199 89% 48%)',
-    'hsl(262 83% 58%)'
-  ]
-};
-
-
 const DATA_CENTER_ICON_CONTAINER_CLASS = 'flex h-8 w-8 items-center justify-center rounded-md bg-muted';
 const DATA_CENTER_ICON_CLASS = 'h-5 w-5 text-primary transition-colors';
 const DATA_CENTER_ICON_SM_CLASS = 'h-4 w-4 text-primary transition-colors';
@@ -90,6 +74,24 @@ interface DataImportExportProps {
   /** 显示模式：'all' 全部显示，'stats' 只显示统计，'manage' 只显示管理 */
   mode?: 'all' | 'stats' | 'manage';
 }
+
+const DataManagementContent: React.FC<{
+  embedded: boolean;
+  children: React.ReactNode;
+}> = ({ embedded, children }) => {
+  if (embedded) {
+    return <div className="data-management-content embedded">{children}</div>;
+  }
+
+  return (
+    <CustomScrollArea
+      className="data-management-content"
+      viewportClassName="data-management-viewport"
+    >
+      {children}
+    </CustomScrollArea>
+  );
+};
 
 
 interface GovernanceBackupInfo {
@@ -1275,9 +1277,10 @@ ${resolvedPath}`);
           }
           .data-management-content {
             flex: 1;
-            overflow-y: auto;
-            padding: 1rem 2rem 2rem 2rem;
             min-height: 0;
+          }
+          .data-management-viewport {
+            padding: 1rem 2rem 2rem;
           }
           @media (max-width: 767.98px) {
             /* ★ 2026-07-08 移动端审计：视图层已被 56px 统一顶栏 + 安全区约束，
@@ -1286,43 +1289,17 @@ ${resolvedPath}`);
             .data-management-container {
               height: 100%;
             }
-            .data-management-content {
+            .data-management-viewport {
               padding: 1rem 1rem calc(2rem + var(--mobile-safe-area-bottom, 0px)) 1rem;
             }
           }
-          .data-management-container.embedded .data-management-content {
+          .data-management-content.embedded {
             overflow: visible;
             padding: 0;
           }
           .data-management-inner {
             max-width: 80rem;
             margin: 0 auto;
-          }
-          
-          /* 自定义滚动条样式 */
-          .backup-list-container::-webkit-scrollbar {
-            width: 8px;
-          }
-          
-          .backup-list-container::-webkit-scrollbar-track {
-            background: #f1f5f9;
-            border-radius: 4px;
-            margin: 4px 0;
-          }
-          
-          .backup-list-container::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 4px;
-            margin: 2px 0;
-            border: 1px solid #f1f5f9;
-          }
-          
-          .backup-list-container::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8;
-          }
-          
-          .backup-list-container::-webkit-scrollbar-corner {
-            background: #f1f5f9;
           }
         `}
       </style>
@@ -1340,7 +1317,7 @@ ${resolvedPath}`);
 />
         )}
         
-        <div className="data-management-content">
+        <DataManagementContent embedded={embedded}>
           <div className="data-management-inner">
         
         {/* 数据统计部分 - 放在最上方 */}
@@ -1587,7 +1564,7 @@ ${resolvedPath}`);
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="w-full">
             <div className="border-b border-border/60 px-4 py-3">
               {/* 窄屏（尤其英文长标签）4 个 Tab 挤不下：允许横向滚动而非溢出裁切 */}
-              <TabsList className="h-9 max-w-full gap-2 overflow-x-auto rounded-lg bg-muted/40 p-1">
+              <TabsList className="scrollbar-none h-9 max-w-full gap-2 overflow-x-auto rounded-lg bg-muted/40 p-1">
                 <TabsTrigger value="backup" className="flex-1 text-sm">
                   {t('data:backup_management')}
                 </TabsTrigger>
@@ -1616,7 +1593,11 @@ ${resolvedPath}`);
                     </DsButton>
                   </div>
 
-                  <CustomScrollArea className="backup-list-container flex max-h-[300px] flex-col gap-2" viewportClassName="pb-1 pr-2 pt-1">
+                  <CustomScrollArea
+                    className="backup-list-container max-h-[300px]"
+                    viewportClassName="space-y-2 pb-1 pr-2 pt-1"
+                    fullHeight={false}
+                  >
                     {isLoadingBackups ? (
                       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border/60 px-4 py-8 text-sm text-muted-foreground">
                         <ArrowsClockwise className={cn(DATA_CENTER_ICON_LG_CLASS, 'animate-spin')} />
@@ -1748,7 +1729,7 @@ ${resolvedPath}`);
         )}
 
       </div>
-    </div>
+        </DataManagementContent>
 
         {/* 清空数据确认对话框 */}
         <DsDialog open={showClearDataDialog} onOpenChange={setShowClearDataDialog} maxWidth="max-w-md" closeOnOverlay={false} showClose={false}>

@@ -275,7 +275,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             <div className="text-cyan-400 font-medium mb-2">📋 {t('diagnostic.resourceDetails', { count: allResources.length })}:</div>
             {/* 8 列表格窄屏必然放不下：容器允许横向滚动，表格保底最小宽度。
                 注：本面板为开发者诊断工具，黑底终端风格配色为有意为之（低优先跟随主题）。 */}
-            <CustomScrollArea className="max-h-48" viewportClassName="overflow-x-auto">
+            <CustomScrollArea className="max-h-48 min-h-0" orientation="both" fullHeight={false}>
               <table className="w-full min-w-[560px] text-2xs">
                 <thead className="sticky top-0 bg-black/80">
                   <tr className="text-gray-400 border-b border-gray-700">
@@ -371,13 +371,15 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
             {table.sampleMetadata.length > 0 && (
               <div className="mt-2 ml-4">
                 <div className="text-gray-500 text-2xs mb-1">{t('diagnostic.lanceSampleMetadata')}:</div>
-                <div className="max-h-20 overflow-auto text-2xs bg-black/50 p-1 rounded">
-                  {table.sampleMetadata.slice(0, 3).map((m, i) => (
-                    <div key={i} className="truncate text-gray-400">
-                      {m ? m.slice(0, 100) : '<null>'}
-                    </div>
-                  ))}
-                </div>
+                <CustomScrollArea className="max-h-20 min-h-0 rounded bg-black/50" orientation="both" fullHeight={false}>
+                  <div className="p-1 text-2xs">
+                    {table.sampleMetadata.slice(0, 3).map((m, i) => (
+                      <div key={i} className="truncate text-gray-400">
+                        {m ? m.slice(0, 100) : '<null>'}
+                      </div>
+                    ))}
+                  </div>
+                </CustomScrollArea>
               </div>
             )}
           </div>

@@ -875,7 +875,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
       )}
 
       {/* 内容区域 */}
-      <CustomScrollArea className="flex-1" viewportClassName={cn("p-3 sm:p-6", embeddedMode && "pb-20")}>
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName={cn("p-3 sm:p-6", embeddedMode && "pb-20")}>
         {/* 内容搜索结果 */}
         {searchMode === 'content' && searchQuery.trim().length >= 2 ? (
           <SearchResultList

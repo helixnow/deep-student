@@ -1164,10 +1164,10 @@ export const LearningHubPage: React.FC = () => {
   if (isSmallScreen) {
     return (
       <div
-        className="study-shell-page relative flex h-full w-full flex-col overflow-hidden"
+        className="study-shell-page relative flex h-full min-h-0 w-full flex-col overflow-hidden"
       >
         <MobileSlidingLayout
-          className="flex-1"
+          className="min-h-0 flex-1"
           sidebarWidth="auto"
           screenPosition={screenPosition}
           onScreenPositionChange={setScreenPosition}
@@ -1203,9 +1203,9 @@ export const LearningHubPage: React.FC = () => {
               />
           }
           rightPanel={
-            <div className="study-shell-panel h-full overflow-hidden">
+            <div className="study-shell-panel h-full min-h-0 overflow-hidden">
               {tabs.length > 0 ? (
-                <div className="h-full flex flex-col safe-area-bottom">
+                <div className="flex h-full min-h-0 flex-col overflow-hidden safe-area-bottom">
                   {/* ★ 移动端标签页栏：多 tab 可见、可切换、可关闭（修复"标签黑洞"） */}
                   <TabBar
                     tabs={tabs}
@@ -1242,7 +1242,7 @@ export const LearningHubPage: React.FC = () => {
           {/* 中间：文件视图 — 移动端与顶栏无缝衔接，不用 desktop pane 边框/阴影 */}
           <div
             className={cn(
-              'h-full overflow-hidden',
+              'h-full min-h-0 overflow-hidden',
               isSmallScreen ? 'bg-background' : 'study-shell-pane h-full',
             )}
           >
@@ -1269,10 +1269,10 @@ export const LearningHubPage: React.FC = () => {
 
   // ========== 桌面端：分栏布局 ==========
   return (
-    <div className="study-shell-page w-full h-full">
+    <div className="study-shell-page h-full min-h-0 w-full overflow-hidden">
       <PanelGroup
         direction="horizontal"
-        className="h-full"
+        className="h-full min-h-0"
         autoSaveId="learning-hub-layout"
       >
         {/* 左侧：资源访达（文件管理） */}
@@ -1282,9 +1282,9 @@ export const LearningHubPage: React.FC = () => {
           minSize={15}
           id="learning-hub-sidebar"
           order={1}
-          className="h-full"
+          className="h-full min-h-0 overflow-hidden"
         >
-          <div className={cn("study-shell-pane h-full", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
+          <div className={cn("study-shell-pane h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
             <LearningHubSidebar
               mode="fullscreen"
               hostId="page"
@@ -1321,10 +1321,10 @@ export const LearningHubPage: React.FC = () => {
           collapsedSize={0}
           id="learning-hub-app"
           order={2}
-          className="h-full"
+          className="h-full min-h-0 overflow-hidden"
         >
           {tabs.length > 0 && (
-            <div className="study-shell-panel h-full flex flex-col min-w-0">
+            <div className="study-shell-panel flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
               {/* ★ 标签页栏 */}
               <TabBar
                 tabs={tabs}

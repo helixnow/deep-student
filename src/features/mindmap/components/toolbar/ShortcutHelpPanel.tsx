@@ -16,6 +16,7 @@ import type { TFunction } from 'i18next';
 import { ArrowLeft, Keyboard, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { getShortcutGroups, detectShortcutPlatform } from '../../constants/shortcuts';
 import { useCanvasDragMode } from '../../hooks/useCanvasDragMode';
 import type { MindMapKeymap } from '../../utils/mindmapPreferences';
@@ -245,10 +246,17 @@ export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
         )}
       </div>
 
-      <div className={cn(
-        'max-h-72 overflow-y-auto px-4 py-3',
-        mobile && 'mm-mobile-subview-scroll max-h-none flex-1 min-h-0',
-      )}>
+      <CustomScrollArea
+        className={cn(
+          'max-h-72',
+          mobile && 'max-h-none flex-1 min-h-0',
+        )}
+        viewportClassName={cn(
+          'max-h-72 px-4 py-3',
+          mobile && 'mm-mobile-subview-scroll max-h-none',
+        )}
+        fullHeight={false}
+      >
         <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
           {allGroups.map((group) => (
             <div key={group.id} className="min-w-0">
@@ -261,7 +269,7 @@ export const ShortcutHelpPanel: React.FC<ShortcutHelpPanelProps> = ({
             </div>
           ))}
         </div>
-      </div>
+      </CustomScrollArea>
     </div>
   );
 };

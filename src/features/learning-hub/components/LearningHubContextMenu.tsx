@@ -864,7 +864,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         'wb-desk-menu wb-glass-lens',
         // ★ 小视口下限制高度并允许内部滚动，避免长菜单被裁剪不可达
         //   （本菜单无飞出子菜单，允许 overflow 裁剪）
-        'max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden',
+        'scroll-area--native max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden',
         // 触屏使用贴底动作面板，入口位置稳定且不依赖长按坐标。
         isTouchPrimary && 'max-w-none rounded-t-2xl [&_[role=menuitem]]:min-h-11'
       )}

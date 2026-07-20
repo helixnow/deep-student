@@ -400,7 +400,6 @@
 .ntd-list {
   min-height: 0;
   flex: 1;
-  overflow: auto;
   border-top: 1px solid hsl(var(--border));
 }
 

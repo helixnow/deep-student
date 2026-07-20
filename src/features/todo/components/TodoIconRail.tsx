@@ -14,6 +14,7 @@ import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Robot, Trash, ListBullets } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -103,81 +104,85 @@ export const TodoIconRail: React.FC<{ className?: string }> = ({ className }) =>
     defaultList?.id !== activeListId;
 
   return (
-    <div
+    <CustomScrollArea
       ref={rootRef}
       role="navigation"
       aria-label={t('todo:sidebar.title')}
       data-todo-icon-rail
       className={cn(
-        'flex h-full w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto py-2',
+        'h-full min-h-0 w-12 shrink-0',
         className,
       )}
+      viewportClassName="min-h-full"
+      trackOffsetRight={1}
     >
-      {SMART_VIEWS.map(({ id, icon: Icon, labelKey }, viewIndex) => {
-        const isActive =
-          workspaceView === 'todos' &&
-          !trashOpen &&
-          filter.view === id &&
-          (id !== 'all' || (defaultList !== null && activeListId === defaultList.id));
-        const showOverdueBadge = id === 'overdue' && overdueCount > 0;
-        return (
-          <RailButton
-            key={id}
-            active={isActive}
-            label={`${t(labelKey)} ${todoHotkeyHint(viewIndex + 1)}`}
-            badgeCount={showOverdueBadge ? overdueCount : undefined}
-            onClick={() => activateTodoSmartView(id)}
-          >
-            <Icon size={18} weight="bold" />
-          </RailButton>
-        );
-      })}
+      <div className="flex min-h-full flex-col items-center gap-1 py-2">
+        {SMART_VIEWS.map(({ id, icon: Icon, labelKey }, viewIndex) => {
+          const isActive =
+            workspaceView === 'todos' &&
+            !trashOpen &&
+            filter.view === id &&
+            (id !== 'all' || (defaultList !== null && activeListId === defaultList.id));
+          const showOverdueBadge = id === 'overdue' && overdueCount > 0;
+          return (
+            <RailButton
+              key={id}
+              active={isActive}
+              label={`${t(labelKey)} ${todoHotkeyHint(viewIndex + 1)}`}
+              badgeCount={showOverdueBadge ? overdueCount : undefined}
+              onClick={() => activateTodoSmartView(id)}
+            >
+              <Icon size={18} weight="bold" />
+            </RailButton>
+          );
+        })}
 
-      <RailButton
-        active={workspaceView === 'automations' && !trashOpen}
-        label={`${t('todo:automation.title', '定时任务')} ${todoHotkeyHint(7)}`}
-        onClick={() => activateTodoAutomations()}
-      >
-        <Robot size={18} weight="duotone" />
-      </RailButton>
+        <RailButton
+          active={workspaceView === 'automations' && !trashOpen}
+          label={`${t('todo:automation.title', '定时任务')} ${todoHotkeyHint(7)}`}
+          onClick={() => activateTodoAutomations()}
+        >
+          <Robot size={18} weight="duotone" />
+        </RailButton>
 
-      {/* 清单：内联 popover 列表（AppMenu），非抽屉 */}
-      <AppMenu open={listsMenuOpen} onOpenChange={setListsMenuOpen}>
-        <AppMenuTrigger asChild>
-          <RailButton active={listEntryActive} label={t('todo:sections.lists')}>
-            <ListBullets size={18} weight="bold" />
-          </RailButton>
-        </AppMenuTrigger>
-        <AppMenuContent align="start" width={220} maxHeight={320}>
-          <AppMenuLabel>{t('todo:sections.lists')}</AppMenuLabel>
-          {orderedMenuLists.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              {t('todo:empty.noLists', '暂无列表')}
-            </div>
-          ) : (
-            orderedMenuLists.map((list) => (
-              <AppMenuItem
-                key={list.id}
-                icon={<TodoListGlyph list={list} size={15} />}
-                checked={workspaceView === 'todos' && !trashOpen && filter.view === 'all' && activeListId === list.id}
-                onClick={() => activateTodoList(list.id)}
-              >
-                {list.title}
-              </AppMenuItem>
-            ))
-          )}
-        </AppMenuContent>
-      </AppMenu>
+        {/* 清单：内联 popover 列表（AppMenu），非抽屉 */}
+        <AppMenu open={listsMenuOpen} onOpenChange={setListsMenuOpen}>
+          <AppMenuTrigger asChild>
+            <RailButton active={listEntryActive} label={t('todo:sections.lists')}>
+              <ListBullets size={18} weight="bold" />
+            </RailButton>
+          </AppMenuTrigger>
+          <AppMenuContent align="start" width={220} maxHeight={320}>
+            <AppMenuLabel>{t('todo:sections.lists')}</AppMenuLabel>
+            {orderedMenuLists.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                {t('todo:empty.noLists', '暂无列表')}
+              </div>
+            ) : (
+              orderedMenuLists.map((list) => (
+                <AppMenuItem
+                  key={list.id}
+                  icon={<TodoListGlyph list={list} size={15} />}
+                  checked={workspaceView === 'todos' && !trashOpen && filter.view === 'all' && activeListId === list.id}
+                  onClick={() => activateTodoList(list.id)}
+                >
+                  {list.title}
+                </AppMenuItem>
+              ))
+            )}
+          </AppMenuContent>
+        </AppMenu>
 
-      <div className="mt-auto" />
+        <div className="mt-auto" />
 
-      <RailButton
-        active={trashOpen}
-        label={`${t('todo:trash.title')} ${todoHotkeyHint(8)}`}
-        onClick={() => openTodoTrashView()}
-      >
-        <Trash size={18} weight="bold" />
-      </RailButton>
-    </div>
+        <RailButton
+          active={trashOpen}
+          label={`${t('todo:trash.title')} ${todoHotkeyHint(8)}`}
+          onClick={() => openTodoTrashView()}
+        >
+          <Trash size={18} weight="bold" />
+        </RailButton>
+      </div>
+    </CustomScrollArea>
   );
 };

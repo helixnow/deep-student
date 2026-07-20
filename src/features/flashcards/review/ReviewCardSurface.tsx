@@ -8,6 +8,7 @@
 import React from 'react';
 import { ArrowClockwise } from '@phosphor-icons/react';
 import { AnkiTemplateCardFace } from '@/components/anki/AnkiTemplateCardFace';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { CustomAnkiTemplate } from '@/types';
 import { cn } from '@/utils/cn';
 import { hasValidCloze, renderClozeText } from '../cloze';
@@ -147,23 +148,22 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
 
   // 卡面内容是否可滚动：不可滚动时四方向手势全交给指针（touch-action:none）；
   // 可滚动时纵向让位给内容滚动（pan-y），上/下滑评分退化为鼠标/触控板专属，按钮兜底。
-  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const [scrollElement, setScrollElement] = React.useState<HTMLDivElement | null>(null);
   const [contentFits, setContentFits] = React.useState(true);
   React.useEffect(() => {
     if (!swipe) return;
-    const node = scrollRef.current;
-    if (!node) return;
+    if (!scrollElement) return;
     const measure = () => {
-      setContentFits(node.scrollHeight <= node.clientHeight + 1);
+      setContentFits(scrollElement.scrollHeight <= scrollElement.clientHeight + 1);
     };
     const frame = requestAnimationFrame(measure);
     const observer = new ResizeObserver(measure);
-    observer.observe(node);
+    observer.observe(scrollElement);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [swipe, cardKey, side, template, templateLoading]);
+  }, [swipe, cardKey, side, template, templateLoading, scrollElement]);
 
   const swipeState = swipe?.state ?? null;
   const band = swipeState && swipeState.dragging && swipeState.direction
@@ -188,50 +188,55 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
         className={cn('flex min-h-0 min-w-0 flex-1', swipe && 'wb-fc-swipe-card')}
         style={swipeState ? swipeTransformStyle(swipeState) : undefined}
       >
-        <div
-          ref={scrollRef}
+        <CustomScrollArea
+          viewportRef={setScrollElement}
           role="button"
           tabIndex={disabled ? -1 : 0}
           aria-disabled={disabled}
           aria-busy={templateLoading}
           aria-label={flipAriaLabel}
           aria-keyshortcuts="Space"
-          onClick={disabled ? undefined : onFlip}
+          onClick={disabled ? undefined : (event) => {
+            if (event.target instanceof Element && event.target.closest('.os-scrollbar')) return;
+            onFlip();
+          }}
           data-side={side}
           data-enter={enterAnim === 'none' ? undefined : enterAnim}
           className={cn(
-            'wb-fc-card relative flex min-h-[16rem] min-w-0 flex-1 cursor-pointer flex-col overflow-auto',
-            'px-5 py-6 text-center',
+            'wb-fc-card relative min-h-[16rem] min-w-0 flex-1 cursor-pointer',
+            'text-center',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             disabled && 'cursor-default opacity-70',
           )}
         >
-          <span className="wb-fc-card-side-label">
-            {flipped ? backLabel : frontLabel}
-          </span>
-          <div
-            data-flip={flipAnim === 'none' ? undefined : flipAnim}
-            className="wb-fc-card-face flex min-h-0 min-w-0 flex-1 flex-col"
-          >
-            {/* 不再对 iframe 设 max-h 上限：iframe 高度随内容自适应，
-                超长卡片由外层 .wb-fc-card（overflow-auto）统一滚动。
-                此前 55vh 截断 + pointer-events-none 会让 iframe 内部滚动不可达，
-                长内容（图片/长文/公式）被裁掉且无法查看。 */}
-            <AnkiTemplateCardFace
-              card={renderCard}
-              template={template}
-              side={side}
-              compact={false}
-              fallbackText={fallbackText}
-              emptyText={flipped ? noBackText : noFrontText}
-              className="pointer-events-none flex min-h-0 flex-1 items-center justify-center"
-            />
+          <div className="flex min-h-full flex-col px-5 py-6">
+            <span className="wb-fc-card-side-label">
+              {flipped ? backLabel : frontLabel}
+            </span>
+            <div
+              data-flip={flipAnim === 'none' ? undefined : flipAnim}
+              className="wb-fc-card-face flex min-h-0 min-w-0 flex-1 flex-col"
+            >
+              {/* 不再对 iframe 设 max-h 上限：iframe 高度随内容自适应，
+                  超长卡片由外层 .wb-fc-card 的统一 viewport 滚动。
+                  此前 55vh 截断 + pointer-events-none 会让 iframe 内部滚动不可达，
+                  长内容（图片/长文/公式）被裁掉且无法查看。 */}
+              <AnkiTemplateCardFace
+                card={renderCard}
+                template={template}
+                side={side}
+                compact={false}
+                fallbackText={fallbackText}
+                emptyText={flipped ? noBackText : noFrontText}
+                className="pointer-events-none flex min-h-0 flex-1 items-center justify-center"
+              />
+            </div>
+            <span className="wb-fc-card-flip-hint" aria-hidden="true">
+              <ArrowClockwise size={13} />
+              {flipHint}
+            </span>
           </div>
-          <span className="wb-fc-card-flip-hint" aria-hidden="true">
-            <ArrowClockwise size={13} />
-            {flipHint}
-          </span>
-        </div>
+        </CustomScrollArea>
       </div>
 
       {/* 拖动方向色带反馈（边缘细条 + 评分标签），随进度增强 */}

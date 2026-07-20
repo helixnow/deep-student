@@ -11,6 +11,7 @@
   flex-direction: column;
   width: min(340px, calc(100vw - 24px));
   max-height: min(480px, calc(100vh - 128px));
+  min-height: 0;
   overflow: visible;
   padding: 0;
   border-radius: 12px;
@@ -53,10 +54,9 @@
 }
 
 .wb-agent-control-scroll {
+  flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .wb-agent-control-header {

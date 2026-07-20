@@ -698,6 +698,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
           })}
         >
           <Textarea
+            className="scroll-area--native"
             disabled={saving}
             value={vocabularyDraft}
             onChange={(event) => setVocabularyDraft(event.target.value)}

@@ -308,7 +308,11 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
         {/* 主布局：小屏单列，中屏及以上两列（左配置右结果） */}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">
           {/* 左侧：配置区 */}
-          <div className="w-full lg:w-[280px] lg:flex-shrink-0 space-y-3 overflow-auto">
+          <CustomScrollArea
+            className="w-full min-h-0 lg:h-full lg:w-[280px] lg:flex-shrink-0"
+            viewportClassName="space-y-3"
+            fullHeight={false}
+          >
             <div>
               <label className="block text-sm mb-1">{t('knowledge_graph.tag_tree.user_hint_label')}</label>
               <Input
@@ -337,10 +341,10 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
               </DsButton>
             </div>
             {!!error && (
-              <div className="text-sm text-red-600 whitespace-pre-wrap">{error}</div>
+              <div className="whitespace-pre-wrap text-sm text-destructive">{error}</div>
             )}
             {!!success && (
-              <div className="text-sm text-emerald-600 whitespace-pre-wrap">{success}</div>
+              <div className="whitespace-pre-wrap text-sm text-success">{success}</div>
             )}
             {validation && (
               <div className="space-y-2 pt-2 text-xs">
@@ -350,7 +354,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
                 </div>
                 {validation.warnings.length > 0 && (
                   <div>
-                    <div className="text-amber-600 mb-1">{t('knowledge_graph.tag_tree.warnings_label')}</div>
+                    <div className="mb-1 text-warning">{t('knowledge_graph.tag_tree.warnings_label')}</div>
                     <ul className="list-disc pl-4">
                       {validation.warnings.map((w, i) => <li key={i}>{w}</li>)}
                     </ul>
@@ -358,7 +362,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
                 )}
                 {validation.hardErrors.length > 0 && (
                   <div>
-                    <div className="text-red-600 mb-1">{t('knowledge_graph.tag_tree.errors_label')}</div>
+                    <div className="mb-1 text-destructive">{t('knowledge_graph.tag_tree.errors_label')}</div>
                     <ul className="list-disc pl-4">
                       {validation.hardErrors.map((w, i) => <li key={i}>{w}</li>)}
                     </ul>
@@ -366,14 +370,14 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
                 )}
               </div>
             )}
-          </div>
+          </CustomScrollArea>
 
           {/* 右侧：结果区（生成结果 + 树状预览） */}
           <div className="flex-1 min-h-0 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2 min-h-0">
               <div className="text-sm text-muted-foreground flex-shrink-0">{t('knowledge_graph.tag_tree.result_editable')}</div>
               <Textarea
-                className="flex-1 min-h-[120px] font-mono text-xs resize-none"
+                className="flex-1 min-h-[120px] resize-none font-mono text-xs [scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)]"
                 value={previewMd}
                 onChange={(e) => setPreviewMd(e.target.value)}
                 placeholder={t('workbench:tagTreeMarkdownPlaceholder')}
@@ -404,7 +408,11 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
 
         {/* 导入日志 */}
         {(importing || importLogs.length > 0) && (
-          <div className="border rounded-md p-2 min-h-[80px] max-h-[120px] overflow-auto bg-muted/30">
+          <CustomScrollArea
+            className="min-h-[80px] max-h-[120px] rounded-md border bg-muted/30"
+            viewportClassName="p-2"
+            fullHeight={false}
+          >
             {importLogs.length === 0 ? (
               <div className="text-xs text-muted-foreground flex items-center gap-2">
                 <Skeleton className="h-3 w-24" />
@@ -415,7 +423,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
                 {importLogs.map((l, i) => <li key={i}>{l}</li>)}
               </ul>
             )}
-          </div>
+          </CustomScrollArea>
         )}
       </CardContent>
     </Card>

@@ -1,8 +1,8 @@
 /**
- * CodeMirror 自研滚动条覆盖层
+ * CodeMirror 自管滚动条覆盖层
  *
- * 桥接 CodeMirror 的 .cm-scroller 滚动容器与自研滚动条样式，
- * 完全自包含，不依赖外部 CSS class。
+ * 桥接 CodeMirror 的 .cm-scroller 滚动容器；几何与颜色对齐全局
+ * OverlayScrollbars 视觉，但不包裹或接管 CodeMirror 的滚动节点。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -50,8 +50,9 @@ export function CodeMirrorScrollOverlay({ containerRef }: CodeMirrorScrollOverla
       return;
     }
     const ratio = clientHeight / scrollHeight;
-    const size = Math.max(clientHeight * ratio, 36);
-    const maxOffset = clientHeight - size;
+    const trackHeight = trackRef.current?.clientHeight ?? clientHeight;
+    const size = Math.min(trackHeight, Math.max(trackHeight * ratio, 40));
+    const maxOffset = trackHeight - size;
     const offset = maxOffset <= 0 ? 0 : (scrollTop / (scrollHeight - clientHeight)) * maxOffset;
     metricsRef.current = { size, offset };
     setThumbMetrics({ size, offset });
@@ -173,32 +174,30 @@ export function CodeMirrorScrollOverlay({ containerRef }: CodeMirrorScrollOverla
 
   const trackStyle: CSSProperties = {
     position: 'absolute',
-    top: 6,
-    bottom: 6,
-    right: 6,
-    width: 6,
+    top: 2,
+    bottom: 2,
+    right: 0,
+    width: 10,
     borderRadius: 9999,
     pointerEvents: 'none',
     opacity: shouldShow ? 1 : 0,
-    transition: 'opacity 0.2s ease',
+    transition: 'opacity 0.15s ease',
     zIndex: 60,
   };
 
   const thumbStyle: CSSProperties = {
     position: 'absolute',
     top: 0,
-    left: 0,
-    width: '100%',
+    left: 3,
+    width: 4,
     borderRadius: 9999,
     background: thumbActive
-      ? 'hsl(var(--muted-foreground) / 0.7)'
+      ? 'var(--scrollbar-thumb-active)'
       : thumbHover
-        ? 'hsl(var(--muted-foreground) / 0.55)'
-        : 'hsl(var(--muted-foreground) / 0.35)',
-    boxShadow: 'inset 0 0 0 1px hsl(var(--background) / 0.25)',
+        ? 'var(--scrollbar-thumb-hover)'
+        : 'var(--scrollbar-thumb)',
     pointerEvents: 'auto',
     transition: 'background-color 0.15s ease',
-    minHeight: 36,
     height: thumbMetrics.size,
     transform: `translateY(${thumbMetrics.offset}px)`,
     cursor: 'default',

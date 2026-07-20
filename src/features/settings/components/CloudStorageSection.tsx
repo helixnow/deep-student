@@ -10,6 +10,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Cloud, CheckCircle, XCircle, CircleNotch, ClockCounterClockwise, Upload, Download, Trash, WarningCircle } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Input } from '@/components/ui/shad/Input';
 import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -1376,8 +1377,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             {versions.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('cloudStorage:history.empty')}</p>
             ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {versions.map((version) => (
+              <CustomScrollArea className="h-64" viewportClassName="pr-1">
+                <div className="space-y-2">
+                  {versions.map((version) => (
                   <div
                     key={version.id}
                     className="flex items-center justify-between p-3 rounded-lg border bg-muted/30"
@@ -1439,8 +1441,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                       )}
                     </div>
                   </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </CustomScrollArea>
             )}
           </div>
         )}

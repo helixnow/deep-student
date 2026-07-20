@@ -19,6 +19,7 @@ import {
   AppMenuSeparator,
 } from '@/components/ui/app-menu/AppMenu';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { ChatStore } from '../../core/types';
 
 // ============================================================================
@@ -270,7 +271,11 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
         </div>
 
         {/* Model list - scrollable */}
-        <div className="max-h-[300px] overflow-y-auto">
+        <CustomScrollArea
+          fullHeight={false}
+          className="max-h-[300px]"
+          viewportClassName="max-h-[300px]"
+        >
         {!loaded ? (
           <AppMenuGroup>
             <AppMenuItem disabled>
@@ -311,7 +316,7 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
             </AppMenuItem>
           </AppMenuGroup>
         )}
-        </div>
+        </CustomScrollArea>
       </AppMenuContent>
     </AppMenu>
   );

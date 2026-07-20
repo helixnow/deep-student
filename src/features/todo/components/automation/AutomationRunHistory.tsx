@@ -12,6 +12,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import type { AutomationRun } from '@/features/settings/components/automationSettingsApi';
@@ -378,12 +379,15 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                     failedLabel={t('todo:automation.history.copyFailed')}
                   />
                 </div>
-                <pre
-                  className="max-h-48 overflow-auto whitespace-pre-wrap break-words bg-destructive/5 p-2 font-mono text-xs leading-relaxed text-destructive"
+                <CustomScrollArea
+                  className="max-h-48 min-h-0 bg-destructive/5"
+                  fullHeight={false}
                   style={{ borderRadius: 'var(--radius-shell-row, 6px)' }}
                 >
-                  {run.error}
-                </pre>
+                  <pre className="whitespace-pre-wrap break-words p-2 font-mono text-xs leading-relaxed text-destructive">
+                    {run.error}
+                  </pre>
+                </CustomScrollArea>
               </div>
             ) : null}
 

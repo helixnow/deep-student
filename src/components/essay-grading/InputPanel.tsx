@@ -495,7 +495,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
 
       {/* ★ 图片缩略图预览条 */}
       {uploadedImages && uploadedImages.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border/30 overflow-x-auto">
+        <div className="scrollbar-none flex items-center gap-2 overflow-x-auto border-b border-border/30 px-4 py-2">
           <span className="text-xs text-muted-foreground/60 shrink-0">
             {t('essay_grading:images.essay_images', { count: uploadedImages.length })}
           </span>
@@ -715,7 +715,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             onPaste={handlePaste}
             placeholder={showEmptyState ? '' : t('essay_grading:input_section.placeholder')}
             className={cn(
-              "flex-1 !min-h-0 w-full resize-none overflow-y-auto px-5 py-5 text-[15px] leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40 [scrollbar-width:thin] transition-opacity duration-200 motion-reduce:transition-none",
+              "flex-1 !min-h-0 w-full resize-none overflow-y-auto px-5 py-5 text-[15px] leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40 [scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)] transition-opacity duration-200 motion-reduce:transition-none",
               isGrading && "opacity-80 cursor-default"
             )}
           />

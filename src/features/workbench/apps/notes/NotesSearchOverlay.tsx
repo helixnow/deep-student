@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { dstu, type DstuListOptions, type DstuNode, type DstuNodeType } from '@/dstu';
 import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { highlightRanges } from './highlightRanges';
 import {
@@ -653,27 +654,33 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
             {openError}
           </div>
         ) : displayedResults.length > 0 ? (
-          <ul id={listId} className="notes-search-overlay-results" role="listbox" aria-label={searchTitle}>
-            {displayedResults.map((resource, index) => {
-              const snippet = activeMode === 'full-text'
-                ? stripNotesSearchSnippet(resource.metadata?.snippet)
-                : null;
-              const selected = index === activeIndex;
-              const crumbs = pathSegments(resource);
-              const groupLabel = showRecentGroups && index === 0
-                ? t('notesWorkspace.searchOverlay.recentGroup', 'Recently opened')
-                : showRecentGroups && index === recentCount
-                  ? t('notesWorkspace.searchOverlay.allGroup', 'All files')
+          <CustomScrollArea
+            className="notes-search-overlay-results-scroll"
+            trackOffsetTop={6}
+            trackOffsetBottom={8}
+            trackOffsetRight={3}
+          >
+            <ul id={listId} className="notes-search-overlay-results" role="listbox" aria-label={searchTitle}>
+              {displayedResults.map((resource, index) => {
+                const snippet = activeMode === 'full-text'
+                  ? stripNotesSearchSnippet(resource.metadata?.snippet)
                   : null;
-              return (
-                <React.Fragment key={resourceKey(resource)}>
-                {groupLabel && (
-                  <li role="presentation" className="notes-search-overlay-group" aria-hidden="true">
-                    {groupLabel}
-                  </li>
-                )}
-                <li role="presentation">
-                  <button
+                const selected = index === activeIndex;
+                const crumbs = pathSegments(resource);
+                const groupLabel = showRecentGroups && index === 0
+                  ? t('notesWorkspace.searchOverlay.recentGroup', 'Recently opened')
+                  : showRecentGroups && index === recentCount
+                    ? t('notesWorkspace.searchOverlay.allGroup', 'All files')
+                    : null;
+                return (
+                  <React.Fragment key={resourceKey(resource)}>
+                    {groupLabel && (
+                      <li role="presentation" className="notes-search-overlay-group" aria-hidden="true">
+                        {groupLabel}
+                      </li>
+                    )}
+                    <li role="presentation">
+                      <button
                     id={`${overlayId}-notes-search-result-${index}`}
                     type="button"
                     role="option"
@@ -720,12 +727,13 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
                         ? t('notesWorkspace.searchOverlay.mindmap', 'Mind map')
                         : t('notesWorkspace.searchOverlay.note', 'Note')}
                     </span>
-                  </button>
-                </li>
-                </React.Fragment>
-              );
-            })}
-          </ul>
+                      </button>
+                    </li>
+                  </React.Fragment>
+                );
+              })}
+            </ul>
+          </CustomScrollArea>
         ) : isSearching ? (
           <div className="notes-search-overlay-skeleton" aria-hidden="true">
             {[0, 1, 2].map((row) => (

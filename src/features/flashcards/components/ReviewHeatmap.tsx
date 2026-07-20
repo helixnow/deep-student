@@ -2,8 +2,9 @@
  * GitHub 风格年度复习热力图（纯 CSS grid，无第三方图表库）。
  * 数据为「每张卡最近一次复习」的按日聚合近似，由调用方给出。
  */
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { addDays, localDayKey } from '../hooks/useReviewActivity';
 
 const WEEKS = 53;
@@ -57,7 +58,7 @@ function buildWeeks(dayCounts: Map<string, number>): { weeks: HeatDay[][]; max: 
 
 export const ReviewHeatmap: React.FC<ReviewHeatmapProps> = ({ dayCounts }) => {
   const { t, i18n } = useTranslation('flashcards');
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollViewport, setScrollViewport] = useState<HTMLDivElement | null>(null);
   const { weeks } = useMemo(() => buildWeeks(dayCounts), [dayCounts]);
 
   const monthFormat = useMemo(
@@ -71,9 +72,8 @@ export const ReviewHeatmap: React.FC<ReviewHeatmapProps> = ({ dayCounts }) => {
 
   // 首次渲染滚动到最右（当前周）
   useEffect(() => {
-    const node = scrollRef.current;
-    if (node) node.scrollLeft = node.scrollWidth;
-  }, []);
+    if (scrollViewport) scrollViewport.scrollLeft = scrollViewport.scrollWidth;
+  }, [scrollViewport]);
 
   const monthLabels = useMemo(() => {
     const labels: Array<{ week: number; label: string }> = [];
@@ -92,7 +92,12 @@ export const ReviewHeatmap: React.FC<ReviewHeatmapProps> = ({ dayCounts }) => {
   }, [weeks, monthFormat]);
 
   return (
-    <div className="wb-fcx-heatmap" ref={scrollRef}>
+    <CustomScrollArea
+      className="wb-fcx-heatmap"
+      viewportRef={setScrollViewport}
+      orientation="horizontal"
+      fullHeight={false}
+    >
       <div className="wb-fcx-heatmap-inner">
         <div className="wb-fcx-heat-months" aria-hidden="true">
           {monthLabels.map((item) => (
@@ -135,6 +140,6 @@ export const ReviewHeatmap: React.FC<ReviewHeatmapProps> = ({ dayCounts }) => {
           <span>{t('stats.heatmap.legendMore')}</span>
         </div>
       </div>
-    </div>
+    </CustomScrollArea>
   );
 };

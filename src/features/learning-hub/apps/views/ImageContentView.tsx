@@ -921,7 +921,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
   const isActualSize = !fitMode && Math.abs(manualZoom - 100) < 0.5;
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {/* 工具栏（移动端触控目标 ≥44px：max-md:min-h/min-w-11，桌面端不变） */}
       <div
         className="flex items-center justify-between px-4 py-2 border-b bg-muted/30"
@@ -1083,7 +1083,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
           子元素用 m-auto 居中：溢出时 auto margin 归零，边缘始终可滚动到达
           （justify-center + 溢出会让左/上边缘不可达）。 */}
       <CustomScrollArea
-        className="flex-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
+        className="min-h-0 flex-1 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
         viewportClassName="bg-muted/10"
         orientation="both"
         viewportRef={setViewportEl}

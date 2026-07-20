@@ -44,6 +44,7 @@ import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { motion, AnimatePresence } from 'framer-motion';
 import { openResource } from '@/dstu/openResource';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -427,7 +428,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 </DsButton>
               </div>
               {/* ★ 高-2：分区内容统一在此容器内滚动（头部保持固定） */}
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <CustomScrollArea className="min-h-0 flex-1">
               <SectionDivider />
 
               {/* ── 区 1：计划（无 todo 计划时整区隐藏，Runtime/Changes 仍可见） ── */}
@@ -487,7 +488,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                       )}
                       <span className="truncate font-mono">{workspacePage.relativePath || '/'}</span>
                     </div>
-                    <div className="max-h-[144px] overflow-y-auto">
+                    <div>
                       {workspacePage.entries.map((entry) => {
                         const isDirectory = entry.kind === 'directory';
                         return (
@@ -543,7 +544,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                     {t('agentPanel.browserDownloads')}
                     <span className="ml-1.5 normal-case tracking-normal font-normal">{browserDownloads.length}</span>
                   </SectionLabel>
-                  <div className="max-h-[112px] overflow-y-auto px-4 pb-2">
+                  <div className="px-4 pb-2">
                     {browserDownloads.map((download) => (
                       <button
                         key={download.id}
@@ -570,7 +571,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                     {t('agentPanel.artifacts')}
                     <span className="ml-1.5 normal-case tracking-normal font-normal">{artifacts.length}</span>
                   </SectionLabel>
-                  <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
+                  <div className="flex flex-wrap gap-1.5 px-4 pb-2">
                     {artifacts.map((item) => {
                       const ArtifactIcon = item.kind === 'note' ? Notebook : fileArtifactIcon(item.toolName);
                       return (
@@ -642,7 +643,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   )}
                 </div>
               )}
-              </div>{/* ★ 高-2 滚动容器结束 */}
+              </CustomScrollArea>{/* ★ 高-2 滚动容器结束 */}
             </motion.div>
           )}
         </AnimatePresence>

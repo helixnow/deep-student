@@ -168,14 +168,14 @@ const ResponsiveInlineEditorHost: React.FC<{
       aria-label={floating ? ariaLabel : undefined}
       className={cn(
         floating &&
-          'fixed inset-0 z-overlay flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:py-8'
+          'fixed inset-0 z-overlay flex min-h-0 items-start justify-center bg-black/40 p-4 sm:py-8'
       )}
     >
       <div
         data-testid={surfaceTestId}
         className={cn(
           floating &&
-            'relative z-modal h-[min(760px,calc(100dvh-4rem))] w-full max-w-[672px] overflow-hidden rounded-lg border border-border/60 bg-background shadow-2xl'
+            'relative z-modal h-[min(760px,calc(100dvh-2rem))] min-h-0 w-full max-w-[672px] overflow-hidden rounded-lg border border-border/60 bg-background shadow-2xl sm:h-[min(760px,calc(100dvh-4rem))]'
         )}
       >
         {children}
@@ -694,7 +694,7 @@ export const VendorDetailPanel: React.FC = () => {
                 <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{t('settings:vendor_modal.notes_label')}</span>
               </Label>
-              <Textarea value={vendorFormData.notes || ''} onChange={e => setVendorFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder={t('settings:vendor_modal.notes_placeholder')} rows={3} />
+              <Textarea className="scroll-area--native" value={vendorFormData.notes || ''} onChange={e => setVendorFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder={t('settings:vendor_modal.notes_placeholder')} rows={3} />
             </div>
           </div>
         ) : (
@@ -1004,14 +1004,17 @@ export const VendorDetailPanel: React.FC = () => {
       {/* 获取模型列表 Dialog（仅桌面端；移动端使用上方内联卡片） */}
       {!isCodexOAuthVendor && !isSmallScreen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
         <Dialog open={isModelFetcherDialogOpen} onOpenChange={setIsModelFetcherDialogOpen}>
-          <DialogContent className="w-full max-w-2xl p-0 overflow-hidden">
+          <DialogContent
+            className="flex h-[min(85dvh,720px)] max-h-[min(85dvh,720px)] min-h-0 w-full max-w-2xl flex-col overflow-hidden p-0"
+            onWheel={(event) => event.stopPropagation()}
+          >
             <DialogHeader className="px-5 pt-5 pb-4 border-b border-border/40">
               <DialogTitle>{t('settings:vendor_model_fetcher.dialog_title')}</DialogTitle>
               <DialogDescription>
                 {t('settings:vendor_model_fetcher.dialog_description', { vendor: selectedVendor.name || providerLabel })}
               </DialogDescription>
             </DialogHeader>
-            <div className="p-4">
+            <div className="min-h-0 flex-1 p-4">
               <VendorModelFetcher
                 key={selectedVendor.id}
                 vendor={selectedVendor}

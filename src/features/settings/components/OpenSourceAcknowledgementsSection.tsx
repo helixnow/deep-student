@@ -193,7 +193,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
         </div>
       )}
       {!legalLoading && !legalError && (
-        <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/45 bg-muted/15 p-4 text-xs leading-5 text-foreground/80 select-text">
+        <pre className="select-text whitespace-pre-wrap break-words rounded-md border border-border/45 bg-muted/15 p-4 text-xs leading-5 text-foreground/80">
           {legalText}
         </pre>
       )}
@@ -301,7 +301,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
             </div>
           </DsDialogHeader>
 
-          <DsDialogBody className="py-4">
+          <DsDialogBody overlayScroll className="py-4">
             {legalDocument ? legalBody : acknowledgementsBody}
           </DsDialogBody>
 

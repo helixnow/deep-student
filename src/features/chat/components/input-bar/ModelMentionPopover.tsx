@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkle, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 
 // ============================================================================
@@ -202,9 +203,11 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
 
       {/* 模型列表 */}
       {/* 🔧 max-h-48 (192px) → max-h-72 (288px) 以显示更多模型 */}
-      <div
-        ref={listRef}
-        className="max-h-72 overflow-y-auto p-1"
+      <CustomScrollArea
+        viewportRef={listRef}
+        fullHeight={false}
+        className="max-h-72"
+        viewportClassName="max-h-72 p-1"
       >
         {suggestions.map((model, index) => (
           <div
@@ -254,7 +257,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
             )}
           </div>
         ))}
-      </div>
+      </CustomScrollArea>
 
       {/* 底部提示 */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 text-2xs text-muted-foreground">

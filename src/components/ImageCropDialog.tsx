@@ -13,6 +13,7 @@ import {
   ArrowLeft,
 } from '@phosphor-icons/react';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { CustomScrollArea } from './custom-scroll-area';
 
 // ============================================================================
 // Types
@@ -403,15 +404,18 @@ export function ImageCropDialog({
         </div>
 
         {/* 图片区：全高滚动（safe-area 兼容） */}
-        <div
-          className="min-h-0 flex-1 overflow-y-auto px-3 pt-3"
-          style={{
-            paddingBottom:
-              'calc(var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12px)',
+        <CustomScrollArea
+          className="min-h-0 flex-1"
+          viewportClassName="px-3 pt-3"
+          viewportProps={{
+            style: {
+              paddingBottom:
+                'calc(var(--mobile-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12px)',
+            },
           }}
         >
           {cropBody}
-        </div>
+        </CustomScrollArea>
       </div>
   );
 }

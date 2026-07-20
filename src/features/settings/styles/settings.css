@@ -175,13 +175,6 @@
   padding: 0;
   margin: 0;
   overflow-x: auto; /* 允许水平滚动，防止标签挤压 */
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
-}
-
-/* 隐藏滚动条但保留功能 */
-.tab-buttons::-webkit-scrollbar {
-  display: none;
 }
 
 /* 标签按钮 */

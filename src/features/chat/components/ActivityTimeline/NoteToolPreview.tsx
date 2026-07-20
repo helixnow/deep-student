@@ -9,6 +9,7 @@
 
 import React, { useMemo, useState, useCallback } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -221,9 +222,9 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
           <div className="text-xs text-muted-foreground font-medium">
             {t('timeline.noteTool.readContent')}
           </div>
-          <div className="p-3 rounded-md bg-muted/50 border border-border max-h-48 overflow-auto">
+          <CustomScrollArea fullHeight={false} className="max-h-48 rounded-md bg-muted/50 border border-border" viewportClassName="max-h-48 p-3">
             <StreamingMarkdownRenderer content={content} isStreaming={false} />
-          </div>
+          </CustomScrollArea>
         </div>
       );
     }
@@ -237,18 +238,18 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
               <FilePlus size={12} />
               {t('timeline.noteTool.addedContent')}
             </div>
-            <div className="p-3 rounded-md bg-success/10 border border-success/30 max-h-32 overflow-auto">
+            <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-success/10 border border-success/30" viewportClassName="max-h-32 p-3">
               <StreamingMarkdownRenderer content={addedContent} isStreaming={false} />
-            </div>
+            </CustomScrollArea>
           </div>
           {afterPreview && (
             <div className="space-y-2">
               <div className="text-xs text-muted-foreground font-medium">
                 {t('timeline.noteTool.afterContent')}
               </div>
-              <div className="p-3 rounded-md bg-muted/50 border border-border max-h-32 overflow-auto">
+              <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-muted/50 border border-border" viewportClassName="max-h-32 p-3">
                 <StreamingMarkdownRenderer content={afterPreview} isStreaming={false} />
-              </div>
+              </CustomScrollArea>
             </div>
           )}
         </div>
@@ -278,17 +279,17 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
                 <div className="text-xs text-danger font-medium">
                   {t('timeline.noteTool.before')}
                 </div>
-                <div className="p-2 rounded-md bg-danger/10 border border-danger/30 max-h-32 overflow-auto text-xs">
+                <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-danger/10 border border-danger/30 text-xs" viewportClassName="max-h-32 p-2">
                   <StreamingMarkdownRenderer content={beforePreview} isStreaming={false} />
-                </div>
+                </CustomScrollArea>
               </div>
               <div className="space-y-1">
                 <div className="text-xs text-success font-medium">
                   {t('timeline.noteTool.after')}
                 </div>
-                <div className="p-2 rounded-md bg-success/10 border border-success/30 max-h-32 overflow-auto text-xs">
+                <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-success/10 border border-success/30 text-xs" viewportClassName="max-h-32 p-2">
                   <StreamingMarkdownRenderer content={afterPreview} isStreaming={false} />
-                </div>
+                </CustomScrollArea>
               </div>
             </div>
           )}
@@ -304,17 +305,17 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
             <div className="text-xs text-danger font-medium">
               {t('timeline.noteTool.before')}
             </div>
-            <div className="p-2 rounded-md bg-danger/10 border border-danger/30 max-h-32 overflow-auto text-xs">
+            <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-danger/10 border border-danger/30 text-xs" viewportClassName="max-h-32 p-2">
               <StreamingMarkdownRenderer content={beforePreview || t('timeline.noteTool.empty')} isStreaming={false} />
-            </div>
+            </CustomScrollArea>
           </div>
           <div className="space-y-1">
             <div className="text-xs text-success font-medium">
               {t('timeline.noteTool.after')}
             </div>
-            <div className="p-2 rounded-md bg-success/10 border border-success/30 max-h-32 overflow-auto text-xs">
+            <CustomScrollArea fullHeight={false} className="max-h-32 rounded-md bg-success/10 border border-success/30 text-xs" viewportClassName="max-h-32 p-2">
               <StreamingMarkdownRenderer content={afterPreview || t('timeline.noteTool.empty')} isStreaming={false} />
-            </div>
+            </CustomScrollArea>
           </div>
         </div>
       );
@@ -446,9 +447,9 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
 
               {/* 预览视图（仅显示 after） */}
               {viewMode === 'preview' && output?.afterPreview && (
-                <div className="p-3 rounded-md bg-muted/50 border border-border max-h-64 overflow-auto">
+                <CustomScrollArea fullHeight={false} className="max-h-64 rounded-md bg-muted/50 border border-border" viewportClassName="max-h-64 p-3">
                   <StreamingMarkdownRenderer content={output.afterPreview} isStreaming={false} />
-                </div>
+                </CustomScrollArea>
               )}
 
               {/* 操作统计 */}

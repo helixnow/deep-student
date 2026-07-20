@@ -224,7 +224,7 @@ export const TodoQuickAdd: React.FC<{
         />
         {/* 手机端把解析结果换到下一行，避免 chips 与输入框/提交按钮互相挤压。 */}
         {hasChips && (
-          <div className="order-4 flex w-full min-w-0 flex-wrap items-center gap-1.5 pl-[1.65rem] sm:order-none sm:w-auto sm:max-w-[45%] sm:flex-shrink sm:flex-nowrap sm:overflow-x-auto sm:pl-0 sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden">
+          <div className="scrollbar-none order-4 flex w-full min-w-0 flex-wrap items-center gap-1.5 pl-[1.65rem] sm:order-none sm:w-auto sm:max-w-[45%] sm:flex-shrink sm:flex-nowrap sm:overflow-x-auto sm:pl-0">
             {/* 智能视图默认截止日提示（如「今日」视图默认落到今天），可移除 */}
             {showDefaultDueChip && defaultDueDate && (
               <ParsedChip

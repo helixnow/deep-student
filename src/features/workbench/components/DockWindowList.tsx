@@ -12,6 +12,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from '@phosphor-icons/react';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '../../../lib/utils';
 import { appRegistry } from '../core/appRegistry';
 import type { WorkbenchWindow } from '../core/types';
@@ -394,8 +395,15 @@ export function DockWindowList({
         onAnimationEnd={handleSurfaceAnimationEnd}
       >
         <div className="wb-docklist-arrow" aria-hidden />
-        <div className="wb-docklist-items">
-          {windows.map((win, index) => {
+        <CustomScrollArea
+          className="wb-docklist-items-scroll"
+          fullHeight={false}
+          trackOffsetTop={3}
+          trackOffsetBottom={3}
+          trackOffsetRight={2}
+        >
+          <div className="wb-docklist-items">
+            {windows.map((win, index) => {
             const title = win.title || appLabel;
             return (
               <div
@@ -459,8 +467,9 @@ export function DockWindowList({
                 </button>
               </div>
             );
-          })}
-        </div>
+            })}
+          </div>
+        </CustomScrollArea>
         {onShowAllWindows && (
           /* App Exposé 入口：不参与窗口项的方向键 roving（快捷键
              Ctrl+Alt+Shift+E 提供等价键盘路径），Tab/点击可达 */

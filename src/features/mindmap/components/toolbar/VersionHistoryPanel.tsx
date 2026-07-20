@@ -25,6 +25,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { motionSafe, tweenFast } from '@/styles/motion-springs';
 import { useMindMapStoreApi } from '../../store';
@@ -286,7 +287,11 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
         </DsButton>
       </div>
 
-      <div className="mm-version-history-list max-h-64 overflow-y-auto overscroll-contain">
+      <CustomScrollArea
+        className="mm-version-history-list max-h-64"
+        viewportClassName="mm-version-history-list-viewport overscroll-contain"
+        fullHeight={false}
+      >
         {loading ? (
           <div className="flex items-center gap-2 px-4 py-3 text-sm text-[var(--mm-text-muted)]">
             <CircleNotch size={14} className="motion-safe:animate-spin" />
@@ -460,7 +465,7 @@ export const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
             })}
           </ul>
         )}
-      </div>
+      </CustomScrollArea>
     </div>
   );
 };

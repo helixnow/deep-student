@@ -38,6 +38,7 @@ import { useNotesOptional } from '../NotesContext';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { isMacOS } from '@/utils/platform';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   insertEmptyCallout,
   insertEmptyToggle,
@@ -299,8 +300,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         className={[
           'notes-editor-toolbar-inline',
           // 窄容器横向滚动兜底（覆盖样式层 overflow:hidden）；隐藏滚动条
-          '!overflow-x-auto !overflow-y-hidden overscroll-x-contain',
-          '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+          '!overflow-x-auto !overflow-y-hidden overscroll-x-contain scrollbar-none',
           inlineOverflowing ? INLINE_SCROLL_MASK : '',
         ].filter(Boolean).join(' ')}
       >
@@ -351,29 +351,36 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         <PopoverContent
           align="start"
           sideOffset={4}
-          className="notes-toolbar-overflow w-52 p-1"
+          className="notes-toolbar-overflow w-52 p-0"
           role="menu"
           onKeyDown={handleMenuKeyDown}
+          onWheel={(event) => event.stopPropagation()}
         >
-          {formatActions.map((item, index) => (
-            <DsButton
-              key={item.label}
-              ref={(el) => { menuItemRefs.current[index] = el; }}
-              variant="ghost"
-              size="sm"
-              role="menuitem"
-              tabIndex={index === menuActiveIndex ? 0 : -1}
-              className="notes-toolbar-overflow-item hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
-              aria-label={item.label}
-              onMouseDown={(event) => event.preventDefault()}
-              onFocus={() => setMenuActiveIndex(index)}
-              onClick={() => { item.action(); setOverflowOpen(false); }}
-            >
-              {React.cloneElement(item.icon, { className: 'h-4 w-4 shrink-0' })}
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              {item.shortcut && <kbd>{item.shortcut}</kbd>}
-            </DsButton>
-          ))}
+          <CustomScrollArea
+            className="max-h-[min(70vh,480px)]"
+            viewportClassName="p-1"
+            fullHeight={false}
+          >
+            {formatActions.map((item, index) => (
+              <DsButton
+                key={item.label}
+                ref={(el) => { menuItemRefs.current[index] = el; }}
+                variant="ghost"
+                size="sm"
+                role="menuitem"
+                tabIndex={index === menuActiveIndex ? 0 : -1}
+                className="notes-toolbar-overflow-item hover:!bg-[var(--interactive-hover)] active:!bg-[var(--interactive-selected)]"
+                aria-label={item.label}
+                onMouseDown={(event) => event.preventDefault()}
+                onFocus={() => setMenuActiveIndex(index)}
+                onClick={() => { item.action(); setOverflowOpen(false); }}
+              >
+                {React.cloneElement(item.icon, { className: 'h-4 w-4 shrink-0' })}
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                {item.shortcut && <kbd>{item.shortcut}</kbd>}
+              </DsButton>
+            ))}
+          </CustomScrollArea>
         </PopoverContent>
       </Popover>
     </div>

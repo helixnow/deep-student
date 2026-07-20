@@ -13,6 +13,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Question, CircleNotch, CaretDown, Copy, Check } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
@@ -84,9 +85,11 @@ const CollapsibleJson: React.FC<CollapsibleJsonProps> = ({ label, text }) => {
         </DsButton>
       </div>
       {expanded && (
-        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words bg-background/50 p-2 text-xs text-muted-foreground">
-          {text}
-        </pre>
+        <CustomScrollArea fullHeight={false} className="max-h-40" viewportClassName="max-h-40">
+          <pre className="whitespace-pre-wrap break-words bg-background/50 p-2 text-xs text-muted-foreground">
+            {text}
+          </pre>
+        </CustomScrollArea>
       )}
     </div>
   );

@@ -41,51 +41,6 @@
   /* 允许 flex 子元素收缩 */
 }
 
-.chat-v2 .tool-trace__scroll {
-  max-height: 260px;
-  overflow-y: auto;
-  /* 允许内容超出时滚动 */
-  overflow-x: visible;
-  /* 允许横向内容完整显示 */
-  /* 确保 ScrollArea 本身能正确计算高度，包含展开内容 */
-  display: flex;
-  flex-direction: column;
-}
-
-/* 当有工具详情展开时，移除高度限制，让内容自然撑开 */
-.chat-v2 .tool-trace__scroll--expanded {
-  max-height: none !important;
-  /* 移除高度限制 */
-  overflow-y: visible !important;
-  /* 改为可见，不滚动 */
-}
-
-/* 确保 ScrollArea 的 viewport 能正确包含展开内容 */
-.chat-v2 .tool-trace__scroll [data-radix-scroll-area-viewport] {
-  max-height: 260px !important;
-  /* 保持最大高度限制 */
-  overflow-y: auto !important;
-  /* 内容超出时滚动 */
-  overflow-x: visible !important;
-  /* 横向内容完整显示 */
-}
-
-/* 当有展开时，移除 viewport 的高度限制 */
-.chat-v2 .tool-trace__scroll--expanded [data-radix-scroll-area-viewport] {
-  max-height: none !important;
-  /* 移除高度限制 */
-  overflow-y: visible !important;
-  /* 改为可见 */
-  height: auto !important;
-  /* 自动高度 */
-}
-
-/* 确保 ScrollArea 的内容区域能正确撑开 */
-.chat-v2 .tool-trace__scroll [data-radix-scroll-area-content] {
-  min-height: min-content;
-  /* 允许内容决定最小高度 */
-}
-
 .chat-v2 .thinking-trace__body {
   background: var(--chat-thinking-surface);
   border-color: var(--chat-thinking-border);
@@ -100,8 +55,6 @@
 }
 
 .chat-v2 .thinking-trace__text {
-  max-height: 200px;
-  overflow-y: auto;
   position: relative;
   padding-right: 3px;
   font-size: var(--chat-md-compact-font-size);

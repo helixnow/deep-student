@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -247,7 +248,11 @@ export function SandboxWorkbenchSurface({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_top,_hsl(var(--card)/0.55),_transparent_58%)] p-4">
+      <CustomScrollArea
+        className="min-h-0 flex-1"
+        viewportClassName="bg-[radial-gradient(circle_at_top,_hsl(var(--card)/0.55),_transparent_58%)] p-4"
+        orientation="both"
+      >
         <div
           ref={canvasRef}
           data-testid="sandbox-runtime-canvas"
@@ -264,7 +269,7 @@ export function SandboxWorkbenchSurface({
             className="h-full w-full"
           />
         </div>
-      </div>
+      </CustomScrollArea>
     </div>
   );
 

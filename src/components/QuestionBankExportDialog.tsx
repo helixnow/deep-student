@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { fileManager } from '@/utils/fileManager';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from './UnifiedNotification';
+import { CustomScrollArea } from './custom-scroll-area';
 import type { Question } from '@/api/questionBankApi';
 
 type ExportFormat = 'json' | 'txt' | 'csv';
@@ -822,9 +823,10 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         )}
 
         {/* 内容区：全高滚动（key 触发步骤切换滑动过渡） */}
-        <div
+        <CustomScrollArea
           key={exportOutcome ? 'success' : inlineStep}
-          className="min-h-0 flex-1 overflow-y-auto px-4 py-4 ui-slide-fade-in [--ui-enter-x:24px]"
+          className="min-h-0 flex-1 ui-slide-fade-in [--ui-enter-x:24px]"
+          viewportClassName="px-4 py-4"
         >
           {exportOutcome ? (
             successSection
@@ -849,7 +851,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
               )}
             </>
           )}
-        </div>
+        </CustomScrollArea>
 
         {/* 底部操作栏（safe-area 兼容） */}
         <div
@@ -913,7 +915,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       </div>
 
       {/* 内容区 */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="p-4">
         <div className="mx-auto w-full max-w-md space-y-6 py-2">
           {exportOutcome ? (
             successSection
@@ -928,7 +930,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
             </>
           )}
         </div>
-      </div>
+      </CustomScrollArea>
 
       {/* 底部操作栏 */}
       <div className="flex flex-shrink-0 items-center justify-end gap-2 border-t border-border/60 px-4 py-3">

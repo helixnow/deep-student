@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { ArrowLeft, QrCode, Plug, WarningCircle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -355,6 +356,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               {t('settings:plugins.system_prompt')}
             </h3>
             <Textarea
+              className="scroll-area--native"
               value={config.systemPrompt}
               onChange={(e) =>
                 setConfig((c) => (c ? { ...c, systemPrompt: e.target.value } : c))
@@ -376,15 +378,17 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
 
         {(activityLog.length > 0 || status?.lastActivity) && (
           <SettingsGroup title={t('settings:plugins.activity')}>
-            <ul className="px-1 py-1 text-xs leading-relaxed text-muted-foreground/70 space-y-1 max-h-40 overflow-auto">
-              {(activityLog.length > 0 ? activityLog : [status?.lastActivity ?? '']).map(
-                (line, i) => (
-                  <li key={`${i}-${line}`} className="truncate">
-                    {line}
-                  </li>
-                ),
-              )}
-            </ul>
+            <CustomScrollArea className="h-40" viewportClassName="px-1 py-1">
+              <ul className="space-y-1 text-xs leading-relaxed text-muted-foreground/70">
+                {(activityLog.length > 0 ? activityLog : [status?.lastActivity ?? '']).map(
+                  (line, i) => (
+                    <li key={`${i}-${line}`} className="truncate">
+                      {line}
+                    </li>
+                  ),
+                )}
+              </ul>
+            </CustomScrollArea>
           </SettingsGroup>
         )}
       </SettingSection>

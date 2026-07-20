@@ -431,8 +431,12 @@ export async function renderEpubChapter(
     body :where(pre, code, kbd, samp, tt), body :where(pre, code, kbd, samp, tt) * { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace !important; }`;
   const readerStyle = document.createElement('style');
   readerStyle.textContent = `
-    :root { color-scheme: ${theme === 'dark' ? 'dark' : 'light'}; }
+    :root {
+      color-scheme: ${theme === 'dark' ? 'dark' : 'light'};
+      --reader-scrollbar-thumb: color-mix(in srgb, currentColor 28%, transparent);
+    }
     html { background: ${palette.background}; color: ${palette.foreground}; font-size: ${Math.round(fontScale * 100)}%; }
+    html { scrollbar-width: thin; scrollbar-color: var(--reader-scrollbar-thumb) transparent; }
     body { max-width: 48rem; margin: 0 auto; padding: 2.75rem ${paddingInline}rem 5.5rem; overflow-wrap: anywhere; text-rendering: optimizeLegibility; }
     body, body :where(p, li, blockquote, dd) { line-height: ${lineHeight} !important; }${fontFamilyCss}
     img, svg, video { max-width: 100%; height: auto; }

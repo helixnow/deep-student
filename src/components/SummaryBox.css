@@ -16,8 +16,6 @@
   --sb-shadow-strong: 0 10px 28px color-mix(in srgb, hsl(var(--foreground)) 14%, transparent 86%);
   --sb-badge-bg: color-mix(in srgb, var(--sb-accent) 14%, transparent 86%);
   --sb-badge-border: color-mix(in srgb, var(--sb-accent) 28%, transparent 72%);
-  --sb-scrollbar-thumb: color-mix(in srgb, hsl(var(--muted-foreground)) 30%, transparent 70%);
-  --sb-scrollbar-thumb-hover: color-mix(in srgb, var(--sb-accent) 28%, transparent 72%);
   --sb-skeleton-base: color-mix(in srgb, var(--sb-surface-muted) 75%, transparent 25%);
   --sb-skeleton-highlight: color-mix(in srgb, var(--sb-accent) 24%, transparent 76%);
   background: var(--sb-surface);
@@ -37,8 +35,6 @@ html.dark .summary-box {
   --sb-shadow-strong: 0 18px 38px color-mix(in srgb, black 60%, transparent 40%);
   --sb-badge-bg: color-mix(in srgb, var(--sb-accent) 26%, transparent 74%);
   --sb-badge-border: color-mix(in srgb, var(--sb-accent) 42%, transparent 58%);
-  --sb-scrollbar-thumb: color-mix(in srgb, var(--sb-accent) 32%, transparent 68%);
-  --sb-scrollbar-thumb-hover: color-mix(in srgb, var(--sb-accent) 48%, transparent 52%);
   --sb-skeleton-base: color-mix(in srgb, var(--sb-surface-muted) 55%, transparent 45%);
 }
 
@@ -121,9 +117,11 @@ html.dark .summary-box {
 .summary-content {
   background: var(--sb-surface-muted);
   border-top: 1px solid var(--sb-border);
-  padding: 14px;
   max-height: 320px;
-  overflow-y: auto;
+}
+
+.summary-content-viewport {
+  padding: 14px;
 }
 
 .summary-text {
@@ -176,12 +174,6 @@ html.dark .summary-box {
 }
 @keyframes shimmer { 0% { background-position: -600px 0; } 100% { background-position: 600px 0; } }
 
-/* 自定义滚动条（克制） */
-.summary-content::-webkit-scrollbar { width: 8px; }
-.summary-content::-webkit-scrollbar-track { background: transparent; }
-.summary-content::-webkit-scrollbar-thumb { background: var(--sb-scrollbar-thumb); border-radius: 4px; }
-.summary-content::-webkit-scrollbar-thumb:hover { background: var(--sb-scrollbar-thumb-hover); }
-
 /* 无障碍：减少动画偏好 */
 @media (prefers-reduced-motion: reduce) {
   .summary-box, .toggle-icon, .sb-btn { transition: none !important; }
@@ -191,5 +183,6 @@ html.dark .summary-box {
 /* 移动端密集排版 */
 @media (max-width: 639.98px) {
   .summary-header { padding: 8px 10px; }
-  .summary-content { padding: 12px; max-height: 220px; }
+  .summary-content { max-height: 220px; }
+  .summary-content-viewport { padding: 12px; }
 }

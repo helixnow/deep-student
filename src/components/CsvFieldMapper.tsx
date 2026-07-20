@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { WarningCircle, CheckCircle, Link, LinkBreak } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { suggestCsvFieldFromHeader } from '@/utils/csvHeaderAliases';
+import { CustomScrollArea } from './custom-scroll-area';
 
 // 可映射的目标字段 (labels resolved via i18n at render time)
 export const QUESTION_FIELDS = [
@@ -240,7 +241,11 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
       </div>
 
       {/* 较宽视口保留表格；容器允许横向滚动，窄工作台窗口不再裁切列 */}
-      <div className="hidden overflow-x-auto rounded-lg border border-border sm:block">
+      <CustomScrollArea
+        className="hidden rounded-lg border border-border sm:block"
+        orientation="horizontal"
+        fullHeight={false}
+      >
         <Table className={showPreview ? 'min-w-[560px]' : 'min-w-[380px]'}>
           <TableHeader>
             <TableRow className="bg-muted/30 hover:bg-[var(--interactive-hover)]">
@@ -326,7 +331,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
             })}
           </TableBody>
         </Table>
-      </div>
+      </CustomScrollArea>
 
       {/* 预览数据表格（可选） */}
       {showPreview && previewRows.length > 1 && (
@@ -334,7 +339,11 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
           <h4 className="text-sm font-medium text-muted-foreground">
             {t('exam_sheet:csv.data_preview', { count: previewRows.length })}
           </h4>
-          <div className="rounded-lg border border-border overflow-auto max-h-[200px]">
+          <CustomScrollArea
+            className="max-h-[200px] rounded-lg border border-border"
+            orientation="both"
+            fullHeight={false}
+          >
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-[var(--interactive-hover)]">
@@ -361,7 +370,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
                 ))}
               </TableBody>
             </Table>
-          </div>
+          </CustomScrollArea>
         </div>
       )}
     </div>

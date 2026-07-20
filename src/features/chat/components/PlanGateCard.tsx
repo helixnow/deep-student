@@ -17,6 +17,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { CheckCircle, XCircle, Warning, CircleNotch, Clock, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 export interface PlanGateRequestData {
   planId: string;
@@ -215,14 +216,18 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
       {/* Row 3: 参数预览（可折叠，与审批栏一致） */}
       {argsText && (
         <div>
-          <pre className={cn(
-            'm-0 overflow-hidden rounded bg-muted px-2 py-1 text-xs font-mono text-muted-foreground',
-            isArgsExpanded ? 'max-h-40 overflow-y-auto' : 'max-h-16',
-          )}>
-            {isArgsExpanded || !argsNeedTruncation
-              ? argsText
-              : argsText.slice(0, ARGS_TRUNCATE_THRESHOLD) + ' …'}
-          </pre>
+          <CustomScrollArea
+            orientation="both"
+            fullHeight={false}
+            className={cn('rounded bg-muted', isArgsExpanded ? 'max-h-40' : 'max-h-16')}
+            viewportClassName={isArgsExpanded ? 'max-h-40' : 'max-h-16'}
+          >
+            <pre className="m-0 px-2 py-1 text-xs font-mono text-muted-foreground">
+              {isArgsExpanded || !argsNeedTruncation
+                ? argsText
+                : argsText.slice(0, ARGS_TRUNCATE_THRESHOLD) + ' …'}
+            </pre>
+          </CustomScrollArea>
           {argsNeedTruncation && (
             <DsButton
               variant="ghost"

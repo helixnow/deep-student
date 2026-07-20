@@ -22,6 +22,7 @@ import {
   CaretRight,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
@@ -173,16 +174,18 @@ const StreamPane: React.FC<{
         </span>
         <CopyButton text={text} label={copyLabel} />
       </div>
-      <pre
-        className={cn(
-          'p-2 rounded text-xs font-mono whitespace-pre-wrap break-words max-h-60 overflow-auto',
-          tone === 'stderr'
-            ? 'bg-destructive/5 dark:bg-destructive/10 text-destructive/90'
-            : 'bg-muted/40 dark:bg-muted/20 text-foreground/90',
-        )}
-      >
-        {visibleText}
-      </pre>
+      <CustomScrollArea fullHeight={false} className="max-h-60 rounded" viewportClassName="max-h-60">
+        <pre
+          className={cn(
+            'p-2 text-xs font-mono whitespace-pre-wrap break-words',
+            tone === 'stderr'
+              ? 'bg-destructive/5 dark:bg-destructive/10 text-destructive/90'
+              : 'bg-muted/40 dark:bg-muted/20 text-foreground/90',
+          )}
+        >
+          {visibleText}
+        </pre>
+      </CustomScrollArea>
       {isClamped && (
         <DsButton
           variant="ghost"

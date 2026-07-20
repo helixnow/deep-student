@@ -399,7 +399,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
   }
 
   return (
-    <div className={cn('h-full flex flex-col bg-background', className)}>
+    <div className={cn('flex h-full min-h-0 flex-col overflow-hidden bg-background', className)}>
       {toolbar}
       <CustomScrollArea className="flex-1 min-h-0">
         <div className="px-2 pb-6">

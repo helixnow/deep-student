@@ -333,7 +333,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   // 加载状态（spinner 延迟显示，快速加载不闪烁）
   if (isLoading) {
     return (
-      <div className={cn('flex flex-col h-full bg-background', className)}>
+      <div className={cn('flex h-full min-h-0 flex-col overflow-hidden bg-background', className)}>
         <PanelLoading label={t('common:loading')} />
       </div>
     );
@@ -343,7 +343,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   if (error || typeMismatch || !node || !commonProps) {
     return (
       <div
-        className={cn('flex flex-col items-center justify-center h-full gap-4 bg-background', className)}
+        className={cn('flex h-full min-h-0 flex-col items-center justify-center gap-4 overflow-hidden bg-background', className)}
         role="alert"
       >
         <WarningCircle size={48} className="text-destructive" aria-hidden="true" />

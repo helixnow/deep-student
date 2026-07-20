@@ -1950,12 +1950,16 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   </DsButton>
                 </div>
                 {aiGrading.state.feedback ? (
-                  <div className="pl-7.5 text-sm text-muted-foreground leading-relaxed max-h-48 overflow-y-auto">
+                  <CustomScrollArea
+                    className="max-h-48"
+                    viewportClassName="pl-7.5 text-sm leading-relaxed text-muted-foreground"
+                    fullHeight={false}
+                  >
                     <StreamingMarkdownRenderer
                       content={aiGrading.state.feedback}
                       isStreaming={true}
                     />
-                  </div>
+                  </CustomScrollArea>
                 ) : (
                   /* 流尚未产出内容：优雅加载态（三点跳动） */
                   <div className="pl-7.5 flex items-center gap-1 py-1" aria-hidden>
@@ -1991,12 +1995,16 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 </div>
                 {/* #56: 评判失败时保留已流式输出的内容，不再整段消失 */}
                 {aiGrading.state.feedback && (
-                  <div className="pl-7.5 text-sm text-muted-foreground leading-relaxed max-h-48 overflow-y-auto">
+                  <CustomScrollArea
+                    className="max-h-48"
+                    viewportClassName="pl-7.5 text-sm leading-relaxed text-muted-foreground"
+                    fullHeight={false}
+                  >
                     <StreamingMarkdownRenderer
                       content={aiGrading.state.feedback}
                       isStreaming={false}
                     />
-                  </div>
+                  </CustomScrollArea>
                 )}
                 {submitResult.correctAnswer && (
                   <p className="text-sm text-muted-foreground pl-7.5">
@@ -2964,7 +2972,12 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     ? t('editor.foundCount', { count: filteredQuestionIndices.length })
                     : t('editor.jumpToQuestion')}
                 </div>
-                <div className="grid grid-cols-8 gap-1 max-h-48 overflow-y-auto">
+                <CustomScrollArea
+                  className="max-h-48"
+                  viewportClassName="grid grid-cols-8 gap-1"
+                  fullHeight={false}
+                  onWheel={(event) => event.stopPropagation()}
+                >
                   {(filteredQuestionIndices || questions.map((_, idx) => idx)).map((idx) => {
                     const q = questions[idx];
                     const status = q.status || 'new';
@@ -2974,7 +2987,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       </DsButton>
                     );
                   })}
-                </div>
+                </CustomScrollArea>
                 <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border/40 text-[10px] text-muted-foreground">
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-success/20" /> {t('editor.legendMastered')}</span>
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-warning/20" /> {t('editor.legendReview')}</span>

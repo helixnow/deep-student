@@ -41,6 +41,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useMindMapStore } from '../../store';
 import { findNodeById, findParentNode } from '../../utils/node/find';
@@ -199,7 +200,11 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
   return (
     <div className="mm-mobile-node-toolbar" role="toolbar" aria-label={t('node.moreActions')}>
       {panel === 'more' && (
-        <div className="mm-mobile-toolbar-panel">
+        <CustomScrollArea
+          className="mm-mobile-toolbar-panel"
+          viewportClassName="mm-mobile-toolbar-panel-viewport px-1.5 py-1"
+          fullHeight={false}
+        >
           <PanelRow
             icon={<Note size={18} />}
             label={node.note ? t('contextMenu.editNote') : t('contextMenu.addNote')}
@@ -252,11 +257,15 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
             disabled={!clipboard}
             onClick={closePanelThen(() => pasteNodes(nodeId))}
           />
-        </div>
+        </CustomScrollArea>
       )}
 
       {panel === 'style' && (
-        <div className="mm-mobile-toolbar-panel">
+        <CustomScrollArea
+          className="mm-mobile-toolbar-panel"
+          viewportClassName="mm-mobile-toolbar-panel-viewport px-1.5 py-1"
+          fullHeight={false}
+        >
           <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
             {[
               { key: 'bold', icon: TextB, prop: 'fontWeight' as const, val: 'bold', cur: node.style?.fontWeight },
@@ -325,7 +334,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
             activeColor={node.style?.bgColor}
             onSelect={(color) => updateNode(nodeId, { style: { ...node.style, bgColor: color } })}
           />
-        </div>
+        </CustomScrollArea>
       )}
 
       <div className="mm-mobile-toolbar-row">

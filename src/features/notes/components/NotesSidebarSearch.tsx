@@ -9,6 +9,7 @@ import {
     PopoverTrigger,
 } from "@/components/ui/shad/Popover";
 import { Badge } from "@/components/ui/shad/Badge";
+import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { useNotes } from "../NotesContext";
 import { NotesAPI } from "../../../utils/notesApi";
 import { useDebounce } from "../../../hooks/useDebounce";
@@ -157,7 +158,11 @@ export const NotesSidebarSearch: React.FC<NotesSidebarSearchProps> = ({
                                 )}
                             </DsButton>
                         </PopoverTrigger>
-                        <PopoverContent className="w-64 p-2" align="end">
+                        <PopoverContent
+                            className="w-64 p-2"
+                            align="end"
+                            onWheel={(event) => event.stopPropagation()}
+                        >
                             <div className="space-y-2">
                                 <div className="text-xs font-medium text-muted-foreground">
                                     {t('notes:sidebar.search.filter_by_tag')}
@@ -181,22 +186,24 @@ export const NotesSidebarSearch: React.FC<NotesSidebarSearchProps> = ({
                                         </DsButton>
                                     </div>
                                 ) : availableTags.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto">
-                                        {availableTags.map(tag => (
-                                            <Badge
-                                                key={tag}
-                                                variant={selectedTags.includes(tag) ? "default" : "outline"}
-                                                className="text-[10px] cursor-pointer hover:bg-primary/10"
-                                                onClick={() => toggleTag(tag)}
-                                            >
-                                                <TagIcon className="h-2.5 w-2.5 mr-1" />
-                                                {tag}
-                                                {selectedTags.includes(tag) && (
-                                                    <X className="h-2.5 w-2.5 ml-1 opacity-70" />
-                                                )}
-                                            </Badge>
-                                        ))}
-                                    </div>
+                                    <CustomScrollArea className="max-h-40" fullHeight={false}>
+                                        <div className="flex flex-wrap gap-1 pr-1">
+                                            {availableTags.map(tag => (
+                                                <Badge
+                                                    key={tag}
+                                                    variant={selectedTags.includes(tag) ? "default" : "outline"}
+                                                    className="text-[10px] cursor-pointer hover:bg-primary/10"
+                                                    onClick={() => toggleTag(tag)}
+                                                >
+                                                    <TagIcon className="h-2.5 w-2.5 mr-1" />
+                                                    {tag}
+                                                    {selectedTags.includes(tag) && (
+                                                        <X className="h-2.5 w-2.5 ml-1 opacity-70" />
+                                                    )}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </CustomScrollArea>
                                 ) : (
                                     <div className="text-xs text-muted-foreground/60 italic">
                                         {t('notes:sidebar.search.no_tags')}

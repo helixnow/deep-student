@@ -887,7 +887,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
     return (
       <div
-        className="h-full flex flex-col bg-background"
+        className="flex h-full min-h-0 flex-col bg-background"
         style={{
           paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
@@ -1091,7 +1091,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   // P0-1 移动端分区首页：搜索框 + iOS 式分组列表（复用 sidebarNavGroups 5 组）
   const renderMobileSectionList = () => (
     <CustomScrollArea
-      className="flex-1 w-full max-w-full overflow-x-hidden"
+      className="min-h-0 flex-1 w-full max-w-full"
       viewportClassName="px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
       trackOffsetTop={16}
       trackOffsetBottom={16}
@@ -1310,7 +1310,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       data-slot={mobilePageMode ? 'mobile-settings-page-content' : undefined}
     >
         <CustomScrollArea
-          className="flex-1 w-full max-w-full overflow-x-hidden"
+          className="min-h-0 flex-1 w-full max-w-full"
           viewportClassName={cn(
             mobilePageMode
               ? "px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
@@ -1386,16 +1386,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 <div className="mt-1 text-xs text-muted-foreground break-all">{t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}</div>
               )}
             </DsDialogHeader>
-            <DsDialogBody>
-              <CustomScrollArea
-                className="flex-1 min-h-0 px-6 py-6"
-                viewportClassName="px-6 py-6"
-                trackOffsetTop={12}
-                trackOffsetBottom={12}
-                viewportProps={{ style: { maxHeight: '60vh' } }}
-              >
-                {renderMcpPreviewBody()}
-              </CustomScrollArea>
+            <DsDialogBody overlayScroll className="py-6" onWheel={(event) => event.stopPropagation()}>
+              {renderMcpPreviewBody()}
             </DsDialogBody>
             <DsDialogFooter>
               <DsButton variant="default" size="sm" onClick={handleClosePreview}>{t('common:close')}</DsButton>
@@ -1539,7 +1531,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             onClose={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}
             closeOnOverlayClick={false}
           >
-            <div className="bg-popover text-popover-foreground rounded-2xl p-4 max-w-[500px] w-[90%] max-h-[85vh] mx-auto mt-10 overflow-hidden shadow-lg flex flex-col relative" style={{ animation: 'slideUp 0.3s ease' }}>
+            <div className="relative mx-auto mt-10 flex min-h-0 max-h-[min(85dvh,720px)] w-[90%] max-w-[500px] flex-col overflow-hidden rounded-2xl bg-popover p-4 text-popover-foreground shadow-lg" style={{ animation: 'slideUp 0.3s ease' }}>
               {/* 头部 */}
               <div style={{
                 display: 'flex',
@@ -1554,8 +1546,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                   </svg>
                 </DsButton>
               </div>
-              {/* 矮窗口下限高滚动，避免表单被 max-h-[85vh] + overflow-hidden 裁剪后按钮不可达 */}
-              <div className="min-h-0 flex-1 overflow-y-auto" style={{ display: 'grid', gap: 12 }}>
+              {/* 矮窗口下限高滚动，避免表单被弹窗限高裁剪后按钮不可达 */}
+              <CustomScrollArea
+                className="min-h-0 flex-1"
+                viewportClassName="pr-1"
+                trackOffsetTop={4}
+                trackOffsetBottom={4}
+              >
+                <div style={{ display: 'grid', gap: 12 }}>
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <Switch
                     checked={mcpPolicyModal.advertiseAll}
@@ -1642,7 +1640,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                     />
                   </div>
                 </div>
-              </div>
+                </div>
+              </CustomScrollArea>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
                 <DsButton variant="ghost" onClick={() => setMcpPolicyModal(prev => ({ ...prev, open: false }))}>{t('common:actions.cancel')}</DsButton>
                 <DsButton
@@ -1714,7 +1713,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         }
         return (
           <div
-            className="h-full flex flex-col bg-background"
+            className="flex h-full min-h-0 flex-col bg-background"
             style={{
               paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
             }}
@@ -1747,7 +1746,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         // P0-4：MCP 工具/资源预览（移动端），标题由统一顶栏承载
         return (
           <div
-            className="h-full flex flex-col bg-background"
+            className="flex h-full min-h-0 flex-col bg-background"
             style={{
               paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
             }}
@@ -1827,7 +1826,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               {t('acknowledgements.ui_components.app_menu_desc')}
             </DsDialogDescription>
           </DsDialogHeader>
-          <DsDialogBody>
+          <DsDialogBody overlayScroll>
             <AppMenuDemo />
           </DsDialogBody>
         </DsDialog>
@@ -1911,7 +1910,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             {t('acknowledgements.ui_components.app_menu_desc')}
           </DsDialogDescription>
         </DsDialogHeader>
-        <DsDialogBody>
+        <DsDialogBody overlayScroll>
           <AppMenuDemo />
         </DsDialogBody>
       </DsDialog>

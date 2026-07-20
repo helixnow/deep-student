@@ -101,10 +101,12 @@
   border-bottom: 1px solid hsl(var(--border) / 70%);
 }
 
-.wb-resource-workspace-list {
+.wb-resource-workspace-list-scroll {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+}
+
+.wb-resource-workspace-list {
   padding: 5px 6px 10px;
   outline: none;
 }

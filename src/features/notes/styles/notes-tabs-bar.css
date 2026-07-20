@@ -1,12 +1,3 @@
-.notes-tabs-scroll {
-  /* 隐藏滚动条（不影响滚动） */
-  -ms-overflow-style: none; /* IE/Edge */
-  scrollbar-width: none; /* Firefox */
-}
-.notes-tabs-scroll::-webkit-scrollbar {
-  display: none; /* WebKit */
-}
-
 .notes-tabs-scroll-btn {
   position: absolute;
   top: 50%; /* 与标签中轴对齐 */

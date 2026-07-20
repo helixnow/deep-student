@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SidebarSimple, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { WbSysSizeClass } from './useWbSysSize';
 import './SystemWindowShared.css';
@@ -287,7 +288,15 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
                 <X size={13} weight="bold" aria-hidden />
               </DsButton>
             </div>
-            <div className="wb-sys-drawer-body">{sidebar}</div>
+            <CustomScrollArea
+              className="wb-sys-drawer-body"
+              viewportClassName="wb-sys-drawer-body-viewport"
+              trackOffsetTop={6}
+              trackOffsetBottom={6}
+              trackOffsetRight={3}
+            >
+              {sidebar}
+            </CustomScrollArea>
           </div>
         </>
       )}

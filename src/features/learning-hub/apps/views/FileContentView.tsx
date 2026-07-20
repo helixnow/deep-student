@@ -34,6 +34,7 @@ import {
 import { getErrorMessage } from '@/utils/errorUtils';
 import { fileManager } from '@/utils/fileManager';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 // PDF 预览组件
 import {
@@ -835,9 +836,9 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     // ★ 空字符串也进入此分支：TextFilePreview 会渲染"文件内容为空"空状态
     if (textContent !== null) {
       return (
-        <div className="h-full overflow-auto">
+        <CustomScrollArea className="h-full min-h-0" orientation="both">
           <TextFilePreview content={textContent} fileName={node.name} />
-        </div>
+        </CustomScrollArea>
       );
     }
 
@@ -873,7 +874,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       {renderContent()}
     </div>
   );

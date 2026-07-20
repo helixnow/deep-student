@@ -2841,7 +2841,7 @@ export function LearningHubSidebar({
     <div
       ref={containerRef}
       className={cn(
-        'relative flex h-full',
+        'relative flex h-full min-h-0 min-w-0 overflow-hidden',
         isSmallScreen && mode === 'fullscreen'
           ? 'bg-background'
           : 'study-shell-sidebar-frame',

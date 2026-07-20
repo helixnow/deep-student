@@ -1116,11 +1116,6 @@ main {
   /* N-6: 窄屏控件溢出时允许横向滚动，避免裁切不可达 */
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.modern-viewer-toolbar::-webkit-scrollbar {
-  display: none;
 }
 
 .modern-viewer-toolbar > * {
@@ -1493,38 +1488,23 @@ main {
 /* OverlayScrollbars print preservation (milestone v1.1). Ensure printing expands
    overlay-scroll containers so content is never clipped at print time. */
 @media print {
+  [data-overlayscrollbars],
+  [data-overlayscrollbars-padding],
   [data-overlayscrollbars-viewport] {
     overflow: visible !important;
     height: auto !important;
     max-height: none !important;
   }
-}
 
-/* Native scrollbar styling for the ScrollArea primitive's `nativeScrollbars`
-   fallback path (used on iOS WebView to preserve rubber-band + inertia).
-   Moved from study-ui so DeepStudent can own this style end-to-end. */
-.scroll-area--native {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-  scrollbar-gutter: stable;
-}
+  .os-scrollbar {
+    display: none !important;
+  }
 
-.scroll-area--native::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.scroll-area--native::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 999px;
-}
-
-.scroll-area--native::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
-
-.scroll-area--native::-webkit-scrollbar-track {
-  background: transparent;
+  .scroll-area--native {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
 }
 
 .content-body.settings-view {

@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import type { CopyFilterConfig } from '../../hooks/useDevShowRawRequest';
 
@@ -397,9 +398,14 @@ export function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }:
         </div>
       )}
 
-      <pre className="overflow-x-auto rounded bg-background/80 p-2 text-xs text-foreground/80 font-mono max-h-80 overflow-y-auto">
-        {displayText}
-      </pre>
+      <CustomScrollArea
+        orientation="both"
+        fullHeight={false}
+        className="max-h-80 rounded bg-background/80"
+        viewportClassName="max-h-80"
+      >
+        <pre className="p-2 text-xs text-foreground/80 font-mono">{displayText}</pre>
+      </CustomScrollArea>
     </div>
   );
 }

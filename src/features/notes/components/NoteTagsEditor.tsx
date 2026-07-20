@@ -11,6 +11,7 @@ import {
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from "@/components/ui/shad/Input";
 import { Badge } from "@/components/ui/shad/Badge";
+import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { NotesAPI } from "../../../utils/notesApi";
 import { useNotes } from "../NotesContext";
 import { showGlobalNotification } from "@/components/UnifiedNotification";
@@ -418,7 +419,11 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                     </span>
                 )}
                 {!readonly && suggestionsOpen && (isLoading || filteredSuggestions.length > 0) && (
-                    <div className="ui-rise-in absolute left-0 top-full z-50 mt-1 max-h-[180px] w-full min-w-[220px] overflow-y-auto rounded-[var(--notes-radius-popup,12px)] border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+                    <CustomScrollArea
+                        className="ui-rise-in absolute left-0 top-full z-50 mt-1 max-h-[180px] w-full min-w-[220px] overflow-hidden rounded-[var(--notes-radius-popup,12px)] border border-border bg-popover text-popover-foreground shadow-lg"
+                        viewportClassName="p-1.5"
+                        fullHeight={false}
+                    >
                         {isLoading ? (
                             <div className="flex items-center gap-1.5 px-1 py-1 text-[10px] text-muted-foreground">
                                 <CircleNotch className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
@@ -430,7 +435,7 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                                 {suggestionsListbox}
                             </>
                         )}
-                    </div>
+                    </CustomScrollArea>
                 )}
             </div>
         );
@@ -469,7 +474,11 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                 </button>
             </PopoverTrigger>
             {!readonly && (
-                <PopoverContent className="w-80 rounded-[var(--notes-radius-popup,12px)] p-3" align="start">
+                <PopoverContent
+                    className="w-80 rounded-[var(--notes-radius-popup,12px)] p-3"
+                    align="start"
+                    onWheel={(event) => event.stopPropagation()}
+                >
                     <div className="space-y-3">
                         <div className="flex items-center gap-2 border-b border-border/50 pb-2">
                             <TagIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -561,12 +570,16 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                                     {t('common:loading')}
                                 </div>
                             ) : filteredSuggestions.length > 0 && (
-                                <div className="border border-border rounded-[var(--notes-radius-popup,12px)] max-h-[150px] overflow-y-auto">
-                                    <div className="p-1.5">
+                                <CustomScrollArea
+                                    className="max-h-[150px] overflow-hidden rounded-[var(--notes-radius-popup,12px)] border border-border"
+                                    viewportClassName="p-1.5"
+                                    fullHeight={false}
+                                >
+                                    <div>
                                         <div className="text-[10px] text-muted-foreground mb-1 px-1">{t('notes:header.suggestions')}</div>
                                         {suggestionsListbox}
                                     </div>
-                                </div>
+                                </CustomScrollArea>
                             )}
                         </div>
                     </div>

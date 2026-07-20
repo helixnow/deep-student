@@ -279,7 +279,7 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
         <textarea
           id={`${idPrefix}-prompt`}
           aria-describedby={`${idPrefix}-prompt-count`}
-          className={cn(inputClassName, 'h-24 sm:h-24 resize-y py-2 leading-5')}
+          className={cn(inputClassName, 'scroll-area--native h-24 sm:h-24 resize-y py-2 leading-5')}
           maxLength={4000}
           value={draft.prompt}
           onChange={(event) => patch({ prompt: event.target.value })}
@@ -326,7 +326,7 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
             <textarea
               id={`${idPrefix}-agent-prompt`}
               aria-describedby={`${idPrefix}-agent-prompt-count`}
-              className={cn(inputClassName, 'h-20 sm:h-20 resize-y py-2 leading-5')}
+              className={cn(inputClassName, 'scroll-area--native h-20 sm:h-20 resize-y py-2 leading-5')}
               maxLength={4000}
               value={draft.agentPrompt}
               placeholder={t('settings:automation.edit.agent_prompt_fallback')}

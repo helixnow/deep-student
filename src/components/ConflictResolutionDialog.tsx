@@ -531,9 +531,9 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
 
   const diffColors = {
     unchanged: '',
-    modified: 'bg-amber-50 dark:bg-amber-900/20',
-    added_local: 'bg-blue-50 dark:bg-blue-900/20',
-    added_cloud: 'bg-purple-50 dark:bg-purple-900/20',
+    modified: 'bg-warning/10',
+    added_local: 'bg-info/10',
+    added_cloud: 'bg-primary/10',
   };
 
   return (
@@ -550,7 +550,7 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
             {t('cloud_data')}
           </div>
         </div>
-        <div className="max-h-64 overflow-auto">
+        <CustomScrollArea className="max-h-64" orientation="both" fullHeight={false}>
           {allKeys.map((key) => {
             const diffType = getDiffType(key);
             return (
@@ -564,7 +564,7 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
                     <span
                       className={
                         diffType === 'modified'
-                          ? 'text-amber-700 dark:text-amber-300 font-medium'
+                          ? 'text-warning font-medium'
                           : ''
                       }
                     >
@@ -580,7 +580,7 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
                     <span
                       className={
                         diffType === 'modified'
-                          ? 'text-amber-700 dark:text-amber-300 font-medium'
+                          ? 'text-warning font-medium'
                           : ''
                       }
                     >
@@ -593,7 +593,7 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
               </div>
             );
           })}
-        </div>
+        </CustomScrollArea>
       </div>
       <div className="flex gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1">
@@ -893,7 +893,7 @@ export function ConflictResolutionDialog({
 
               {/* 数据库级冲突列表 */}
               <TabsContent value="database" className="flex-1 min-h-0 mt-4">
-                <CustomScrollArea className="h-full max-h-[340px]">
+                <CustomScrollArea className="max-h-[340px]" fullHeight={false}>
                   {conflicts.database_conflicts.length > 0 ? (
                     <div className="space-y-3 pr-4">
                       {conflicts.database_conflicts.map((conflict) => (
@@ -918,7 +918,7 @@ export function ConflictResolutionDialog({
 
               {/* 记录级冲突列表 */}
               <TabsContent value="record" className="flex-1 min-h-0 mt-4">
-                <CustomScrollArea className="h-full max-h-[340px]">
+                <CustomScrollArea className="max-h-[340px]" fullHeight={false}>
                   {conflicts.record_conflicts.length > 0 ? (
                     <div className="space-y-3 pr-4">
                       {conflicts.record_conflicts.map((conflict) => {
@@ -955,7 +955,7 @@ export function ConflictResolutionDialog({
 
               {/* 策略选择 */}
               <TabsContent value="strategy" className="flex-1 min-h-0 mt-4">
-                <CustomScrollArea className="h-full max-h-[340px]">
+                <CustomScrollArea className="max-h-[340px]" fullHeight={false}>
                   <div className="pr-4">
                     <StrategySelection
                       selectedStrategy={selectedStrategy}

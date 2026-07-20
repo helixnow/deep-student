@@ -44,6 +44,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { getPomodoroTodayStats, type PomodoroTodayStats } from '@/features/pomodoro/api';
 import { PomodoroStatsContent } from '@/features/pomodoro/components/PomodoroStatsPopover';
@@ -123,7 +124,15 @@ const PomoSubView: React.FC<{
         </button>
         <span className="wb-sys-pomo-view-title">{title}</span>
       </div>
-      <div className="wb-sys-pomo-view-body">{children}</div>
+      <CustomScrollArea
+        className="wb-sys-pomo-view-body"
+        viewportClassName="wb-sys-pomo-view-body-viewport"
+        trackOffsetTop={2}
+        trackOffsetBottom={12}
+        trackOffsetRight={4}
+      >
+        <div className="wb-sys-pomo-view-body-content">{children}</div>
+      </CustomScrollArea>
     </div>
   );
 };
@@ -357,7 +366,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   return (
     <div
       ref={ref}
-      className="wb-sys-pomo flex h-full w-full min-w-0 flex-col overflow-hidden"
+      className="wb-sys-pomo flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden"
       data-wb-sys-app="pomodoro"
       data-mode={mode}
       data-status={mode === 'idle' ? 'idle' : status}
@@ -368,33 +377,40 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
       {/* ==== 主视图（Hero + 控制坞）==== */}
       <div className="wb-sys-pomo-view-main" aria-hidden={view !== 'main' ? true : undefined}>
         {/* ==== Hero 计时盘（data-agent-entity：agent 控制成功后的实体级 flash 锚点） ==== */}
-        <div
-          className="wb-sys-pomo-hero"
-          role="timer"
-          aria-label={`${modeLabel} ${formatClock(timeLeft)}`}
-          data-agent-entity="pomodoro:timer"
+        <CustomScrollArea
+          className="wb-sys-pomo-hero-scroll"
+          viewportClassName="wb-sys-pomo-hero-viewport"
+          trackOffsetTop={8}
+          trackOffsetBottom={8}
+          trackOffsetRight={4}
         >
-          <div className="wb-sys-pomo-badges">
-            <span className="wb-sys-pomo-chip wb-sys-pomo-chip-mode">
-              {modeIcon}
-              {modeLabel}
-            </span>
-            {isPaused && (
-              <span className="wb-sys-pomo-chip wb-sys-pomo-chip-paused">
-                <Pause size={12} weight="fill" aria-hidden />
-                {t('apps.system.paused')}
+          <div
+            className="wb-sys-pomo-hero"
+            role="timer"
+            aria-label={`${modeLabel} ${formatClock(timeLeft)}`}
+            data-agent-entity="pomodoro:timer"
+          >
+            <div className="wb-sys-pomo-badges">
+              <span className="wb-sys-pomo-chip wb-sys-pomo-chip-mode">
+                {modeIcon}
+                {modeLabel}
               </span>
-            )}
-            {strictLocked && (
-              <span
-                className="wb-sys-pomo-chip wb-sys-pomo-chip-strict"
-                title={t('pomodoro.strictHint')}
-              >
-                <ShieldCheck size={12} weight="fill" aria-hidden />
-                {t('pomodoro.strictBadge')}
-              </span>
-            )}
-          </div>
+              {isPaused && (
+                <span className="wb-sys-pomo-chip wb-sys-pomo-chip-paused">
+                  <Pause size={12} weight="fill" aria-hidden />
+                  {t('apps.system.paused')}
+                </span>
+              )}
+              {strictLocked && (
+                <span
+                  className="wb-sys-pomo-chip wb-sys-pomo-chip-strict"
+                  title={t('pomodoro.strictHint')}
+                >
+                  <ShieldCheck size={12} weight="fill" aria-hidden />
+                  {t('pomodoro.strictBadge')}
+                </span>
+              )}
+            </div>
 
           <div className="wb-sys-pomo-dial-wrap">
             <span className="wb-sys-pomo-glow" aria-hidden />
@@ -442,25 +458,26 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
             </span>
           )}
 
-          {/* 长休息周期圆点（间隔 >1 才有周期可言） */}
-          {cycleLength > 1 && (
-            <div
-              className="wb-sys-pomo-cycles"
-              role="img"
-              aria-label={t('pomodoro.progressTitle', { done: cycleDone, total: cycleLength })}
-              title={t('pomodoro.progressTitle', { done: cycleDone, total: cycleLength })}
-            >
-              {Array.from({ length: cycleLength }, (_, i) => (
-                <span
-                  key={i}
-                  className="wb-sys-pomo-cycle"
-                  data-filled={i < cycleDone ? 'true' : 'false'}
-                  data-current={i === cycleDone && mode === 'work' ? 'true' : 'false'}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+            {/* 长休息周期圆点（间隔 >1 才有周期可言） */}
+            {cycleLength > 1 && (
+              <div
+                className="wb-sys-pomo-cycles"
+                role="img"
+                aria-label={t('pomodoro.progressTitle', { done: cycleDone, total: cycleLength })}
+                title={t('pomodoro.progressTitle', { done: cycleDone, total: cycleLength })}
+              >
+                {Array.from({ length: cycleLength }, (_, i) => (
+                  <span
+                    key={i}
+                    className="wb-sys-pomo-cycle"
+                    data-filled={i < cycleDone ? 'true' : 'false'}
+                    data-current={i === cycleDone && mode === 'work' ? 'true' : 'false'}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </CustomScrollArea>
 
         {/* ==== 控制坞 ==== */}
         <div className="wb-sys-pomo-dock">

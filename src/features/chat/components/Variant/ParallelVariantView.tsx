@@ -13,6 +13,7 @@ import { useStore } from 'zustand';
 import i18n from 'i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -382,7 +383,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
       </div>
 
       {/* 🚀 P0修复：使用与单变体一致的分组渲染逻辑（ActivityTimeline + BlockRenderer） */}
-      <div className="flex-1 px-4 py-3 min-h-[100px] overflow-y-auto">
+      <CustomScrollArea className="min-h-[100px] flex-1" viewportClassName="px-4 py-3">
         {blockIds.length > 0 ? (
           <div className="space-y-2">
             {(() => {
@@ -476,7 +477,7 @@ const VariantCardImpl: React.FC<VariantCardProps> = ({
             {t('variant.pending')}
           </p>
         ) : null}
-      </div>
+      </CustomScrollArea>
 
       {/* 🚀 P0修复：来源面板不传 blocks，让它自己订阅 */}
       {/* P0-3: 按当前变体的 blockIds 过滤，避免把其他变体的来源串进本卡片 */}
@@ -964,20 +965,19 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
       })()}
 
       {/* 变体卡片容器 */}
-      <div
-        ref={scrollContainerRef}
+      <CustomScrollArea
+        viewportRef={scrollContainerRef}
+        orientation="horizontal"
+        fullHeight={false}
         className={cn(
-          'flex gap-4 pb-2',
-          // 移动端：横向滚动 + snap 对齐
-          // 桌面端：卡片均分宽度；变体较多时（min-w 之和超出容器）允许横向滚动而非溢出裁切
-          isSmallScreen
-            ? 'overflow-x-auto scrollbar-hide snap-x snap-mandatory -mx-4 px-4'
-            : 'w-full overflow-x-auto'
+          'w-full',
+          isSmallScreen && '-mx-4'
         )}
-        style={{
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-        } as React.CSSProperties}
+        viewportClassName={cn(
+          'flex gap-4 pb-2',
+          // 移动端保留 snap 对齐；桌面端变体较多时由同一横向 viewport 承载。
+          isSmallScreen && 'snap-x snap-mandatory px-4'
+        )}
       >
         {/* 🚀 P0修复：传递 blockIds 而非 blocks；按 id 回调直接透传，保持引用稳定以命中 VariantCard 的 memo */}
         {variants.map((variant, index) => {
@@ -1006,7 +1006,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
             />
           );
         })}
-      </div>
+      </CustomScrollArea>
 
       {/* 🆕 消息级操作栏：全部重试 + 删除消息 */}
       {!hideMessageLevelActions && (

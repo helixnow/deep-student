@@ -16,6 +16,7 @@ import { generateId } from '../../utils/common';
 import { ankiApiAdapter, notificationAdapter } from '../../services/ankiApiAdapter';
 import './BatchOperationToolbar.css';
 import { fileManager } from '../../utils/fileManager';
+import { CustomScrollArea } from '../custom-scroll-area';
 
 interface BatchOperationToolbarProps {
   cards: AnkiCard[];
@@ -417,9 +418,10 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
       </div>
       
       {/* 卡片列表（虚拟滚动） */}
-      <div 
-        ref={listContainerRef}
+      <CustomScrollArea
+        viewportRef={listContainerRef}
         className="batch-cards-list"
+        viewportClassName="batch-cards-list-viewport"
       >
         <div
           style={{
@@ -455,7 +457,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
             );
           })}
         </div>
-      </div>
+      </CustomScrollArea>
       
       {/* 对话框 */}
       {showFilterBuilder && (

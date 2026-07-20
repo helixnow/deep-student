@@ -152,7 +152,7 @@ export const VariantSwitcher: React.FC<VariantSwitcherProps> = ({
         'flex items-center gap-1 p-1 rounded-lg',
         'bg-muted/50 dark:bg-muted/30',
         // 变体较多时横向滚动，避免溢出撑破父容器
-        'max-w-full overflow-x-auto',
+        'max-w-full overflow-x-auto scrollbar-none',
         className
       )}
       role="tablist"

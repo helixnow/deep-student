@@ -98,7 +98,10 @@
 
 .wb-wpm-body {
   flex: 1 1 auto;
-  overflow-y: auto;
+  min-height: 0;
+}
+
+.wb-wpm-body-viewport {
   padding: 0 18px 16px;
 }
 

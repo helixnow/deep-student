@@ -25,6 +25,7 @@ import {
   type WorkbenchShortcutId,
 } from '../core/shortcuts';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import './ShortcutCheatsheet.css';
 
 /** 关闭后保留 DOM 播放退场动画的时长（与 CSS --wb-cheat-duration 对齐） */
@@ -199,7 +200,13 @@ const ShortcutCheatsheetComponent: React.FC = () => {
           </button>
         </div>
 
-        <div className="wb-cheat-groups">
+        <CustomScrollArea
+          className="wb-cheat-scroll"
+          viewportClassName="wb-cheat-groups"
+          trackOffsetTop={4}
+          trackOffsetBottom={8}
+          trackOffsetRight={6}
+        >
           {groups.map((group) => (
             <section key={group.id} className="wb-cheat-group" aria-label={t(group.labelKey, group.defaultLabel)}>
               <h3 className="wb-cheat-group-title">{t(group.labelKey, group.defaultLabel)}</h3>
@@ -217,7 +224,7 @@ const ShortcutCheatsheetComponent: React.FC = () => {
               </ul>
             </section>
           ))}
-        </div>
+        </CustomScrollArea>
 
         <div className="wb-cheat-footer">
           {/* macOS 上长按组合是 ⌘⌥（见 core/shortcuts 平台映射），提示文案跟随 */}

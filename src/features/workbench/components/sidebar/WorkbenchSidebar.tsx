@@ -42,6 +42,9 @@ export function WorkbenchSidebarScroll({ children, className }: React.PropsWithC
         className={cn('desktop-shell-sidebar-session-scroll min-h-0 flex-1 w-full', className)}
         scrollAutoHide="scroll"
         scrollAutoHideSuspend={false}
+        trackOffsetTop={2}
+        trackOffsetBottom={8}
+        trackOffsetRight={3}
         viewportClassName="h-full w-full"
         viewportProps={{
           'data-workbench-sidebar-scroll': true,

@@ -7,6 +7,7 @@
 import React from 'react';
 import { WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import i18next from 'i18next';
 import { reportFrontendError } from '@/logging/errorReporter';
 
@@ -80,9 +81,14 @@ export class MindMapErrorBoundary extends React.Component<
             {import.meta.env.DEV && this.state.errorInfo && (
               <details className="mt-2 w-full text-xs text-muted-foreground text-left">
                 <summary className="cursor-pointer">{i18next.t('mindmap:errorDetails')}</summary>
-                <pre className="mt-2 p-2 bg-muted rounded overflow-auto max-h-40">
-                  {this.state.errorInfo.componentStack}
-                </pre>
+                <CustomScrollArea
+                  className="mt-2 max-h-40 rounded bg-muted"
+                  viewportClassName="max-h-[inherit] p-2"
+                  orientation="both"
+                  fullHeight={false}
+                >
+                  <pre>{this.state.errorInfo.componentStack}</pre>
+                </CustomScrollArea>
               </details>
             )}
           </div>

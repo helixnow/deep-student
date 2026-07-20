@@ -16,6 +16,7 @@
  */
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { ComposerPanelMotion } from './ComposerPanelOverlay';
 
 export interface ComposerInlinePanelProps {
@@ -67,24 +68,31 @@ export function ComposerInlinePanel({
     >
       {/* 0fr→1fr 动画要求直接子元素 min-h-0 + overflow-hidden 才能被裁切 */}
       <div className="min-h-0 overflow-hidden">
-        <div
-          role="region"
-          aria-label={ariaLabel ?? panelKey}
-          className={cn(
-            'flex min-h-0 flex-col text-[color:var(--composer-panel-foreground)]',
-            heightMode === 'available'
-              ? 'overflow-hidden'
-              : 'overflow-y-auto overscroll-contain',
-            bodyClassName
-          )}
-          style={
-            heightMode === 'available'
-              ? { height: heightValue }
-              : { maxHeight: heightValue }
-          }
-        >
-          {children}
-        </div>
+        {heightMode === 'available' ? (
+          <div
+            role="region"
+            aria-label={ariaLabel ?? panelKey}
+            className={cn(
+              'flex min-h-0 flex-col overflow-hidden text-[color:var(--composer-panel-foreground)]',
+              bodyClassName
+            )}
+            style={{ height: heightValue }}
+          >
+            {children}
+          </div>
+        ) : (
+          <CustomScrollArea
+            role="region"
+            aria-label={ariaLabel ?? panelKey}
+            fullHeight={false}
+            className="text-[color:var(--composer-panel-foreground)]"
+            viewportClassName={cn('flex min-h-0 flex-col', bodyClassName)}
+            viewportProps={{ style: { maxHeight: heightValue } }}
+            style={{ maxHeight: heightValue }}
+          >
+            {children}
+          </CustomScrollArea>
+        )}
       </div>
     </div>
   );

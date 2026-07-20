@@ -273,12 +273,6 @@
   align-items: center;
   max-width: 200px;
   overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.nav-dots::-webkit-scrollbar {
-  display: none;
 }
 
 .nav-dot {

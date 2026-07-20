@@ -3109,7 +3109,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               <CaretDown size={12} />
             </DsButton>
             {showZoomMenu && (
-              <div className="ds-zoom-dropdown ds-zoom-dropdown--up ui-rise-in">
+              <CustomScrollArea
+                className="ds-zoom-dropdown ds-zoom-dropdown--up ui-rise-in"
+                viewportClassName="ds-zoom-dropdown-viewport"
+                fullHeight={false}
+              >
                 {([
                   ['fitWidth', t('pdf:toolbar.fit_width')],
                   ['fitPage', t('pdf:toolbar.fit_page')],
@@ -3131,7 +3135,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     {Math.round(z * 100)}%
                   </DsButton>
                 ))}
-              </div>
+              </CustomScrollArea>
             )}
           </div>
 
@@ -3330,7 +3334,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               </DsButton>
             </div>
           )}
-          <div className="ds-highlights-list">
+          <CustomScrollArea
+            className="ds-highlights-list"
+            viewportClassName="ds-highlights-list-viewport"
+          >
             {highlights.map(hl => (
               <div
                 key={hl.id}
@@ -3355,7 +3362,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 </DsButton>
               </div>
             ))}
-          </div>
+          </CustomScrollArea>
         </div>
       )}
 
@@ -3378,7 +3385,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               </DsButton>
             </div>
           )}
-          <div className="ds-bookmarks-list">
+          <CustomScrollArea
+            className="ds-bookmarks-list"
+            viewportClassName="ds-bookmarks-list-viewport"
+          >
             {sortedBookmarks.length === 0 ? (
               <div className="ds-bookmarks-empty">
                 <Bookmark size={24} className="ds-bookmarks-empty-icon" />
@@ -3435,7 +3445,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 </div>
               ))
             )}
-          </div>
+          </CustomScrollArea>
         </div>
       )}
     </div>

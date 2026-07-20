@@ -6,6 +6,7 @@ import { getPathToNote, estimateReadingMinutes, type NoteContentStats } from '..
 import { CaretRight, Check, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Input } from '@/components/ui/shad/Input';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { cn } from '@/lib/utils';
 import { springSnap, motionSafe } from '@/styles/motion-springs';
@@ -623,7 +624,11 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-40"
                             />
                             {(isLoadingTagSuggestions || tagSuggestions.length > 0) && (
-                                <div className="ui-rise-in absolute left-0 top-full z-30 mt-1 max-h-[176px] w-44 overflow-y-auto rounded-[var(--notes-radius-popup,12px)] border border-border bg-popover p-1 text-popover-foreground shadow-[var(--notes-popover-shadow,0_8px_24px_hsl(var(--shadow-base)/0.14))]">
+                                <CustomScrollArea
+                                    className="ui-rise-in absolute left-0 top-full z-30 mt-1 max-h-[176px] w-44 overflow-hidden rounded-[var(--notes-radius-popup,12px)] border border-border bg-popover text-popover-foreground shadow-[var(--notes-popover-shadow,0_8px_24px_hsl(var(--shadow-base)/0.14))]"
+                                    viewportClassName="p-1"
+                                    fullHeight={false}
+                                >
                                     {isLoadingTagSuggestions ? (
                                         <div className="flex items-center gap-1.5 px-1.5 py-1 text-[10px] text-muted-foreground">
                                             <CircleNotch className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
@@ -658,7 +663,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                             ))}
                                         </div>
                                     )}
-                                </div>
+                                </CustomScrollArea>
                             )}
                         </span>
                     ) : (

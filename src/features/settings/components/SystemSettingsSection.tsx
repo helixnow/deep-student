@@ -417,7 +417,7 @@ export const SystemSettingsSection: React.FC = () => {
                   label={t('settings:developer.debug_info_label')} 
                   description={t('settings:developer.debug_info_desc')}
                 >
-                  <CustomScrollArea className="max-w-md" viewportClassName="max-h-40 rounded-lg bg-muted p-4">
+                  <CustomScrollArea className="h-40 max-w-md rounded-lg bg-muted" viewportClassName="p-4">
                     <pre className="text-xs text-muted-foreground whitespace-pre-wrap">
                       {JSON.stringify(summary, null, 2)}
                     </pre>

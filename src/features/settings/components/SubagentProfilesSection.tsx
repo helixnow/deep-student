@@ -261,7 +261,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
           </p>
           <textarea
             id={`${idPrefix}-raw`}
-            className={cn(inputClassName, 'h-56 sm:h-56 resize-y py-2 font-mono text-xs leading-5')}
+            className={cn(inputClassName, 'scroll-area--native h-56 sm:h-56 resize-y py-2 font-mono text-xs leading-5')}
             value={rawContent}
             spellCheck={false}
             onChange={(event) => setRawContent(event.target.value)}
@@ -345,7 +345,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
             </label>
             <textarea
               id={`${idPrefix}-instructions`}
-              className={cn(inputClassName, 'h-36 sm:h-36 resize-y py-2 leading-5')}
+              className={cn(inputClassName, 'scroll-area--native h-36 sm:h-36 resize-y py-2 leading-5')}
               value={draft.instructions}
               placeholder={t('settings:subagentProfiles.form.instructions_placeholder')}
               onChange={(event) => patch({ instructions: event.target.value })}
@@ -367,7 +367,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
               </p>
               <textarea
                 aria-label={t('settings:subagentProfiles.form.advanced')}
-                className={cn(inputClassName, 'h-20 sm:h-20 resize-y py-2 font-mono text-xs leading-5')}
+                className={cn(inputClassName, 'scroll-area--native h-20 sm:h-20 resize-y py-2 font-mono text-xs leading-5')}
                 value={draft.extraLines}
                 spellCheck={false}
                 placeholder={'reasoning_effort: high\ntools: [builtin-web_search]\nskills: [research]'}

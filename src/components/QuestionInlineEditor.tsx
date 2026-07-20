@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { Label } from '@/components/ui/shad/Label';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Badge } from '@/components/ui/shad/Badge';
+import { CustomScrollArea } from './custom-scroll-area';
 import { AppSelect } from '@/components/ui/app-menu';
 import {
   FloppyDisk,
@@ -735,7 +736,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
       )}
     >
       {/* 内容区内部滚动 + 页脚钉底：矮窗口下保存按钮不再被截断 */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="space-y-4 p-4">
         {/* 错误提示 */}
         {error && (
           <div className="flex items-center gap-2 p-2.5 rounded-md bg-destructive/10 text-destructive text-sm">
@@ -1228,7 +1229,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             )}
           </div>
         )}
-      </div>
+      </CustomScrollArea>
 
       {/* 未保存改动的内联放弃确认条（钉底，替代原模态确认框） */}
       {showDiscardConfirm && (

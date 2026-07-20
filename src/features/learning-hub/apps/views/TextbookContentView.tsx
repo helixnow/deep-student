@@ -737,11 +737,11 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       return contentLoadingView;
     }
     return (
-      <div className="flex flex-col h-full bg-background overflow-hidden">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
         {/* orientation="both"：代码类（whitespace-pre）/CSV 表格（w-max）会横向溢出，
             仅纵向滚动时溢出内容不可达（窄屏尤甚）；真实 overflow-x:auto 同时让
             三屏手势豁免逻辑正确识别横向可滚动容器 */}
-        <CustomScrollArea className="flex-1" orientation="both">
+        <CustomScrollArea className="min-h-0 flex-1" orientation="both">
           <TextFilePreview content={fileContent} fileName={node.name} />
         </CustomScrollArea>
       </div>
@@ -776,7 +776,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   // PDF 预览
   // 优先使用 filePath（本地文件），否则使用从数据库加载的 pdfFile
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
       <TextbookPdfViewer
         file={pdfFile}
         filePath={effectiveFilePath || ''}

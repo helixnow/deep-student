@@ -14,6 +14,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import type {
   AutomationSchedule,
@@ -614,15 +615,15 @@ export function AutomationScheduleEditor({
                     className={cn(fieldClassName, 'h-8 pl-8 text-xs')}
                   />
                 </div>
-                <ul
-                  role="listbox"
-                  aria-labelledby={`${idPrefix}-timezone-label`}
-                  className="mt-1.5 max-h-48 overflow-y-auto"
-                >
-                  {filteredTimeZones.length === 0 && (
-                    <li className="px-2.5 py-2 text-xs text-muted-foreground">{t(`${P}.timezoneNoResults`)}</li>
-                  )}
-                  {filteredTimeZones.map((tz) => {
+                <CustomScrollArea className="mt-1.5 max-h-48 min-h-0" fullHeight={false}>
+                  <ul
+                    role="listbox"
+                    aria-labelledby={`${idPrefix}-timezone-label`}
+                  >
+                    {filteredTimeZones.length === 0 && (
+                      <li className="px-2.5 py-2 text-xs text-muted-foreground">{t(`${P}.timezoneNoResults`)}</li>
+                    )}
+                    {filteredTimeZones.map((tz) => {
                     const selected = tz === effectiveTimeZone;
                     const pinned = pinnedTimeZones.includes(tz);
                     return (
@@ -650,8 +651,9 @@ export function AutomationScheduleEditor({
                         </button>
                       </li>
                     );
-                  })}
-                </ul>
+                    })}
+                  </ul>
+                </CustomScrollArea>
               </div>
             </motion.div>
           )}

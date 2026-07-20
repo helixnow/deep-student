@@ -39,6 +39,10 @@
   --wb-hud-accent: hsl(var(--primary));
 
   box-sizing: border-box;
+  display: flex;
+  max-height: calc(100vh - 32px);
+  min-height: 0;
+  flex-direction: column;
   border-radius: var(--wb-menu-radius, 14px);
   overflow: hidden;
   box-shadow: var(--wb-shadow-idle);
@@ -137,6 +141,11 @@
 }
 
 /* ==== 主体 ============================================================ */
+
+.wb-hud-body-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 
 .wb-hud-body {
   display: flex;
@@ -248,6 +257,10 @@
 
 /* ==== 最近交互时间线 ================================================ */
 
+.wb-hud-interactions-scroll {
+  max-height: 96px;
+}
+
 .wb-hud-ixlist {
   list-style: none;
   margin: 0;
@@ -255,8 +268,6 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  max-height: 96px;
-  overflow-y: auto;
 }
 
 .wb-hud-ixrow {
@@ -349,16 +360,17 @@
 
 /* ==== 活动窗口列表 ==================================================== */
 
+.wb-hud-windows-scroll {
+  max-height: 128px;
+}
+
 .wb-hud-winlist {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 128px;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   list-style: none;
-  scrollbar-width: thin;
 }
 
 .wb-hud-winrow {

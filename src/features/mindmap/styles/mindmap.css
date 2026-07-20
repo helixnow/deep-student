@@ -76,25 +76,6 @@
   background: var(--mm-bg);
 }
 
-/* 滚动条：静置隐藏，hover 时接全局 --scrollbar-* 色板 */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: var(--mm-radius-control, 5px);
-}
-
-.custom-scrollbar:hover::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb, var(--mm-text-muted));
-}
-
-.custom-scrollbar:hover::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover, var(--mm-text-secondary));
-}
-
 /* --- 节点样式 --- */
 
 /* 节点行容器 */
@@ -1244,13 +1225,15 @@
 .mm-settings-popover {
   width: 288px;
   max-height: min(680px, calc(100vh - 64px));
-  padding: 8px;
   border: 1px solid var(--mm-border);
   border-radius: var(--mm-radius-popup, 8px);
   color: var(--mm-text);
   background: var(--mm-bg-elevated);
   box-shadow: var(--mm-popover-shadow);
-  overflow-y: auto;
+}
+
+.mm-settings-popover-viewport {
+  max-height: inherit;
 }
 
 .mm-panel-heading {
@@ -2185,10 +2168,16 @@
 /* 展开面板：条上方的内联区域（非 Portal、非模态） */
 .mm-mobile-toolbar-panel {
   max-height: min(288px, 45vh);
-  overflow-y: auto;
   border-bottom: 1px solid var(--mm-border);
-  padding: 4px 6px;
+}
+
+.mm-mobile-toolbar-panel-viewport {
+  max-height: inherit;
   overscroll-behavior: contain;
+}
+
+.mm-version-history-list-viewport {
+  max-height: inherit;
 }
 
 .mm-mobile-panel-row {
@@ -2435,13 +2424,6 @@
     min-height: 40px;
   }
 
-  .outline-breadcrumb {
-    scrollbar-width: none;
-  }
-
-  .outline-breadcrumb::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 @media (max-width: 359px) {

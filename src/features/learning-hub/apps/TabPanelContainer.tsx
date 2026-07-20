@@ -168,11 +168,11 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
     <PanelGroup
       direction="horizontal"
       autoSaveId="learning-hub-split-view"
-      className={cn('h-full', className)}
+      className={cn('h-full min-h-0 overflow-hidden', className)}
     >
       {/* 左侧面板：普通模式下占满全宽 */}
       <Panel defaultSize={splitView ? 50 : 100} minSize={25} id="split-left" order={1}>
-        <div className="relative h-full">
+        <div className="relative h-full min-h-0 overflow-hidden">
           {/* ★ Y3 修复：右侧分屏 tab 不在左侧重复渲染。
               之前左侧 map 中包含右侧 tab 的隐藏实例，导致同一资源双实例
               （重复加载、重复事件监听、编辑器互相干扰） */}
@@ -193,7 +193,7 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
 
           {/* 右侧面板：分屏 tab */}
           <Panel defaultSize={50} minSize={25} id="split-right" order={2}>
-            <div className="relative h-full">
+            <div className="relative h-full min-h-0 overflow-hidden">
               {/* 右侧面板顶部关闭按钮 */}
               <div className="absolute top-2 right-4 z-10 flex items-center gap-2">
                 <div className="bg-background/80 backdrop-blur-sm shadow-sm border border-border rounded-md px-2 py-1 text-xs text-muted-foreground font-medium flex items-center gap-1.5">

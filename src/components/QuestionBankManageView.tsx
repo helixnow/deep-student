@@ -12,6 +12,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
+import { CustomScrollArea } from './custom-scroll-area';
 import {
   Table,
   TableBody,
@@ -579,7 +580,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
       </div>
 
       {/* 表格 */}
-      <div className="flex-1 overflow-auto">
+      <CustomScrollArea className="min-h-0 flex-1" orientation="both">
         {isLoading ? (
           // 加载骨架：模拟行结构，避免整屏转圈闪切
           <div className="space-y-2 px-4 py-3" role="status" aria-busy>
@@ -926,7 +927,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             </TableBody>
           </Table>
         )}
-      </div>
+      </CustomScrollArea>
 
       {/* 内联二次确认条（吸底，桌面/移动端统一，替代原模态 AlertDialog） */}
       {(deleteConfirmOpen || resetConfirmOpen) && (

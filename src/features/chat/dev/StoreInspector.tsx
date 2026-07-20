@@ -8,6 +8,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import type { StoreApi } from 'zustand';
 import { useStore } from 'zustand';
 import { cn } from '@/utils/cn';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { CaretDown, CaretRight, Copy, Check, ArrowClockwise } from '@phosphor-icons/react';
 import type { ChatStore } from '../core/types';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -295,11 +296,11 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
 
       {/* 内容 */}
       {expanded && (
-        <div className="p-3 max-h-96 overflow-auto">
+        <CustomScrollArea orientation="both" fullHeight={false} className="max-h-96" viewportClassName="max-h-96 p-3">
           {Object.entries(displayState).map(([key, value]) => (
             <JsonViewer key={key} name={key} data={value} />
           ))}
-        </div>
+        </CustomScrollArea>
       )}
     </div>
   );

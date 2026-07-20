@@ -6,7 +6,7 @@ interface UseSlashMenuCustomScrollbarOptions {
 }
 
 const HIDE_DELAY_MS = 700;
-const MIN_THUMB_SIZE = 36;
+const DEFAULT_MIN_THUMB_SIZE = 40;
 const WHEEL_SMOOTH_FACTOR = 0.32; // 每帧向目标推进的比例（指数趋近）
 const WHEEL_SETTLE_EPSILON = 0.5;
 
@@ -69,6 +69,13 @@ export function useSlashMenuCustomScrollbar({
       };
 
       const hasOverflow = () => menuGroups.scrollHeight > menuGroups.clientHeight + 1;
+
+      const getMinThumbSize = () => {
+        const token = Number.parseFloat(
+          getComputedStyle(menuRoot).getPropertyValue('--scrollbar-thumb-min-size'),
+        );
+        return Number.isFinite(token) && token > 0 ? token : DEFAULT_MIN_THUMB_SIZE;
+      };
 
       // 样式表给 menu-groups 设了 scroll-behavior:smooth，直接赋值 scrollTop
       // 会触发浏览器自身的平滑动画，与逐帧驱动叠加产生迟滞；程序化滚动
@@ -144,7 +151,10 @@ export function useSlashMenuCustomScrollbar({
 
         track.dataset.enabled = 'true';
         const { scrollTop, scrollHeight, clientHeight } = menuGroups;
-        const size = Math.max((clientHeight / scrollHeight) * clientHeight, MIN_THUMB_SIZE);
+        const size = Math.min(
+          clientHeight,
+          Math.max((clientHeight / scrollHeight) * clientHeight, getMinThumbSize()),
+        );
         const maxOffset = clientHeight - size;
         const offset =
           maxOffset <= 0 ? 0 : (scrollTop / (scrollHeight - clientHeight)) * maxOffset;

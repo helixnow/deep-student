@@ -13,6 +13,7 @@ import {
   Square as SquareIcon,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { EVAL_CASES } from './eval/cases';
 import { RHYTHM_PRESETS, DEFAULT_RHYTHM } from './eval/rhythm';
 import { runEval, type RunEvalProgress } from './eval/runner';
@@ -297,7 +298,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
       </div>
 
       {/* 结果 */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="p-3 space-y-2">
         {!report ? (
           <div className="text-[11px] text-muted-foreground text-center py-8 border border-dashed border-border rounded-md">
             选择测试用例与平滑预设后点击「开始评测」
@@ -332,7 +333,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
               <div className="text-2xs text-muted-foreground tracking-wider font-medium mb-1">
                 得分矩阵（点击单元格展开详情）
               </div>
-              <div className="overflow-x-auto">
+              <CustomScrollArea orientation="horizontal" fullHeight={false}>
                 <table className="w-full text-2xs">
                   <thead>
                     <tr className="text-muted-foreground">
@@ -396,7 +397,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </CustomScrollArea>
             </div>
 
             {/* 详情 */}
@@ -410,7 +411,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
             </div>
           </>
         )}
-      </div>
+      </CustomScrollArea>
     </div>
   );
 };

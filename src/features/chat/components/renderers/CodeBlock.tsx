@@ -202,11 +202,13 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
       <div className="mermaid-error-message">
         {error || t('codeBlock.unknownError')}
       </div>
-      <pre className="code-block mermaid-fallback-code">
-        <code className={`language-${language}`}>
-          {fallbackCode}
-        </code>
-      </pre>
+      <ScrollArea orientation="both" className="mermaid-fallback-scroll-area">
+        <pre className="code-block mermaid-fallback-code">
+          <code className={`language-${language}`}>
+            {fallbackCode}
+          </code>
+        </pre>
+      </ScrollArea>
     </div>
   );
 };

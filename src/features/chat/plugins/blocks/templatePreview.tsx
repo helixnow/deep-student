@@ -16,6 +16,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { CircleNotch, WarningCircle, Layout, CaretDown } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { TemplateToolOutput, isTemplateVisualOutput } from './components';
@@ -103,11 +104,13 @@ const TemplatePreviewBlock: React.FC<BlockComponentProps> = React.memo(({ block,
       </DsButton>
       {rawExpanded && (
         <div className="border-t border-border/30 px-3 py-2">
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-background/50 p-2 text-xs text-muted-foreground">
-            {block.toolOutput === undefined
-              ? t('blocks.templatePreview.noOutput')
-              : safeStringify(block.toolOutput)}
-          </pre>
+          <CustomScrollArea fullHeight={false} className="max-h-48 rounded" viewportClassName="max-h-48">
+            <pre className="whitespace-pre-wrap break-words bg-background/50 p-2 text-xs text-muted-foreground">
+              {block.toolOutput === undefined
+                ? t('blocks.templatePreview.noOutput')
+                : safeStringify(block.toolOutput)}
+            </pre>
+          </CustomScrollArea>
         </div>
       )}
     </div>

@@ -14,6 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { createEmpty, dstu, type DstuNode } from '@/dstu';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -395,13 +396,19 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           </WorkbenchSidebarRow>
         </nav>
 
-        <div
-          className="wb-resource-workspace-list"
-          role="listbox"
-          tabIndex={0}
-          aria-label={title}
-          aria-busy={loading}
-          onKeyDown={handleListKeyDown}
+        <CustomScrollArea
+          className="wb-resource-workspace-list-scroll"
+          viewportClassName="wb-resource-workspace-list"
+          viewportProps={{
+            role: 'listbox',
+            tabIndex: 0,
+            'aria-label': title,
+            'aria-busy': loading,
+            onKeyDown: handleListKeyDown,
+          }}
+          trackOffsetTop={5}
+          trackOffsetBottom={8}
+          trackOffsetRight={3}
         >
           {loading && items.length === 0 ? (
             <div className="wb-resource-workspace-loading" role="status">
@@ -436,7 +443,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
               <WorkbenchSidebarRowLabel>{item.name || t('resourceHome.untitled')}</WorkbenchSidebarRowLabel>
             </WorkbenchSidebarRow>
           ))}
-        </div>
+        </CustomScrollArea>
 
         <footer className="wb-resource-workspace-sidebar-footer" data-wb-drawer-stay>
           <span>{t('workbench:resourceHome.itemCount', { count: visibleItems.length })}</span>

@@ -15,6 +15,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   X,
   MagnifyingGlassPlus,
@@ -654,9 +655,12 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
       </div>
 
       {/* 文档内容：高度受限内部滚动（内联面板不占满消息流） */}
-      <div
-        ref={contentRef}
-        className="max-h-[min(60vh,480px)] min-h-[120px] overflow-auto overscroll-contain"
+      <CustomScrollArea
+        viewportRef={contentRef}
+        orientation="both"
+        fullHeight={false}
+        className="min-h-[120px] max-h-[min(60vh,480px)]"
+        viewportClassName="min-h-[120px] max-h-[min(60vh,480px)]"
       >
         <div className={cn('flex items-stretch', wrap ? 'w-full' : 'w-max min-w-full')}>
           {showGutter && (
@@ -695,7 +699,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
             )}
           </pre>
         </div>
-      </div>
+      </CustomScrollArea>
 
       {/* 快捷键提示 */}
       <div className="border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">

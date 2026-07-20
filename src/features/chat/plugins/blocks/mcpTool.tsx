@@ -17,6 +17,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   WarningCircle,
   ArrowCounterClockwise,
@@ -210,16 +211,11 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
           </DsButton>
 
           {isExpanded && (
-            <pre
-              className={cn(
-                'mt-1 p-2 rounded text-xs font-mono',
-                'bg-muted/30 dark:bg-muted/20',
-                'max-h-40 overflow-auto',
-                'whitespace-pre-wrap break-words'
-              )}
-            >
-              {displayContent}
-            </pre>
+            <CustomScrollArea fullHeight={false} className="mt-1 max-h-40 rounded" viewportClassName="max-h-40">
+              <pre className="p-2 text-xs font-mono bg-muted/30 dark:bg-muted/20 whitespace-pre-wrap break-words">
+                {displayContent}
+              </pre>
+            </CustomScrollArea>
           )}
         </div>
       )}
@@ -274,17 +270,11 @@ const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
       </div>
 
       {isExpanded && displayContent && (
-        <pre
-          className={cn(
-            'mt-1.5 p-2 rounded text-xs font-mono',
-            'bg-muted/30 dark:bg-muted/20',
-            'max-h-48 overflow-auto',
-            'whitespace-pre-wrap break-words',
-            'text-muted-foreground'
-          )}
-        >
-          {displayContent}
-        </pre>
+        <CustomScrollArea fullHeight={false} className="mt-1.5 max-h-48 rounded" viewportClassName="max-h-48">
+          <pre className="p-2 text-xs font-mono bg-muted/30 dark:bg-muted/20 whitespace-pre-wrap break-words text-muted-foreground">
+            {displayContent}
+          </pre>
+        </CustomScrollArea>
       )}
     </div>
   );

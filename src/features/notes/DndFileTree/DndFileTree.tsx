@@ -38,6 +38,7 @@ const LEVEL_INDENT = 20;
 const BASE_INDENT = 16;
 const DROP_INDICATOR_SIDE_GAP = 12;
 const AUTO_EXPAND_DELAY_MS = 420;
+const EMPTY_IDS: string[] = [];
 /** 触屏拖拽激活 delay：必须大于 TreeNode 的 LONG_PRESS_MS(500)，见 sensors 注释 */
 export const TREE_TOUCH_DRAG_DELAY_MS = 600;
 
@@ -57,6 +58,8 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => {
 };
 
 interface DndFileTreeProps {
+  /** CustomScrollArea 的真实滚动 viewport；虚拟化与选中项定位必须绑定它。 */
+  scrollViewportRef: React.RefObject<HTMLDivElement>;
   treeData: TreeData;
   expandedIds?: string[];
   selectedIds?: string[];
@@ -82,6 +85,7 @@ interface DndFileTreeProps {
 }
 
 export function DndFileTree({
+  scrollViewportRef,
   treeData,
   expandedIds,
   selectedIds,
@@ -129,7 +133,7 @@ export function DndFileTree({
   const selectedIdsRef = useRef<string[]>(selectedIds ?? []);
   const draggedIdsRef = useRef<string[]>([]);
   const effectiveExpandedIds = forcedExpandedIds ?? localExpandedIds;
-  const effectiveSelectedIds = selectedIds ?? [];
+  const effectiveSelectedIds = selectedIds ?? EMPTY_IDS;
   const normalizedSearchTerm = searchTerm?.trim().toLowerCase() ?? '';
   const interactionsLocked = disableExpandCollapse && Boolean(normalizedSearchTerm);
 
@@ -138,8 +142,8 @@ export function DndFileTree({
   }, [effectiveExpandedIds]);
 
   useEffect(() => {
-    selectedIdsRef.current = selectedIds;
-  }, [selectedIds]);
+    selectedIdsRef.current = effectiveSelectedIds;
+  }, [effectiveSelectedIds]);
 
   // Wrap external callbacks to update local state
   const handleExpand = useCallback((id: string) => {
@@ -201,7 +205,7 @@ export function DndFileTree({
 
   const virtualizer = useVirtualizer({
     count: flattenedNodes.length,
-    getScrollElement: () => treeRef.current,
+    getScrollElement: () => scrollViewportRef.current,
     // 与 .rct-tree-item-button 的 28px 高度一致，避免虚拟行与实际行错位
     estimateSize: () => 28,
     overscan: 12,
@@ -210,6 +214,16 @@ export function DndFileTree({
   useEffect(() => {
     virtualizer.measure();
   }, [flattenedNodes, virtualizer]);
+
+  // 外部 reveal、活动笔记切换及键盘聚焦后，将目标节点滚入真实 viewport。
+  useEffect(() => {
+    const targetId = focusedId ?? effectiveSelectedIds[0];
+    if (!targetId) return;
+    const index = flattenedNodes.findIndex((item) => item.id === targetId);
+    if (index >= 0) {
+      virtualizer.scrollToIndex(index, { align: 'auto' });
+    }
+  }, [effectiveSelectedIds, flattenedNodes, focusedId, virtualizer]);
 
   const cancelAutoExpand = useCallback(() => {
     if (autoExpandTimerRef.current) {

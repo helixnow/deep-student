@@ -14,6 +14,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -724,9 +725,11 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
           <div className="text-2xs font-medium text-destructive mb-1">
             {t('workspace:subagentEmbed.errorDetail')}
           </div>
-          <div className="text-xs text-destructive whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-            {failureDetail}
-          </div>
+          <CustomScrollArea fullHeight={false} className="max-h-40" viewportClassName="max-h-40">
+            <div className="text-xs text-destructive whitespace-pre-wrap break-words">
+              {failureDetail}
+            </div>
+          </CustomScrollArea>
         </div>
       )}
 
@@ -768,9 +771,11 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
               )}
             </span>
           </div>
-          <div className="text-xs whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
-            {displayOutput}
-          </div>
+          <CustomScrollArea fullHeight={false} className="max-h-40" viewportClassName="max-h-40">
+            <div className="text-xs whitespace-pre-wrap break-words">
+              {displayOutput}
+            </div>
+          </CustomScrollArea>
         </div>
       )}
 

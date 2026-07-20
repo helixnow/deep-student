@@ -13,6 +13,7 @@ import { Warning, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { blockRegistry } from '../registry';
 import type { Block, ChatStore } from '../core/types';
@@ -151,9 +152,11 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
           <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
             {t('error.showContent')}
           </summary>
-          <pre className="mt-1 text-xs text-muted-foreground bg-background/50 rounded p-2 max-h-32 overflow-auto whitespace-pre-wrap break-words">
-            {block.content}
-          </pre>
+          <CustomScrollArea fullHeight={false} className="mt-1 max-h-32 rounded" viewportClassName="max-h-32">
+            <pre className="text-xs text-muted-foreground bg-background/50 p-2 whitespace-pre-wrap break-words">
+              {block.content}
+            </pre>
+          </CustomScrollArea>
         </details>
       )}
     </div>
@@ -217,9 +220,11 @@ const GenericBlock: React.FC<{ block: Block; isStreaming?: boolean }> = ({
         </pre>
       )}
       {outputPreview && (
-        <pre className="text-sm text-muted-foreground whitespace-pre-wrap break-words max-h-60 overflow-auto">
-          {outputPreview}
-        </pre>
+        <CustomScrollArea fullHeight={false} className="max-h-60" viewportClassName="max-h-60">
+          <pre className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+            {outputPreview}
+          </pre>
+        </CustomScrollArea>
       )}
       {isStreaming && (
         <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
