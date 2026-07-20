@@ -3,15 +3,23 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DstuNode } from '@/dstu';
 
-const { getContent, search, watch } = vi.hoisted(() => ({
+const { getContent, search, watch, fetchBacklinksFromBackend } = vi.hoisted(() => ({
   getContent: vi.fn(),
   search: vi.fn(),
   watch: vi.fn(),
+  fetchBacklinksFromBackend: vi.fn(),
 }));
 
 vi.mock('@/dstu', () => ({
   dstu: { getContent, search, watch },
 }));
+
+// 后端链接图命令默认不可用 → 面板走客户端扫描降级路径（原有断言不变）。
+// 单独的用例把它 mock 成成功返回，验证后端优先路径。
+vi.mock('../backlinksBackend', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../backlinksBackend')>();
+  return { ...actual, fetchBacklinksFromBackend };
+});
 
 import {
   BACKLINK_CANDIDATE_LIMIT,
@@ -85,6 +93,8 @@ describe('NotesBacklinksPanel', () => {
     getContent.mockReset();
     search.mockReset();
     watch.mockReset();
+    fetchBacklinksFromBackend.mockReset();
+    fetchBacklinksFromBackend.mockRejectedValue(new Error('command unavailable'));
     localStorage.clear();
     getContent.mockImplementation(async (path: string) => ({ ok: true, value: contentByPath[path] }));
     search.mockImplementation(async (query: string) => ({
@@ -187,6 +197,41 @@ describe('NotesBacklinksPanel', () => {
     expect(within(screen.getByRole('region', { name: /出链/ }))
       .getByRole('button', { name: '打开 Beta' })).toHaveTextContent('Beta');
     expect(screen.queryByText('Alpha alias')).toBeNull();
+  });
+
+  it('prefers the backend note_links graph and skips the candidate search scan', async () => {
+    fetchBacklinksFromBackend.mockResolvedValue([
+      {
+        sourceId: 'note_beta',
+        sourceTitle: 'Beta',
+        heading: null,
+        alias: 'Alpha alias',
+        // 'Points back to ' 为 15 个 ASCII 字符 → 链接的 UTF-8 字节偏移是 15
+        position: 15,
+        sourceUpdatedAt: '2026-07-01T00:00:00Z',
+      },
+    ]);
+
+    renderPanel();
+
+    const incoming = await screen.findByRole('region', { name: /反向链接/ });
+    expect(fetchBacklinksFromBackend).toHaveBeenCalledWith('note_alpha');
+    expect(within(incoming).getByRole('button', { name: '打开 Beta' })).toBeInTheDocument();
+    // 后端命中上下文：按字节偏移还原 [[Alpha|Alpha alias]] 并以别名高亮
+    expect(within(incoming).getByText('Alpha alias')).toBeInTheDocument();
+    // 后端为权威结果：不再出现“已扫描/加载更多”降级提示
+    expect(screen.queryByRole('button', { name: '加载更多来源' })).toBeNull();
+
+    // 出链 / 未解析仍由本地解析当前笔记正文（编辑中的链接即时可见）
+    const outgoing = screen.getByRole('region', { name: /出链/ });
+    expect(within(outgoing).getByRole('button', { name: '打开 Beta' })).toBeInTheDocument();
+    expect(screen.getByText('[[missing]]')).toBeInTheDocument();
+
+    // 反链候选搜索被完全跳过；只有正文按需拉取（active + 命中来源）
+    expect(search).not.toHaveBeenCalledWith('[[note_alpha]]', expect.anything());
+    expect(getContent).toHaveBeenCalledWith('/math/note_alpha');
+    expect(getContent).toHaveBeenCalledWith('/math/note_beta');
+    expect(getContent).not.toHaveBeenCalledWith('/math/note_gamma');
   });
 
   it('shows inbound context snippets and a more-context toggle', async () => {

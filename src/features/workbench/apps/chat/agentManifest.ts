@@ -40,7 +40,9 @@ export function createChatAgentManifest(
       },
       { name: 'focusInput', description: '聚焦 Chat 输入框。', inputSchema: objectSchema({ sessionId: { type: 'string' } }), risk: 'read', mutates: true, reversible: false, idempotent: true },
       {
-        name: 'scrollToMessage', description: '滚动到指定消息。',
+        // A45-5：定位走 MessageList 程序化滚动 handle，虚拟化长会话（>80 条）同样可达
+        name: 'scrollToMessage',
+        description: '滚动到指定消息并短暂高亮；支持虚拟化长会话。消息不属于该会话时返回 MESSAGE_NOT_FOUND。',
         inputSchema: objectSchema({ sessionId: { type: 'string' }, messageId: { type: 'string', minLength: 1 } }, ['messageId']),
         risk: 'read', mutates: true, reversible: false, idempotent: true,
         targetKinds: ['chat-message'],

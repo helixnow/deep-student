@@ -8,6 +8,7 @@
  * 设计：docs/dev/acr/DESIGN.md §1.1
  */
 import { isContentDirty } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { getVirtualAgentManifest } from '@/features/workbench/core/agentRuntime';
 import { getWindowRenderHint } from '@/features/workbench/core/scheduler';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
@@ -105,6 +106,11 @@ export function probeTarget(target: AcrTarget): ProbeResult {
   // OS 关 或 control=off → disabled，域执行器走后端直写（R2-08 / ERRORS.md）
   if (!workbenchBus.isEnabled() || getAgentControlMode() === 'off') {
     return { state: 'disabled', windowId: null };
+  }
+
+  // ACR 4.0（A2）：desktop 等虚拟目标无宿主窗口，恒 clean（无 dirty/hot/frozen 概念）
+  if (getVirtualAgentManifest(target.typeId)) {
+    return { state: 'clean', windowId: null };
   }
 
   const win = findTargetWindow(target);

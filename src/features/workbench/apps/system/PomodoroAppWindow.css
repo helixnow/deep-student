@@ -537,6 +537,20 @@
   font-weight: 600;
 }
 
+/* 放弃确认（内联二次确认）：占据停止按钮位，轻入场 */
+.wb-sys-pomo-stop-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  animation: wb-sys-pomo-view-in 200ms var(--wb-sys-pomo-view-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-sys-pomo-stop-confirm {
+    animation: none;
+  }
+}
+
 .wb-sys-pomo-controls-strict {
   display: inline-flex;
   align-items: center;

@@ -58,9 +58,11 @@ import {
   requestCloseAnimated,
   requestMinimizeAnimated,
 } from '../hooks/useWindowLifecycleAnim';
+import { enterImmersive } from '../core/immersiveMode';
 import { WindowTitleBar, TITLEBAR_HEIGHT } from './WindowTitleBar';
 import { WindowResizeHandles, type ResizeDirection } from './WindowResizeHandles';
 import { WindowBody } from './WindowBody';
+import { TILE_SETTLE_DURATION_MS } from './SnapPreview';
 import type { TileMenuAction } from './TileMenuPopover';
 import { shouldNotifyAgentUserInput } from '../agent/inputProbe';
 import { useWindowPresence } from '../agent/presenceStore';
@@ -69,8 +71,14 @@ import { AgentStrip } from '../agent/visuals/AgentStrip';
 import '../agent/visuals/agent-visuals.css';
 import './WindowShell.css';
 
-/** 退出 maximize/tile → floating 的 FLIP settle 时长（跟手优先，尽量短） */
-const RESTORE_SETTLE_MS = 120;
+/**
+ * 退出 maximize/tile → floating 的 FLIP settle 时长。
+ * 与进入方向（SnapPreview TILE_SETTLE_DURATION_MS，280ms spring 采样）对称：
+ * buildTileSettleKeyframes 已把欠阻尼 spring 烘焙进 keyframes，
+ * 时长一致即获得进出同手感（此前 120ms 线性，退出比进入生硬）。
+ * 拖拽 tear-out 不走此路径（跟手优先）。
+ */
+const RESTORE_SETTLE_MS = TILE_SETTLE_DURATION_MS;
 /**
  * 拖/缩手势 → shellGestureFlags（`<html data-wb-dragging>`）。
  * 视差 / 壁纸流动 / 内容暂停 / SnapPreview 等据此让路。
@@ -547,7 +555,14 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     endInteraction();
     if (!el) return;
 
-    // 松手：把 translate 折进 left/top，阴影/定位与静止态一致
+    // 松手：把 translate 折进 left/top，阴影/定位与静止态一致。
+    //
+    // 已评估「松手 settle 时短暂应用 --wb-shadow-lifted 再回落」（Tahoe 拖拽
+    // 抬升观感）：两次大模糊 box-shadow repaint 恰好落在 commit/落位帧——
+    // handleCommit 特意把 recomputeLifecycles 延后一帧避让的正是这段热路径，
+    // 叠加阴影插值会重新引入可感知的「放下」抖动（COORDINATION §拖拽阴影）。
+    // 结论：维持拖拽全程不切阴影档；如需抬升观感，应由视觉分区在静态
+    // focused 档上整体调深，而非 settle 瞬间切档。
     writeLayoutFrame(el, frameRef.current);
     dragAnchorRef.current = null;
     el.classList.remove('wb-shell-dragging', 'wb-shell-resizing');
@@ -899,8 +914,13 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
    * 非焦点窗按下：先 DOM 置顶（即时可拖），store focus 延后。
    * - 若随后进入拖拽：等松手再 focusWindow，避免拖动中途全窗重渲染
    * - 若只是点击内容区：microtask 内无手势，立即 focusWindow
+   * - ⌘（metaKey）按下：macOS 语义「按住 ⌘ 操作后台窗口」——跳过 DOM 置顶
+   *   与 pendingFocus，拖拽/缩放照常；松手也不置顶（endShellGesture 只在
+   *   pendingFocusRef 置位时才 focusWindow）。非 macOS 用 Windows/Super 键
+   *   同义，行为无害。只影响指针路径，与键盘快捷键的 ⌘ 映射无关。
    */
-  const focusSelf = useCallback(() => {
+  const focusSelf = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    if (e.metaKey) return;
     const store = useWindowStore.getState();
     if (store.focusStack[store.focusStack.length - 1] === windowId) {
       // 已是焦点窗：仍尝试入壳（键盘切换后点空白区等）；拖拽中不抢
@@ -971,9 +991,10 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
   );
 
   const handleClose = useCallback(() => {
-    void requestCloseAnimated(windowId).then((closed) => {
-      if (closed) recomputeLifecycles();
-    });
+    // requestCloseAnimated 的 resolve = 「请求已接受并开始退场」而非「已关闭」。
+    // 生命周期重算由 finishPhase 在 closeWindow 真正提交后触发；此前在
+    // resolve 后立刻 recompute 会在退场动画期间误判遮挡（窗口仍可见）。
+    void requestCloseAnimated(windowId);
   }, [windowId]);
 
   const handleMinimize = useCallback(() => {
@@ -1047,6 +1068,11 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
             t('a11y.restored', { title }),
           );
         }
+      } else if (action === 'immersive') {
+        // 沉浸模式（P2）：maximize + 菜单栏/Dock 强制 autohide；
+        // announce 与 lifecycles 重算由 enterImmersive 自理
+        enterImmersive(windowId);
+        return;
       } else if (action === 'maximized') {
         store.setDisplayMode(windowId, action);
         announceWorkbench(
@@ -1145,6 +1171,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       data-focused={focused || undefined}
       data-agent-active={presence?.status === 'acting' ? '' : undefined}
       data-agent-paused={presence?.status === 'pausedByUser' ? '' : undefined}
+      data-agent-reviewing={presence?.status === 'reviewing' ? '' : undefined}
       {...a11y}
       onPointerDownCapture={focusSelf}
       onFocusCapture={handleFocusCapture}
@@ -1161,7 +1188,9 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         onTileAction={handleTileAction}
         onMovePointerDown={handleMovePointerDown}
       />
-      {presence ? <AgentStrip windowId={windowId} /> : null}
+      {/* 演出优化轮：AgentStrip 自持退场收拢（presence 清除后短暂保持渲染），
+          故常驻挂载；无 presence 且非退场期内部返回 null，零渲染开销 */}
+      <AgentStrip windowId={windowId} />
       <div
         ref={contentRef}
         className="relative min-h-0 flex-1"

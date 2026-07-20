@@ -1,16 +1,28 @@
 /**
- * WindowTitleBar（P3 / O3）— 窗口标题栏（高 38px）。
+ * WindowTitleBar（P3 / O3；P1/P2 三键语义补全）— 窗口标题栏（高 38px）。
  *
- * - 左侧三键：关闭（requestClose 流程）/ 最小化 / 缩放（maximize toggle）
- * - 缩放键悬停 350ms 弹出 TileMenuPopover 平铺菜单（对标 macOS 绿灯）
- * - 双击标题栏空白区 = maximize toggle + 涟漪
+ * - 左侧三键（对标 macOS）：
+ *   红灯 = 关闭（requestClose 流程）；⌥+红灯 = 关闭同应用全部窗口（逐窗尊重
+ *   closeGuard）；有未保存修改时中心显示实心圆点（data-dirty，hover 恢复 ×）
+ *   黄灯 = 最小化；⌥+黄灯 = 最小化同应用全部窗口（逐窗 genie）
+ *   绿灯 = 沉浸模式 toggle（maximize + 菜单栏/Dock 强制 autohide）；
+ *   ⌥+绿灯 = 传统 zoom（floating ↔ maximized）
+ * - 缩放键悬停 350ms 或长按 400ms 弹出 TileMenuPopover 平铺菜单（对标 macOS 绿灯）
+ * - 双击标题栏空白区 = 按设置分发（缩放 / 最小化 / 无动作）+ 涟漪
  * - 标题居中；溢出时 mask 渐隐（替代硬截断省略号）
  * - 材质走 wb-titlebar / wb-traffic-* 契约 + wb-title-* 微交互层
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DisplayMode } from '../core/types';
+import { useWindowDirty } from '../core/windowCloseGuard';
+import { toggleImmersive, useWindowImmersive } from '../core/immersiveMode';
+import {
+  requestCloseAppWindowsAnimated,
+  requestMinimizeAppWindowsAnimated,
+} from '../hooks/useWindowLifecycleAnim';
 import { TileMenuPopover, type TileMenuAction } from './TileMenuPopover';
+import { useTitleBarDoubleClickAction } from './titleBarBehaviorStore';
 import './WindowTitleBar.css';
 
 export const TITLEBAR_HEIGHT = 38;
@@ -19,6 +31,8 @@ export const TITLEBAR_HEIGHT = 38;
 export const TILE_MENU_HOVER_DELAY = 350;
 /** 指针离开缩放键与菜单后的宽限关闭时间（ms） */
 export const TILE_MENU_CLOSE_GRACE = 200;
+/** 长按绿灯直接打开平铺菜单（ms，对标 macOS 按住绿灯出菜单） */
+export const TILE_MENU_LONGPRESS_DELAY = 400;
 
 export interface WindowTitleBarProps {
   windowId: string;
@@ -47,6 +61,18 @@ const GlyphClose = () => (
       strokeWidth="1.4"
       strokeLinecap="round"
     />
+  </svg>
+);
+
+/** 未保存圆点（macOS：脏窗口红灯非 hover 时中心实心点） */
+const GlyphDirtyDot = () => (
+  <svg
+    className="wb-title-dirty-dot"
+    viewBox="0 0 12 12"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <circle cx="6" cy="6" r="2.4" fill="currentColor" />
   </svg>
 );
 
@@ -112,6 +138,11 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   onMovePointerDown,
 }) => {
   const { t } = useTranslation('workbench');
+  const dirty = useWindowDirty(windowId);
+  const immersive = useWindowImmersive(windowId);
+  const doubleClickAction = useTitleBarDoubleClickAction();
+  /** 按住 ⌥ 时三键提示切换为批量/传统 zoom 语义（keydown/keyup 跟踪） */
+  const [altHeld, setAltHeld] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAutoFocus, setMenuAutoFocus] = useState(false);
   const [titleOverflow, setTitleOverflow] = useState(false);
@@ -137,6 +168,25 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   }, []);
 
   useEffect(() => clearTimers, [clearTimers]);
+
+  // ⌥ 按下/松开时切换三键 title/aria 的批量语义提示（blur 兜底复位）
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setAltHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setAltHeld(false);
+    };
+    const onBlur = () => setAltHeld(false);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
 
   // 长标题溢出检测 → mask 渐隐
   useLayoutEffect(() => {
@@ -198,6 +248,37 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
     [closeMenu, onTileAction],
   );
 
+  /** 长按绿灯直接开菜单：按满 TILE_MENU_LONGPRESS_DELAY 未松手即打开，
+   * 并抑制随后的 click（否则松手会触发 zoom 把菜单顶掉）。 */
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearLongPress, [clearLongPress]);
+
+  const handleZoomPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      if (e.button !== 0) return;
+      longPressFiredRef.current = false;
+      clearLongPress();
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        longPressFiredRef.current = true;
+        clearTimers();
+        setMenuAutoFocus(false);
+        setMenuOpen(true);
+      }, TILE_MENU_LONGPRESS_DELAY);
+    },
+    [clearLongPress, clearTimers],
+  );
+
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
   const spawnRipple = useCallback((clientX: number, clientY: number) => {
@@ -214,16 +295,22 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   /** 本次按下序列是否发生过拖拽（armed）；拖过后的双击不触发 zoom（对齐 macOS） */
   const recentDragRef = useRef(false);
 
+  /** 双击标题栏按设置分发：zoom（默认）/ minimize / none（拖过不触发照旧） */
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (recentDragRef.current) {
         recentDragRef.current = false;
         return;
       }
+      if (doubleClickAction === 'none') return;
       spawnRipple(e.clientX, e.clientY);
+      if (doubleClickAction === 'minimize') {
+        onMinimize();
+        return;
+      }
       onZoom({ alt: e.altKey });
     },
-    [onZoom, spawnRipple],
+    [doubleClickAction, onMinimize, onZoom, spawnRipple],
   );
 
   const handleRippleEnd = useCallback((id: number) => {
@@ -233,14 +320,17 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
-      // 视觉 dragging 过 1px 阈值才挂 class（DOM 直写，避免 React 重渲染抢首帧）
+      // 视觉 dragging 过 3px 阈值才挂 class（DOM 直写，避免 React 重渲染抢首帧）
       const startX = e.clientX;
       const startY = e.clientY;
       dragArmRef.current = { x: startX, y: startY, armed: false };
       // 每次按下重置"拖过"标记：仅当本次双击序列中发生拖拽才抑制 zoom
       recentDragRef.current = false;
       const bar = barRef.current;
-      const THRESHOLD_SQ = 1; // 1px²
+      // 3px（9px²）：触控板/高分屏双击常伴随 1–2px 微抖，1px 阈值会把双击
+      // 误判成「拖过」而吞掉 zoom；与内核 pointerEngine MOVE_ARM_THRESHOLD_PX
+      // （同步放宽到 3–4px）协同，视觉 dragging 态与真实起拖近似同刻武装。
+      const THRESHOLD_SQ = 9; // 3px²
       const onMove = (ev: PointerEvent) => {
         const arm = dragArmRef.current;
         if (!arm || arm.armed) return;
@@ -300,6 +390,16 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   );
 
   const zoomRestore = displayMode !== 'floating';
+  // 按住 ⌥ 时切换批量 / 传统 zoom 语义提示（macOS 行为）
+  const closeLabel = altHeld ? t('a11y.closeAll') : t('a11y.close');
+  const minimizeLabel = altHeld ? t('a11y.minimizeAll') : t('a11y.minimize');
+  const zoomLabel = altHeld
+    ? zoomRestore
+      ? t('a11y.zoomRestore')
+      : t('a11y.zoom')
+    : immersive
+      ? t('a11y.immersiveExit')
+      : t('a11y.immersiveEnter');
   const hostsAppTabs = appTypeId === 'notes' || appTypeId === 'files';
   /** 长标题被渐隐截断时，悬停标题栏空白区可见完整标题（三键自带 title 优先） */
   const barTooltip = titleOverflow ? title : undefined;
@@ -340,26 +440,39 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         <button
           type="button"
           className="wb-traffic-close wb-title-key"
-          aria-label={t('a11y.close')}
-          title={t('a11y.close')}
+          aria-label={closeLabel}
+          title={closeLabel}
+          data-dirty={dirty ? '' : undefined}
           onPointerDown={stop}
           onDoubleClick={stop}
           onClick={(e) => {
             e.stopPropagation();
+            if (e.altKey) {
+              // ⌥+红灯：关闭同应用全部窗口（逐窗 requestCloseAnimated，
+              // 被 closeGuard 拦下的窗口留下）
+              void requestCloseAppWindowsAnimated(windowId);
+              return;
+            }
             onClose();
           }}
         >
           <GlyphClose />
+          <GlyphDirtyDot />
         </button>
         <button
           type="button"
           className="wb-traffic-min wb-title-key"
-          aria-label={t('a11y.minimize')}
-          title={t('a11y.minimize')}
+          aria-label={minimizeLabel}
+          title={minimizeLabel}
           onPointerDown={stop}
           onDoubleClick={stop}
           onClick={(e) => {
             e.stopPropagation();
+            if (e.altKey) {
+              // ⌥+黄灯：最小化同应用全部窗口（含本窗，逐窗 genie）
+              requestMinimizeAppWindowsAnimated(windowId);
+              return;
+            }
             onMinimize();
           }}
         >
@@ -371,19 +484,35 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
             ref={zoomButtonRef}
             type="button"
             className="wb-traffic-zoom wb-title-key"
-            /* 绿灯语义随状态切换：floating=缩放（最大化），managed=还原 */
-            aria-label={zoomRestore ? t('a11y.zoomRestore') : t('a11y.zoom')}
-            title={zoomRestore ? t('a11y.zoomRestore') : t('a11y.zoom')}
+            /* 绿灯默认 = 沉浸模式 toggle；按住 ⌥ 切回传统 zoom/还原语义 */
+            aria-label={zoomLabel}
+            title={zoomLabel}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            onPointerDown={stop}
+            onPointerDown={handleZoomPointerDown}
+            onPointerUp={clearLongPress}
+            onPointerCancel={clearLongPress}
             onDoubleClick={stop}
             onPointerEnter={scheduleOpen}
-            onPointerLeave={scheduleClose}
+            onPointerLeave={() => {
+              clearLongPress();
+              scheduleClose();
+            }}
             onClick={(e) => {
               e.stopPropagation();
+              // 长按已开菜单：这次松手的 click 不再当 zoom，保持菜单打开
+              if (longPressFiredRef.current) {
+                longPressFiredRef.current = false;
+                return;
+              }
               closeMenu();
-              onZoom({ alt: e.altKey });
+              if (e.altKey) {
+                // ⌥+绿灯 = 传统 zoom（填满桌面 / 还原），对齐 macOS
+                onZoom({ alt: true });
+                return;
+              }
+              // 绿灯默认 = 沉浸模式 toggle（maximize + 菜单栏/Dock 隐藏）
+              toggleImmersive(windowId);
             }}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {

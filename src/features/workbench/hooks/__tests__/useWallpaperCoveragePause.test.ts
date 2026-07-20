@@ -67,9 +67,9 @@ describe('isDesktopCoveredByWindows — 纯判定', () => {
   });
 
   it('并集遮挡：越界窗口按裁剪后的可视部分计', () => {
-    // 两窗都大幅越界，桌面内并集只有约一半 → false
-    const a = makeWin({ id: 'oa', zIndex: 1, frame: { x: -800, y: 0, w: 1200, h: 900 } });
-    const b = makeWin({ id: 'ob', zIndex: 2, frame: { x: 1200, y: 0, w: 1200, h: 900 } });
+    // 两窗都大幅越界（单窗未裁剪面积 0.625 < 0.72），桌面内并集仅一半 → false
+    const a = makeWin({ id: 'oa', zIndex: 1, frame: { x: -600, y: 0, w: 1000, h: 900 } });
+    const b = makeWin({ id: 'ob', zIndex: 2, frame: { x: 1200, y: 0, w: 1000, h: 900 } });
     expect(isDesktopCoveredByWindows([a, b], DESKTOP)).toBe(false);
     // 四窗四分屏拼满 → true
     const quads: WorkbenchWindow[] = [

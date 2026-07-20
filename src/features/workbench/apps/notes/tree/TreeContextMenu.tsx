@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { NotesWorkspaceTreeMenuItem } from './types';
 
 interface TreeContextMenuProps {
@@ -12,21 +13,17 @@ interface TreeContextMenuProps {
 export function TreeContextMenu({ x, y, items, onClose }: TreeContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onPointerDown = (event: PointerEvent) => {
-      if (menuRef.current?.contains(event.target as Node)) return;
-      onClose();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('pointerdown', onPointerDown, true);
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown, true);
-      window.removeEventListener('keydown', onKeyDown);
-    };
+  const onOutsidePointerDown = useCallback((event: Event) => {
+    if (menuRef.current?.contains(event.target as Node)) return;
+    onClose();
   }, [onClose]);
+  const onEscapeKeyDown = useCallback((event: Event) => {
+    if (event instanceof KeyboardEvent && event.key === 'Escape') onClose();
+  }, [onClose]);
+  useEventRegistry([
+    { target: 'window', type: 'pointerdown', listener: onOutsidePointerDown, options: true },
+    { target: 'window', type: 'keydown', listener: onEscapeKeyDown },
+  ], [onEscapeKeyDown, onOutsidePointerDown]);
 
   useEffect(() => {
     const first = menuRef.current?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)');

@@ -17,8 +17,27 @@ import type {
 } from '../types';
 import { ACR_ERROR_CODES } from '../types';
 import { withUserPatch } from '../userPatch';
+import { agentFlash } from '../visuals/agentFlash';
 
 const TYPE_ID = 'pomodoro';
+
+/** PomodoroAppWindow 计时盘锚点 id（data-agent-entity="pomodoro:timer"） */
+const TIMER_ENTITY_ID = 'timer';
+
+/**
+ * ACR 4.0 A3：成功 op 后对计时器主区域做一次性 flash（实体级反馈，
+ * 补齐仅有窗口光环的空缺）。等一帧让状态渲染落地；窗口未开时安全 no-op；
+ * flash 样式复用 data-agent-flash（reduced-motion / forced-colors 全路径）。
+ */
+function flashTimerEntity(): void {
+  if (typeof window === 'undefined') return;
+  const fire = () => agentFlash(TYPE_ID, TIMER_ENTITY_ID, { scroll: false });
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => requestAnimationFrame(fire));
+  } else {
+    setTimeout(fire, 0);
+  }
+}
 
 const STRICT_MODE_HINT = '严格模式下专注中不可暂停';
 
@@ -191,6 +210,7 @@ export const pomodoroDriver: CollabDriver & {
       const label = op.label || op.kind;
       run.reportProgress(i + 1, totalOps, label);
 
+      const appliedBefore = state.applied;
       try {
         switch (op.kind) {
         case 'pomodoro_start': {
@@ -293,6 +313,7 @@ export const pomodoroDriver: CollabDriver & {
         persistenceFailed = true;
         messages.push(`后端记录保存失败: ${detail}`);
       }
+      if (state.applied > appliedBefore) flashTimerEntity();
 
       state.nextOpIndex = i + 1;
       try {

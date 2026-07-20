@@ -34,6 +34,7 @@
  */
 import type { Frame, Size, SnapZone, WindowPointerCallbacks } from './types';
 import { hitTestSnapZone } from './snapZones';
+import { computeEdgeSnap, type AxisSnap, type EdgeSnapCandidates } from './edgeSnapping';
 
 export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 export type GestureKind = 'move' | 'resize';
@@ -154,6 +155,12 @@ export interface PointerEngineOptions {
   /** 吸附磁吸位移开关，缺省 false（避免拖近边缘被「吸走」） */
   enableMagnet?: boolean;
   /**
+   * 邻窗边缘磁吸候选线（Sequoia 拖窗对齐）。move 手势开始时读取一次并
+   * 快照（其他窗口在拖拽期间不动），每帧在 rAF 内做纯几何吸附修正；
+   * 缺省 / 返回 null 时关闭。禁止在此 provider 内查询 DOM 布局。
+   */
+  getEdgeSnapCandidates?: () => EdgeSnapCandidates | null;
+  /**
    * move 越过启动阈值时回调一次（消费方 tear-out）。
    * 传入武装瞬间的指针坐标（视口）；不进冻结契约 WindowPointerCallbacks。
    * resize 立即武装，不触发。
@@ -197,6 +204,10 @@ interface ActiveGesture {
   pendingPoint: GesturePoint | null;
   /** 磁吸当前偏移（向 magnetVector(zone) 指数趋近） */
   magnetOffset: { x: number; y: number };
+  /** 邻窗边缘磁吸候选线（move 手势开始时快照；null = 关闭） */
+  edgeCandidates: EdgeSnapCandidates | null;
+  /** 上一帧的边缘吸附命中（滞回状态，见 edgeSnapping.computeEdgeSnap） */
+  edgeSnap: { x: AxisSnap | null; y: AxisSnap | null };
   /** 速度采样环（仅 move 消费） */
   samples: PointerSample[];
   /** 手势起始时缓存的 reduce-motion 偏好 */
@@ -380,6 +391,8 @@ export class WindowPointerEngine {
       rafId: 0,
       pendingPoint: null,
       magnetOffset: { x: 0, y: 0 },
+      edgeCandidates: kind === 'move' ? this.opts.getEdgeSnapCandidates?.() ?? null : null,
+      edgeSnap: { x: null, y: null },
       samples: [{ t: performance.now(), x: e.clientX, y: e.clientY }],
       reduced: prefersReducedMotion(),
       desktopOffset,
@@ -496,6 +509,22 @@ export class WindowPointerEngine {
       }
     }
 
+    // 邻窗边缘磁吸（Sequoia）：候选线为手势起始快照，帧内纯几何求修正。
+    // - 平铺吸附区命中时让位（以平铺为准，修正清零）；
+    // - ⌥/Alt 按住临时禁用（macOS 逃逸惯例；⌥ 同时也在扩大平铺热区，
+    //   语义一致——按 ⌥ 即表达「我要平铺」，不做邻窗对齐）；
+    // - 脱离：base frame 拖过阈值后修正自然消失（含滞回，见 edgeSnapping）。
+    let edgeDx = 0;
+    let edgeDy = 0;
+    if (g.kind === 'move' && g.edgeCandidates && g.lastZone === null && !point.alt) {
+      const snap = computeEdgeSnap(g.baseFrame, g.edgeCandidates, g.edgeSnap);
+      g.edgeSnap = { x: snap.x, y: snap.y };
+      edgeDx = snap.dx;
+      edgeDy = snap.dy;
+    } else if (g.edgeSnap.x !== null || g.edgeSnap.y !== null) {
+      g.edgeSnap = { x: null, y: null };
+    }
+
     // 磁吸位移：向 magnetVector(zone)·MAGNET_PULL_PX 指数趋近；离开热区回弹到 0
     let magnetUnsettled = false;
     if (g.kind === 'move' && this.opts.enableMagnet === true && !g.reduced) {
@@ -516,8 +545,8 @@ export class WindowPointerEngine {
     const frame: Frame =
       g.kind === 'move'
         ? {
-            x: g.baseFrame.x + g.magnetOffset.x,
-            y: g.baseFrame.y + g.magnetOffset.y,
+            x: g.baseFrame.x + edgeDx + g.magnetOffset.x,
+            y: g.baseFrame.y + edgeDy + g.magnetOffset.y,
             w: g.baseFrame.w,
             h: g.baseFrame.h,
           }
@@ -713,6 +742,8 @@ export class WindowPointerEngine {
         rafId: 0,
         pendingPoint: null,
         magnetOffset: { x: 0, y: 0 },
+        edgeCandidates: null,
+        edgeSnap: { x: null, y: null },
         samples,
         reduced: false,
         desktopOffset: { x: 0, y: 0 },

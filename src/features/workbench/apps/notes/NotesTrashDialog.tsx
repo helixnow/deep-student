@@ -10,6 +10,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { trashApi, type DstuNode } from '@/dstu';
 import { cn } from '@/lib/utils';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import './NotesTrashDialog.css';
 
@@ -261,21 +262,22 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
 
   // Escape: collapse the inline confirm first, then dismiss the panel.
   // Intentionally no Tab focus trap — this is a non-modal inline panel.
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (confirm) {
-        if (!busy) setConfirm(null);
-        return;
-      }
-      close();
-    };
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [busy, close, confirm, open]);
+  const onEscapeKeyDown = useCallback((event: Event) => {
+    if (!(event instanceof KeyboardEvent) || event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (confirm) {
+      if (!busy) setConfirm(null);
+      return;
+    }
+    close();
+  }, [busy, close, confirm]);
+  useEventRegistry(
+    open
+      ? [{ target: 'document', type: 'keydown', listener: onEscapeKeyDown, options: true }]
+      : [],
+    [onEscapeKeyDown, open],
+  );
 
   const locale = i18n.language || 'zh-CN';
 

@@ -126,8 +126,82 @@ function maxAgentRisk(risks: Array<AgentCapabilityRisk | undefined>): AgentCapab
 
 interface ResolvedAgentWindow {
   win: WorkbenchWindow;
-  def: AppDefinition;
+  /** Absent for virtual targets (e.g. desktop), which have no AppDefinition. */
+  def?: AppDefinition;
   manifest?: AppAgentManifest;
+  /** True when the target is a windowless virtual singleton (ACR 4.0 desktop). */
+  virtual?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// ACR 4.0（A2）：虚拟目标——无宿主窗口的单例（当前仅 'desktop'）。
+// 不进 appRegistry（避免被 open_app / 启动器打开成假窗），由 apps 层在装配时
+// 通过 registerVirtualAgentTarget 注册 manifest；观察/act 用 typeId 兼作
+// 稳定伪 windowId（nanoid(10) 不会与之碰撞）。
+// ---------------------------------------------------------------------------
+
+const virtualAgentManifests = new Map<string, AppAgentManifest>();
+
+/** 注册无窗虚拟目标的 agentManifest（幂等，同 typeId 覆盖）。 */
+export function registerVirtualAgentTarget(
+  typeId: string,
+  manifest: AppAgentManifest,
+): void {
+  virtualAgentManifests.set(typeId, manifest);
+}
+
+/** 虚拟目标 manifest 查询（probe/queryProviders 复用）。 */
+export function getVirtualAgentManifest(
+  typeId: string,
+): AppAgentManifest | undefined {
+  return virtualAgentManifests.get(typeId);
+}
+
+function virtualAgentWindow(typeId: string): WorkbenchWindow {
+  const { desktopSize } = useWindowStore.getState();
+  return {
+    id: typeId,
+    typeId,
+    instanceKey: null,
+    title: typeId,
+    frame: { x: 0, y: 0, w: desktopSize.w, h: desktopSize.h },
+    restoreFrame: null,
+    displayMode: 'floating',
+    minimized: false,
+    zIndex: 0,
+    createdAt: 0,
+    lastFocusedAt: 0,
+  };
+}
+
+function resolveVirtualAgentTarget(
+  target: AgentWindowTarget,
+): ResolvedAgentWindow | null {
+  const virtualId = target.typeId && virtualAgentManifests.has(target.typeId)
+    ? target.typeId
+    : !target.typeId && target.windowId && virtualAgentManifests.has(target.windowId)
+      ? target.windowId
+      : null;
+  if (!virtualId) return null;
+  if (target.windowId && target.windowId !== virtualId) {
+    runtimeError(
+      'WINDOW_TARGET_MISMATCH',
+      `${virtualId} 是无窗虚拟目标，不接受 windowId ${target.windowId}`,
+      `直接用 typeId=${virtualId}（或 windowId=${virtualId}）定位该目标`,
+    );
+  }
+  if (target.instanceKey) {
+    runtimeError(
+      'WINDOW_TARGET_MISMATCH',
+      `${virtualId} 是单例虚拟目标，不接受 instanceKey`,
+      '移除 instanceKey 后重试',
+    );
+  }
+  return {
+    win: virtualAgentWindow(virtualId),
+    manifest: virtualAgentManifests.get(virtualId),
+    virtual: true,
+  };
 }
 
 interface RefDescriptor {
@@ -146,6 +220,8 @@ function runtimeError(
 }
 
 function resolveAgentWindow(target: AgentWindowTarget = {}): ResolvedAgentWindow {
+  const virtualResolved = resolveVirtualAgentTarget(target);
+  if (virtualResolved) return virtualResolved;
   const state = useWindowStore.getState();
   let win: WorkbenchWindow | undefined;
   if (target.windowId) {
@@ -255,6 +331,18 @@ export function getAgentCapabilities(
   }
 
   if (target.typeId) {
+    const virtualManifest = virtualAgentManifests.get(target.typeId);
+    if (virtualManifest) {
+      apps.push({
+        typeId: target.typeId,
+        windowId: target.typeId,
+        instanceKey: null,
+        manifestVersion: virtualManifest.version,
+        description: virtualManifest.description,
+        capabilities: cloneCapabilities(virtualManifest),
+      });
+      return { apps };
+    }
     const def = appRegistry.get(target.typeId);
     if (!def) {
       runtimeError(
@@ -287,6 +375,15 @@ export function getAgentCapabilities(
   }
 
   for (const { typeId, manifest } of appRegistry.listAgentManifests()) {
+    apps.push({
+      typeId,
+      manifestVersion: manifest.version,
+      description: manifest.description,
+      capabilities: cloneCapabilities(manifest),
+    });
+  }
+  for (const [typeId, manifest] of virtualAgentManifests) {
+    if (apps.some((app) => app.typeId === typeId)) continue;
     apps.push({
       typeId,
       manifestVersion: manifest.version,
@@ -447,9 +544,11 @@ export async function observeAgentWindow(
   target: AgentWindowTarget = {},
   options: AgentRuntimeOptions = {},
 ): Promise<AgentObservation> {
-  const { win, manifest } = resolveAgentWindow(target);
+  const { win, manifest, virtual } = resolveAgentWindow(target);
   const state = useWindowStore.getState();
-  const focused = state.focusStack.at(-1) === win.id && !win.minimized;
+  // 虚拟目标（desktop）始终可交互，视为 focused，避免 requiresFocus 类校验误伤
+  const focused = virtual === true
+    || (state.focusStack.at(-1) === win.id && !win.minimized);
   const capabilities = manifest ? cloneCapabilities(manifest) : [];
   const declaredActions = new Set(capabilities.map((capability) => capability.name));
   let patch: AgentObservationPatch = {};
@@ -1582,7 +1681,10 @@ export function isAgentActRequestReadOnly(request: unknown): boolean {
   try {
     manifest = resolveAgentWindow(input).manifest;
   } catch {
-    if (input.typeId) manifest = appRegistry.getAgentManifest(input.typeId);
+    if (input.typeId) {
+      manifest = appRegistry.getAgentManifest(input.typeId)
+        ?? virtualAgentManifests.get(input.typeId);
+    }
   }
   if (!manifest) return false;
   return input.actions.every((action) => {

@@ -62,6 +62,12 @@ vi.mock('@/features/todo/index.ts', () => ({
   ),
 }));
 
+vi.mock('@/features/todo/components/TodoIconRail', () => ({
+  TodoIconRail: ({ className }: { className?: string }) => (
+    <nav data-todo-icon-rail data-testid="mock-todo-icon-rail" className={className} />
+  ),
+}));
+
 vi.mock('@/features/anki-tasks/AnkiTasksApp', () => ({
   AnkiTasksApp: () => <div data-testid="mock-task-dashboard" />,
 }));
@@ -255,17 +261,18 @@ describe('O18 WorkbenchSidebarLayout', () => {
 });
 
 // ============================================================================
-// TodoAppWindow：jsdom 零尺寸 → compact 档 → 抽屉形态
+// TodoAppWindow：jsdom 零尺寸 → compact 档 → 常驻图标栏形态（非抽屉）
 // ============================================================================
 
 describe('O18 TodoAppWindow', () => {
-  it('lazy 内容就绪后渲染主面板；零宽环境走窄窗抽屉形态', async () => {
+  it('lazy 内容就绪后渲染主面板；零宽环境走窄窗图标栏形态', async () => {
     const props = makeProps();
     const { container } = render(<TodoAppWindow {...props} />);
 
     expect(await screen.findByTestId('mock-todo-content')).toBeInTheDocument();
-    // jsdom 元素宽高为 0 → compact：抽屉把手存在、并排侧栏离场
-    expect(container.querySelector('[data-wb-sys-drawer-handle]')).not.toBeNull();
+    // jsdom 元素宽高为 0 → compact：常驻图标栏存在、无玻璃抽屉把手
+    expect(container.querySelector('[data-todo-icon-rail]')).not.toBeNull();
+    expect(container.querySelector('[data-wb-sys-drawer-handle]')).toBeNull();
     expect(props.onTitleChange).toHaveBeenCalledWith('待办');
 
     // launchPayload.todoListId 透传
@@ -361,6 +368,8 @@ describe('O18 PomodoroAppWindow 计时视觉', () => {
 
     act(() => {
       usePomodoroStore.setState({
+        // 正计时以会话锁定的 sessionCountUp 为准（会话开始时从 settings.countUp 锁定）
+        sessionCountUp: true,
         mode: 'work',
         status: 'running',
         timeLeft: 90,
@@ -392,7 +401,7 @@ describe('O18 PomodoroAppWindow 计时视觉', () => {
     expect(screen.getByRole('button', { name: '停止' })).toBeInTheDocument();
   });
 
-  it('今日条：渲染今日计数/目标；点击打开统计 Sheet，Esc 关闭且焦点归还', async () => {
+  it('今日条：渲染今日计数/目标；点击打开统计子视图，Esc 退回且焦点归还', async () => {
     usePomodoroStore.setState({ completedPomodorosToday: 3 });
     const { container } = render(<PomodoroAppWindow {...makeProps()} />);
 
@@ -402,31 +411,39 @@ describe('O18 PomodoroAppWindow 计时视觉', () => {
     const strip = screen.getByRole('button', { name: '专注趋势' });
     fireEvent.click(strip);
     await act(async () => {});
-    expect(screen.getByRole('dialog', { name: '专注趋势' })).toBeInTheDocument();
+    // 统计为窗内同层子视图（非模态），切入即聚焦面板
+    const panel = screen.getByRole('region', { name: '专注趋势' });
+    expect(panel).toHaveAttribute('data-active', 'true');
+    expect(document.activeElement).toBe(panel);
 
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    // 退回主视图：子视图进入退场（aria-hidden），焦点归还统计按钮
+    expect(panel).toHaveAttribute('data-active', 'false');
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
     expect(document.activeElement).toBe(strip);
   });
 
-  it('设置 Sheet：设计系统控件齐备（7 滑杆 / 4 开关 / 音色分段），返回关闭且焦点归还', async () => {
+  it('设置子视图：设计系统控件齐备（7 滑杆 / 5 开关 / 音色分段），返回关闭且焦点归还', async () => {
     render(<PomodoroAppWindow {...makeProps()} />);
 
     const trigger = screen.getByRole('button', { name: '番茄钟设置' });
     fireEvent.click(trigger);
-    const dialog = await screen.findByRole('dialog', { name: '番茄钟设置' });
-    // 打开即聚焦面板（aria-modal 对话框契约）
-    expect(document.activeElement).toBe(dialog);
+    // 设置为窗内同层子视图（非模态），切入即聚焦面板
+    const panel = await screen.findByRole('region', { name: '番茄钟设置' });
+    expect(panel).toHaveAttribute('data-active', 'true');
+    expect(document.activeElement).toBe(panel);
 
     // 滑杆：专注/短休/长休/间隔/结束前提醒/每日目标/音量
     expect(screen.getAllByRole('slider')).toHaveLength(7);
-    // 开关：自动开始休息/自动开始专注/严格模式/正计时
-    expect(screen.getAllByRole('switch')).toHaveLength(4);
+    // 开关：自动开始休息/自动开始专注/严格模式/正计时/随专注自动播放
+    expect(screen.getAllByRole('switch')).toHaveLength(5);
     // 音色分段选择
     expect(screen.getByRole('radiogroup')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '返回' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    // 退回主视图：子视图进入退场（aria-hidden），焦点归还设置按钮
+    expect(panel).toHaveAttribute('data-active', 'false');
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
     expect(document.activeElement).toBe(trigger);
   });
 

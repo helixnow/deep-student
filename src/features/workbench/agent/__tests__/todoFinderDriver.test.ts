@@ -58,6 +58,9 @@ vi.mock('@/features/learning-hub/stores/finderStore', () => ({
       navigateTo,
       setSelectedIds,
       setCurrentPathWithoutHistory: vi.fn(async () => undefined),
+      setSearchQuery: vi.fn(),
+      executeSearch: vi.fn(async () => undefined),
+      loadItems: vi.fn(async () => undefined),
       ...finderState,
     }),
   },
@@ -167,7 +170,7 @@ describe('todo / files onActivation', () => {
     expect(requestQuickAdd).toHaveBeenCalledWith('2026-07-12');
   });
 
-  it('files openFolder → enterFolder(folderId)', async () => {
+  it('files openFolder → enterFolder(folderId) + 路径栏 flash', async () => {
     await handleFilesActivation({
       windowId: 'w2',
       instanceKey: null,
@@ -175,21 +178,57 @@ describe('todo / files onActivation', () => {
       payload: { folderId: 'folder-1' },
     });
     expect(enterFolder).toHaveBeenCalledWith('folder-1');
+    expect(agentFlash).toHaveBeenCalledWith('files', 'path', { scroll: false });
   });
 
-  it('files reveal → 进入父目录 + setSelectedIds + agentFlash', async () => {
-    await handleFilesActivation({
+  it('files search → executeSearch + 结果计数 flash', async () => {
+    const result = await handleFilesActivation({
+      windowId: 'w2',
+      instanceKey: null,
+      action: 'search',
+      payload: { query: 'note' },
+    });
+    expect(result).toEqual({ handled: true });
+    expect(agentFlash).toHaveBeenCalledWith('files', 'results', { scroll: false });
+  });
+
+  it('files reveal（目标行在 DOM）→ 进入父目录 + setSelectedIds + agentFlash', async () => {
+    const row = document.createElement('div');
+    row.setAttribute('data-agent-entity', 'files:res-42');
+    document.body.appendChild(row);
+    try {
+      const result = await handleFilesActivation({
+        windowId: 'w2',
+        instanceKey: null,
+        action: 'reveal',
+        payload: { resourceId: 'res-42' },
+      });
+      expect(result).toEqual({ handled: true });
+      expect(enterFolder).toHaveBeenCalledWith('folder-parent');
+      expect(setSelectedIds).toHaveBeenCalled();
+      expect(agentFlash).toHaveBeenCalledWith('files', 'res-42');
+      const ids = setSelectedIds.mock.calls[0][0] as Set<string>;
+      expect(ids).toBeInstanceOf(Set);
+      expect([...ids]).toEqual(['res-42']);
+    } finally {
+      row.remove();
+    }
+  });
+
+  it('files reveal（目标行不在可视区/当前页）→ 不假装定位，回执 message 注明', async () => {
+    const result = await handleFilesActivation({
       windowId: 'w2',
       instanceKey: null,
       action: 'reveal',
       payload: { resourceId: 'res-42' },
     });
+    expect(result).toMatchObject({
+      handled: true,
+      message: expect.stringContaining('不在可视区'),
+    });
     expect(enterFolder).toHaveBeenCalledWith('folder-parent');
     expect(setSelectedIds).toHaveBeenCalled();
-    expect(agentFlash).toHaveBeenCalledWith('files', 'res-42');
-    const ids = setSelectedIds.mock.calls[0][0] as Set<string>;
-    expect(ids).toBeInstanceOf(Set);
-    expect([...ids]).toEqual(['res-42']);
+    expect(agentFlash).not.toHaveBeenCalledWith('files', 'res-42');
   });
 
   it('finder 内联编辑时 probe 为 hot', () => {

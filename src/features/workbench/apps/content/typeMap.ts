@@ -8,7 +8,7 @@
  */
 import type { ResourceType } from '@/features/learning-hub/types';
 
-/** 七类内容应用的 typeId（apps/content/register.ts 注册） */
+/** 六类内容应用的 typeId（apps/content/register.ts 注册） */
 export const CONTENT_APP_TYPE_IDS = [
   'textbook',
   'exam',

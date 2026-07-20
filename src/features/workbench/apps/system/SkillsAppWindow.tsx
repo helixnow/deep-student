@@ -17,7 +17,7 @@ const SkillsManagementPage = React.lazy(() =>
   })),
 );
 
-const SkillsAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
+const SkillsAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleChange }) => {
   const { t } = useTranslation('workbench');
   const { ref } = useWbSysSize();
 
@@ -33,7 +33,7 @@ const SkillsAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
     >
       <Suspense fallback={<WbSysSkeleton variant="list" />}>
         <WbSysFade>
-          <SkillsManagementPage className="h-full" />
+          <SkillsManagementPage className="h-full" workbenchWindowId={windowId} />
         </WbSysFade>
       </Suspense>
     </div>

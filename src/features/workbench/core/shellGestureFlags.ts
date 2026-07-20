@@ -29,6 +29,8 @@ const HEAVY_HOST_SELECTOR = [
   '.wb-files-host',
   '[data-wb-chat-session]',
   '[data-wb-browser-chrome]',
+  '[data-wb-notes-workspace]',
+  '.wb-file-preview',
 ].join(',');
 
 /** 松手 → settle 启动之间的桥接上限 */

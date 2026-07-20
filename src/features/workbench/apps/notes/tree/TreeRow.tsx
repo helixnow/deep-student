@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -24,6 +24,13 @@ import {
 import { isFolderItem } from './flatten';
 import { setWorkbenchDragData } from '@/features/workbench/hooks/useDesktopDrop';
 import { formatWikiLink } from '@/components/crepe/plugins/wikilink';
+import {
+  NOTE_TITLE_MAX_CHARS,
+  NOTE_TITLE_COUNT_WARN_THRESHOLD,
+  countNoteInputChars,
+  sanitizeNoteTitleInput,
+  validateNoteTitle,
+} from '@/features/notes/noteInputLimits';
 
 export interface TreeRowProps {
   item: NotesWorkspaceTreeItem;
@@ -122,10 +129,26 @@ export function TreeRow({
     ? BASE_INDENT_PX + depth * LEVEL_INDENT_PX
     : BASE_INDENT_PX + RESOURCE_EXTRA_INDENT_PX + depth * LEVEL_INDENT_PX;
 
-  const commitRename = () => {
+  const renameHintId = useId();
+  const trimmedEditValue = editValue.trim();
+  // 防御性校验：onChange 已 sanitize（截断/去控制字符），常规路径不可达；
+  // 仅作为提交前最终防线与提示依据（后端 InvalidArgument 仍兜底）。
+  const renameViolation = renaming && trimmedEditValue
+    ? validateNoteTitle(trimmedEditValue)
+    : null;
+  const renameInvalid = renameViolation === 'too_long' || renameViolation === 'control_chars';
+  const editCharCount = countNoteInputChars(editValue);
+  const showRenameCounter = renaming && editCharCount > NOTE_TITLE_COUNT_WARN_THRESHOLD;
+
+  const commitRename = (options?: { cancelOnInvalid?: boolean }) => {
     const next = editValue.trim();
     if (!next || next === item.name) {
       onRenameCancel();
+      return;
+    }
+    if (validateNoteTitle(next)) {
+      // 无效名称不提交：Enter 保持编辑态让用户修正；blur 放弃改名保持原名
+      if (options?.cancelOnInvalid) onRenameCancel();
       return;
     }
     onRenameCommit(item.id, next);
@@ -253,32 +276,58 @@ export function TreeRow({
         )}
       </span>
       {renaming ? (
-        <input
-          ref={inputRef}
-          className="nwt-rename-input"
-          value={editValue}
-          aria-label={t('workbench:notesWorkspace.tree.renameInput')}
-          onChange={(event) => setEditValue(event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            event.stopPropagation();
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              commitRename();
-            } else if (event.key === 'Escape') {
-              event.preventDefault();
-              cancelRenameOnBlur.current = true;
-              onRenameCancel();
-            }
-          }}
-          onBlur={() => {
-            if (cancelRenameOnBlur.current) {
-              cancelRenameOnBlur.current = false;
-              return;
-            }
-            commitRename();
-          }}
-        />
+        <span className="nwt-rename-wrap">
+          <input
+            ref={inputRef}
+            className="nwt-rename-input"
+            value={editValue}
+            aria-label={t('workbench:notesWorkspace.tree.renameInput')}
+            aria-invalid={renameInvalid || undefined}
+            aria-describedby={renameInvalid || showRenameCounter ? renameHintId : undefined}
+            onChange={(event) => setEditValue(sanitizeNoteTitleInput(event.target.value))}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                commitRename();
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                cancelRenameOnBlur.current = true;
+                onRenameCancel();
+              }
+            }}
+            onBlur={() => {
+              if (cancelRenameOnBlur.current) {
+                cancelRenameOnBlur.current = false;
+                return;
+              }
+              commitRename({ cancelOnInvalid: true });
+            }}
+          />
+          {(renameInvalid || showRenameCounter) && (
+            <span
+              id={renameHintId}
+              className="nwt-rename-hint"
+              data-tone={renameInvalid ? 'error' : undefined}
+              role={renameInvalid ? 'alert' : undefined}
+              aria-live="polite"
+            >
+              {renameInvalid
+                ? (renameViolation === 'too_long'
+                  ? t('workbench:notesWorkspace.validation.nameTooLong', {
+                    defaultValue: 'Names can be at most {{max}} characters',
+                    max: NOTE_TITLE_MAX_CHARS,
+                  })
+                  : t('workbench:notesWorkspace.validation.nameInvalidChars', 'Names can\'t contain line breaks or control characters'))
+                : t('workbench:notesWorkspace.validation.charCount', {
+                  defaultValue: '{{count}} / {{max}}',
+                  count: editCharCount,
+                  max: NOTE_TITLE_MAX_CHARS,
+                })}
+            </span>
+          )}
+        </span>
       ) : (
         <span className="nwt-row-label">{item.name}</span>
       )}

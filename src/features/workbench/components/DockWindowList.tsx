@@ -17,6 +17,7 @@ import { appRegistry } from '../core/appRegistry';
 import type { WorkbenchWindow } from '../core/types';
 import { requestCloseAnimated } from '../hooks/useWindowLifecycleAnim';
 import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { prefetchFrozenWindow } from '../core/wakePrefetchIntent';
 import './DockWindowList.css';
 
 /** 克隆子树节点数上限；超过则回退占位卡（防超重） */
@@ -41,6 +42,11 @@ export interface DockWindowListProps {
   onDismiss: () => void;
   /** 关闭单个窗口（默认走 requestCloseAnimated） */
   onCloseWindow?: (windowId: string) => boolean | void | Promise<boolean | void>;
+  /**
+   * 「显示全部窗口」入口（P2，对标 macOS Dock 长按菜单的 Show All Windows）：
+   * 传入时在列表底部渲染入口项，点击触发本应用的 App Exposé 过滤俯瞰。
+   */
+  onShowAllWindows?: () => void;
 }
 
 function countDescendants(root: Node, budget: number): number {
@@ -165,6 +171,7 @@ export function DockWindowList({
   onSelect,
   onDismiss,
   onCloseWindow,
+  onShowAllWindows,
 }: DockWindowListProps) {
   const { t } = useTranslation();
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -405,6 +412,8 @@ export function DockWindowList({
                   role="menuitem"
                   tabIndex={index === activeIndex ? 0 : -1}
                   className="wb-docklist-item-btn"
+                  /* DockItem 长按滑选（pointerup 落点识别）用的窗口标识 */
+                  data-wb-docklist-window={win.id}
                   aria-label={
                     win.minimized
                       ? `${title} (${t('workbench:dock.minimized')})`
@@ -412,7 +421,12 @@ export function DockWindowList({
                   }
                   disabled={phase === 'closing'}
                   onClick={() => requestDismiss(() => onSelect(win.id))}
-                  onFocus={() => setActiveIndex(index)}
+                  onFocus={() => {
+                    setActiveIndex(index);
+                    // 键盘高亮该窗即「即将聚焦」：frozen 窗提前预取（intent 层去重）
+                    prefetchFrozenWindow(win.id);
+                  }}
+                  onPointerEnter={() => prefetchFrozenWindow(win.id)}
                 >
                   <WindowThumb
                     windowId={win.id}
@@ -447,6 +461,22 @@ export function DockWindowList({
             );
           })}
         </div>
+        {onShowAllWindows && (
+          /* App Exposé 入口：不参与窗口项的方向键 roving（快捷键
+             Ctrl+Alt+Shift+E 提供等价键盘路径），Tab/点击可达 */
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            className="wb-docklist-showall"
+            data-wb-docklist-show-all=""
+            data-testid="wb-docklist-show-all"
+            disabled={phase === 'closing'}
+            onClick={() => requestDismiss(() => onShowAllWindows())}
+          >
+            {t('workbench:dock.showAllWindows')}
+          </button>
+        )}
       </div>
     </div>
   );

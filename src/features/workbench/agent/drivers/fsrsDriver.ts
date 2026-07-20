@@ -181,6 +181,17 @@ function flashEntityIds(entityIds: string[] | undefined): void {
   agentFlashMany(TYPE_ID, entityIds.filter((id): id is string => typeof id === 'string' && !!id));
 }
 
+/** 等一帧：session 完成态追加的新当前卡要在 React 提交后才挂上锚点 */
+function awaitFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 function emptyReceipt(
   status: AcrReceipt['status'],
   totalOps: number,
@@ -196,6 +207,49 @@ function emptyReceipt(
     undone: [],
     ...partial,
   };
+}
+
+/**
+ * ACR 4.0 A3：运行中 run 追踪（参照 todoDriver/pomodoroDriver 的 activeRuns 模式），
+ * 使 abort 回执携带真实 done/undone 前缀（ACR-3.0 §3「cancelled 需已知 applied 前缀」）。
+ */
+interface FsrsActiveRun {
+  runId: string;
+  ops: AgentOp[];
+  aborted: boolean;
+  done: string[];
+  undone: string[];
+  entityIds: string[];
+  applied: number;
+  totalOps: number;
+  nextOpIndex: number;
+  remainingMarked: boolean;
+}
+
+const fsrsActiveRuns = new Map<string, FsrsActiveRun>();
+
+function markFsrsRemaining(state: FsrsActiveRun): void {
+  if (state.remainingMarked) return;
+  state.remainingMarked = true;
+  for (let i = state.nextOpIndex; i < state.totalOps; i++) {
+    state.undone.push(state.ops[i]!.label || state.ops[i]!.kind);
+  }
+  state.nextOpIndex = state.totalOps;
+}
+
+function fsrsCancelledReceipt(state: FsrsActiveRun, message: string): AcrReceipt {
+  markFsrsRemaining(state);
+  fsrsActiveRuns.delete(state.runId);
+  return withUserPatch(
+    emptyReceipt('cancelled', state.totalOps, {
+      applied: state.applied,
+      entityIds: [...state.entityIds],
+      done: [...state.done],
+      undone: [...state.undone],
+      message,
+    }),
+    TYPE_ID,
+  );
 }
 
 export const fsrsDriver: CollabDriver & {
@@ -229,25 +283,27 @@ export const fsrsDriver: CollabDriver & {
   },
 
   async apply(run: AcrRunContext, ops: AgentOp[]): Promise<AcrReceipt> {
-    const done: string[] = [];
-    const undone: string[] = [];
-    const entityIds: string[] = [];
-    let applied = 0;
     const totalOps = ops.length;
+    const state: FsrsActiveRun = {
+      runId: run.runId,
+      ops,
+      aborted: false,
+      done: [],
+      undone: [],
+      entityIds: [],
+      applied: 0,
+      totalOps,
+      nextOpIndex: 0,
+      remainingMarked: false,
+    };
+    fsrsActiveRuns.set(run.runId, state);
 
     for (let i = 0; i < ops.length; i++) {
-      const pause = await run.checkPaused();
+      state.nextOpIndex = i;
+      const pause = state.aborted ? 'abort' : await run.checkPaused();
       if (pause === 'abort') {
-        return withUserPatch(
-          emptyReceipt('cancelled', totalOps, {
-            applied,
-            entityIds,
-            done,
-            undone: [...undone, ...ops.slice(i).map((op) => op.label || op.kind)],
-            message: '用户中断，复习队列未重置',
-          }),
-          TYPE_ID,
-        );
+        state.aborted = true;
+        return fsrsCancelledReceipt(state, '用户中断，复习队列未重置');
       }
 
       const op = ops[i]!;
@@ -256,11 +312,11 @@ export const fsrsDriver: CollabDriver & {
       if (op.kind === 'fsrs_enqueue') {
         const { screen } = useFsrsReviewStore.getState();
         if (screen !== 'session') {
-          undone.push(op.label || op.kind);
+          state.undone.push(op.label || op.kind);
         } else {
           const cards = cardsFromEnqueuePayload(op.payload);
           if (cards.length === 0) {
-            undone.push(op.label || op.kind);
+            state.undone.push(op.label || op.kind);
           } else {
             const beforeIds = new Set(
               useFsrsReviewStore.getState().queue.map((card) => card.id),
@@ -270,29 +326,37 @@ export const fsrsDriver: CollabDriver & {
               .getState()
               .queue.filter((card) => !beforeIds.has(card.id));
             if (added > 0 && addedCards.length === added) {
-              applied += 1;
-              done.push(op.label || `入队 ${added} 张卡片`);
+              state.applied += 1;
+              state.done.push(op.label || `入队 ${added} 张卡片`);
               for (const card of addedCards) {
-                if (!entityIds.includes(card.id)) entityIds.push(card.id);
+                if (!state.entityIds.includes(card.id)) state.entityIds.push(card.id);
               }
               notifyAppended(added);
-              flashEntityIds(addedCards.map((card) => card.id));
+              // 完成态追加会推进当前卡，等一帧让新卡面挂上锚点再 flash
+              await awaitFrame();
+              flashEntityIds(addedCards.map((card) => card.ankiCardId ?? card.id));
             } else {
-              undone.push(op.label || `${op.kind}（全部已在队列）`);
+              state.undone.push(op.label || `${op.kind}（全部已在队列）`);
             }
           }
         }
       } else {
-        undone.push(op.label || op.kind);
+        state.undone.push(op.label || op.kind);
       }
+      state.nextOpIndex = i + 1;
 
       await run.pacing.tick(listTickCost(run.pacing.profile));
     }
 
+    if (state.aborted) {
+      return fsrsCancelledReceipt(state, '用户中断，复习队列未重置');
+    }
+    fsrsActiveRuns.delete(run.runId);
+
     const status: AcrReceipt['status'] =
-      applied === totalOps && undone.length === 0
+      state.applied === totalOps && state.undone.length === 0
         ? 'completed'
-        : applied > 0
+        : state.applied > 0
           ? 'partial'
           : totalOps === 0
             ? 'completed'
@@ -301,11 +365,11 @@ export const fsrsDriver: CollabDriver & {
     return {
       status,
       mode: 'frontend',
-      applied,
+      applied: state.applied,
       totalOps,
-      entityIds,
-      done,
-      undone,
+      entityIds: state.entityIds,
+      done: state.done,
+      undone: state.undone,
       message:
         status === 'failed'
           ? '无可应用的 fsrs_enqueue（需处于复习 session）'
@@ -314,6 +378,11 @@ export const fsrsDriver: CollabDriver & {
   },
 
   abort(runId: string): AcrReceipt {
+    const state = fsrsActiveRuns.get(runId);
+    if (state) {
+      state.aborted = true;
+      return fsrsCancelledReceipt(state, 'flashcards 入队已中止（队列未重置）');
+    }
     return withUserPatch(
       emptyReceipt('cancelled', 0, {
         message: `run ${runId} aborted（flashcards 队列未重置）`,
@@ -413,7 +482,10 @@ export function handleFsrsDomainChange(payload: DomainChangePayload): void {
     const added = useFsrsReviewStore.getState().appendToQueue(toAppend);
     if (added > 0) {
       notifyAppended(added);
-      flashEntityIds(toAppend.map((c) => c.ankiCardId ?? c.id));
+      // 完成态追加会推进当前卡，等一帧让 session 卡面挂上锚点再 flash（ACR 4.0 A3）
+      void awaitFrame().then(() => {
+        flashEntityIds(toAppend.map((c) => c.ankiCardId ?? c.id));
+      });
     }
   }
 }

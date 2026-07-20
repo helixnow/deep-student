@@ -9,7 +9,9 @@
  * - FLIP：进入时缓存原 rect → 计算网格目标 → transform 过渡飞入；
  *   退出/选中时反向飞回原位后再交还焦点；关窗后网格平滑重排；
  * - 点击缩略聚焦并退出；Esc / 点击空白退出；方向键导航 + Enter 选中；
- * - 背景使用 §0.3 契约类 `wb-expose-backdrop`；动效仅 transform/opacity。
+ * - 背景使用 §0.3 契约类 `wb-expose-backdrop`；动效仅 transform/opacity；
+ * - App Exposé（P2）：overlay store 的 exposeAppTypeId 非 null 时只俯瞰该
+ *   应用的窗口，其余应用窗口原位淡出（`data-expose-dimmed`，退出时还原）。
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -171,6 +173,9 @@ function clearOrphanedExposeTransforms() {
       el.style.removeProperty('transform-origin');
       el.style.removeProperty('will-change');
     });
+  // App Exposé 模式给非目标应用窗口打的淡出标记同样兜底清理
+  document.querySelectorAll<HTMLElement>('[data-wb-window-id][data-expose-dimmed]')
+    .forEach((el) => el.removeAttribute('data-expose-dimmed'));
 }
 
 function parseCssDurationMs(raw: string): number | null {
@@ -319,6 +324,8 @@ const ExposeOverlayComponent: React.FC = () => {
   const translateRef = useRef(t);
   translateRef.current = t;
   const exposeOpen = useWorkbenchOverlay((s) => s.exposeOpen);
+  /** App Exposé（P2）：非 null 时只俯瞰该应用的窗口 */
+  const exposeAppTypeId = useWorkbenchOverlay((s) => s.exposeAppTypeId);
   const closeExpose = useWorkbenchOverlay((s) => s.closeExpose);
 
   /** 退出动画期间仍保持挂载（声明须在 windows 订阅之前，供 active 短路） */
@@ -363,6 +370,8 @@ const ExposeOverlayComponent: React.FC = () => {
   const dissolveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dissolveUnsubscribeRef = useRef<(() => void) | null>(null);
   const restoreTimersRef = useRef<Map<string, PendingRestore>>(new Map());
+  /** App Exposé 模式下被原位淡出的非目标应用窗口壳（退出时统一还原） */
+  const dimmedRef = useRef<Set<HTMLElement>>(new Set());
   /** 本会话是否持有重内容暂停（begin/end 必须严格配对） */
   const heavyPauseHeldRef = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
@@ -381,6 +390,11 @@ const ExposeOverlayComponent: React.FC = () => {
     heavyPauseHeldRef.current = true;
     beginExposeHeavyContentPause();
   }, [exposeOpen]);
+
+  const clearDimmed = useCallback(() => {
+    for (const el of dimmedRef.current) el.removeAttribute('data-expose-dimmed');
+    dimmedRef.current.clear();
+  }, []);
 
   const cancelPendingRestore = useCallback((id: string) => {
     const pending = restoreTimersRef.current.get(id);
@@ -449,7 +463,13 @@ const ExposeOverlayComponent: React.FC = () => {
     }
     setRendered(true);
 
-    const visibleWindows = Object.values(windows).filter((w) => !w.minimized);
+    // App Exposé（P2）：exposeAppTypeId 非 null 时只俯瞰该应用的窗口。
+    // 最小化窗口两种模式统一排除：macOS App Exposé 会显示最小化窗口，
+    // 但本系统的俯瞰基于真实 DOM transform（不截图），最小化窗无可量测的
+    // 可视壳，与全局俯瞰保持一致即可（差异在快捷键定义处不另行补偿）。
+    const visibleWindows = Object.values(windows).filter(
+      (w) => !w.minimized && (exposeAppTypeId == null || w.typeId === exposeAppTypeId),
+    );
     const elements = collectWindowElements();
     const rootRect = rootRef.current?.getBoundingClientRect();
     const originX = rootRect && rootRect.width > 0 ? rootRect.left : 0;
@@ -482,6 +502,21 @@ const ExposeOverlayComponent: React.FC = () => {
     for (const id of [...appliedRef.current.keys()]) {
       if (!liveIds.has(id)) restoreOne(id, false);
     }
+
+    // App 过滤模式：其余应用的窗口原位淡出（对齐 macOS App Exposé 只呈现
+    // 目标应用的观感；命中层本就覆盖全桌面，淡出仅为视觉降噪）。
+    const nextDimmed = new Set<HTMLElement>();
+    if (exposeAppTypeId != null) {
+      elements.forEach((el, id) => {
+        if (liveIds.has(id)) return;
+        el.setAttribute('data-expose-dimmed', 'true');
+        nextDimmed.add(el);
+      });
+    }
+    for (const el of dimmedRef.current) {
+      if (!nextDimmed.has(el)) el.removeAttribute('data-expose-dimmed');
+    }
+    dimmedRef.current = nextDimmed;
 
     const layout = computeExposeLayout(items, desktopSize);
     const duration = getMotionDurationMs(rootRef.current);
@@ -547,6 +582,7 @@ const ExposeOverlayComponent: React.FC = () => {
     return undefined;
   }, [
     exposeOpen,
+    exposeAppTypeId,
     windows,
     desktopSize,
     i18n.resolvedLanguage,
@@ -559,6 +595,8 @@ const ExposeOverlayComponent: React.FC = () => {
     if (exposeOpen || !rendered) return;
     setPhase('closing');
     setHoveredId(null);
+    // 退出即开始把非目标应用窗口淡回（transition 由 CSS 提供）
+    clearDimmed();
     restoreAll(true);
     const duration = getMotionDurationMs(rootRef.current);
     const wait = duration > 0 ? Math.max(duration, FLIP_FALLBACK_MS) : 0;
@@ -582,18 +620,19 @@ const ExposeOverlayComponent: React.FC = () => {
         exitTimerRef.current = null;
       }
     };
-  }, [exposeOpen, rendered, restoreAll, releaseHeavyPause]);
+  }, [exposeOpen, rendered, restoreAll, releaseHeavyPause, clearDimmed]);
 
   // 组件卸载兜底恢复
   useEffect(() => () => {
     restoreAll(false);
     for (const id of [...restoreTimersRef.current.keys()]) finishPendingRestore(id);
+    clearDimmed();
     clearOrphanedExposeTransforms();
     releaseHeavyPause();
     if (dissolveTimerRef.current) clearTimeout(dissolveTimerRef.current);
     dissolveUnsubscribeRef.current?.();
     dissolveUnsubscribeRef.current = null;
-  }, [restoreAll, finishPendingRestore, releaseHeavyPause]);
+  }, [restoreAll, finishPendingRestore, releaseHeavyPause, clearDimmed]);
 
   const focusWindowShell = useCallback((id: string) => {
     const esc =
@@ -787,7 +826,10 @@ const ExposeOverlayComponent: React.FC = () => {
         {targets.length === 0 && !fading && (
           <div className="wb-expose-empty">
             <div className="wb-expose-empty-card wb-glass" role="status">
-              <span>{t('workbench:expose.empty')}</span>
+              {/* App Exposé 空态：目标应用没有可俯瞰的窗口（如全部已最小化） */}
+              <span>
+                {t(exposeAppTypeId != null ? 'workbench:expose.emptyApp' : 'workbench:expose.empty')}
+              </span>
               <span className="wb-expose-empty-hint">
                 {t('workbench:expose.emptyHint')}
               </span>

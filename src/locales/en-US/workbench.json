@@ -20,7 +20,13 @@
       "announceStarted": "AI started: {{label}}",
       "announcePaused": "AI paused: {{label}}",
       "announceDone": "AI finished",
-      "announceStopped": "AI stopped"
+      "announceStopped": "AI stopped",
+      "resume": "Resume",
+      "autoStopCountdown": "Auto-stop in {{seconds}}s",
+      "placementBackground": "(running in background)",
+      "placementStageFull": "(stage full, applied directly)",
+      "placementFrozen": "(window frozen, applied directly)",
+      "dockDoneBadge": "AI finished in the background"
     },
     "errors": {
       "controlOff": "Agent desktop control is off (desktop.workbenchAgentControl=off)",
@@ -36,6 +42,11 @@
       "reserved": "-",
       "flashcards": {
         "appended": "AI added {{count}} cards"
+      },
+      "templates": {
+        "undoCreate": "Delete the just-created template",
+        "undoRename": "Restore template name",
+        "undoUpdateContent": "Restore template content"
       }
     }
   },
@@ -179,7 +190,11 @@
     "openTasks": "Open",
     "openPomodoro": "Open Pomodoro",
     "allApps": "All apps",
-    "expose": "Window overview"
+    "expose": "Window overview",
+    "appMenu": "{{name}} menu",
+    "windowMenu": "Window",
+    "clockLabel": "Clock and today's agenda",
+    "agendaTitle": "Today's agenda"
   },
   "apps": {
     "chat": {
@@ -232,7 +247,8 @@
     "newWindow": "New Window",
     "noWindows": "No windows",
     "running": "Running",
-    "apps": "All Apps"
+    "apps": "All Apps",
+    "showAllWindows": "Show All Windows"
   },
   "resourceHome": {
     "newExam": "New question set",
@@ -319,6 +335,7 @@
     "fill": "Fill",
     "center": "Center",
     "restore": "Restore",
+    "immersive": "Enter Immersive Mode",
     "zone": {
       "left": "left half",
       "right": "right half",
@@ -334,7 +351,8 @@
     "empty": "No open windows",
     "untitled": "Untitled Window",
     "closeWindow": "Close window",
-    "emptyHint": "Press Esc or click anywhere to return to the desktop"
+    "emptyHint": "Press Esc or click anywhere to return to the desktop",
+    "emptyApp": "This app has no windows to overview"
   },
   "switcher": {
     "title": "Window Switcher",
@@ -421,6 +439,7 @@
     "title": "Keyboard shortcuts",
     "close": "Close",
     "hint": "Press ? or Esc to close · Hold Ctrl+Alt to peek",
+    "hintMac": "Press ? or Esc to close · Hold ⌘⌥ to peek",
     "groups": {
       "layout": "Tiling & layout",
       "movement": "Move & snap",
@@ -497,7 +516,13 @@
     "showDesktop": "Desktop shown",
     "previewFailed": "Unable to open preview",
     "pdfRefOpenFailed": "Unable to open PDF reference: missing source",
-    "zoomRestore": "Restore window"
+    "zoomRestore": "Restore window",
+    "closeAll": "Close all windows of this app",
+    "minimizeAll": "Minimize all windows of this app",
+    "immersiveEnter": "Enter immersive mode",
+    "immersiveExit": "Exit immersive mode",
+    "immersiveEntered": "{{title}} entered immersive mode",
+    "immersiveExited": "{{title}} exited immersive mode"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",
@@ -523,7 +548,8 @@
     "expose": "Window overview",
     "closeWindow": "Close focused window",
     "closeAll": "Close all windows",
-    "cheatsheet": "Shortcut cheatsheet"
+    "cheatsheet": "Shortcut cheatsheet",
+    "exposeApp": "App windows overview (current app)"
   },
   "settings": {
     "sectionTitle": "Study Desktop",
@@ -535,7 +561,7 @@
     },
     "performanceProfile": {
       "title": "Performance Profile",
-      "desc": "Balance visuals and smoothness in one step. Presets sync material and Dock magnification; changing either lever switches to Custom.",
+      "desc": "Balance visuals and smoothness in one step. Presets sync the visual material; changing it alone switches to Custom.",
       "quality": "Quality",
       "balanced": "Balanced",
       "performance": "Performance",
@@ -548,10 +574,6 @@
       "full": "Full",
       "reduced": "Reduced",
       "minimal": "Minimal"
-    },
-    "dockMagnification": {
-      "title": "Dock Magnification",
-      "desc": "Enlarges Dock icons under the pointer. Turn off to reduce hover layout measurement and compositing cost."
     },
     "dockSize": {
       "title": "Dock Size",
@@ -574,6 +596,17 @@
     "dockAutohide": {
       "title": "Automatically Hide Dock",
       "desc": "Hides the Dock when not in use. Move the pointer to the bottom edge to reveal it."
+    },
+    "menubarAutohide": {
+      "title": "Automatically Hide Menu Bar",
+      "desc": "Hides the menu bar when not in use. Move the pointer to the top edge to reveal it."
+    },
+    "titleBarDoubleClick": {
+      "title": "Double-Click Window Title Bar",
+      "desc": "Action performed when double-clicking the empty area of a window's title bar.",
+      "zoom": "Zoom",
+      "minimize": "Minimize",
+      "none": "Do Nothing"
     },
     "devPanel": {
       "title": "Diagnostics Panel",
@@ -688,7 +721,9 @@
       "hintNewNote": "New note",
       "treeTitle": "No notes yet",
       "treeNewNote": "New note",
-      "treeNewFolder": "New folder"
+      "treeNewFolder": "New folder",
+      "paneImport": "Import notes",
+      "paneAskAgent": "Ask Agent"
     },
     "untitledNote": "Untitled note",
     "untitledMindmap": "Untitled mind map",
@@ -708,19 +743,32 @@
       "newMindmap": "New mind map",
       "refresh": "Refresh",
       "open": "Open file explorer",
-      "close": "Close file explorer"
+      "close": "Close file explorer",
+      "closeFiles": "Close files"
     },
     "navHistory": {
       "aria": "Navigation history",
       "back": "Back ({{shortcut}})",
       "forward": "Forward ({{shortcut}})"
     },
+    "navigation": {
+      "back": "Back",
+      "forward": "Forward"
+    },
+    "library": {
+      "manage": "Import or export library"
+    },
+    "import": {
+      "partial": "{{success}} imported, {{failed}} failed",
+      "success": "Imported {{count}} notes"
+    },
     "tagFilter": {
       "label": "Filter by tags",
       "clear": "Clear",
       "loading": "Loading tags…",
       "retry": "Retry",
-      "empty": "No tags yet"
+      "empty": "No tags yet",
+      "intersectionHint": "Intersection filter: only notes carrying all {{count}} tags are shown"
     },
     "favorites": {
       "title": "Favorites",
@@ -751,7 +799,12 @@
       "empty": "No matching notes or mind maps.",
       "keyboardHint": "Up/Down to select, Enter to open, Esc to close",
       "activeTags": "Active tags",
-      "removeTag": "Remove tag {{tag}}"
+      "removeTag": "Remove tag {{tag}}",
+      "emptyQuickOpenHint": "Try \"Search content\" for full-text matches.",
+      "tagHint": "tag:name filters by tag",
+      "resultCount": "{{count}} results",
+      "recentGroup": "Recently opened",
+      "allGroup": "All files"
     },
     "backlinks": {
       "title": "Links",
@@ -776,7 +829,14 @@
       "createFromUnresolved": "Create note \"{{title}}\"",
       "createFailed": "Could not create note.",
       "openLinkedNote": "Open {{title}}",
-      "openFailed": "Could not open linked note."
+      "openFailed": "Could not open linked note.",
+      "loadMore": "Load more sources",
+      "mentions": "Unlinked mentions",
+      "mentionsLoading": "Scanning mentions…",
+      "mentionsFailed": "Could not scan unlinked mentions.",
+      "mentionsLimited": "Only the {{count}} most recent candidate notes were scanned.",
+      "noMentions": "No unlinked mentions found",
+      "convertMention": "Convert the mention in \"{{title}}\" to a link"
     },
     "tree": {
       "aria": "File tree",
@@ -790,7 +850,9 @@
       "retry": "Retry",
       "noMatches": "No files match \"{{query}}\"",
       "empty": "No files in this library yet",
-      "showAll": "Show all files"
+      "showAll": "Show all files",
+      "dragLink": "Drag link into note",
+      "moreActions": "More actions"
     },
     "tabs": {
       "aria": "Open files",
@@ -821,6 +883,7 @@
       "creatingMindmap": "Creating mind map...",
       "splitNeedsAnotherTab": "Open another tab to split the workspace.",
       "movedToTrash": "{{name}} moved to trash",
+      "movedManyToTrash": "{{count}} items moved to trash",
       "restored": "Restored {{name}}",
       "noteType": "Markdown",
       "mindmapType": "Mind map",
@@ -845,12 +908,18 @@
       "createFolderTitle": "New folder",
       "deleteTitle": "Move to trash",
       "deleteDescription": "Move \"{{name}}\" to the trash?",
+      "deleteManyDescription": "Move {{count}} selected items to the trash?",
       "nameLabel": "Name",
       "nameRequired": "Enter a name.",
       "cancel": "Cancel",
       "rename": "Rename",
       "create": "Create",
       "delete": "Delete"
+    },
+    "validation": {
+      "nameTooLong": "Names can be at most {{max}} characters",
+      "nameInvalidChars": "Names can't contain line breaks or control characters",
+      "charCount": "{{count}} / {{max}}"
     },
     "trash": {
       "title": "Trash",
@@ -861,6 +930,10 @@
       "deletedAt": "Deleted {{time}}",
       "restore": "Restore {{name}}",
       "purge": "Permanently delete {{name}}",
+      "selectAll": "Select all",
+      "selectItem": "Select {{name}}",
+      "restoreSelected": "Restore selected ({{count}})",
+      "restoreSelectedFailed": "Could not restore {{count}} item(s).",
       "confirmEmptyTitle": "Empty trash?",
       "confirmEmptyDesc": "Permanently delete {{count}} items. This cannot be undone.",
       "confirmEmptyAction": "Empty",
@@ -887,6 +960,9 @@
     "desktop": "Desktop",
     "tablet": "Tablet",
     "mobile": "Mobile",
+    "desktopShort": "PC",
+    "tabletShort": "Pad",
+    "mobileShort": "Ph",
     "stats": "Statistics",
     "language": "Language",
     "lines": "Lines",
@@ -939,7 +1015,9 @@
       "skipBreak": "Skip break",
       "noiseOn": "Turn ambient sound on",
       "noiseOff": "Turn ambient sound off",
-      "enterImmersive": "Enter immersive focus mode"
+      "enterImmersive": "Enter immersive focus mode",
+      "extendMinutes": "+{{count}} min",
+      "extendTitle": "Extend current phase by {{count}} min"
     },
     "settingsTitle": "Pomodoro Settings",
     "statsTitle": "Focus trends",

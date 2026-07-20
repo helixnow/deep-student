@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { SidebarSimple } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
@@ -17,6 +17,7 @@ import { SandboxInspectorPanel } from './SandboxInspectorPanel';
 import { SandboxStatusRail } from './SandboxStatusRail';
 import { SandboxToolbar } from './SandboxToolbar';
 import type { SandboxOwnerKey } from '../types';
+import './SandboxWorkbenchSurface.css';
 
 export interface SandboxWorkbenchSurfaceProps {
   embedded?: boolean;
@@ -78,6 +79,54 @@ export function SandboxWorkbenchSurface({
   const handleToggleInspector = useCallback(() => {
     setInspectorOpen(!inspectorOpen, ownerKey);
   }, [inspectorOpen, ownerKey, setInspectorOpen]);
+
+  // ACR 4.0（A6 演出）：viewport 切换 / refresh 后给画布一次轻量反馈。
+  // 画布 max-width 无 transition（宽度瞬时落位），用一次 scale/opacity 脉冲确认
+  // 切换发生；refresh 用 ::after 覆层 flash。皆有 reduced-motion 静态路径（CSS）。
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const prevViewportRef = useRef<string | null>(null);
+  const prevSessionStampRef = useRef<{ id: string; updatedAt: number } | null>(null);
+
+  useEffect(() => {
+    const prev = prevViewportRef.current;
+    prevViewportRef.current = viewportPreset;
+    const el = canvasRef.current;
+    if (!el || prev === null || prev === viewportPreset) return;
+    el.removeAttribute('data-sandbox-viewport-pulse');
+    // 强制重排，确保连续切换能重启动画
+    void el.offsetWidth;
+    el.setAttribute('data-sandbox-viewport-pulse', '');
+    const timer = window.setTimeout(
+      () => el.removeAttribute('data-sandbox-viewport-pulse'),
+      400,
+    );
+    return () => window.clearTimeout(timer);
+  }, [viewportPreset]);
+
+  useEffect(() => {
+    const prev = prevSessionStampRef.current;
+    prevSessionStampRef.current = activeSession
+      ? { id: activeSession.id, updatedAt: activeSession.updatedAt }
+      : null;
+    const el = canvasRef.current;
+    if (
+      !el ||
+      !activeSession ||
+      !prev ||
+      prev.id !== activeSession.id ||
+      prev.updatedAt === activeSession.updatedAt
+    ) {
+      return;
+    }
+    el.removeAttribute('data-sandbox-refresh-flash');
+    void el.offsetWidth;
+    el.setAttribute('data-sandbox-refresh-flash', '');
+    const timer = window.setTimeout(
+      () => el.removeAttribute('data-sandbox-refresh-flash'),
+      700,
+    );
+    return () => window.clearTimeout(timer);
+  }, [activeSession]);
 
   const subtitle = activeSession
     ? `${activeSession.language.toUpperCase()} · ${t('sandbox.safePreview')}`
@@ -178,7 +227,8 @@ export function SandboxWorkbenchSurface({
               type="button"
               onClick={() => setViewportPreset(preset, ownerKey)}
               className={cn(
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                // 触屏（coarse 指针）下药丸放大到 ≥40px 触控目标
+                'rounded-full border px-3 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:px-4',
                 viewportPreset === preset
                   ? 'border-foreground/25 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent text-muted-foreground hover:text-foreground'
@@ -186,17 +236,23 @@ export function SandboxWorkbenchSurface({
               aria-label={preset === 'desktop' ? t('sandbox.desktop') : preset === 'tablet' ? t('sandbox.tablet') : t('sandbox.mobile')}
               title={preset === 'desktop' ? t('sandbox.desktop') : preset === 'tablet' ? t('sandbox.tablet') : t('sandbox.mobile')}
             >
-              {preset === 'desktop' ? '桌' : preset === 'tablet' ? '平' : '手'}
+              {/* 文案走 i18n（此前硬编码「桌/平/手」，英文界面不可读） */}
+              {preset === 'desktop'
+                ? t('sandbox.desktopShort', '桌')
+                : preset === 'tablet'
+                  ? t('sandbox.tabletShort', '平')
+                  : t('sandbox.mobileShort', '手')}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.55),_transparent_58%)] p-4">
+      <div className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_top,_hsl(var(--card)/0.55),_transparent_58%)] p-4">
         <div
+          ref={canvasRef}
           data-testid="sandbox-runtime-canvas"
           className={cn(
-            'mx-auto h-full min-h-[360px] overflow-hidden rounded-[28px] border border-border/70 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px]',
+            'relative mx-auto h-full min-h-[360px] overflow-hidden rounded-[28px] border border-border/70 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px]',
             viewportClasses[viewportPreset]
           )}
         >

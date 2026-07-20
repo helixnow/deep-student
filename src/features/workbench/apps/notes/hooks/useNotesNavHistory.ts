@@ -153,6 +153,11 @@ export type NotesNavActivateFn = (
 export interface UseNotesNavHistoryResult {
   canBack: boolean;
   canForward: boolean;
+  /**
+   * Visit-ordered history snapshot (oldest first, most recent last).
+   * Read-only; used by hosts for "recently opened" surfaces.
+   */
+  entries: readonly NotesNavHistoryEntry[];
   /** True while a host activate() from back/forward/runNavigation is in flight. */
   isNavigatingRef: MutableRefObject<boolean>;
   /** Call when a resource becomes active via user action (open / tab click). */
@@ -265,6 +270,7 @@ export function useNotesNavHistory(): UseNotesNavHistoryResult {
   return {
     canBack: canNavBack(state),
     canForward: canNavForward(state),
+    entries: state.stack,
     isNavigatingRef,
     push,
     back,

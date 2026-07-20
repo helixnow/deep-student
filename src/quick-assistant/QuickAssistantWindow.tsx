@@ -30,6 +30,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import useTheme from '@/hooks/useTheme';
+import { initializeFontSetting } from '@/hooks/useAppInitialization';
 import { cn } from '@/lib/utils';
 import {
   getQuickAssistantConfig,
@@ -183,6 +184,8 @@ export const QuickAssistantWindow: React.FC = () => {
     void listen(QUICK_ASSISTANT_SHOWN_EVENT, () => {
       lastShownAtRef.current = Date.now();
       setMessage(null);
+      // 窗口常驻复用：每次呼出时重读全局字体/字号，同步主窗口里的最新设置
+      void initializeFontSetting();
       void loadClipboard();
       focusInput();
     }).then((fn) => { unlisten = fn; });

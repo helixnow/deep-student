@@ -12,6 +12,7 @@ import i18n from 'i18next';
 import { appRegistry } from '../core/appRegistry';
 import { useWindowStore } from '../core/windowStore';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
+import { reportFrontendError } from '@/logging/errorReporter';
 import './WindowLifecycle.css';
 
 interface WindowErrorBoundaryProps {
@@ -69,6 +70,14 @@ export class WindowErrorBoundary extends React.Component<
       error,
       info.componentStack,
     );
+    void reportFrontendError(error, {
+      kind: 'REACT_ERROR_BOUNDARY',
+      component: 'workbench-window',
+      extra: {
+        windowId: this.props.windowId,
+        componentStack: info.componentStack,
+      },
+    }).catch(() => undefined);
     const windowId = this.props.windowId;
     let name = '';
     if (windowId) {

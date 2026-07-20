@@ -5,17 +5,23 @@
  *   左上 / 填满 / 右上
  *   左半 / 居中 / 右半
  *   左下 / 恢复 / 右下
- * 方向键在网格内移动，Enter/Space 选择，Esc 关闭。
+ * 网格下方追加整行「进入沉浸模式」项（P2：绿灯默认动作的菜单入口）。
+ * 按住 ⌥ Option：Fill ⇄ Center 互换（Sequoia+ 的 Option 排布变体）。
+ * 方向键在网格与沉浸行间循环移动，Enter/Space 选择，Esc 关闭。
  * 材质一律走 wb-glass 类名契约；进出动画 animationend + 超时兜底卸载。
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowCounterClockwise } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, ArrowsOutSimple } from '@phosphor-icons/react';
 import type { DisplayMode } from '../core/types';
 import { useLiquidGlassLens } from '../core/liquidGlassLens';
 import './TileMenuPopover.css';
 
-export type TileMenuAction = Exclude<DisplayMode, 'floating'> | 'center' | 'restore';
+export type TileMenuAction =
+  | Exclude<DisplayMode, 'floating'>
+  | 'center'
+  | 'restore'
+  | 'immersive';
 
 /** 3×3 网格（行优先），空间排布与真实落位方向一致 */
 export const TILE_MENU_GRID: TileMenuAction[][] = [
@@ -37,6 +43,7 @@ const ACTION_LABEL_KEYS: Record<TileMenuAction, string> = {
   'tiled-bl': 'workbench:tile.bottomLeft',
   restore: 'workbench:tile.restore',
   'tiled-br': 'workbench:tile.bottomRight',
+  immersive: 'workbench:tile.immersive',
 };
 
 type GlyphCell = { slot: string; active: boolean };
@@ -144,15 +151,54 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
   const menuRef = useRef<HTMLDivElement | null>(null);
   useLiquidGlassLens(menuRef, phase === 'open' || phase === 'closing');
 
-  const rows = TILE_MENU_GRID.length;
-  const cols = TILE_MENU_GRID[0].length;
+  /**
+   * ⌥ Option 变体（对标 macOS Sequoia+：按住 Option 菜单项换排布）：
+   * 顶行中格 Fill(maximized) ⇄ 中心格 Center 互换。开菜单期间监听全局
+   * Alt 按放；指针带 altKey 进入弹层时也同步（Option 先于菜单打开被按下）。
+   */
+  const [altHeld, setAltHeld] = useState(false);
+  useEffect(() => {
+    if (phase !== 'open') {
+      setAltHeld(false);
+      return undefined;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setAltHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setAltHeld(false);
+    };
+    const onWindowBlur = () => setAltHeld(false);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onWindowBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onWindowBlur);
+    };
+  }, [phase]);
+
+  const grid = useMemo<TileMenuAction[][]>(() => {
+    if (!altHeld) return TILE_MENU_GRID;
+    return TILE_MENU_GRID.map((row) =>
+      row.map((action) =>
+        action === 'maximized' ? 'center' : action === 'center' ? 'maximized' : action,
+      ),
+    );
+  }, [altHeld]);
+
+  const rows = grid.length;
+  const cols = grid[0].length;
 
   const finishExit = () => {
     if (exitTimerRef.current) {
       clearTimeout(exitTimerRef.current);
       exitTimerRef.current = null;
     }
-    setPhase(null);
+    // 竞态加固：只允许 closing → null。快速 hover 关→开时，迟到的退场
+    // animationend / 兜底定时器不得把已重新打开（phase='open'）的菜单卸载。
+    setPhase((prev) => (prev === 'closing' ? null : prev));
   };
 
   useEffect(() => {
@@ -184,13 +230,23 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
   }, [open, autoFocus]);
 
+  /** 虚拟行数 = 网格行 + 沉浸整行（索引 rows，单项占满一行） */
+  const totalRows = rows + 1;
+  const immersiveRow = rows;
+
   const move = (dRow: number, dCol: number) => {
     setActive((prev) => {
+      const nextRow = (prev.row + dRow + totalRows) % totalRows;
+      // 沉浸行只有一项：水平移动原地循环；离开时恢复进入前的列
       const next = {
-        row: (prev.row + dRow + rows) % rows,
-        col: (prev.col + dCol + cols) % cols,
+        row: nextRow,
+        col:
+          nextRow === immersiveRow || prev.row === immersiveRow
+            ? prev.col
+            : (prev.col + dCol + cols) % cols,
       };
-      itemRefs.current.get(`${next.row}:${next.col}`)?.focus();
+      const key = next.row === immersiveRow ? `${immersiveRow}:0` : `${next.row}:${next.col}`;
+      itemRefs.current.get(key)?.focus();
       return next;
     });
   };
@@ -222,7 +278,7 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
       case ' ':
         e.preventDefault();
         e.stopPropagation();
-        onSelect(TILE_MENU_GRID[active.row][active.col]);
+        onSelect(active.row === immersiveRow ? 'immersive' : grid[active.row][active.col]);
         break;
       case 'Escape':
         e.preventDefault();
@@ -246,10 +302,10 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
 
   const flat = useMemo(
     () =>
-      TILE_MENU_GRID.flatMap((row, r) =>
+      grid.flatMap((row, r) =>
         row.map((action, c) => ({ action, r, c })),
       ),
-    [],
+    [grid],
   );
 
   if (phase === null) return null;
@@ -261,6 +317,7 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
       aria-label={t('workbench:window.tileMenu')}
       data-wb-tile-menu
       data-phase={phase}
+      data-wb-tile-alt={altHeld ? 'true' : undefined}
       className="wb-tilemenu wb-glass wb-glass-lens"
       onKeyDown={handleKeyDown}
       onAnimationEnd={handleAnimationEnd}
@@ -269,8 +326,11 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
         if (next instanceof Node && e.currentTarget.contains(next)) return;
         onRequestClose({ returnFocus: false });
       }}
-      onPointerEnter={() => {
-        if (phase === 'open') onHoverChange?.(true);
+      onPointerEnter={(e) => {
+        if (phase !== 'open') return;
+        // Option 先于菜单打开被按下时，keydown 监听收不到；从指针事件补同步
+        setAltHeld(e.altKey);
+        onHoverChange?.(true);
       }}
       onPointerLeave={() => {
         if (phase === 'open') onHoverChange?.(false);
@@ -308,6 +368,28 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
           </button>
         );
       })}
+      {/* P2：沉浸模式整行入口（= 绿灯默认动作的菜单等价物） */}
+      <button
+        ref={(el) => {
+          const key = `${immersiveRow}:0`;
+          if (el) itemRefs.current.set(key, el);
+          else itemRefs.current.delete(key);
+        }}
+        type="button"
+        role="menuitem"
+        aria-label={t(ACTION_LABEL_KEYS.immersive)}
+        title={t(ACTION_LABEL_KEYS.immersive)}
+        tabIndex={active.row === immersiveRow ? 0 : -1}
+        data-wb-tile-action="immersive"
+        data-wb-tile-active={active.row === immersiveRow ? 'true' : undefined}
+        disabled={phase === 'closing'}
+        onFocus={() => setActive((prev) => ({ row: immersiveRow, col: prev.col }))}
+        onClick={() => onSelect('immersive')}
+        className="wb-tilemenu-item wb-tilemenu-immersive"
+      >
+        <ArrowsOutSimple size={13} aria-hidden />
+        <span className="wb-tilemenu-immersive-label">{t(ACTION_LABEL_KEYS.immersive)}</span>
+      </button>
     </div>
   );
 };

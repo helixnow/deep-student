@@ -14,8 +14,14 @@
  *
  * 快捷键仅在 workbench 激活且焦点不在文本输入（input/textarea/contenteditable/
  * role=textbox，含 shadow DOM 内）且不处于 IME 组合会话时生效。
+ *
+ * 平台语义（P0 修复，2026-07）：binding 一律以 Ctrl 基底书写；macOS 上匹配与
+ * 键帽展示经 resolveShortcutModifiers 整体映射到 ⌘ 基底（Ctrl→⌘、
+ * Ctrl+Alt→⌘⌥、Ctrl+Alt+Shift→⌘⌥⇧，符号顺序 ⌃⌥⇧⌘），原 Ctrl 通道仍作兜底；
+ * 非 macOS 平台行为与历史版本完全一致（metaKey 组合一律拒绝）。
  */
 import { create } from 'zustand';
+import { isMacOS } from '@/utils/platform';
 import type { Frame, Size } from './types';
 
 // ============================================================================
@@ -46,7 +52,9 @@ export type WorkbenchShortcutId =
   | 'minimize'
   | 'show-desktop'
   | 'close-all'
-  | 'cheatsheet';
+  | 'cheatsheet'
+  // ---- P2 追加（2026-07）----
+  | 'expose-app';
 
 /** 速查表分组（展示顺序即数组顺序） */
 export type WorkbenchShortcutGroupId =
@@ -90,9 +98,9 @@ export interface WorkbenchShortcutDefinition {
 /** 设置页 / 速查表展示用的只读条目 */
 export interface WorkbenchShortcutInfo {
   id: WorkbenchShortcutId;
-  /** 人类可读键位，如 "Ctrl+Alt+←" */
+  /** 人类可读键位，如 "Ctrl+Alt+←"（macOS 上为符号形式，如 "⌥⌘←"） */
   keys: string;
-  /** 键帽可视化用的分段键位，如 ['Ctrl','Alt','←'] */
+  /** 键帽可视化用的分段键位，如 ['Ctrl','Alt','←']（macOS 上如 ['⌥','⌘','←']） */
   keyParts: string[];
   descriptionKey: string;
   defaultDescription: string;
@@ -293,7 +301,71 @@ export const WORKBENCH_SHORTCUT_DEFINITIONS: readonly WorkbenchShortcutDefinitio
     defaultDescription: '快捷键速查表',
     group: 'help',
   },
+  // ---- P2 追加：App Exposé（只俯瞰当前焦点应用的窗口） ----
+  {
+    id: 'expose-app',
+    // 键位选择理由：macOS 惯例是 ⌃↓，但 ⌃↓ 是系统 Mission Control
+    // 「应用程序窗口」的全局快捷键（默认开启，事件到不了 WKWebView）；
+    // 本表的 Ctrl+Alt+↓ 也已被 restore-or-minimize 占用。故取全局俯瞰
+    // Ctrl+Alt+E 的 Shift 变体，沿用 close-window/close-all、
+    // cycle-next/cycle-prev 的「Shift = 同族变体」配对模式，无任何冲突
+    //（Ctrl+Alt+Shift 组下现有占用仅方向键与 W）。
+    binding: { code: 'KeyE', ctrl: true, alt: true, shift: true },
+    descriptionKey: 'workbench:shortcuts.exposeApp',
+    defaultDescription: '应用窗口俯瞰（当前应用）',
+    group: 'navigation',
+  },
 ];
+
+// ============================================================================
+// 平台感知的修饰键语义映射（macOS 肌肉记忆修复，P0）
+// ============================================================================
+
+/**
+ * 测试注入用的平台覆盖：null = 跟随真实平台（@/utils/platform 的 isMacOS）。
+ * 单测里用 setWorkbenchShortcutPlatformOverride(true/false) 强制平台语义，
+ * afterEach 里传 null 还原。
+ */
+let macPlatformOverride: boolean | null = null;
+
+export function setWorkbenchShortcutPlatformOverride(isMac: boolean | null): void {
+  macPlatformOverride = isMac;
+}
+
+/** workbench 快捷键是否采用 macOS 修饰键语义（⌘ 基底） */
+export function isMacShortcutPlatform(): boolean {
+  return macPlatformOverride ?? isMacOS();
+}
+
+/** binding 修饰键经平台映射后的实际匹配语义 */
+export interface ResolvedShortcutModifiers {
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  meta: boolean;
+}
+
+/**
+ * macOS 修饰键语义映射：
+ * - ctrl-only 组合 → ⌘（meta）：⌘W 关窗、⌘Tab 切换器、⌘` 同应用循环，
+ *   对齐 macOS 系统级肌肉记忆；
+ * - Ctrl+Alt 组合 → ⌘⌥（而非 ⌃⌥）。决策理由：⌃⌥ 前缀被系统全局与第三方
+ *   窗口管理工具（Rectangle、输入法/输入源切换等）大量占用，映射到 ⌃⌥ 会在
+ *   相当一部分用户机器上根本到不了 WKWebView；⌘⌥ 与 ctrl→⌘ 的基底映射一致
+ *   （Alt 原样保留为 ⌥），让全部 WM 级快捷键统一挂在 ⌘ 锚点下；
+ * - Ctrl+Alt+Shift 同理 → ⌘⌥⇧。
+ *
+ * 非 macOS 平台原样返回（meta 恒 false），匹配与展示行为与历史版本完全一致。
+ */
+export function resolveShortcutModifiers(
+  binding: WorkbenchShortcutBinding,
+  isMac: boolean = isMacShortcutPlatform(),
+): ResolvedShortcutModifiers {
+  if (isMac && binding.ctrl) {
+    return { ctrl: false, alt: binding.alt, shift: binding.shift, meta: true };
+  }
+  return { ctrl: binding.ctrl, alt: binding.alt, shift: binding.shift, meta: false };
+}
 
 const KEY_DISPLAY: Record<string, string> = {
   ArrowLeft: '←',
@@ -307,22 +379,46 @@ const CODE_DISPLAY: Record<string, string> = {
   Slash: '/',
 };
 
-/** 键帽可视化用：把 binding 拆成分段键位（['Ctrl','Alt','←']） */
-export function splitShortcutBinding(binding: WorkbenchShortcutBinding): string[] {
-  const parts: string[] = [];
-  if (binding.ctrl) parts.push('Ctrl');
-  if (binding.alt) parts.push('Alt');
-  if (binding.shift && !binding.shiftAgnostic) parts.push('Shift');
+function keyDisplayPart(binding: WorkbenchShortcutBinding): string | null {
   if (binding.code) {
-    parts.push(CODE_DISPLAY[binding.code] ?? binding.code.replace(/^Key/, '').replace(/^Digit/, ''));
-  } else if (binding.key) {
-    parts.push(KEY_DISPLAY[binding.key] ?? binding.key);
+    return CODE_DISPLAY[binding.code] ?? binding.code.replace(/^Key/, '').replace(/^Digit/, '');
   }
+  if (binding.key) {
+    return KEY_DISPLAY[binding.key] ?? binding.key;
+  }
+  return null;
+}
+
+/**
+ * 键帽可视化用：把 binding 拆成分段键位。
+ * 非 macOS：['Ctrl','Alt','←']；macOS：按系统约定符号顺序 ⌃⌥⇧⌘ 输出
+ * （如 ['⌥','⌘','←']）。
+ */
+export function splitShortcutBinding(binding: WorkbenchShortcutBinding): string[] {
+  const isMac = isMacShortcutPlatform();
+  const m = resolveShortcutModifiers(binding, isMac);
+  const parts: string[] = [];
+  if (isMac) {
+    if (m.ctrl) parts.push('⌃');
+    if (m.alt) parts.push('⌥');
+    if (m.shift && !binding.shiftAgnostic) parts.push('⇧');
+    if (m.meta) parts.push('⌘');
+  } else {
+    if (m.ctrl) parts.push('Ctrl');
+    if (m.alt) parts.push('Alt');
+    if (m.shift && !binding.shiftAgnostic) parts.push('Shift');
+  }
+  const key = keyDisplayPart(binding);
+  if (key !== null) parts.push(key);
   return parts;
 }
 
+/**
+ * 行内提示文案：非 macOS 输出 "Ctrl+Alt+←"；macOS 按项目既有约定
+ * （command palette / EmptyDesktop 同款）省略 '+'，输出 "⌥⌘←"。
+ */
 export function formatShortcutBinding(binding: WorkbenchShortcutBinding): string {
-  return splitShortcutBinding(binding).join('+');
+  return splitShortcutBinding(binding).join(isMacShortcutPlatform() ? '' : '+');
 }
 
 function toInfo(def: WorkbenchShortcutDefinition): WorkbenchShortcutInfo {
@@ -357,13 +453,61 @@ export function listWorkbenchShortcutGroups(): WorkbenchShortcutGroupInfo[] {
 // 匹配与输入框 guard
 // ============================================================================
 
-/** 精确修饰键匹配（metaKey 参与的组合一律不视为 workbench 快捷键） */
+function modifiersMatchExactly(
+  m: ResolvedShortcutModifiers,
+  e: KeyboardEvent,
+  shiftAgnostic: boolean | undefined,
+): boolean {
+  if (m.ctrl !== e.ctrlKey || m.alt !== e.altKey || m.meta !== e.metaKey) return false;
+  if (!shiftAgnostic && m.shift !== e.shiftKey) return false;
+  return true;
+}
+
+function bindingModifiersMatch(
+  b: WorkbenchShortcutBinding,
+  e: KeyboardEvent,
+  isMac: boolean,
+): boolean {
+  if (modifiersMatchExactly(resolveShortcutModifiers(b, isMac), e, b.shiftAgnostic)) return true;
+  // macOS 双通道兜底：⌘ 映射之外仍接受原 Ctrl 基底组合。理由：
+  // - ⌘Tab 被系统应用切换器全局拦截、⌘` 可能被 AppKit 窗口循环吃掉，
+  //   永远到不了 WKWebView，⌃ 通道保证切换器/循环类快捷键始终可达；
+  // - 兼顾旧版本用户已形成的 Ctrl 基底肌肉记忆。
+  // 展示（速查表/右键菜单/设置页）只展示 ⌘ 主通道。
+  if (isMac && b.ctrl) {
+    const legacy: ResolvedShortcutModifiers = {
+      ctrl: b.ctrl,
+      alt: b.alt,
+      shift: b.shift,
+      meta: false,
+    };
+    if (modifiersMatchExactly(legacy, e, b.shiftAgnostic)) return true;
+  }
+  return false;
+}
+
+/**
+ * 精确修饰键匹配。
+ * - 非 macOS：metaKey 参与的组合一律不视为 workbench 快捷键（与历史行为一致）；
+ * - macOS：ctrl 基底 binding 经 resolveShortcutModifiers 映射为 ⌘ 基底后匹配
+ *   （另接受原 Ctrl 通道，见 bindingModifiersMatch）；code 优先匹配策略不变
+ *   （⌘ 组合下 e.key 通常仍正常，但 Alt/⌥ 组合会产生替代字符，code 更可靠）。
+ *
+ * Tauri 原生菜单排查结论（2026-07，src-tauri/src/menu.rs，仅 macOS 装菜单）：
+ * 与 ⌘ 映射存在 key equivalent 冲突的只有 File ▸ Close Window（⌘W）——
+ * performKeyEquivalent 会在 WKWebView 之前吃掉它。已把该菜单项改为自定义项，
+ * 经 menu://close-window 事件路由回前端：workbench 桌面激活时由
+ * useWorkbenchShortcuts 接管（关 workbench 焦点窗口），否则回落关闭原生主窗。
+ * 其余原生 accelerator（⌘,/⌘N/⌘K/⌘B/⌘M/⌘H/⌥⌘H/⌘Q/编辑类/⌃⌘F）与本表
+ * 映射结果（⌘W、⌘Tab、⌘`、⌘⌥+字母/方向、⌘⌥⇧+方向/W）均不重叠，无需处理。
+ * 全局快捷键仅注册了 CommandOrControl+Shift+Space（快速学习小窗），亦无冲突。
+ */
 export function matchWorkbenchShortcut(e: KeyboardEvent): WorkbenchShortcutDefinition | null {
-  if (e.metaKey) return null;
+  const isMac = isMacShortcutPlatform();
+  if (!isMac && e.metaKey) return null;
   for (const def of WORKBENCH_SHORTCUT_DEFINITIONS) {
     const b = def.binding;
-    if (b.ctrl !== e.ctrlKey || b.alt !== e.altKey) continue;
-    if (!b.shiftAgnostic && b.shift !== e.shiftKey) continue;
+    if (!bindingModifiersMatch(b, e, isMac)) continue;
     if (b.code) {
       if (e.code === b.code) return def;
     } else if (b.key) {
@@ -492,6 +636,11 @@ export interface WorkbenchShortcutFeedbackDetail {
 export interface WorkbenchOverlayState {
   /** 俯瞰（Exposé）是否激活 */
   exposeOpen: boolean;
+  /**
+   * App Exposé 过滤（P2）：非 null 时俯瞰只呈现该 typeId 的窗口
+   * （ExposeOverlay 据此过滤 items）；null = 全局俯瞰。
+   */
+  exposeAppTypeId: string | null;
   /** Ctrl+Tab 切换器会话是否激活（按住 Ctrl 期间） */
   switcherOpen: boolean;
   /** 会话内候选窗口 id（lastFocusedAt 降序，最近使用在前），会话期间冻结不重排 */
@@ -504,7 +653,8 @@ export interface WorkbenchOverlayState {
   /** true = ? 键切换的常驻显示；false = 长按 Ctrl+Alt 的临时显示（松开即收） */
   cheatsheetSticky: boolean;
 
-  openExpose: () => void;
+  /** 打开俯瞰；传 appTypeId 进入 App Exposé（只俯瞰该应用窗口） */
+  openExpose: (options?: { appTypeId?: string }) => void;
   closeExpose: () => void;
   toggleExpose: () => void;
   openSwitcher: (ids: string[], index: number) => void;
@@ -520,6 +670,7 @@ export interface WorkbenchOverlayState {
 
 export const useWorkbenchOverlay = create<WorkbenchOverlayState>((set, get) => ({
   exposeOpen: false,
+  exposeAppTypeId: null,
   switcherOpen: false,
   switcherIds: [],
   switcherIndex: 0,
@@ -527,11 +678,20 @@ export const useWorkbenchOverlay = create<WorkbenchOverlayState>((set, get) => (
   cheatsheetOpen: false,
   cheatsheetSticky: false,
 
-  openExpose: () => set({ exposeOpen: true, switcherOpen: false, cheatsheetOpen: false }),
-  closeExpose: () => set({ exposeOpen: false }),
+  openExpose: (options) =>
+    set({
+      exposeOpen: true,
+      exposeAppTypeId: options?.appTypeId ?? null,
+      switcherOpen: false,
+      cheatsheetOpen: false,
+    }),
+  // 关闭即清过滤：App Exposé 是一次性会话，下次打开显式重新指定
+  closeExpose: () => set({ exposeOpen: false, exposeAppTypeId: null }),
   toggleExpose: () =>
     set((s) => ({
       exposeOpen: !s.exposeOpen,
+      // toggle 只服务全局俯瞰入口（快捷键 / 桌面右键菜单）：开关都回到无过滤
+      exposeAppTypeId: null,
       switcherOpen: false,
       cheatsheetOpen: s.exposeOpen ? s.cheatsheetOpen : false,
     })),
@@ -545,6 +705,7 @@ export const useWorkbenchOverlay = create<WorkbenchOverlayState>((set, get) => (
       switcherIndex: clamped,
       switcherExitReason: null,
       exposeOpen: false,
+      exposeAppTypeId: null,
       cheatsheetOpen: false,
     });
   },
@@ -575,6 +736,7 @@ export const useWorkbenchOverlay = create<WorkbenchOverlayState>((set, get) => (
       cheatsheetOpen: true,
       cheatsheetSticky: options?.sticky ?? true,
       exposeOpen: false,
+      exposeAppTypeId: null,
       switcherOpen: false,
       switcherIds: [],
       switcherIndex: 0,

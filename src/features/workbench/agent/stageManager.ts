@@ -64,6 +64,7 @@ import type {
   AcrBridgeRequest,
   AcrBridgeResponse,
   AcrDiagnosticsSnapshot,
+  AcrPlacementHint,
   AcrReceipt,
   AcrTarget,
   AgentOp,
@@ -109,15 +110,26 @@ const RESOURCE_KEY_REQUIRED_TYPE_IDS = new Set([
   'essay',
   'image',
   'file',
+  // OS 模式统一文件预览应用（instanceKey=resourceId），无资源开窗只有空壳
+  'file-preview',
   'mindmap',
 ]);
 
-/** 本地镜像；真相源在 gates.getAgentControlMode() */
-let agentControl: AgentControlMode = 'off';
+/**
+ * 本地镜像；真相源在 gates.getAgentControlMode()。
+ * ACR 4.0：初始值与 gates 产品默认（follow）一致，消灭「settings 未加载完
+ * mutating 请求被误拒 WORKBENCH_DISABLED」的启动竞态；settings 未就绪时
+ * mutating 请求会先 await refreshSettings（见 handleBridgeRequest）。
+ */
+let agentControl: AgentControlMode = 'follow';
 let agentPacing: PacingProfileName = 'normal';
 let lifecycleGeneration = 0;
 let controlSettingRevision = 0;
 let pacingSettingRevision = 0;
+/** ACR 4.0：控制档设置是否已完成首次加载（或被显式覆盖） */
+let controlSettingsReady = false;
+/** start() 发起的首次 refreshSettings；未就绪时 mutating 请求 await 它 */
+let pendingSettingsRefresh: Promise<void> | null = null;
 
 function parsePacing(raw: string | null | undefined): PacingProfileName {
   if (raw === 'fast' || raw === 'normal' || raw === 'demo') return raw;
@@ -148,6 +160,12 @@ async function refreshSettings(
     }
   } catch {
     /* 读设置失败保持当前缓存 */
+  } finally {
+    // 成功与否都视为「已尝试加载」：失败时沿用缓存档位，
+    // 避免每个 mutating 请求都反复 await 一个注定失败的读取。
+    if (started && lifecycleGeneration === generation) {
+      controlSettingsReady = true;
+    }
   }
 }
 
@@ -215,8 +233,40 @@ interface TerminalRunRecord {
 const MAX_TERMINAL_RUNS = 100;
 const terminalRuns = new Map<string, TerminalRunRecord>();
 const terminalRunOrder: string[] = [];
-/** Forward operation ids stay consumed for the desktop session even after response LRU eviction. */
+/**
+ * Forward operation ids stay consumed for the desktop session even after
+ * response LRU eviction.
+ * ACR 4.0：有界 LRU——每 session 至多 MAX_FORWARD_RUNS_PER_SESSION 个 runId、
+ * 至多 MAX_FORWARD_RUN_SESSIONS 个 session，均逐出最旧。被逐出的 runId 重放时
+ * 按现有 fallback 处理（terminalRuns 也已淘汰 → 请求按新事务执行）。
+ */
 const seenForwardRuns = new Map<string, Set<string>>();
+export const MAX_FORWARD_RUNS_PER_SESSION = 200;
+export const MAX_FORWARD_RUN_SESSIONS = 50;
+
+/** 记录 forward runId（Map/Set 迭代序 = 插入序，天然充当 LRU 队列） */
+function rememberForwardRun(sessionId: string, runId: string): void {
+  let seen = seenForwardRuns.get(sessionId);
+  if (seen) {
+    // touch：重插会话使其成为最新，session 级按 LRU 逐出
+    seenForwardRuns.delete(sessionId);
+  } else {
+    seen = new Set<string>();
+  }
+  seen.delete(runId);
+  seen.add(runId);
+  while (seen.size > MAX_FORWARD_RUNS_PER_SESSION) {
+    const oldest = seen.values().next().value;
+    if (oldest === undefined) break;
+    seen.delete(oldest);
+  }
+  seenForwardRuns.set(sessionId, seen);
+  while (seenForwardRuns.size > MAX_FORWARD_RUN_SESSIONS) {
+    const oldestSession = seenForwardRuns.keys().next().value;
+    if (oldestSession === undefined) break;
+    seenForwardRuns.delete(oldestSession);
+  }
+}
 
 function stableRequestValue(value: unknown): string {
   if (value === null || typeof value !== 'object') {
@@ -484,9 +534,7 @@ function rememberTerminalRun(
     response: cloneBridgeResponse(response, req.correlationId),
   });
   if (req.command === 'apply_ops' || req.command === 'act') {
-    const seen = seenForwardRuns.get(req.sessionId) ?? new Set<string>();
-    seen.add(req.runId);
-    seenForwardRuns.set(req.sessionId, seen);
+    rememberForwardRun(req.sessionId, req.runId);
   }
   terminalRunOrder.push(key);
   while (terminalRunOrder.length > MAX_TERMINAL_RUNS) {
@@ -946,7 +994,12 @@ function clearOrphanTimer(run: ActiveRun): void {
 
 function clearActiveRun(
   runKey: string,
-  opts?: { retainPresenceMs?: number; expectedRun?: ActiveRun },
+  opts?: {
+    retainPresenceMs?: number;
+    expectedRun?: ActiveRun;
+    /** ACR 4.0（A8）：reviewing（建议挂起）presence 由建议流程自管，勿在此清除 */
+    preservePresence?: boolean;
+  },
 ): void {
   const run = activeByRun.get(runKey);
   if (!run || (opts?.expectedRun && run !== opts.expectedRun)) return;
@@ -962,6 +1015,7 @@ function clearActiveRun(
 
   const retainMs = opts?.retainPresenceMs ?? 0;
   clearDoneHoldTimer(run.key);
+  if (opts?.preservePresence) return;
   if (retainMs > 0) {
     // 租约已释放，仅保留光环/Strip 供撤销；TTL 心跳已停，用短时定时器清
     const timer = setTimeout(() => {
@@ -985,10 +1039,18 @@ function finalizeRun(run: ActiveRun, receipt: AcrReceipt): AcrReceipt {
       ? usePresenceStore.getState().byWindow[run.windowId]?.status
       : undefined;
     const terminalAborted = authoritative.status !== 'completed';
-    if (
-      status === 'pausedByUser' ||
-      status === 'acting' ||
+    // ACR 4.0（A8 集成核对）：建议模式回执（suggestionPending）在 run 结束后由
+    // markSuggestionReviewing 维持 reviewing presence（自带心跳与清除函数），
+    // 终态化不得把它覆写为 done / 按保留期清除，否则 AIDiffPanel 挂起期间光环消失。
+    const suggestionReviewing =
       status === 'reviewing'
+      && !terminalAborted
+      && authoritative.suggestionPending === true;
+    if (
+      !suggestionReviewing &&
+      (status === 'pausedByUser' ||
+        status === 'acting' ||
+        status === 'reviewing')
     ) {
       usePresenceStore
         .getState()
@@ -998,7 +1060,11 @@ function finalizeRun(run: ActiveRun, receipt: AcrReceipt): AcrReceipt {
       authoritative.status === 'completed' || authoritative.status === 'partial'
         ? DONE_PRESENCE_HOLD_MS
         : 0;
-    clearActiveRun(run.key, { retainPresenceMs, expectedRun: run });
+    clearActiveRun(run.key, {
+      retainPresenceMs,
+      expectedRun: run,
+      preservePresence: suggestionReviewing,
+    });
   }
   return authoritative;
 }
@@ -1083,6 +1149,27 @@ export function __healStalePresenceForTests(now?: number): void {
   healStalePresence(now);
 }
 
+/** 仅供测试：直接注入取消载荷（jsdom 下无法经 Tauri 事件触发） */
+export function __handleCancelForTests(payload: unknown): void {
+  handleCancel(payload);
+}
+
+/** 仅供测试：写入 forward runId（走真实 LRU 逐出逻辑） */
+export function __rememberForwardRunForTests(
+  sessionId: string,
+  runId: string,
+): void {
+  rememberForwardRun(sessionId, runId);
+}
+
+/** 仅供测试：只读窥视 seenForwardRuns */
+export function __getSeenForwardRunsForTests(): ReadonlyMap<
+  string,
+  ReadonlySet<string>
+> {
+  return seenForwardRuns;
+}
+
 /**
  * 目标窗已关闭或即将关闭时中断活跃 run（R2-09）。
  * 不在此处 clearActiveRun：等 apply 的 finally 统一清理，避免竞态双清。
@@ -1108,6 +1195,24 @@ function shouldInstantDrop(windowId: string | null): boolean {
   if (win.minimized) return true;
   const lc = lifecycles[windowId];
   return lc === 'background' || lc === 'frozen';
+}
+
+/**
+ * ACR 4.0：直落原因的结构化提示（写入 PresenceState.placementHint）。
+ * 与旧 label 后缀语义一一对应：max-staged → stage-full；
+ * instant 且窗口不可见 → background（frozen 生命周期单独标出）。
+ */
+function resolvePlacementHint(
+  windowId: string | null,
+  pacer: Pacer,
+  gateReason: string | undefined,
+): AcrPlacementHint | undefined {
+  if (gateReason === 'max-staged') return 'stage-full';
+  if (!pacer.profile.instant || !shouldInstantDrop(windowId)) return undefined;
+  if (windowId && useWindowStore.getState().lifecycles[windowId] === 'frozen') {
+    return 'frozen';
+  }
+  return 'background';
 }
 
 /**
@@ -1833,10 +1938,20 @@ async function handleApplyOps(
     const gate = applyStagingGates(pacer, windowId);
 
     const arbitrator = createArbitrator({
-      onPauseChange: (paused) => {
+      onPauseChange: (paused, meta) => {
         usePresenceStore
           .getState()
           .updateStatus(runKey, paused ? 'pausedByUser' : 'acting');
+        // ACR 4.0：pausedByUser 时写入自动中止时刻与是否可续放；恢复时清除
+        usePresenceStore.getState().patchPresence(
+          runKey,
+          paused
+            ? {
+                abortDeadline: meta.abortDeadline ?? undefined,
+                ...(meta.explicit ? { resumable: true } : {}),
+              }
+            : { abortDeadline: undefined, resumable: undefined },
+        );
         if (paused) {
           emitAcrProgress(
             req.correlationId,
@@ -1888,11 +2003,9 @@ async function handleApplyOps(
       if (previousPresence && previousPresence.runKey !== runKey) {
         clearDoneHoldTimer(previousPresence.runKey);
       }
-      const labelExtra = gate.reason === 'max-staged'
-        ? '（演出槽满，直落）'
-        : pacer.profile.instant && shouldInstantDrop(windowId)
-          ? '（后台直落）'
-          : '';
+      // ACR 4.0：直落原因走结构化 placementHint，由 AgentStrip（A5）i18n 渲染括注；
+      // 旧的 labelExtra 中文后缀拼接已随 A5 接线移除。
+      const placementHint = resolvePlacementHint(windowId, pacer, gate.reason);
       usePresenceStore.getState().setPresence({
         runKey,
         runId: req.runId,
@@ -1900,9 +2013,10 @@ async function handleApplyOps(
         windowId,
         typeId: target.typeId,
         status: 'acting',
-        label: `${ops[0]?.label ?? 'AI 正在操作'}${labelExtra}`,
+        label: ops[0]?.label ?? 'AI 正在操作',
         startedAt: Date.now(),
         ttlMs: PRESENCE_TTL_MS,
+        ...(placementHint ? { placementHint } : {}),
       });
       requestWakePrefetch(windowId);
       reportSchedulerActivity('stream');
@@ -1971,6 +2085,24 @@ async function handleApplyOps(
   }
 }
 
+/**
+ * ACR 4.0 legacy cancel 身份收紧：
+ * - 有 token 的 run 仅接受 token 完全一致的取消（Rust 正常路径，行为不变）；
+ * - 无 token 的本地 run 仅接受同样无 token 的取消载荷（防止仅凭 correlationId
+ *   碰撞取消他人事务）；
+ * - 载荷带 sessionId 时必须与 run.sessionId 一致。
+ */
+function cancelIdentityMatches(
+  target: { bridgeToken?: string; sessionId: string },
+  payloadToken: string | undefined,
+  payloadSessionId: string | undefined,
+): boolean {
+  const targetToken = target.bridgeToken || undefined;
+  if (targetToken !== payloadToken) return false;
+  if (payloadSessionId && target.sessionId !== payloadSessionId) return false;
+  return true;
+}
+
 function handleCancel(payload: unknown): void {
   const record = asRecord(payload);
   const corr = typeof record.correlationId === 'string' ? record.correlationId : '';
@@ -1978,13 +2110,21 @@ function handleCancel(payload: unknown): void {
   const exactKey = typeof record.sessionId === 'string' && typeof record.runId === 'string'
     ? makeRunKey(record.sessionId, record.runId)
     : null;
+  const payloadToken =
+    typeof record.bridgeToken === 'string' && record.bridgeToken
+      ? record.bridgeToken
+      : undefined;
+  const payloadSessionId =
+    typeof record.sessionId === 'string' && record.sessionId
+      ? record.sessionId
+      : undefined;
   const keys = runByCorrelation.get(corr);
   if (!keys) return;
   for (const key of keys) {
     if (exactKey && key !== exactKey) continue;
     const run = activeByRun.get(key);
     if (run) {
-      if (run.bridgeToken && record.bridgeToken !== run.bridgeToken) continue;
+      if (!cancelIdentityMatches(run, payloadToken, payloadSessionId)) continue;
       requestAbort(
         run,
         i18n.t('workbench:agent.core.cancelled', { defaultValue: '已取消' }),
@@ -1993,7 +2133,7 @@ function handleCancel(payload: unknown): void {
     }
     const operation = managedOperations.get(key);
     if (!operation) continue;
-    if (operation.bridgeToken && record.bridgeToken !== operation.bridgeToken) continue;
+    if (!cancelIdentityMatches(operation, payloadToken, payloadSessionId)) continue;
     abortManagedOperation(operation, 'bridge cancelled');
   }
 }
@@ -2028,9 +2168,10 @@ function handleInactiveRequest(
 // StageManagerApi
 // ---------------------------------------------------------------------------
 
-/** R3-01：旁路 resumeRun（types.ts 冻结面未列） */
+/** R3-01：旁路 resumeRun；ACR 4.0（A8）：旁路只读 isRunActive（types.ts 冻结面未列） */
 export const stageManager: StageManagerApi & {
   resumeRun(runId: string): void;
+  isRunActive(runKey: string): boolean;
 } = {
   registerDriver(driver) {
     drivers.set(driver.typeId, driver);
@@ -2056,6 +2197,15 @@ export const stageManager: StageManagerApi & {
       const access = getAcrCommandAccess(req.command);
       const allowedWhenOff = access === 'read-only'
         || (access === 'dynamic' && isAgentActRequestReadOnly(req.args));
+      // ACR 4.0 启动竞态修复：settings 尚未就绪时，mutating 请求先等首次
+      // refreshSettings 完成再按真实档位裁决，而不是拿本地镜像误判。
+      if (!allowedWhenOff && !controlSettingsReady && pendingSettingsRefresh) {
+        try {
+          await pendingSettingsRefresh;
+        } catch {
+          /* refreshSettings 自身不抛；保险起见沿用缓存档位 */
+        }
+      }
       if (agentControl === 'off' && !allowedWhenOff) {
         return bridgeGateErr(req.correlationId, gateDisabledOff());
       }
@@ -2158,6 +2308,15 @@ export const stageManager: StageManagerApi & {
     return Boolean(ledgerKey && runLedger.hasRun(ledgerKey));
   },
 
+  /**
+   * ACR 4.0（A8，旁路只读）：该 runKey 是否仍有活跃事务（apply / 语义操作）。
+   * AgentStrip 在 reviewing（run 已结束、仅建议挂起）时据此禁用暂停/停止，
+   * 避免按钮呈可用态却静默 no-op。不在 StageManagerApi 冻结面。
+   */
+  isRunActive(runKey: string): boolean {
+    return hasActiveRunKey(runKey);
+  },
+
   getDiagnostics() {
     return getDiagnosticsSnapshot();
   },
@@ -2176,14 +2335,29 @@ export const stageManager: StageManagerApi & {
     run.arbitrator.pause();
     // 保留步骤 label；Strip 用 pausedLabel 文案
     usePresenceStore.getState().updateStatus(run.key, 'pausedByUser');
+    // ACR 4.0：显式暂停可续放；已处于用户输入暂停时 onPauseChange 不会再触发，
+    // 此处兜底写入 resumable 与自动中止时刻。
+    usePresenceStore.getState().patchPresence(run.key, {
+      resumable: true,
+      abortDeadline: run.arbitrator.abortDeadline ?? undefined,
+    });
   },
 
-  /** R3-01：显式续放（note hot 等待结束）；不在 StageManagerApi 冻结面，旁路扩展 */
+  /**
+   * R3-01：显式续放（note hot 等待结束 / AgentStrip「继续」）；
+   * 不在 StageManagerApi 冻结面，旁路扩展。ACR 4.0 核实：resume() 会释放
+   * 显式暂停（explicitHold），对 pauseRun 后的续放安全；入参与 pauseRun 一致，
+   * 传 presence.runKey（AgentStrip 调用方式相同）。
+   */
   resumeRun(runId: string) {
     const run = findActiveApplyRun(runId);
     if (!run) return;
     run.arbitrator.resume();
     usePresenceStore.getState().updateStatus(run.key, 'acting');
+    usePresenceStore.getState().patchPresence(run.key, {
+      abortDeadline: undefined,
+      resumable: undefined,
+    });
   },
 
   stopRun(runId) {
@@ -2205,11 +2379,13 @@ export const stageManager: StageManagerApi & {
     started = true;
     lifecycleGeneration += 1;
     const generation = lifecycleGeneration;
-    void refreshSettings(
+    controlSettingsReady = false;
+    pendingSettingsRefresh = refreshSettings(
       generation,
       controlSettingRevision,
       pacingSettingRevision,
     );
+    void pendingSettingsRefresh;
     registerAllDrivers(stageManager);
     registerBuiltinQueryProviders(stageManager);
     unlistenCancel = hubListen(ACR_EVENT_CANCEL, handleCancel);
@@ -2237,6 +2413,8 @@ export const stageManager: StageManagerApi & {
         if (!detail?.key) return;
         if (detail.key === SETTING_AGENT_CONTROL) {
           controlSettingRevision += 1;
+          // 显式设置事件即权威值：无需再等首次异步加载
+          controlSettingsReady = true;
           applyAgentControlChange(
             parseAgentControlMode(
               typeof detail.value === 'string'
@@ -2280,6 +2458,8 @@ export const stageManager: StageManagerApi & {
     if (!started) return;
     started = false;
     lifecycleGeneration += 1;
+    controlSettingsReady = false;
+    pendingSettingsRefresh = null;
     unlistenCancel?.();
     unlistenCancel = null;
     unlistenSettings?.();
@@ -2328,6 +2508,8 @@ export function resetStageManagerForTests(): void {
   queryProviders.clear();
   started = false;
   lifecycleGeneration += 1;
+  controlSettingsReady = false;
+  pendingSettingsRefresh = null;
   unlistenCancel?.();
   unlistenCancel = null;
   unlistenSettings?.();
@@ -2346,7 +2528,10 @@ export function resetStageManagerForTests(): void {
   usePresenceStore.getState().clearAll();
 }
 
-/** 仅供测试：覆盖控制档（follow / background / off） */
+/** 仅供测试：覆盖控制档（follow / background / off）；视为已就绪的权威值 */
 export function setAgentControlForTests(mode: AgentControlMode): void {
+  // bump revision：防止 start() 发起的异步 refreshSettings 回写覆盖测试档位
+  controlSettingRevision += 1;
   syncAgentControl(mode);
+  controlSettingsReady = true;
 }

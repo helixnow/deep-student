@@ -19,6 +19,15 @@
 import { useMemo, useRef } from 'react';
 import { useWindowStore } from '../../core/windowStore';
 import type { Frame } from '../../core/types';
+import {
+  collectEdgeSnapCandidates,
+  type EdgeSnapCandidates,
+} from '../../core/edgeSnapping';
+import {
+  computeTiledFrame,
+  DEFAULT_TILE_MARGIN,
+  getTilingRatioForWindow,
+} from '../../core/tiling';
 import { useWindowPointer } from './useWindowPointer';
 import type {
   WindowShellPointerArgs,
@@ -36,6 +45,34 @@ export function setWorkbenchDesktopOffsetProvider(provider: OffsetProvider | nul
 
 export function getWorkbenchDesktopOffset(): { x: number; y: number } {
   return desktopOffsetProvider?.() ?? { x: 0, y: 0 };
+}
+
+/**
+ * 邻窗边缘磁吸候选线快照（move 手势开始时引擎调用一次）：
+ * 其他未最小化窗口的四边 + 桌面四边。只读 store，不查询 DOM 布局。
+ * tiled/maximized 窗口的视觉 frame 用 computeTiledFrame 推导
+ * （与 WindowShell 渲染同源；margin 用 DEFAULT_TILE_MARGIN）。
+ */
+function snapshotEdgeSnapCandidates(excludeWindowId: string): EdgeSnapCandidates {
+  const s = useWindowStore.getState();
+  const frames: Frame[] = [];
+  for (const w of Object.values(s.windows)) {
+    if (w.id === excludeWindowId || w.minimized) continue;
+    if (w.displayMode === 'floating') {
+      frames.push(w.frame);
+      continue;
+    }
+    const tiled = computeTiledFrame(w.displayMode, {
+      desktopSize: s.desktopSize,
+      margin: w.displayMode === 'maximized' ? 0 : DEFAULT_TILE_MARGIN,
+      ratio:
+        w.displayMode === 'tiled-left' || w.displayMode === 'tiled-right'
+          ? getTilingRatioForWindow(s.windows, s.tilingRatios, w.id)
+          : undefined,
+    });
+    if (tiled) frames.push(tiled);
+  }
+  return collectEdgeSnapCandidates(frames, s.desktopSize);
 }
 
 /** WindowShellPointerHook 形状的适配实现（引擎与手柄终身稳定，0 重渲染） */
@@ -63,6 +100,8 @@ export function useWorkbenchWindowPointer(
       },
     },
     getDesktopOffset: getWorkbenchDesktopOffset,
+    getEdgeSnapCandidates: () =>
+      snapshotEdgeSnapCandidates(argsRef.current.windowId),
     onMoveArmed: (point) => {
       // 过阈值：仅 tear-out（若需要）；壳层已在 pointerdown 抬升
       argsRef.current.onMoveArmed?.(point);

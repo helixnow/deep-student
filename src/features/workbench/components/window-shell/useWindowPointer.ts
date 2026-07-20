@@ -25,6 +25,7 @@ import {
 } from '../../core/pointerEngine';
 import { appRegistry } from '../../core/appRegistry';
 import { useWindowStore } from '../../core/windowStore';
+import type { EdgeSnapCandidates } from '../../core/edgeSnapping';
 
 export type { ResizeEdge } from '../../core/pointerEngine';
 
@@ -42,6 +43,11 @@ export interface UseWindowPointerOptions {
   enableInertia?: boolean;
   /** 吸附磁吸位移开关，缺省 false（避免误吸） */
   enableMagnet?: boolean;
+  /**
+   * 邻窗边缘磁吸候选线（Sequoia 拖窗对齐）：move 手势开始时读取一次并快照。
+   * 缺省 / 返回 null 时关闭。provider 内禁止查询 DOM 布局。
+   */
+  getEdgeSnapCandidates?: () => EdgeSnapCandidates | null;
   /** true 时忽略所有手势启动（如窗口 minimized 动画期间） */
   disabled?: boolean;
   /**
@@ -83,6 +89,7 @@ export function useWindowPointer(options: UseWindowPointerOptions): UseWindowPoi
         appRegistry.get(optionsRef.current.typeId)?.minSize ?? FALLBACK_MIN_SIZE,
       getCallbacks: (): WindowPointerCallbacks => optionsRef.current.callbacks,
       getDesktopOffset: () => optionsRef.current.getDesktopOffset?.() ?? { x: 0, y: 0 },
+      getEdgeSnapCandidates: () => optionsRef.current.getEdgeSnapCandidates?.() ?? null,
       get enableSnap() {
         return optionsRef.current.enableSnap !== false;
       },

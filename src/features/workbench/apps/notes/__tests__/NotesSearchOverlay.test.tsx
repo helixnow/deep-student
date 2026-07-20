@@ -74,6 +74,48 @@ describe('NotesSearchOverlay', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('leads an empty quick-open query with the recently opened group', () => {
+    const algebra = node({ updatedAt: 10 });
+    const biology = node({
+      id: 'note_2',
+      sourceId: 'note_2',
+      path: '/science/note_2',
+      name: 'Biology',
+      updatedAt: 20,
+    });
+    const chemistry = node({
+      id: 'note_3',
+      sourceId: 'note_3',
+      path: '/science/note_3',
+      name: 'Chemistry',
+      updatedAt: 30,
+    });
+
+    render(
+      <NotesSearchOverlay
+        open
+        resources={[algebra, biology, chemistry]}
+        recentResources={[biology]}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const options = screen.getAllByRole('option');
+    // 最近打开的 Biology 置顶，其余按更新时间排序且不重复出现
+    expect(options[0]).toHaveTextContent('Biology');
+    expect(options).toHaveLength(3);
+    expect(screen.getByText('Recently opened')).toBeInTheDocument();
+    expect(screen.getByText('All files')).toBeInTheDocument();
+
+    // 输入查询后回到纯相关性排序，分组标题消失
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search notes' }), {
+      target: { value: 'chem' },
+    });
+    expect(screen.queryByText('Recently opened')).toBeNull();
+    expect(screen.getByRole('option', { name: /Chemistry/ })).toBeInTheDocument();
+  });
+
   it('searches full text through DSTU, renders a safe snippet, and filters unsupported results', async () => {
     const matchedNote = node({
       name: 'Quadratic equations',

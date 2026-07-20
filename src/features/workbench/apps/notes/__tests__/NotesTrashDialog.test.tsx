@@ -161,18 +161,14 @@ describe('NotesTrashDialog', () => {
     expect(await screen.findByText(/回收站为空|Trash is empty/i)).toBeInTheDocument();
   });
 
-  it('closes on Escape and traps Tab focus', async () => {
+  // 非模态面板设计（见组件注释）：role="region"、无 Tab 焦点陷阱，Escape 关闭
+  it('renders as a non-modal region and closes on Escape', async () => {
     listTrash.mockResolvedValueOnce({ ok: true, value: [node()] });
     const { onOpenChange } = renderDialog();
 
-    const dialog = await screen.findByRole('dialog', { name: /回收站|Trash/i });
+    const panel = await screen.findByRole('region', { name: /回收站|Trash/i });
     await waitFor(() => expect(listTrash).toHaveBeenCalled());
-
-    const buttons = within(dialog).getAllByRole('button');
-    expect(buttons.length).toBeGreaterThan(1);
-    buttons[0].focus();
-    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true, bubbles: true });
-    expect(document.activeElement).toBe(buttons[buttons.length - 1]);
+    expect(within(panel).getAllByRole('button').length).toBeGreaterThan(1);
 
     fireEvent.keyDown(document, { key: 'Escape', bubbles: true });
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
@@ -188,7 +184,7 @@ describe('NotesTrashDialog', () => {
     render(
       <NotesTrashDialog open={false} onOpenChange={vi.fn()} />,
     );
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('region')).toBeNull();
     expect(listTrash).not.toHaveBeenCalled();
   });
 
@@ -202,7 +198,9 @@ describe('NotesTrashDialog', () => {
 
     renderDialog();
     expect(await screen.findByText('boom')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /重试|Retry/i }));
+    // 头部刷新按钮与错误条内的重试按钮同名，限定在错误提示内点击
+    const errorBar = screen.getByRole('alert');
+    fireEvent.click(within(errorBar).getByRole('button', { name: /重试|Retry/i }));
     await waitFor(() => expect(listTrash).toHaveBeenCalledTimes(2));
   });
 });

@@ -38,6 +38,32 @@
 }
 
 /* ==========================================================================
+ * 标题栏真毛玻璃（Tahoe「窗口 chrome 连续玻璃」；仅 full 材质档）
+ * --------------------------------------------------------------------------
+ * - 跟随 --wb-glass-blur token（reduced/minimal 档与 prefers-reduced-
+ *   transparency 下 token 已为 none，此处不必单列降级）；
+ * - 只在 full 档挂属性：reduced/minimal 连属性都不写，避免建立无谓的
+ *   backdrop root；App 自有 chrome（data-wb-app-tabs）保持平面观感不叠加；
+ * - 当前窗口本体背景不透明（--wb-window-bg），blur 采样到的是均匀底色，
+ *   视觉增益有限；一旦视觉分区把窗顶背景调透（连续玻璃），此层即生效。
+ * ========================================================================== */
+
+:root[data-wb-material='full'] .wb-titlebar.wb-title-bar:not([data-wb-app-tabs]) {
+  -webkit-backdrop-filter: var(--wb-glass-blur, none);
+  backdrop-filter: var(--wb-glass-blur, none);
+}
+
+/* 拖/缩（全局旗 + 壳类）与生命周期动画期间禁用：backdrop 在动画帧上
+ * 逐帧重采样极贵，与跟手 translate3d / genie 抢帧（契约同款 !important 压制） */
+html[data-wb-dragging] .wb-titlebar.wb-title-bar,
+.wb-window.wb-shell-dragging .wb-titlebar.wb-title-bar,
+.wb-window.wb-shell-resizing .wb-titlebar.wb-title-bar,
+[data-wb-window-id][data-wb-lifec] .wb-titlebar.wb-title-bar {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* ==========================================================================
  * 拖拽区光标：grab / 拖动中 grabbing
  * （覆盖契约 .wb-titlebar 的 cursor:default —— O20 reconcile 事项 #1）
  * ========================================================================== */
@@ -55,10 +81,35 @@
  * 三键微交互（尺寸/间距沿用 token：12px 直径 / 8px gap，与 macOS 一致）
  * ========================================================================== */
 
-/* 按压凹陷：缩小 + 契约自带的 brightness(0.82) 变暗叠加 */
+/* 按压凹陷：缩小 + 契约自带的 brightness(0.82) 变暗叠加。
+ * background/border 也入过渡：idle 褪灰 ↔ 本色恢复不再硬切（macOS 的
+ * 灰→彩恢复带 ~130ms 淡变） */
 .wb-title-key {
-  transition: transform var(--wb-title-key-duration)
-    var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+  transition:
+    transform var(--wb-title-key-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    background-color var(--wb-title-fade-duration) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)),
+    border-color var(--wb-title-fade-duration) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1));
+}
+
+/* 三键符号浮现节奏：覆盖契约的 80ms linear（机械感）——改 --wb-motion-quick
+ * + swift 缓动，并叠加 0.8→1 的 scale 呼吸（微弹入；仅 transform/opacity）。
+ * O20 reconcile 事项 #3：覆盖 workbench.css `.wb-traffic-* > *` 的 transition。 */
+.wb-title-bar .wb-traffic-close > *,
+.wb-title-bar .wb-traffic-min > *,
+.wb-title-bar .wb-traffic-zoom > * {
+  transform: scale(0.8);
+  transition:
+    opacity var(--wb-motion-quick, 150ms) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)),
+    transform var(--wb-motion-quick, 150ms) var(--wb-ease-spring-soft, cubic-bezier(0.3, 1.06, 0.36, 1));
+}
+
+.wb-title-bar .wb-traffic:hover .wb-traffic-close > *,
+.wb-title-bar .wb-traffic:hover .wb-traffic-min > *,
+.wb-title-bar .wb-traffic:hover .wb-traffic-zoom > *,
+.wb-title-bar .wb-traffic:focus-within .wb-traffic-close > *,
+.wb-title-bar .wb-traffic:focus-within .wb-traffic-min > *,
+.wb-title-bar .wb-traffic:focus-within .wb-traffic-zoom > * {
+  transform: scale(1);
 }
 
 /* Expand pointer hit testing without changing the 12px painted circle or layout. */
@@ -145,6 +196,33 @@
 
 .wb-title-key.wb-traffic-zoom:hover {
   background: color-mix(in srgb, var(--wb-traffic-zoom, #28c840) 84%, #fff 16%);
+}
+
+/* ==========================================================================
+ * 未保存圆点（P1）：脏窗口红灯非 hover 时中心实心点，hover 恢复 ×（macOS 行为）
+ * 特异性说明：契约 `.wb-traffic-close > *` 控制符号 opacity/尺寸/scale，
+ * 此处用更长选择器覆盖圆点的静止可见态与 hover 隐藏态。
+ * ========================================================================== */
+
+.wb-title-bar .wb-traffic-close .wb-title-dirty-dot {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  pointer-events: none;
+}
+
+/* 非 hover：脏点常驻可见（idle 灰键同样显示，macOS 一致） */
+.wb-title-bar .wb-traffic-close[data-dirty] .wb-title-dirty-dot {
+  opacity: 1;
+}
+
+/* hover / 键盘焦点进入三键区：脏点让位给 × 符号 */
+.wb-title-bar .wb-traffic:hover .wb-traffic-close[data-dirty] .wb-title-dirty-dot,
+.wb-title-bar .wb-traffic:focus-within .wb-traffic-close[data-dirty] .wb-title-dirty-dot {
+  opacity: 0;
 }
 
 /* 绿灯外包层：与键同宽高，避免 relative 裸 div 把第三键抬偏 / 间距拉开 */

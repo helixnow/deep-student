@@ -62,6 +62,8 @@ describe('P9 system apps register', () => {
       expect(def!.defaultFrame.h).toBeGreaterThanOrEqual(def!.minSize.h);
       if (hasBadge) expect(def!.badgeSource).toBeTypeOf('function');
     }
+
+    expect(appRegistry.get('sandbox')?.showInLauncher).toBe(false);
   });
 
   it('registerSystemApps 幂等：重复调用不触发覆盖 warn', () => {

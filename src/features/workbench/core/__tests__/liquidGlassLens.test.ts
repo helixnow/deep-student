@@ -205,7 +205,8 @@ describe('attachLiquidGlassLens', () => {
     const filter = el.style.getPropertyValue('--wb-lens-filter');
     expect(filter).not.toContain('url(#');
     expect(filter).toContain('blur(');
-    expect(getActiveLiquidGlassLensCount()).toBe(1);
+    // 静态降级后让出真折射并发槽（不再占 MAX_ACTIVE_LENSES 名额）
+    expect(getActiveLiquidGlassLensCount()).toBe(0);
     detach();
     el.remove();
     vi.useRealTimers();

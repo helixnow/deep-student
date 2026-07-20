@@ -38,7 +38,8 @@ describe('workbench Windows chrome layout contract', () => {
       statusBarCssSource.indexOf('.wb-menubar-drag-region'),
     );
 
-    expect(macRule).toContain('padding-left: var(--wb-macos-traffic-lights-inset, 76px);');
+    // fallback 与 workbench.tokens.css 的 --wb-macos-traffic-lights-inset: 72px 同值
+    expect(macRule).toContain('padding-left: var(--wb-macos-traffic-lights-inset, 72px);');
     expect(macRule).not.toContain('--wb-menubar-chrome-inset');
   });
 });

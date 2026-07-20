@@ -44,6 +44,7 @@ function resetStores() {
   });
   useWorkbenchOverlay.setState({
     exposeOpen: false,
+    exposeAppTypeId: null,
     switcherOpen: false,
     switcherIds: [],
     switcherIndex: 0,
@@ -56,15 +57,16 @@ function openWin(typeId: string, instanceKey: string, title = '') {
   return useWindowStore.getState().openWindow({ typeId, instanceKey, title });
 }
 
-function openExpose() {
+function openExpose(appTypeId?: string) {
   act(() => {
-    useWorkbenchOverlay.getState().openExpose();
+    useWorkbenchOverlay.getState().openExpose(appTypeId ? { appTypeId } : undefined);
   });
 }
 
 beforeAll(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   appRegistry.register(makeApp('chat'));
+  appRegistry.register(makeApp('note'));
 });
 
 beforeEach(() => {
@@ -237,6 +239,78 @@ describe('渲染与 aria', () => {
       vi.advanceTimersByTime(320);
     });
     expect(root).toHaveAttribute('data-phase', 'open');
+  });
+});
+
+describe('App Exposé（应用过滤，P2）', () => {
+  it('openExpose({ appTypeId }) 只俯瞰该应用的窗口', () => {
+    const a = openWin('chat', 'a', '会话 A');
+    const b = openWin('chat', 'b', '会话 B');
+    const n = openWin('note', 'n', '笔记 N');
+    render(<ExposeOverlay />);
+    openExpose('chat');
+
+    expect(document.querySelector(`[data-wb-expose-cell="${a}"]`)).not.toBeNull();
+    expect(document.querySelector(`[data-wb-expose-cell="${b}"]`)).not.toBeNull();
+    expect(document.querySelector(`[data-wb-expose-cell="${n}"]`)).toBeNull();
+  });
+
+  it('非目标应用的窗口壳被原位淡出（data-expose-dimmed），退出后还原', async () => {
+    const a = openWin('chat', 'a', '会话 A');
+    const n = openWin('note', 'n', '笔记 N');
+    const chatShell = mountWindowShell(a);
+    const noteShell = mountWindowShell(n);
+    render(<ExposeOverlay />);
+    openExpose('chat');
+
+    expect(chatShell).toHaveAttribute('data-expose-transform', 'true');
+    expect(chatShell).not.toHaveAttribute('data-expose-dimmed');
+    expect(noteShell).not.toHaveAttribute('data-expose-transform');
+    expect(noteShell).toHaveAttribute('data-expose-dimmed');
+
+    act(() => {
+      useWorkbenchOverlay.getState().closeExpose();
+    });
+    // 退出即开始淡回（closing 阶段就移除标记）
+    expect(noteShell).not.toHaveAttribute('data-expose-dimmed');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+    expect(chatShell).not.toHaveAttribute('data-expose-transform');
+  });
+
+  it('全局俯瞰不打淡出标记', () => {
+    const a = openWin('chat', 'a', '会话 A');
+    const n = openWin('note', 'n', '笔记 N');
+    mountWindowShell(a);
+    const noteShell = mountWindowShell(n);
+    render(<ExposeOverlay />);
+    openExpose();
+
+    expect(noteShell).toHaveAttribute('data-expose-transform', 'true');
+    expect(noteShell).not.toHaveAttribute('data-expose-dimmed');
+  });
+
+  it('目标应用无可俯瞰窗口时显示 App 专属空态', () => {
+    openWin('chat', 'a', '会话 A');
+    render(<ExposeOverlay />);
+    openExpose('note');
+
+    const card = document.querySelector('.wb-expose-empty-card');
+    expect(card).not.toBeNull();
+    expect(card!.textContent).toContain('该应用没有可俯瞰的窗口');
+  });
+
+  it('会话内目标应用新开窗即时进入网格', () => {
+    openWin('chat', 'a', '会话 A');
+    render(<ExposeOverlay />);
+    openExpose('chat');
+
+    let late = '';
+    act(() => {
+      late = openWin('chat', 'late', '会话 C');
+    });
+    expect(document.querySelector(`[data-wb-expose-cell="${late}"]`)).not.toBeNull();
   });
 });
 

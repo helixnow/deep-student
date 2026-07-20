@@ -11,11 +11,39 @@
 
 import i18n from 'i18next';
 import { isContentDirty } from '../apps/content/contentDirtyRegistry';
+import { getVirtualAgentManifest } from '../core/agentRuntime';
 import { appRegistry } from '../core/appRegistry';
 import { getSortedWindows } from '../core/windowListCache';
 import { useWindowStore } from '../core/windowStore';
 import type { WorkbenchWindow } from '../core/types';
 import type { CollabDriver, StageManagerApi, WindowSummary } from './types';
+
+/** ACR 4.0（A2）：desktop 虚拟目标的 typeId，兼作稳定伪 windowId */
+const DESKTOP_VIRTUAL_TYPE_ID = 'desktop';
+
+/**
+ * list_windows 中的虚拟目标描述（不混入 windows[]：desktop 没有真实窗口，
+ * 伪造 WindowSummary 会误导 close/focus/租约等按 windowId 工作的消费方）。
+ */
+export interface VirtualTargetSummary {
+  typeId: string;
+  agentReady: true;
+  virtual: true;
+  description?: string;
+  availableActions: string[];
+}
+
+function buildDesktopVirtualSummary(): VirtualTargetSummary | undefined {
+  const manifest = getVirtualAgentManifest(DESKTOP_VIRTUAL_TYPE_ID);
+  if (!manifest) return undefined;
+  return {
+    typeId: DESKTOP_VIRTUAL_TYPE_ID,
+    agentReady: true,
+    virtual: true,
+    description: manifest.description,
+    availableActions: manifest.capabilities.map((capability) => capability.name),
+  };
+}
 
 /** Driver 可选扩展：query_state 时合并进摘要（鸭子探测，不改 CollabDriver 冻结接口） */
 export type QueryStateCapableDriver = CollabDriver & {
@@ -29,6 +57,8 @@ export type QueryStateCapableDriver = CollabDriver & {
 export interface ListWindowsResult {
   windows: WindowSummary[];
   focused?: string;
+  /** ACR 4.0（A2）：无窗虚拟目标（desktop）的发现入口 */
+  desktop?: VirtualTargetSummary;
 }
 
 export interface QueryStateResult {
@@ -80,7 +110,12 @@ export function buildWindowSummaries(): ListWindowsResult {
     availableActions: appRegistry.getAgentManifest(win.typeId)?.capabilities
       .map((capability) => capability.name),
   }));
-  return focusedId ? { windows, focused: focusedId } : { windows };
+  const desktop = buildDesktopVirtualSummary();
+  return {
+    windows,
+    ...(focusedId ? { focused: focusedId } : {}),
+    ...(desktop ? { desktop } : {}),
+  };
 }
 
 /** Safely read the legacy CollabDriver observation extension for ACR 2.0 fallback state. */
@@ -144,6 +179,23 @@ function buildQueryState(
         message: '当前没有焦点窗口',
         hint: '用 list_windows 查看桌面，或 open_app 打开目标应用',
         retryable: false,
+      };
+    }
+  }
+
+  // ACR 4.0（A2）：desktop 虚拟目标无真实窗口；windowId=desktop 走无窗路径
+  if (windowId === DESKTOP_VIRTUAL_TYPE_ID) {
+    const desktop = buildDesktopVirtualSummary();
+    if (desktop) {
+      return {
+        windowId: DESKTOP_VIRTUAL_TYPE_ID,
+        typeId: DESKTOP_VIRTUAL_TYPE_ID,
+        title: DESKTOP_VIRTUAL_TYPE_ID,
+        instanceKey: null,
+        lifecycle: 'visible',
+        agentReady: true,
+        virtual: true,
+        availableActions: desktop.availableActions,
       };
     }
   }

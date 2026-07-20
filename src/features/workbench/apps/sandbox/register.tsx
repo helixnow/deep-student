@@ -11,7 +11,7 @@ import {
   selectSandboxWorkbenchOwnerState,
   useSandboxWorkbenchStore,
 } from '@/features/sandbox/store/useSandboxWorkbenchStore';
-import type { SandboxViewportPreset, SandboxWorkbenchMode } from '@/features/sandbox/types';
+import type { SandboxViewportPreset } from '@/features/sandbox/types';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult } from '../../core/types';
 import { createSandboxAgentManifest } from './agentManifest';
@@ -62,18 +62,10 @@ export function handleSandboxActivation(ctx: ActivationContext): ActivationResul
       if (current.inspectorOpen === payload.open) return unavailable('Sandbox 检查器已处于目标状态');
       store.setInspectorOpen(payload.open, LEGACY_SANDBOX_OWNER_KEY);
       return { handled: true, acknowledged: true };
-    case 'setMode': {
-      const mode = payload.mode as SandboxWorkbenchMode;
-      if (mode !== 'safe-preview' && mode !== 'sandbox-run') {
-        return { handled: false, code: 'INVALID_ARGS', hint: 'mode 值无效' };
-      }
-      if (!current.activeSession) {
-        return { handled: false, code: 'INVALID_STATE', hint: 'Sandbox 当前没有活动会话' };
-      }
-      if (current.activeSession.mode === mode) return unavailable('Sandbox 已处于目标运行模式');
-      store.setWorkbenchMode(mode, LEGACY_SANDBOX_OWNER_KEY);
-      return { handled: true, acknowledged: true };
-    }
+    case 'setMode':
+      // ACR 4.0（A6 诚实化）：渲染面固定 chat-safe 安全预览，切模式没有任何真实
+      // 渲染效果——不改 store、不假装成功。能力已从 manifest 撤除，此处兜底同语义。
+      return unavailable('Sandbox 仅有安全预览（safe-preview）一种渲染形态，不支持切换运行模式');
     case 'closeSession':
       if (!current.activeSession) return unavailable('Sandbox 当前没有活动会话');
       store.closeSession(LEGACY_SANDBOX_OWNER_KEY);
@@ -92,6 +84,9 @@ export function registerSandboxApp(): void {
     typeId: 'sandbox',
     nameKey: 'workbench:apps.sandbox',
     icon: <AppIconImage typeId="sandbox" className="h-8 w-8" />,
+    // 沙箱是聊天代码块的内嵌工作面，不再作为可独立启动的应用暴露。
+    // 保留窗口注册仅用于旧快照与既有 agent 能力的兼容。
+    showInLauncher: false,
     instanceMode: 'single',
     memoryWeight: 2,
     defaultFrame: { w: 960, h: 680 },

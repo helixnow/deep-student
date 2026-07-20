@@ -24,6 +24,8 @@ export function SandboxToolbar({
   onClose,
 }: SandboxToolbarProps) {
   const { t } = useTranslation('workbench');
+  // 触屏（coarse 指针）下图标按钮放大到 ≥40px 触控目标
+  const iconBtnClass = '!h-8 !w-8 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10';
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border/70 px-5 py-4">
       <div className="min-w-0 flex-1">
@@ -44,7 +46,7 @@ export function SandboxToolbar({
           onClick={onReload}
           title={t('sandbox.refresh')}
           aria-label={t('sandbox.refresh')}
-          className="!h-8 !w-8 !p-0"
+          className={iconBtnClass}
         >
           <ArrowClockwise size={16} />
         </NotionButton>
@@ -55,7 +57,7 @@ export function SandboxToolbar({
           onClick={onToggleInspector}
           title={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
           aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
-          className="!h-8 !w-8 !p-0"
+          className={iconBtnClass}
         >
           <SidebarSimple size={16} />
         </NotionButton>
@@ -66,7 +68,7 @@ export function SandboxToolbar({
           onClick={onClose}
           title={t('sandbox.close')}
           aria-label={t('sandbox.close')}
-          className="!h-8 !w-8 !p-0"
+          className={iconBtnClass}
         >
           <X size={16} />
         </NotionButton>

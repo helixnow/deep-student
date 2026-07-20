@@ -1,19 +1,20 @@
 /**
- * 七类内容应用注册（P8）
+ * 六类内容应用注册（P8）
  *
- * note / textbook / exam / translation / essay / image / file
- * - weight：textbook=3，note/exam/translation/essay=2，image/file=1（设计文档 §9.1）
+ * textbook / exam / translation / essay / image / file
+ * （note / mindmap 资源不在此注册：由 notes 单例知识工作区承载，见 apps/notes）
+ * - weight：textbook=3，exam/translation/essay=2，image/file=1（设计文档 §9.1）
  * - exam / essay 为 single 工作区，资源 ID 只用于工作区内导航
  * - 其余资源应用为 multi，instanceKey = resourceId
- * - note/translation/essay 接未保存关窗拦截（脏状态挂点见 contentDirtyRegistry）
+ * - translation/essay 接未保存关窗拦截（脏状态挂点见 contentDirtyRegistry）
  *
  * 由 P11 的 apps 装配入口统一 import 本模块使注册生效。
  *
  * ACR R2-10：统一 onActivation
- * - note：scrollToHeading → CrepeEditor
  * - exam：focusQuestion → qbank:focus-question；scrollToHeading 回执 handled:false
  * - textbook/file：scrollToHeading 若 payload 含 page → pdf-ref:focus；否则可行动回执
  * - 其余：scrollToHeading 返回 handled:false + hint（禁止假成功）
+ * （note 的 scrollToHeading 活化路径在 notes 工作区：apps/notes/workspaceRegistry）
  */
 import React from 'react';
 import i18next from 'i18next';
@@ -25,13 +26,9 @@ import {
   ImageAppIcon,
   FileAppIcon,
 } from '../../icons/appIcons';
-import {
-  useQuestionBankStore,
-  validateQbankPracticeHandoff,
-  type PracticeMode,
-  type QuestionFilters,
-} from '@/stores/questionBankStore';
-import { useReviewPlanStore } from '@/stores/reviewPlanStore';
+// 题库/复习 store 只以类型参与本模块签名；运行时实例在各 handler 内动态
+// import（与 files/todo register 同模式），避免拖进 workbench 启动 chunk
+import type { PracticeMode, QuestionFilters } from '@/stores/questionBankStore';
 import {
   QBANK_CONTROL_EVENT,
   QBANK_FOCUS_EVENT,
@@ -136,6 +133,16 @@ export function handleNoteActivation(ctx: ActivationContext): ActivationResult {
   return { handled: true };
 }
 
+/**
+ * ACR 4.0（A7）：exam 表面（设置面板 / 专注视图）同步 ACK 回执。
+ * changed 与 previous* 由挂载视图诚实报告，供 manifest 计算 no-op 与 undo。
+ */
+export interface ExamSurfaceAck extends ActivationResult {
+  changed?: boolean;
+  previousOpen?: boolean;
+  previousEnabled?: boolean;
+}
+
 function payloadRecord(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === 'object' && !Array.isArray(payload)
     ? (payload as Record<string, unknown>)
@@ -144,6 +151,7 @@ function payloadRecord(payload: unknown): Record<string, unknown> {
 
 /** Keep an unfinished SM-2 queue scoped to its exam and ask before the OS shell closes it. */
 async function canCloseExamWorkspace(instanceKey: string | null): Promise<boolean> {
+  const { useReviewPlanStore } = await import('@/stores/reviewPlanStore');
   const store = useReviewPlanStore.getState();
   const { session } = store;
   const hasRemainingItems =
@@ -246,6 +254,7 @@ async function hydrateExamPracticeSession(
   ctx: ActivationContext,
   targetResourceId: string,
 ): Promise<ActivationResult> {
+  const { validateQbankPracticeHandoff } = await import('@/stores/questionBankStore');
   const payload = payloadRecord(ctx.payload);
   const rawHandoff = payload.handoff ?? ctx.payload;
   const validated = validateQbankPracticeHandoff(rawHandoff, targetResourceId);
@@ -279,10 +288,13 @@ async function hydrateExamPracticeSession(
   return { handled: true, acknowledged: true };
 }
 
-/** exam：安全导航与视图控制；答题/交卷仍归 qbank 领域工具和用户。 */
-export function handleExamActivation(
+/**
+ * exam：安全导航与视图控制；答题/交卷仍归 qbank 领域工具和用户。
+ * async：题库 store 在 handler 内动态 import（不进 workbench 启动 chunk）。
+ */
+export async function handleExamActivation(
   ctx: ActivationContext,
-): ActivationResult | Promise<ActivationResult> {
+): Promise<ActivationResult> {
   if (ctx.action === 'hydratePracticeSession') {
     const payload = payloadRecord(ctx.payload);
     const handoff = payloadRecord(payload.handoff ?? ctx.payload);
@@ -307,6 +319,9 @@ export function handleExamActivation(
       hint: '当前题目集尚未就绪',
     };
   }
+
+  // 全局镜像 store（Agent 观测用）；挂载视图才是会话事实源
+  const { useQuestionBankStore } = await import('@/stores/questionBankStore');
 
   if (ctx.action === 'focusQuestion') {
     const questionId = parseQuestionId(ctx.payload);
@@ -383,8 +398,37 @@ export function handleExamActivation(
     if (typeof enabled !== 'boolean') {
       return { handled: false, code: 'INVALID_ARGS', hint: 'setFocusMode 需要 enabled' };
     }
-    useQuestionBankStore.getState().setFocusMode(enabled);
-    return { handled: true };
+    if (typeof window === 'undefined') {
+      return {
+        handled: false,
+        code: 'WINDOW_NOT_FOUND',
+        hint: '当前题目集尚未就绪，无法切换专注视图',
+      };
+    }
+    // ACR 4.0（A7）：专注视图经挂载的题目集视图同步 ACK（exam:setFocusMode），
+    // 视图确认后由视图写全局 store；无视图挂载即诚实失败。
+    let acknowledgement: ExamSurfaceAck | null = null;
+    window.dispatchEvent(
+      new CustomEvent('exam:setFocusMode', {
+        detail: {
+          targetResourceId,
+          enabled,
+          acknowledge: (result: ExamSurfaceAck) => {
+            acknowledgement = result;
+          },
+        },
+      }),
+    );
+    if (!acknowledgement) {
+      return {
+        handled: false,
+        code: 'WINDOW_NOT_FOUND',
+        hint: '题目集视图未就绪，无法切换专注视图',
+      };
+    }
+    return acknowledgement.handled
+      ? { ...acknowledgement, acknowledged: true }
+      : acknowledgement;
   }
   if (ctx.action === 'showSettings') {
     const open = payloadRecord(ctx.payload).open;
@@ -398,23 +442,28 @@ export function handleExamActivation(
         hint: '当前题目集尚未就绪，无法打开设置面板',
       };
     }
-    let acknowledgement: ActivationResult | null = null;
+    let acknowledgement: ExamSurfaceAck | null = null;
     window.dispatchEvent(
       new CustomEvent('exam:openSettings', {
         detail: {
           targetResourceId,
           open,
-          acknowledge: (result: ActivationResult) => {
+          acknowledge: (result: ExamSurfaceAck) => {
             acknowledgement = result;
           },
         },
       }),
     );
-    return acknowledgement ?? {
-      handled: false,
-      code: 'WINDOW_NOT_FOUND',
-      hint: '题目集视图未就绪，无法打开设置面板',
-    };
+    if (!acknowledgement) {
+      return {
+        handled: false,
+        code: 'WINDOW_NOT_FOUND',
+        hint: '题目集视图未就绪，无法打开设置面板',
+      };
+    }
+    return acknowledgement.handled
+      ? { ...acknowledgement, acknowledged: true }
+      : acknowledgement;
   }
   if (ctx.action === 'scrollToHeading') {
     return {
@@ -476,6 +525,15 @@ function createContentActivationHandler(typeId: string) {
         handled: false,
         code: 'UNSUPPORTED_ACTION',
         hint: `${typeId} 不支持 ${ctx.action}（仅 note 支持标题；textbook/file 可用 page）`,
+      };
+    }
+    // A45-5：image 的 setZoom/rotate 由 manifest execute 直接走视图表面落点，
+    // 不经 activation 通道；误从 activation 进来时给出明确指路而非 UNKNOWN_ACTION。
+    if (typeId === 'image' && (ctx.action === 'setZoom' || ctx.action === 'rotate')) {
+      return {
+        handled: false,
+        code: 'UNSUPPORTED_ACTION',
+        hint: `image 的 ${ctx.action} 请走 workbench act 能力通道（agent manifest），activation 不承载该动作`,
       };
     }
     console.warn(`[workbench:${typeId}] unknown activation action: ${ctx.action}`);

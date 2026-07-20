@@ -145,7 +145,7 @@ describe('ACR 非 Notes 应用 activation', () => {
     window.removeEventListener('qbank:control', listener);
   });
 
-  it('exam 支持前后题、练习模式、专注模式和筛选', () => {
+  it('exam 支持前后题、练习模式、专注模式和筛选', async () => {
     const listener = (event: Event) => {
       const detail = (event as CustomEvent<{
         action: string;
@@ -156,28 +156,48 @@ describe('ACR 非 Notes 应用 activation', () => {
         currentQuestionId: detail.action === 'nextQuestion' ? 'q2' : undefined,
       });
     };
+    // ACR 4.0（A7）：setFocusMode 走 exam:setFocusMode 表面 ACK，视图写全局 store
+    const focusModeListener = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        enabled?: boolean;
+        acknowledge?: (result: {
+          handled: boolean;
+          changed?: boolean;
+          previousEnabled?: boolean;
+        }) => void;
+      }>).detail;
+      const previous = useQuestionBankStore.getState().focusMode;
+      useQuestionBankStore.getState().setFocusMode(detail.enabled === true);
+      detail.acknowledge?.({
+        handled: true,
+        changed: previous !== (detail.enabled === true),
+        previousEnabled: previous,
+      });
+    };
     window.addEventListener('qbank:control', listener);
+    window.addEventListener('exam:setFocusMode', focusModeListener);
     try {
-      expect(handleExamActivation({
+      // handleExamActivation 为 async（题库 store 在 handler 内动态 import）
+      await expect(handleExamActivation({
         windowId: 'exam-win',
         instanceKey: 'exam-1',
         action: 'nextQuestion',
-      })).toEqual({ handled: true, currentQuestionId: 'q2' });
+      })).resolves.toEqual({ handled: true, currentQuestionId: 'q2' });
       expect(useQuestionBankStore.getState().currentQuestionId).toBe('q2');
 
-      handleExamActivation({
+      await handleExamActivation({
         windowId: 'exam-win',
         instanceKey: 'exam-1',
         action: 'setPracticeMode',
         payload: { mode: 'review_only' },
       });
-      handleExamActivation({
+      await handleExamActivation({
         windowId: 'exam-win',
         instanceKey: 'exam-1',
         action: 'setFocusMode',
         payload: { enabled: true },
       });
-      handleExamActivation({
+      await handleExamActivation({
         windowId: 'exam-win',
         instanceKey: 'exam-1',
         action: 'setFilters',
@@ -191,10 +211,20 @@ describe('ACR 非 Notes 应用 activation', () => {
       });
     } finally {
       window.removeEventListener('qbank:control', listener);
+      window.removeEventListener('exam:setFocusMode', focusModeListener);
     }
   });
 
-  it('exam 设置 action 仅在目标视图确认接收后返回 handled', () => {
+  it('exam setFocusMode 无挂载视图时诚实失败', async () => {
+    await expect(handleExamActivation({
+      windowId: 'exam-win',
+      instanceKey: 'exam-1',
+      action: 'setFocusMode',
+      payload: { enabled: true },
+    })).resolves.toMatchObject({ handled: false, code: 'WINDOW_NOT_FOUND' });
+  });
+
+  it('exam 设置 action 仅在目标视图确认接收后返回 handled', async () => {
     const received: { targetResourceId?: string; open?: boolean }[] = [];
     const listener = (event: Event) => {
       const detail = (event as CustomEvent<{
@@ -207,21 +237,21 @@ describe('ACR 非 Notes 应用 activation', () => {
     };
     window.addEventListener('exam:openSettings', listener);
 
-    expect(handleExamActivation({
+    await expect(handleExamActivation({
       windowId: 'exam-win',
       instanceKey: 'exam-1',
       action: 'showSettings',
       payload: { open: true },
-    })).toEqual({ handled: true });
+    })).resolves.toEqual({ handled: true, acknowledged: true });
     expect(received).toEqual([{ targetResourceId: 'exam-1', open: true, acknowledge: expect.any(Function) }]);
 
     window.removeEventListener('exam:openSettings', listener);
-    expect(handleExamActivation({
+    await expect(handleExamActivation({
       windowId: 'exam-win',
       instanceKey: 'exam-1',
       action: 'showSettings',
       payload: { open: false },
-    })).toMatchObject({ handled: false, code: 'WINDOW_NOT_FOUND' });
+    })).resolves.toMatchObject({ handled: false, code: 'WINDOW_NOT_FOUND' });
   });
 
   it('flashcards 支持页面切换、翻面和结束会话，但不提供评分 action', async () => {
@@ -366,7 +396,7 @@ describe('ACR 非 Notes 应用 activation', () => {
     });
   });
 
-  it('sandbox 支持刷新、视口、检查器、运行模式与状态查询', () => {
+  it('sandbox 支持刷新、视口、检查器与状态查询；setMode 诚实拒绝（无真实渲染差异）', () => {
     useSandboxWorkbenchStore.getState().openSession({
       sourceType: 'chat-code-block',
       sourceMessageId: 'message-1',
@@ -387,18 +417,24 @@ describe('ACR 非 Notes 应用 activation', () => {
       action: 'setInspector',
       payload: { open: true },
     });
-    handleSandboxActivation({
+    // ACR 4.0（A6 诚实化）：渲染面固定 chat-safe 安全预览，切模式无真实效果 → 拒绝
+    expect(handleSandboxActivation({
       windowId: 'sandbox-win',
       instanceKey: null,
       action: 'setMode',
       payload: { mode: 'sandbox-run' },
+    })).toMatchObject({
+      handled: false,
+      code: 'ACTION_UNAVAILABLE',
+      hint: expect.stringContaining('安全预览'),
     });
 
     expect(sandboxDriver.queryState()).toMatchObject({
       title: 'Preview',
       viewportPreset: 'mobile',
       inspectorOpen: true,
-      mode: 'sandbox-run',
+      // mode 报告真实渲染形态（固定 safe-preview）
+      mode: 'safe-preview',
     });
   });
 });

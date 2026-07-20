@@ -13,6 +13,8 @@ import {
   type MindMapStoreApi,
 } from '@/features/mindmap/store/mindmapStore';
 import { findNodeById } from '@/features/mindmap/utils/node/find';
+import { getMindMapViewController } from '@/features/mindmap/viewController';
+import type { MindMapViewType } from '@/features/mindmap/types';
 import {
   getNoteEditor,
   subscribeNoteEditorReady,

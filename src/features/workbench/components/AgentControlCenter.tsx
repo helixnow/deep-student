@@ -26,6 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Po
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { workbenchBus } from '../core/workbenchBus';
 import { useLiquidGlassLens } from '../core/liquidGlassLens';
 
@@ -364,7 +365,7 @@ export function AgentControlDockEntry({
     handleOpenChange(false);
     setPendingSettingsTab('general');
     workbenchBus.launch({ typeId: 'settings', reason: 'dock' });
-    window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'general' } }));
+    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'general' });
   }, [handleOpenChange]);
 
   const runEmergencyStop = React.useCallback(async () => {

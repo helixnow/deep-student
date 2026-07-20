@@ -24,6 +24,11 @@ import {
   UNLINKED_MENTION_MIN_TITLE_LENGTH,
   type UnlinkedMention,
 } from '@/features/notes/unlinkedMentions';
+import {
+  backlinkRowToRelationship,
+  fetchBacklinksFromBackend,
+  type NoteBacklinkDto,
+} from './backlinksBackend';
 import { cn } from '@/lib/utils';
 import './NotesBacklinksPanel.css';
 import './notes-backlinks-extras.css';
@@ -38,6 +43,8 @@ type RelationshipsLoadState =
     contentsByNoteId: ReadonlyMap<string, string>;
     incomingMayBeIncomplete: boolean;
     scannedCandidateCount: number;
+    /** 'backend' = persistent note_links graph; 'client' = bounded search scan. */
+    source: 'backend' | 'client';
   }
   | { status: 'error'; message: string };
 
@@ -75,6 +82,12 @@ export const NOTE_CONTENT_LOAD_CONCURRENCY = 8;
  * time (see `candidateLimit`).
  */
 export const BACKLINK_CANDIDATE_LIMIT = 256;
+/**
+ * Backend mode: how many backlink sources get their markdown fetched for
+ * context snippets. Rows beyond this budget still render (title + open),
+ * just without an inline excerpt.
+ */
+export const BACKEND_CONTEXT_SOURCE_LIMIT = 64;
 export const UNLINKED_MENTION_CANDIDATE_LIMIT = 64;
 const UNLINKED_MENTION_MAX_PER_NOTE = 3;
 const BACKLINK_WATCH_REFRESH_DEBOUNCE_MS = 120;
@@ -633,6 +646,106 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         const activeNote = activeResource?.type === 'note' ? activeResource : null;
         if (!activeNote) return;
 
+        const fetchContent = async (node: DstuNode) => {
+          const version = cacheVersion(node);
+          const cached = contentCacheRef.current.get(node.id);
+          if (cached?.version === version) return [node.id, cached.content] as const;
+
+          const result = await dstu.getContent(node.path);
+          if (!result.ok) throw result.error;
+          const content = typeof result.value === 'string'
+            ? result.value
+            : await result.value.text();
+          if (isCurrentLoad()) contentCacheRef.current.set(node.id, { version, content });
+          return [node.id, content] as const;
+        };
+
+        // Backend-first: the persistent note_links graph answers "who links
+        // here" for the whole library in one query. Any failure (command
+        // missing, VFS not configured) silently falls back to the legacy
+        // bounded client scan below.
+        let backendRows: NoteBacklinkDto[] | null = null;
+        try {
+          backendRows = await fetchBacklinksFromBackend(activeNote.id);
+        } catch {
+          backendRows = null;
+        }
+        if (!isCurrentLoad()) return;
+
+        if (backendRows !== null) {
+          const rows = backendRows
+            .filter((row) => row.sourceId !== activeNote.id)
+            .sort((left, right) => (
+              (Date.parse(right.sourceUpdatedAt) || 0) - (Date.parse(left.sourceUpdatedAt) || 0)
+              || (left.sourceId < right.sourceId ? -1 : left.sourceId > right.sourceId ? 1 : 0)
+              || left.position - right.position
+            ));
+
+          const sourceNodes: DstuNode[] = [];
+          const seenSources = new Set<string>();
+          for (const row of rows) {
+            if (seenSources.has(row.sourceId)) continue;
+            seenSources.add(row.sourceId);
+            sourceNodes.push(noteNodesById.get(row.sourceId) ?? {
+              id: row.sourceId,
+              sourceId: row.sourceId,
+              path: `/${row.sourceId}`,
+              name: row.sourceTitle,
+              type: 'note',
+              createdAt: 0,
+              updatedAt: Date.parse(row.sourceUpdatedAt) || 0,
+            });
+          }
+
+          const contentNodes = [activeNote, ...sourceNodes.slice(0, BACKEND_CONTEXT_SOURCE_LIMIT)];
+          const contentEntries = await mapWithConcurrency(
+            contentNodes,
+            NOTE_CONTENT_LOAD_CONCURRENCY,
+            fetchContent,
+            isCurrentLoad,
+          );
+          if (!isCurrentLoad()) return;
+          const contents = new Map(contentEntries);
+
+          await yieldForIdleWork();
+          if (!isCurrentLoad()) return;
+
+          // Outgoing / unresolved links still come from parsing the ACTIVE
+          // note's fresh markdown: a link typed moments ago must show up even
+          // though DSTU content saves do not update the backend graph until
+          // the next rebuild. Title resolution sees every known note.
+          const relationshipNodes = mergeNoteNodes(noteNodes, sourceNodes);
+          const clientGraph = getWikiLinkRelationships(new Map(
+            relationshipNodes.map((node) => [node.id, {
+              title: node.name,
+              content: node.id === activeNote.id ? contents.get(node.id) ?? '' : '',
+            }]),
+          ));
+          const inbound = rows.map((row) => backlinkRowToRelationship(
+            row,
+            activeNote.id,
+            activeNote.name,
+            contents.get(row.sourceId),
+          ));
+          setLoadState({
+            status: 'ready',
+            relationships: {
+              outboundByNoteId: clientGraph.outboundByNoteId,
+              inboundByNoteId: {
+                ...clientGraph.inboundByNoteId,
+                [activeNote.id]: inbound,
+              },
+              unresolved: clientGraph.unresolved,
+            },
+            noteNodes: relationshipNodes,
+            contentsByNoteId: contents,
+            incomingMayBeIncomplete: false,
+            scannedCandidateCount: sourceNodes.length,
+            source: 'backend',
+          });
+          return;
+        }
+
         const {
           nodes: candidateNodes,
           incomingMayBeIncomplete,
@@ -645,19 +758,12 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         // That keeps outgoing links exact without an O(all notes) content scan.
         const relationshipNodes = mergeNoteNodes(noteNodes, candidateNodes);
         const contentNodes = [activeNote, ...candidateNodes];
-        const contentEntries = await mapWithConcurrency(contentNodes, NOTE_CONTENT_LOAD_CONCURRENCY, async (node) => {
-          const version = cacheVersion(node);
-          const cached = contentCacheRef.current.get(node.id);
-          if (cached?.version === version) return [node.id, cached.content] as const;
-
-          const result = await dstu.getContent(node.path);
-          if (!result.ok) throw result.error;
-          const content = typeof result.value === 'string'
-            ? result.value
-            : await result.value.text();
-          if (isCurrentLoad()) contentCacheRef.current.set(node.id, { version, content });
-          return [node.id, content] as const;
-        }, isCurrentLoad);
+        const contentEntries = await mapWithConcurrency(
+          contentNodes,
+          NOTE_CONTENT_LOAD_CONCURRENCY,
+          fetchContent,
+          isCurrentLoad,
+        );
 
         if (!isCurrentLoad()) return;
         const contents = new Map(contentEntries);
@@ -680,6 +786,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
           contentsByNoteId: contents,
           incomingMayBeIncomplete,
           scannedCandidateCount,
+          source: 'client',
         });
       } catch (error) {
         if (!isCurrentLoad()) return;
@@ -696,7 +803,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
     return () => {
       disposed = true;
     };
-  }, [activeNoteId, candidateLimit, noteNodes, open, refreshVersion, t]);
+  }, [activeNoteId, candidateLimit, noteNodes, noteNodesById, open, refreshVersion, t]);
 
   // Unlinked mentions: plain-text hits on the active title that no note has
   // linked yet. Runs after the relationship graph so linked sources can be

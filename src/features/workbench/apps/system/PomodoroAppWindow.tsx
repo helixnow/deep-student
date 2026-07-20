@@ -149,6 +149,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const status = usePomodoroStore((s) => s.status);
   const timeLeft = usePomodoroStore((s) => s.timeLeft);
   const sessionCountUp = usePomodoroStore((s) => s.sessionCountUp);
+  const phaseExtraSeconds = usePomodoroStore((s) => s.phaseExtraSeconds);
   const settings = usePomodoroStore((s) => s.settings);
   const currentTaskTitle = usePomodoroStore((s) => s.currentTaskTitle);
   const completedPomodorosToday = usePomodoroStore((s) => s.completedPomodorosToday);
@@ -160,6 +161,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const resume = usePomodoroStore((s) => s.resume);
   const stop = usePomodoroStore((s) => s.stop);
   const skipBreak = usePomodoroStore((s) => s.skipBreak);
+  const extendPhase = usePomodoroStore((s) => s.extendPhase);
   const completeCurrentSession = usePomodoroStore((s) => s.completeCurrentSession);
   const setImmersive = usePomodoroStore((s) => s.setImmersive);
 
@@ -168,6 +170,9 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const [renderedSub, setRenderedSub] = useState<SubViewKind | null>(null);
   const [todayStats, setTodayStats] = useState<PomodoroTodayStats | null>(null);
   const [flash, setFlash] = useState(false);
+  // 放弃确认（内联二次确认，非弹窗）：专注中断会记 interrupted，误触成本高
+  const [confirmingStop, setConfirmingStop] = useState(false);
+  const confirmTimerRef = useRef<number | null>(null);
   const settingsBtnRef = useRef<HTMLButtonElement>(null);
   const statsBtnRef = useRef<HTMLButtonElement>(null);
   const lastViewRef = useRef<PomoView>('main');
@@ -240,14 +245,18 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const isCountUpWork = mode === 'work' && (sessionCountUp ?? settings.countUp);
 
   const totalDuration = (() => {
-    switch (mode) {
-      case 'short_break':
-        return settings.shortBreak;
-      case 'long_break':
-        return settings.longBreak;
-      default:
-        return settings.workDuration;
-    }
+    const base = (() => {
+      switch (mode) {
+        case 'short_break':
+          return settings.shortBreak;
+        case 'long_break':
+          return settings.longBreak;
+        default:
+          return settings.workDuration;
+      }
+    })();
+    // 倒计时阶段的计划总时长含 extendPhase 加时（进度环分母同步伸长）
+    return mode !== 'idle' && !isCountUpWork ? base + phaseExtraSeconds : base;
   })();
 
   const progress =
@@ -279,6 +288,37 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const toggleNoise = useCallback(() => {
     setNoiseEnabled(!noiseEnabled);
   }, [noiseEnabled, setNoiseEnabled]);
+
+  const cancelStopConfirm = useCallback(() => {
+    if (confirmTimerRef.current != null) {
+      window.clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+    }
+    setConfirmingStop(false);
+  }, []);
+
+  // 停止：专注阶段先进入内联确认态（4s 超时自动回退），休息阶段直接停（无记录损失）
+  const handleStop = useCallback(() => {
+    if (mode === 'work' && !confirmingStop) {
+      setConfirmingStop(true);
+      if (confirmTimerRef.current != null) window.clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = window.setTimeout(() => {
+        confirmTimerRef.current = null;
+        setConfirmingStop(false);
+      }, 4000);
+      return;
+    }
+    cancelStopConfirm();
+    stop(true);
+  }, [mode, confirmingStop, cancelStopConfirm, stop]);
+
+  // 阶段切换（含自然完成）后残留的确认态失效；卸载时清掉回退定时器
+  useEffect(() => {
+    cancelStopConfirm();
+    return () => {
+      if (confirmTimerRef.current != null) window.clearTimeout(confirmTimerRef.current);
+    };
+  }, [mode, cancelStopConfirm]);
 
   // ---- 今日条数据（后端统计优先，store 计数兜底） ----
 
@@ -327,8 +367,13 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
     >
       {/* ==== 主视图（Hero + 控制坞）==== */}
       <div className="wb-sys-pomo-view-main" aria-hidden={view !== 'main' ? true : undefined}>
-        {/* ==== Hero 计时盘 ==== */}
-        <div className="wb-sys-pomo-hero" role="timer" aria-label={`${modeLabel} ${formatClock(timeLeft)}`}>
+        {/* ==== Hero 计时盘（data-agent-entity：agent 控制成功后的实体级 flash 锚点） ==== */}
+        <div
+          className="wb-sys-pomo-hero"
+          role="timer"
+          aria-label={`${modeLabel} ${formatClock(timeLeft)}`}
+          data-agent-entity="pomodoro:timer"
+        >
           <div className="wb-sys-pomo-badges">
             <span className="wb-sys-pomo-chip wb-sys-pomo-chip-mode">
               {modeIcon}
@@ -504,19 +549,50 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
             </div>
 
             <div className="wb-sys-pomo-controls-main">
-              {mode !== 'idle' && (
-                <NotionButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={() => stop(true)}
-                  title={t('pomodoro.controls.stop')}
-                  aria-label={t('pomodoro.controls.stop')}
-                  className="!h-7 !w-7 transition-colors duration-150 ease-standard"
-                >
-                  <Square size={14} />
-                </NotionButton>
-              )}
+              {mode !== 'idle' &&
+                (confirmingStop ? (
+                  <span
+                    className="wb-sys-pomo-stop-confirm"
+                    role="alertdialog"
+                    aria-label={t('pomodoro.controls.abandonConfirm', {
+                      ns: 'todo',
+                      defaultValue: '放弃本次专注？',
+                    })}
+                  >
+                    <NotionButton
+                      variant="utility"
+                      size="sm"
+                      onClick={handleStop}
+                      title={t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
+                      aria-label={t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
+                      className="h-7 !px-2.5 text-xs font-medium text-[color:hsl(var(--destructive))] transition-colors duration-150 ease-standard"
+                    >
+                      {t('pomodoro.controls.abandon', { ns: 'todo', defaultValue: '放弃' })}
+                    </NotionButton>
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={cancelStopConfirm}
+                      title={t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
+                      aria-label={t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
+                      className="h-7 !px-2 text-xs transition-colors duration-150 ease-standard"
+                    >
+                      {t('pomodoro.controls.keepGoing', { ns: 'todo', defaultValue: '继续专注' })}
+                    </NotionButton>
+                  </span>
+                ) : (
+                  <NotionButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    onClick={handleStop}
+                    title={t('pomodoro.controls.stop')}
+                    aria-label={t('pomodoro.controls.stop')}
+                    className="!h-7 !w-7 transition-colors duration-150 ease-standard"
+                  >
+                    <Square size={14} />
+                  </NotionButton>
+                ))}
 
               {/* 严格模式专注中：暂停位换成严格提示（store 同样拦截，双保险） */}
               {strictLocked && !isCountUpWork ? (
@@ -589,6 +665,24 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                   <SkipForward size={14} />
                 </NotionButton>
               )}
+
+              {/* 延长阶段：休息中常显；专注倒计时剩余 <2min 时也给机会 */}
+              {(mode === 'short_break' ||
+                mode === 'long_break' ||
+                (mode === 'work' && !isCountUpWork && timeLeft > 0 && timeLeft <= 120)) &&
+                [1, 5].map((minutes) => (
+                  <NotionButton
+                    key={minutes}
+                    variant="utility"
+                    size="sm"
+                    onClick={() => extendPhase(minutes * 60)}
+                    title={t('pomodoro.controls.extendTitle', { ns: 'todo', count: minutes })}
+                    aria-label={t('pomodoro.controls.extendTitle', { ns: 'todo', count: minutes })}
+                    className="h-7 gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard"
+                  >
+                    {t('pomodoro.controls.extendMinutes', { ns: 'todo', count: minutes })}
+                  </NotionButton>
+                ))}
             </div>
 
             <div className="wb-sys-pomo-controls-side is-right">

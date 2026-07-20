@@ -3,7 +3,7 @@
  * 三档：off / background / follow（见 docs/dev/acr/ERRORS.md）
  */
 import i18n from 'i18next';
-import { ACR_ERROR_CODES } from './types';
+import { ACR_COMMAND_ACCESS, ACR_ERROR_CODES, type AcrCommandAccess } from './types';
 
 export type AgentControlMode = 'off' | 'background' | 'follow';
 
@@ -18,29 +18,25 @@ export function setAgentControlMode(mode: AgentControlMode): void {
   currentMode = mode;
 }
 
-/**
- * 只读：off 仍允许。
- * 与 types.ts 的 ACR_COMMAND_ACCESS 保持同步（运行时闸门以后者为准；
- * 本表供辅助/测试消费）——`act` 为 dynamic（按 isAgentActRequestReadOnly 判定），
- * 不在两个静态集合中。
- */
-export const ACR_READONLY_COMMANDS = new Set([
-  'list_windows',
-  'query_state',
-  'probe',
-  'get_capabilities',
-  'observe',
-  'wait_for',
-]);
+/** ACR 4.0：单一真相源派生（types.ts ACR_COMMAND_ACCESS），消灭手写平行清单 */
+function commandsByAccess(access: AcrCommandAccess): Set<string> {
+  return new Set(
+    Object.entries(ACR_COMMAND_ACCESS)
+      .filter(([, value]) => value === access)
+      .map(([command]) => command),
+  );
+}
 
-/** 写与导航：off 拒绝 */
-export const ACR_MUTATING_COMMANDS = new Set([
-  'open_app',
-  'app_command',
-  'close_window',
-  'apply_ops',
-  'revert_run',
-]);
+/**
+ * 只读：off 仍允许。从 ACR_COMMAND_ACCESS 派生——`act` 为 dynamic
+ * （按 isAgentActRequestReadOnly 判定），不在两个静态集合中。
+ */
+export const ACR_READONLY_COMMANDS: ReadonlySet<string> =
+  commandsByAccess('read-only');
+
+/** 写与导航：off 拒绝。从 ACR_COMMAND_ACCESS 派生。 */
+export const ACR_MUTATING_COMMANDS: ReadonlySet<string> =
+  commandsByAccess('mutating');
 
 /** 未设置 / 空 → follow（开箱可用）；显式 off|background|follow 照认；其它 → off */
 export function parseAgentControlMode(raw: string | null | undefined): AgentControlMode {

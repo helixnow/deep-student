@@ -8,8 +8,11 @@
  *                这里改为按 instanceKey 精确写入目标 store，天然多窗隔离）；
  * - focusInput ：派发 CHAT_V2_FOCUS_INPUT（InputBarUI 已按 detail.sessionId 过滤，
  *                与 useSessionLifecycle.requestChatInputFocus 同款 rAF+timeout 双保险）；
- * - scrollToMessage：窗口内 DOM 定位（data-wb-chat-session 作用域 + role="log" 子节点
- *                与 messageOrder 一一对应时 scrollIntoView；虚拟化长会话为已知限制）。
+ * - scrollToMessage：走 MessageList 注册的程序化滚动 handle（A45-5，
+ *                docs/dev/acr/ACR-4.5.md）——虚拟化长会话（>80 条）内部经
+ *                virtualizer.scrollToIndex 定位，直渲会话先补齐尾部窗口；
+ *                目标行挂载后 agentFlash 演出。旧的 role="log" 子节点 DOM
+ *                定位已移除（虚拟化下目标行未渲染必然失败的已知遗留）。
  *
  * 注意：本模块保持轻量（会被 P11 registerAll 在 workbench 启动时同步 import），
  * chat 核心（sessionManager）一律动态 import，重 UI 走 React.lazy。
@@ -158,69 +161,94 @@ function escapeAttrValue(value: string): string {
 }
 
 /**
- * 滚动到指定消息（best-effort）：
- * MessageItem 没有 message id DOM 锚点（chat 文件不可改），
- * 直接渲染模式下 div[role="log"] 的子节点与 messageOrder 一一对应，按索引定位；
- * 虚拟化模式（>80 条）或渐进渲染首帧窗口期无法精确定位，记录为遗留。
+ * A45-5（docs/dev/acr/ACR-4.5.md）：滚动到指定消息。
+ *
+ * 走 features/chat 的 messageListScrollRegistry —— MessageList 在挂载期按
+ * sessionId 注册程序化滚动 handle：
+ * - 虚拟化长会话（>80 条）：virtualizer.scrollToIndex 定位，行挂载后精确对齐；
+ * - 直渲会话：尾部窗口未补齐时先展开再等目标行挂载。
+ * handle 未注册（窗口冷启动）时按短重试等待；仍不可达则结构化诚实失败，
+ * 不再有「虚拟化必失败」的遗留。定位成功后对目标行做 agentFlash 演出。
  */
-async function scrollToMessage(sessionId: string, payload: unknown): Promise<boolean> {
+async function scrollToMessage(
+  sessionId: string,
+  payload: unknown,
+): Promise<ActivationResult> {
   const messageId =
     payload && typeof payload === 'object'
       ? (payload as { messageId?: unknown }).messageId
       : payload;
-  if (typeof messageId !== 'string' || !messageId) return false;
-
-  const manager = await getSessionManager();
-  return await new Promise<boolean>((resolve) => {
-    const delays = [0, 250, 800];
-    const attempt = (index: number) => {
-      if (typeof window === 'undefined' || typeof document === 'undefined') {
-        resolve(false);
-        return;
-      }
-      const store = manager.get(sessionId);
-      const order = store?.getState().messageOrder ?? [];
-      const targetIndex = order.indexOf(messageId);
-      const root = document.querySelector(
-        `[data-wb-chat-session="${escapeAttrValue(sessionId)}"]`,
-      );
-      const log = root?.querySelector<HTMLElement>('[role="log"]');
-
-      if (store && targetIndex >= 0 && log && log.children.length === order.length) {
-        const el = log.children[targetIndex] as HTMLElement | undefined;
-        if (el) {
-          // Keep message navigation inside this window's message viewport. A plain
-          // scrollIntoView can also scroll the OS/workbench window host itself.
-          const viewport = log.closest<HTMLElement>(
-            '[data-overlayscrollbars-viewport], .scroll-area--native',
-          );
-          if (viewport) {
-            const viewportRect = viewport.getBoundingClientRect();
-            const messageRect = el.getBoundingClientRect();
-            const target = viewport.scrollTop + messageRect.top - viewportRect.top;
-            viewport.scrollTo({
-              top: Math.max(0, Math.min(target, viewport.scrollHeight - viewport.clientHeight)),
-              behavior: 'smooth',
-            });
-          } else {
-            el.scrollIntoView({ block: 'start', behavior: 'smooth' });
-          }
-          resolve(true);
-          return;
-        }
-      }
-
-      if (index < delays.length) {
-        window.setTimeout(() => attempt(index + 1), delays[index]);
-      } else {
-        console.warn(
-          `[workbench:chat] scrollToMessage best-effort failed (virtualized or not mounted): ${sessionId}/${messageId}`,
-        );
-        resolve(false);
-      }
+  if (typeof messageId !== 'string' || !messageId) {
+    return {
+      handled: false,
+      code: 'INVALID_ARGS',
+      hint: 'scrollToMessage 需要 payload.messageId',
     };
-    attempt(0);
+  }
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return {
+      handled: false,
+      code: 'WINDOW_NOT_FOUND',
+      hint: 'Chat 视图未就绪，无法定位消息',
+    };
+  }
+
+  const { getChatMessageListScrollHandle } = await import(
+    '@/features/chat/components/messageListScrollRegistry'
+  );
+  const wait = (ms: number) => new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
   });
+
+  // 首轮立即尝试；后续重试等待窗口冷启动期 MessageList 完成挂载注册
+  const delays = [0, 250, 800, 1500];
+  let failure: ActivationResult = {
+    handled: false,
+    code: 'WINDOW_NOT_FOUND',
+    hint: 'Chat 消息列表未挂载，无法定位消息',
+  };
+  for (const delay of delays) {
+    if (delay > 0) await wait(delay);
+    const handle = getChatMessageListScrollHandle(sessionId);
+    if (!handle) {
+      failure = {
+        handled: false,
+        code: 'WINDOW_NOT_FOUND',
+        hint: 'Chat 消息列表未挂载，无法定位消息',
+      };
+      continue;
+    }
+    const outcome = await handle.scrollToMessage(messageId);
+    if (outcome.status === 'scrolled') {
+      // 定位演出：目标行 flash（scroll:false —— handle 已完成视口内对齐）；
+      // 演出失败不影响定位回执
+      try {
+        const { agentFlash } = await import('../../agent/visuals/agentFlash');
+        const root = document.querySelector(
+          `[data-wb-chat-session="${escapeAttrValue(sessionId)}"]`,
+        );
+        agentFlash('chat', messageId, { scroll: false, scope: root ?? undefined });
+      } catch {
+        console.warn('[workbench:chat] scrollToMessage flash skipped');
+      }
+      return { handled: true, acknowledged: true };
+    }
+    failure = outcome.status === 'message_not_found'
+      ? {
+          handled: false,
+          code: 'MESSAGE_NOT_FOUND',
+          hint: '该消息不在目标会话的消息列表中（可能属于其他会话或已被删除）',
+        }
+      : {
+          handled: false,
+          code: 'VIEW_NOT_READY',
+          hint: 'Chat 消息列表未就绪或目标消息行未能挂载，请稍后重试',
+        };
+  }
+  console.warn(
+    `[workbench:chat] scrollToMessage failed (${failure.code}): ${sessionId}/${messageId}`,
+  );
+  return failure;
 }
 
 export async function handleChatActivation(ctx: ActivationContext): Promise<ActivationResult> {
@@ -244,8 +272,8 @@ export async function handleChatActivation(ctx: ActivationContext): Promise<Acti
       delivered = await focusSessionInput(sessionId);
       break;
     case 'scrollToMessage':
-      delivered = await scrollToMessage(sessionId, ctx.payload);
-      break;
+      // A45-5：直接透传结构化回执（成功带 acknowledged，失败带 code/hint）
+      return scrollToMessage(sessionId, ctx.payload);
     default:
       console.warn(`[workbench:chat] unknown activation action: ${ctx.action}`);
       return { handled: false, code: 'UNKNOWN_ACTION', hint: `Chat 不支持指令 ${ctx.action}` };

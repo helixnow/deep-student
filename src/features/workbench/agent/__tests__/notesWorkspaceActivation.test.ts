@@ -29,7 +29,10 @@ appRegistry.register({
   render: null as unknown as AppDefinition['render'],
 });
 
-describe('unified notes workspace ACR activation', () => {
+// ACR 4.0（A8 核对 d）：本套件路径全是微任务（无真实定时器），逻辑耗时 <10ms；
+// 全量 vitest（forks 满载）时曾因 CPU 饿死偶发超过 5s 默认 testTimeout 而误报超时。
+// 放宽超时上限只吸收调度抖动，不掩盖真实回归（真实挂死仍会在 20s 内暴露）。
+describe('unified notes workspace ACR activation', { timeout: 20_000 }, () => {
   beforeEach(() => {
     resetWindowStoreForTests({ w: 1400, h: 900 });
     resetWorkspaceRegistryForTests();

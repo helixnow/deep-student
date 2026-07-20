@@ -27,7 +27,6 @@ import {
 import { dstu, createEmpty, folderApi, trashApi, type DstuNode } from '@/dstu';
 import { DSTU_FOLDER_CHANGE_EVENT } from '@/dstu/folderEvents';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
-import { MindMapContentView } from '@/features/mindmap/MindMapContentView';
 import { getMindMapStoreForInstance } from '@/features/mindmap/store';
 import { exportResourceById } from '@/features/learning-hub/utils/exportResource';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -46,6 +45,8 @@ import type { FolderTreeNode, VfsFolder } from '@/dstu/types/folder';
 import { requestContentCloseConfirmation } from '../content/ContentCloseConfirmation';
 import { isContentDirty } from '../content/contentDirtyRegistry';
 import type { AppWindowProps } from '../../core/types';
+import { setWindowDirty } from '../../core/windowCloseGuard';
+import { useDragRenderPause } from '../../hooks/useDragRenderPause';
 import {
   forgetWorkspaceResource,
   registerWorkspaceHost,
@@ -90,7 +91,29 @@ import {
   updateFocusModeOwners,
   type NotesFocusModeEventDetail,
 } from '@/features/notes/focusModeOwnership';
+import {
+  NOTE_TITLE_MAX_CHARS,
+  NOTE_TITLE_COUNT_WARN_THRESHOLD,
+  countNoteInputChars,
+  sanitizeNoteTitleInput,
+  validateNoteTitle,
+} from '@/features/notes/noteInputLimits';
 import './notes-empty-states.css';
+
+// 导图视图懒加载：@xyflow/react 体积大，只有导图标签页真正展示时才拉取，
+// 避免拖入 Notes 窗口启动 chunk（加载态用下方轻量占位）
+const MindMapContentView = React.lazy(() =>
+  import('@/features/mindmap/MindMapContentView').then((module) => ({
+    default: module.MindMapContentView,
+  })),
+);
+
+/** 导图 pane 懒加载占位：与文档树加载骨架同款脉冲条 */
+const MindMapPaneFallback: React.FC = () => (
+  <div className="notes-mindmap-loading" aria-hidden="true">
+    <i /><i /><i />
+  </div>
+);
 
 type ResourceType = NotesWorkspaceResourceRef['type'];
 
@@ -150,7 +173,8 @@ interface ExplorerResourceTarget {
 type ExplorerTarget = ExplorerFolderTarget | ExplorerResourceTarget;
 
 type ResourceDialog =
-  | { mode: 'rename' | 'delete'; target: ExplorerTarget; value: string }
+  | { mode: 'delete'; target: ExplorerTarget }
+  | { mode: 'delete-many'; targets: ExplorerTarget[] }
   | { mode: 'create-folder'; value: string; parentId: string | null };
 
 const WORKSPACE_STORAGE_KEY = 'workbench.notesWorkspace.state.v1';
@@ -528,15 +552,17 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
                   className="h-full"
                 />
               ) : (
-                <MindMapContentView
-                  resourceId={tab.id}
-                  storeInstanceId={`${windowId}:${tab.key}`}
-                  isActive={workspaceActive && visible}
-                  focusOnActive={workspaceActive && visible}
-                  onTitleChange={(title) => onTitleChange(tab.key, title)}
-                  onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
-                  className="h-full"
-                />
+                <React.Suspense fallback={<MindMapPaneFallback />}>
+                  <MindMapContentView
+                    resourceId={tab.id}
+                    storeInstanceId={`${windowId}:${tab.key}`}
+                    isActive={workspaceActive && visible}
+                    focusOnActive={workspaceActive && visible}
+                    onTitleChange={(title) => onTitleChange(tab.key, title)}
+                    onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
+                    className="h-full"
+                  />
+                </React.Suspense>
               )}
             </div>
           );
@@ -554,6 +580,8 @@ interface WorkspaceTabsProps {
   onClose: (key: string) => void | Promise<boolean>;
   onReorder: (draggedKey: string, targetKey: string, position: TabDropPosition) => void;
   onOpenContextMenu: (key: string, x: number, y: number, trigger: HTMLElement) => void;
+  /** Double-clicking the empty strip area (browser-style) creates a new note. */
+  onNewTab?: () => void;
   contextMenuKey: string | null;
   leftOffset: number;
   saveStates: Map<string, SaveState>;
@@ -567,6 +595,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   onClose,
   onReorder,
   onOpenContextMenu,
+  onNewTab,
   contextMenuKey,
   leftOffset,
   saveStates,
@@ -656,7 +685,22 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
 
   return (
   <div className="notes-titlebar-tabs" style={{ paddingLeft: leftOffset }}>
-    <div ref={stripRef} className="notes-tabstrip" data-notes-tabstrip role="tablist" aria-label={t('notesWorkspace.tabs.aria', 'Open files')}>
+    <div
+      ref={stripRef}
+      className="notes-tabstrip"
+      data-notes-tabstrip
+      role="tablist"
+      aria-label={t('notesWorkspace.tabs.aria', 'Open files')}
+      onDoubleClick={(event) => {
+        // 仅拦截真正的空白条区域：已有 tab 时双击空白＝浏览器式新建；
+        // 各 tab 自己 stopPropagation，不会走到这里。没有 tab 时保留
+        // 标题栏双击缩放的窗壳语义。
+        if (!onNewTab || tabs.length === 0 || event.target !== event.currentTarget) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onNewTab();
+      }}
+    >
       {tabs.map((tab, index) => {
         const saveState = saveStates.get(tab.key) ?? 'saved';
         const isRightSplitTab = tab.key === rightTabKey;
@@ -776,18 +820,31 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
             role="menu"
             style={overflowMenuPosition}
           >
-            {tabs.map((tab) => (
-              <button
-                type="button"
-                role="menuitem"
-                key={tab.key}
-                data-active={tab.key === activeKey ? 'true' : 'false'}
-                onClick={() => { onActivate(tab.key); setOverflowOpen(false); }}
-              >
-                <ResourceGlyph type={tab.type} size={14} />
-                <span>{tab.title}</span>
-              </button>
-            ))}
+            {tabs.map((tab) => {
+              const overflowSaveState = saveStates.get(tab.key) ?? 'saved';
+              return (
+                <button
+                  type="button"
+                  role="menuitem"
+                  key={tab.key}
+                  data-active={tab.key === activeKey ? 'true' : 'false'}
+                  data-save-state={overflowSaveState}
+                  onClick={() => { onActivate(tab.key); setOverflowOpen(false); }}
+                >
+                  <ResourceGlyph type={tab.type} size={14} />
+                  <span>{tab.title}</span>
+                  {tab.pinned && <PushPin className="notes-tab-pin" size={11} weight="fill" aria-hidden />}
+                  {overflowSaveState !== 'saved' && (
+                    <i
+                      className="notes-tab-state"
+                      aria-label={overflowSaveState === 'saving'
+                        ? t('notesWorkspace.saveState.saving', 'Saving')
+                        : t('notesWorkspace.saveState.dirty', 'Unsaved')}
+                    />
+                  )}
+                </button>
+              );
+            })}
           </div>,
           document.body,
         )}
@@ -802,6 +859,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   instanceKey,
   launchPayload,
   isActive,
+  renderThrottleMs = 0,
   onTitleChange,
 }) => {
   const { t } = useTranslation('workbench');
@@ -809,6 +867,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const persistedState = persistedStateRef.current;
   const hostRef = useRef<HTMLDivElement>(null);
   const explorerRef = useRef<HTMLElement>(null);
+  // 拖/缩/settle 期间冻结工作区动画/过渡（CSS 定向规则见 NotesWorkspaceApp.css）
+  useDragRenderPause(hostRef, renderThrottleMs);
   const [resources, setResources] = useState<DstuNode[]>([]);
   const [folders, setFolders] = useState<VfsFolder[]>([]);
   const [resourceFolderIds, setResourceFolderIds] = useState<ReadonlyMap<string, string>>(
@@ -865,7 +925,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const hasLoadedResourcesRef = useRef(false);
   const loadSequenceRef = useRef(0);
   const refreshTimerRef = useRef<number | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const tabContextTriggerRef = useRef<HTMLElement | null>(null);
   const restoreTabContextFocusRef = useRef(false);
@@ -936,6 +995,17 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     () => new Map(tabs.map((tab) => [tab.key, tabSaveStates[tab.key] ?? getTabSaveState(tab, windowId)])),
     [tabSaveStates, tabs, windowId],
   );
+
+  // P1 未保存圆点：任一标签页非 saved（dirty/saving）→ 推送窗口级脏状态，
+  // WindowTitleBar 红灯据此渲染中心圆点（windowCloseGuard 脏通道）。
+  const hasUnsavedTabs = useMemo(
+    () => Array.from(saveStates.values()).some((state) => state !== 'saved'),
+    [saveStates],
+  );
+  useEffect(() => {
+    setWindowDirty(windowId, hasUnsavedTabs);
+  }, [hasUnsavedTabs, windowId]);
+  useEffect(() => () => setWindowDirty(windowId, false), [windowId]);
 
   useLayoutEffect(() => {
     let observer: MutationObserver | null = null;
@@ -1260,41 +1330,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     void closeTabs(keys);
   }, [closeTabs]);
 
-  const renameContextResource = useCallback(async () => {
-    if (!resourceDialog || resourceDialog.mode !== 'rename') return;
-    const name = resourceDialog.value.trim();
-    const target = resourceDialog.target;
-    if (!name) {
-      setDialogError(t('notesWorkspace.dialog.nameRequired', 'Enter a name.'));
-      return;
-    }
-    if (name === getExplorerTargetName(target)) {
-      setResourceDialog(null);
-      return;
-    }
-    if (target.kind === 'resource') {
-      const result = await dstu.rename(target.node.path || `/${target.node.id}`, name);
-      if (!result.ok) {
-        const message = result.error.toUserMessage();
-        setStatus(message);
-        setDialogError(message);
-        return;
-      }
-      updateTabTitle(`${target.node.type}:${target.node.id}`, name);
-    } else {
-      const result = await folderApi.renameFolder(target.id, name);
-      if (!result.ok) {
-        const message = result.error.toUserMessage();
-        setStatus(message);
-        setDialogError(message);
-        return;
-      }
-    }
-    setDialogError(null);
-    setResourceDialog(null);
-    await loadResources({ blocking: false });
-  }, [loadResources, resourceDialog, t, updateTabTitle]);
-
   const deleteContextResource = useCallback(async () => {
     if (!resourceDialog || resourceDialog.mode !== 'delete') return;
     const target = resourceDialog.target;
@@ -1383,11 +1418,70 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     await loadResources({ blocking: false });
   }, [closeTab, loadResources, resourceDialog, selectedFolderId, t]);
 
+  // 多选批量删除：一次内联确认，逐项移入回收站，失败逐项上报
+  const deleteContextResources = useCallback(async () => {
+    if (!resourceDialog || resourceDialog.mode !== 'delete-many') return;
+    const targets = resourceDialog.targets;
+    let failed = 0;
+    let lastError: string | null = null;
+    for (const target of targets) {
+      if (target.kind === 'resource') {
+        const key = `${target.node.type}:${target.node.id}`;
+        pendingConfirmedDeletionKeysRef.current.add(key);
+        try {
+          const result = await dstu.delete(target.node.path || `/${target.node.id}`);
+          if (!result.ok) {
+            failed += 1;
+            lastError = result.error.toUserMessage();
+            continue;
+          }
+          await closeTab(key, { force: true });
+        } finally {
+          pendingConfirmedDeletionKeysRef.current.delete(key);
+        }
+      } else {
+        const result = await folderApi.deleteFolder(target.id);
+        if (!result.ok) {
+          failed += 1;
+          lastError = result.error.toUserMessage();
+        }
+      }
+    }
+    setResourceDialog(null);
+    const succeeded = targets.length - failed;
+    if (succeeded > 0) {
+      const message = t('notesWorkspace.status.movedManyToTrash', {
+        defaultValue: '{{count}} items moved to trash',
+        count: succeeded,
+      });
+      setStatus(message);
+      showGlobalNotification('success', message);
+    }
+    if (failed > 0 && lastError) {
+      setStatus(lastError);
+      showGlobalNotification('error', lastError);
+    }
+    await loadResources({ blocking: false });
+  }, [closeTab, loadResources, resourceDialog, t]);
+
   const createFolder = useCallback(async () => {
     if (!resourceDialog || resourceDialog.mode !== 'create-folder') return;
     const name = resourceDialog.value.trim();
     if (!name) {
       setDialogError(t('notesWorkspace.dialog.nameRequired', 'Enter a name.'));
+      return;
+    }
+    // 前置校验（输入侧已 sanitize，这里是提交前最终防线；后端 InvalidArgument 仍兜底）
+    const violation = validateNoteTitle(name);
+    if (violation === 'too_long') {
+      setDialogError(t('notesWorkspace.validation.nameTooLong', {
+        defaultValue: 'Names can be at most {{max}} characters',
+        max: NOTE_TITLE_MAX_CHARS,
+      }));
+      return;
+    }
+    if (violation === 'control_chars') {
+      setDialogError(t('notesWorkspace.validation.nameInvalidChars', 'Names can\'t contain line breaks or control characters'));
       return;
     }
     const result = await folderApi.createFolder(name, resourceDialog.parentId ?? undefined);
@@ -1610,43 +1704,40 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [explorerOpen, sizeClass]);
 
-  useEffect(() => {
-    const onFocusModeChanged = (event: Event) => {
-      const nextOwners = updateFocusModeOwners(
-        focusModeOwnersRef.current,
-        (event as CustomEvent<NotesFocusModeEventDetail>).detail,
-        windowId,
-      );
-      focusModeOwnersRef.current = nextOwners;
-      setFocusMode(nextOwners.size > 0);
-    };
-    window.addEventListener('notes:focus-mode-changed', onFocusModeChanged);
-    return () => {
-      window.removeEventListener('notes:focus-mode-changed', onFocusModeChanged);
-      focusModeOwnersRef.current.clear();
-    };
+  const onFocusModeChanged = useCallback((event: Event) => {
+    const nextOwners = updateFocusModeOwners(
+      focusModeOwnersRef.current,
+      (event as CustomEvent<NotesFocusModeEventDetail>).detail,
+      windowId,
+    );
+    focusModeOwnersRef.current = nextOwners;
+    setFocusMode(nextOwners.size > 0);
+  }, [windowId]);
+  useEventRegistry(
+    [{ target: 'window', type: 'notes:focus-mode-changed', listener: onFocusModeChanged }],
+    [onFocusModeChanged],
+  );
+  useEffect(() => () => {
+    // 读 ref 的最新值：onFocusModeChanged 会整体替换 Set，清理必须落在当前实例上
+    focusModeOwnersRef.current.clear();
   }, [windowId]);
 
-  useEffect(() => {
-    if (!tabContextMenu) return;
-    const dismiss = (event?: Event) => {
-      if (event?.target instanceof Node && contextMenuRef.current?.contains(event.target)) return;
-      restoreTabContextFocusRef.current = event instanceof KeyboardEvent && event.key === 'Escape';
-      setTabContextMenu(null);
-    };
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss(event); };
-    // Tabs stop bubbling pointer events so the window shell cannot start a
-    // drag. Use capture here to still dismiss a stale menu before another tab
-    // is selected or dragged, while retaining clicks inside the menu itself.
-    window.addEventListener('pointerdown', dismiss, true);
-    window.addEventListener('click', dismiss, true);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('pointerdown', dismiss, true);
-      window.removeEventListener('click', dismiss, true);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [tabContextMenu]);
+  const dismissTabContextMenu = useCallback((event: Event) => {
+    if (event.target instanceof Node && contextMenuRef.current?.contains(event.target)) return;
+    restoreTabContextFocusRef.current = event instanceof KeyboardEvent && event.key === 'Escape';
+    setTabContextMenu(null);
+  }, []);
+  const dismissTabContextMenuOnEscape = useCallback((event: Event) => {
+    if (event instanceof KeyboardEvent && event.key === 'Escape') dismissTabContextMenu(event);
+  }, [dismissTabContextMenu]);
+  // Tabs stop bubbling pointer events so the window shell cannot start a
+  // drag. Use capture here to still dismiss a stale menu before another tab
+  // is selected or dragged, while retaining clicks inside the menu itself.
+  useEventRegistry(tabContextMenu ? [
+    { target: 'window', type: 'pointerdown', listener: dismissTabContextMenu, options: true },
+    { target: 'window', type: 'click', listener: dismissTabContextMenu, options: true },
+    { target: 'window', type: 'keydown', listener: dismissTabContextMenuOnEscape },
+  ] : [], [dismissTabContextMenu, dismissTabContextMenuOnEscape, tabContextMenu]);
 
   useEffect(() => {
     if (!tabContextMenu) return;
@@ -1663,66 +1754,53 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     };
   }, [tabContextMenu]);
 
+  // 行内输入行 / 确认条（非模态）：打开时把焦点送进面板，关闭后归还给触发
+  // 元素；触发行已被删除时回落到树内相邻可聚焦行。
   useEffect(() => {
-    if (!resourceDialog) return;
-    const previouslyFocused = document.activeElement instanceof HTMLElement
+    const mode = resourceDialog?.mode;
+    if (!mode) return;
+    const opener = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    const focusInitial = () => {
-      const focusable = dialogRef.current?.querySelector<HTMLElement>(
-        'input:not([disabled]), button:not([disabled])',
-      );
-      focusable?.focus();
-    };
-    const frame = window.requestAnimationFrame(focusInitial);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setResourceDialog(null);
+    const frame = mode === 'delete' || mode === 'delete-many'
+      ? window.requestAnimationFrame(() => {
+        explorerRef.current
+          ?.querySelector<HTMLElement>('[data-notes-inline-confirm] button.is-danger')
+          ?.focus();
+      })
+      : null;
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      const active = document.activeElement;
+      // 焦点仍停在别的控件上（如失焦取消时点中的目标）就不要抢回来
+      if (active instanceof HTMLElement && active !== document.body) return;
+      if (opener?.isConnected) {
+        opener.focus();
         return;
       }
-      if (event.key !== 'Tab') return;
-      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
-        'input:not([disabled]), button:not([disabled])',
-      ) ?? []);
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+      explorerRef.current?.querySelector<HTMLElement>('[role="treeitem"]')?.focus();
     };
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('keydown', onKeyDown, true);
-      previouslyFocused?.focus();
-    };
-  }, [resourceDialog]);
+  }, [resourceDialog?.mode]);
 
-  useEffect(() => {
-    if (!isActive) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        !(event.metaKey || event.ctrlKey)
-        || event.altKey
-        || event.shiftKey
-        || event.key.toLocaleLowerCase() !== 'w'
-      ) return;
-      // The workspace owns Ctrl/Cmd+W even before a tab is opened. Without
-      // this, the browser/WebView default can close the entire application.
-      event.preventDefault();
-      const current = activeTabRef.current;
-      if (!current) return;
-      void closeTabRef.current(current.key);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isActive]);
+  const onCloseTabShortcut = useCallback((event: Event) => {
+    if (!(event instanceof KeyboardEvent)) return;
+    if (
+      !(event.metaKey || event.ctrlKey)
+      || event.altKey
+      || event.shiftKey
+      || event.key.toLocaleLowerCase() !== 'w'
+    ) return;
+    // The workspace owns Ctrl/Cmd+W even before a tab is opened. Without
+    // this, the browser/WebView default can close the entire application.
+    event.preventDefault();
+    const current = activeTabRef.current;
+    if (!current) return;
+    void closeTabRef.current(current.key);
+  }, []);
+  useEventRegistry(
+    isActive ? [{ target: 'window', type: 'keydown', listener: onCloseTabShortcut }] : [],
+    [isActive, onCloseTabShortcut],
+  );
 
   const focusExplorerSearch = useCallback(() => {
     setExplorerOpen(true);
@@ -1733,6 +1811,21 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     setSearchMode(mode);
     setSearchOpen(true);
   }, []);
+
+  // cmd+P 空查询的「最近打开」分组：导航历史新→旧去重，映射到仍存在的资源
+  const recentSearchResources = useMemo(() => {
+    const seen = new Set<string>();
+    const recents: DstuNode[] = [];
+    for (let index = navHistory.entries.length - 1; index >= 0; index -= 1) {
+      const entry = navHistory.entries[index];
+      if (seen.has(entry.key)) continue;
+      seen.add(entry.key);
+      const node = resources.find((item) => item.id === entry.id && item.type === entry.type);
+      if (node) recents.push(node);
+      if (recents.length >= 8) break;
+    }
+    return recents;
+  }, [navHistory.entries, resources]);
 
   const openWorkspaceSearchResult = useCallback(async (
     node: DstuNode,
@@ -1748,9 +1841,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     }
   }, [openResource]);
 
-  useEffect(() => {
-    if (!isActive) return;
-    const onWorkspaceCommand = (event: Event) => {
+  const onWorkspaceCommand = useCallback((event: Event) => {
       const action = (event as CustomEvent<NotesWorkspaceCommandDetail>).detail?.action as NotesWorkspaceCommandAction | undefined;
       switch (action) {
         case 'create-note':
@@ -1758,6 +1849,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           break;
         case 'create-folder':
           setDialogError(null);
+          // 行内输入行挂在资源管理器树区顶部；窄窗下先展开「文件」子屏
+          setExplorerOpen(true);
           setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId });
           break;
         case 'focus-search':
@@ -1821,10 +1914,13 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         default:
           break;
       }
-    };
-    window.addEventListener(NOTES_WORKSPACE_COMMAND_EVENT, onWorkspaceCommand);
-    return () => window.removeEventListener(NOTES_WORKSPACE_COMMAND_EVENT, onWorkspaceCommand);
-  }, [createResource, focusExplorerSearch, isActive, openSearchOverlay, selectedFolderId]);
+  }, [createResource, focusExplorerSearch, openSearchOverlay, selectedFolderId]);
+  useEventRegistry(
+    isActive
+      ? [{ target: 'window', type: NOTES_WORKSPACE_COMMAND_EVENT, listener: onWorkspaceCommand }]
+      : [],
+    [isActive, onWorkspaceCommand],
+  );
 
   const toggleTreeExpand = useCallback((id: string) => {
     const item = findItemById(treeItems, id);
@@ -1933,13 +2029,33 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       setResourceDialog({
         mode: 'delete',
         target: { kind: 'folder', id: item.id, name: item.name, path: item.path ?? item.id },
-        value: '',
       });
       return;
     }
     const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
     if (!node) return;
-    setResourceDialog({ mode: 'delete', target: { kind: 'resource', node }, value: '' });
+    setResourceDialog({ mode: 'delete', target: { kind: 'resource', node } });
+  }, []);
+
+  // 树内多选 Delete：合并为一次批量确认（避免逐项弹出、只剩最后一项生效）
+  const requestDeleteTreeItems = useCallback((items: readonly NotesWorkspaceTreeItem[]) => {
+    const targets: ExplorerTarget[] = [];
+    for (const item of items) {
+      if (item.kind === 'folder') {
+        if (!isStableVfsFolderId(item.id)) continue;
+        targets.push({ kind: 'folder', id: item.id, name: item.name, path: item.path ?? item.id });
+        continue;
+      }
+      const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
+      if (node) targets.push({ kind: 'resource', node });
+    }
+    if (targets.length === 0) return;
+    setDialogError(null);
+    if (targets.length === 1) {
+      setResourceDialog({ mode: 'delete', target: targets[0] });
+      return;
+    }
+    setResourceDialog({ mode: 'delete-many', targets });
   }, []);
 
   const getTreeMenuItems = useCallback((
@@ -2033,6 +2149,16 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (navHistory.handleKeyDown(event, activateHistoryEntry)) return;
   }, [activateHistoryEntry, navHistory]);
 
+  // Ctrl+PageDown/PageUp 与 mod+shift+[ / ]：像浏览器 / VS Code 一样循环切换标签页
+  const cycleTab = useCallback((direction: 1 | -1) => {
+    const currentTabs = tabsRef.current;
+    if (currentTabs.length < 2) return;
+    const currentKey = activeTabRef.current?.key ?? null;
+    const index = currentTabs.findIndex((tab) => tab.key === currentKey);
+    const next = currentTabs[((index < 0 ? 0 : index) + direction + currentTabs.length) % currentTabs.length];
+    if (next) activateTab(next.key);
+  }, [activateTab]);
+
   const importDroppedMarkdown = useCallback(async (files: readonly File[]) => {
     const markdownFiles = files.filter((file) => /\.md(?:own)?$/i.test(file.name));
     if (markdownFiles.length === 0) return;
@@ -2067,24 +2193,43 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     }
   }, [contextualFolderId, loadResources, openResource, t]);
 
-  useEffect(() => {
-    if (!isActive) return;
-    const onWindowKeyDown = (event: KeyboardEvent) => {
-      if (navHistory.handleKeyDown(event, activateHistoryEntry)) return;
-      if (
-        (event.metaKey || event.ctrlKey)
-        && !event.altKey
-        && !event.shiftKey
-        && event.key.toLocaleLowerCase() === 'p'
-      ) {
-        event.preventDefault();
-        event.stopPropagation();
-        openSearchOverlay('quick-open');
-      }
-    };
-    window.addEventListener('keydown', onWindowKeyDown, true);
-    return () => window.removeEventListener('keydown', onWindowKeyDown, true);
-  }, [activateHistoryEntry, isActive, navHistory, openSearchOverlay]);
+  const onWindowKeyDown = useCallback((event: Event) => {
+    if (!(event instanceof KeyboardEvent)) return;
+    if (navHistory.handleKeyDown(event, activateHistoryEntry)) return;
+    if (
+      (event.metaKey || event.ctrlKey)
+      && !event.altKey
+      && !event.shiftKey
+      && event.key.toLocaleLowerCase() === 'p'
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      openSearchOverlay('quick-open');
+      return;
+    }
+    const cyclesByPage = event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
+      && !event.shiftKey
+      && (event.key === 'PageDown' || event.key === 'PageUp');
+    // mod+shift+] / [：某些键盘布局下 shift 组合产出 } / {，一并接受
+    const cyclesByBracket = (event.metaKey || event.ctrlKey)
+      && event.shiftKey
+      && !event.altKey
+      && (event.key === ']' || event.key === '[' || event.key === '}' || event.key === '{');
+    if (cyclesByPage || cyclesByBracket) {
+      event.preventDefault();
+      event.stopPropagation();
+      cycleTab(event.key === 'PageDown' || event.key === ']' || event.key === '}' ? 1 : -1);
+    }
+  }, [activateHistoryEntry, cycleTab, navHistory, openSearchOverlay]);
+
+  useEventRegistry(
+    isActive
+      ? [{ target: 'window', type: 'keydown', listener: onWindowKeyDown, options: true }]
+      : [],
+    [isActive, onWindowKeyDown],
+  );
 
   // 资源管理器面板：宽/中窗作为并排侧栏；窄窗（compact）复用为全屏内联「文件」子屏（P0-5 去抽屉化）
   const explorerSurface = (
@@ -2145,6 +2290,108 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             void favorites.setFavorite(item.id, item.type, false, { path: item.path, name: item.name });
           }}
         />
+        {resourceDialog?.mode === 'create-folder' && (
+          <div className="notes-inline-create ui-rise-in" data-notes-inline-create>
+            <div className="notes-inline-create-row">
+              <FolderPlus size={14} aria-hidden />
+              <input
+                autoFocus
+                value={resourceDialog.value}
+                placeholder={t('notesWorkspace.dialog.createFolderTitle', 'New folder')}
+                aria-label={t('notesWorkspace.dialog.createFolderTitle', 'New folder')}
+                onChange={(event) => {
+                  setDialogError(null);
+                  setResourceDialog({
+                    mode: 'create-folder',
+                    // 输入侧就地清洗：粘贴内容折叠换行、去控制字符、按 500 字符截断
+                    //（与后端 note_repo validate_title 限额一致）
+                    value: sanitizeNoteTitleInput(event.target.value),
+                    parentId: resourceDialog.parentId,
+                  });
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setDialogError(null);
+                    setResourceDialog(null);
+                    return;
+                  }
+                  if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+                  event.preventDefault();
+                  void createFolder();
+                }}
+                onBlur={() => {
+                  setDialogError(null);
+                  setResourceDialog(null);
+                }}
+              />
+            </div>
+            {countNoteInputChars(resourceDialog.value) > NOTE_TITLE_COUNT_WARN_THRESHOLD && (
+              <p
+                className="notes-inline-counter"
+                data-at-limit={countNoteInputChars(resourceDialog.value) >= NOTE_TITLE_MAX_CHARS ? 'true' : undefined}
+                aria-live="polite"
+              >
+                {t('notesWorkspace.validation.charCount', {
+                  defaultValue: '{{count}} / {{max}}',
+                  count: countNoteInputChars(resourceDialog.value),
+                  max: NOTE_TITLE_MAX_CHARS,
+                })}
+              </p>
+            )}
+            {dialogError && <p className="notes-inline-error" role="alert">{dialogError}</p>}
+          </div>
+        )}
+        {(resourceDialog?.mode === 'delete' || resourceDialog?.mode === 'delete-many') && (
+          <div
+            className="notes-inline-confirm ui-rise-in"
+            data-notes-inline-confirm
+            role="group"
+            aria-label={t('notesWorkspace.dialog.deleteTitle', 'Move to trash')}
+            onKeyDown={(event) => {
+              if (event.key !== 'Escape') return;
+              event.preventDefault();
+              event.stopPropagation();
+              setDialogError(null);
+              setResourceDialog(null);
+            }}
+          >
+            <p className="notes-inline-confirm-copy">
+              {resourceDialog.mode === 'delete'
+                ? t('notesWorkspace.dialog.deleteDescription', {
+                  defaultValue: 'Move "{{name}}" to the trash?',
+                  name: getExplorerTargetName(resourceDialog.target),
+                })
+                : t('notesWorkspace.dialog.deleteManyDescription', {
+                  defaultValue: 'Move {{count}} selected items to the trash?',
+                  count: resourceDialog.targets.length,
+                })}
+            </p>
+            {dialogError && <p className="notes-inline-error" role="alert">{dialogError}</p>}
+            <div className="notes-inline-confirm-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setDialogError(null);
+                  setResourceDialog(null);
+                }}
+              >
+                {t('notesWorkspace.dialog.cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                className="is-danger"
+                onClick={() => {
+                  if (resourceDialog.mode === 'delete') void deleteContextResource();
+                  else void deleteContextResources();
+                }}
+              >
+                {t('notesWorkspace.dialog.delete', 'Delete')}
+              </button>
+            </div>
+          </div>
+        )}
         <div className="notes-tree-host" aria-live="polite">
           {loading && !hasTreeItems ? (
             <div
@@ -2255,6 +2502,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               onMove={(dragId, targetId, position) => { void moveTreeItem(dragId, targetId, position); }}
               onRename={(id, name) => { void renameTreeItem(id, name); }}
               onDelete={requestDeleteTreeItem}
+              onDeleteMany={requestDeleteTreeItems}
               getMenuItems={getTreeMenuItems}
             />
           )}
@@ -2273,6 +2521,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           onClose={closeTab}
           onReorder={reorderTabs}
           onOpenContextMenu={openTabContextMenu}
+          onNewTab={() => { void createResource('note'); }}
           contextMenuKey={tabContextMenu?.key ?? null}
           leftOffset={titlebarTabsLeft}
           saveStates={saveStates}
@@ -2425,6 +2674,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         mode={searchMode}
         onModeChange={setSearchMode}
         resources={resources}
+        recentResources={recentSearchResources}
         onOpenResource={openWorkspaceSearchResult}
         onClose={() => setSearchOpen(false)}
       />
@@ -2504,61 +2754,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           >
             {t('notesWorkspace.tabs.closeTabsToRight', 'Close tabs to the right')}
           </button>
-        </div>
-      )}
-      {resourceDialog && (
-        <div className="notes-dialog-scrim" role="presentation" onPointerDown={() => setResourceDialog(null)}>
-          <div
-            ref={dialogRef}
-            className="notes-resource-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="notes-resource-dialog-title"
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <h2 id="notes-resource-dialog-title">{resourceDialog.mode === 'rename'
-              ? t('notesWorkspace.dialog.renameTitle', 'Rename')
-              : resourceDialog.mode === 'create-folder'
-                ? t('notesWorkspace.dialog.createFolderTitle', 'New folder')
-                : t('notesWorkspace.dialog.deleteTitle', 'Move to trash')}</h2>
-            {resourceDialog.mode === 'rename' || resourceDialog.mode === 'create-folder' ? (
-              <input
-                autoFocus
-                value={resourceDialog.value}
-                onFocus={(event) => event.currentTarget.select()}
-                onChange={(event) => {
-                  setDialogError(null);
-                  setResourceDialog({ ...resourceDialog, value: event.target.value });
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
-                  event.preventDefault();
-                  void (resourceDialog.mode === 'rename' ? renameContextResource() : createFolder());
-                }}
-                aria-label={t('notesWorkspace.dialog.nameLabel', 'Name')}
-              />
-            ) : <p>{t('notesWorkspace.dialog.deleteDescription', { defaultValue: 'Move "{{name}}" to the trash?', name: getExplorerTargetName(resourceDialog.target) })}</p>}
-            {dialogError && <p className="notes-dialog-error" role="alert">{dialogError}</p>}
-            <div>
-              <button type="button" onClick={() => { setDialogError(null); setResourceDialog(null); }}>{t('notesWorkspace.dialog.cancel', 'Cancel')}</button>
-              <button
-                type="button"
-                className={resourceDialog.mode === 'delete' ? 'is-danger' : 'is-primary'}
-                disabled={resourceDialog.mode === 'rename' && (!resourceDialog.value.trim() || resourceDialog.value.trim() === getExplorerTargetName(resourceDialog.target))}
-                onClick={() => void (resourceDialog.mode === 'rename'
-                  ? renameContextResource()
-                  : resourceDialog.mode === 'create-folder'
-                    ? createFolder()
-                    : deleteContextResource())}
-              >
-                {resourceDialog.mode === 'rename'
-                  ? t('notesWorkspace.dialog.rename', 'Rename')
-                  : resourceDialog.mode === 'create-folder'
-                    ? t('notesWorkspace.dialog.create', 'Create')
-                    : t('notesWorkspace.dialog.delete', 'Delete')}
-              </button>
-            </div>
-          </div>
         </div>
       )}
       <NotesTrashDialog

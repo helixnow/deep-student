@@ -26,6 +26,13 @@
  *   - genie-min/restore 重采样：opacity 保持到末段才消失；节奏改慢起步→
  *     中段加速→尾段减速吸入（ease-in-out），贴近真 Genie
  *
+ * L4（2026-07-19，窗口分区）：
+ *   - window-open 改「从 Dock 图标源点长出」：transform-origin 由 O9 注入
+ *     --wb-minimize-origin-x/y（无图标回退窗口中心），起始 scale 0.34，
+ *     时长 150→220ms 以容纳更长的视觉行程；RM 仍纯 fade
+ *   - genie-min/restore 非均匀形变增强：scaleX 先行塌缩（漏斗颈），
+ *     scaleY 末段急剧压缩，opacity 保持到 ~81% 才消散
+ *
  * 纪律：
  *   - 所有 keyframes 仅 transform / opacity；
  *   - 勿恢复 wb-anim-open 叠播；勿做持续 Dock bounce 循环。
@@ -62,8 +69,9 @@
   --wb-motion-breathe: 2400ms;
   /* 材质切档交叉淡化（materialTier.ts 编排，token 层消费） */
   --wb-motion-tier-fade: 220ms;
-  /* 窗口出入场（macOS 写实向：比 standard 更短，近似原生窗口） */
-  --wb-motion-window-open: 150ms;
+  /* 窗口出入场（macOS 写实向）。open 220ms：从 Dock 源点长出的行程比
+   * 旧中心弹入更长，150ms 读不出轨迹；close 保持短促消散 */
+  --wb-motion-window-open: 220ms;
   --wb-motion-window-close: 110ms;
 
   /* ==== 三态过渡（悬停 / 按压 / 焦点） =============================== */
@@ -194,12 +202,16 @@
   to { opacity: 0; transform: scale(0.97); }
 }
 
-/* --- 窗口出入场（macOS 写实向，L3） ----------------------------------------
+/* --- 窗口出入场（macOS 写实向，L3 → L4） -----------------------------------
  * 与共享 pop-in/pop-out 的差异：配合 --wb-ease-window-open/close 使用，
- * 曲线本身无回弹/无拖尾，关键帧单调；时长走 --wb-motion-window-open/close。 */
+ * 曲线本身无回弹/无拖尾，关键帧单调；时长走 --wb-motion-window-open/close。
+ * L4：open 从 Dock 图标源点长出——transform-origin 由 WindowLifecycle.css 读
+ * --wb-minimize-origin-x/y（O9 注入；无图标回退 50%/50% 即旧中心弹入）；
+ * opacity 在 45% 处即满，后半程只走 scale 轨迹，避免「半透明拖影」。 */
 @keyframes wb-kf-window-open {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+  0% { opacity: 0; transform: scale(0.34); }
+  45% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1); }
 }
 
 @keyframes wb-kf-window-close {
@@ -228,32 +240,38 @@
  * 收敛点由消费方注入 --wb-minimize-origin-x/y（缺省 50% / 130%）。
  * 密集采样 + 每段 linear：形状编码在采样点；类层 timing 用 linear。
  * L3：节奏改 ease-in-out（慢起步→中段加速→尾段减速吸入）；
- *     opacity 保持到 ~77% 才开始降（真 Genie 几乎全程不透明、末段才消失）。
+ *     opacity 保持到末段才开始降（真 Genie 几乎全程不透明、末段才消失）。
+ * L4：非均匀形变增强——真 Genie 是网格形变（CSS transform 做不到），
+ *     用「scaleX 先行塌缩（漏斗颈）、scaleY 滞后再急剧压缩、末态压成
+ *     细横条」近似漏斗吸入；X/Y 分离度较 L3 加大（60% 处 0.30 vs 0.70）。
+ *     reduced-motion 覆盖仍为纯 fade（见文末）。
  * ------------------------------------------------------------------------- */
 @keyframes wb-kf-genie-min {
   0% { opacity: 1; transform: scale(1, 1) translateY(0); animation-timing-function: linear; }
-  12% { opacity: 1; transform: scale(0.965, 0.992) translateY(0.25%); animation-timing-function: linear; }
-  26% { opacity: 1; transform: scale(0.885, 0.955) translateY(0.8%); animation-timing-function: linear; }
-  40% { opacity: 1; transform: scale(0.76, 0.88) translateY(1.7%); animation-timing-function: linear; }
-  54% { opacity: 1; transform: scale(0.6, 0.76) translateY(2.9%); animation-timing-function: linear; }
-  66% { opacity: 1; transform: scale(0.44, 0.62) translateY(4.2%); animation-timing-function: linear; }
-  77% { opacity: 1; transform: scale(0.29, 0.47) translateY(5.6%); animation-timing-function: linear; }
-  86% { opacity: 0.72; transform: scale(0.17, 0.3) translateY(6.8%); animation-timing-function: linear; }
-  93% { opacity: 0.38; transform: scale(0.09, 0.17) translateY(7.6%); animation-timing-function: linear; }
-  100% { opacity: 0; transform: scale(0.05, 0.1) translateY(8%); }
+  10% { opacity: 1; transform: scale(0.94, 0.995) translateY(0.2%); animation-timing-function: linear; }
+  22% { opacity: 1; transform: scale(0.82, 0.965) translateY(0.7%); animation-timing-function: linear; }
+  35% { opacity: 1; transform: scale(0.64, 0.905) translateY(1.6%); animation-timing-function: linear; }
+  48% { opacity: 1; transform: scale(0.46, 0.815) translateY(2.8%); animation-timing-function: linear; }
+  60% { opacity: 1; transform: scale(0.30, 0.70) translateY(4.1%); animation-timing-function: linear; }
+  71% { opacity: 1; transform: scale(0.19, 0.55) translateY(5.4%); animation-timing-function: linear; }
+  81% { opacity: 0.96; transform: scale(0.115, 0.38) translateY(6.6%); animation-timing-function: linear; }
+  89% { opacity: 0.62; transform: scale(0.068, 0.22) translateY(7.4%); animation-timing-function: linear; }
+  95% { opacity: 0.28; transform: scale(0.042, 0.115) translateY(7.8%); animation-timing-function: linear; }
+  100% { opacity: 0; transform: scale(0.03, 0.06) translateY(8%); }
 }
 
 @keyframes wb-kf-genie-restore {
-  0% { opacity: 0; transform: scale(0.05, 0.1) translateY(8%); animation-timing-function: linear; }
-  8% { opacity: 0.55; transform: scale(0.09, 0.17) translateY(7.6%); animation-timing-function: linear; }
-  16% { opacity: 0.9; transform: scale(0.16, 0.29) translateY(6.9%); animation-timing-function: linear; }
-  22% { opacity: 1; transform: scale(0.26, 0.43) translateY(6%); animation-timing-function: linear; }
-  34% { opacity: 1; transform: scale(0.42, 0.6) translateY(4.5%); animation-timing-function: linear; }
-  48% { opacity: 1; transform: scale(0.6, 0.76) translateY(3%); animation-timing-function: linear; }
-  62% { opacity: 1; transform: scale(0.76, 0.88) translateY(1.8%); animation-timing-function: linear; }
-  76% { opacity: 1; transform: scale(0.88, 0.955) translateY(0.9%); animation-timing-function: linear; }
-  88% { opacity: 1; transform: scale(0.965, 0.99) translateY(0.25%); animation-timing-function: linear; }
-  94% { opacity: 1; transform: scale(1.006, 1.003) translateY(0); animation-timing-function: linear; }
+  0% { opacity: 0; transform: scale(0.03, 0.06) translateY(8%); animation-timing-function: linear; }
+  6% { opacity: 0.42; transform: scale(0.05, 0.13) translateY(7.7%); animation-timing-function: linear; }
+  13% { opacity: 0.86; transform: scale(0.09, 0.24) translateY(7.2%); animation-timing-function: linear; }
+  20% { opacity: 1; transform: scale(0.15, 0.40) translateY(6.3%); animation-timing-function: linear; }
+  31% { opacity: 1; transform: scale(0.24, 0.57) translateY(5%); animation-timing-function: linear; }
+  44% { opacity: 1; transform: scale(0.38, 0.72) translateY(3.6%); animation-timing-function: linear; }
+  57% { opacity: 1; transform: scale(0.55, 0.84) translateY(2.3%); animation-timing-function: linear; }
+  70% { opacity: 1; transform: scale(0.72, 0.92) translateY(1.3%); animation-timing-function: linear; }
+  82% { opacity: 1; transform: scale(0.87, 0.97) translateY(0.55%); animation-timing-function: linear; }
+  91% { opacity: 1; transform: scale(0.97, 0.995) translateY(0.15%); animation-timing-function: linear; }
+  96% { opacity: 1; transform: scale(1.006, 1.002) translateY(0); animation-timing-function: linear; }
   100% { opacity: 1; transform: scale(1, 1) translateY(0); }
 }
 

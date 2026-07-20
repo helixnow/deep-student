@@ -26,6 +26,7 @@ describe('listWorkbenchShortcuts', () => {
       'move-left', 'move-right', 'move-up', 'move-down',
       'cycle-app-next', 'cycle-app-prev',
       'minimize', 'show-desktop', 'close-all', 'cheatsheet',
+      'expose-app',
     ]);
     expect(list).toHaveLength(WORKBENCH_SHORTCUT_DEFINITIONS.length);
   });

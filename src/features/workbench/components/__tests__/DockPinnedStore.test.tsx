@@ -183,19 +183,27 @@ describe('DockPinnedStore', () => {
     const { getByTestId } = render(<Harness />);
     const elA = getByTestId('pin-a');
     const elB = getByTestId('pin-b');
+    const elC = getByTestId('pin-c');
     expect(bindA).toBeTruthy();
 
-    vi.spyOn(elA, 'getBoundingClientRect').mockReturnValue({
-      width: 40,
-      height: 40,
-      top: 0,
-      left: 0,
-      bottom: 40,
-      right: 40,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect);
+    // 三项都给真实布局 rect：slotStride 取自相邻 wrap 中心差（含 gap），
+    // jsdom 默认零 rect 会让 stride 计算失真
+    const mockRect = (el: HTMLElement, left: number) => {
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+        width: 40,
+        height: 40,
+        top: 0,
+        left,
+        bottom: 40,
+        right: left + 40,
+        x: left,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    };
+    mockRect(elA, 0);
+    mockRect(elB, 44);
+    mockRect(elC, 88);
 
     animCalls.length = 0;
 

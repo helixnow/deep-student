@@ -91,6 +91,52 @@
     "processing": "Processing...",
     "noOutput": "No Output"
   },
+  "subagentEmbed": {
+    "cancel": "Cancel",
+    "cancelRequested": "Cancel request sent",
+    "cancelFailed": "Cancel failed: {{msg}}",
+    "finalResult": "Final Result",
+    "truncated": "(truncated)",
+    "ended": "Ended",
+    "tokens": "{{count}} tokens",
+    "resumed": "Resumed",
+    "errorDetail": "Error Details",
+    "failedGeneric": "Sub-agent failed without error details",
+    "copyResult": "Copy final result",
+    "pendingInbox": "{{count}} pending",
+    "pendingInboxHint": "This sub-agent has unconsumed messages; resume it to process them",
+    "openFull": "Open in full view",
+    "profile": {
+      "worker": "Worker",
+      "explorer": "Explorer",
+      "default": "Default"
+    }
+  },
+  "workspaceInjection": {
+    "titleFromCoordinator": "Message from coordinator",
+    "titleFromWorkspace": "Message from workspace",
+    "expand": "Show all",
+    "collapse": "Collapse"
+  },
+  "workspaceSend": {
+    "delivered": "Message delivered to {{target}}",
+    "failed": "Failed to deliver message to {{target}}",
+    "broadcast": "All agents (broadcast)",
+    "showMore": "Show full text",
+    "showLess": "Collapse"
+  },
+  "subagentRetry": {
+    "finalCancelled": "Sub-agent cancelled, retry terminated"
+  },
+  "sleep": {
+    "progress": "{{done}}/{{total}} done",
+    "subagent": {
+      "queued": "Queued",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted",
+      "closed": "Closed"
+    }
+  },
   "agent": {
     "you": "You"
   }

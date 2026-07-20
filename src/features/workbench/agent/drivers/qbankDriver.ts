@@ -72,7 +72,22 @@ export interface QbankControlEventDetail {
 }
 
 let deferredRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+/** 行内编辑期间到达的域事件载荷合并暂存：只保留最新 action/runId，entityIds 取并集 */
+let pendingDeferredPayload: DomainChangePayload | null = null;
 let domainUnlisten: (() => void) | null = null;
+
+function mergeDeferredPayloads(
+  previous: DomainChangePayload | null,
+  next: DomainChangePayload | undefined,
+): DomainChangePayload | null {
+  if (!next) return previous;
+  if (!previous) return next;
+  const mergedIds = [
+    ...(previous.entityIds ?? []),
+    ...(next.entityIds ?? []),
+  ].filter((id, index, ids) => typeof id === 'string' && !!id && ids.indexOf(id) === index);
+  return { ...previous, ...next, entityIds: mergedIds };
+}
 
 function emptyReceipt(
   status: AcrReceipt['status'],
@@ -89,6 +104,49 @@ function emptyReceipt(
     undone: [],
     ...partial,
   };
+}
+
+/**
+ * ACR 4.0 A3：运行中 run 追踪（参照 todoDriver/pomodoroDriver 的 activeRuns 模式），
+ * 使 abort 回执携带真实 done/undone 前缀（ACR-3.0 §3「cancelled 需已知 applied 前缀」）。
+ */
+interface QbankActiveRun {
+  runId: string;
+  ops: AgentOp[];
+  aborted: boolean;
+  done: string[];
+  undone: string[];
+  entityIds: string[];
+  applied: number;
+  totalOps: number;
+  nextOpIndex: number;
+  remainingMarked: boolean;
+}
+
+const qbankActiveRuns = new Map<string, QbankActiveRun>();
+
+function markQbankRemaining(state: QbankActiveRun): void {
+  if (state.remainingMarked) return;
+  state.remainingMarked = true;
+  for (let i = state.nextOpIndex; i < state.totalOps; i++) {
+    state.undone.push(state.ops[i]!.label || state.ops[i]!.kind);
+  }
+  state.nextOpIndex = state.totalOps;
+}
+
+function qbankCancelledReceipt(state: QbankActiveRun, message?: string): AcrReceipt {
+  markQbankRemaining(state);
+  qbankActiveRuns.delete(state.runId);
+  return withUserPatch(
+    emptyReceipt('cancelled', state.totalOps, {
+      applied: state.applied,
+      entityIds: [...state.entityIds],
+      done: [...state.done],
+      undone: [...state.undone],
+      ...(message ? { message } : {}),
+    }),
+    TYPE_ID,
+  );
 }
 
 /**
@@ -152,24 +210,36 @@ function dispatchFocusEvent(questionId: string): QbankFocusResult | null {
 export async function refreshQbankPreservingCurrent(
   payload?: DomainChangePayload,
 ): Promise<void> {
-  // R2-04：答题中（答案输入焦点）与行内编辑同一守卫——延迟而非冲掉草稿
+  // R2-04：答题中（答案输入焦点）与行内编辑同一守卫——延迟而非冲掉草稿。
+  // 编辑期间可能连续到达多个域事件：合并 entityIds 而不是只保留最后一个，
+  // 否则先到事件对应题目的刷新/flash 会被静默丢弃。
   if (isQbankAnsweringOrEditing()) {
+    pendingDeferredPayload = mergeDeferredPayloads(pendingDeferredPayload, payload);
     if (deferredRefreshTimer) clearTimeout(deferredRefreshTimer);
     deferredRefreshTimer = setTimeout(() => {
       deferredRefreshTimer = null;
-      void refreshQbankPreservingCurrent(payload);
+      const merged = pendingDeferredPayload;
+      pendingDeferredPayload = null;
+      void refreshQbankPreservingCurrent(merged ?? undefined);
     }, 800);
     return;
   }
 
   const store = useQuestionBankStore.getState();
   const preservedId = store.currentQuestionId;
-  await store.refreshQuestions();
-  if (preservedId) {
-    const after = useQuestionBankStore.getState();
-    if (after.questions.has(preservedId)) {
-      after.setCurrentQuestion(preservedId);
+  try {
+    await store.refreshQuestions();
+    if (preservedId) {
+      const after = useQuestionBankStore.getState();
+      // 题目可能已被删除：不存在时不强行恢复，让 store 的默认选中生效
+      if (after.questions.has(preservedId)) {
+        after.setCurrentQuestion(preservedId);
+      }
     }
+  } catch (error) {
+    // refreshQuestions 失败不能吞成 unhandled rejection；
+    // 仍然广播刷新事件，让 ExamContentView 等本地持有题目的视图自行重试。
+    console.warn('[qbankDriver] refreshQuestions failed after domain change:', error);
   }
 
   const entityIds = payload
@@ -222,24 +292,27 @@ export const qbankDriver: CollabDriver & {
   },
 
   async apply(run: AcrRunContext, ops: AgentOp[]): Promise<AcrReceipt> {
-    const done: string[] = [];
-    const undone: string[] = [];
-    const entityIds: string[] = [];
-    let applied = 0;
     const totalOps = ops.length;
+    const state: QbankActiveRun = {
+      runId: run.runId,
+      ops,
+      aborted: false,
+      done: [],
+      undone: [],
+      entityIds: [],
+      applied: 0,
+      totalOps,
+      nextOpIndex: 0,
+      remainingMarked: false,
+    };
+    qbankActiveRuns.set(run.runId, state);
 
     for (let i = 0; i < ops.length; i++) {
-      const pause = await run.checkPaused();
+      state.nextOpIndex = i;
+      const pause = state.aborted ? 'abort' : await run.checkPaused();
       if (pause === 'abort') {
-        return withUserPatch(
-          emptyReceipt('cancelled', totalOps, {
-            applied,
-            entityIds,
-            done,
-            undone: [...undone, ...ops.slice(i).map((op) => op.label || op.kind)],
-          }),
-          TYPE_ID,
-        );
+        state.aborted = true;
+        return qbankCancelledReceipt(state);
       }
 
       const op = ops[i]!;
@@ -248,21 +321,22 @@ export const qbankDriver: CollabDriver & {
       if (op.kind === 'qbank_focus_question' || op.kind === 'focus_question') {
         const questionId = parseQuestionId(op);
         if (!questionId) {
-          undone.push(op.label || op.kind);
+          state.undone.push(op.label || op.kind);
         } else {
           const store = useQuestionBankStore.getState();
           const focusResult = dispatchFocusEvent(questionId);
           if (!focusResult?.handled) {
-            undone.push(`${op.label || op.kind}（可见题库未找到该题）`);
+            state.undone.push(`${op.label || op.kind}（可见题库未找到该题）`);
+            state.nextOpIndex = i + 1;
             await run.pacing.tick(listTickCost(run.pacing.profile));
             continue;
           }
           const previousQuestionId = focusResult.previousQuestionId;
           store.setCurrentQuestion(questionId);
           agentFlash(TYPE_ID, questionId);
-          entityIds.push(questionId);
-          done.push(op.label || `聚焦题目 ${questionId}`);
-          applied += 1;
+          state.entityIds.push(questionId);
+          state.done.push(op.label || `聚焦题目 ${questionId}`);
+          state.applied += 1;
           // 没有前选中项时，记录一个只恢复 store 却无法恢复视图的 inverse 会让撤销撒谎。
           if (previousQuestionId && previousQuestionId !== questionId) {
             run.ledger.record(
@@ -279,16 +353,20 @@ export const qbankDriver: CollabDriver & {
           }
         }
       } else {
-        undone.push(op.label || op.kind);
+        state.undone.push(op.label || op.kind);
       }
+      state.nextOpIndex = i + 1;
 
       await run.pacing.tick(listTickCost(run.pacing.profile));
     }
 
+    if (state.aborted) return qbankCancelledReceipt(state);
+    qbankActiveRuns.delete(run.runId);
+
     const status: AcrReceipt['status'] =
-      applied === totalOps && undone.length === 0
+      state.applied === totalOps && state.undone.length === 0
         ? 'completed'
-        : applied > 0
+        : state.applied > 0
           ? 'partial'
           : totalOps === 0
             ? 'completed'
@@ -297,11 +375,11 @@ export const qbankDriver: CollabDriver & {
     return {
       status,
       mode: 'frontend',
-      applied,
+      applied: state.applied,
       totalOps,
-      entityIds,
-      done,
-      undone,
+      entityIds: state.entityIds,
+      done: state.done,
+      undone: state.undone,
       message:
         status === 'failed'
           ? 'qbank driver 仅支持导航 op（qbank_focus_question）；数据修改请用领域工具'
@@ -310,6 +388,11 @@ export const qbankDriver: CollabDriver & {
   },
 
   abort(runId: string): AcrReceipt {
+    const state = qbankActiveRuns.get(runId);
+    if (state) {
+      state.aborted = true;
+      return qbankCancelledReceipt(state, 'qbank 导航已中止');
+    }
     return withUserPatch(
       emptyReceipt('cancelled', 0, {
         message: `run ${runId} aborted`,
@@ -344,4 +427,5 @@ export function __resetQbankDriverForTests(): void {
     clearTimeout(deferredRefreshTimer);
     deferredRefreshTimer = null;
   }
+  pendingDeferredPayload = null;
 }

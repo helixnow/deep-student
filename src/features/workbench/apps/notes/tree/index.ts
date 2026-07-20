@@ -3,6 +3,7 @@ export { default } from './NotesWorkspaceTree';
 export { TreeRow } from './TreeRow';
 export { TreeContextMenu } from './TreeContextMenu';
 export { calculateDropPosition, isInvalidFolderDrop } from './dropPosition';
+export { animateTreeRowsExit, collectVisibleSubtreeRowIds } from './collapseMotion';
 export {
   resolveRangeSelection,
   resolveTreeKeyboardNav,

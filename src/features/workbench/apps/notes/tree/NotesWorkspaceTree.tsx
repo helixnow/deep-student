@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import { cn } from '@/lib/utils';
 import { calculateDropPosition, isInvalidFolderDrop } from './dropPosition';
+import { animateTreeRowsExit, collectVisibleSubtreeRowIds } from './collapseMotion';
 import {
   collectDescendantIds,
   excludeNestedIds,
@@ -198,6 +199,30 @@ export function NotesWorkspaceTree({
     if (onExpand) onExpand(id);
     else onToggleExpand(id);
   }, [onExpand, onToggleExpand]);
+
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+
+  /**
+   * 折叠动画版 toggle：折叠展开中的文件夹时，先对其可见后代行播
+   * 高度收拢退场（WAAPI，见 collapseMotion.ts），动画结束再提交给宿主；
+   * 展开路径立即提交，行入场沿用 CSS 的 nwt-row-reveal 淡入。
+   * 批量展开/折叠（toggleExpandAll）不走此路径——嵌套子树会重复动画。
+   */
+  const toggleExpandAnimated = useCallback((id: string) => {
+    if (expandedRef.current.has(id)) {
+      const item = findItemById(items, id);
+      if (item && isFolderItem(item)) {
+        animateTreeRowsExit(
+          treeRef.current,
+          collectVisibleSubtreeRowIds(rowsRef.current, id),
+          () => onToggleExpand(id),
+        );
+        return;
+      }
+    }
+    onToggleExpand(id);
+  }, [items, onToggleExpand]);
 
   const scheduleAutoExpand = useCallback((targetId: string) => {
     if (expandedRef.current.has(targetId)) {
@@ -501,9 +526,9 @@ export function NotesWorkspaceTree({
     applySelection([item.id], item.id);
     setFocusedId(item.id);
     notifyLead(item.id);
-    if (isFolderItem(item)) onToggleExpand(item.id);
+    if (isFolderItem(item)) toggleExpandAnimated(item.id);
     else onOpen(item.id);
-  }, [applySelection, notifyLead, onOpen, onToggleExpand, rows, selectedId, visibleIds]);
+  }, [applySelection, notifyLead, onOpen, toggleExpandAnimated, rows, selectedId, visibleIds]);
 
   const handleRootSelect = useCallback(() => {
     applySelection([], null);
@@ -655,7 +680,7 @@ export function NotesWorkspaceTree({
       applySelection([result.id], result.id);
       setFocusedId(result.id);
       notifyLead(result.id);
-      onToggleExpand(result.id);
+      toggleExpandAnimated(result.id);
       return;
     }
     if (result.type === 'open') {
@@ -740,7 +765,7 @@ export function NotesWorkspaceTree({
                 onSelect={onSelect}
                 onRowClick={handleRowClick}
                 onOpen={onOpen}
-                onToggleExpand={onToggleExpand}
+                onToggleExpand={toggleExpandAnimated}
                 onRenameCommit={commitRename}
                 onRenameCancel={endRename}
                 onRenameStart={beginRename}

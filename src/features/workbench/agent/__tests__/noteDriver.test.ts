@@ -561,6 +561,68 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     );
   });
 
+  it('ACR 4.0：probe 带 windowId 时严格按窗口取编辑器，不漂移到最近注册实例', () => {
+    const cleanApi = makeEditorApi({ focused: false });
+    const hotApi = makeEditorApi({ focused: true });
+    registerNoteEditor(NOTE_ID, cleanApi as unknown as CrepeEditorApi, 'win-clean');
+    // hot 实例最近注册：无 windowId 的 probe 回落它
+    registerNoteEditor(NOTE_ID, hotApi as unknown as CrepeEditorApi, 'win-hot');
+
+    expect(noteDriver.probe({ typeId: 'note', resourceId: NOTE_ID })).toBe('hot');
+    // 收紧后：windowId 指向 clean 实例时必须探测该实例（此前会漂移到 hot）
+    expect(
+      noteDriver.probe({ typeId: 'note', resourceId: NOTE_ID, windowId: 'win-clean' }),
+    ).toBe('clean');
+    expect(
+      noteDriver.probe({ typeId: 'note', resourceId: NOTE_ID, windowId: 'win-hot' }),
+    ).toBe('hot');
+    // 指定窗口没有挂载该资源 → closed（与 apply 的选择器一致）
+    expect(
+      noteDriver.probe({ typeId: 'note', resourceId: NOTE_ID, windowId: 'win-missing' }),
+    ).toBe('closed');
+
+    unregisterNoteEditor(NOTE_ID, cleanApi as unknown as CrepeEditorApi, 'win-clean');
+    unregisterNoteEditor(NOTE_ID, hotApi as unknown as CrepeEditorApi, 'win-hot');
+  });
+
+  it('ACR 4.0：clean 破坏类直改后调用 agentFlashChange 做变更区域演出', async () => {
+    const api = makeEditorApi({ markdown: 'old body' });
+    const flashCalls: Array<[string, string]> = [];
+    (api as unknown as { agentFlashChange: (p: string, n: string) => boolean }).agentFlashChange =
+      (previous: string, next: string) => {
+        flashCalls.push([previous, next]);
+        return true;
+      };
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+
+    const receipt = await noteDriver.apply(makeRun(), [
+      {
+        kind: 'note_set',
+        destructive: true,
+        label: '整篇设置',
+        payload: { content: 'brand new body' },
+      },
+    ]);
+
+    expect(receipt.status).toBe('completed');
+    expect(flashCalls).toEqual([['old body', 'brand new body']]);
+  });
+
+  it('ACR 4.0：编辑器未实现 agentFlashChange 时直改路径不受影响', async () => {
+    const api = makeEditorApi({ markdown: 'old' });
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    const receipt = await noteDriver.apply(makeRun(), [
+      {
+        kind: 'note_set',
+        destructive: true,
+        label: '整篇设置',
+        payload: { content: 'new' },
+      },
+    ]);
+    expect(receipt.status).toBe('completed');
+    expect(api.getMarkdown()).toBe('new');
+  });
+
   it('S-SUG-04：失焦后保留 selection 也不是 hot', () => {
     const api = makeEditorApi({ focused: false }) as unknown as CrepeEditorApi & {
       captureSelection: () => { from: number; to: number } | null;

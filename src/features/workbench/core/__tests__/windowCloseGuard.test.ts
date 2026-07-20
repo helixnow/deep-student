@@ -3,6 +3,12 @@ import { appRegistry } from '../appRegistry';
 import { resetWindowStoreForTests, useWindowStore } from '../windowStore';
 import { workbenchBus } from '../workbenchBus';
 import { requestCloseAnimated } from '../../hooks/useWindowLifecycleAnim';
+import {
+  __resetWindowDirtyForTests,
+  isWindowDirty,
+  setWindowDirty,
+  subscribeWindowDirty,
+} from '../windowCloseGuard';
 import type { AppDefinition } from '../types';
 
 const TYPE_ID = 'close-single-flight-test';
@@ -24,6 +30,7 @@ beforeEach(() => {
   resetWindowStoreForTests({ w: 1400, h: 900 });
   workbenchBus.setEnabled(true);
   canCloseImpl = () => true;
+  __resetWindowDirtyForTests();
 });
 
 function openWindow(): string {
@@ -60,5 +67,33 @@ describe('window close confirmation single-flight', () => {
     resolve(true);
     await expect(Promise.all([animated, direct])).resolves.toEqual([true, true]);
     expect(canClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('窗口脏状态通道（P1 未保存圆点）', () => {
+  it('setWindowDirty 可查询、可清除，未标记窗口默认干净', () => {
+    expect(isWindowDirty('win-a')).toBe(false);
+    setWindowDirty('win-a', true);
+    expect(isWindowDirty('win-a')).toBe(true);
+    expect(isWindowDirty('win-b')).toBe(false);
+    setWindowDirty('win-a', false);
+    expect(isWindowDirty('win-a')).toBe(false);
+  });
+
+  it('脏状态变化通知订阅者；幂等写入不重复通知', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeWindowDirty(listener);
+
+    setWindowDirty('win-a', true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    // 幂等：同值再写不通知
+    setWindowDirty('win-a', true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    setWindowDirty('win-a', false);
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    setWindowDirty('win-a', true);
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 });

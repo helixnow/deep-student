@@ -184,9 +184,18 @@
   color: hsl(var(--warning, 38 92% 50%));
 }
 
+.nwt-rename-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
 .nwt-rename-input {
   flex: 1;
   min-width: 0;
+  width: 100%;
   height: 22px;
   margin: 0;
   padding: 0 4px;
@@ -199,6 +208,35 @@
   outline: none;
   /* 与 .notes-search 聚焦态一致的 1px ring 光晕 */
   box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+.nwt-rename-input[aria-invalid='true'] {
+  border-color: hsl(var(--destructive));
+  box-shadow: 0 0 0 1px hsl(var(--destructive) / 55%);
+}
+
+/* 重命名输入下方的内联提示（超限红字 / 接近上限字符计数）。
+   行高固定 30px，提示以行内浮出呈现，不挤压树布局 */
+.nwt-rename-hint {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  padding: 2px 7px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control, 6px);
+  background: hsl(var(--popover, var(--background)));
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: var(--notes-popover-shadow, 0 4px 12px hsl(var(--shadow-base, 0 0% 0%) / 0.12));
+  pointer-events: none;
+}
+
+.nwt-rename-hint[data-tone='error'] {
+  color: hsl(var(--destructive));
 }
 
 .nwt-drop-indicator {
@@ -344,6 +382,25 @@
   height: 1px;
   margin: 4px 6px;
   background: hsl(var(--border));
+}
+
+/* 展开/新载入的行做一次性淡入下滑（140ms，一次性、非循环动画） */
+@media (prefers-reduced-motion: no-preference) {
+  .nwt-row {
+    animation: nwt-row-reveal 140ms ease-out;
+  }
+}
+
+@keyframes nwt-row-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -14,6 +14,29 @@
   outline: none;
 }
 
+/*
+ * ANTI-REGRESSION：壳层拖/缩时 useDragRenderPause 挂上 data-wb-render-paused。
+ * 只命中宿主与已知动画节点，禁止 `host *` 通配（起拖全子树样式匹配会卡一下）。
+ */
+.wb-file-preview[data-wb-render-paused] {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+/* animation-play-state 不下沉到后代：点名本文件内的动画/过渡节点 */
+.wb-file-preview[data-wb-render-paused] .wb-file-preview-spinner,
+.wb-file-preview[data-wb-render-paused] .wb-file-preview-search,
+.wb-file-preview[data-wb-render-paused] .wb-file-preview-search input {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+/* 拖/缩：根旗即可停宿主动画，不依赖延后的 per-host attr */
+:root[data-wb-dragging] .wb-file-preview,
+:root[data-wb-settling] .wb-file-preview {
+  animation-play-state: paused;
+}
+
 .wb-file-preview-toolbar {
   display: flex;
   align-items: center;

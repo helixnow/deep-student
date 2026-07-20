@@ -30,6 +30,20 @@ function invalid(hint: string): ActivationResult {
   return { handled: false, code: 'INVALID_ARGS', hint };
 }
 
+/**
+ * 桌面回收站是主内容区的内联视图（useTodoTrashView）；导航类 action
+ * 生效前必须收起，否则 store 状态已切换但主区仍停留在回收站。
+ * 动态 import + 容错：视图模块加载失败（如精简测试环境）不阻断导航。
+ */
+async function closeTrashViewBestEffort(): Promise<void> {
+  try {
+    const { useTodoTrashView } = await import('@/features/todo/components/TodoTrashDialog');
+    useTodoTrashView.getState().close();
+  } catch {
+    // 回收站视图属 UI 增强；模块不可用时导航行为保持原样
+  }
+}
+
 /** 导出供单测与 AppDefinition.onActivation。 */
 export async function handleTodoActivation(ctx: ActivationContext): Promise<ActivationResult> {
   const { useTodoStore } = await import('@/features/todo/stores/useTodoStore');
@@ -37,12 +51,14 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
 
   switch (ctx.action) {
     case 'showAutomations': {
+      await closeTrashViewBestEffort();
       store.setWorkspaceView('automations');
       return { handled: true };
     }
     case 'showList': {
       const listId = payloadString(ctx.payload, 'listId');
       if (!listId) return invalid('showList 需要 payload.listId');
+      await closeTrashViewBestEffort();
       store.setWorkspaceView('todos');
       store.setActiveList(listId);
       await useTodoStore.getState().reloadCurrentView();
@@ -57,6 +73,7 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
         item = await getTodoItem(itemId) ?? undefined;
       }
       if (!item) return invalid('focusItem 指向的待办不存在');
+      await closeTrashViewBestEffort();
       const current = useTodoStore.getState();
       current.setWorkspaceView('todos');
       if (current.filter.view !== 'all') current.setViewFilter('all');
@@ -80,6 +97,7 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
         ?? current.lists.find((list) => list.isDefault)?.id
         ?? current.lists[0]?.id;
       if (!listId) return invalid('quickAdd 找不到可用待办清单');
+      await closeTrashViewBestEffort();
       current.setWorkspaceView('todos');
       if (current.filter.view !== 'all') current.setViewFilter('all');
       useTodoStore.getState().setActiveList(listId);
@@ -92,6 +110,7 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
       if (!view || !TODO_VIEWS.has(view)) {
         return invalid('showView 需要 view=all|today|upcoming|overdue|completed|matrix');
       }
+      await closeTrashViewBestEffort();
       store.setWorkspaceView('todos');
       store.setViewFilter(view);
       await useTodoStore.getState().reloadCurrentView();

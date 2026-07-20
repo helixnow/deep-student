@@ -15,6 +15,8 @@ import {
   stableAgentRef,
   stableRevision,
 } from '../agentManifestUtils';
+import { getContentAgentSurface } from './contentAgentSurfaces';
+import { normalizeResourceInstanceKey } from './resourceIdentity';
 import { getResourceWorkspaceActive } from './resourceWorkspaceRegistry';
 
 const PRACTICE_MODES = [
@@ -201,7 +203,7 @@ export function createExamAgentManifest(
         mode: state.practiceMode,
         busy: state.isLoading || state.isSubmitting || state.isLoadingPractice,
         selection: state.currentQuestionId ? [questionRef(state.currentQuestionId)] : [],
-        availableActions: ['focusQuestion', 'nextQuestion', 'previousQuestion', 'setFilters', 'resetFilters', 'setPracticeMode', 'hydratePracticeSession'],
+        availableActions: ['focusQuestion', 'nextQuestion', 'previousQuestion', 'setFilters', 'resetFilters', 'setPracticeMode', 'hydratePracticeSession', 'setFocusMode', 'showSettings'],
         entities,
         affordances: entities.map((entity) => ({
           ref: entity.ref,
@@ -254,14 +256,6 @@ export function createExamAgentManifest(
         ),
       };
       const requestedArgs = actionArgs(action);
-      if (action.name === 'setFocusMode' || action.name === 'showSettings') {
-        return {
-          handled: false,
-          changed: false,
-          code: 'ACTION_UNAVAILABLE',
-          hint: `${action.name} 尚未提供题库表面 ACK`,
-        };
-      }
       let expectedQuestionId: string | null = null;
       if (action.name === 'focusQuestion' && typeof requestedArgs.questionId === 'string') {
         const mismatch = rejectMismatchedTarget(action, questionRef(requestedArgs.questionId));
@@ -287,9 +281,31 @@ export function createExamAgentManifest(
       }
       const result = await executeActivation(activation, ctx, action);
       if (!result.handled) return result;
-      // Settings are per-resource visual state. The activation event is the
-      // authoritative delivery mechanism, so do not invent a global state
-      // postcondition or undo record for it.
+      // ACR 4.0（A7）：exam:setFocusMode / exam:openSettings 的表面 ACK 带回
+      // changed 与 previous* 前值；这两个字段是内部交接，剥离后不进回执。
+      const surfaceAck = result as AgentActionResult & {
+        previousOpen?: boolean;
+        previousEnabled?: boolean;
+      };
+      const previousSettingsOpen = surfaceAck.previousOpen;
+      delete surfaceAck.previousOpen;
+      delete surfaceAck.previousEnabled;
+      if (action.name === 'showSettings') {
+        // 设置面板是资源视图局部状态（不进全局 store）：以视图 ACK 为准，
+        // no-op 诚实报告 changed:false 而非伪造成功。
+        result.acknowledged = true;
+        result.changed = result.changed !== false;
+        if (result.changed && typeof previousSettingsOpen === 'boolean') {
+          result.undo = {
+            inverse: {
+              name: 'showSettings',
+              args: { open: previousSettingsOpen },
+            },
+            label: '恢复设置面板',
+          };
+        }
+        return result;
+      }
       const after = useQuestionBankStore.getState();
       result.changed = stableRevision(snapshot) !== stableRevision({
         currentQuestionId: after.currentQuestionId,
@@ -364,32 +380,210 @@ export function createResourceContentManifest(
   activation: (ctx: ActivationContext) => ActivationHandlerResult | Promise<ActivationHandlerResult>,
 ): AppAgentManifest {
   const canGotoPage = typeId === 'textbook' || typeId === 'file' || typeId === 'file-preview';
+  // ACR 4.0（A7）：translation/essay/image 视图挂载期注册真实可得的
+  // 观察投影（contentAgentSurfaces）；image 额外提供 setZoom 动作落点。
+  const hasContentSurface = typeId === 'translation' || typeId === 'essay' || typeId === 'image';
+  const canSetZoom = typeId === 'image';
+
+  // essay 为 single 资源工作区：instanceKey 缺省时回退到工作区当前资源
+  const resolveResourceId = (instanceKey: string | null): string | null =>
+    normalizeResourceInstanceKey(instanceKey)
+      ?? (typeId === 'essay' ? getResourceWorkspaceActive('essay') : null);
+
+  // A45-5（docs/dev/acr/ACR-4.5.md）：image 视图态能力 = 缩放 + 旋转。
+  // UI 还有拖拽平移（无程序化落点表面）与「保存到本地」（走 OS 保存对话框，
+  // 需用户交互），均不作为 agent 能力暴露——只报真可用。
+  const canRotate = typeId === 'image';
+
+  const description = canGotoPage
+    ? '观察资源预览并按页导航；内容本身通过领域工具读取或修改。'
+    : hasContentSurface
+      ? canSetZoom
+        ? '观察图片尺寸/缩放/旋转态，可设置缩放与旋转（视图态，不修改图片文件）；内容本身通过领域工具读取或修改。'
+        : '观察资源身份与内容摘要（字数/段落/状态）；该应用尚无安全的 ACR 写操作。'
+      : '暴露当前资源身份和就绪状态；该应用尚无安全的 ACR 语义操作。';
+
   return {
     version: 2,
-    description: canGotoPage
-      ? '观察资源预览并按页导航；内容本身通过领域工具读取或修改。'
-      : '暴露当前资源身份和就绪状态；该应用尚无安全的 ACR 语义操作。',
-    capabilities: canGotoPage
-      ? [{
-          name: 'gotoPage', description: '跳转到指定页码。',
-          inputSchema: objectSchema({ page: { type: 'integer', minimum: 1 } }, ['page']),
-          risk: 'read' as const, mutates: true, reversible: false, idempotent: true,
-        }]
-      : [],
+    description,
+    capabilities: [
+      ...(canGotoPage
+        ? [{
+            name: 'gotoPage', description: '跳转到指定页码。',
+            inputSchema: objectSchema({ page: { type: 'integer', minimum: 1 } }, ['page']),
+            risk: 'read' as const, mutates: true, reversible: false, idempotent: true,
+          }]
+        : []),
+      ...(canSetZoom
+        ? [{
+            name: 'setZoom',
+            description: "设置图片缩放：zoom 为 10–800 的百分比（100 = 原始像素），或 'fit' 适应窗口。",
+            inputSchema: objectSchema({
+              zoom: {
+                anyOf: [
+                  { type: 'number' as const, minimum: 10, maximum: 800 },
+                  { type: 'string' as const, const: 'fit' },
+                ],
+              },
+            }, ['zoom']),
+            risk: 'read' as const, mutates: true, reversible: true, idempotent: true,
+          }]
+        : []),
+      // A45-5：旋转为视图态操作（低风险），可用 undo 反向旋转恢复；
+      // 连续执行会继续叠加旋转，非幂等。
+      ...(canRotate
+        ? [{
+            name: 'rotate',
+            description: '顺时针旋转图片视图 90/180/270 度；只改变查看朝向，不修改图片文件。',
+            inputSchema: objectSchema({
+              degrees: { type: 'integer' as const, enum: [90, 180, 270] },
+            }, ['degrees']),
+            risk: 'low' as const, mutates: true, reversible: true, idempotent: false,
+          }]
+        : []),
+    ],
     observe(ctx) {
+      const resourceId = resolveResourceId(ctx.instanceKey);
+      const surface = hasContentSurface ? getContentAgentSurface(typeId, resourceId) : null;
+      const summary = surface?.getSummary() ?? null;
       const ref = stableAgentRef(typeId, 'resource', ctx.instanceKey ?? 'home');
+      const actions = [
+        ...(canGotoPage ? ['gotoPage'] : []),
+        // 能力表静态声明 setZoom/rotate，但可用动作只在视图表面真实挂载时上报
+        ...(canSetZoom && surface?.setZoom ? ['setZoom'] : []),
+        ...(canRotate && surface?.rotate ? ['rotate'] : []),
+      ];
       return {
-        revision: stableRevision(typeId, ctx.instanceKey),
+        revision: stableRevision(typeId, ctx.instanceKey, summary),
         route: `${typeId}/${ctx.instanceKey ?? 'home'}`,
         mode: canGotoPage ? 'preview' : 'resource',
         selection: ctx.instanceKey ? [ref] : [],
-        availableActions: canGotoPage ? ['gotoPage'] : [],
-        entities: ctx.instanceKey ? [{ ref, kind: `${typeId}-resource`, label: ctx.instanceKey, actions: canGotoPage ? ['gotoPage'] : [] }] : [],
-        affordances: ctx.instanceKey ? [{ ref, kind: `${typeId}-resource`, label: ctx.instanceKey, actions: canGotoPage ? ['gotoPage'] : [], selected: true }] : [],
-        state: { resourceId: ctx.instanceKey, ready: Boolean(ctx.instanceKey) },
+        availableActions: actions,
+        entities: ctx.instanceKey ? [{ ref, kind: `${typeId}-resource`, label: ctx.instanceKey, actions }] : [],
+        affordances: ctx.instanceKey ? [{ ref, kind: `${typeId}-resource`, label: ctx.instanceKey, actions, selected: true }] : [],
+        state: {
+          resourceId: ctx.instanceKey,
+          ready: Boolean(ctx.instanceKey),
+          ...(summary ? { content: summary } : {}),
+        },
       };
     },
     async execute(ctx, action): Promise<AgentActionResult> {
+      if (canSetZoom && action.name === 'setZoom') {
+        const resourceId = resolveResourceId(ctx.instanceKey);
+        const surface = getContentAgentSurface(typeId, resourceId);
+        if (!surface?.setZoom) {
+          return {
+            handled: false,
+            changed: false,
+            code: 'ACTION_UNAVAILABLE',
+            hint: '图片视图未挂载，无法缩放',
+          };
+        }
+        const zoomArg = actionArgs(action).zoom;
+        const zoom = zoomArg === 'fit'
+          ? 'fit' as const
+          : typeof zoomArg === 'number' && Number.isFinite(zoomArg)
+            ? zoomArg
+            : null;
+        if (zoom == null) {
+          return {
+            handled: false,
+            changed: false,
+            code: 'INVALID_ARGS',
+            hint: "setZoom 需要 zoom：10–800 的百分比或 'fit'",
+          };
+        }
+        const before = surface.getZoomState?.() ?? null;
+        const outcome = surface.setZoom(zoom);
+        if (!outcome.handled) {
+          return {
+            handled: false,
+            changed: false,
+            code: outcome.code ?? 'ACTION_UNAVAILABLE',
+            hint: outcome.hint,
+          };
+        }
+        const result: AgentActionResult = {
+          handled: true,
+          changed: outcome.changed !== false,
+          acknowledged: true,
+          entityRefs: [stableAgentRef(typeId, 'resource', ctx.instanceKey ?? 'unknown')],
+        };
+        if (result.changed && before) {
+          result.undo = {
+            inverse: {
+              name: 'setZoom',
+              args: { zoom: before.fitMode ? 'fit' : before.zoomPercent },
+            },
+            label: '恢复图片缩放',
+          };
+        }
+        return result;
+      }
+      // A45-5：rotate 走挂载视图的真实表面落点；未挂载/未加载完成诚实失败。
+      if (canRotate && action.name === 'rotate') {
+        const resourceId = resolveResourceId(ctx.instanceKey);
+        const surface = getContentAgentSurface(typeId, resourceId);
+        if (!surface?.rotate) {
+          return {
+            handled: false,
+            changed: false,
+            code: 'ACTION_UNAVAILABLE',
+            hint: '图片视图未挂载，无法旋转',
+          };
+        }
+        const degreesArg = actionArgs(action).degrees;
+        const degrees = degreesArg === 90 || degreesArg === 180 || degreesArg === 270
+          ? degreesArg
+          : null;
+        if (degrees == null) {
+          return {
+            handled: false,
+            changed: false,
+            code: 'INVALID_ARGS',
+            hint: 'rotate 需要 degrees：90/180/270（顺时针）',
+          };
+        }
+        // 执行前读旋转角（undo/回执用）。React 状态异步提交，执行后同步 re-read
+        // 拿不到新值；90/180/270 的增量对归一化角必然产生变化，changed 由
+        // 表面回执 + 增量语义共同判定，不伪造。
+        const beforeRotation = surface.getRotation?.() ?? null;
+        const outcome = surface.rotate(degrees);
+        if (!outcome.handled) {
+          return {
+            handled: false,
+            changed: false,
+            code: outcome.code ?? 'ACTION_UNAVAILABLE',
+            hint: outcome.hint,
+          };
+        }
+        const result: AgentActionResult = {
+          handled: true,
+          changed: outcome.changed !== false,
+          acknowledged: true,
+          entityRefs: [stableAgentRef(typeId, 'resource', ctx.instanceKey ?? 'unknown')],
+          ...(beforeRotation != null
+            ? {
+                details: {
+                  previousRotation: beforeRotation,
+                  rotation: (beforeRotation + degrees) % 360,
+                },
+              }
+            : {}),
+        };
+        if (result.changed) {
+          // 反向旋转恢复：90↔270、180↔180，均在 schema 枚举内
+          result.undo = {
+            inverse: {
+              name: 'rotate',
+              args: { degrees: (360 - degrees) as 90 | 180 | 270 },
+            },
+            label: '恢复图片旋转',
+          };
+        }
+        return result;
+      }
       const result = await executeActivation(activation, ctx, action);
       if (!result.handled) return result;
       const args = actionArgs(action);

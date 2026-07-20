@@ -459,7 +459,8 @@ describe('NotesWorkspaceApp', () => {
     try {
       fireEvent.contextMenu(screen.getByRole('treeitem', { name: /课堂笔记/ }));
       fireEvent.click(screen.getByRole('menuitem', { name: /删除|Delete/ }));
-      const dialog = await screen.findByRole('dialog', { name: /移到回收站|Move to trash/ });
+      // 删除确认是非模态内联确认条（role=group），不是 dialog
+      const dialog = await screen.findByRole('group', { name: /移到回收站|Move to trash/ });
       fireEvent.click(within(dialog).getByRole('button', { name: /删除|Delete/ }));
 
       await waitFor(() => {
@@ -741,13 +742,13 @@ describe('NotesWorkspaceApp', () => {
 
     dispatchWorkspaceCommand('quick-switch');
 
-    const dialog = await screen.findByRole('dialog', { name: /Search notes|搜索笔记/ });
+    const dialog = await screen.findByRole('region', { name: /Search notes|搜索笔记/ });
     expect(within(dialog).getByRole('button', { name: /Quick open|快速切换/ })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(within(dialog).getByRole('option', { name: /课堂笔记/ }));
 
     expect(await screen.findByTestId('note-editor-note_1')).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: /Search notes|搜索笔记/ })).toBeNull();
+      expect(screen.queryByRole('region', { name: /Search notes|搜索笔记/ })).toBeNull();
     });
   });
 
@@ -757,7 +758,7 @@ describe('NotesWorkspaceApp', () => {
 
     fireEvent.keyDown(window, { key: 'p', metaKey: true });
 
-    const dialog = await screen.findByRole('dialog', { name: /Search notes|搜索笔记/ });
+    const dialog = await screen.findByRole('region', { name: /Search notes|搜索笔记/ });
     expect(within(dialog).getByRole('button', { name: /Quick open|快速切换/ }))
       .toHaveAttribute('aria-pressed', 'true');
   });
@@ -772,7 +773,7 @@ describe('NotesWorkspaceApp', () => {
 
     dispatchWorkspaceCommand('search-content');
 
-    const dialog = await screen.findByRole('dialog', { name: /Search notes|搜索笔记/ });
+    const dialog = await screen.findByRole('region', { name: /Search notes|搜索笔记/ });
     expect(within(dialog).getByRole('button', { name: /Search content|搜索内容/ })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: '内容' } });
 
@@ -790,7 +791,7 @@ describe('NotesWorkspaceApp', () => {
     render(<NotesWorkspaceApp {...props()} />);
     await screen.findByText('课堂笔记');
     dispatchWorkspaceCommand('search-content');
-    const dialog = await screen.findByRole('dialog', { name: /Search notes|搜索笔记/ });
+    const dialog = await screen.findByRole('region', { name: /Search notes|搜索笔记/ });
     fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: '内容' } });
     fireEvent.click(await within(dialog).findByRole('option', { name: /匹配笔记/ }));
 
@@ -804,11 +805,11 @@ describe('NotesWorkspaceApp', () => {
 
     dispatchWorkspaceCommand('toggle-backlinks');
 
-    expect(await screen.findByRole('complementary', { name: /Linked notes|Links|关联笔记/ })).toBeInTheDocument();
+    expect(await screen.findByRole('complementary', { name: /Note info panel|笔记信息面板|Linked notes|关联笔记/ })).toBeInTheDocument();
     await waitFor(() => expect(getContent).toHaveBeenCalledWith('/course/note_1'));
 
     dispatchWorkspaceCommand('toggle-backlinks');
-    expect(screen.queryByRole('complementary', { name: /Linked notes|Links|关联笔记/ })).toBeNull();
+    expect(screen.queryByRole('complementary', { name: /Note info panel|笔记信息面板|Linked notes|关联笔记/ })).toBeNull();
   });
 
   it('opens the visible properties outline from toggle-outline', async () => {
@@ -817,7 +818,7 @@ describe('NotesWorkspaceApp', () => {
 
     dispatchWorkspaceCommand('toggle-outline');
 
-    const panel = await screen.findByRole('complementary', { name: /Linked notes|Links|关联笔记/ });
+    const panel = await screen.findByRole('complementary', { name: /Note info panel|笔记信息面板|Linked notes|关联笔记/ });
     expect(within(panel).getByRole('tab', { name: /Properties|属性/ }))
       .toHaveAttribute('aria-selected', 'true');
   });
@@ -828,7 +829,7 @@ describe('NotesWorkspaceApp', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Search notes|搜索笔记/ }));
 
-    const dialog = await screen.findByRole('dialog', { name: /Search notes|搜索笔记/ });
+    const dialog = await screen.findByRole('region', { name: /Search notes|搜索笔记/ });
     expect(within(dialog).getByRole('button', { name: /Search content|搜索内容/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -836,9 +837,9 @@ describe('NotesWorkspaceApp', () => {
     render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
     await screen.findByTestId('note-editor-note_1');
 
-    fireEvent.click(screen.getByRole('button', { name: /Linked notes|关联笔记/ }));
+    fireEvent.click(screen.getByRole('button', { name: /属性与链接|Linked notes|关联笔记/ }));
 
-    expect(await screen.findByRole('complementary', { name: /Linked notes|Links|关联笔记/ })).toBeInTheDocument();
+    expect(await screen.findByRole('complementary', { name: /Note info panel|笔记信息面板|Linked notes|关联笔记/ })).toBeInTheDocument();
     await waitFor(() => expect(getContent).toHaveBeenCalledWith('/course/note_1'));
   });
 
@@ -848,7 +849,7 @@ describe('NotesWorkspaceApp', () => {
     await screen.findByText('课堂笔记');
 
     fireEvent.click(screen.getByRole('button', { name: /回收站|Trash/ }));
-    expect(await screen.findByRole('dialog', { name: /回收站|Trash/ })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: /回收站|Trash/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /恢复|Restore/ }));
     await waitFor(() => expect(trashApi.restoreItem).toHaveBeenCalledWith('note_1', 'note'));
   });
@@ -875,11 +876,11 @@ describe('NotesWorkspaceApp', () => {
 
     trigger.focus();
     fireEvent.click(trigger);
-    const dialog = await screen.findByRole('dialog', { name: /回收站|Trash/ });
-    const close = within(dialog).getByRole('button', { name: /关闭回收站|Close trash/ });
-    await waitFor(() => expect(close).toHaveFocus());
+    const dialog = await screen.findByRole('region', { name: /回收站|Trash/ });
+    // 非模态面板打开时把焦点送到面板容器本身（无焦点陷阱）
+    await waitFor(() => expect(dialog).toHaveFocus());
     fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: /回收站|Trash/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('region', { name: /回收站|Trash/ })).toBeNull());
     expect(trigger).toHaveFocus();
   });
 

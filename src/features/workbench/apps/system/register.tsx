@@ -25,6 +25,7 @@ import {
   createFlashcardsAgentManifest,
   createPomodoroAgentManifest,
   settingsAgentManifest,
+  skillsAgentManifest,
   taskDashboardAgentManifest,
   templatesAgentManifest,
   todoAgentManifest,
@@ -104,6 +105,9 @@ export async function handleFlashcardsActivation(ctx: ActivationContext) {
  * pomodoro onActivation — R1-16 / R2-10
  * start/{taskId,taskTitle} · pause · resume · stop。
  * 返回值供 StageManager app_command 结构化回执（strictMode → handled:false + STRICT_MODE）。
+ * pause/resume 按操作前后 status 判定是否真的生效（对齐 pomodoroDriver 的 before/after
+ * 比较）：store 守卫拦下的 no-op（idle 态 resume、非运行态 pause 等）返回
+ * handled:false + NOOP，不再向 agent 虚报成功。
  * start 后由 pomodoroProjectionSource 订阅 mode 变化自动投射开窗（时序：store 先变 → notify → project）。
  */
 export type PomodoroActivationResult =
@@ -135,11 +139,30 @@ export function handlePomodoroActivation(ctx: ActivationContext): PomodoroActiva
           hint: POMODORO_STRICT_HINT,
         };
       }
+      const beforeStatus = store.status;
       store.pause();
+      if (usePomodoroStore.getState().status === beforeStatus) {
+        return {
+          handled: false,
+          code: 'NOOP',
+          hint: '当前状态不可暂停（没有运行中的计时）',
+        };
+      }
       return { handled: true };
     }
     case 'resume': {
+      const beforeStatus = store.status;
       store.resume();
+      if (usePomodoroStore.getState().status === beforeStatus) {
+        return {
+          handled: false,
+          code: 'NOOP',
+          hint:
+            store.mode === 'idle'
+              ? '空闲状态没有可恢复的番茄，请改用 start'
+              : '当前状态无需恢复',
+        };
+      }
       return { handled: true };
     }
     case 'stop': {
@@ -186,6 +209,7 @@ export function registerSystemApps(): void {
     defaultFrame: { w: 980, h: 680 },
     minSize: { w: 640, h: 460 },
     render: React.lazy(() => import('./SkillsAppWindow')),
+    agentManifest: skillsAgentManifest,
   });
 
   appRegistry.register({

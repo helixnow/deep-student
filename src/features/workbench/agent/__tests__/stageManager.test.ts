@@ -882,9 +882,11 @@ describe('StageManager R1-06', () => {
     expect(seenInstant[0]).toBe(false);
     expect(seenInstant[1]).toBe(false);
     expect(seenInstant[2]).toBe(true);
-    expect(usePresenceStore.getState().byWindow['win-c']?.label).toContain(
-      '演出槽满',
+    // ACR 4.0（A5 接线后）：直落原因走结构化 placementHint，label 不再拼中文后缀
+    expect(usePresenceStore.getState().byWindow['win-c']?.placementHint).toBe(
+      'stage-full',
     );
+    expect(usePresenceStore.getState().byWindow['win-c']?.label).toBe('add');
 
     for (const g of gates) g?.();
     const results = await Promise.all(promises);

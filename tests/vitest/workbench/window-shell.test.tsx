@@ -129,12 +129,14 @@ describe('WindowShell 三键 / 双击 / 平铺菜单', () => {
     resetWorkbenchCursorForTests();
   });
 
-  it('缩放键 maximize toggle，恢复语义（restoreFrame 往返）', () => {
+  it('⌥+绿灯 maximize toggle，恢复语义（restoreFrame 往返）', () => {
     const id = openTestWindow();
     const original = { ...useWindowStore.getState().windows[id].frame };
     renderShell(id);
 
-    fireEvent.click(screen.getByRole('button', { name: '缩放窗口' }));
+    // 绿灯默认 = 沉浸模式；⌥+点击走传统 zoom（maximize toggle）
+    const zoom = screen.getByRole('button', { name: '进入沉浸模式' });
+    fireEvent.click(zoom, { altKey: true });
     let win = useWindowStore.getState().windows[id];
     expect(win.displayMode).toBe('maximized');
     expect(win.restoreFrame).toEqual(original);
@@ -147,7 +149,7 @@ describe('WindowShell 三键 / 双击 / 平铺菜单', () => {
     expect(el.style.left).toBe('0px');
     expect(el.style.top).toBe('0px');
 
-    fireEvent.click(screen.getByRole('button', { name: '缩放窗口' }));
+    fireEvent.click(zoom, { altKey: true });
     win = useWindowStore.getState().windows[id];
     expect(win.displayMode).toBe('floating');
     expect(win.frame).toEqual(original);
@@ -174,16 +176,17 @@ describe('WindowShell 三键 / 双击 / 平铺菜单', () => {
     try {
       const id = openTestWindow();
       renderShell(id);
-      const zoom = screen.getByRole('button', { name: '缩放窗口' });
+      // ⌥+绿灯 = 传统 zoom（默认点击是沉浸模式 toggle）
+      const zoom = screen.getByRole('button', { name: '进入沉浸模式' });
       const el = getWinEl(id);
 
-      fireEvent.click(zoom); // floating -> maximized
-      fireEvent.click(zoom); // maximized -> floating: animation A
+      fireEvent.click(zoom, { altKey: true }); // floating -> maximized
+      fireEvent.click(zoom, { altKey: true }); // maximized -> floating: animation A
       expect(animations).toHaveLength(1);
       expect(el.style.transformOrigin).toBe('0 0');
 
-      fireEvent.click(zoom); // floating -> maximized
-      fireEvent.click(zoom); // maximized -> floating: cancel A, then animation B
+      fireEvent.click(zoom, { altKey: true }); // floating -> maximized
+      fireEvent.click(zoom, { altKey: true }); // maximized -> floating: cancel A, then animation B
       expect(animations).toHaveLength(2);
 
       const allSurfacePhases = () =>
@@ -270,8 +273,8 @@ describe('WindowShell 三键 / 双击 / 平铺菜单', () => {
   it('平铺菜单选择左半屏 → computeTiledFrame 几何（1600×900, margin 8）', () => {
     const id = openTestWindow();
     renderShell(id);
-    // 键盘打开菜单（缩放键 ArrowDown）
-    fireEvent.keyDown(screen.getByRole('button', { name: '缩放窗口' }), { key: 'ArrowDown' });
+    // 键盘打开菜单（绿灯 ArrowDown）
+    fireEvent.keyDown(screen.getByRole('button', { name: '进入沉浸模式' }), { key: 'ArrowDown' });
     fireEvent.click(screen.getByRole('menuitem', { name: '平铺到左半屏' }));
 
     expect(useWindowStore.getState().windows[id].displayMode).toBe('tiled-left');
@@ -288,7 +291,7 @@ describe('WindowShell 三键 / 双击 / 平铺菜单', () => {
   it('平铺菜单「居中」保持尺寸居中摆放', () => {
     const id = openTestWindow();
     renderShell(id);
-    fireEvent.keyDown(screen.getByRole('button', { name: '缩放窗口' }), { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('button', { name: '进入沉浸模式' }), { key: 'ArrowDown' });
     fireEvent.click(screen.getByRole('menuitem', { name: '居中' }));
 
     const win = useWindowStore.getState().windows[id];
@@ -300,11 +303,12 @@ describe('WindowShell 三键 / 双击 / 平铺菜单', () => {
     const id = openTestWindow();
     const original = { ...useWindowStore.getState().windows[id].frame };
     renderShell(id);
-    fireEvent.keyDown(screen.getByRole('button', { name: '缩放窗口' }), { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('button', { name: '进入沉浸模式' }), { key: 'ArrowDown' });
     fireEvent.click(screen.getByRole('menuitem', { name: '平铺到右下角' }));
     expect(useWindowStore.getState().windows[id].displayMode).toBe('tiled-br');
 
-    fireEvent.keyDown(screen.getByRole('button', { name: '缩放窗口' }), { key: 'ArrowDown' });
+    // 绿灯默认标签不随平铺态变化（⌥ 语义才切「还原窗口」）
+    fireEvent.keyDown(screen.getByRole('button', { name: '进入沉浸模式' }), { key: 'ArrowDown' });
     fireEvent.click(screen.getByRole('menuitem', { name: '恢复原尺寸' }));
     const win = useWindowStore.getState().windows[id];
     expect(win.displayMode).toBe('floating');

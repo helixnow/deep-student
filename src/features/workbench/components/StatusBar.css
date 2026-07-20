@@ -192,12 +192,9 @@
   padding: 0;
 }
 
+/* 品牌钮 = 纯 logo（macOS 苹果菜单语义）；应用名由聚焦应用菜单显示 */
 .wb-menubar-brand {
-  min-width: 0;
-  max-width: 196px;
-  padding-left: 3px;
-  padding-right: 8px;
-  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .wb-menubar-brand-mark {
@@ -205,10 +202,184 @@
   height: 16px;
 }
 
-.wb-menubar-brand-label {
+/* ==== 聚焦应用 / 窗口菜单 ======================================== */
+
+.wb-menubar-appmenu {
+  min-width: 0;
+  max-width: 196px;
+  font-weight: 700;
+}
+
+.wb-menubar-appmenu-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wb-menubar-windowmenu {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+/* ==== 时钟与今日日程 flyout ======================================== */
+
+.wb-menubar-clock {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.wb-menubar-clock-flyout {
+  width: min(280px, calc(100vw - 24px));
+}
+
+.wb-menubar-agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wb-menubar-agenda-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid
+    color-mix(in hsl, var(--wb-glass-border, hsl(var(--border))) 55%, transparent 45%);
+  border-radius: 10px;
+  background: color-mix(in hsl, hsl(var(--card)) 42%, transparent 58%);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  transition:
+    background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
+}
+
+.wb-menubar-agenda-item:hover {
+  background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08)));
+}
+
+.wb-menubar-agenda-item:active {
+  transform: scale(0.99);
+}
+
+.wb-menubar-agenda-item:focus-visible,
+.wb-menubar-agenda-open:focus-visible,
+.wb-menubar-agenda-empty-action:focus-visible {
+  outline: var(--wb-focus-ring-width, 2px) solid
+    var(--wb-focus-ring-color, hsl(var(--primary) / 0.85));
+  outline-offset: 1px;
+}
+
+.wb-menubar-agenda-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.wb-menubar-agenda-item-time {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 3px;
+  color: var(--wb-menubar-fg, hsl(var(--muted-foreground)));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-menubar-agenda-item[data-overdue='true'] .wb-menubar-agenda-item-time {
+  color: hsl(var(--destructive));
+}
+
+.wb-menubar-agenda-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--wb-menubar-fg, hsl(var(--muted-foreground)));
+  font: inherit;
+  font-size: 12px;
+}
+
+.wb-menubar-agenda-empty-action {
+  cursor: pointer;
+}
+
+.wb-menubar-agenda-empty-action:hover {
+  background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08)));
+}
+
+.wb-menubar-agenda-more {
+  padding: 2px 4px;
+  color: var(--wb-menubar-fg, hsl(var(--muted-foreground)));
+  font-size: 11px;
+}
+
+.wb-menubar-agenda-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--wb-menubar-fg-strong, hsl(var(--foreground)));
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out);
+}
+
+.wb-menubar-agenda-open:hover {
+  background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgba(0, 0, 0, 0.08)));
+}
+
+/* ==== 菜单栏 autohide（对齐 Dock：顶缘热区滑出） ==================== */
+
+/* autohide 期间工作区顶到屏幕顶缘，菜单栏变 overlay（滑出时压在窗口之上） */
+[data-wb-workbench-root][data-wb-menubar-autohide='true'] {
+  --wb-workarea-top: 0px;
+}
+
+.wb-menubar[data-autohide='true'] {
+  transition: transform var(--wb-motion-quick, 150ms)
+    var(--wb-ease-window-open, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+/* 滑出后整条接管指针（窗口内容可延伸到菜单栏背后，空隙不再穿透） */
+.wb-menubar[data-autohide='true']:not([data-hidden='true']) {
+  pointer-events: auto;
+}
+
+/* -2px 余量盖住 ::after 底缘高光 */
+.wb-menubar[data-hidden='true'] {
+  transform: translateY(calc(-100% - 2px));
+  pointer-events: none;
+}
+
+.wb-menubar-hotzone {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  z-index: calc(var(--wb-z-menubar, 9050) + 1);
+  pointer-events: auto;
+  background: transparent;
 }
 
 /* ==== 今日节律弹层 ======================================== */
@@ -345,7 +516,11 @@
 :root[data-wb-material='minimal'] .wb-menubar-item,
 :root[data-wb-material='reduced'] .wb-menubar-item,
 :root[data-wb-material='minimal'] .wb-menubar-rhythm-row,
-:root[data-wb-material='reduced'] .wb-menubar-rhythm-row {
+:root[data-wb-material='reduced'] .wb-menubar-rhythm-row,
+:root[data-wb-material='minimal'] .wb-menubar-agenda-item,
+:root[data-wb-material='reduced'] .wb-menubar-agenda-item,
+:root[data-wb-material='minimal'] .wb-menubar[data-autohide='true'],
+:root[data-wb-material='reduced'] .wb-menubar[data-autohide='true'] {
   transition: none;
 }
 
@@ -356,7 +531,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .wb-menubar-item,
-  .wb-menubar-rhythm-row {
+  .wb-menubar-rhythm-row,
+  .wb-menubar-agenda-item,
+  .wb-menubar[data-autohide='true'] {
     transition: none;
   }
   /* RM 下 wb-kf-overshoot-in 已被 motion.css 重定义为纯淡入，无需额外处理 */
@@ -369,7 +546,7 @@
     padding-left: 8px;
   }
 
-  .wb-menubar-brand-label,
+  .wb-menubar-windowmenu,
   .wb-menubar-status-slot .wb-menubar-item-value {
     display: none;
   }
@@ -377,7 +554,8 @@
 
 @media (max-width: 560px) {
   .wb-menubar-command,
-  .wb-menubar-settings {
+  .wb-menubar-settings,
+  .wb-menubar-clock {
     display: none;
   }
 }

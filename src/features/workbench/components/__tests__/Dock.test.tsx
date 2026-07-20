@@ -130,9 +130,11 @@ describe('Dock 三分支点击', () => {
 
     const list = screen.getByTestId('wb-dock-window-list');
     const items = within(list).getAllByRole('menuitem');
-    expect(items).toHaveLength(2);
+    // 窗口项在前；末项是「显示全部窗口」App Exposé 入口（P2）
+    expect(items).toHaveLength(3);
     expect(items[0]).toHaveAccessibleName('会话 A');
     expect(items[1]).toHaveAccessibleName('会话 B');
+    expect(items[2]).toHaveAccessibleName('显示全部窗口');
   });
 });
 
@@ -415,39 +417,24 @@ describe('键盘可达（roving tabindex）', () => {
   });
 });
 
-describe('dock magnification gate', () => {
+describe('dock 悬停静止（无邻近放大）', () => {
   afterEach(() => {
-    document.documentElement.removeAttribute('data-wb-dock-mag');
     resetMaterialTierForTests();
   });
 
-  it('data-wb-dock-mag=off 时不挂 magging（不启动放大循环）', () => {
+  it('悬停不启动放大循环（图标保持静止），仅保留 tooltip 应用名', () => {
     setMaterialTier('full');
-    document.documentElement.dataset.wbDockMag = 'off';
     setDockPinned(['chat']);
     render(<Dock />);
     const dock = screen.getByTestId('wb-dock');
     fireEvent.pointerEnter(dock, { pointerType: 'mouse', clientX: 100 });
+    fireEvent.pointerMove(dock, { pointerType: 'mouse', clientX: 120 });
     expect(dock).not.toHaveAttribute('data-wb-dock-magging');
-  });
-
-  it('默认悬停启动邻近放大（挂 magging），且保留 tooltip', () => {
-    setMaterialTier('full');
-    setDockPinned(['chat']);
-    render(<Dock />);
-    const dock = screen.getByTestId('wb-dock');
-    fireEvent.pointerEnter(dock, { pointerType: 'mouse', clientX: 100 });
-    expect(dock).toHaveAttribute('data-wb-dock-magging');
+    const magLayer = screen
+      .getByTestId('wb-dock-item-chat')
+      .querySelector<HTMLElement>('[data-wb-dock-mag-item="chat"]');
+    expect(magLayer?.style.transform ?? '').toBe('');
     expect(screen.getByTestId('wb-dock-tip-chat')).toBeInTheDocument();
-  });
-
-  it('minimal 材质档不挂 magging', () => {
-    setMaterialTier('minimal');
-    setDockPinned(['chat']);
-    render(<Dock />);
-    const dock = screen.getByTestId('wb-dock');
-    fireEvent.pointerEnter(dock, { pointerType: 'mouse', clientX: 100 });
-    expect(dock).not.toHaveAttribute('data-wb-dock-magging');
   });
 });
 

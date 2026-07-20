@@ -298,61 +298,135 @@ export const todoDriver: CollabDriver & {
 
 /**
  * 注册 todo driver + 域事件：agent/ai 写库后 flash 并选中首个 entity。
+ *
+ * ACR 4.0 A3：详情面板长时间保持焦点时**不再强行 reload**（旧行为 25×400ms
+ * 等待后强刷会冲掉本地草稿）——改为记录待刷新 entityIds，等下次 blur
+ * （focusout 离开详情面板）或下次域事件再刷。
  */
 let domainUnlisten: (() => void) | null = null;
+
+/** 详情面板占焦超时后挂起的待刷新实体（与 blur 监听一起构成延迟重试） */
+let pendingRefreshEntityIds: string[] | null = null;
+let pendingBlurCleanup: (() => void) | null = null;
+
+const BLUR_WAIT_ATTEMPTS = 25;
+const BLUR_WAIT_INTERVAL_MS = 400;
+
+async function reloadAndFlashTodo(entityIds: string[]): Promise<void> {
+  const { useTodoStore } = await import('@/features/todo/stores/useTodoStore');
+  const store = useTodoStore.getState();
+  await store.loadLists();
+  await store.reloadCurrentView();
+  // 等一帧让列表行挂上 data-agent-entity
+  await new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve());
+    } else {
+      resolve();
+    }
+  });
+  // R3-02：批量 flash 只滚一次，避免 50 条 smooth 争抢主线程。
+  // 演出优化轮：滚动目标与 selectItem 同为首项——旧行为滚末项、选首项，
+  // 视口落点与详情面板显示的条目不一致（滚动指令互相拉扯）。
+  agentFlashMany(TYPE_ID, entityIds, { scroll: 'first' });
+  store.selectItem(entityIds[0]);
+}
+
+function clearPendingBlurListener(): void {
+  pendingBlurCleanup?.();
+  pendingBlurCleanup = null;
+}
+
+/** 取出并清空挂起的待刷新实体（含 blur 监听清理） */
+function takePendingRefreshEntityIds(): string[] {
+  const ids = pendingRefreshEntityIds ?? [];
+  pendingRefreshEntityIds = null;
+  clearPendingBlurListener();
+  return ids;
+}
+
+/**
+ * 详情面板仍占焦：记录待刷新实体并挂一次性 blur 监听。
+ * 焦点真正离开详情面板后再执行 reload + flash；期间新事件会合并 entityIds。
+ */
+function deferTodoRefresh(entityIds: string[]): void {
+  const merged = pendingRefreshEntityIds ?? [];
+  for (const id of entityIds) {
+    if (!merged.includes(id)) merged.push(id);
+  }
+  pendingRefreshEntityIds = merged;
+  if (pendingBlurCleanup || typeof document === 'undefined') return;
+
+  const onFocusOut = () => {
+    // focusout 时 activeElement 尚未落定，让出一拍再判定
+    setTimeout(() => {
+      if (isTodoDetailFocused()) return;
+      const ids = takePendingRefreshEntityIds();
+      if (!ids.length) return;
+      void reloadAndFlashTodo(ids).catch((err) => {
+        console.warn('[acr:todoDriver] deferred domain flash failed:', err);
+      });
+    }, 0);
+  };
+  document.addEventListener('focusout', onFocusOut, true);
+  pendingBlurCleanup = () => {
+    document.removeEventListener('focusout', onFocusOut, true);
+  };
+}
+
+/** 处理 todo://changed（导出供单测直接调用） */
+export function handleTodoDomainChange(payload: DomainChangePayload): void {
+  if (!isAgentSource(payload)) return;
+  // R2-04：normalize 已统一 entityIds；此处再经 collect 兜底 snake_case
+  const entityIds = collectDomainEntityIds(payload);
+  if (!entityIds.length) return;
+
+  void (async () => {
+    try {
+      // 新域事件到达即接管挂起的延迟重试，合并其 entityIds 一起刷
+      const pending = takePendingRefreshEntityIds();
+      const mergedIds = [...entityIds];
+      for (const id of pending) {
+        if (!mergedIds.includes(id)) mergedIds.push(id);
+      }
+      // 与 TodoContentView 守卫对齐：详情面板聚焦时等 blur 再 reload，避免冲掉本地草稿
+      let attempts = 0;
+      while (isTodoDetailFocused() && attempts < BLUR_WAIT_ATTEMPTS) {
+        attempts += 1;
+        await new Promise((r) => setTimeout(r, BLUR_WAIT_INTERVAL_MS));
+      }
+      if (isTodoDetailFocused()) {
+        // 超时仍占焦：跳过本次 reload，记录延迟重试（下次 blur 或下次域事件再刷）
+        deferTodoRefresh(mergedIds);
+        console.warn(
+          '[acr:todoDriver] detail panel still focused, reload deferred until blur',
+        );
+        return;
+      }
+      await reloadAndFlashTodo(mergedIds);
+    } catch (err) {
+      console.warn('[acr:todoDriver] domain flash failed:', err);
+    }
+  })();
+}
+
+/** 仅供测试：清空延迟重试状态与 blur 监听 */
+export function __resetTodoDriverForTests(): void {
+  pendingRefreshEntityIds = null;
+  clearPendingBlurListener();
+}
 
 export function registerTodoDriver(stage: StageManagerApi): () => void {
   stage.registerDriver(todoDriver);
 
   domainUnlisten?.();
-  const unlisten = registerDomainListener('todo://changed', (payload) => {
-    if (!isAgentSource(payload)) return;
-    // R2-04：normalize 已统一 entityIds；此处再经 collect 兜底 snake_case
-    const entityIds = collectDomainEntityIds(payload);
-    if (!entityIds.length) return;
-
-    void (async () => {
-      try {
-        const { useTodoStore } = await import(
-          '@/features/todo/stores/useTodoStore'
-        );
-        const store = useTodoStore.getState();
-        // 与 TodoContentView 守卫对齐：详情面板聚焦时等 blur 再 reload，避免冲掉本地草稿
-        const detailFocused = () => {
-          if (typeof document === 'undefined') return false;
-          const el = document.activeElement;
-          return Boolean(
-            el instanceof Element && el.closest('[data-todo-detail-panel]'),
-          );
-        };
-        let attempts = 0;
-        while (detailFocused() && attempts < 25) {
-          attempts += 1;
-          await new Promise((r) => setTimeout(r, 400));
-        }
-        await store.loadLists();
-        await store.reloadCurrentView();
-        // 等一帧让列表行挂上 data-agent-entity
-        await new Promise<void>((resolve) => {
-          if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => resolve());
-          } else {
-            resolve();
-          }
-        });
-        // R3-02：批量 flash 仅末项 scroll，避免 50 条 smooth 争抢主线程
-        agentFlashMany(TYPE_ID, entityIds);
-        store.selectItem(entityIds[0]);
-      } catch (err) {
-        console.warn('[acr:todoDriver] domain flash failed:', err);
-      }
-    })();
-  });
+  const unlisten = registerDomainListener('todo://changed', handleTodoDomainChange);
   domainUnlisten = unlisten;
 
   return () => {
     if (domainUnlisten !== unlisten) return;
     domainUnlisten = null;
     unlisten();
+    __resetTodoDriverForTests();
   };
 }

@@ -115,7 +115,8 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
   border-radius: var(--wb-window-radius);
   background: var(--wb-window-bg);
   border: 1px solid var(--wb-window-border);
-  overflow: hidden;
+  /* clip 而非 hidden：窗壳是结构边界，不允许被 WebKit reveal-selection 滚动 */
+  overflow: clip;
   /* 壳可程序聚焦（tabIndex=-1 / bringDomFocusToShell）；焦点态用阴影档，勿画浏览器默认蓝框 */
   outline: none;
   /* 阴影档位切换过渡（40ms）；开/关窗动画走 wb-anim-* 类 */
@@ -356,7 +357,7 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
     background-color var(--wb-dock-transition-duration) linear;
 }
 
-/* hover/active scale 由 --wb-dock-item-hover-scale 驱动（默认 1；邻近放大见 Dock.css） */
+/* hover/active scale 由 --wb-dock-item-hover-scale 驱动（默认 1：悬停不缩放） */
 .wb-dock-item:hover {
   transform: scale(var(--wb-dock-item-hover-scale));
   background-color: var(--wb-dock-item-hover-bg);

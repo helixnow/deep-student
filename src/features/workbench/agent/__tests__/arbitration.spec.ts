@@ -26,7 +26,14 @@ describe('ACR arbitration — DESIGN §4.1', () => {
 
     arb.onUserInput();
     expect(arb.paused).toBe(true);
-    expect(onPauseChange).toHaveBeenCalledWith(true);
+    // ACR 4.0：meta 携带自动中止时刻与是否显式暂停
+    expect(onPauseChange).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        explicit: false,
+        abortDeadline: expect.any(Number),
+      }),
+    );
 
     let settled: 'resume' | 'abort' | null = null;
     const p = arb.checkPaused().then((d) => {
@@ -147,7 +154,25 @@ describe('ACR arbitration — DESIGN §4.1', () => {
     arb.resume();
     await expect(p).resolves.toBe('resume');
     expect(arb.paused).toBe(false);
-    expect(onPauseChange).toHaveBeenCalledWith(false);
+    expect(onPauseChange).toHaveBeenCalledWith(
+      false,
+      expect.objectContaining({ abortDeadline: null }),
+    );
+    arb.dispose();
+  });
+
+  it('ACR 4.0：pause() meta.explicit=true，abortDeadline=进入暂停时刻+15s，resume 后清空', () => {
+    const onPauseChange = vi.fn();
+    const arb = createArbitrator({ onPauseChange });
+    const before = Date.now();
+    arb.pause();
+    expect(onPauseChange).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ explicit: true, abortDeadline: before + 15000 }),
+    );
+    expect(arb.abortDeadline).toBe(before + 15000);
+    arb.resume();
+    expect(arb.abortDeadline).toBeNull();
     arb.dispose();
   });
 

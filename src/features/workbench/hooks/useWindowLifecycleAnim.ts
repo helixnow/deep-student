@@ -43,11 +43,11 @@ export const LIFEC_ATTR = 'data-wb-lifec';
 
 /**
  * 静态兜底上限（ms）：仅在 getComputedStyle 读不到 animationDuration 时使用。
- * 与当前 token 对齐：window-open 150 / window-close 110 / genie 400；倍率约 ×1.7 留余量。
+ * 与当前 token 对齐：window-open 220 / window-close 110 / genie 400；倍率约 ×1.7 留余量。
  * 正常路径优先读壳上实际 animationDuration + FALLBACK_SLACK_MS。
  */
 const FALLBACK_MS: Record<WindowTransientPhase, number> = {
-  opening: 260, // --wb-motion-window-open 150 × ~1.7
+  opening: 380, // --wb-motion-window-open 220 × ~1.7
   closing: 190, // --wb-motion-window-close 110 × ~1.7
   minimizing: 680, // --wb-motion-genie 400 × ~1.7
   restoring: 680,
@@ -67,14 +67,19 @@ export function resolveWindowShell(windowId: string): HTMLElement | null {
 
 /**
  * 把 Dock 图标中心（视口坐标）换算为相对壳元素的 transform-origin 百分比，
- * 写入 --wb-minimize-origin-x/y。无坐标时回退 50% / 130%（向下方收敛）。
+ * 写入 --wb-minimize-origin-x/y。无坐标时回退 fallback
+ * （genie 缺省 50% / 130%，向下方收敛；opening 传 50% / 50% 回退中心弹入）。
  */
-export function injectMinimizeOrigin(shell: HTMLElement, typeId: string): void {
+export function injectMinimizeOrigin(
+  shell: HTMLElement,
+  typeId: string,
+  fallback: { x: string; y: string } = { x: '50%', y: '130%' },
+): void {
   const center = getDockIconCenter(typeId);
   const rect = shell.getBoundingClientRect();
   if (!center || rect.width <= 0 || rect.height <= 0) {
-    shell.style.setProperty('--wb-minimize-origin-x', '50%');
-    shell.style.setProperty('--wb-minimize-origin-y', '130%');
+    shell.style.setProperty('--wb-minimize-origin-x', fallback.x);
+    shell.style.setProperty('--wb-minimize-origin-y', fallback.y);
     return;
   }
   const xPct = ((center.x - rect.left) / rect.width) * 100;
@@ -98,8 +103,16 @@ function phaseLifecValue(phase: WindowTransientPhase): string {
   return phase;
 }
 
+/**
+ * opening 也注入 Dock 源点：开窗动画从 Dock 图标中心「长出」
+ * （无图标时回退窗口中心 scale 弹入）；genie 相位保持向下收敛回退。
+ */
 function needsDockOrigin(phase: WindowTransientPhase): boolean {
-  return phase === 'minimizing' || phase === 'restoring';
+  return phase === 'minimizing' || phase === 'restoring' || phase === 'opening';
+}
+
+function dockOriginFallback(phase: WindowTransientPhase): { x: string; y: string } {
+  return phase === 'opening' ? { x: '50%', y: '50%' } : { x: '50%', y: '130%' };
 }
 
 function parseCssDurationMs(raw: string): number | null {
@@ -195,6 +208,14 @@ export function requestMinimizeAnimated(windowId: string): void {
 /**
  * canClose 通过后标 'closing'，由 hook 播 pop-out 后再 closeWindow。
  * 标题栏等仍走 workbenchBus 的路径需 O20 改调本函数。
+ *
+ * Promise 语义（勿混淆）：resolve(true) = 「关窗请求已被接受并开始退场」，
+ * **不代表窗口已从 store 移除**——closeWindow + recomputeLifecycles 由
+ * finishPhase 在退场动画结束后才提交。调用方在 resolve 后：
+ * - 可以做「请求已通过」类的后续（如 ExposeOverlay 标 dissolve）；
+ * - 不要立刻假设窗口已消失（如提前重算遮挡——动画期间窗口仍可见）。
+ * resolve(false) = canClose 拒绝，未发生任何状态变更。
+ * 需要真正关闭时机的调用方请订阅 windowStore（windows[id] 消失）。
  */
 export async function requestCloseAnimated(windowId: string): Promise<boolean> {
   const store = useWindowStore.getState();
@@ -214,6 +235,45 @@ export async function requestCloseAnimated(windowId: string): Promise<boolean> {
   recomputeLifecycles();
   announceWindowClosed(win.title);
   return true;
+}
+
+/**
+ * ⌥+黄灯（P1）：最小化「同应用全部窗口」（含锚点窗自身）。
+ *
+ * 动画策略：逐窗走既有 genie 路径（requestMinimizeAnimated）。同应用窗口数
+ * 通常为个位数，且 genie 期间壳层各自独立合成层、backdrop-filter 已被
+ * data-wb-lifec 压制，同播未见性能问题；若未来出现掉帧，可退化为
+ * 「锚点窗播 genie、其余经 store.minimizeWindow 直接提交」（store 的
+ * batchSetDisplayModes 同款单次 set 思路），此处保持逐窗动画优先观感。
+ */
+export function requestMinimizeAppWindowsAnimated(windowId: string): void {
+  const store = useWindowStore.getState();
+  const anchor = store.windows[windowId];
+  if (!anchor) return;
+  const targets = Object.values(store.windows).filter(
+    (win) => win.typeId === anchor.typeId && !win.minimized,
+  );
+  for (const win of targets) {
+    requestMinimizeAnimated(win.id);
+  }
+}
+
+/**
+ * ⌥+红灯（P1）：关闭「同应用全部窗口」。逐窗走 requestCloseAnimated，
+ * 尊重每窗 closeGuard——被 canClose 拦下的窗口留在桌面上。
+ * 顺序 await（而非并行）：canClose 可能弹未保存确认对话框，并行会同时
+ * 弹出多个确认框互相遮挡。
+ */
+export async function requestCloseAppWindowsAnimated(windowId: string): Promise<void> {
+  const store = useWindowStore.getState();
+  const anchor = store.windows[windowId];
+  if (!anchor) return;
+  const ids = Object.values(store.windows)
+    .filter((win) => win.typeId === anchor.typeId)
+    .map((win) => win.id);
+  for (const id of ids) {
+    await requestCloseAnimated(id);
+  }
 }
 
 /**
@@ -244,7 +304,7 @@ export function useWindowLifecycleAnim(windowId: string): void {
     const lifecValue = phaseLifecValue(phase);
     const win = useWindowStore.getState().windows[windowId];
     if (needsDockOrigin(phase) && win) {
-      injectMinimizeOrigin(shell, win.typeId);
+      injectMinimizeOrigin(shell, win.typeId, dockOriginFallback(phase));
     }
 
     clearLifecAttr(shell);

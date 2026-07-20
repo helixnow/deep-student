@@ -10,6 +10,7 @@ import { CaretRight, CircleNotch, FileText, MagnifyingGlass, TreeStructure, X } 
 import { useTranslation } from 'react-i18next';
 import { dstu, type DstuListOptions, type DstuNode, type DstuNodeType } from '@/dstu';
 import { cn } from '@/lib/utils';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { highlightRanges } from './highlightRanges';
 import {
@@ -25,6 +26,8 @@ export type NotesSearchMode = 'quick-open' | 'full-text';
 const DEFAULT_RESOURCE_TYPES: readonly DstuNodeType[] = ['note', 'mindmap'];
 const DEFAULT_MAX_RESULTS = 24;
 const DEFAULT_DEBOUNCE_MS = 180;
+/** How many "recently opened" rows lead the empty-query quick-open list. */
+export const QUICK_OPEN_RECENT_LIMIT = 8;
 
 export interface NotesSearchOverlayProps {
   /** Whether the floating search palette is currently visible. */
@@ -34,6 +37,12 @@ export interface NotesSearchOverlayProps {
    * so it remains responsive even while the filesystem is refreshing.
    */
   resources: readonly DstuNode[];
+  /**
+   * Most-recently-opened resources (newest first). When provided, an
+   * empty-query quick open leads with a "Recently opened" group, like the
+   * cmd+P recents list in editors.
+   */
+  recentResources?: readonly DstuNode[];
   /** Called after a result is chosen. Resolve when the resource has been opened. */
   onOpenResource: (
     resource: DstuNode,
@@ -193,6 +202,7 @@ const ResourceIcon: React.FC<{ type: DstuNodeType }> = ({ type }) => (
 export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   open,
   resources,
+  recentResources,
   onOpenResource,
   onClose,
   mode,
@@ -231,11 +241,32 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   const activeFilterTags = parsedQuery.tags;
   const quickOpenFilterText = highlightQuery;
 
-  const quickOpenResults = useMemo(
-    () => getQuickOpenResults(resources, allowedTypes, quickOpenFilterText, visibleResultLimit),
-    [allowedTypes, quickOpenFilterText, resources, visibleResultLimit],
-  );
+  // Empty-query quick open leads with the recently opened group; a typed
+  // query switches back to pure relevance ranking over the whole library.
+  const { results: quickOpenResults, recentCount } = useMemo(() => {
+    const base = getQuickOpenResults(resources, allowedTypes, quickOpenFilterText, visibleResultLimit);
+    if (quickOpenFilterText || !recentResources?.length) {
+      return { results: base, recentCount: 0 };
+    }
+    const seen = new Set<string>();
+    const recents: DstuNode[] = [];
+    for (const resource of recentResources) {
+      if (!allowedTypes.has(resource.type)) continue;
+      const key = resourceKey(resource);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      recents.push(resource);
+      if (recents.length >= QUICK_OPEN_RECENT_LIMIT) break;
+    }
+    if (recents.length === 0) return { results: base, recentCount: 0 };
+    const rest = base.filter((resource) => !seen.has(resourceKey(resource)));
+    return {
+      results: [...recents, ...rest].slice(0, visibleResultLimit),
+      recentCount: Math.min(recents.length, visibleResultLimit),
+    };
+  }, [allowedTypes, quickOpenFilterText, recentResources, resources, visibleResultLimit]);
   const displayedResults = activeMode === 'quick-open' ? quickOpenResults : fullTextResults;
+  const showRecentGroups = activeMode === 'quick-open' && recentCount > 0;
   const hasResultList = displayedResults.length > 0 && !searchError && !openError;
   const listId = `${overlayId}-notes-search-results`;
   const activeResult = displayedResults[activeIndex] ?? null;
@@ -458,17 +489,18 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
   onCloseRef.current = onClose;
 
   // 点击面板外任意位置关闭（无遮罩形态下的轻量 dismiss）
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const root = rootRef.current;
-      if (!root) return;
-      if (event.target instanceof Node && root.contains(event.target)) return;
-      onCloseRef.current();
-    };
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () => document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [open]);
+  const onOutsidePointerDown = useCallback((event: Event) => {
+    const root = rootRef.current;
+    if (!root) return;
+    if (event.target instanceof Node && root.contains(event.target)) return;
+    onCloseRef.current();
+  }, []);
+  useEventRegistry(
+    open
+      ? [{ target: 'document', type: 'pointerdown', listener: onOutsidePointerDown, options: true }]
+      : [],
+    [onOutsidePointerDown, open],
+  );
 
   // Android 返回键：先关搜索面板，不退出笔记工作区
   useEffect(() => {
@@ -628,8 +660,19 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
                 : null;
               const selected = index === activeIndex;
               const crumbs = pathSegments(resource);
+              const groupLabel = showRecentGroups && index === 0
+                ? t('notesWorkspace.searchOverlay.recentGroup', 'Recently opened')
+                : showRecentGroups && index === recentCount
+                  ? t('notesWorkspace.searchOverlay.allGroup', 'All files')
+                  : null;
               return (
-                <li key={resourceKey(resource)} role="presentation">
+                <React.Fragment key={resourceKey(resource)}>
+                {groupLabel && (
+                  <li role="presentation" className="notes-search-overlay-group" aria-hidden="true">
+                    {groupLabel}
+                  </li>
+                )}
+                <li role="presentation">
                   <button
                     id={`${overlayId}-notes-search-result-${index}`}
                     type="button"
@@ -679,10 +722,23 @@ export const NotesSearchOverlay: React.FC<NotesSearchOverlayProps> = ({
                     </span>
                   </button>
                 </li>
+                </React.Fragment>
               );
             })}
           </ul>
-        ) : !isSearching && (activeMode === 'quick-open' || hasSearchIntent) ? (
+        ) : isSearching ? (
+          <div className="notes-search-overlay-skeleton" aria-hidden="true">
+            {[0, 1, 2].map((row) => (
+              <div key={row} className="notes-search-overlay-skeleton-row">
+                <i className="notes-search-overlay-skeleton-icon" />
+                <span className="notes-search-overlay-skeleton-copy">
+                  <i className="notes-search-overlay-skeleton-bar" style={{ width: `${62 - row * 9}%` }} />
+                  <i className="notes-search-overlay-skeleton-bar is-sub" style={{ width: `${38 - row * 5}%` }} />
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : activeMode === 'quick-open' || hasSearchIntent ? (
           <div className="notes-search-overlay-empty">
             <span>{t('notesWorkspace.searchOverlay.empty', 'No matching notes or mind maps.')}</span>
             <span className="notes-search-overlay-empty-hint">

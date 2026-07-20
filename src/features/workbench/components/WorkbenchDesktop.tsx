@@ -89,18 +89,7 @@ const SETTING_KEYS = {
   dockSize: 'desktop.workbenchDockSize',
   dockAutohide: 'desktop.workbenchDockAutohide',
   devPanel: 'desktop.workbenchDevPanel',
-  dockMagnification: 'desktop.workbenchDockMagnification',
 } as const;
-
-/** Dock 邻近放大：写 html dataset，供 Dock.tsx MutationObserver 门控 */
-function applyDockMagDataset(enabled: boolean): void {
-  if (typeof document === 'undefined') return;
-  if (enabled) {
-    delete document.documentElement.dataset.wbDockMag;
-  } else {
-    document.documentElement.dataset.wbDockMag = 'off';
-  }
-}
 
 interface TileMarginsSetting {
   enabled: boolean;
@@ -296,7 +285,6 @@ export const WorkbenchDesktop: React.FC = () => {
         dockSizeVal,
         autohideVal,
         devPanelVal,
-        dockMagVal,
       ] = await Promise.all([
         readSetting(SETTING_KEYS.materialTier),
         readSetting(SETTING_KEYS.wallpaper),
@@ -304,7 +292,6 @@ export const WorkbenchDesktop: React.FC = () => {
         readSetting(SETTING_KEYS.dockSize),
         readSetting(SETTING_KEYS.dockAutohide),
         readSetting(SETTING_KEYS.devPanel),
-        readSetting(SETTING_KEYS.dockMagnification),
       ]);
       if (cancelled) return;
       const tier = String(tierVal ?? '');
@@ -318,8 +305,6 @@ export const WorkbenchDesktop: React.FC = () => {
       setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
       setDevPanel(String(devPanelVal ?? '') === 'true');
-      // 未设置默认开放大；显式 'false' 关闭（写 dataset 供 Dock 门控）
-      applyDockMagDataset(String(dockMagVal ?? '') !== 'false');
     })();
 
     const onSettingsChanged = (e: Event) => {
@@ -342,9 +327,6 @@ export const WorkbenchDesktop: React.FC = () => {
         case SETTING_KEYS.devPanel:
           setDevPanel(value === true);
           break;
-        case SETTING_KEYS.dockMagnification:
-          applyDockMagDataset(value !== false && value !== 'false');
-          break;
         default:
           // materialTier 由设置页直接调 setMaterialTier，无需处理
           break;
@@ -354,7 +336,6 @@ export const WorkbenchDesktop: React.FC = () => {
     return () => {
       cancelled = true;
       window.removeEventListener('workbench:settings-changed', onSettingsChanged);
-      applyDockMagDataset(true);
     };
   }, []);
 
@@ -513,7 +494,9 @@ export const WorkbenchDesktop: React.FC = () => {
       ref={rootRef}
       data-wb-workbench-root
       // absolute inset-0：不依赖百分比高度链，避免父级 flex/contain 抖动时桌面只占半屏
-      className="absolute inset-0 overflow-hidden"
+      // overflow-clip（非 hidden）：结构容器不可成为滚动容器，否则 WebKit 的
+      // reveal-selection/caret 会在拖选文本时把整个桌面（窗口+Dock）滚出去
+      className="absolute inset-0 overflow-clip"
     >
       {/* 壁纸挂在根节点（延伸到菜单栏背后），玻璃顶条才有真实背景可采样 */}
       <div className="wb-wallpaper-frame" aria-hidden="true">
@@ -526,7 +509,7 @@ export const WorkbenchDesktop: React.FC = () => {
         ref={workAreaRef}
         data-wb-desktop
         data-wb-workarea
-        className="absolute inset-x-0 bottom-0 overflow-hidden"
+        className="absolute inset-x-0 bottom-0 overflow-clip"
         style={{ top: 'var(--wb-workarea-top)' }}
         tabIndex={0}
         aria-label={t('a11y.desktop')}

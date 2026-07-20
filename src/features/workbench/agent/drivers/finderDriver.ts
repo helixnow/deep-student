@@ -88,9 +88,6 @@ function collectEntityIds(payload: DomainChangePayload): string[] {
 }
 
 async function applyOpenFolder(folderId: string): Promise<void> {
-  const { useFinderStore } = await import(
-    '@/features/learning-hub/stores/finderStore'
-  );
   await useFinderStore.getState().enterFolder(folderId);
 }
 
@@ -162,11 +159,13 @@ export const finderDriver: CollabDriver & {
     activeRuns.set(run.runId, state);
 
     for (let i = 0; i < ops.length; i++) {
-      state.nextOpIndex = i;
+      // 先查 aborted 再推进 nextOpIndex：abort() 已 markRemaining 收敛到 totalOps，
+      // 这里回退会把剩余 op 重复计入 undone（ACR 4.0 A6 勘误）。
       if (state.aborted) {
         markRemaining(state);
         break;
       }
+      state.nextOpIndex = i;
 
       let pause: 'resume' | 'abort';
       try {
@@ -192,9 +191,6 @@ export const finderDriver: CollabDriver & {
           state.undone.push(`${op.label || op.kind}（缺少 folderId）`);
         } else {
           try {
-            const { useFinderStore } = await import(
-              '@/features/learning-hub/stores/finderStore'
-            );
             const previousPath = useFinderStore.getState().currentPath;
             await applyOpenFolder(folderId);
             state.done.push(op.label || `打开文件夹 ${folderId}`);

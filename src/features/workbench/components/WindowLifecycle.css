@@ -29,8 +29,14 @@
   will-change: transform, opacity;
 }
 
+/*
+ * 开窗从 Dock 图标源点长出（L4）：transform-origin 与 genie 共用
+ * --wb-minimize-origin-x/y（useWindowLifecycleAnim 对 opening 也注入；
+ * 无 Dock 图标时注入 50%/50% 回退为旧中心弹入）。
+ */
 [data-wb-window-id][data-wb-lifec='opening'] {
-  animation: wb-kf-window-open var(--wb-motion-window-open, 150ms) var(--wb-ease-window-open, cubic-bezier(0.32, 0.72, 0, 1)) both;
+  transform-origin: var(--wb-minimize-origin-x, 50%) var(--wb-minimize-origin-y, 50%);
+  animation: wb-kf-window-open var(--wb-motion-window-open, 220ms) var(--wb-ease-window-open, cubic-bezier(0.32, 0.72, 0, 1)) both;
 }
 
 [data-wb-window-id][data-wb-lifec='closing'] {

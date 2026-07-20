@@ -99,9 +99,26 @@ export function normalizeWorkbenchResourceDragData(
 }
 
 /**
+ * Selector for surfaces that sit on top of the desktop and must never be
+ * treated as desktop drop targets: window shells, tiling divider, Dock,
+ * expose / switcher overlays and the desktop context menu (incl. backdrop).
+ */
+const DESKTOP_DROP_BLOCKING_SELECTOR = [
+  '[data-wb-window]',
+  '[data-wb-tiling-divider]',
+  '[data-testid="wb-dock"]',
+  '[data-testid="wb-dock-window-list"]',
+  '[data-wb-expose-root]',
+  '[data-wb-switcher-root]',
+  '[data-wb-desk-menu]',
+  '[data-wb-desk-menu-backdrop]',
+].join(', ');
+
+/**
  * Resolve a viewport pointer into the workbench desktop coordinate system.
- * A valid point must hit the desktop root itself; windows, Dock and overlays
- * are deliberately not treated as desktop drop targets.
+ * A valid point may hit the desktop root or any of its passive decorations
+ * (EmptyDesktop guide, agenda widget, …) — resolved via closest() — while
+ * windows, Dock and overlays are deliberately not desktop drop targets.
  */
 export function resolveWorkbenchDesktopDropPoint(
   clientX: number,
@@ -112,9 +129,11 @@ export function resolveWorkbenchDesktopDropPoint(
   if (typeof ownerDocument.elementFromPoint !== 'function') return null;
 
   const hit = ownerDocument.elementFromPoint(clientX, clientY);
-  if (!hit?.matches('[data-wb-desktop]')) return null;
+  if (!hit || hit.closest(DESKTOP_DROP_BLOCKING_SELECTOR)) return null;
+  const desktop = hit.closest('[data-wb-desktop]');
+  if (!desktop) return null;
 
-  const rect = hit.getBoundingClientRect();
+  const rect = desktop.getBoundingClientRect();
   const x = clientX - rect.left;
   const y = clientY - rect.top;
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
@@ -247,8 +266,19 @@ export function useDesktopDrop(options: UseDesktopDropOptions): UseDesktopDropRe
       optionsRef.current.onDragStateChange?.(state);
     };
 
-    const isEligibleTarget = (event: DragEvent): boolean =>
-      !el.hasAttribute('data-wb-desktop') || event.target === el;
+    /**
+     * 桌面根节点：空白区 + 被动装饰（EmptyDesktop 引导 / Agenda 小组件等）
+     * 都算合法落点（closest 归属判定）；窗口壳 / Dock / 覆盖层子树除外。
+     * 非桌面 target（窗口内落点等消费方）保持全接收。
+     */
+    const isEligibleTarget = (event: DragEvent): boolean => {
+      if (!el.hasAttribute('data-wb-desktop')) return true;
+      if (event.target === el) return true;
+      const target = event.target;
+      if (!(target instanceof Element)) return false;
+      if (target.closest(DESKTOP_DROP_BLOCKING_SELECTOR)) return false;
+      return target.closest('[data-wb-desktop]') === el;
+    };
 
     const evaluate = (event: DragEvent): boolean => {
       const info = readDragInfo(event.dataTransfer);

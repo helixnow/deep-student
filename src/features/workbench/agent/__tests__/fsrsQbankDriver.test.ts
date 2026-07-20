@@ -34,7 +34,7 @@ import {
   qbankDriver,
 } from '../drivers/qbankDriver';
 import { fsrsDriver, handleFsrsDomainChange } from '../drivers/fsrsDriver';
-import type { AcrRunContext, Pacer, RunLedger } from '../types';
+import type { AcrReceipt, AcrRunContext, Pacer, RunLedger } from '../types';
 
 const card = (id: string, front = id): ReviewCard => ({
   id,
@@ -918,6 +918,101 @@ describe('driver receipts and interruption', () => {
     expect(receipt.done).toEqual(['first']);
     expect(receipt.undone).toEqual(['second']);
     expect(useFsrsReviewStore.getState().queue.map((item) => item.id)).toEqual(['a', 'b']);
+  });
+
+  it('FSRS abort 运行中 run 返回真实 done/undone 前缀（ACR 4.0 A3）', async () => {
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [card('a')],
+      queueIndex: 0,
+      flipped: false,
+    });
+    const { run } = makeRun('flashcards');
+    let abortReceipt: AcrReceipt | null = null;
+    // 第一个 op 成功后的 pacing tick 里发起 abort（模拟运行中用户中止）
+    vi.mocked(run.pacing.tick).mockImplementation(async () => {
+      if (!abortReceipt) abortReceipt = fsrsDriver.abort(run.runId);
+    });
+
+    const receipt = await fsrsDriver.apply(run, [
+      { kind: 'fsrs_enqueue', label: 'first', destructive: false, payload: { cards: [card('b')] } },
+      { kind: 'fsrs_enqueue', label: 'second', destructive: false, payload: { cards: [card('c')] } },
+    ]);
+
+    expect(abortReceipt).toMatchObject({
+      status: 'cancelled',
+      applied: 1,
+      totalOps: 2,
+      done: ['first'],
+      undone: ['second'],
+      entityIds: ['b'],
+    });
+    expect(receipt).toMatchObject({
+      status: 'cancelled',
+      applied: 1,
+      done: ['first'],
+      undone: ['second'],
+    });
+    // 未执行 op 不重复计入 undone
+    expect(receipt.undone).toHaveLength(1);
+    expect(useFsrsReviewStore.getState().queue.map((item) => item.id)).toEqual(['a', 'b']);
+  });
+
+  it('FSRS abort 未知 run 仍回 cancelled 且不虚报 applied', () => {
+    const receipt = fsrsDriver.abort('run-unknown');
+    expect(receipt).toMatchObject({ status: 'cancelled', applied: 0, totalOps: 0 });
+  });
+
+  it('QBank abort 运行中 run 返回真实 done/undone 前缀（ACR 4.0 A3）', async () => {
+    useQuestionBankStore.setState({
+      currentQuestionId: 'q-old',
+      questions: new Map([
+        ['q-old', { id: 'q-old' } as never],
+        ['q-1', { id: 'q-1' } as never],
+        ['q-2', { id: 'q-2' } as never],
+      ]),
+    });
+    const { run } = makeRun('exam');
+    let abortReceipt: AcrReceipt | null = null;
+    vi.mocked(run.pacing.tick).mockImplementation(async () => {
+      if (!abortReceipt) abortReceipt = qbankDriver.abort(run.runId);
+    });
+    const onFocus = (event: Event) => {
+      const detail = (event as CustomEvent<QbankFocusEventDetail>).detail;
+      detail.acknowledge?.({ handled: true, previousQuestionId: 'q-old' });
+    };
+    window.addEventListener(QBANK_FOCUS_EVENT, onFocus);
+
+    try {
+      const receipt = await qbankDriver.apply(run, [
+        { kind: 'qbank_focus_question', label: 'first', destructive: false, payload: { questionId: 'q-1' } },
+        { kind: 'qbank_focus_question', label: 'second', destructive: false, payload: { questionId: 'q-2' } },
+      ]);
+
+      expect(abortReceipt).toMatchObject({
+        status: 'cancelled',
+        applied: 1,
+        totalOps: 2,
+        done: ['first'],
+        undone: ['second'],
+        entityIds: ['q-1'],
+      });
+      expect(receipt).toMatchObject({
+        status: 'cancelled',
+        applied: 1,
+        done: ['first'],
+        undone: ['second'],
+      });
+      expect(receipt.undone).toHaveLength(1);
+      expect(useQuestionBankStore.getState().currentQuestionId).toBe('q-1');
+    } finally {
+      window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
+    }
+  });
+
+  it('QBank abort 未知 run 仍回 cancelled 且不虚报 applied', () => {
+    const receipt = qbankDriver.abort('run-unknown');
+    expect(receipt).toMatchObject({ status: 'cancelled', applied: 0, totalOps: 0 });
   });
 
   it('QBank 混合成功与无效导航时返回 partial 并保留未执行语义', async () => {

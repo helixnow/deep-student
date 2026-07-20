@@ -36,7 +36,10 @@ export function SandboxInspectorPanel({
     <aside
       className={[
         'flex min-w-0 flex-col bg-[color:var(--shell-inspector-panel)]',
-        compact ? 'h-auto border-t border-border' : 'h-full border-l border-border',
+        // compact（小屏纵向堆叠）限高 45dvh：不限高时 h-auto 会把上方预览区挤没
+        compact
+          ? 'h-auto max-h-[45dvh] overflow-y-auto border-t border-border'
+          : 'h-full border-l border-border',
         className,
       ].filter(Boolean).join(' ')}
     >
@@ -50,13 +53,13 @@ export function SandboxInspectorPanel({
             onClick={onClose}
             title={t('sandbox.collapse')}
             aria-label={t('sandbox.collapse')}
-            className="!h-7 !w-7 !p-0"
+            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:-my-1.5"
           >
             <X size={14} />
           </NotionButton>
         </div>
       </div>
-      <div className="flex-1 overflow-auto px-4 py-4 text-sm text-muted-foreground">
+      <div className="min-h-0 flex-1 overflow-auto px-4 py-4 text-sm text-muted-foreground">
         <div className="space-y-4">
           <div>
             <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.source')}</p>
@@ -85,7 +88,7 @@ export function SandboxInspectorPanel({
                 aria-label={t('sandbox.desktop')}
                 title={t('sandbox.desktop')}
               >
-                桌
+                {t('sandbox.desktopShort', '桌')}
               </button>
               <button
                 type="button"
@@ -98,7 +101,7 @@ export function SandboxInspectorPanel({
                 aria-label={t('sandbox.tablet')}
                 title={t('sandbox.tablet')}
               >
-                平
+                {t('sandbox.tabletShort', '平')}
               </button>
               <button
                 type="button"
@@ -111,7 +114,7 @@ export function SandboxInspectorPanel({
                 aria-label={t('sandbox.mobile')}
                 title={t('sandbox.mobile')}
               >
-                手
+                {t('sandbox.mobileShort', '手')}
               </button>
             </div>
           </div>

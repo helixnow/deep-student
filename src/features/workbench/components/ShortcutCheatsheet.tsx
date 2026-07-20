@@ -3,7 +3,7 @@
  *
  * 触发（useWorkbenchShortcuts 驱动 overlay store）：
  * - `?` 切换常驻显示（sticky）；
- * - 长按 Ctrl+Alt（700ms）临时显示，松开修饰键即收起；
+ * - 长按 Ctrl+Alt（macOS 为 ⌘⌥；700ms）临时显示，松开修饰键即收起；
  * - Esc / 点击背景 / 右上角关闭按钮关闭。
  *
  * 展示：按 listWorkbenchShortcutGroups() 分组，行 = 描述 + 键帽可视化；
@@ -17,6 +17,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  isMacShortcutPlatform,
   listWorkbenchShortcutGroups,
   useWorkbenchOverlay,
   WORKBENCH_SHORTCUT_FEEDBACK_EVENT,
@@ -219,7 +220,8 @@ const ShortcutCheatsheetComponent: React.FC = () => {
         </div>
 
         <div className="wb-cheat-footer">
-          {t('workbench:cheatsheet.hint')}
+          {/* macOS 上长按组合是 ⌘⌥（见 core/shortcuts 平台映射），提示文案跟随 */}
+          {t(isMacShortcutPlatform() ? 'workbench:cheatsheet.hintMac' : 'workbench:cheatsheet.hint')}
         </div>
       </div>
     </div>

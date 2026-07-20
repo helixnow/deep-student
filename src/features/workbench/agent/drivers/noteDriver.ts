@@ -20,6 +20,9 @@ import {
 } from '@/components/crepe/plugins/agentHighlight';
 import { isContentDirty } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { withUserPatch } from '../userPatch';
+// ACR 4.0（A8 收敛）：markSuggestionReviewing 已在 presenceStore（A1）真实落地，
+// 并行开发期的存在性守卫简化为直接 import；异常降级语义保留（见下方 Guarded 包装）。
+import { markSuggestionReviewing } from '../presenceStore';
 import type {
   AcrProbeState,
   AcrReceipt,
@@ -94,6 +97,12 @@ export function getNoteEditor(resourceId: string, windowId?: string): CrepeEdito
   if (windowId !== undefined) {
     for (let index = current.length - 1; index >= 0; index -= 1) {
       if (current[index]?.windowId === windowId) return current[index]?.api;
+    }
+    // A8 集成修复：严格窗口匹配落空时，回落到「未声明宿主窗口」的注册实例
+    // （legacy/独立挂载路径不带 windowId）。绑定到**其它**窗口的实例仍不返回，
+    // 保持多窗定向不漂移（见 noteDriver.test「严格按窗口取编辑器」）。
+    for (let index = current.length - 1; index >= 0; index -= 1) {
+      if (current[index]?.windowId === undefined) return current[index]?.api;
     }
     return undefined;
   }
@@ -283,6 +292,25 @@ function scheduleFadeClear(runId: string, api: CrepeEditorApi): void {
 
 type SuggestionDisposition = { accepted: true } | { accepted: false; reason: string };
 
+/**
+ * ACR 4.0 reviewing presence 接线（A8 收敛后）：
+ * markSuggestionReviewing 已由 A1 在 presenceStore 落地，改为直接调用；
+ * 保留 try/catch 静默降级——presence 标记失败不应让建议流程本身失败
+ * （无 windowId 时同样跳过：presence 以窗口为键）。
+ */
+export function markSuggestionReviewingGuarded(
+  windowId: string | null | undefined,
+  runId: string,
+  label: string,
+): (() => void) | null {
+  if (!windowId) return null;
+  try {
+    return markSuggestionReviewing(windowId, runId, label) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function dispatchSuggestionEvent(detail: {
   requestId: string;
   noteId: string;
@@ -293,6 +321,8 @@ function dispatchSuggestionEvent(detail: {
   replace?: string;
   isRegex?: boolean;
   section?: string;
+  /** ACR 4.0：建议被 Accept/Reject/关闭后由认领方回调（清 reviewing presence） */
+  onSettled?: () => void;
 }): SuggestionDisposition {
   if (typeof window === 'undefined') {
     return { accepted: false, reason: '当前环境没有可用的建议面板' };
@@ -701,6 +731,18 @@ function handleDestructiveSuggestion(
   const anchor = parseAnchor(op.anchor);
   const section = anchor?.heading ?? anchor?.section;
 
+  // ACR 4.0：建议被认领后把 presence 置为 reviewing；Accept/Reject/卸载时清除
+  let clearReviewing: (() => void) | null = null;
+  const onSettled = () => {
+    const clear = clearReviewing;
+    clearReviewing = null;
+    try {
+      clear?.();
+    } catch {
+      /* presence 已被清理 */
+    }
+  };
+
   let disposition: SuggestionDisposition;
   if (op.kind === 'note_replace') {
     const payload = (op.payload ?? {}) as {
@@ -717,6 +759,7 @@ function handleDestructiveSuggestion(
       replace: payload.replace,
       isRegex: payload.isRegex,
       section,
+      onSettled,
     });
   } else {
     // note_set
@@ -728,7 +771,16 @@ function handleDestructiveSuggestion(
       operation: 'set',
       content: payload.content,
       section,
+      onSettled,
     });
+  }
+
+  if (disposition.accepted) {
+    clearReviewing = markSuggestionReviewingGuarded(
+      run.windowId,
+      run.runId,
+      `等待确认：${op.label}`,
+    );
   }
 
   if (!disposition.accepted) {
@@ -877,13 +929,17 @@ export const noteDriver: CollabDriver = {
 
   probe(target: AcrTarget): AcrProbeState {
     const id = target.resourceId;
-    if (!id || !getNoteEditor(id)) {
-      // 无注册 editor → closed，让 Rust 回落后端
+    if (!id) return 'closed';
+    // ACR 4.0：target 带 windowId 时严格按 windowId 取编辑器，
+    // 消除 probe 命中「最近注册实例」而 apply 命中另一实例的探测漂移；
+    // 仅在真无 windowId 时才回落最近注册。
+    const api = getNoteEditor(id, target.windowId);
+    if (!api) {
+      // 无注册 editor（或指定窗口未挂载该资源）→ closed，让 Rust 回落后端
       return 'closed';
     }
-    const api = getNoteEditor(id);
     // S-SUG-04 / DESIGN §1.1：编辑器真实持焦 → hot（dirty 仍由 probe.ts 优先）
-    if (api && isNoteEditorHot(api)) {
+    if (isNoteEditorHot(api)) {
       return 'hot';
     }
     return 'clean';
@@ -971,6 +1027,17 @@ export const noteDriver: CollabDriver = {
         if (direct.ok) {
           applied += 1;
           done.push(op.label);
+          // ACR 4.0：直改瞬变后对变更区域做一次滚动定位 + 渐隐 flash 演出
+          if (
+            direct.previousMarkdown !== undefined
+            && direct.nextMarkdown !== undefined
+          ) {
+            try {
+              api.agentFlashChange?.(direct.previousMarkdown, direct.nextMarkdown);
+            } catch {
+              /* 演出失败不影响回执 */
+            }
+          }
           if (direct.persistenceError) {
             persistenceError = direct.persistenceError;
             for (let j = i + 1; j < ops.length; j++) undone.push(ops[j]!.label);

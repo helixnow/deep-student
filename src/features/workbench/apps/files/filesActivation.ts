@@ -27,6 +27,37 @@ function unavailable(hint: string): ActivationResult {
 const SORT_FIELDS = new Set<SortBy>(['name', 'updatedAt', 'createdAt', 'type']);
 const SORT_ORDERS = new Set<SortOrder>(['asc', 'desc']);
 
+/** ACR 4.0（A6）：等一帧渲染后再查/闪 DOM 锚点（列表/计数由 React 异步落 DOM）。 */
+function afterNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== 'function') {
+      resolve();
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+function findAgentEntityElement(entityId: string): Element | null {
+  if (typeof document === 'undefined') return null;
+  const key = `files:${entityId}`;
+  const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+    ? CSS.escape(key)
+    : key.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return document.querySelector(`[data-agent-entity="${escaped}"]`);
+}
+
+/**
+ * 导航类反馈：面包屑/路径栏（files:path）或结果计数（files:results）一次轻微
+ * flash。保持克制：不滚动、缺锚点安全 no-op（列表重渲染本身已是主反馈）。
+ */
+async function flashNavigationAnchor(anchor: 'path' | 'results'): Promise<void> {
+  await afterNextPaint();
+  agentFlash('files', anchor, { scroll: false });
+}
+
 /** 导出供单测与 AppDefinition.onActivation。 */
 export async function handleFilesActivation(ctx: ActivationContext): Promise<ActivationResult> {
   const { useFinderStore } = await import('@/features/learning-hub/stores/finderStore');
@@ -45,6 +76,7 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       await store.enterFolder(folderId);
       const failed = finderError();
       if (failed) return failed;
+      await flashNavigationAnchor('path');
       return { handled: true };
     }
     case 'reveal': {
@@ -58,24 +90,36 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
         if (failed) return failed;
       }
       useFinderStore.getState().setSelectedIds(new Set([resourceId]));
-      agentFlash('files', resourceId);
-      return { handled: true };
+      // ACR 4.0（A6）：flash 目标行可能不在虚拟化可视区/当前页——agentFlash 对缺失
+      // 元素静默 no-op，这里显式查 DOM 兜底，回执不假装完成了定位。
+      await afterNextPaint();
+      if (findAgentEntityElement(resourceId)) {
+        agentFlash('files', resourceId);
+        return { handled: true };
+      }
+      return {
+        handled: true,
+        message: '已进入所在目录并选中该资源，但目标行当前不在可视区/当前页，未执行定位高亮',
+      };
     }
     case 'goBack':
       if (store.historyIndex <= 0) return unavailable('当前没有可返回的浏览位置');
       store.goBack();
+      await flashNavigationAnchor('path');
       return { handled: true };
     case 'goForward':
       if (store.historyIndex >= store.history.length - 1) {
         return unavailable('当前没有可前进的浏览位置');
       }
       store.goForward();
+      await flashNavigationAnchor('path');
       return { handled: true };
     case 'goUp':
       if (store.currentPath.breadcrumbs.length === 0) {
         return unavailable('当前已在文件根位置');
       }
       store.goUp();
+      await flashNavigationAnchor('path');
       return { handled: true };
     case 'search': {
       const query = payloadString(ctx.payload, 'query') ?? '';
@@ -84,6 +128,7 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       else await useFinderStore.getState().loadItems({ silent: true });
       const failed = finderError();
       if (failed) return failed;
+      await flashNavigationAnchor('results');
       return { handled: true };
     }
     case 'setViewMode': {

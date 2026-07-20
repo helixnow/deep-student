@@ -1,8 +1,12 @@
 /**
- * ACR（Agent Collaborator Runtime）冻结契约 — R0.5 协调者脚手架
+ * ACR（Agent Collaborator Runtime）冻结契约 — ACR 4.0
  *
- * 本文件是三轮改造的接口真相源（docs/dev/acr/DESIGN.md §2）。
- * 【全员只读】：任何 R1/R2 子代理不得修改本文件；需要扩展时在进度报告中提"跨界申请"。
+ * 本文件是历轮改造的接口真相源（docs/dev/acr/DESIGN.md §2 / docs/dev/acr/ACR-4.0.md §1）。
+ * 【全员只读】：除 A1 契约代理外不得修改本文件；需要扩展时在进度报告中提"跨界申请"。
+ *
+ * ACR 4.0 增量：PresenceState.abortDeadline / resumable / placementHint；
+ * 'reviewing' 状态正式启用（presenceStore.markSuggestionReviewing）；
+ * ACR_ERROR_CODES 与 Rust workbench_executor KNOWN 表对齐补齐。
  */
 
 // ---------------- 目标与操作 ----------------
@@ -186,6 +190,9 @@ export interface Pacer {
 
 export type AcrRunStatus = 'acting' | 'pausedByUser' | 'reviewing' | 'done' | 'aborted';
 
+/** ACR 4.0：presence 直落原因的结构化提示（UI 层 A5 负责 i18n 渲染） */
+export type AcrPlacementHint = 'background' | 'stage-full' | 'frozen';
+
 export interface PresenceState {
   /** Session-isolated runtime identity used for control and cleanup. */
   runKey: string;
@@ -199,6 +206,12 @@ export interface PresenceState {
   label: string;
   startedAt: number;
   ttlMs: number;
+  /** ACR 4.0：pausedByUser 时的自动中止时刻（epoch ms），UI 据此渲染倒计时 */
+  abortDeadline?: number;
+  /** ACR 4.0：显式暂停后是否可由用户续放（AgentStrip 渲染「继续」按钮） */
+  resumable?: boolean;
+  /** ACR 4.0：直落终态的结构化原因；替代 label 中的中文后缀（UI 接线由 A5 完成） */
+  placementHint?: AcrPlacementHint;
 }
 
 export interface RunLedger {
@@ -312,7 +325,12 @@ export const ACR_EVENT_RESPONSE_PREFIX = 'acr:bridge-response:';
 export const ACR_EVENT_PROGRESS_PREFIX = 'acr:bridge-progress:';
 export const ACR_EVENT_CANCEL = 'acr:bridge-cancel';
 
-/** 结构化错误码（与 Rust 侧对齐；R2-01 维护 ERRORS.md） */
+/**
+ * 结构化错误码（与 Rust 侧对齐；R2-01 维护 ERRORS.md）。
+ * ACR 4.0：补齐 workbench_executor.rs `extract_error_code` KNOWN 表已有、
+ * 此前冻结子集缺失的码（CONFLICT 家族 / CANCELLED / RESULT_UNKNOWN 等），
+ * 并收录前端 StageManager 自产的 UNSUPPORTED_ACTION / RUN_ID_* 码。
+ */
 export const ACR_ERROR_CODES = {
   WORKBENCH_UNAVAILABLE: 'WORKBENCH_UNAVAILABLE',
   WORKBENCH_DISABLED: 'WORKBENCH_DISABLED',
@@ -336,4 +354,29 @@ export const ACR_ERROR_CODES = {
   INVALID_CONDITION: 'INVALID_CONDITION',
   POSTCONDITION_FAILED: 'POSTCONDITION_FAILED',
   UNDO_NOT_FOUND: 'UNDO_NOT_FOUND',
+  // ---- ACR 4.0 与 Rust KNOWN 表对齐补录 ----
+  BRIDGE_AUTH_FAILED: 'BRIDGE_AUTH_FAILED',
+  BRIDGE_PROTOCOL_ERROR: 'BRIDGE_PROTOCOL_ERROR',
+  STALE_TARGET_WINDOW: 'STALE_TARGET_WINDOW',
+  WINDOW_TARGET_MISMATCH: 'WINDOW_TARGET_MISMATCH',
+  CONDITION_NOT_MET: 'CONDITION_NOT_MET',
+  UNDO_IN_PROGRESS: 'UNDO_IN_PROGRESS',
+  UNDO_CONFLICT: 'UNDO_CONFLICT',
+  UNDO_PARTIAL: 'UNDO_PARTIAL',
+  INVALID_ARGS: 'INVALID_ARGS',
+  TODO_CONFLICT: 'TODO_CONFLICT',
+  QBANK_CONFLICT: 'QBANK_CONFLICT',
+  NOTE_OCC_REQUIRED: 'NOTE_OCC_REQUIRED',
+  NOTE_CONFLICT: 'NOTE_CONFLICT',
+  NOTE_WRITE_FAILED: 'NOTE_WRITE_FAILED',
+  DUPLICATE_RUN_ID: 'DUPLICATE_RUN_ID',
+  DUPLICATE_CORRELATION_ID: 'DUPLICATE_CORRELATION_ID',
+  RUN_ID_REUSE: 'RUN_ID_REUSE',
+  RUN_ID_EXPIRED: 'RUN_ID_EXPIRED',
+  CANCELLED: 'CANCELLED',
+  RESULT_UNKNOWN: 'RESULT_UNKNOWN',
+  // 前端 StageManager 自产（Rust 经桥透传原文）
+  UNSUPPORTED_ACTION: 'UNSUPPORTED_ACTION',
+  UNKNOWN_COMMAND: 'UNKNOWN_COMMAND',
+  INTERNAL: 'INTERNAL',
 } as const;

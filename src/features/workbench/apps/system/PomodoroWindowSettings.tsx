@@ -70,9 +70,7 @@ export const PomodoroWindowSettings: React.FC = () => {
   const settings = usePomodoroStore((s) => s.settings);
   const updateSettings = usePomodoroStore((s) => s.updateSettings);
 
-  // noiseAutoWithFocus 为新增设置字段；持久化快照可能缺省，防御性读取
-  const noiseAutoWithFocus =
-    (settings as { noiseAutoWithFocus?: boolean }).noiseAutoWithFocus ?? false;
+  const noiseAutoWithFocus = settings.noiseAutoWithFocus;
 
   const minutesUnit = t('pomodoro.settings.minutesUnit');
   const pomodorosUnit = t('pomodoro.settings.pomodorosUnit');
@@ -192,9 +190,7 @@ export const PomodoroWindowSettings: React.FC = () => {
       <ToggleRow
         label={t('pomodoro.settings.noiseAutoWithFocus')}
         checked={noiseAutoWithFocus}
-        onChange={(v) =>
-          updateSettings({ noiseAutoWithFocus: v } as Parameters<typeof updateSettings>[0])
-        }
+        onChange={(v) => updateSettings({ noiseAutoWithFocus: v })}
       />
     </div>
   );

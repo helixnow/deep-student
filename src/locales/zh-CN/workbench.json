@@ -20,7 +20,13 @@
       "announceStarted": "AI 开始操作：{{label}}",
       "announcePaused": "AI 已暂停操作：{{label}}",
       "announceDone": "AI 已完成操作",
-      "announceStopped": "AI 已停止操作"
+      "announceStopped": "AI 已停止操作",
+      "resume": "继续",
+      "autoStopCountdown": "{{seconds}} 秒后自动停止",
+      "placementBackground": "（后台直落）",
+      "placementStageFull": "（演出槽满，直落）",
+      "placementFrozen": "（窗口冻结，直落）",
+      "dockDoneBadge": "AI 已在后台完成操作"
     },
     "errors": {
       "controlOff": "Agent 桌面操控已关闭（desktop.workbenchAgentControl=off）",
@@ -36,6 +42,11 @@
       "reserved": "-",
       "flashcards": {
         "appended": "AI 添加了 {{count}} 张卡片"
+      },
+      "templates": {
+        "undoCreate": "删除刚创建的模板",
+        "undoRename": "恢复模板名称",
+        "undoUpdateContent": "恢复模板内容"
       }
     }
   },
@@ -179,7 +190,11 @@
     "openTasks": "打开",
     "openPomodoro": "打开番茄钟",
     "allApps": "全部应用",
-    "expose": "窗口俯瞰"
+    "expose": "窗口俯瞰",
+    "appMenu": "{{name}} 菜单",
+    "windowMenu": "窗口",
+    "clockLabel": "时钟与今日日程",
+    "agendaTitle": "今日日程"
   },
   "apps": {
     "chat": {
@@ -232,7 +247,8 @@
     "newWindow": "新建窗口",
     "noWindows": "暂无窗口",
     "running": "运行中",
-    "apps": "全部应用"
+    "apps": "全部应用",
+    "showAllWindows": "显示全部窗口"
   },
   "resourceHome": {
     "newExam": "新建题目集",
@@ -319,6 +335,7 @@
     "fill": "填满",
     "center": "居中",
     "restore": "恢复原尺寸",
+    "immersive": "进入沉浸模式",
     "zone": {
       "left": "左半屏",
       "right": "右半屏",
@@ -334,7 +351,8 @@
     "empty": "没有打开的窗口",
     "untitled": "未命名窗口",
     "closeWindow": "关闭窗口",
-    "emptyHint": "按 Esc 或点击任意处返回桌面"
+    "emptyHint": "按 Esc 或点击任意处返回桌面",
+    "emptyApp": "该应用没有可俯瞰的窗口"
   },
   "switcher": {
     "title": "窗口切换器",
@@ -421,6 +439,7 @@
     "title": "键盘快捷键",
     "close": "关闭",
     "hint": "按 ? 或 Esc 关闭 · 长按 Ctrl+Alt 随时查看",
+    "hintMac": "按 ? 或 Esc 关闭 · 长按 ⌘⌥ 随时查看",
     "groups": {
       "layout": "平铺与布局",
       "movement": "移动与贴边",
@@ -497,7 +516,13 @@
     "showDesktop": "已显示桌面",
     "previewFailed": "无法打开预览",
     "pdfRefOpenFailed": "无法打开 PDF 引用：缺少来源",
-    "zoomRestore": "还原窗口"
+    "zoomRestore": "还原窗口",
+    "closeAll": "关闭该应用全部窗口",
+    "minimizeAll": "最小化该应用全部窗口",
+    "immersiveEnter": "进入沉浸模式",
+    "immersiveExit": "退出沉浸模式",
+    "immersiveEntered": "{{title}} 已进入沉浸模式",
+    "immersiveExited": "{{title}} 已退出沉浸模式"
   },
   "shortcuts": {
     "title": "快捷键",
@@ -523,7 +548,8 @@
     "expose": "窗口俯瞰",
     "closeWindow": "关闭焦点窗口",
     "closeAll": "关闭所有窗口",
-    "cheatsheet": "快捷键速查表"
+    "cheatsheet": "快捷键速查表",
+    "exposeApp": "应用窗口俯瞰（当前应用）"
   },
   "settings": {
     "sectionTitle": "学习桌面",
@@ -535,7 +561,7 @@
     },
     "performanceProfile": {
       "title": "性能档位",
-      "desc": "一键平衡画质与流畅度。选择预设会同步材质与 Dock 放大；单独改下面选项会变为「自定义」。",
+      "desc": "一键平衡画质与流畅度。选择预设会同步视觉材质；单独改下面选项会变为「自定义」。",
       "quality": "画质",
       "balanced": "均衡",
       "performance": "性能",
@@ -548,10 +574,6 @@
       "full": "全效果",
       "reduced": "降透明",
       "minimal": "极简"
-    },
-    "dockMagnification": {
-      "title": "Dock 邻近放大",
-      "desc": "指针划过 Dock 时图标放大。关闭可减少悬停时的布局测量与合成成本。"
     },
     "dockSize": {
       "title": "Dock 大小",
@@ -574,6 +596,17 @@
     "dockAutohide": {
       "title": "自动隐藏 Dock",
       "desc": "不使用时 Dock 自动收起，指针移到屏幕底部时滑出。"
+    },
+    "menubarAutohide": {
+      "title": "自动隐藏菜单栏",
+      "desc": "不使用时菜单栏自动收起，指针移到屏幕顶部时滑出。"
+    },
+    "titleBarDoubleClick": {
+      "title": "双击窗口标题栏",
+      "desc": "双击窗口标题栏空白区时执行的操作。",
+      "zoom": "缩放",
+      "minimize": "最小化",
+      "none": "无操作"
     },
     "devPanel": {
       "title": "诊断面板",
@@ -688,7 +721,9 @@
       "hintNewNote": "新建",
       "treeTitle": "还没有笔记",
       "treeNewNote": "新建笔记",
-      "treeNewFolder": "新建文件夹"
+      "treeNewFolder": "新建文件夹",
+      "paneImport": "导入笔记",
+      "paneAskAgent": "问问智能体"
     },
     "untitledNote": "未命名笔记",
     "untitledMindmap": "未命名导图",
@@ -708,19 +743,32 @@
       "newMindmap": "新建思维导图",
       "refresh": "刷新",
       "open": "打开文件浏览器",
-      "close": "关闭文件浏览器"
+      "close": "关闭文件浏览器",
+      "closeFiles": "关闭文件面板"
     },
     "navHistory": {
       "aria": "导航历史",
       "back": "后退 ({{shortcut}})",
       "forward": "前进 ({{shortcut}})"
     },
+    "navigation": {
+      "back": "后退",
+      "forward": "前进"
+    },
+    "library": {
+      "manage": "导入或导出知识库"
+    },
+    "import": {
+      "partial": "已导入 {{success}} 篇，{{failed}} 篇失败",
+      "success": "已导入 {{count}} 篇笔记"
+    },
     "tagFilter": {
       "label": "标签筛选",
       "clear": "清空",
       "loading": "加载标签…",
       "retry": "重试",
-      "empty": "暂无标签"
+      "empty": "暂无标签",
+      "intersectionHint": "交集筛选：仅显示同时包含这 {{count}} 个标签的笔记"
     },
     "favorites": {
       "title": "收藏",
@@ -751,7 +799,12 @@
       "empty": "没有匹配的笔记或思维导图。",
       "keyboardHint": "上下方向键选择，Enter 打开，Esc 关闭",
       "activeTags": "已选标签",
-      "removeTag": "移除标签 {{tag}}"
+      "removeTag": "移除标签 {{tag}}",
+      "emptyQuickOpenHint": "试试「搜索内容」进行全文匹配。",
+      "tagHint": "tag:名称 按标签筛选",
+      "resultCount": "{{count}} 条结果",
+      "recentGroup": "最近打开",
+      "allGroup": "全部文件"
     },
     "backlinks": {
       "title": "链接",
@@ -776,7 +829,14 @@
       "createFromUnresolved": "创建笔记「{{title}}」",
       "createFailed": "无法创建笔记。",
       "openLinkedNote": "打开 {{title}}",
-      "openFailed": "无法打开关联笔记。"
+      "openFailed": "无法打开关联笔记。",
+      "loadMore": "加载更多来源",
+      "mentions": "未链接提及",
+      "mentionsLoading": "正在扫描提及…",
+      "mentionsFailed": "无法扫描未链接提及。",
+      "mentionsLimited": "仅扫描最近 {{count}} 篇候选笔记。",
+      "noMentions": "没有找到未链接的提及",
+      "convertMention": "在「{{title}}」中转为链接"
     },
     "tree": {
       "aria": "文件树",
@@ -790,7 +850,9 @@
       "retry": "重试",
       "noMatches": "没有匹配“{{query}}”的文件",
       "empty": "知识库中还没有文件",
-      "showAll": "显示全部文件"
+      "showAll": "显示全部文件",
+      "dragLink": "拖动链接到笔记",
+      "moreActions": "更多操作"
     },
     "tabs": {
       "aria": "打开的文件",
@@ -821,6 +883,7 @@
       "creatingMindmap": "正在创建思维导图...",
       "splitNeedsAnotherTab": "请先打开另一标签页再分屏。",
       "movedToTrash": "已将 {{name}} 移到回收站",
+      "movedManyToTrash": "已将 {{count}} 项移到回收站",
       "restored": "已恢复 {{name}}",
       "noteType": "Markdown",
       "mindmapType": "思维导图",
@@ -845,12 +908,18 @@
       "createFolderTitle": "新建文件夹",
       "deleteTitle": "移到回收站",
       "deleteDescription": "将“{{name}}”移到回收站？",
+      "deleteManyDescription": "将选中的 {{count}} 项移到回收站？",
       "nameLabel": "名称",
       "nameRequired": "请输入名称。",
       "cancel": "取消",
       "rename": "重命名",
       "create": "创建",
       "delete": "删除"
+    },
+    "validation": {
+      "nameTooLong": "名称最多 {{max}} 个字符",
+      "nameInvalidChars": "名称不能包含换行或控制字符",
+      "charCount": "{{count}} / {{max}}"
     },
     "trash": {
       "title": "回收站",
@@ -861,6 +930,10 @@
       "deletedAt": "删除于 {{time}}",
       "restore": "恢复 {{name}}",
       "purge": "彻底删除 {{name}}",
+      "selectAll": "全选",
+      "selectItem": "选择 {{name}}",
+      "restoreSelected": "恢复选中（{{count}}）",
+      "restoreSelectedFailed": "{{count}} 项恢复失败。",
       "confirmEmptyTitle": "清空回收站？",
       "confirmEmptyDesc": "将永久删除 {{count}} 项，此操作不可撤销。",
       "confirmEmptyAction": "清空",
@@ -887,6 +960,9 @@
     "desktop": "桌面",
     "tablet": "平板",
     "mobile": "手机",
+    "desktopShort": "桌",
+    "tabletShort": "平",
+    "mobileShort": "手",
     "stats": "统计",
     "language": "语言",
     "lines": "行数",
@@ -939,7 +1015,9 @@
       "skipBreak": "跳过休息",
       "noiseOn": "开启环境音",
       "noiseOff": "关闭环境音",
-      "enterImmersive": "进入沉浸式专注模式"
+      "enterImmersive": "进入沉浸式专注模式",
+      "extendMinutes": "+{{count}} 分钟",
+      "extendTitle": "延长当前阶段 {{count}} 分钟"
     },
     "settingsTitle": "番茄钟设置",
     "statsTitle": "专注趋势",

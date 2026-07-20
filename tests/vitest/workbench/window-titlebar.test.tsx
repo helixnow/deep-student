@@ -57,7 +57,8 @@ describe('WindowTitleBar 三键与双击', () => {
     renderBar();
     expect(screen.getByRole('button', { name: '关闭窗口' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '最小化窗口' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '缩放窗口' })).toBeInTheDocument();
+    // 绿灯默认语义 = 沉浸模式 toggle（⌥ 才是传统 zoom）
+    expect(screen.getByRole('button', { name: '进入沉浸模式' })).toBeInTheDocument();
     const title = screen.getByText('测试窗口');
     expect(title).toHaveAttribute('data-wb-window-title');
   });
@@ -75,10 +76,11 @@ describe('WindowTitleBar 三键与双击', () => {
     expect(props.onMinimize).toHaveBeenCalledTimes(1);
   });
 
-  it('缩放键点击 = maximize toggle', () => {
+  it('⌥+绿灯 = 传统 zoom（maximize toggle）回调', () => {
     const { props } = renderBar();
-    fireEvent.click(screen.getByRole('button', { name: '缩放窗口' }));
+    fireEvent.click(screen.getByRole('button', { name: '进入沉浸模式' }), { altKey: true });
     expect(props.onZoom).toHaveBeenCalledTimes(1);
+    expect(props.onZoom).toHaveBeenCalledWith({ alt: true });
   });
 
   it('双击标题栏空白区 = maximize toggle', () => {
@@ -104,12 +106,15 @@ describe('WindowTitleBar 三键与双击', () => {
     expect(onMovePointerDown).toHaveBeenCalledTimes(1);
   });
 
-  it('单击不置 dragging 视觉态；过 1px 阈值才挂 wb-title-dragging', () => {
+  it('单击/触控板微抖（<3px）不置 dragging 视觉态；过 3px 阈值才挂 wb-title-dragging', () => {
     const { container } = renderBar();
     const bar = container.querySelector('[data-wb-titlebar]')!;
     fireEvent(bar, new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: 100, clientY: 10 }));
     expect(bar.className).not.toContain('wb-title-dragging');
+    // 2px 微抖（双击常见）不武装拖拽态，双击 zoom 不被吞
     fireEvent(window, new MouseEvent('pointermove', { bubbles: true, clientX: 102, clientY: 10 }));
+    expect(bar.className).not.toContain('wb-title-dragging');
+    fireEvent(window, new MouseEvent('pointermove', { bubbles: true, clientX: 104, clientY: 10 }));
     expect(bar.className).toContain('wb-title-dragging');
     fireEvent(window, new MouseEvent('pointerup', { bubbles: true }));
     expect(bar.className).not.toContain('wb-title-dragging');

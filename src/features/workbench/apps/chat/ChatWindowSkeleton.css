@@ -60,11 +60,12 @@
   }
 }
 
-/* 与真实消息流的 thread 宽度契约对齐（max-w-thread → --chat-thread-max-w） */
+/* 与真实消息流的 thread 宽度契约对齐（max-w-thread → --chat-thread-max-w）；
+   fallback 与 token 现值一致（44rem），避免变量缺失时骨架比真实消息流宽 */
 .wb-chat-skeleton__thread,
 .wb-chat-skeleton__composer {
   width: 100%;
-  max-width: var(--chat-thread-max-w, 48rem);
+  max-width: var(--chat-thread-max-w, 44rem);
   margin-inline: auto;
 }
 

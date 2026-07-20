@@ -1,12 +1,16 @@
 /**
- * StatusBar — 学习状态菜单栏（docs/research/macos-2026/07）
+ * StatusBar — 学习状态菜单栏（对标 macOS 菜单栏：状态项 + 控制中心交互模式）
  *
- * OS 桌面的应用级顶栏：左侧品牌，右侧命令、学习信号、设置与今日节律。
+ * OS 桌面的应用级顶栏：左侧品牌 + 聚焦应用 / 窗口菜单，右侧命令、学习信号、
+ * 设置、今日节律与时钟（今日日程 flyout）。
  * macOS 原生 File/Edit/View/Window/Help 仍由 Tauri 菜单栏提供，避免在这里重复。
  * 「今日节律」flyout：到期闪卡 / 番茄 / 自动化健康 / 任务入口。
+ * autohide：desktop.workbenchMenuBarAutohide（menuBarAutohideStore，可被外部强制）；
+ * 隐藏至顶缘 4px 热区，reveal ~180ms / conceal ~150ms 防误触（对齐 Dock autohide）。
  * Windows 右侧为窗控胶囊让位。
  */
 import React, { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -23,6 +27,13 @@ import {
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
 import { toggleAppsPanel } from './appsPanelStore';
 import { StatusBarBrandMenu } from './StatusBarBrandMenu';
+import { StatusBarAppMenus } from './StatusBarAppMenus';
+import { StatusBarClock } from './StatusBarClock';
+import {
+  MENUBAR_AUTOHIDE_SETTING_KEY,
+  useMenuBarAutohide,
+  useMenuBarAutohideStore,
+} from './menuBarAutohideStore';
 import {
   getAutomationSummary,
   type AutomationSummary,
@@ -128,8 +139,11 @@ const StatusBarComponent: React.FC = () => {
   const centerOpen = centerPhase === 'open';
   const panelRef = useRef<HTMLDivElement | null>(null);
   const backdropRef = useRef<HTMLDivElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
   const brandButtonRef = useRef<HTMLButtonElement | null>(null);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
+  const [appMenusOpen, setAppMenusOpen] = useState(false);
+  const [clockOpen, setClockOpen] = useState(false);
   const [automation, setAutomation] = useState<AutomationSummary | null>(null);
   const titleId = useId();
   const winChromeInset = isWindows();
@@ -168,6 +182,149 @@ const StatusBarComponent: React.FC = () => {
   }, [closeCenter]);
   // 统一搜索入口：打开全部应用面板（应用 + 命令），不再弹独立命令面板
   const openUnifiedSearch = useCallback(() => toggleAppsPanel(), []);
+
+  // ---- 菜单栏 autohide（对齐 Dock：reveal ~180ms / conceal ~150ms 防误触）----
+  const autohide = useMenuBarAutohide();
+  const [revealed, setRevealed] = useState(!autohide);
+  const revealedRef = useRef(!autohide);
+  const revealTimerRef = useRef(0);
+  const concealTimerRef = useRef(0);
+  const overlaysOpen =
+    centerPhase !== 'closed' || brandMenuOpen || appMenusOpen || clockOpen;
+
+  const updateRevealed = useCallback((next: boolean) => {
+    revealedRef.current = next;
+    setRevealed(next);
+  }, []);
+
+  const clearAutohideTimers = useCallback(() => {
+    if (revealTimerRef.current) {
+      window.clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = 0;
+    }
+    if (concealTimerRef.current) {
+      window.clearTimeout(concealTimerRef.current);
+      concealTimerRef.current = 0;
+    }
+  }, []);
+
+  const revealBar = useCallback(() => {
+    clearAutohideTimers();
+    updateRevealed(true);
+  }, [clearAutohideTimers, updateRevealed]);
+
+  const scheduleReveal = useCallback(() => {
+    if (concealTimerRef.current) {
+      window.clearTimeout(concealTimerRef.current);
+      concealTimerRef.current = 0;
+    }
+    if (revealTimerRef.current) return;
+    revealTimerRef.current = window.setTimeout(() => {
+      revealTimerRef.current = 0;
+      updateRevealed(true);
+    }, 180);
+  }, [updateRevealed]);
+
+  const scheduleConceal = useCallback(() => {
+    if (revealTimerRef.current) {
+      window.clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = 0;
+    }
+    if (concealTimerRef.current) return;
+    concealTimerRef.current = window.setTimeout(() => {
+      concealTimerRef.current = 0;
+      updateRevealed(false);
+    }, 150);
+  }, [updateRevealed]);
+
+  useEffect(() => {
+    clearAutohideTimers();
+    updateRevealed(!autohide);
+    return () => clearAutohideTimers();
+  }, [autohide, clearAutohideTimers, updateRevealed]);
+
+  // 浮层关闭后收起（指针仍悬停 / 焦点仍在栏内时保持展开，避免在光标下消失）
+  useEffect(() => {
+    if (!autohide || overlaysOpen) return;
+    const bar = barRef.current;
+    if (bar?.contains(document.activeElement)) return;
+    let hovered = false;
+    try {
+      hovered = bar?.matches(':hover') ?? false;
+    } catch {
+      hovered = false;
+    }
+    if (hovered) return;
+    scheduleConceal();
+  }, [autohide, overlaysOpen, scheduleConceal]);
+
+  // 设置读取：get_setting 启动回放 + workbench:settings-changed 热更新
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await invoke<string | null>('get_setting', {
+          key: MENUBAR_AUTOHIDE_SETTING_KEY,
+        });
+        if (!cancelled) {
+          useMenuBarAutohideStore.getState().setSettingEnabled(String(raw ?? '') === 'true');
+        }
+      } catch {
+        // 读失败保持默认（不自动隐藏）
+      }
+    })();
+    const onSettingsChanged = (e: Event) => {
+      const { key, value } = (e as CustomEvent<{ key?: string; value?: unknown }>).detail ?? {};
+      if (key === MENUBAR_AUTOHIDE_SETTING_KEY) {
+        useMenuBarAutohideStore
+          .getState()
+          .setSettingEnabled(value === true || value === 'true');
+      }
+    };
+    window.addEventListener('workbench:settings-changed', onSettingsChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('workbench:settings-changed', onSettingsChanged);
+    };
+  }, []);
+
+  // autohide 时工作区顶到屏幕顶缘（menubar 变 overlay）；属性挂在桌面根上供 CSS 消费
+  useEffect(() => {
+    const root = barRef.current?.closest('[data-wb-workbench-root]');
+    if (!(root instanceof HTMLElement)) return undefined;
+    if (autohide) root.setAttribute('data-wb-menubar-autohide', 'true');
+    else root.removeAttribute('data-wb-menubar-autohide');
+    return () => root.removeAttribute('data-wb-menubar-autohide');
+  }, [autohide]);
+
+  const barHidden = autohide && !revealed && !overlaysOpen;
+
+  const handleBarPointerEnter = useCallback(() => {
+    if (!autohide) return;
+    revealBar();
+  }, [autohide, revealBar]);
+
+  const handleBarPointerLeave = useCallback(() => {
+    if (!autohide) return;
+    // 焦点仍在菜单栏内（键盘用户）时不收起
+    if (barRef.current?.contains(document.activeElement)) return;
+    scheduleConceal();
+  }, [autohide, scheduleConceal]);
+
+  const handleBarFocusCapture = useCallback(() => {
+    if (!autohide) return;
+    revealBar();
+  }, [autohide, revealBar]);
+
+  const handleBarBlurCapture = useCallback(
+    (event: React.FocusEvent) => {
+      if (!autohide) return;
+      const next = event.relatedTarget as Node | null;
+      if (next && barRef.current?.contains(next)) return;
+      scheduleConceal();
+    },
+    [autohide, scheduleConceal],
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -304,14 +461,44 @@ const StatusBarComponent: React.FC = () => {
   const automationEnabled = automation?.enabledCount ?? 0;
 
   return (
+    <>
+      {/* 顶缘 4px 热区：portal 到 body 且置于菜单栏 React 子树之外，
+          避免 React 合成 enter/leave 沿 portal 父链冒泡到菜单栏（会绕过防误触延迟）。
+          隐藏时负责滑出；滑出后指针未进入菜单栏就离开顶缘时负责收起
+          （reveal/conceal 防误触参数与 Dock 一致）。 */}
+      {autohide
+        ? createPortal(
+            <div
+              className="wb-menubar-hotzone"
+              data-testid="wb-menubar-hotzone"
+              aria-hidden="true"
+              onPointerEnter={scheduleReveal}
+              onPointerLeave={() => {
+                if (revealTimerRef.current) {
+                  window.clearTimeout(revealTimerRef.current);
+                  revealTimerRef.current = 0;
+                }
+                scheduleConceal();
+              }}
+            />,
+            document.body,
+          )
+        : null}
     <div
+      ref={barRef}
       className="wb-menubar"
       data-wb-menubar
       data-testid="wb-menubar"
       data-chrome-inset={winChromeInset ? 'windows' : undefined}
       data-macos-chrome={macChrome ? 'integrated' : undefined}
+      data-autohide={autohide ? 'true' : undefined}
+      data-hidden={barHidden ? 'true' : undefined}
       role="banner"
       aria-label={t('menubar.label')}
+      onPointerEnter={handleBarPointerEnter}
+      onPointerLeave={handleBarPointerLeave}
+      onFocusCapture={handleBarFocusCapture}
+      onBlurCapture={handleBarBlurCapture}
     >
       {macChrome ? (
         <div
@@ -322,10 +509,11 @@ const StatusBarComponent: React.FC = () => {
         />
       ) : null}
       <div className="wb-menubar-leading" data-no-drag>
+        {/* macOS 苹果菜单语义：品牌钮只留 logo，应用名由右侧聚焦应用菜单加粗显示 */}
         <button
           ref={brandButtonRef}
           type="button"
-          className="wb-menubar-item wb-menubar-brand"
+          className="wb-menubar-item wb-menubar-item-icon-only wb-menubar-brand"
           data-testid="wb-menubar-brand"
           aria-label={t('menubar.brandMenu')}
           aria-haspopup="menu"
@@ -334,15 +522,13 @@ const StatusBarComponent: React.FC = () => {
           onClick={toggleBrandMenu}
         >
           <DeepStudentMark className="wb-menubar-brand-mark" title="" />
-          <span className="wb-menubar-brand-label">
-            {t('menubar.appName')}
-          </span>
         </button>
         <StatusBarBrandMenu
           open={brandMenuOpen}
           anchorRef={brandButtonRef}
           onClose={closeBrandMenu}
         />
+        <StatusBarAppMenus onOpenChange={setAppMenusOpen} />
       </div>
       <div className="wb-menubar-trailing" data-no-drag>
         <button
@@ -516,8 +702,12 @@ const StatusBarComponent: React.FC = () => {
             </div>
           </>
         ) : null}
+
+        {/* 时钟居右端（macOS 菜单栏时钟落位）；点击展开今日日程 flyout */}
+        <StatusBarClock onOpenChange={setClockOpen} />
       </div>
     </div>
+    </>
   );
 };
 

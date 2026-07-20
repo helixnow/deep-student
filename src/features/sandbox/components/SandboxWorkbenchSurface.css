@@ -1,0 +1,72 @@
+/**
+ * Sandbox 工作台画布反馈（ACR 4.0 A6）
+ *
+ * 纪律：只动 transform/opacity；reduced-motion / forced-colors 全路径。
+ * - viewport 切换：画布容器一次轻微 scale/opacity 过渡（画布 max-width 本身
+ *   无 transition，宽度是瞬时落位，此脉冲用于确认切换发生）；
+ * - refresh：预览画布一次轻微 flash（::after 覆层只动 opacity）。
+ */
+
+@keyframes sandbox-viewport-pulse {
+  from {
+    transform: scale(0.985);
+    opacity: 0.72;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+[data-sandbox-viewport-pulse] {
+  animation: sandbox-viewport-pulse 240ms ease-out;
+}
+
+[data-sandbox-refresh-flash]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  background-color: hsl(var(--primary) / 24%);
+  animation: sandbox-refresh-flash-fade 600ms ease-out forwards;
+}
+
+@keyframes sandbox-refresh-flash-fade {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-sandbox-viewport-pulse] {
+    animation: none;
+  }
+
+  /* 静态短暂高亮，由 JS 超时清属性 */
+  [data-sandbox-refresh-flash]::after {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+@media (forced-colors: active) {
+  [data-sandbox-viewport-pulse] {
+    animation: none;
+  }
+
+  [data-sandbox-refresh-flash]::after {
+    animation: none;
+    opacity: 0;
+  }
+
+  [data-sandbox-refresh-flash] {
+    outline: 2px solid Highlight;
+  }
+}

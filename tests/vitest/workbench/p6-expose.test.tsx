@@ -236,6 +236,8 @@ describe('ExposeOverlay', () => {
   it('方向键在网格内移动选择，Enter 聚焦并退出', () => {
     setup();
     act(() => { useWorkbenchOverlay.getState().openExpose(); });
+    // jsdom 无 CSS token，FLIP 时长走 320ms 兜底：推进到 open 相位后键盘导航才生效
+    act(() => { vi.advanceTimersByTime(350); });
 
     // 默认选中焦点栈顶 a
     const cellA = document.querySelector('[data-wb-expose-cell="a"]')!;
@@ -256,6 +258,8 @@ describe('ExposeOverlay', () => {
   it('Tab/Shift+Tab 限制在选中缩略与关闭按钮之间', () => {
     setup();
     act(() => { useWorkbenchOverlay.getState().openExpose(); });
+    // 焦点落位与 Tab 陷阱在 open 相位生效（FLIP 320ms 兜底时长后）
+    act(() => { vi.advanceTimersByTime(350); });
     const cellA = document.querySelector('[data-wb-expose-cell="a"]') as HTMLElement;
     const pick = within(cellA).getByRole('button', { name: 'Alpha' });
     const close = within(cellA).getByRole('button', { name: '关闭窗口' });
@@ -280,6 +284,8 @@ describe('ExposeOverlay', () => {
     seedWindows([]);
     render(<ExposeOverlay />);
     act(() => { useWorkbenchOverlay.getState().openExpose(); });
+    // 焦点兜底与 Tab 陷阱在 open 相位生效（FLIP 320ms 兜底时长后）
+    act(() => { vi.advanceTimersByTime(350); });
     const dialog = screen.getByRole('dialog', { name: '窗口俯瞰' });
     expect(dialog).toHaveFocus();
     const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });

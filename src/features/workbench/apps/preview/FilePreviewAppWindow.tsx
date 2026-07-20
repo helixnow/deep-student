@@ -30,6 +30,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { fileManager } from '@/utils/fileManager';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { AppWindowProps } from '../../core/types';
+import { useDragRenderPause } from '../../hooks/useDragRenderPause';
 import { ContentEmptyState } from '../content/ContentEmptyState';
 import { normalizeResourceInstanceKey } from '../content/resourceIdentity';
 import {
@@ -292,6 +293,7 @@ const ToolbarSeparator: React.FC = () => (
 const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   instanceKey,
   isActive,
+  renderThrottleMs = 0,
   onTitleChange,
   requestClose,
 }) => {
@@ -299,6 +301,8 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
   const resourceId = normalizeResourceInstanceKey(instanceKey);
   const highlightNames = useMemo(() => getPreviewHighlightNames(resourceId), [resourceId]);
   const previewRootRef = useRef<HTMLDivElement>(null);
+  // 拖/缩/settle 期间冻结预览窗动画/过渡（CSS 定向规则见 FilePreviewAppWindow.css）
+  useDragRenderPause(previewRootRef, renderThrottleMs);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [node, setNode] = useState<DstuNode | null>(null);

@@ -230,6 +230,24 @@
   transform: scale(0.92) rotate(-24deg);
 }
 
+/* ==== 沉浸模式整行入口（P2） ============================================= */
+
+.wb-tilemenu-item.wb-tilemenu-immersive {
+  grid-column: 1 / -1;
+  width: auto;
+  height: 30px;
+  gap: 6px;
+  padding: 0 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1;
+  color: inherit;
+}
+
+.wb-tilemenu-immersive-label {
+  white-space: nowrap;
+}
+
 /* ==== 降级 =============================================================== */
 
 :root[data-wb-material='minimal'] .wb-tilemenu {

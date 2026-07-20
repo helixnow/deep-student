@@ -12,6 +12,11 @@ interface PresenceStoreState {
   setPresence: (p: PresenceState) => void;
   /** 更新状态；传入 label 时同步覆盖（AgentStrip 文案） */
   updateStatus: (runKey: string, status: AcrRunStatus, label?: string) => void;
+  /**
+   * ACR 4.0：按 runKey 局部覆写 presence 字段
+   * （abortDeadline / resumable / placementHint 等增量字段）。
+   */
+  patchPresence: (runKey: string, patch: Partial<PresenceState>) => void;
   /** 心跳续期：刷新 startedAt，使 ttl 从现在起重新计时 */
   renew: (runKey: string) => void;
   clearByRun: (runKey: string) => void;
@@ -40,6 +45,14 @@ export const usePresenceStore = create<PresenceStoreState>((set, get) => ({
           p.runKey === runKey
             ? { ...p, status, label: label !== undefined ? label : p.label }
             : p;
+      }
+      return { byWindow: next };
+    }),
+  patchPresence: (runKey, patch) =>
+    set((s) => {
+      const next: Record<string, PresenceState> = {};
+      for (const [wid, p] of Object.entries(s.byWindow)) {
+        next[wid] = p.runKey === runKey ? { ...p, ...patch } : p;
       }
       return { byWindow: next };
     }),
@@ -79,4 +92,53 @@ export const usePresenceStore = create<PresenceStoreState>((set, get) => ({
 /** 便捷 selector：某窗口当前 presence（无则 undefined） */
 export function useWindowPresence(windowId: string): PresenceState | undefined {
   return usePresenceStore((s) => s.byWindow[windowId]);
+}
+
+/** reviewing presence 心跳周期（与 StageManager HEARTBEAT_MS 同量级） */
+const REVIEWING_HEARTBEAT_MS = 3000;
+/** reviewing presence TTL；心跳持续续期，泄漏时由 sweep 兜底清除 */
+const REVIEWING_TTL_MS = 8000;
+
+/**
+ * ACR 4.0：把某窗口 presence 置为 `reviewing`（笔记建议模式 AIDiffPanel
+ * 挂起期间等「等待用户确认」场景），并返回清除函数。
+ *
+ * - `runId` 传 session-scoped runKey（AcrRunContext.runId）；若该窗口已有
+ *   同 runKey 的 presence，则保留其身份字段只切换状态与 label。
+ * - 内部带 TTL 心跳续期：调用方忘记清除时由 presence sweep 兜底回收。
+ * - 供 noteDriver（A4）在建议挂起期间调用；本模块只提供数据层 API。
+ */
+export function markSuggestionReviewing(
+  windowId: string,
+  runId: string,
+  label: string,
+): () => void {
+  const store = usePresenceStore.getState();
+  const previous = store.byWindow[windowId];
+  const sameRun = previous?.runKey === runId ? previous : undefined;
+  store.setPresence({
+    runKey: runId,
+    runId: sameRun?.runId ?? runId,
+    sessionId: sameRun?.sessionId ?? '',
+    windowId,
+    typeId: sameRun?.typeId ?? previous?.typeId ?? 'note',
+    status: 'reviewing',
+    label,
+    startedAt: Date.now(),
+    ttlMs: REVIEWING_TTL_MS,
+  });
+  const heartbeat = setInterval(() => {
+    usePresenceStore.getState().renew(runId);
+  }, REVIEWING_HEARTBEAT_MS);
+
+  let cleared = false;
+  return () => {
+    if (cleared) return;
+    cleared = true;
+    clearInterval(heartbeat);
+    const current = usePresenceStore.getState().byWindow[windowId];
+    if (current?.runKey === runId && current.status === 'reviewing') {
+      usePresenceStore.getState().clearByRun(runId);
+    }
+  };
 }

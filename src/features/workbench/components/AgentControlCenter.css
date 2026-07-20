@@ -419,16 +419,16 @@
   margin: 0 12px 8px;
   padding: 9px 10px;
   border-radius: 8px;
-  border: 1px solid hsl(0 72% 46% / 42%);
-  background: hsl(0 72% 46% / 12%);
-  color: hsl(0 55% 28%);
+  border: 1px solid hsl(var(--destructive) / 42%);
+  background: hsl(var(--destructive) / 12%);
+  color: color-mix(in srgb, hsl(var(--destructive)) 72%, black);
 }
 
 :root.dark .wb-agent-kill-banner,
 :root[data-theme='dark'] .wb-agent-kill-banner {
-  color: hsl(0 80% 88%);
-  background: hsl(0 55% 28% / 28%);
-  border-color: hsl(0 72% 56% / 48%);
+  color: color-mix(in srgb, hsl(var(--destructive)) 45%, white);
+  background: hsl(var(--destructive) / 28%);
+  border-color: hsl(var(--destructive) / 48%);
 }
 
 .wb-agent-kill-banner p {
@@ -471,15 +471,15 @@
   justify-content: center;
   gap: 5px;
   border-radius: 8px;
-  border-color: hsl(0 72% 42% / 55%);
-  background: hsl(0 72% 46%);
+  border-color: hsl(var(--destructive) / 55%);
+  background: hsl(var(--destructive));
   color: #fff;
   font-weight: 600;
 }
 
 .wb-agent-emergency-stop:hover:not(:disabled) {
-  background: hsl(0 72% 40%);
-  border-color: hsl(0 72% 36% / 70%);
+  background: color-mix(in srgb, hsl(var(--destructive)) 88%, black);
+  border-color: hsl(var(--destructive) / 70%);
 }
 
 .wb-agent-emergency-stop:disabled {
@@ -487,7 +487,7 @@
 }
 
 .wb-dock-item[data-kill-switch='tripped'] {
-  box-shadow: 0 0 0 2px hsl(0 72% 46% / 55%);
+  box-shadow: 0 0 0 2px hsl(var(--destructive) / 55%);
 }
 
 .wb-agent-kill-dock-badge {
@@ -498,12 +498,12 @@
   height: 8px;
   border-radius: 999px;
   border: 1.5px solid hsl(var(--background));
-  background: hsl(0 72% 46%);
+  background: hsl(var(--destructive));
   pointer-events: none;
 }
 
 .wb-agent-kill-dock-badge[data-state='paused'] {
-  background: hsl(38 92% 48%);
+  background: hsl(var(--warning));
 }
 
 .wb-agent-control-actions {

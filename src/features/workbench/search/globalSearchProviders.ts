@@ -269,6 +269,48 @@ export function createWorkbenchGlobalSearchProviders(
 }
 
 // ---------------------------------------------------------------------------
+// A45-3（docs/dev/acr/ACR-4.5.md）：desktop 虚拟目标 globalSearch 的最小追加辅助
+// ---------------------------------------------------------------------------
+
+/**
+ * A45-3：dstu provider 的 agent 变体——检索与条目映射逻辑与 createDstuProvider
+ * 完全一致，只额外把命中的 DstuNode 原样回传给 onNodes。
+ * desktop.openSearchResult 需要 node.type 才能决定开窗应用（普通 provider 把
+ * 节点封在 open 闭包里拿不到），agent 侧用它缓存命中节点。
+ */
+export function createDstuProviderWithNodeCapture(
+  host: WorkbenchSearchHost,
+  onNodes: (nodes: DstuNode[]) => void,
+): GlobalSearchProvider {
+  const base = createDstuProvider(host);
+  return {
+    ...base,
+    search: async (query, signal) => {
+      const nodes = await fetchDstuSearchResults(query.trim(), signal);
+      if (signal.aborted) return [];
+      onNodes(nodes);
+      return nodes.map((node, index) => ({
+        id: `dstu:${node.id}`,
+        kind: 'dstu' as const,
+        title: node.name,
+        subtitle: node.path,
+        score: scoreByRank(index) * 0.85,
+        open: () => host.openDstu(node),
+      }));
+    },
+  };
+}
+
+/**
+ * A45-3：openChatInWorkbench 的 agent 变体——同一条 openChatSession 打开路径，
+ * 但把 launch 返回的 windowId 交还调用方，供 agent 回执做权威确认
+ * （workbench 未启用时为 null）。
+ */
+export function openChatInWorkbenchForAgent(sessionId: string): string | null {
+  return openChatSession(sessionId, 'api');
+}
+
+// ---------------------------------------------------------------------------
 // 单 provider：独立防抖 + AbortController（过期丢弃）
 // ---------------------------------------------------------------------------
 

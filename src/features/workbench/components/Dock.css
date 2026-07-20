@@ -1,43 +1,31 @@
 /**
- * Dock.css（O5 专属）— Dock 放大与动效层
+ * Dock.css（O5 专属）— Dock 动效层
  * ---------------------------------------------------------------------------
  * 只新增 wb-dock- 细分前缀类，不重定义 workbench.css 契约类
  * （wb-dock / wb-dock-item / wb-dock-indicator / wb-dock-badge）。
- * 两处**复合选择器覆盖**（更高特异性，已在 O5 进度文件声明，交 O20 reconcile）：
- *   1. `.wb-dock.wb-dock-slide` 接管 autohide 的 transform（复合 translate(-50%, y)，
- *      COORDINATION 裁决形式），替代 P5 的 Tailwind translate 类；
- *   2. `.wb-dock[data-wb-dock-magging] .wb-dock-item` 在邻近放大激活期间
- *      中和基线 hover/active 整键缩放（默认 token 已为 1；放大由 rAF 直写
- *      wrap 内层的 .wb-dock-mag transform 接管）。
+ * 复合选择器覆盖（更高特异性，已在 O5 进度文件声明，交 O20 reconcile）：
+ *   `.wb-dock.wb-dock-slide` 接管 autohide 的 transform（复合 translate(-50%, y)，
+ *   COORDINATION 裁决形式），替代 P5 的 Tailwind translate 类。
  *
+ * 悬停不做邻近放大/位移（产品裁决：图标保持静止，仅显示 tooltip 应用名）。
  * 曲线引用 O1 motion.css（--wb-ease-*）；所有动画仅 transform / opacity。
- * 例外：--wb-dock-mag-extra 驱动的左右 padding 加宽玻璃药丸（layout 局限 Dock 子树）。
- * reduced-motion 与 minimal 材质档全部归零。
  */
 
-/* ==== O5 可调 token（挂在 .wb-dock 上，JS 通过 getComputedStyle 读取） ==== */
+/* ==== O5 可调 token（挂在 .wb-dock 上） ==== */
 .wb-dock {
   --wb-dock-scale: 1;
-
-  /* 邻近放大：峰值倍率 / 高斯衰减半径（px）/ 进出场强度时间常数（ms） */
-  --wb-dock-mag-scale: 1.5;
-  --wb-dock-mag-sigma: 56;
-  --wb-dock-mag-attack: 60;
-
-  /* 磁吸总扩张量（rAF 写入）；对称加到左右 padding，玻璃随图标铺开 */
-  --wb-dock-mag-extra: 0px;
 
   /* autohide 滑入（spring-soft，无假 overshoot）/ 滑出时长 */
   --wb-dock-reveal-duration: 300ms;
   --wb-dock-conceal-duration: 200ms;
 }
 
-/* 水平 padding：基础 0.5rem + 磁吸扩张；element+class 压过契约 shorthand */
+/* 水平 padding；element+class 压过契约 shorthand */
 div.wb-dock {
   gap: calc(0.25rem * var(--wb-dock-scale));
   padding:
     calc(0.25rem * var(--wb-dock-scale))
-    calc(0.5rem * var(--wb-dock-scale) + var(--wb-dock-mag-extra) / 2);
+    calc(0.5rem * var(--wb-dock-scale));
   border-radius: calc(22px * var(--wb-dock-scale));
 }
 
@@ -53,34 +41,20 @@ div.wb-dock {
 }
 
 /* ==========================================================================
- * 邻近放大 magnification（wb-dock-mag = rAF 直写 transform 的内层）
+ * 图标结构层（wb-dock-mag 为历史命名的图标内层；dockGeometry / genie 依赖其
+ * data-wb-dock-mag-item 发现属性，仅作静态布局层，无 hover 放大）
  * ========================================================================== */
 
 .wb-dock-mag {
   display: flex;
-  transform-origin: 50% 100%;
 }
 
-/* 放大进行中才提升合成层，结束即释放（Dock.tsx 增删 data-wb-dock-magging） */
-.wb-dock[data-wb-dock-magging] .wb-dock-mag {
-  will-change: transform;
-}
-
-/* 放大激活期间中和基线整键 hover/active 缩放与灰色 hover 底（覆盖声明见文件头） */
-.wb-dock[data-wb-dock-magging] .wb-dock-item,
-.wb-dock[data-wb-dock-magging] .wb-dock-item:hover,
-.wb-dock[data-wb-dock-magging] .wb-dock-item:active {
-  transform: none;
-  background-color: transparent;
-  transition-property: none;
-}
-
-/* 非放大态也去掉 hover 灰底（macOS Dock 无 hover 矩形；特异性压过契约类） */
+/* 去掉 hover 灰底（macOS Dock 无 hover 矩形；特异性压过契约类） */
 .wb-dock .wb-dock-item:hover {
   background-color: transparent;
 }
 
-/* 放大态下的按压反馈：压暗（macOS）而非缩小；非放大态同样压暗替代契约 scale */
+/* 按压反馈：压暗（macOS）而非缩小（替代契约 scale） */
 .wb-dock-item-icon {
   transition:
     transform 90ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
@@ -120,8 +94,6 @@ div.wb-dock {
 
 /* ==========================================================================
  * hover tooltip（玻璃气泡带箭头；hover / focus-within 显示，带出现延迟）
- * --wb-dock-lift 由放大循环按帧写在 wrap 上 = 图标向上溢出量；
- * 用 transform translateY 消费（合成器路径），避免 bottom:calc 每帧布局。
  * ========================================================================== */
 
 .wb-dock-tip {
@@ -149,8 +121,8 @@ div.wb-dock {
     inset 0 1px 0 var(--wb-glass-highlight),
     0 6px 18px hsl(var(--shadow-base, 0 0% 0%) / 0.16);
   opacity: 0;
-  /* 隐藏态：略下沉；--wb-dock-lift 抬升量（负 Y = 向上） */
-  transform: translate(-50%, calc(5px - var(--wb-dock-lift, 0px))) scale(0.94);
+  /* 隐藏态：略下沉 */
+  transform: translate(-50%, 5px) scale(0.94);
   transform-origin: 50% 100%;
   pointer-events: none;
   transition:
@@ -176,30 +148,28 @@ div.wb-dock {
 .wb-dock-item-wrap:hover .wb-dock-tip,
 .wb-dock-item-wrap:focus-within .wb-dock-tip {
   opacity: 1;
-  transform: translate(-50%, calc(0px - var(--wb-dock-lift, 0px))) scale(1);
+  transform: translate(-50%, 0) scale(1);
   /* 出现延迟：扫过 Dock 时不闪一排气泡；消失无延迟（macOS 基准 300–500ms） */
   transition-delay: 350ms;
 }
 
 /* ==========================================================================
  * 运行指示点：淡入（静态点，无呼吸；基线定位规则不动）
- * --wb-dock-ind-dx 由放大循环写入，水平跟随图标位移
  * ========================================================================== */
 
 @keyframes wb-dock-ind-in {
   from {
     opacity: 0;
-    transform: translateX(calc(-50% + var(--wb-dock-ind-dx, 0px))) scale(0.3);
+    transform: translateX(-50%) scale(0.3);
   }
   to {
     opacity: 0.85;
-    transform: translateX(calc(-50% + var(--wb-dock-ind-dx, 0px))) scale(1);
+    transform: translateX(-50%) scale(1);
   }
 }
 
 .wb-dock-indicator.wb-dock-ind {
-  /* 压过契约类 translateX(-50%)，并入磁吸水平位移 */
-  transform: translateX(calc(-50% + var(--wb-dock-ind-dx, 0px)));
+  transform: translateX(-50%);
   animation: wb-dock-ind-in 240ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
 }
 
@@ -273,14 +243,11 @@ div.wb-dock {
 }
 
 /* ==========================================================================
- * 降级：reduced-motion / minimal / data-wb-dock-mag=off → 关放大等
- * （放大循环在 JS 侧同样按这些条件禁用，这里是 CSS 兜底）
+ * 降级：reduced-motion / minimal → 关动效
  * ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
   .wb-dock {
-    --wb-dock-mag-scale: 1;
-    --wb-dock-mag-extra: 0px;
     --wb-dock-reveal-duration: 0ms;
     --wb-dock-conceal-duration: 0ms;
   }
@@ -301,14 +268,7 @@ div.wb-dock {
   }
 }
 
-:root[data-wb-dock-mag='off'] .wb-dock {
-  --wb-dock-mag-scale: 1;
-  --wb-dock-mag-extra: 0px;
-}
-
 :root[data-wb-material='minimal'] .wb-dock {
-  --wb-dock-mag-scale: 1;
-  --wb-dock-mag-extra: 0px;
   --wb-dock-reveal-duration: 0ms;
   --wb-dock-conceal-duration: 0ms;
 }

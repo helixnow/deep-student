@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, beforeAll, afterEach, vi } from 'vite
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import {
+  setWorkbenchShortcutPlatformOverride,
   useWorkbenchOverlay,
   WORKBENCH_SHORTCUT_FEEDBACK_EVENT,
 } from '../../core/shortcuts';
@@ -40,6 +41,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  setWorkbenchShortcutPlatformOverride(null);
 });
 
 describe('渲染与 aria', () => {
@@ -66,6 +68,33 @@ describe('渲染与 aria', () => {
       document.querySelectorAll('.wb-cheat-group-title'),
     ).map((el) => el.textContent);
     expect(titles).toEqual(['平铺与布局', '移动与贴边', '切换与导航', '窗口管理', '帮助']);
+  });
+
+  it('macOS 平台：键帽输出 ⌘ 符号（顺序 ⌃⌥⇧⌘）、底部提示为 ⌘⌥ 文案', () => {
+    setWorkbenchShortcutPlatformOverride(true);
+    render(<ShortcutCheatsheet />);
+    openSheet();
+
+    const capsOf = (id: string) =>
+      Array.from(
+        document.querySelectorAll(`[data-wb-cheat-shortcut="${id}"] kbd.wb-cheat-key`),
+      ).map((el) => el.textContent);
+    expect(capsOf('close-window')).toEqual(['⌘', 'W']);
+    expect(capsOf('tile-left')).toEqual(['⌥', '⌘', '←']);
+    expect(capsOf('move-left')).toEqual(['⌥', '⇧', '⌘', '←']);
+    expect(document.querySelector('.wb-cheat-footer')?.textContent).toContain('⌘⌥');
+  });
+
+  it('非 macOS 平台：键帽保持 Ctrl/Alt 文本、提示为 Ctrl+Alt 文案', () => {
+    setWorkbenchShortcutPlatformOverride(false);
+    render(<ShortcutCheatsheet />);
+    openSheet();
+
+    const caps = Array.from(
+      document.querySelectorAll('[data-wb-cheat-shortcut="close-window"] kbd.wb-cheat-key'),
+    ).map((el) => el.textContent);
+    expect(caps).toEqual(['Ctrl', 'W']);
+    expect(document.querySelector('.wb-cheat-footer')?.textContent).toContain('Ctrl+Alt');
   });
 
   it('每行渲染描述 + kbd 键帽（多段键位以分隔符连接）', () => {

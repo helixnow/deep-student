@@ -26,12 +26,18 @@ import { appRegistry } from '../core/appRegistry';
 import type { WorkbenchWindow } from '../core/types';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
 import { useLiquidGlassLens } from '../core/liquidGlassLens';
+import { prefetchFrozenWindow } from '../core/wakePrefetchIntent';
 import './WindowSwitcher.css';
 
 export interface WindowSwitcherProps {
   /**
    * 候选项渲染窗口内容缩略卡（按窗口宽高比的占位式迷你窗口 + 应用图标）
-   * 而非纯图标。默认关闭（macOS Cmd+Tab 心智）；由 O20 决定是否接线。
+   * 而非纯图标。
+   *
+   * 决议（2026-07 审阅确认，不再待 O20）：macOS Cmd+Tab 是纯应用图标、
+   * 无缩略图，本切换器对齐该心智——thumbnails 有意默认关闭且全部调用点
+   * 均不接线，属既定行为而非遗漏。请勿随意开启；如确需缩略形态，
+   * 先重新评审交互与性能（缩略卡会引入每帧布局量测）再接线。
    */
   thumbnails?: boolean;
 }
@@ -100,6 +106,14 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
       win.title || (def ? t(def.nameKey, win.typeId) : win.typeId);
     if (title) announceWorkbench(title, 'polite');
   }, [switcherOpen, switcherIds, switcherIndex, t]);
+
+  // 高亮项变化即「即将聚焦」：frozen 窗提前预取回 background（松开 Ctrl
+  // 聚焦时内容即时呈现；intent 层负责 frozen 判定与同窗冷却去重）
+  useEffect(() => {
+    if (!switcherOpen) return;
+    const id = switcherIds[switcherIndex];
+    if (id) prefetchFrozenWindow(id);
+  }, [switcherOpen, switcherIds, switcherIndex]);
 
   useEffect(() => {
     if (switcherOpen) {

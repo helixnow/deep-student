@@ -2,7 +2,9 @@
  * useWorkbenchShortcuts（主责 P6 → O12 深化）
  *
  * 在 WorkbenchDesktop 根部挂载一次（P11 接线）。实现设计文档 §6.4 全部快捷键
- * 及 O12 补齐的 WM 级快捷键：
+ * 及 O12 补齐的 WM 级快捷键（下表为 Ctrl 基底写法；macOS 上经
+ * core/shortcuts 的平台映射整体换到 ⌘ 基底：Ctrl→⌘、Ctrl+Alt→⌘⌥、
+ * Ctrl+Alt+Shift→⌘⌥⇧，原 Ctrl 通道在 macOS 上仍作为兜底保留）：
  *
  * - Ctrl+Alt+←/→        平铺左/右半屏
  * - Ctrl+Alt+U/I/J/K    平铺到四角（对标 Rectangle）
@@ -13,6 +15,7 @@
  * - Ctrl+Tab / Ctrl+Shift+Tab  窗口循环切换（按住循环，松开 Ctrl 聚焦）
  * - Ctrl+` / Ctrl+Shift+`      同应用窗口循环（对标 macOS Cmd+`）
  * - Ctrl+Alt+E          窗口俯瞰
+ * - Ctrl+Alt+Shift+E    App Exposé（只俯瞰当前焦点应用的窗口）
  * - Ctrl+Alt+M          最小化焦点窗口
  * - Ctrl+Alt+D          显示桌面（stash 语义：最小化可见窗 / 再按恢复暂存）
  * - Ctrl+W              关闭焦点窗口（走 requestClose/canClose，可通过选项关闭）
@@ -35,6 +38,7 @@ import { useWindowStore } from '../core/windowStore';
 import {
   computeCenteredFrame,
   computeEdgeMovedFrame,
+  isMacShortcutPlatform,
   isShortcutGuardedEvent,
   matchWorkbenchShortcut,
   useWorkbenchOverlay,
@@ -43,6 +47,7 @@ import {
   type WorkbenchShortcutFeedbackDetail,
   type WorkbenchShortcutId,
 } from '../core/shortcuts';
+import { MENU_CLOSE_WINDOW_EVENT } from '@/menu/menuEvents';
 import {
   requestCloseAnimated,
   requestMinimizeAnimated,
@@ -274,7 +279,9 @@ function runShortcut(id: WorkbenchShortcutId): void {
   const overlay = useWorkbenchOverlay.getState();
 
   // 俯瞰激活期间只响应俯瞰开关与速查表（其余交互由 ExposeOverlay 处理）
-  if (overlay.exposeOpen && id !== 'expose' && id !== 'cheatsheet') return;
+  if (overlay.exposeOpen && id !== 'expose' && id !== 'expose-app' && id !== 'cheatsheet') {
+    return;
+  }
 
   switch (id) {
     case 'cycle-next':
@@ -307,6 +314,25 @@ function runShortcut(id: WorkbenchShortcutId): void {
           i18n.t('workbench:a11y.exposeClosed'),
         );
       }
+      return;
+    }
+    case 'expose-app': {
+      // App Exposé（Ctrl+Alt+Shift+E）：以焦点窗口的应用为过滤俯瞰其全部窗口。
+      // 俯瞰已开时按 toggle 语义关闭（与 macOS ⌃↓ 再按退出一致）。
+      if (overlay.exposeOpen) {
+        overlay.closeExpose();
+        announceWorkbench(i18n.t('workbench:a11y.exposeClosed'));
+        return;
+      }
+      const appFocusedId = getFocusedWindowId();
+      if (!appFocusedId) return; // 无焦点窗口时不动作
+      const appFocused = useWindowStore.getState().windows[appFocusedId];
+      if (!appFocused) return;
+      overlay.openExpose({ appTypeId: appFocused.typeId });
+      const count = Object.values(useWindowStore.getState().windows).filter(
+        (w) => !w.minimized && w.typeId === appFocused.typeId,
+      ).length;
+      announceWorkbench(i18n.t('workbench:a11y.exposeOpened', { count }));
       return;
     }
     case 'cheatsheet':
@@ -423,7 +449,11 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
   useEffect(() => {
     if (!enabled) return undefined;
 
-    // ---- 长按 Ctrl+Alt → 速查表临时显示（松开即收） ----
+    // macOS 上主修饰键是 ⌘（Meta），长按/切换器会话围绕 Meta+Alt 展开；
+    // 原 Ctrl 通道作为兜底同样接受（与 matchWorkbenchShortcut 的双通道一致）。
+    const isMac = isMacShortcutPlatform();
+
+    // ---- 长按 Ctrl+Alt（macOS: ⌘⌥ / ⌃⌥）→ 速查表临时显示（松开即收） ----
     let holdTimer: number | null = null;
 
     const cancelHold = () => {
@@ -450,7 +480,8 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      const isModifierKey = e.key === 'Control' || e.key === 'Alt';
+      const isModifierKey =
+        e.key === 'Control' || e.key === 'Alt' || (isMac && e.key === 'Meta');
 
       // Esc 关闭速查表（overlay 级操作，不受输入框 guard 限制）
       if (e.key === 'Escape' && useWorkbenchOverlay.getState().cheatsheetOpen) {
@@ -474,13 +505,14 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
         return;
       }
 
-      // 纯 Ctrl+Alt 按住（无 Shift/Meta、无字符键）→ 进入长按计时
+      // 纯 主修饰+Alt 按住（无 Shift、无字符键）→ 进入长按计时
+      // 非 macOS：Ctrl+Alt（Meta 参与则不算）；macOS：⌘⌥ 或兜底通道 ⌃⌥
+      const primaryHeld = isMac ? e.metaKey || e.ctrlKey : e.ctrlKey && !e.metaKey;
       if (
         isModifierKey &&
-        e.ctrlKey &&
+        primaryHeld &&
         e.altKey &&
         !e.shiftKey &&
-        !e.metaKey &&
         !useWorkbenchOverlay.getState().switcherOpen
       ) {
         scheduleHold();
@@ -504,12 +536,12 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
     };
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Control' || e.key === 'Alt') {
+      if (e.key === 'Control' || e.key === 'Alt' || (isMac && e.key === 'Meta')) {
         cancelHold();
         releaseTransientCheatsheet();
       }
-      // 松开 Ctrl → 提交切换器选中窗口
-      if (e.key === 'Control') commitSwitcher();
+      // 松开主修饰键（Ctrl；macOS 上 ⌘/Ctrl 双通道）→ 提交切换器选中窗口
+      if (e.key === 'Control' || (isMac && e.key === 'Meta')) commitSwitcher();
     };
 
     const onBlur = () => {
@@ -519,13 +551,39 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
       useWorkbenchOverlay.getState().closeSwitcher();
     };
 
+    // ---- macOS 原生菜单 File ▸ Close Window（⌘W）接管 ----
+    // 原生 key equivalent 会在 WKWebView 收到 keydown 之前吃掉 ⌘W，
+    // menu.rs 已把该菜单项改为经 menu://close-window 事件路由回前端
+    // （menuEventBridge 派发同名 cancelable CustomEvent）。
+    const onMenuCloseWindow = (e: Event) => {
+      // workbench 桌面激活期间必须接管：关闭原生主窗在 macOS 上等价于退出
+      // 应用。即使无可关窗口 / 关窗快捷键被设置禁用，也吞掉事件——对齐
+      // Finder 无窗口时 ⌘W 无操作的惯例，避免连按 ⌘W 误退出。
+      e.preventDefault();
+      // 合成一次与 ⌘W 语义一致的 keydown 复用键盘管线：close-window 设置项、
+      // tabbed 应用的 handlesCloseShortcut（notes/files 自持监听器关内部
+      // 标签/窗口）与 requestCloseAnimated 走完全相同的分支。
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'w',
+          code: 'KeyW',
+          metaKey: isMac,
+          ctrlKey: !isMac,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    };
+
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('keyup', onKeyUp, true);
     window.addEventListener('blur', onBlur);
+    window.addEventListener(MENU_CLOSE_WINDOW_EVENT, onMenuCloseWindow);
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('blur', onBlur);
+      window.removeEventListener(MENU_CLOSE_WINDOW_EVENT, onMenuCloseWindow);
       cancelHold();
       useWorkbenchOverlay.getState().closeSwitcher();
       useWorkbenchOverlay.getState().closeCheatsheet();

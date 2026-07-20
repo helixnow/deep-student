@@ -172,7 +172,7 @@
   --wb-dock-item-size: 44px;
   --wb-dock-item-radius: var(--wb-radius-md);
   --wb-dock-item-hover-bg: var(--interactive-hover, rgba(0, 0, 0, 0.08));
-  /* 非 mag 默认不整键放大（toolbar 式 1.18 已弃）；邻近放大由 Dock.css fisheye 负责 */
+  /* 默认不整键放大（toolbar 式 1.18 已弃）；悬停图标保持静止，仅 tooltip 显示应用名 */
   --wb-dock-item-hover-scale: 1;
   --wb-dock-indicator: color-mix(in hsl, hsl(var(--foreground)) 62%, transparent 38%);
   --wb-dock-badge-bg: hsl(var(--destructive));

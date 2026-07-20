@@ -293,6 +293,16 @@
 }
 
 /*
+ * App Exposé（P2）：非目标应用的窗口原位淡出（由 TS 打 data-expose-dimmed，
+ * 退出/卸载时移除）。窗口壳不在 .wb-expose-root 内，时长直接引用全局 token。
+ */
+[data-wb-window-id][data-expose-dimmed] {
+  opacity: 0.12;
+  pointer-events: none;
+  transition: opacity var(--wb-motion-gentle, 320ms) var(--wb-ease-out, ease-out);
+}
+
+/*
  * P2 GPU 缓解：俯瞰 FLIP 期间窗口内 backdrop-filter 每帧重采样成本高。
  * `.wb-titlebar` 契约本身无 blur；`.wb-glass` 等有。对已 FLIP 的窗临时关掉。
  * 缩略态下玻璃变实色 tint，退出俯瞰即恢复——可接受，无明显闪变。
@@ -313,6 +323,10 @@
   --wb-expose-dissolve-duration: 0ms;
 }
 
+:root[data-wb-material='minimal'] [data-wb-window-id][data-expose-dimmed] {
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wb-expose-root {
     --wb-expose-duration: 0ms;
@@ -320,4 +334,7 @@
     --wb-expose-dissolve-duration: 0ms;
   }
 
+  [data-wb-window-id][data-expose-dimmed] {
+    transition: none;
+  }
 }

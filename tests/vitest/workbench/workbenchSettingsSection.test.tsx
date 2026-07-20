@@ -145,7 +145,7 @@ describe('WorkbenchSettingsSection', () => {
     }
   });
 
-  it('applies performance profile levers (balanced → reduced / dock mag on)', async () => {
+  it('applies performance profile levers (balanced → reduced)', async () => {
     render(<WorkbenchSettingsSection />);
     await screen.findByRole('switch', { name: '学习桌面（默认）' });
 
@@ -163,9 +163,9 @@ describe('WorkbenchSettingsSection', () => {
         value: 'reduced',
       });
     });
-    expect(settingsStore.get('desktop.workbenchDockMagnification')).toBe('true');
     expect(document.documentElement.getAttribute('data-wb-material')).toBe('reduced');
-    expect(screen.getByRole('switch', { name: 'Dock 邻近放大' })).toHaveAttribute('aria-checked', 'true');
+    // Dock 邻近放大已移除：不再有对应设置项
+    expect(screen.queryByRole('switch', { name: 'Dock 邻近放大' })).not.toBeInTheDocument();
   });
 
   it('persists tile margins as JSON and keeps px when toggling', async () => {

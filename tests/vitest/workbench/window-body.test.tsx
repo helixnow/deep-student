@@ -176,7 +176,7 @@ describe('WindowBody 生命周期壳', () => {
     expect(screen.getByText(/加载中/)).toBeInTheDocument();
   });
 
-  it('opening：壳挂 pop-in，animationend 后清除标记', async () => {
+  it('opening：壳挂 pop-in，animationend 后清除标记；无 Dock 图标回退中心源点', async () => {
     const id = openTestWindow();
     const shell = mountShell(id);
     expect(useWindowStore.getState().transientPhases?.[id]).toBe('opening');
@@ -187,12 +187,33 @@ describe('WindowBody 生命周期壳', () => {
     });
 
     expect(shell.getAttribute(LIFEC_ATTR)).toBe('opening');
+    // L4：opening 也注入源点；无 Dock 坐标时回退 50%/50%（中心弹入）
+    expect(shell.style.getPropertyValue('--wb-minimize-origin-x')).toBe('50%');
+    expect(shell.style.getPropertyValue('--wb-minimize-origin-y')).toBe('50%');
 
     await act(async () => {
       fireEvent.animationEnd(shell);
     });
     expect(shell.getAttribute(LIFEC_ATTR)).toBeNull();
     expect(useWindowStore.getState().transientPhases?.[id]).toBeUndefined();
+  });
+
+  it('opening：有 Dock 图标时开窗源点对齐图标中心', async () => {
+    const id = openTestWindow({ typeId: 'test-app' });
+    const shell = mountShell(id, { left: 0, top: 0, width: 200, height: 100 });
+    publishDockIconRects({
+      'test-app': { x: 100, y: 900, w: 48, h: 48 },
+    });
+
+    render(<WindowBody windowId={id} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(shell.getAttribute(LIFEC_ATTR)).toBe('opening');
+    // 中心 (124, 924) 相对壳 (0,0,200×100) → 62% / 924%
+    expect(shell.style.getPropertyValue('--wb-minimize-origin-x')).toBe('62%');
+    expect(shell.style.getPropertyValue('--wb-minimize-origin-y')).toBe('924%');
   });
 
   it('minimizing：注入 Dock 坐标 + genie-min，结束后才 minimize', async () => {

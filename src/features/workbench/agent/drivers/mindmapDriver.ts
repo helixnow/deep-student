@@ -33,6 +33,7 @@ import {
   findParentNode,
   isDescendantOf,
 } from '@/features/mindmap/utils/node/find';
+import { readCssTimeMs } from '@/shared/utils/cssTime';
 import type {
   AcrProbeState,
   AcrReceipt,
@@ -45,7 +46,28 @@ import type {
 import { withUserPatch } from '../userPatch';
 
 const TYPE_ID = 'mindmap';
-const AGENT_ENTERING_TTL_MS = 3000;
+/**
+ * 演出优化轮：标记 TTL 从「CSS 动画时长（--mm-agent-*-ms 单源）+ 缓冲」推导。
+ * 旧值 entering=3000 远大于动画 260ms——3 秒内节点重挂载（虚拟化/布局切换）
+ * 会重播入场动画；收敛到动画时长 + 缓冲即可。
+ */
+const AGENT_ENTERING_TTL_BUFFER_MS = 440;
+const AGENT_UPDATED_TTL_BUFFER_MS = 200;
+
+function agentEnteringTtlMs(): number {
+  return readCssTimeMs('--mm-agent-enter-ms', 260) + AGENT_ENTERING_TTL_BUFFER_MS;
+}
+
+function agentUpdatedTtlMs(): number {
+  return readCssTimeMs('--mm-agent-updated-ms', 900) + AGENT_UPDATED_TTL_BUFFER_MS;
+}
+
+/** ACR 4.0 A4：delete_node 退场动画时长回退值（CSS --mm-agent-exit-ms 单源） */
+export const AGENT_EXITING_MS = 180;
+
+function agentExitingMs(): number {
+  return readCssTimeMs('--mm-agent-exit-ms', AGENT_EXITING_MS);
+}
 /**
  * DESIGN §4.3：setCenter / 焦点跟随每 3–5 op 节流。
  * R3-02：200 节点生长压测取上限 5，降低 ensureNodeVisible/setCenter 频率。
@@ -55,9 +77,15 @@ export const VIEWPORT_FOLLOW_EVERY = 5;
 /**
  * R2-02 定稿：维持 v1 拒绝式（不升级 AIDiff 式预览）。
  * 理由见 progress/R2-02.md「设计决策」。
+ * ACR 4.0 A4：types.ts 回执状态枚举无 blocked/rejected 可选，维持 completed +
+ * suggestionPending，但 message 改为明确指令式文案，避免 LLM 傻等一个
+ * 永远不会到来的确认回执。
  */
-const SUGGESTION_MESSAGE =
-  '存在未保存编辑，建议改用后端路径或等待用户空闲（v1 拒绝式，无 diff 预览；R2-02 书面否决升级）';
+export const SUGGESTION_MESSAGE =
+  '目标导图存在未保存编辑或正在编辑，破坏性操作已被拒绝式挂起：'
+  + '用户未确认前这些操作不会发生，且没有确认 UI，不会有后续回执，请勿等待。'
+  + 'suggestionPending=true 仅表示该拒绝语义。请改走后端数据路径重新提交，'
+  + '或提示用户保存/结束编辑后重试。';
 
 /** R1-05 对齐的 anchor / payload 形状 */
 interface MindmapOpAnchor {
@@ -79,10 +107,67 @@ interface ActiveRunState {
 }
 
 const activeRuns = new Map<string, ActiveRunState>();
-const enteringTimers = new WeakMap<
-  MindMapStoreApi,
-  Map<string, ReturnType<typeof setTimeout>>
->();
+
+/**
+ * 演出优化轮：标记清除合并调度。
+ * 旧实现每个 id 各挂一个 setTimeout，到期各自触发一次 store 更新——
+ * 画布 enrichedNodes memo 依赖这些瞬态 Set，每次清除都全量重建节点数组。
+ * 合并调度把临近到期（CLEAR_SLACK_MS 内）的 id 一次清掉，只触发一次重建。
+ */
+interface MarkClearScheduler {
+  /** id → 到期时刻（重复 mark 顺延） */
+  deadlines: Map<string, number>;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+const CLEAR_SLACK_MS = 80;
+
+const enteringSchedulers = new WeakMap<MindMapStoreApi, MarkClearScheduler>();
+const updatedSchedulers = new WeakMap<MindMapStoreApi, MarkClearScheduler>();
+
+function pumpScheduler(
+  scheduler: MarkClearScheduler,
+  clear: (ids: string[]) => void,
+): void {
+  if (scheduler.timer != null || scheduler.deadlines.size === 0) return;
+  let earliest = Infinity;
+  scheduler.deadlines.forEach((deadline) => {
+    if (deadline < earliest) earliest = deadline;
+  });
+  const delay = Math.max(0, earliest - Date.now());
+  scheduler.timer = setTimeout(() => {
+    scheduler.timer = null;
+    const cutoff = Date.now() + CLEAR_SLACK_MS;
+    const ripe: string[] = [];
+    scheduler.deadlines.forEach((deadline, id) => {
+      if (deadline <= cutoff) ripe.push(id);
+    });
+    for (const id of ripe) scheduler.deadlines.delete(id);
+    if (ripe.length > 0) clear(ripe);
+    pumpScheduler(scheduler, clear);
+  }, delay);
+}
+
+function markWithTtl(
+  schedulers: WeakMap<MindMapStoreApi, MarkClearScheduler>,
+  storeApi: MindMapStoreApi,
+  ids: string[],
+  ttlMs: number,
+  mark: (ids: string[]) => void,
+  clear: (ids: string[]) => void,
+): void {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return;
+  mark(unique);
+  let scheduler = schedulers.get(storeApi);
+  if (!scheduler) {
+    scheduler = { deadlines: new Map(), timer: null };
+    schedulers.set(storeApi, scheduler);
+  }
+  const deadline = Date.now() + ttlMs;
+  for (const id of unique) scheduler.deadlines.set(id, deadline);
+  pumpScheduler(scheduler, clear);
+}
 
 function emptyReceipt(totalOps: number, mode: AcrReceipt['mode'] = 'frontend'): AcrReceipt {
   return {
@@ -379,23 +464,65 @@ function nodeLocation(root: MindMapNode, nodeId: string): { parentId: string; in
 }
 
 function markEntering(storeApi: MindMapStoreApi, ids: string[]): void {
-  const unique = [...new Set(ids.filter(Boolean))];
-  if (unique.length === 0) return;
-  storeApi.getState().markAgentEntering(unique);
-  let storeTimers = enteringTimers.get(storeApi);
-  if (!storeTimers) {
-    storeTimers = new Map();
-    enteringTimers.set(storeApi, storeTimers);
+  markWithTtl(
+    enteringSchedulers,
+    storeApi,
+    ids,
+    agentEnteringTtlMs(),
+    (unique) => storeApi.getState().markAgentEntering(unique),
+    (ripe) => storeApi.getState().clearAgentEntering(ripe),
+  );
+}
+
+/** ACR 4.0 A4：update_node 的内容更新高亮（背景 flash，TTL 自动清除） */
+function markUpdated(storeApi: MindMapStoreApi, ids: string[]): void {
+  markWithTtl(
+    updatedSchedulers,
+    storeApi,
+    ids,
+    agentUpdatedTtlMs(),
+    (unique) => storeApi.getState().markAgentUpdated(unique),
+    (ripe) => storeApi.getState().clearAgentUpdated(ripe),
+  );
+}
+
+/** delete_node 退场演出：目标节点及其整棵子树一起标记 */
+export function collectSubtreeIds(root: MindMapNode, nodeId: string): string[] {
+  const target = findNodeById(root, nodeId);
+  if (!target) return [];
+  const ids: string[] = [];
+  const stack: MindMapNode[] = [target];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    ids.push(node.id);
+    for (const child of node.children) stack.push(child);
   }
-  for (const id of unique) {
-    const prev = storeTimers.get(id);
-    if (prev) clearTimeout(prev);
-    const timer = setTimeout(() => {
-      storeTimers?.delete(id);
-      storeApi.getState().clearAgentEntering([id]);
-    }, AGENT_ENTERING_TTL_MS);
-    storeTimers.set(id, timer);
+  return ids;
+}
+
+/**
+ * ACR 4.0 A4：退场动画等待——分片 setTimeout，片间检查 abort 旗标，
+ * 首尾各过一次 checkPaused（pausedByUser 时在此挂起），保证 abort/暂停不悬挂。
+ */
+async function waitExitAnimation(
+  run: AcrRunContext,
+  runState: ActiveRunState,
+  ms: number,
+): Promise<'ok' | 'abort'> {
+  const pre = await run.checkPaused();
+  if (pre === 'abort' || runState.aborted) return 'abort';
+
+  let remaining = ms;
+  while (remaining > 0) {
+    if (runState.aborted) return 'abort';
+    const slice = Math.min(60, remaining);
+    await new Promise<void>((resolve) => setTimeout(resolve, slice));
+    remaining -= slice;
   }
+
+  const post = await run.checkPaused();
+  if (post === 'abort' || runState.aborted) return 'abort';
+  return 'ok';
 }
 
 function collectTargetNodeIds(ops: AgentOp[]): Set<string> {
@@ -794,6 +921,11 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
   let expectedDocumentVersion = initialState._documentVersion;
   let stoppedAtSuggestion = false;
   let savePending = false;
+  // 演出优化轮：instant（fast/慢帧降级/reduced-motion）不逐 op 打标记——
+  // 大批量时逐 op 标记会触发 N 次瞬态 Set 更新 + 画布全量节点重建；
+  // 收集后收尾统一一次标记，即 DESIGN §4.3「fast = 直落终态 + flash」
+  const instantEnteredIds: string[] = [];
+  const instantUpdatedIds: string[] = [];
 
   for (let i = 0; i < ops.length; i++) {
     if (runState.aborted) {
@@ -847,6 +979,41 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
 
     run.reportProgress(step, totalOps, op.label);
 
+    // ACR 4.0 A4：delete_node 先对整棵子树播退场动画，再真正从 store 删除。
+    // instant（fast / reduced-motion 强制 fast）直接删；等待接入 checkPaused/abort。
+    if (op.kind === 'delete_node' && !instant) {
+      const anchor = parseAnchor(op);
+      const rootNow = storeApi.getState().document.root;
+      const exitIds =
+        anchor.node_id && rootNow.id !== anchor.node_id
+          ? collectSubtreeIds(rootNow, anchor.node_id)
+          : [];
+      if (exitIds.length > 0) {
+        storeApi.getState().expandToNode(anchor.node_id!, { silent: true });
+        storeApi.getState().markAgentExiting(exitIds);
+        const wait = await waitExitAnimation(run, runState, agentExitingMs());
+        storeApi.getState().clearAgentExiting(exitIds);
+        if (wait === 'abort') {
+          runState.aborted = true;
+          receipt.status = 'cancelled';
+          for (let j = i; j < ops.length; j++) {
+            receipt.undone.push(ops[j].label);
+          }
+          receipt.message = '已中止（用户停止或取消）';
+          break;
+        }
+        // 动画期间目标导图可能被切换：与循环顶部同语义防御
+        if (storeApi.getState().mindmapId !== resourceId) {
+          receipt.status = receipt.applied > 0 ? 'partial' : 'failed';
+          for (let j = i; j < ops.length; j++) {
+            receipt.undone.push(`${ops[j].label}（目标资源已切换）`);
+          }
+          receipt.message = '目标导图在执行期间已切换，剩余操作未应用';
+          break;
+        }
+      }
+    }
+
     const result = applyOneOp(run, storeApi, resourceId, op);
     if (!result.ok) {
       const reason = result.reason ?? '锚点解析失败';
@@ -864,8 +1031,15 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
       receipt.entityIds.push(entityId);
     }
 
-    // 每 op 入场动画 + 展开路径；视口跟随节流（禁每 op fitView）
-    markEntering(storeApi, [entityId]);
+    // 每 op 演出（区分语义）：新增/移动=滑入，更新=背景 flash 高亮，删除已播退场；
+    // 展开路径 + 视口跟随节流（禁每 op fitView）；instant 收集待批量标记
+    if (op.kind === 'update_node') {
+      if (instant) instantUpdatedIds.push(entityId);
+      else markUpdated(storeApi, [entityId]);
+    } else if (op.kind !== 'delete_node') {
+      if (instant) instantEnteredIds.push(entityId);
+      else markEntering(storeApi, [entityId]);
+    }
     storeApi.getState().expandToNode(entityId, { silent: true });
 
     if (shouldFollowViewport(receipt.applied, instant)) {
@@ -879,6 +1053,9 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
 
   // 收尾：保证焦点落在最后成功实体；非 instant 再请求一次 fitView（DESIGN §4.3）
   if (receipt.applied > 0 && storeApi.getState().mindmapId === resourceId) {
+    // instant 批量标记（一次 store 更新 = 一次画布重建；语义即「直落 + flash」）
+    if (instantEnteredIds.length > 0) markEntering(storeApi, instantEnteredIds);
+    if (instantUpdatedIds.length > 0) markUpdated(storeApi, instantUpdatedIds);
     const lastEntity = receipt.entityIds[receipt.entityIds.length - 1];
     if (lastEntity && lastEntity !== lastFollowedEntityId) {
       storeApi.getState().setFocusedNodeId(lastEntity);
