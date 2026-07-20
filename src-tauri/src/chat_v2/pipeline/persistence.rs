@@ -1017,19 +1017,38 @@ impl ChatV2Pipeline {
         // ③ 竞态保护：LLM 本轮已通过工具写入 fact 记忆时跳过
         let llm_wrote_fact_memory = ctx.tool_results.iter().any(|tr| {
             let name = tr.tool_name.as_str();
-            let is_memory_tool = matches!(
-                name.strip_prefix("builtin-").unwrap_or(name),
-                "memory_write" | "memory_write_smart" | "memory_update_by_id"
-            );
-            if !is_memory_tool {
-                return false;
+            let stripped = name.strip_prefix("builtin-").unwrap_or(name);
+            match stripped {
+                "memory_write" | "memory_write_smart" | "memory_update_by_id" => {
+                    let declared_type = tr
+                        .input
+                        .get("memory_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("fact");
+                    declared_type == "fact"
+                }
+                // 批量写入：条目级 memory_type 优先，回退到 default_memory_type
+                "memory_write_batch" => {
+                    let default_type = tr
+                        .input
+                        .get("default_memory_type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("fact");
+                    tr.input
+                        .get("items")
+                        .and_then(|v| v.as_array())
+                        .map(|items| {
+                            items.iter().any(|item| {
+                                item.get("memory_type")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(default_type)
+                                    == "fact"
+                            })
+                        })
+                        .unwrap_or(default_type == "fact")
+                }
+                _ => false,
             }
-            let declared_type = tr
-                .input
-                .get("memory_type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("fact");
-            declared_type == "fact"
         });
         if llm_wrote_fact_memory {
             log::debug!(

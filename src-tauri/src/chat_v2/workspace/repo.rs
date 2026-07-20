@@ -14,6 +14,23 @@ fn log_and_skip_err<T>(result: Result<T, rusqlite::Error>) -> Option<T> {
     }
 }
 
+/// 将 snake_case unit 枚举序列化为不带引号的存库字符串。
+/// unit 枚举的 JSON 序列化实践中不会失败；防御性兜底走 Debug 小写，绝不 panic
+/// （原实现使用 `.unwrap()`，任何 Serialize 异常都会拉崩整个命令线程）。
+fn enum_to_db_str<T: serde::Serialize + std::fmt::Debug>(value: &T) -> String {
+    match serde_json::to_string(value) {
+        Ok(s) => s.trim_matches('"').to_string(),
+        Err(e) => {
+            log::error!(
+                "[WorkspaceRepo] enum serialize failed ({}), falling back to Debug: {:?}",
+                e,
+                value
+            );
+            format!("{:?}", value).to_lowercase()
+        }
+    }
+}
+
 use super::database::WorkspaceDatabase;
 use super::types::*;
 
@@ -34,7 +51,7 @@ impl WorkspaceRepo {
             params![
                 workspace.id,
                 workspace.name,
-                serde_json::to_string(&workspace.status).unwrap().trim_matches('"'),
+                enum_to_db_str(&workspace.status),
                 workspace.creator_session_id,
                 workspace.created_at.to_rfc3339(),
                 workspace.updated_at.to_rfc3339(),
@@ -63,7 +80,7 @@ impl WorkspaceRepo {
         conn.execute(
             "UPDATE workspace SET status = ?1, updated_at = ?2",
             params![
-                serde_json::to_string(&status).unwrap().trim_matches('"'),
+                enum_to_db_str(&status),
                 Utc::now().to_rfc3339(),
             ],
         )
@@ -79,9 +96,9 @@ impl WorkspaceRepo {
             params![
                 agent.session_id,
                 agent.workspace_id,
-                serde_json::to_string(&agent.role).unwrap().trim_matches('"'),
+                enum_to_db_str(&agent.role),
                 agent.skill_id,
-                serde_json::to_string(&agent.status).unwrap().trim_matches('"'),
+                enum_to_db_str(&agent.status),
                 agent.joined_at.to_rfc3339(),
                 agent.last_active_at.to_rfc3339(),
                 agent.metadata.as_ref().map(|v| v.to_string()),
@@ -124,7 +141,7 @@ impl WorkspaceRepo {
         conn.execute(
             "UPDATE agent SET status = ?1, last_active_at = ?2 WHERE session_id = ?3",
             params![
-                serde_json::to_string(&status).unwrap().trim_matches('"'),
+                enum_to_db_str(&status),
                 Utc::now().to_rfc3339(),
                 session_id,
             ],
@@ -169,9 +186,9 @@ impl WorkspaceRepo {
                 message.workspace_id,
                 message.sender_session_id,
                 message.target_session_id,
-                serde_json::to_string(&message.message_type).unwrap().trim_matches('"'),
+                enum_to_db_str(&message.message_type),
                 message.content,
-                serde_json::to_string(&message.status).unwrap().trim_matches('"'),
+                enum_to_db_str(&message.status),
                 message.created_at.to_rfc3339(),
                 message.metadata.as_ref().map(|v| v.to_string()),
             ],
@@ -236,7 +253,7 @@ impl WorkspaceRepo {
         conn.execute(
             "UPDATE message SET status = ?1 WHERE id = ?2",
             params![
-                serde_json::to_string(&status).unwrap().trim_matches('"'),
+                enum_to_db_str(&status),
                 message_id,
             ],
         )
@@ -383,7 +400,7 @@ impl WorkspaceRepo {
             params![
                 doc.id,
                 doc.workspace_id,
-                serde_json::to_string(&doc.doc_type).unwrap().trim_matches('"'),
+                enum_to_db_str(&doc.doc_type),
                 doc.title,
                 doc.content,
                 doc.version,

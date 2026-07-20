@@ -1183,6 +1183,17 @@ pub async fn clawhub_search(
     limit: Option<u32>,
     non_suspicious_only: Option<bool>,
     sort: Option<String>,
+) -> Result<ClawHubSearchResponse, String> {
+    clawhub_search_impl(q, limit, non_suspicious_only, sort)
+        .await
+        .map_err(String::from)
+}
+
+async fn clawhub_search_impl(
+    q: Option<String>,
+    limit: Option<u32>,
+    non_suspicious_only: Option<bool>,
+    sort: Option<String>,
 ) -> ChatV2Result<ClawHubSearchResponse> {
     let client = ClawHubClient::shared().map_err(ChatV2Error::IoError)?;
     let limit = limit.unwrap_or(DEFAULT_LIMIT);
@@ -1208,7 +1219,11 @@ pub async fn clawhub_search(
 }
 
 #[tauri::command]
-pub async fn clawhub_skill_detail(slug: String) -> ChatV2Result<ClawHubSkillDetail> {
+pub async fn clawhub_skill_detail(slug: String) -> Result<ClawHubSkillDetail, String> {
+    clawhub_skill_detail_impl(slug).await.map_err(String::from)
+}
+
+async fn clawhub_skill_detail_impl(slug: String) -> ChatV2Result<ClawHubSkillDetail> {
     let client = ClawHubClient::shared().map_err(ChatV2Error::IoError)?;
     client.skill_detail(&slug).await.map_err(map_clawhub_err)
 }
@@ -1217,12 +1232,13 @@ pub async fn clawhub_skill_detail(slug: String) -> ChatV2Result<ClawHubSkillDeta
 pub async fn clawhub_verify(
     slug: String,
     version: Option<String>,
-) -> ChatV2Result<ClawHubVerifyResult> {
-    let client = ClawHubClient::shared().map_err(ChatV2Error::IoError)?;
+) -> Result<ClawHubVerifyResult, String> {
+    let client = ClawHubClient::shared()
+        .map_err(|e| String::from(ChatV2Error::IoError(e)))?;
     client
         .verify(&slug, version.as_deref())
         .await
-        .map_err(map_clawhub_err)
+        .map_err(|e| String::from(map_clawhub_err(e)))
 }
 
 /// 下载 ClawHub 技能 → 临时 zip → 复用 skill_scan 内核扫描。
@@ -1231,6 +1247,28 @@ pub async fn clawhub_verify(
 /// provenance：`sourceKind=clawhub` / `sourceDetail=clawhub:{slug}@{version}`。
 #[tauri::command]
 pub async fn clawhub_download_and_scan(
+    state: State<'_, AppState>,
+    slug: String,
+    version: Option<String>,
+    install: Option<bool>,
+    overwrite: Option<bool>,
+    expected_package_sha256: Option<String>,
+    temp_zip_path: Option<String>,
+) -> Result<ClawHubDownloadScanResult, String> {
+    clawhub_download_and_scan_impl(
+        state,
+        slug,
+        version,
+        install,
+        overwrite,
+        expected_package_sha256,
+        temp_zip_path,
+    )
+    .await
+    .map_err(String::from)
+}
+
+async fn clawhub_download_and_scan_impl(
     state: State<'_, AppState>,
     slug: String,
     version: Option<String>,
@@ -1418,7 +1456,7 @@ impl ClawHubReadToolExecutor {
             .get("sort")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        let result = clawhub_search(q, limit, non_suspicious_only, sort)
+        let result = clawhub_search_impl(q, limit, non_suspicious_only, sort)
             .await
             .map_err(|e| e.to_string())?;
         serde_json::to_value(result)
@@ -1433,7 +1471,7 @@ impl ClawHubReadToolExecutor {
             .filter(|s| !s.is_empty())
             .ok_or("slug is required")?
             .to_string();
-        let result = clawhub_skill_detail(slug)
+        let result = clawhub_skill_detail_impl(slug)
             .await
             .map_err(|e| e.to_string())?;
         serde_json::to_value(result).map_err(|e| format!("Failed to serialize detail: {}", e))

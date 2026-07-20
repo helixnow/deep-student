@@ -470,6 +470,19 @@ pub async fn chat_v2_send_message(
         log::warn!("[ChatV2::handlers] ⚠️ SendOptions is None!");
     }
 
+    // 🔒 P1：session_id 前缀校验（与 load_session / manage_session 对齐），
+    // 拒绝对任意字符串注册流并 spawn pipeline
+    if !request.session_id.starts_with("sess_")
+        && !request.session_id.starts_with("agent_")
+        && !request.session_id.starts_with("subagent_")
+    {
+        return Err(ChatV2Error::Validation(format!(
+            "Invalid session ID format: {}",
+            request.session_id
+        ))
+        .into());
+    }
+
     // ★ 2025-12-10 统一改造：验证请求（附件现在通过 user_context_refs 传递）
     let has_content = !request.content.trim().is_empty();
     let has_context_refs = request
@@ -661,8 +674,8 @@ pub async fn chat_v2_retry_message(
 
     // 从数据库加载原消息
     let original_message = ChatV2Repo::get_message_v2(&db, &message_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.clone()).to_string())?;
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(message_id.clone())))?;
 
     // 🔧 语义修正：重试只能针对助手消息
     // 如果是用户消息，应该使用"编辑并重发"功能
@@ -743,9 +756,9 @@ pub async fn chat_v2_retry_message(
 
     // 🔧 修复：删除助手消息之后的所有消息（含自身），确保前后端一致
     let messages_to_delete: Vec<String> = {
-        let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
         let all_messages = ChatV2Repo::get_session_messages_with_conn(&conn, &session_id)
-            .map_err(|e| e.to_string())?;
+            .map_err(String::from)?;
 
         log::info!(
             "[ChatV2::handlers] Retry: found {} total messages in session",
@@ -755,7 +768,7 @@ pub async fn chat_v2_retry_message(
         let target_index = all_messages
             .iter()
             .position(|m| m.id == message_id)
-            .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.clone()).to_string())?;
+            .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(message_id.clone())))?;
 
         let to_delete: Vec<String> = all_messages
             .iter()
@@ -775,7 +788,7 @@ pub async fn chat_v2_retry_message(
 
     // 使用事务删除所有后续消息
     if !messages_to_delete.is_empty() {
-        let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
 
         // 🔧 P0 修复：先收集要 decrement 的 resource IDs（在事务外、decrement 前）
         // 事务 COMMIT 成功后再执行 decrement，避免事务回滚时引用计数已被减少
@@ -798,7 +811,7 @@ pub async fn chat_v2_retry_message(
                 "[ChatV2::handlers] Failed to begin transaction for retry: {}",
                 e
             );
-            e.to_string()
+            String::from(ChatV2Error::Database(e.to_string()))
         })?;
 
         let mut deleted_count = 0;
@@ -826,16 +839,16 @@ pub async fn chat_v2_retry_message(
             }
         }
 
-        if delete_error.is_some() {
+        if let Some(delete_error) = delete_error {
             let _ = conn.execute("ROLLBACK", []);
-            return Err(delete_error.unwrap());
+            return Err(ChatV2Error::Database(delete_error).into());
         } else {
             conn.execute("COMMIT", []).map_err(|e| {
                 log::error!(
                     "[ChatV2::handlers] Failed to commit transaction for retry: {}",
                     e
                 );
-                e.to_string()
+                String::from(ChatV2Error::Database(e.to_string()))
             })?;
         }
 
@@ -1012,8 +1025,8 @@ pub async fn chat_v2_edit_and_resend(
 
     // 验证原消息存在且是用户消息
     let original_message = ChatV2Repo::get_message_v2(&db, &message_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.clone()).to_string())?;
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(message_id.clone())))?;
 
     if original_message.role != MessageRole::User {
         return Err(ChatV2Error::Validation("Can only edit user messages".to_string()).into());
@@ -1124,11 +1137,11 @@ pub async fn chat_v2_edit_and_resend(
 
     // 更新原用户消息的内容块
     {
-        let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
 
         // 获取原消息的块
         let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &message_id)
-            .map_err(|e| e.to_string())?;
+            .map_err(String::from)?;
 
         // 找到 content 块并更新
         for block in blocks {
@@ -1136,7 +1149,7 @@ pub async fn chat_v2_edit_and_resend(
                 let mut updated_block = block.clone();
                 updated_block.content = Some(new_content.clone());
                 ChatV2Repo::update_block_with_conn(&conn, &updated_block)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(String::from)?;
                 log::debug!(
                     "[ChatV2::handlers] Updated content block: block_id={}",
                     block.id
@@ -1172,7 +1185,7 @@ pub async fn chat_v2_edit_and_resend(
             updated_message.meta = Some(meta);
 
             ChatV2Repo::update_message_with_conn(&conn, &updated_message)
-                .map_err(|e| e.to_string())?;
+                .map_err(String::from)?;
 
             log::info!(
                 "[ChatV2::handlers] Updated context_snapshot for edited user message: user_refs={}",
@@ -1183,15 +1196,15 @@ pub async fn chat_v2_edit_and_resend(
 
     // 🔧 P0 修复：使用 index-based 删除（与 retry_message 对齐），避免 timestamp 相同时误删前序消息
     let messages_to_delete: Vec<String> = {
-        let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
         let all_messages = ChatV2Repo::get_session_messages_with_conn(&conn, &session_id)
-            .map_err(|e| e.to_string())?;
+            .map_err(String::from)?;
 
         // 按稳定排序（timestamp ASC, rowid ASC）定位用户消息的 index
         let target_index = all_messages
             .iter()
             .position(|m| m.id == message_id)
-            .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.clone()).to_string())?;
+            .ok_or_else(|| String::from(ChatV2Error::MessageNotFound(message_id.clone())))?;
 
         // 只删除该用户消息之后的所有消息（+1 保留用户消息本身）
         let to_delete: Vec<String> = all_messages
@@ -1211,7 +1224,7 @@ pub async fn chat_v2_edit_and_resend(
     // 🔧 修复：使用单次连接 + 事务删除后续消息，确保原子性
     // 注意：chat_v2_messages 表有 ON DELETE CASCADE，删除消息会自动删除关联的块
     if !messages_to_delete.is_empty() {
-        let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+        let conn = db.get_conn_safe().map_err(String::from)?;
 
         // 🔧 P0 修复：先收集要 decrement 的 resource IDs（在事务外、decrement 前）
         // 事务 COMMIT 成功后再执行 decrement，避免事务回滚时引用计数已被减少
@@ -1232,7 +1245,7 @@ pub async fn chat_v2_edit_and_resend(
         // 使用事务确保原子性
         conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
             log::error!("[ChatV2::handlers] Failed to begin transaction: {}", e);
-            e.to_string()
+            String::from(ChatV2Error::Database(e.to_string()))
         })?;
 
         let mut deleted_count = 0;
@@ -1261,13 +1274,13 @@ pub async fn chat_v2_edit_and_resend(
         }
 
         // 提交或回滚事务
-        if delete_error.is_some() {
+        if let Some(delete_error) = delete_error {
             let _ = conn.execute("ROLLBACK", []);
-            return Err(delete_error.unwrap());
+            return Err(ChatV2Error::Database(delete_error).into());
         } else {
             conn.execute("COMMIT", []).map_err(|e| {
                 log::error!("[ChatV2::handlers] Failed to commit transaction: {}", e);
-                e.to_string()
+                String::from(ChatV2Error::Database(e.to_string()))
             })?;
         }
 
@@ -1393,7 +1406,7 @@ pub async fn chat_v2_edit_and_resend(
 /// 获取消息内容（从块中提取）
 fn get_message_content(db: &ChatV2Database, message_id: &str) -> Result<String, String> {
     // 获取消息的所有块
-    let blocks = ChatV2Repo::get_message_blocks_v2(db, message_id).map_err(|e| e.to_string())?;
+    let blocks = ChatV2Repo::get_message_blocks_v2(db, message_id).map_err(String::from)?;
 
     // 合并所有 content 类型块的内容
     let content: String = blocks
@@ -1442,7 +1455,7 @@ fn find_preceding_user_message_content(
 ) -> Result<String, String> {
     // 获取会话的所有消息（按 timestamp ASC, rowid ASC 稳定排序）
     let messages =
-        ChatV2Repo::get_session_messages_v2(db, session_id).map_err(|e| e.to_string())?;
+        ChatV2Repo::get_session_messages_v2(db, session_id).map_err(String::from)?;
 
     match locate_preceding_user_message(&messages, assistant_message) {
         Some(msg) => get_message_content(db, &msg.id),
@@ -1508,7 +1521,7 @@ fn find_preceding_user_message_with_attachments(
 ) -> Result<UserMessageRestoreResult, String> {
     // 获取会话的所有消息（按 timestamp ASC, rowid ASC 稳定排序）
     let messages =
-        ChatV2Repo::get_session_messages_v2(db, session_id).map_err(|e| e.to_string())?;
+        ChatV2Repo::get_session_messages_v2(db, session_id).map_err(String::from)?;
 
     // 🔧 修复：index-based 向前查找，避免相同时间戳时选错消息
     let user_message = locate_preceding_user_message(&messages, assistant_message);
@@ -1725,8 +1738,9 @@ pub async fn chat_v2_continue_message(
     );
 
     // 加载持久化的 TodoList (活跃流检查由 try_register_stream 原子完成)
-    let todo_info = load_persisted_todo_list(&db, &session_id)
-        .map_err(|e| format!("Failed to load TodoList: {}", e))?;
+    let todo_info = load_persisted_todo_list(&db, &session_id).map_err(|e| {
+        String::from(ChatV2Error::Other(format!("Failed to load TodoList: {}", e)))
+    })?;
 
     let (todo_list, persisted_message_id, persisted_variant_id) = match todo_info {
         Some(info) => info,
@@ -1795,17 +1809,17 @@ pub async fn chat_v2_continue_message(
 
     // 恢复 TodoList 到内存（已持有流注册，不会与活跃流冲突）
     if let Err(e) = restore_todo_list_from_db(&db, &session_id) {
-        return Err(format!("Failed to restore TodoList: {}", e));
+        return Err(ChatV2Error::Other(format!("Failed to restore TodoList: {}", e)).into());
     }
 
     // 6. 加载原消息
     let original_message = match ChatV2Repo::get_message_v2(&db, &persisted_message_id) {
         Ok(Some(msg)) => msg,
         Ok(None) => {
-            return Err(ChatV2Error::MessageNotFound(persisted_message_id.clone()).to_string());
+            return Err(ChatV2Error::MessageNotFound(persisted_message_id.clone()).into());
         }
         Err(e) => {
-            return Err(e.to_string());
+            return Err(e.into());
         }
     };
 

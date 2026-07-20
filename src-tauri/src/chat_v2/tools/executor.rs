@@ -235,6 +235,48 @@ impl ExecutionContext {
         self
     }
 
+    /// 🆕 派生一个替换了取消令牌的上下文副本（其余字段全部共享/克隆）。
+    ///
+    /// 供 `ToolExecutorRegistry::execute` 为每次执行绑定 scoped child token：
+    /// 注册表 watchdog 超时或流取消返回错误前，先 cancel 该 token，让执行器
+    /// 内部 spawn 的后台任务（tool_pack 子任务、桥接调用、子进程等）观察到
+    /// 取消并停止发射事件/落库，收敛「调用方已记录超时结果后仍产生可见
+    /// 副作用」的窗口。
+    pub fn scoped_with_cancellation_token(&self, token: CancellationToken) -> ExecutionContext {
+        ExecutionContext {
+            session_id: self.session_id.clone(),
+            message_id: self.message_id.clone(),
+            variant_id: self.variant_id.clone(),
+            skill_state_version: self.skill_state_version,
+            round_id: self.round_id.clone(),
+            block_id: self.block_id.clone(),
+            tool_call_id: self.tool_call_id.clone(),
+            emitter: self.emitter.clone(),
+            canvas_note_id: self.canvas_note_id.clone(),
+            notes_manager: self.notes_manager.clone(),
+            tool_registry: self.tool_registry.clone(),
+            main_db: self.main_db.clone(),
+            anki_db: self.anki_db.clone(),
+            tauri_window: self.tauri_window.clone(),
+            vfs_db: self.vfs_db.clone(),
+            vfs_lance_store: self.vfs_lance_store.clone(),
+            llm_manager: self.llm_manager.clone(),
+            chat_v2_db: self.chat_v2_db.clone(),
+            question_bank_service: self.question_bank_service.clone(),
+            skill_contents: self.skill_contents.clone(),
+            skill_embedded_tools: self.skill_embedded_tools.clone(),
+            skill_package_roots: self.skill_package_roots.clone(),
+            execution_allowed_tools: self.execution_allowed_tools.clone(),
+            cancellation_token: Some(token),
+            rag_top_k: self.rag_top_k,
+            rag_enable_reranking: self.rag_enable_reranking,
+            pdf_processing_service: self.pdf_processing_service.clone(),
+            memory_enabled: self.memory_enabled,
+            rag_enabled: self.rag_enabled,
+            web_search_enabled: self.web_search_enabled,
+        }
+    }
+
     /// ACR R2-01：注入 toolCallId（与桥 runId 对齐）
     pub fn with_tool_call_id(mut self, tool_call_id: impl Into<String>) -> Self {
         self.tool_call_id = Some(tool_call_id.into());

@@ -241,7 +241,11 @@ impl PlanGateManager {
         if expected_plan_id != &response.plan_id {
             return false;
         }
-        let (_, tx) = map.remove(&key).expect("pending plan existed");
+        // 🔧 修复：持锁期间 get 后 remove 理论上必命中，但生产代码不留
+        // expect panic 面——万一竞态改动了语义，按「未命中」安全返回
+        let Some((_, tx)) = map.remove(&key) else {
+            return false;
+        };
         tx.send(response).is_ok()
     }
 

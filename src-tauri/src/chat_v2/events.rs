@@ -432,6 +432,13 @@ impl BackendEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionEvent {
+    /// 🆕 递增序列号（会话级通道独立计数，从 0 开始）
+    /// 用于前端检测会话级事件的乱序/丢失。与块级事件的 sequence_id
+    /// 各自独立计数（避免两个通道互相制造「空洞」误报丢事件）。
+    /// Option 仅为反序列化旧事件兼容；后端发射时恒为 Some。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence_id: Option<u64>,
+
     /// 会话 ID
     pub session_id: String,
 
@@ -501,6 +508,7 @@ impl SessionEvent {
     /// `model_id` 是模型标识符（如 "Qwen/Qwen3-8B"），用于前端显示
     pub fn stream_start(session_id: &str, message_id: &str, model_id: Option<&str>) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_START.to_string(),
             message_id: Some(message_id.to_string()),
@@ -527,6 +535,7 @@ impl SessionEvent {
         retry_max: u32,
     ) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_RECONNECT.to_string(),
             message_id: Some(message_id.to_string()),
@@ -548,6 +557,7 @@ impl SessionEvent {
     /// 创建流式完成事件
     pub fn stream_complete(session_id: &str, message_id: &str, duration_ms: u64) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_COMPLETE.to_string(),
             message_id: Some(message_id.to_string()),
@@ -580,6 +590,7 @@ impl SessionEvent {
         usage: Option<TokenUsage>,
     ) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_COMPLETE.to_string(),
             message_id: Some(message_id.to_string()),
@@ -601,6 +612,7 @@ impl SessionEvent {
     /// 创建流式错误事件
     pub fn stream_error(session_id: &str, message_id: &str, error: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_ERROR.to_string(),
             message_id: Some(message_id.to_string()),
@@ -622,6 +634,7 @@ impl SessionEvent {
     /// 创建流式取消事件
     pub fn stream_cancelled(session_id: &str, message_id: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_CANCELLED.to_string(),
             message_id: Some(message_id.to_string()),
@@ -643,6 +656,7 @@ impl SessionEvent {
     /// 创建保存完成事件
     pub fn save_complete(session_id: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::SAVE_COMPLETE.to_string(),
             message_id: None,
@@ -664,6 +678,7 @@ impl SessionEvent {
     /// 创建保存错误事件
     pub fn save_error(session_id: &str, error: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::SAVE_ERROR.to_string(),
             message_id: None,
@@ -685,6 +700,7 @@ impl SessionEvent {
     /// 创建摘要更新事件（包含标题和简介）
     pub fn summary_updated(session_id: &str, title: &str, description: &str) -> Self {
         Self {
+            sequence_id: None,
             session_id: session_id.to_string(),
             event_type: session_event_type::SUMMARY_UPDATED.to_string(),
             message_id: None,
@@ -736,8 +752,29 @@ impl SessionEvent {
 static SESSION_SEQUENCE_COUNTERS: LazyLock<DashMap<String, Arc<AtomicU64>>> =
     LazyLock::new(DashMap::new);
 
+/// 🆕 会话级（session channel）事件独立序列号计数器。
+/// 与块级计数器分开：若共用一个计数器，任一通道的消费方都会观察到
+/// 序列号「空洞」而误报丢事件。
+static SESSION_EVENT_SEQUENCE_COUNTERS: LazyLock<DashMap<String, Arc<AtomicU64>>> =
+    LazyLock::new(DashMap::new);
+
+/// 🆕 window.emit 失败累计计数（跨会话，诊断用）
+static EMIT_FAILURE_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// 读取累计 emit 失败次数（诊断/测试用）
+pub fn emit_failure_count() -> u64 {
+    EMIT_FAILURE_COUNT.load(Ordering::Relaxed)
+}
+
 fn get_or_create_session_counter(session_id: &str) -> Arc<AtomicU64> {
     SESSION_SEQUENCE_COUNTERS
+        .entry(session_id.to_string())
+        .or_insert_with(|| Arc::new(AtomicU64::new(0)))
+        .clone()
+}
+
+fn get_or_create_session_event_counter(session_id: &str) -> Arc<AtomicU64> {
+    SESSION_EVENT_SEQUENCE_COUNTERS
         .entry(session_id.to_string())
         .or_insert_with(|| Arc::new(AtomicU64::new(0)))
         .clone()
@@ -750,6 +787,7 @@ pub fn next_session_sequence_id(session_id: &str) -> u64 {
 
 pub fn clear_session_sequence_counter(session_id: &str) {
     SESSION_SEQUENCE_COUNTERS.remove(session_id);
+    SESSION_EVENT_SEQUENCE_COUNTERS.remove(session_id);
 }
 
 pub struct ChatV2EventEmitter {
@@ -762,6 +800,8 @@ pub struct ChatV2EventEmitter {
     stream_generation: Option<u64>,
     /// 递增序列号生成器（从 0 开始，按会话共享）
     sequence_counter: Arc<AtomicU64>,
+    /// 🆕 会话级事件序列号生成器（独立于块级计数器，按会话共享）
+    session_event_sequence_counter: Arc<AtomicU64>,
     /// 工具块事件元数据注册表（用于补齐 skill_state_version / round_id）
     block_event_meta: Arc<DashMap<String, BlockEventMeta>>,
 }
@@ -781,6 +821,7 @@ impl ChatV2EventEmitter {
             session_id: session_id.clone(),
             stream_generation: None,
             sequence_counter: get_or_create_session_counter(&session_id),
+            session_event_sequence_counter: get_or_create_session_event_counter(&session_id),
             block_event_meta: Arc::new(DashMap::new()),
         }
     }
@@ -795,6 +836,7 @@ impl ChatV2EventEmitter {
             session_id: session_id.clone(),
             stream_generation: None,
             sequence_counter: get_or_create_session_counter(&session_id),
+            session_event_sequence_counter: get_or_create_session_event_counter(&session_id),
             block_event_meta: Arc::new(DashMap::new()),
         }
     }
@@ -884,6 +926,9 @@ impl ChatV2EventEmitter {
     // ========== 内部发射方法 ==========
 
     /// 发射块级事件（内部方法）
+    ///
+    /// 🔧 P0 修复：emit 失败不再静默丢弃 —— 立即重试一次（Tauri emit 失败
+    /// 多为瞬时 IPC/序列化抖动），仍失败则记录错误日志并累计失败计数。
     fn emit(&self, mut event: BackendEvent) {
         let event_name = self.block_event_channel();
         if event.session_id.is_none() {
@@ -895,10 +940,25 @@ impl ChatV2EventEmitter {
         };
         if let Err(e) = window.emit(&event_name, &event) {
             log::error!(
-                "[ChatV2::events] Failed to emit block event: {} - {:?}",
+                "[ChatV2::events] Failed to emit block event (attempt 1/2): {} type={} phase={} seq={} - {:?}",
                 event_name,
+                event.r#type,
+                event.phase,
+                event.sequence_id,
                 e
             );
+            if let Err(e2) = window.emit(&event_name, &event) {
+                let total = EMIT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                log::error!(
+                    "[ChatV2::events] Block event DROPPED after retry: {} type={} phase={} seq={} - {:?} (total_dropped={})",
+                    event_name,
+                    event.r#type,
+                    event.phase,
+                    event.sequence_id,
+                    e2,
+                    total
+                );
+            }
         } else {
             log::debug!(
                 "[ChatV2::events] Emitted block event: {} type={} phase={} seq={}",
@@ -911,25 +971,48 @@ impl ChatV2EventEmitter {
     }
 
     /// 发射会话级事件（内部方法）
+    ///
+    /// 🆕 补齐 sequence_id（会话级通道独立递增计数），前端可据此检测
+    /// 乱序/丢失；emit 失败重试一次并计数（同块级事件策略）。
     fn emit_session(&self, mut event: SessionEvent) {
         let event_name = self.session_event_channel();
         if event.stream_generation.is_none() {
             event.stream_generation = self.stream_generation;
+        }
+        if event.sequence_id.is_none() {
+            event.sequence_id = Some(
+                self.session_event_sequence_counter
+                    .fetch_add(1, Ordering::SeqCst),
+            );
         }
         let Some(window) = self.window.as_ref() else {
             return;
         };
         if let Err(e) = window.emit(&event_name, &event) {
             log::error!(
-                "[ChatV2::events] Failed to emit session event: {} - {:?}",
+                "[ChatV2::events] Failed to emit session event (attempt 1/2): {} type={} seq={:?} - {:?}",
                 event_name,
+                event.event_type,
+                event.sequence_id,
                 e
             );
+            if let Err(e2) = window.emit(&event_name, &event) {
+                let total = EMIT_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+                log::error!(
+                    "[ChatV2::events] Session event DROPPED after retry: {} type={} seq={:?} - {:?} (total_dropped={})",
+                    event_name,
+                    event.event_type,
+                    event.sequence_id,
+                    e2,
+                    total
+                );
+            }
         } else {
             log::debug!(
-                "[ChatV2::events] Emitted session event: {} type={}",
+                "[ChatV2::events] Emitted session event: {} type={} seq={:?}",
                 event_name,
-                event.event_type
+                event.event_type,
+                event.sequence_id
             );
         }
     }
@@ -1605,6 +1688,7 @@ mod tests {
     #[test]
     fn test_session_event_serialization() {
         let event = SessionEvent {
+            sequence_id: Some(7),
             session_id: "sess_123".to_string(),
             event_type: "stream_complete".to_string(),
             message_id: Some("msg_456".to_string()),
@@ -1626,6 +1710,7 @@ mod tests {
 
         // 验证使用 camelCase
         assert!(json.contains("\"sessionId\""));
+        assert!(json.contains("\"sequenceId\":7"));
         assert!(json.contains("\"streamGeneration\":42"));
         assert!(json.contains("\"eventType\""));
         assert!(json.contains("\"messageId\""));

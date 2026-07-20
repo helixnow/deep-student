@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tauri::{State, Window};
 
 use crate::chat_v2::approval_manager::{ApprovalManager, ApprovalResponse};
+use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::{event_types, ChatV2EventEmitter};
 // 🔧 P1-51: 引入数据库用于持久化审批选择
 use crate::database::Database;
@@ -49,6 +50,11 @@ pub async fn chat_v2_tool_approval_respond(
     remember_session: Option<bool>,
     arguments: Option<Value>,
 ) -> Result<(), String> {
+    if tool_call_id.trim().is_empty() {
+        return Err(
+            ChatV2Error::InvalidInput("tool_call_id must not be empty".to_string()).into(),
+        );
+    }
     let remember_session = remember_session.unwrap_or(false);
     log::info!(
         "[ChatV2::approval] Received approval response: session={}, tool_call_id={}, tool_name={}, approved={}, remember={}, remember_session={}",
@@ -85,7 +91,14 @@ pub async fn chat_v2_tool_approval_respond(
             "approval_expired",
             None,
         );
-        return Err("approval_expired".to_string());
+        // 统一错误契约：{code:"TIMEOUT", message} JSON。
+        // message 保留 "approval_expired" 字面量，兼容前端
+        // `errorMessage.includes('approval_expired')` 的既有判断。
+        return Err(ChatV2Error::Timeout(format!(
+            "approval_expired: no waiting approval for tool_call_id={}",
+            tool_call_id
+        ))
+        .into());
     }
 
     if arguments.is_some() {
@@ -181,7 +194,7 @@ pub async fn chat_v2_clear_approval_history(
                 "[ChatV2::approval] clear_approval_history: delete DB entries failed: {}",
                 e
             );
-            format!("{}", e)
+            String::from(ChatV2Error::Database(e.to_string()))
         })?;
 
     log::info!(

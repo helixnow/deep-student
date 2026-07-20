@@ -547,8 +547,19 @@ impl PromptBuilder {
     }
 
     /// 构建最终的 System Prompt
+    ///
+    /// ## Prompt cache 友好性（2026-07 改造）
+    /// system 按「稳定前缀 → 动态后缀」两段组织：
+    /// - **稳定前缀**（同一会话内逐轮不变）：LaTeX 规则、system_instructions、
+    ///   AGENTS.md、user_preferences —— 保证 provider 前缀缓存（OpenAI 自动
+    ///   prefix cache / Anthropic cache_control）逐轮命中；
+    /// - **动态后缀**（每轮可能变化）：格式 hints、画像、待办、引用规则、
+    ///   检索 context、Canvas 笔记 —— 变化只打碎后缀，不影响前缀命中。
+    /// 所有块仍在 system 内，语义与行为保持兼容，仅调整块顺序。
     pub fn build(self) -> String {
         let mut parts: Vec<String> = Vec::new();
+
+        // ==================== 稳定前缀 ====================
 
         // 0. LaTeX 规则（最高优先级，稳定前缀第一块）
         parts.push(LATEX_RULES.to_string());
@@ -569,12 +580,18 @@ impl PromptBuilder {
             ));
         }
 
-        // 1.1 引用规则（如果有来源）
-        if self.has_sources {
-            parts.push(CITATION_GUIDE.to_string());
+        // 1.1 用户追加指令（会话内稳定，归入稳定前缀；
+        // 原位于 context 之后，前移不改变语义——各块均为独立 XML 段）
+        if let Some(append) = self.user_append {
+            parts.push(format!(
+                "<user_preferences>\n{}\n</user_preferences>",
+                append
+            ));
         }
 
-        // 1.5 用户消息格式说明（如果有 hints）
+        // ==================== 动态后缀（每轮可能变化） ====================
+
+        // 2.0 用户消息格式说明（依赖本轮上下文引用的 hints）
         if !self.context_type_hints.is_empty() {
             let hints_content = self.context_type_hints.join("\n");
             parts.push(format!(
@@ -590,7 +607,7 @@ impl PromptBuilder {
             ));
         }
 
-        // 1.8 用户画像（始终注入，不依赖检索 query）
+        // 2.1 用户画像（始终注入，不依赖检索 query）
         // 必须 XML 转义：画像内容来自记忆系统（可被用户输入污染），
         // 不转义会让 <tag> 形式的内容伪造提示词结构（注入攻击面）
         if let Some(profile) = self.user_profile {
@@ -600,7 +617,7 @@ impl PromptBuilder {
             ));
         }
 
-        // 1.85 学习者画像（三层记忆的策展长期层，随会话注入）
+        // 2.2 学习者画像（三层记忆的策展长期层，随会话注入）
         // 同 user_profile 必须 XML 转义（画像内容可被对话/工具写入污染）
         if let Some(profile) = self.learner_profile {
             parts.push(format!(
@@ -609,7 +626,7 @@ impl PromptBuilder {
             ));
         }
 
-        // 1.9 活跃待办事项（始终注入，帮助 LLM 了解用户当前任务）
+        // 2.3 活跃待办事项（始终注入，帮助 LLM 了解用户当前任务）
         // 同上，todo 标题为用户自由输入，必须转义
         if let Some(todos) = self.active_todos {
             parts.push(format!(
@@ -618,21 +635,17 @@ impl PromptBuilder {
             ));
         }
 
-        // 3. 上下文块（如果有来源）
+        // 3. 引用规则 + 上下文块（引用规则紧邻其约束的 context，
+        // 且 RAG 命中与否只影响动态后缀，不再打碎稳定前缀）
+        if self.has_sources {
+            parts.push(CITATION_GUIDE.to_string());
+        }
         if !self.context_blocks.is_empty() {
             let context_content = self.context_blocks.join("\n\n");
             parts.push(format!("<context>\n{}\n</context>", context_content));
         }
 
-        // 4. 用户追加指令（如果有）
-        if let Some(append) = self.user_append {
-            parts.push(format!(
-                "<user_preferences>\n{}\n</user_preferences>",
-                append
-            ));
-        }
-
-        // 5. Canvas 笔记块（如果有）
+        // 4. Canvas 笔记块（如果有）
         // 实现长短笔记策略：短笔记（<3000字）全量注入，长笔记仅注入摘要
         if let Some(note) = self.canvas_note {
             let structure = note.parse_structure();
@@ -957,13 +970,16 @@ mod tests {
             .with_user_append(Some("追加指令"))
             .build();
 
-        // 验证结构顺序
+        // 验证结构顺序（2026-07 cache 友好性改造：
+        // 稳定前缀 instructions/preferences 在前，动态 context 在后）
         let instructions_pos = prompt.find("<system_instructions>").unwrap();
         let context_pos = prompt.find("<context>").unwrap();
         let prefs_pos = prompt.find("<user_preferences>").unwrap();
+        let citation_pos = prompt.find("<citation_rules>").unwrap();
 
-        assert!(instructions_pos < context_pos);
-        assert!(context_pos < prefs_pos);
+        assert!(instructions_pos < prefs_pos);
+        assert!(prefs_pos < citation_pos);
+        assert!(citation_pos < context_pos);
     }
 
     #[test]

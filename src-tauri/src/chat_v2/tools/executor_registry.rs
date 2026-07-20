@@ -226,7 +226,18 @@ impl ToolExecutorRegistry {
         // 执行工具（带超时和取消保护）
         // 🆕 取消支持：使用 tokio::select! 同时监听取消信号
         let executor_manages_cancellation = executor.manages_cancellation(&call.name);
-        let execute_future = executor.execute(call, ctx);
+
+        // 🆕 副作用窗口收敛（2026-07 分区 J 第二轮）：为每次执行派生 scoped
+        // child token。注册表在超时/取消返回错误前先 cancel 该 token，使执行器
+        // 内部 spawn 的后台任务观察到取消并停止发射事件/落库——调用方已经
+        // 记录了超时/取消结果，之后不允许再出现可见副作用。父 token 的取消
+        // 会自动传播到 child，原有取消语义不变。
+        let scoped_token = ctx
+            .cancellation_token()
+            .map(|token| token.child_token())
+            .unwrap_or_default();
+        let exec_ctx = ctx.scoped_with_cancellation_token(scoped_token.clone());
+        let execute_future = executor.execute(call, &exec_ctx);
 
         if timeout_secs == NO_TOOL_TIMEOUT_SECS {
             log::debug!(
@@ -245,6 +256,7 @@ impl ToolExecutorRegistry {
                             call.name,
                             call.id
                         );
+                        scoped_token.cancel();
                         Err("Tool execution cancelled".to_string())
                     }
                 }
@@ -272,8 +284,14 @@ impl ToolExecutorRegistry {
                             call.name,
                             call.id
                         );
+                        // 超时后 future 已被 drop；cancel scoped token 让执行器
+                        // 内部残留的后台任务尽快停止产生可见副作用。
+                        scoped_token.cancel();
+                        // 带 RESULT_UNKNOWN 前缀与桥层错误码体系对齐
+                        // （workbench 等 ACR 工具的调用方按前缀识别「已提交、
+                        // 终态未知、禁止自动重试」）。
                         Err(format!(
-                            "Tool '{}' execution timed out after {}s; terminal result unknown",
+                            "RESULT_UNKNOWN: Tool '{}' execution timed out after {}s; terminal result unknown",
                             call.name, timeout_secs
                         ))
                     }
@@ -290,6 +308,7 @@ impl ToolExecutorRegistry {
                                     call.name,
                                     call.id
                                 );
+                                scoped_token.cancel();
                                 Err(format!(
                                     "Tool '{}' execution timed out after {}s",
                                     call.name, timeout_secs
@@ -303,6 +322,7 @@ impl ToolExecutorRegistry {
                             call.name,
                             call.id
                         );
+                        scoped_token.cancel();
                         Err("Tool execution cancelled".to_string())
                     }
                 }
@@ -316,6 +336,7 @@ impl ToolExecutorRegistry {
                             call.name,
                             call.id
                         );
+                        scoped_token.cancel();
                         Err(format!(
                             "Tool '{}' execution timed out after {}s",
                             call.name, timeout_secs

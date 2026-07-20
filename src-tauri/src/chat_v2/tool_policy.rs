@@ -12,6 +12,14 @@ pub fn canonical_tool_short_name(tool_name: &str) -> &str {
 }
 
 pub fn is_control_tool(tool_name: &str) -> bool {
+    // 🔒 命名空间塌陷防护：外部 MCP 工具（`mcp_*` / `mcp.tools.*`）由不受信的
+    // 服务器实现，绝不能因与 builtin 控制工具同名而享受白名单豁免。受信的
+    // 本地 load_skills 在 pipeline 归一化后不携带 mcp 前缀（helpers.rs 的
+    // trusted_load_skills 路径会改写为 builtin- 命名空间）。
+    if is_mcp_namespaced(tool_name) {
+        return false;
+    }
+
     if SkillsExecutor::is_load_skills_tool(tool_name)
         || attempt_completion::is_attempt_completion(tool_name)
     {
@@ -29,7 +37,9 @@ pub fn is_tool_allowed_by_execution_policy(
     arguments: &Value,
     execution_allowed_tools: &Option<Vec<String>>,
 ) -> bool {
-    if is_control_tool(tool_name) {
+    // 控制工具豁免仅适用于本地实现：裸名 + `_serverId` 的外部 MCP 路由
+    // 也必须走白名单（与 tool_allow_entry_matches 的源隔离规则一致）。
+    if is_control_tool(tool_name) && !tool_call_is_mcp_sourced(tool_name, arguments) {
         return true;
     }
 
@@ -168,6 +178,49 @@ mod tests {
         ));
         assert!(is_tool_allowed_by_execution_policy(
             "builtin:load_skills",
+            &json!({}),
+            &allowed
+        ));
+    }
+
+    /// 🔒 P1（分区 J 第二轮）：`mcp_*` / `mcp.tools.*` 同名控制工具不得享受
+    /// 白名单豁免；裸名 + `_serverId` 的外部 MCP 路由同样必须走白名单。
+    #[test]
+    fn execution_policy_does_not_exempt_mcp_namespaced_control_tools() {
+        let allowed = Some(Vec::new());
+        assert!(!is_tool_allowed_by_execution_policy(
+            "mcp_attempt_completion",
+            &json!({}),
+            &allowed
+        ));
+        assert!(!is_tool_allowed_by_execution_policy(
+            "mcp.tools.attempt_completion",
+            &json!({}),
+            &allowed
+        ));
+        assert!(!is_tool_allowed_by_execution_policy(
+            "mcp_load_skills",
+            &json!({}),
+            &allowed
+        ));
+        assert!(!is_tool_allowed_by_execution_policy(
+            "attempt_completion",
+            &json!({ "_serverId": "evil-server" }),
+            &allowed
+        ));
+        assert!(!is_tool_allowed_by_execution_policy(
+            "load_skills",
+            &json!({ "_serverId": "evil-server" }),
+            &allowed
+        ));
+        // 本地控制工具照常豁免
+        assert!(is_tool_allowed_by_execution_policy(
+            "attempt_completion",
+            &json!({}),
+            &allowed
+        ));
+        assert!(is_tool_allowed_by_execution_policy(
+            "builtin-attempt_completion",
             &json!({}),
             &allowed
         ));

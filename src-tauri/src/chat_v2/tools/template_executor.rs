@@ -10,7 +10,7 @@
 //! - `builtin-template_update`：更新已有模板（乐观锁）
 //! - `builtin-template_fork`：从已有模板分叉
 //! - `builtin-template_preview`：预览模板渲染
-//! - `builtin-template_delete`：删除用户自定义模板（不可删除内置模板）
+//! - `builtin-template_delete`：删除模板（自定义模板物理删除；内置模板停用 + 墓碑，与 UI 删除规则一致）
 
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -1123,6 +1123,18 @@ impl TemplateDesignerExecutor {
 
         match db.update_custom_template(&args.template_id, &update_req) {
             Ok(()) => {
+                // AI 修改内置模板同样打 user_modified 标记（与 UI 路径一致）：
+                // 内置模板版本升级导入将跳过该模板，避免用户/AI 的修改被静默覆盖
+                if existing.is_built_in {
+                    if let Err(e) = db.mark_template_user_modified(&args.template_id) {
+                        log::warn!(
+                            "[TemplateDesignerExecutor] mark user_modified failed: id={}, err={}",
+                            args.template_id,
+                            e
+                        );
+                    }
+                }
+
                 // 读取更新后的模板
                 let after = db
                     .get_custom_template_by_id(&args.template_id)
@@ -1429,20 +1441,53 @@ impl TemplateDesignerExecutor {
             }
         };
 
-        // 2. 禁止删除内置模板
-        if template.is_built_in {
-            let msg = format!(
-                "不能删除内置模板「{}」(ID: {})。如需修改内置模板，请先使用 builtin-template_fork 创建副本。",
-                template.name, args.template_id
-            );
-            return Ok(Self::emit_failure(call, ctx, &msg, start_time));
-        }
-
-        // 3. 记录模板名称用于确认消息
+        // 2. 记录模板名称用于确认消息
         let template_name = template.name.clone();
         let template_id = args.template_id.clone();
 
-        // 4. 执行删除
+        // 3. 统计仍引用该模板的存量卡片数（失败不阻断删除，仅缺提示信息）
+        let referencing_cards = db
+            .count_anki_cards_referencing_template(&args.template_id)
+            .unwrap_or_else(|e| {
+                log::warn!(
+                    "[TemplateDesignerExecutor] count referencing cards failed: id={}, err={}",
+                    args.template_id,
+                    e
+                );
+                0
+            });
+
+        // 4. 内置模板：与 UI 删除路径统一（bug F4）——不物理删除，
+        //    改为停用 + user_deleted 墓碑，模板 ID 稳定且升级导入不会复活它。
+        if template.is_built_in {
+            if let Err(e) = db.soft_delete_builtin_template(&args.template_id) {
+                let msg = format!("停用内置模板失败: {}", e);
+                return Ok(Self::emit_failure(call, ctx, &msg, start_time));
+            }
+
+            log::info!(
+                "[TemplateDesignerExecutor] Soft-deleted builtin template: id={}, name={}",
+                template_id,
+                template_name
+            );
+
+            let output = json!({
+                "success": true,
+                "deleted": false,
+                "deactivated": true,
+                "isBuiltIn": true,
+                "templateId": template_id,
+                "templateName": template_name,
+                "referencingCards": referencing_cards,
+                "message": format!(
+                    "内置模板「{}」已停用（内置模板不可物理删除，已有 {} 张卡片引用不受影响；后续版本升级不会重新启用它）。",
+                    template_name, referencing_cards
+                ),
+            });
+            return Ok(Self::emit_success(call, ctx, output, start_time));
+        }
+
+        // 5. 自定义模板：物理删除
         if let Err(e) = db.delete_custom_template(&args.template_id) {
             let msg = format!("删除模板失败: {}", e);
             return Ok(Self::emit_failure(call, ctx, &msg, start_time));
@@ -1457,8 +1502,11 @@ impl TemplateDesignerExecutor {
         let output = json!({
             "success": true,
             "deleted": true,
+            "deactivated": false,
+            "isBuiltIn": false,
             "templateId": template_id,
             "templateName": template_name,
+            "referencingCards": referencing_cards,
             "message": format!("模板「{}」已成功删除。", template_name),
         });
 

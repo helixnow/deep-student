@@ -50,7 +50,22 @@ struct AgentCompletionEnvelope {
 
 impl AgentCompletionEnvelope {
     fn metadata(&self) -> serde_json::Value {
-        serde_json::to_value(self).expect("completion envelope is always serializable")
+        // 结构体字段全部可序列化；万一未来字段变更引入不可序列化类型，
+        // 降级为最小完成协议载荷而不是 panic 掉 command 线程。
+        serde_json::to_value(self).unwrap_or_else(|e| {
+            log::error!(
+                "[Workspace] Failed to serialize completion envelope (run_id={}): {}",
+                self.run_id,
+                e
+            );
+            serde_json::json!({
+                "type": self.kind,
+                "workspace_id": self.workspace_id,
+                "agent_session_id": self.agent_session_id,
+                "run_id": self.run_id,
+                "completed_at": self.completed_at,
+            })
+        })
     }
 }
 

@@ -93,8 +93,10 @@ pub fn should_compact(ctx: &PipelineContext, config: Option<&ApiConfig>) -> bool
         return false;
     }
 
-    // 单轮 prompt_tokens 最能反映"下一轮送进 LLM 的规模"
-    // 否则回退到 total_tokens，再退到 saturating_add(prompt+completion)
+    // 🔧 语义澄清：last_round_prompt_tokens 实为「上一轮 prompt + completion」
+    // （上下文窗口占用，见 types.rs 字段文档）。下一轮 prompt ≈ 上一轮
+    // prompt + completion（+ 工具输出），因此它正是预测下一轮输入规模的正确基数。
+    // 缺失时回退到累计值（多轮累计会偏大 → 保守提前触发，可接受）。
     let used = match ctx.token_usage.last_round_prompt_tokens {
         Some(v) if v > 0 => v,
         _ => {
@@ -128,10 +130,19 @@ pub fn should_compact_after_tool(
         return false;
     }
 
-    let base = ctx
-        .token_usage
-        .last_round_prompt_tokens
-        .unwrap_or(ctx.token_usage.prompt_tokens);
+    // 下一轮 prompt ≈ 上一轮 (prompt + completion) + 本轮工具输出。
+    // last_round_prompt_tokens 恰为上一轮 prompt+completion（见 types.rs），
+    // 直接作为基数是准确预测而非高估。
+    // 🔧 修复：缺失时的回退与 should_compact 对齐（此前回退到多轮累计
+    // prompt_tokens，多轮工具会话会严重偏大）。
+    let base = match ctx.token_usage.last_round_prompt_tokens {
+        Some(v) if v > 0 => v,
+        _ => ctx
+            .token_usage
+            .prompt_tokens
+            .saturating_add(ctx.token_usage.completion_tokens)
+            .max(ctx.token_usage.total_tokens),
+    };
     let predicted_next_prompt = base.saturating_add(predicted_tool_output_tokens);
 
     let threshold = (usable as f64 * TRIGGER_RATIO) as u32;

@@ -34,7 +34,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -87,6 +87,206 @@ fn next_chatanki_state_revision() -> i64 {
         .unwrap_or(0)
         .max(now.saturating_sub(1))
         .saturating_add(1)
+}
+
+// ============================================================================
+// Active pipeline registry (F2)
+// ============================================================================
+//
+// 进程内“真在跑”的制卡管线注册表，按 anki_cards 块 ID 索引。
+// 会话删除路径用它区分「活跃管线」与「崩溃/强退遗留的僵尸 running 块」：
+// 注册发生在块首次落库之前，因此任何 DB 可见但未注册的 running 块，
+// 要么其管线已退出，要么来自上一个已死亡的进程。
+
+static ACTIVE_CHATANKI_PIPELINES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn active_chatanki_pipelines() -> &'static Mutex<HashSet<String>> {
+    ACTIVE_CHATANKI_PIPELINES.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn lock_active_chatanki_pipelines() -> std::sync::MutexGuard<'static, HashSet<String>> {
+    active_chatanki_pipelines().lock().unwrap_or_else(|poisoned| {
+        log::error!("[ChatAnkiToolExecutor] active pipeline registry mutex poisoned; recovering");
+        poisoned.into_inner()
+    })
+}
+
+/// 该 anki_cards 块是否有本进程内仍在运行的后台制卡管线。
+pub(crate) fn is_chatanki_pipeline_active(anki_block_id: &str) -> bool {
+    lock_active_chatanki_pipelines().contains(anki_block_id)
+}
+
+/// RAII 注册守卫：创建时注册，Drop（含 panic 展开）时注销，
+/// 保证管线以任何方式退出后注册表不残留。
+struct ChatAnkiPipelineGuard {
+    anki_block_id: String,
+}
+
+impl ChatAnkiPipelineGuard {
+    fn register(anki_block_id: &str) -> Self {
+        lock_active_chatanki_pipelines().insert(anki_block_id.to_string());
+        Self {
+            anki_block_id: anki_block_id.to_string(),
+        }
+    }
+}
+
+impl Drop for ChatAnkiPipelineGuard {
+    fn drop(&mut self) {
+        lock_active_chatanki_pipelines().remove(&self.anki_block_id);
+    }
+}
+
+// ============================================================================
+// Stale running block reaping (F2)
+// ============================================================================
+
+/// 非活跃 running/pending anki 块超过该时限无任何活动即判定为 stale。
+/// 注册表是主要信号（崩溃重启后注册表为空），时间只是防御性宽限，
+/// 避免误伤「管线刚退出、终态写入尚未完成」的窗口。
+pub(crate) const STALE_RUNNING_ANKI_BLOCK_AFTER_MS: i64 = 2 * 60 * 1000;
+
+fn parse_rfc3339_to_ms(value: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.timestamp_millis())
+}
+
+/// 计算 anki_cards 块最近一次可观测活动的毫秒时间戳。
+/// 取 started_at / first_chunk_at / tool_output.progress.lastUpdatedAt 的最大值。
+fn anki_block_last_activity_ms(
+    started_at: Option<i64>,
+    first_chunk_at: Option<i64>,
+    tool_output_json: Option<&str>,
+) -> i64 {
+    let progress_updated_at = tool_output_json
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        .and_then(|output| {
+            output
+                .get("progress")
+                .and_then(|p| p.get("lastUpdatedAt"))
+                .and_then(Value::as_str)
+                .and_then(parse_rfc3339_to_ms)
+        });
+    [started_at, first_chunk_at, progress_updated_at]
+        .into_iter()
+        .flatten()
+        .max()
+        .unwrap_or(0)
+}
+
+/// stale 判定：没有活跃管线，且最近活动早于宽限阈值。
+fn is_stale_running_anki_block(now_ms: i64, last_activity_ms: i64, pipeline_active: bool) -> bool {
+    if pipeline_active {
+        return false;
+    }
+    now_ms.saturating_sub(last_activity_ms) > STALE_RUNNING_ANKI_BLOCK_AFTER_MS
+}
+
+/// F2：把会话内的僵尸 running/pending anki 块落库为 failed，返回被处理的块 ID。
+///
+/// 会话删除（软删/硬删/分组删除）前调用：崩溃/强退后遗留的 running 块
+/// 不再永久阻挡删除。仅内存态修复（前端 watchdog）不落库的问题由此兜底。
+pub(crate) fn reap_stale_running_anki_blocks(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    struct RunningAnkiBlockRow {
+        block_id: String,
+        message_id: String,
+        tool_name: Option<String>,
+        started_at: Option<i64>,
+        first_chunk_at: Option<i64>,
+        tool_output_json: Option<String>,
+    }
+
+    // 短生命周期内取完候选行并释放连接，persist 辅助函数会各自重新拿连接。
+    let candidates: Vec<RunningAnkiBlockRow> = {
+        let conn = chat_db.get_conn_safe().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT b.id, b.message_id, b.tool_name, b.started_at, b.first_chunk_at, b.tool_output_json
+                FROM chat_v2_blocks b
+                INNER JOIN chat_v2_messages m ON m.id = b.message_id
+                WHERE m.session_id = ?1
+                  AND b.block_type = 'anki_cards'
+                  AND b.status IN ('pending', 'running')
+                "#,
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![session_id], |row| {
+                Ok(RunningAnkiBlockRow {
+                    block_id: row.get(0)?,
+                    message_id: row.get(1)?,
+                    tool_name: row.get(2)?,
+                    started_at: row.get(3)?,
+                    first_chunk_at: row.get(4)?,
+                    tool_output_json: row.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut collected = Vec::new();
+        for row in rows {
+            collected.push(row.map_err(|e| e.to_string())?);
+        }
+        collected
+    };
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let mut reaped: Vec<String> = Vec::new();
+    for row in candidates {
+        let pipeline_active = is_chatanki_pipeline_active(&row.block_id);
+        let last_activity_ms = anki_block_last_activity_ms(
+            row.started_at,
+            row.first_chunk_at,
+            row.tool_output_json.as_deref(),
+        );
+        if !is_stale_running_anki_block(now_ms, last_activity_ms, pipeline_active) {
+            continue;
+        }
+
+        let tool_name = row
+            .tool_name
+            .as_deref()
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or("chatanki_run");
+
+        // 可读原因写入块状态（新增可选字段，向后兼容）。
+        persist_anki_cards_running_patch(
+            chat_db,
+            &row.message_id,
+            &row.block_id,
+            tool_name,
+            json!({
+                "interrupted": {
+                    "reason": "stale_running_block",
+                    "detail": "Pipeline is no longer running (app crash or force quit); block marked failed so the session stays deletable.",
+                    "lastActivityAt": last_activity_ms,
+                    "detectedAt": now_ms,
+                }
+            }),
+        );
+        persist_anki_cards_terminal_block(
+            chat_db,
+            &row.message_id,
+            &row.block_id,
+            tool_name,
+            block_status::ERROR,
+            None,
+            Some("blocks.ankiCards.errors.pipelineTimeout".to_string()),
+        );
+        log::warn!(
+            "[ChatAnkiToolExecutor] reaped stale running anki block {} (session {}, last activity {}ms ago)",
+            row.block_id,
+            session_id,
+            now_ms.saturating_sub(last_activity_ms)
+        );
+        reaped.push(row.block_id);
+    }
+
+    Ok(reaped)
 }
 
 // ============================================================================
@@ -1456,6 +1656,28 @@ impl ChatAnkiToolExecutor {
         let (status, error, should_retry) = derive_status_snapshot(&tasks, &cards);
         let projection =
             (!tasks.is_empty()).then(|| project_chatanki_workflow(&tasks, &cards, None, 0));
+
+        // A9 + 孤儿恢复：文档已达终态时把陈旧/僵尸块快照收敛为 DB 权威数据
+        //（helper 内部自行判断是否需要改写，best-effort 不阻塞状态查询）。
+        if let Some(chat_db) = &ctx.chat_v2_db {
+            match sync_terminal_anki_block_with_db(
+                chat_db,
+                Some(&ctx.emitter),
+                &ctx.session_id,
+                &document_id,
+                &tasks,
+                &cards,
+            ) {
+                Ok(_) => {}
+                Err(e) => {
+                    log::warn!(
+                        "[ChatAnkiToolExecutor] status block refresh failed for {}: {}",
+                        document_id,
+                        e
+                    );
+                }
+            }
+        }
 
         let mut output = json!({
             "status": status,
@@ -3563,6 +3785,23 @@ impl ChatAnkiToolExecutor {
                     let projection = project_chatanki_workflow(&tasks, &cards, None, 0);
                     deep_merge_value(&mut tool_output, projection.output_patch);
                 }
+                // A9 + 孤儿恢复：等待结束且文档已终态时，收敛陈旧/僵尸块快照。
+                if let Some(chat_db) = &chat_db {
+                    if let Err(e) = sync_terminal_anki_block_with_db(
+                        chat_db,
+                        Some(&ctx.emitter),
+                        &ctx.session_id,
+                        document_id,
+                        &tasks,
+                        &cards,
+                    ) {
+                        log::warn!(
+                            "[ChatAnkiToolExecutor] wait block refresh failed for {}: {}",
+                            document_id,
+                            e
+                        );
+                    }
+                }
             }
         }
 
@@ -4658,6 +4897,39 @@ impl ChatAnkiToolExecutor {
             .map_err(|e| e.to_string())?;
         let counts = compute_task_counts(&tasks);
 
+        // 取消语义确认：取消保留已生成卡片。取消后文档即达终态，
+        // 顺手把块快照收敛为 DB 权威数据（cancelled + 保留卡片），
+        // 与后台轮询收尾幂等（A9 + 取消无回归）。
+        if action == "cancel" {
+            if let Some(chat_db) = &ctx.chat_v2_db {
+                match db.get_cards_for_document(&document_id) {
+                    Ok(cards) => {
+                        if let Err(e) = sync_terminal_anki_block_with_db(
+                            chat_db,
+                            Some(&ctx.emitter),
+                            &ctx.session_id,
+                            &document_id,
+                            &tasks,
+                            &cards,
+                        ) {
+                            log::warn!(
+                                "[ChatAnkiToolExecutor] cancel block refresh failed for {}: {}",
+                                document_id,
+                                e
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[ChatAnkiToolExecutor] cancel card reload failed for {}: {}",
+                            document_id,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
         let output = json!({
             "status": "ok",
             "action": action,
@@ -4947,6 +5219,10 @@ impl ChatAnkiToolExecutor {
             "debug": if debug_enabled { Some(json!({ "forcedRoute": forced_route.map(|r| r.as_str()), "preferredResourceIds": preferred_resource_ids })) } else { None },
         });
 
+        // F2：先注册活跃管线再落库块，保证「DB 可见的 running 块但未注册」
+        // 一定意味着管线已死（供会话删除路径识别僵尸块）。
+        let pipeline_guard = ChatAnkiPipelineGuard::register(&anki_block_id);
+
         // Persist anki_cards block early so user sees progress even if pipeline takes long.
         let anki_block = MessageBlock {
             id: anki_block_id.clone(),
@@ -5014,6 +5290,8 @@ impl ChatAnkiToolExecutor {
 
         let pre_doc_id_for_spawn = pre_allocated_document_id.clone();
         tokio::spawn(async move {
+            // 守卫随后台任务存活；任务结束（含 panic 展开）时自动注销。
+            let _pipeline_guard = pipeline_guard;
             if let Err(e) = run_chatanki_pipeline_background(BackgroundParams {
                 session_id,
                 message_id,
@@ -5161,6 +5439,44 @@ fn ensure_failed_document_session(
             )
         })?;
     Ok(())
+}
+
+/// C6：空闲超时阈值——连续无任何生成进度（新卡/任务计数/完成比例）超过该时长判定超时。
+const PIPELINE_IDLE_TIMEOUT: Duration = Duration::from_secs(60 * 10);
+/// C6：总时长防御性硬上限（由原 30 分钟提高）；只兜底防止无限轮询，正常大文档不应触达。
+const PIPELINE_MAX_TOTAL_DURATION: Duration = Duration::from_secs(60 * 60 * 6);
+/// 写入 document_task.error_message 的超时标记（前缀 + 可读原因）。
+const PIPELINE_IDLE_TIMEOUT_MARKER: &str = "PIPELINE_IDLE_TIMEOUT";
+const PIPELINE_TOTAL_TIMEOUT_MARKER: &str = "PIPELINE_TOTAL_TIMEOUT";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PipelineTimeoutKind {
+    Idle,
+    Total,
+}
+
+impl PipelineTimeoutKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Total => "total",
+        }
+    }
+}
+
+/// C6：超时判定——总时长上限优先，其次空闲超时。调用方负责在有进度
+///（或暂停等待）时重置空闲时钟，实现“有进度就续期”。
+fn decide_pipeline_timeout(
+    idle_elapsed: Duration,
+    total_elapsed: Duration,
+) -> Option<PipelineTimeoutKind> {
+    if total_elapsed > PIPELINE_MAX_TOTAL_DURATION {
+        return Some(PipelineTimeoutKind::Total);
+    }
+    if idle_elapsed > PIPELINE_IDLE_TIMEOUT {
+        return Some(PipelineTimeoutKind::Idle);
+    }
+    None
 }
 
 async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<(), String> {
@@ -5969,71 +6285,18 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
     const POLL_INTERVAL: Duration = Duration::from_millis(900);
     const MAX_CARDS_PER_CHUNK: usize = 25;
     let started_at = std::time::Instant::now();
-    const MAX_TOTAL_DURATION: Duration = Duration::from_secs(60 * 30); // 30 minutes
+    // C6：由「30 分钟硬超时直接取消」改为空闲超时语义——有进度就续期，
+    // 仅在长时间零进度（或达到防御性总时长上限）时才判定超时；
+    // 超时后未完成任务落库为 Failed（可重试），而不是不可恢复的 Cancelled。
+    let mut last_progress_at = std::time::Instant::now();
+    let mut timeout_info: Option<Value> = None;
+    let mut timeout_tasks_marked = false;
     let global_card_limit = params
         .max_cards
         .and_then(|v| if v > 0 { Some(v as usize) } else { None });
     let mut limit_cancel_triggered = false;
 
     loop {
-        if started_at.elapsed() > MAX_TOTAL_DURATION {
-            let error_key = "blocks.ankiCards.errors.pipelineTimeout".to_string();
-            // Best-effort: cancel running tasks so UI aligns with timeout state.
-            let proc = crate::document_processing_service::DocumentProcessingService::new(
-                params.anki_db.clone(),
-            );
-            match proc.get_document_tasks(&document_id) {
-                Ok(tasks) => {
-                    let streaming = crate::streaming_anki_service::StreamingAnkiService::new(
-                        params.anki_db.clone(),
-                        params.llm_manager.clone(),
-                    );
-                    for t in tasks.iter() {
-                        if matches!(
-                            t.status,
-                            crate::models::TaskStatus::Processing
-                                | crate::models::TaskStatus::Streaming
-                        ) {
-                            let _ = streaming.cancel_streaming(t.id.clone()).await;
-                        }
-                    }
-                    for t in tasks.iter() {
-                        if matches!(
-                            t.status,
-                            crate::models::TaskStatus::Pending
-                                | crate::models::TaskStatus::Processing
-                                | crate::models::TaskStatus::Streaming
-                                | crate::models::TaskStatus::Paused
-                        ) {
-                            let _ = proc.update_task_status(
-                                &t.id,
-                                crate::models::TaskStatus::Cancelled,
-                                None,
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[ChatAnkiToolExecutor] timeout cancel failed for {}: {}",
-                        document_id,
-                        e
-                    );
-                }
-            }
-            emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
-            persist_anki_cards_terminal_block(
-                &params.chat_db,
-                &params.message_id,
-                &params.anki_block_id,
-                &params.tool_name,
-                block_status::ERROR,
-                None,
-                Some(error_key),
-            );
-            break;
-        }
-
         let tasks = params
             .anki_db
             .get_tasks_for_document(&document_id)
@@ -6201,6 +6464,130 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             last_ratio = Some(ratio);
         }
 
+        // C6：进度续期——出现新卡/计数变化视为有进度；暂停属于用户主动等待，
+        // 同样不计入空闲时间（恢复后空闲时钟从零起算）。
+        if counts_changed || ratio_changed || !new_cards.is_empty() || is_paused {
+            last_progress_at = std::time::Instant::now();
+        }
+
+        if is_in_progress || is_paused {
+            if let Some(kind) =
+                decide_pipeline_timeout(last_progress_at.elapsed(), started_at.elapsed())
+            {
+                if timeout_tasks_marked {
+                    // 上一轮已把未完成任务标记为 Failed，但任务表仍未收敛
+                    //（极端情况：任务状态写入失败）。退回硬终态，避免死循环。
+                    let error_key = "blocks.ankiCards.errors.pipelineTimeout".to_string();
+                    log::error!(
+                        "[ChatAnkiToolExecutor] pipeline timeout for {} did not converge after marking tasks failed; forcing terminal error",
+                        document_id
+                    );
+                    // 把已记录的可读超时原因合入块状态后再落终态。
+                    if let Some(info) = timeout_info.clone() {
+                        persist_anki_cards_running_patch(
+                            &params.chat_db,
+                            &params.message_id,
+                            &params.anki_block_id,
+                            &params.tool_name,
+                            json!({ "timeout": info }),
+                        );
+                    }
+                    emit_anki_cards_error(&params.emitter, &params.anki_block_id, &error_key);
+                    persist_anki_cards_terminal_block(
+                        &params.chat_db,
+                        &params.message_id,
+                        &params.anki_block_id,
+                        &params.tool_name,
+                        block_status::ERROR,
+                        None,
+                        Some(error_key),
+                    );
+                    break;
+                }
+                timeout_tasks_marked = true;
+
+                let idle_ms = last_progress_at.elapsed().as_millis() as u64;
+                let total_ms = started_at.elapsed().as_millis() as u64;
+                let reason = match kind {
+                    PipelineTimeoutKind::Idle => format!(
+                        "{}: no generation progress for {}s (limit {}s); unfinished segments marked failed and retryable",
+                        PIPELINE_IDLE_TIMEOUT_MARKER,
+                        idle_ms / 1000,
+                        PIPELINE_IDLE_TIMEOUT.as_secs()
+                    ),
+                    PipelineTimeoutKind::Total => format!(
+                        "{}: pipeline exceeded total duration cap of {}s; unfinished segments marked failed and retryable",
+                        PIPELINE_TOTAL_TIMEOUT_MARKER,
+                        PIPELINE_MAX_TOTAL_DURATION.as_secs()
+                    ),
+                };
+                log::warn!(
+                    "[ChatAnkiToolExecutor] pipeline timeout ({}) for {}: idle={}ms total={}ms",
+                    kind.as_str(),
+                    document_id,
+                    idle_ms,
+                    total_ms
+                );
+                // 可读超时原因写入块状态（新增可选字段，向后兼容）。
+                timeout_info = Some(json!({
+                    "kind": kind.as_str(),
+                    "idleMs": idle_ms,
+                    "totalMs": total_ms,
+                    "idleLimitMs": PIPELINE_IDLE_TIMEOUT.as_millis() as u64,
+                    "totalLimitMs": PIPELINE_MAX_TOTAL_DURATION.as_millis() as u64,
+                    "reason": reason.clone(),
+                    "at": chrono::Utc::now().to_rfc3339(),
+                }));
+
+                // 停流 + 未完成任务落库为 Failed（trigger_task_processing 可重试），
+                // 已生成卡片全部保留；下一轮由正常终态分支带着 DB 权威卡片收尾。
+                let proc = crate::document_processing_service::DocumentProcessingService::new(
+                    params.anki_db.clone(),
+                );
+                let streaming = crate::streaming_anki_service::StreamingAnkiService::new(
+                    params.anki_db.clone(),
+                    params.llm_manager.clone(),
+                );
+                for t in tasks.iter() {
+                    if matches!(
+                        t.status,
+                        crate::models::TaskStatus::Processing
+                            | crate::models::TaskStatus::Streaming
+                    ) {
+                        if let Err(e) = streaming.cancel_streaming(t.id.clone()).await {
+                            log::warn!(
+                                "[ChatAnkiToolExecutor] timeout cancel_streaming failed for task {}: {}",
+                                t.id,
+                                e
+                            );
+                        }
+                    }
+                }
+                for t in tasks.iter() {
+                    if matches!(
+                        t.status,
+                        crate::models::TaskStatus::Pending
+                            | crate::models::TaskStatus::Processing
+                            | crate::models::TaskStatus::Streaming
+                            | crate::models::TaskStatus::Paused
+                    ) {
+                        if let Err(e) = proc.update_task_status(
+                            &t.id,
+                            crate::models::TaskStatus::Failed,
+                            Some(reason.clone()),
+                        ) {
+                            log::warn!(
+                                "[ChatAnkiToolExecutor] timeout mark-failed failed for task {}: {}",
+                                t.id,
+                                e
+                            );
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+
         if !is_in_progress && !is_paused {
             // Done: emit end with full cards list.
             // 超出 maxCards 的卡片仍按上限裁剪展示（保持限额语义），但不再物理删除：
@@ -6272,7 +6659,15 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             } else {
                 None
             };
-            let final_error_key = projection.block_error.clone();
+            // C6：超时导致的失败用更具体的 pipelineTimeout 错误键，
+            // 便于用户/AI 与普通生成失败区分。
+            let final_error_key = if timeout_info.is_some()
+                && projection.block_status == block_status::ERROR
+            {
+                Some("blocks.ankiCards.errors.pipelineTimeout".to_string())
+            } else {
+                projection.block_error.clone()
+            };
             let mut final_output = json!({
                 "cards": final_cards,
                 "documentId": document_id,
@@ -6329,6 +6724,10 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             if has_limit_cancelled {
                 final_output["progress"]["messageKey"] = json!(final_message_key);
                 final_output["progress"]["messageParams"] = json!(final_message_params);
+            }
+            // C6：可读超时详情（新增可选字段，向后兼容）。
+            if let Some(info) = timeout_info.clone() {
+                final_output["timeout"] = info;
             }
 
             // Persist final block (best-effort).
@@ -9704,6 +10103,127 @@ fn emit_anki_cards_error(
     error: &str,
 ) {
     emitter.emit_error(event_types::ANKI_CARDS, block_id, error, None);
+}
+
+/// A9（后端侧）+ 孤儿恢复：当文档在 DB 中已达终态，而会话内对应的
+/// anki_cards 块快照仍是旧数据（崩溃遗留的 running 块、任务台重试/补卡/
+/// 删卡后的陈旧副本）时，把块快照刷新为 DB 权威数据。
+///
+/// 保守改写条件（避免覆盖用户在块内做过、尚未回写 DB 的内容编辑）：
+/// - 块仍处于 pending/running（孤儿态，必须收敛为终态）；或
+/// - 块内卡片 ID 集合与 DB 卡片 ID 集合不一致（发生过重试生成/补卡/库内删除）。
+///
+/// 块内 `deletedCardIds`（用户在预览中删除的卡）在刷新时继续被排除，
+/// 保持用户可见状态。返回是否发生了刷新。
+fn sync_terminal_anki_block_with_db(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    emitter: Option<&crate::chat_v2::events::ChatV2EventEmitter>,
+    session_id: &str,
+    document_id: &str,
+    tasks: &[crate::models::DocumentTask],
+    cards: &[crate::models::AnkiCard],
+) -> Result<bool, String> {
+    if tasks.is_empty() {
+        return Ok(false);
+    }
+    let still_active = tasks.iter().any(|t| {
+        matches!(
+            t.status,
+            crate::models::TaskStatus::Pending
+                | crate::models::TaskStatus::Processing
+                | crate::models::TaskStatus::Streaming
+                | crate::models::TaskStatus::Paused
+        )
+    });
+    if still_active {
+        return Ok(false);
+    }
+
+    let Some(block_id) = find_owned_anki_cards_block_id(chat_db, session_id, document_id)? else {
+        return Ok(false);
+    };
+    let block = ChatV2Repo::get_block_v2(chat_db, &block_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("anki block {} disappeared during refresh", block_id))?;
+
+    let deleted_card_ids: HashSet<String> = block
+        .tool_output
+        .as_ref()
+        .and_then(|o| o.get("deletedCardIds"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let visible_db_cards: Vec<&crate::models::AnkiCard> = cards
+        .iter()
+        .filter(|c| !deleted_card_ids.contains(&c.id))
+        .collect();
+
+    let block_orphan_running =
+        block.status == block_status::PENDING || block.status == block_status::RUNNING;
+    let block_card_ids: HashSet<String> = block
+        .tool_output
+        .as_ref()
+        .and_then(|o| o.get("cards"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let db_card_ids: HashSet<String> = visible_db_cards.iter().map(|c| c.id.clone()).collect();
+    if !block_orphan_running && block_card_ids == db_card_ids {
+        return Ok(false);
+    }
+
+    let projection = project_chatanki_workflow(tasks, cards, None, 0);
+    let mut output = block
+        .tool_output
+        .clone()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({ "cards": [], "documentId": document_id }));
+    output["cards"] = Value::Array(visible_db_cards.iter().map(|c| convert_backend_card(c)).collect());
+    output["documentId"] = json!(document_id);
+    deep_merge_value(&mut output, projection.output_patch.clone());
+    // 新增可选字段：标记该快照已按 DB 权威数据刷新（前端/导出可据此判定新鲜度）。
+    output["cardsRefreshedFromDb"] = json!(true);
+    output["cardsRefreshedAt"] = json!(chrono::Utc::now().to_rfc3339());
+
+    let tool_name = block
+        .tool_name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("chatanki_run")
+        .to_string();
+    persist_anki_cards_terminal_block(
+        chat_db,
+        &block.message_id,
+        &block.id,
+        &tool_name,
+        projection.block_status,
+        Some(output.clone()),
+        projection.block_error.clone(),
+    );
+    if let Some(emitter) = emitter {
+        emit_anki_cards_chunk(emitter, &block.id, output);
+        if projection.block_status == block_status::ERROR {
+            if let Some(error_key) = projection.block_error.as_deref() {
+                emit_anki_cards_error(emitter, &block.id, error_key);
+            }
+        }
+    }
+    log::info!(
+        "[ChatAnkiToolExecutor] refreshed anki block {} snapshot from DB (document {}, {} cards, status {})",
+        block.id,
+        document_id,
+        db_card_ids.len(),
+        projection.block_status
+    );
+    Ok(true)
 }
 
 fn deep_merge_value(into: &mut Value, patch: Value) {
@@ -13696,5 +14216,236 @@ mod tests {
             derive_effective_template_mode(&multiple).as_str(),
             ChatAnkiTemplateMode::Multiple.as_str()
         );
+    }
+
+    /// C6：超时判定为空闲语义——有进度（空闲时钟被调用方重置）就不超时；
+    /// 总时长上限只是防御性兜底且优先级最高。
+    #[test]
+    fn test_decide_pipeline_timeout_idle_semantics() {
+        // 双时钟都在阈值内：不超时。
+        assert_eq!(
+            decide_pipeline_timeout(Duration::from_secs(1), Duration::from_secs(60 * 60)),
+            None
+        );
+        // 总时长早已超过旧的 30 分钟硬上限，但仍有进度：继续运行（C6 核心修复）。
+        assert_eq!(
+            decide_pipeline_timeout(Duration::from_secs(5), Duration::from_secs(60 * 45)),
+            None
+        );
+        // 空闲超过阈值：idle 超时。
+        assert_eq!(
+            decide_pipeline_timeout(
+                PIPELINE_IDLE_TIMEOUT + Duration::from_secs(1),
+                Duration::from_secs(60 * 20)
+            ),
+            Some(PipelineTimeoutKind::Idle)
+        );
+        // 总时长超过防御上限：total 超时优先。
+        assert_eq!(
+            decide_pipeline_timeout(
+                PIPELINE_IDLE_TIMEOUT + Duration::from_secs(1),
+                PIPELINE_MAX_TOTAL_DURATION + Duration::from_secs(1)
+            ),
+            Some(PipelineTimeoutKind::Total)
+        );
+        assert_eq!(PipelineTimeoutKind::Idle.as_str(), "idle");
+        assert_eq!(PipelineTimeoutKind::Total.as_str(), "total");
+    }
+
+    /// F2：块最近活动时间取 started_at / first_chunk_at / progress.lastUpdatedAt 最大值；
+    /// stale 判定要求「无活跃管线」且「超过宽限时限」。
+    #[test]
+    fn test_anki_block_staleness_decision() {
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let recent = chrono::Utc::now().to_rfc3339();
+        let output_with_recent_progress =
+            json!({ "progress": { "lastUpdatedAt": recent } }).to_string();
+
+        // progress.lastUpdatedAt 比 started_at 新时取前者。
+        let last_activity = anki_block_last_activity_ms(
+            Some(now_ms - 60 * 60 * 1000),
+            None,
+            Some(&output_with_recent_progress),
+        );
+        assert!(now_ms - last_activity < 5_000);
+
+        // 无 tool_output 时退回时间戳字段。
+        assert_eq!(
+            anki_block_last_activity_ms(Some(100), Some(200), None),
+            200
+        );
+        assert_eq!(anki_block_last_activity_ms(None, None, None), 0);
+
+        let old_activity = now_ms - STALE_RUNNING_ANKI_BLOCK_AFTER_MS - 1_000;
+        // 活跃管线永不 stale。
+        assert!(!is_stale_running_anki_block(now_ms, old_activity, true));
+        // 非活跃 + 超时限 = stale。
+        assert!(is_stale_running_anki_block(now_ms, old_activity, false));
+        // 非活跃但仍在宽限期内：不 stale（管线刚退出、终态写入窗口）。
+        assert!(!is_stale_running_anki_block(now_ms, now_ms - 1_000, false));
+    }
+
+    /// F2：僵尸 running 块被 reap 后落库为 error（带可读 interrupted 原因），
+    /// 注册了活跃管线的块不受影响——保证会话删除检查放行僵尸、保护真活跃。
+    #[test]
+    fn test_reap_stale_running_anki_blocks_marks_zombie_failed() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let session_id = "session-reap";
+        let zombie_target =
+            seed_anki_cards_block(&chat_db, session_id, "doc-zombie", Vec::new(), Vec::new());
+        let zombie_block_id = required_mutation_block_id(&zombie_target).to_string();
+
+        // 另一个块模拟“真在跑”的管线：状态 running 且已注册。
+        let mut live_message =
+            crate::chat_v2::types::ChatMessage::new_assistant(session_id.to_string());
+        let mut live_block =
+            MessageBlock::new(live_message.id.clone(), block_types::ANKI_CARDS, 0);
+        live_block.status = block_status::RUNNING.to_string();
+        live_block.tool_output = Some(json!({ "documentId": "doc-live", "cards": [] }));
+        live_message.block_ids = vec![live_block.id.clone()];
+        ChatV2Repo::create_message_v2(&chat_db, &live_message).expect("create live message");
+        ChatV2Repo::create_block_v2(&chat_db, &live_block).expect("create live block");
+
+        let stale_ms = chrono::Utc::now().timestamp_millis()
+            - STALE_RUNNING_ANKI_BLOCK_AFTER_MS
+            - 60_000;
+        {
+            let conn = chat_db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE chat_v2_blocks SET status = 'running', started_at = ?1, first_chunk_at = ?1, ended_at = NULL",
+                rusqlite::params![stale_ms],
+            )
+            .expect("age blocks");
+        }
+
+        let _live_guard = ChatAnkiPipelineGuard::register(&live_block.id);
+        let reaped =
+            reap_stale_running_anki_blocks(&chat_db, session_id).expect("reap should succeed");
+        assert_eq!(reaped, vec![zombie_block_id.clone()]);
+
+        let zombie = ChatV2Repo::get_block_v2(&chat_db, &zombie_block_id)
+            .expect("load zombie")
+            .expect("zombie exists");
+        assert_eq!(zombie.status, block_status::ERROR);
+        assert_eq!(
+            zombie.error.as_deref(),
+            Some("blocks.ankiCards.errors.pipelineTimeout")
+        );
+        assert!(zombie.ended_at.is_some());
+        let zombie_output = zombie.tool_output.expect("zombie tool output");
+        assert_eq!(
+            zombie_output["interrupted"]["reason"],
+            json!("stale_running_block")
+        );
+        assert_eq!(zombie_output["workflowStatus"], json!("failed"));
+
+        // 注册中的块保持 running，不被 reap。
+        let live = ChatV2Repo::get_block_v2(&chat_db, &live_block.id)
+            .expect("load live")
+            .expect("live exists");
+        assert_eq!(live.status, block_status::RUNNING);
+
+        // 守卫释放后再 reap：live 块也被判定为僵尸并落库 failed。
+        drop(_live_guard);
+        let reaped_after_drop =
+            reap_stale_running_anki_blocks(&chat_db, session_id).expect("second reap");
+        assert_eq!(reaped_after_drop, vec![live_block.id.clone()]);
+    }
+
+    /// A9（后端侧）：文档终态时，陈旧/孤儿块快照刷新为 DB 权威卡片；
+    /// 已收敛的块不重复改写；块内 deletedCardIds 继续被尊重。
+    #[test]
+    fn test_sync_terminal_anki_block_refreshes_stale_snapshot() {
+        let (chat_db, _tmp) = make_chat_v2_test_db();
+        let session_id = "session-sync";
+        let document_id = "doc-sync";
+        let target = seed_anki_cards_block(
+            &chat_db,
+            session_id,
+            document_id,
+            vec![json!({ "id": "card-a", "front": "old", "back": "old" })],
+            Vec::new(),
+        );
+        let block_id = required_mutation_block_id(&target).to_string();
+        // 模拟崩溃遗留的孤儿 running 块。
+        {
+            let conn = chat_db.get_conn_safe().expect("conn");
+            conn.execute(
+                "UPDATE chat_v2_blocks SET status = 'running', ended_at = NULL WHERE id = ?1",
+                rusqlite::params![block_id],
+            )
+            .expect("mark running");
+        }
+
+        let tasks = vec![make_task(TaskStatus::Completed)];
+        let db_cards = vec![
+            make_chatanki_card("card-a", "task-1", "front-a", "back-a"),
+            make_chatanki_card("card-b", "task-1", "front-b", "back-b"),
+        ];
+
+        let refreshed =
+            sync_terminal_anki_block_with_db(&chat_db, None, session_id, document_id, &tasks, &db_cards)
+                .expect("refresh should succeed");
+        assert!(refreshed);
+
+        let block = ChatV2Repo::get_block_v2(&chat_db, &block_id)
+            .expect("load block")
+            .expect("block exists");
+        assert_eq!(block.status, block_status::SUCCESS);
+        let output = block.tool_output.expect("tool output");
+        let card_ids: Vec<&str> = output["cards"]
+            .as_array()
+            .expect("cards array")
+            .iter()
+            .filter_map(|c| c["id"].as_str())
+            .collect();
+        assert_eq!(card_ids, vec!["card-a", "card-b"]);
+        assert_eq!(output["cardsRefreshedFromDb"], json!(true));
+        assert_eq!(output["workflowStatus"], json!("completed"));
+
+        // 已收敛：二次调用是 no-op。
+        let refreshed_again =
+            sync_terminal_anki_block_with_db(&chat_db, None, session_id, document_id, &tasks, &db_cards)
+                .expect("second refresh should succeed");
+        assert!(!refreshed_again);
+
+        // deletedCardIds 被尊重：用户在块内删除的卡不因刷新复活。
+        {
+            let conn = chat_db.get_conn_safe().expect("conn");
+            let mut patched: Value = serde_json::from_str(
+                &conn
+                    .query_row(
+                        "SELECT tool_output_json FROM chat_v2_blocks WHERE id = ?1",
+                        rusqlite::params![block_id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .expect("load output"),
+            )
+            .expect("parse output");
+            patched["deletedCardIds"] = json!(["card-b"]);
+            patched["cards"] = json!([patched["cards"][0].clone()]);
+            conn.execute(
+                "UPDATE chat_v2_blocks SET tool_output_json = ?2 WHERE id = ?1",
+                rusqlite::params![block_id, patched.to_string()],
+            )
+            .expect("apply block-side delete");
+        }
+        let refreshed_after_delete =
+            sync_terminal_anki_block_with_db(&chat_db, None, session_id, document_id, &tasks, &db_cards)
+                .expect("refresh after block-side delete");
+        assert!(!refreshed_after_delete, "block-side deletion must not trigger resurrection");
+
+        // 仍在运行的文档不触发刷新。
+        let running_tasks = vec![make_task(TaskStatus::Processing)];
+        let refreshed_running = sync_terminal_anki_block_with_db(
+            &chat_db,
+            None,
+            session_id,
+            document_id,
+            &running_tasks,
+            &db_cards,
+        )
+        .expect("running refresh should succeed");
+        assert!(!refreshed_running);
     }
 }

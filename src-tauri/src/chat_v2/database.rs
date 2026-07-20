@@ -19,7 +19,7 @@ const DATABASE_FILENAME: &str = "chat_v2.db";
 /// 当前数据库 Schema 版本
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260717;
+pub const CURRENT_SCHEMA_VERSION: u32 = 20260719;
 
 /// SQLite 连接池类型
 pub type ChatV2Pool = Pool<SqliteConnectionManager>;
@@ -100,8 +100,14 @@ impl ChatV2Database {
             conn.pragma_update(None, "foreign_keys", "ON")?;
             conn.pragma_update(None, "journal_mode", "WAL")?;
             conn.pragma_update(None, "synchronous", "NORMAL")?;
-            conn.pragma_update(None, "busy_timeout", 3000i64)?;
-            // P2 修复：启用增量自动 VACUUM，批量删除后可回收空间
+            // 🔧 P2：3s -> 10s。多连接池写 + BEGIN IMMEDIATE 变体事务并行时，
+            // 3s 在长事务（变体 JSON 整行改写、批量落块）高峰期会让 SQLITE_BUSY
+            // 直接冒泡成用户可见错误；WAL 模式下等待写锁是安全的，宁可多等。
+            conn.pragma_update(None, "busy_timeout", 10_000i64)?;
+            // P2 修复：启用增量自动 VACUUM，批量删除后可回收空间。
+            // 注意：对已存在的数据库，此 pragma 需要执行一次 VACUUM 才真正生效
+            // （SQLite 限制），在此之前 incremental_vacuum 为无害空转；
+            // 新建数据库则自建库起即生效。
             conn.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
             Ok(())
         });

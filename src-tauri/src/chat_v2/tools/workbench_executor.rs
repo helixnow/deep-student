@@ -321,6 +321,24 @@ fn extract_error_code(raw: &str) -> Option<&'static str> {
         "CANCELLED",
         "RESULT_UNKNOWN",
     ];
+    // 1) 结构化 JSON 错误优先：解析 "code" 字段精确匹配，避免多码拼接消息
+    //    （如 hint 里引用了另一个错误码）时 contains 首次命中错映。
+    if let Some(start) = raw.find('{') {
+        if let Ok(value) = serde_json::from_str::<Value>(&raw[start..]) {
+            if let Some(code) = value.get("code").and_then(Value::as_str) {
+                if let Some(known) = KNOWN.iter().find(|k| **k == code) {
+                    return Some(*known);
+                }
+            }
+        }
+    }
+    // 2) 前缀匹配（`CODE: message` 惯例）优先于任意位置的 contains
+    for code in KNOWN {
+        if raw.trim_start().starts_with(code) {
+            return Some(*code);
+        }
+    }
+    // 3) 兜底：裸文案任意位置命中（保持既有行为）
     for code in KNOWN {
         if raw.contains(code) {
             return Some(*code);

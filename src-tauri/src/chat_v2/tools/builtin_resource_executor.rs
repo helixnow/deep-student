@@ -2321,9 +2321,14 @@ impl BuiltinResourceExecutor {
             version_source: Some("chat_update".to_string()),
         };
 
-        // 更新知识导图
-        let mindmap = VfsMindMapRepo::update_mindmap(vfs_db, mindmap_id, params)
-            .map_err(|e| format!("Failed to update mindmap: {}", e))?;
+        // ★ 2026-07（B4 双快照消除）：snapshot_after=true——repo 在同一事务内
+        // 为更新后的最终内容创建 chat_update 版本并随返回值带回，citation 的
+        // mv_* 直接复用该版本；不再在更新成功后额外 create_version（旧实现会
+        // 产生「更新前旧内容 + 更新后新内容」两条 chat 永久快照）。
+        // 版本写入失败 fail-closed：更新整体回滚并报错（B3）。
+        let (mindmap, after_version) =
+            VfsMindMapRepo::update_mindmap_returning_version(vfs_db, mindmap_id, params, true)
+                .map_err(|e| format!("Failed to update mindmap: {}", e))?;
 
         let duration = start_time.elapsed().as_millis() as u64;
 
@@ -2357,32 +2362,17 @@ impl BuiltinResourceExecutor {
             "durationMs": duration,
         });
 
-        // ★ 2026-02-13：为更新后的新内容创建版本快照，返回 versionId 供 LLM 在引用中使用
-        // 这样 [思维导图:mv_xxx:标题] 是不可变引用，指向本次更新后的具体内容
-        if let Ok(Some(new_content)) = VfsMindMapRepo::get_mindmap_content(vfs_db, mindmap_id) {
-            match VfsMindMapRepo::create_version(
-                vfs_db,
-                mindmap_id,
-                &new_content,
-                &mindmap.title,
-                None,
-                Some("chat_update"),
-            ) {
-                Ok(version) => {
-                    result["versionId"] = json!(version.version_id);
-                    result["citation"] = json!(format!(
-                        "[思维导图:{}:{}]",
-                        version.version_id, mindmap.title
-                    ));
-                    result["hint"] = json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看更新后的导图。");
-                }
-                Err(e) => {
-                    log::warn!(
-                        "[BuiltinResourceExecutor] Failed to create post-update version for mindmap {}: {}",
-                        mindmap_id, e
-                    );
-                }
-            }
+        // ★ 2026-02-13 / 2026-07 改造：versionId 复用更新事务内产生的版本快照，
+        // [思维导图:mv_xxx:标题] 是不可变引用，指向本次更新后的具体内容
+        if let Some(version) = after_version {
+            result["versionId"] = json!(version.version_id);
+            result["citation"] = json!(format!(
+                "[思维导图:{}:{}]",
+                version.version_id, mindmap.title
+            ));
+            result["hint"] = json!(
+                "请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看更新后的导图。"
+            );
         }
 
         Ok(result)

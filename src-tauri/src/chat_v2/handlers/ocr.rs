@@ -65,15 +65,17 @@ pub async fn chat_v2_perform_ocr(
         let mut all_text = String::new();
         for (index, base64_data) in request.images.iter().enumerate() {
             let image_bytes = parse_base64_image(base64_data).map_err(|e| {
-                ChatV2Error::Validation(format!("Failed to parse image {}: {}", index, e))
-                    .to_string()
+                String::from(ChatV2Error::Validation(format!(
+                    "Failed to parse image {}: {}",
+                    index, e
+                )))
             })?;
 
             let text = crate::ocr_adapters::system_ocr::perform_system_ocr(&image_bytes)
                 .await
                 .map_err(|e| {
                     log::error!("[ChatV2::OCR] System OCR failed for image {}: {}", index, e);
-                    ChatV2Error::Llm(format!("System OCR failed: {}", e)).to_string()
+                    String::from(ChatV2Error::Llm(format!("System OCR failed: {}", e)))
                 })?;
 
             if !all_text.is_empty() && !text.is_empty() {
@@ -90,8 +92,10 @@ pub async fn chat_v2_perform_ocr(
         for (index, base64_data) in request.images.iter().enumerate() {
             use base64::Engine;
             let image_bytes = parse_base64_image(base64_data).map_err(|e| {
-                ChatV2Error::Validation(format!("Failed to parse image {}: {}", index, e))
-                    .to_string()
+                String::from(ChatV2Error::Validation(format!(
+                    "Failed to parse image {}: {}",
+                    index, e
+                )))
             })?;
             let mime = infer_mime_from_data_url(base64_data);
             let normalized_base64 = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
@@ -107,7 +111,7 @@ pub async fn chat_v2_perform_ocr(
             .await
             .map_err(|e| {
                 log::error!("[ChatV2::OCR] OCR failed: {}", e);
-                ChatV2Error::Llm(format!("OCR failed: {}", e)).to_string()
+                String::from(ChatV2Error::Llm(format!("OCR failed: {}", e)))
             })?;
 
         ocr_raw.assistant_message.trim().to_string()

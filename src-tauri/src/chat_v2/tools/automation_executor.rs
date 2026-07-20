@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use async_trait::async_trait;
-use chrono::Local;
+use chrono::{DateTime, Local};
 use serde_json::{json, Value};
 use tauri::Manager;
 
@@ -16,8 +16,8 @@ use crate::chat_v2::automations::{
     serialize_automation_update_error, set_automation_enabled, update_automation_full,
     validate_automation_fields, validate_schedule, AutomationActionType, AutomationCreateFields,
     AutomationSchedule, AutomationUpdateFields, CatchUpPolicy, ScheduleKind,
-    TrustedAutomationProfile, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_BACKOFF_SECS,
-    DEFAULT_TIMEOUT_SECS, MAX_PROMPT_LEN,
+    TrustedAutomationProfile, AUTOMATION_VERSION_CONFLICT_CODE, DEFAULT_MAX_RETRIES,
+    DEFAULT_RETRY_BACKOFF_SECS, DEFAULT_TIMEOUT_SECS, MAX_PROMPT_LEN,
 };
 use crate::chat_v2::headless::HeadlessSessionMode;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -70,16 +70,30 @@ const UPDATE_ALLOWED_KEYS: &[&str] = &[
 ];
 const ID_ONLY_ALLOWED_KEYS: &[&str] = &["id"];
 const ID_VERSION_ALLOWED_KEYS: &[&str] = &["id", "expected_version"];
-const RUNS_ALLOWED_KEYS: &[&str] = &["automation_id", "page", "page_size"];
+const RUNS_ALLOWED_KEYS: &[&str] = &["automation_id", "status", "page", "page_size"];
 const SCHEDULE_ALLOWED_KEYS: &[&str] = &[
     "kind",
     "time",
+    "date",
     "weekday",
     "day_of_month",
     "interval_minutes",
     "timezone",
 ];
+/// 运行历史中会出现的全部状态值（与 automations.rs 落库值一致）
+const RUN_STATUS_VALUES: &[&str] = &[
+    "queued",
+    "running",
+    "retrying",
+    "success",
+    "error",
+    "timeout",
+    "spawn_error",
+    "cancelled",
+    "heartbeat_ok",
+];
 const AUTOMATION_OCC_REQUIRED_CODE: &str = "AUTOMATION_OCC_REQUIRED";
+const AUTOMATION_RUN_ALREADY_ACTIVE_CODE: &str = "AUTOMATION_RUN_ALREADY_ACTIVE";
 
 fn automation_occ_required_error() -> String {
     json!({
@@ -94,6 +108,105 @@ fn automation_occ_required_error() -> String {
         "retryable": false,
     })
     .to_string()
+}
+
+/// 把绝对触发时刻转成模型可直接转述的相对描述（中文，本地时区）。
+fn describe_relative_time(target: DateTime<Local>, now: DateTime<Local>) -> String {
+    let secs = (target - now).num_seconds();
+    if secs <= 0 {
+        return "即将触发".to_string();
+    }
+    let minutes = secs / 60;
+    if minutes < 1 {
+        return "1 分钟内".to_string();
+    }
+    if minutes < 60 {
+        return format!("约 {} 分钟后", minutes);
+    }
+    let hours = minutes / 60;
+    if hours < 24 {
+        let rem = minutes % 60;
+        if rem == 0 {
+            return format!("约 {} 小时后", hours);
+        }
+        return format!("约 {} 小时 {} 分钟后", hours, rem);
+    }
+    let days = (target.date_naive() - now.date_naive()).num_days();
+    match days {
+        1 => format!("明天 {}", target.format("%H:%M")),
+        2 => format!("后天 {}", target.format("%H:%M")),
+        n => format!("{} 天后（{}）", n.max(1), target.format("%m-%d %H:%M")),
+    }
+}
+
+/// 人话调度描述，供 propose 预览与 list 输出使用。
+fn describe_schedule(schedule: &AutomationSchedule) -> String {
+    const WEEKDAYS: [&str; 7] = ["日", "一", "二", "三", "四", "五", "六"];
+    match schedule.kind {
+        ScheduleKind::Daily => format!("每天 {}", schedule.time),
+        ScheduleKind::Weekdays => format!("工作日（周一至周五）{}", schedule.time),
+        ScheduleKind::Weekly => {
+            let day = schedule
+                .weekday
+                .and_then(|w| WEEKDAYS.get(w as usize).copied())
+                .unwrap_or("?");
+            format!("每周{} {}", day, schedule.time)
+        }
+        ScheduleKind::Monthly => format!(
+            "每月 {} 日 {}（短月份自动落到月末）",
+            schedule.day_of_month.unwrap_or(1),
+            schedule.time
+        ),
+        ScheduleKind::Interval => format!(
+            "每 {} 分钟",
+            schedule.interval_minutes.unwrap_or_default()
+        ),
+        ScheduleKind::Once => format!(
+            "仅 {} {} 触发一次（触发后自动完成，不再重复）",
+            schedule.date.as_deref().unwrap_or("指定日期"),
+            schedule.time
+        ),
+    }
+}
+
+/// 把已知错误码/错误文案映射成模型可以向用户解释并给出下一步建议的说明。
+fn friendly_automation_error(error: String) -> String {
+    if let Ok(mut payload) = serde_json::from_str::<Value>(&error) {
+        if let Some(object) = payload.as_object_mut() {
+            let code = object
+                .get("code")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let hint = match code.as_str() {
+                c if c == AUTOMATION_VERSION_CONFLICT_CODE => Some(
+                    "该自动化在你读取之后被修改过（可能是用户在设置页改的）。请重新调用 automation_list 获取最新 version 和内容，与用户确认改动仍然成立后，用新的 expected_version 重试；不要用猜测的版本号覆盖。",
+                ),
+                AUTOMATION_OCC_REQUIRED_CODE => Some(
+                    "先调用 automation_list 拿到该自动化当前的 version，并原样作为 expected_version 传入后重试。",
+                ),
+                AUTOMATION_RUN_ALREADY_ACTIVE_CODE => Some(
+                    "该自动化已有一次运行在排队或执行中，不能重复启动。可先用 automation_runs 查看当前运行状态，等它结束后再试，或用 automation_cancel_run 取消进行中的运行后重试。",
+                ),
+                _ => None,
+            };
+            if let Some(hint) = hint {
+                object.insert("hint".to_string(), json!(hint));
+            }
+            return payload.to_string();
+        }
+    }
+    if error.contains("Automation limit reached") {
+        return format!(
+            "{error}（自动化数量已达上限）。请先用 automation_list 查看现有任务，与用户确认删除或停用不再需要的任务后再创建新的。"
+        );
+    }
+    if error.contains(AUTOMATION_RUN_ALREADY_ACTIVE_CODE) {
+        return format!(
+            "{error}。该自动化已有运行在排队或执行中：可用 automation_runs 查看状态，等待其完成，或用 automation_cancel_run 取消后再重试。"
+        );
+    }
+    error
 }
 
 pub struct AutomationExecutor;
@@ -174,20 +287,37 @@ impl AutomationExecutor {
             "weekdays" => ScheduleKind::Weekdays,
             "monthly" => ScheduleKind::Monthly,
             "interval" => ScheduleKind::Interval,
+            "once" => ScheduleKind::Once,
             other => {
                 return Err(format!(
-                "Invalid schedule.kind '{}'. Allowed: daily, weekly, weekdays, monthly, interval",
+                "Invalid schedule.kind '{}'. Allowed: daily, weekly, weekdays, monthly, interval, once",
                 other
             ))
             }
         };
 
-        // interval 调度不需要 time；daily/weekly 必填
+        // interval 调度不需要 time；其余（含 once）必填
         let time = match obj.get("time").and_then(Value::as_str) {
             Some(t) => t.trim().to_string(),
             None if kind == ScheduleKind::Interval => String::new(),
             None => return Err("'schedule.time' is required (HH:MM, 24h)".to_string()),
         };
+
+        // once 调度的目标日期（YYYY-MM-DD）；格式/过期校验交给 validate_schedule
+        let date = match obj.get("date") {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or("'schedule.date' must be a YYYY-MM-DD string")?
+                    .to_string(),
+            ),
+        };
+        if kind == ScheduleKind::Once && date.is_none() {
+            return Err("'schedule.date' is required when kind is 'once' (YYYY-MM-DD)".to_string());
+        }
 
         let weekday = match obj.get("weekday") {
             None => None,
@@ -242,6 +372,7 @@ impl AutomationExecutor {
         let schedule = AutomationSchedule {
             kind,
             time,
+            date,
             weekday,
             day_of_month,
             interval_minutes,
@@ -479,9 +610,13 @@ impl AutomationExecutor {
             emit_automations_changed(ctx.window_ref().app_handle(), "create", &id);
 
             let now_local = Local::now();
-            let next_trigger = compute_next_trigger(&schedule, now_local)
+            let next_trigger_dt = compute_next_trigger(&schedule, now_local).ok();
+            let next_trigger = next_trigger_dt
                 .map(|dt| dt.to_rfc3339())
-                .unwrap_or_else(|_| "unknown".to_string());
+                .unwrap_or_else(|| "unknown".to_string());
+            let next_trigger_relative = next_trigger_dt
+                .map(|dt| describe_relative_time(dt, now_local));
+            let schedule_description = describe_schedule(&schedule);
 
             let behavior = match action_type {
                 AutomationActionType::Notify => {
@@ -500,10 +635,16 @@ impl AutomationExecutor {
                 "action_type": action_type,
                 "session_mode": session_mode.unwrap_or_default(),
                 "model_id": model_id,
+                "schedule": schedule,
+                "schedule_description": &schedule_description,
                 "next_trigger_at": next_trigger,
+                "next_trigger_relative": &next_trigger_relative,
                 "message": format!(
-                    "Automation '{}' created. {} Use automation_list to review or automation_set_enabled to disable.",
-                    name, behavior
+                    "Automation '{}' created ({}). First run: {}. {} Use automation_list to review or automation_set_enabled to disable.",
+                    name,
+                    schedule_description,
+                    next_trigger_relative.as_deref().unwrap_or("unknown"),
+                    behavior
                 ),
                 "storage": "automation_definitions",
                 "previous": Value::Null,
@@ -520,7 +661,76 @@ impl AutomationExecutor {
 
     fn execute_list(ctx: &ExecutionContext) -> Result<Value, String> {
         Self::with_database(ctx, |db| {
-            automation_agent_list_response(db).map_err(|e| e.to_string())
+            let mut response = automation_agent_list_response(db).map_err(|e| e.to_string())?;
+            let now = Local::now();
+            if let Some(items) = response
+                .get_mut("automations")
+                .and_then(Value::as_array_mut)
+            {
+                for item in items.iter_mut() {
+                    // 下次运行相对描述（模型可直接转述"约 2 小时后"）
+                    let relative = item
+                        .get("next_trigger_at")
+                        .and_then(Value::as_str)
+                        .and_then(|raw| DateTime::parse_from_rfc3339(raw).ok())
+                        .map(|dt| describe_relative_time(dt.with_timezone(&Local), now));
+                    item["next_trigger_relative"] = match relative {
+                        Some(text) => json!(text),
+                        None => Value::Null,
+                    };
+
+                    // 人话调度描述 + once 已完成标记
+                    if let Ok(schedule) =
+                        serde_json::from_value::<AutomationSchedule>(item["schedule"].clone())
+                    {
+                        item["schedule_description"] = json!(describe_schedule(&schedule));
+                        if schedule.kind == ScheduleKind::Once {
+                            let has_run = item
+                                .get("last_run_at")
+                                .and_then(Value::as_str)
+                                .is_some();
+                            let no_next = item
+                                .get("next_trigger_at")
+                                .and_then(Value::as_str)
+                                .map(|raw| raw == "unknown")
+                                .unwrap_or(true);
+                            item["once_completed"] = json!(has_run && no_next);
+                        }
+                    }
+
+                    // 上次运行状态（取该自动化最近一条运行记录）
+                    let id = item
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                    if let Some(id) = id {
+                        if item.get("last_run_at").and_then(Value::as_str).is_some() {
+                            if let Ok((runs, _)) =
+                                list_automation_runs_page(db, Some(&id), 1, 0)
+                            {
+                                if let Some(run) = runs.first() {
+                                    item["last_run_status"] = json!(run.status);
+                                    item["last_run_summary"] = json!(run.summary);
+                                    item["last_run_error"] = json!(run.error);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // 容量提示：count/max 顶层字段已有，补一条人话描述方便模型转述
+            if let (Some(count), Some(max)) = (
+                response.get("count").and_then(Value::as_u64),
+                response.get("max").and_then(Value::as_u64),
+            ) {
+                response["capacity"] = json!(format!(
+                    "{}/{} 已使用，还可创建 {} 条",
+                    count,
+                    max,
+                    max.saturating_sub(count)
+                ));
+            }
+            Ok(response)
         })
     }
 
@@ -707,6 +917,27 @@ impl AutomationExecutor {
             None | Some(Value::Null) => None,
             Some(_) => Some(Self::parse_required_string(args, "automation_id")?),
         };
+        let status = match args.get("status") {
+            None | Some(Value::Null) => None,
+            Some(value) => {
+                let raw = value
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        format!("'status' must be one of: {}", RUN_STATUS_VALUES.join(", "))
+                    })?
+                    .to_ascii_lowercase();
+                if !RUN_STATUS_VALUES.contains(&raw.as_str()) {
+                    return Err(format!(
+                        "Invalid status '{}'. Allowed: {}",
+                        raw,
+                        RUN_STATUS_VALUES.join(", ")
+                    ));
+                }
+                Some(raw)
+            }
+        };
         let page =
             Self::parse_optional_u64(args, "page", 1, i64::MAX as u64)?.unwrap_or(1) as usize;
         let page_size = Self::parse_optional_u64(args, "page_size", 1, 20)?.unwrap_or(20) as usize;
@@ -715,9 +946,32 @@ impl AutomationExecutor {
             let (runs, total) =
                 list_automation_runs_page(db, automation_id.as_deref(), page_size, offset)
                     .map_err(|error| error.to_string())?;
-            Ok(
-                json!({ "runs": runs, "total": total, "page": page, "pageSize": page_size, "hasMore": offset.saturating_add(page_size) < total }),
-            )
+            let has_more = offset.saturating_add(page_size) < total;
+            // 状态过滤在当前页内进行（total/hasMore 仍以未过滤计），schema 中已向模型说明
+            let (runs, filtered_note) = match status.as_deref() {
+                None => (runs, None),
+                Some(status) => {
+                    let filtered: Vec<_> = runs
+                        .into_iter()
+                        .filter(|run| run.status.as_deref() == Some(status))
+                        .collect();
+                    (
+                        filtered,
+                        Some("status filter applied within this page; page through for more matches"),
+                    )
+                }
+            };
+            let returned = runs.len();
+            Ok(json!({
+                "runs": runs,
+                "returned": returned,
+                "total": total,
+                "page": page,
+                "pageSize": page_size,
+                "hasMore": has_more,
+                "statusFilter": status,
+                "note": filtered_note,
+            }))
         })
     }
 
@@ -815,6 +1069,7 @@ impl ToolExecutor for AutomationExecutor {
                 Ok(tool_result)
             }
             Err(error) => {
+                let error = friendly_automation_error(error);
                 ctx.emit_tool_call_error(&error);
                 let tool_result = ToolResultInfo::failure(
                     Some(call.id.clone()),
@@ -928,6 +1183,73 @@ mod tests {
         }))
         .unwrap_err();
         assert!(err.contains("interval_minutes"));
+    }
+
+    #[test]
+    fn parses_once_schedule_with_date() {
+        let schedule = AutomationExecutor::parse_schedule(&json!({
+            "kind": "once",
+            "time": "09:00",
+            "date": "2099-01-02"
+        }))
+        .expect("once schedule parses");
+        assert_eq!(schedule.kind, ScheduleKind::Once);
+        assert_eq!(schedule.date.as_deref(), Some("2099-01-02"));
+    }
+
+    #[test]
+    fn rejects_once_schedule_without_date() {
+        let err = AutomationExecutor::parse_schedule(&json!({
+            "kind": "once",
+            "time": "09:00"
+        }))
+        .unwrap_err();
+        assert!(err.contains("date"));
+    }
+
+    #[test]
+    fn describes_schedules_in_natural_language() {
+        let daily = AutomationExecutor::parse_schedule(&json!({
+            "kind": "daily",
+            "time": "21:00"
+        }))
+        .unwrap();
+        assert!(describe_schedule(&daily).contains("每天 21:00"));
+
+        let once = AutomationExecutor::parse_schedule(&json!({
+            "kind": "once",
+            "time": "09:00",
+            "date": "2099-01-02"
+        }))
+        .unwrap();
+        let text = describe_schedule(&once);
+        assert!(text.contains("2099-01-02"));
+        assert!(text.contains("一次"));
+    }
+
+    #[test]
+    fn friendly_error_adds_hint_for_known_codes() {
+        let raw = json!({
+            "code": AUTOMATION_VERSION_CONFLICT_CODE,
+            "message": "conflict"
+        })
+        .to_string();
+        let enriched: Value = serde_json::from_str(&friendly_automation_error(raw)).unwrap();
+        assert!(enriched["hint"]
+            .as_str()
+            .unwrap()
+            .contains("automation_list"));
+
+        let raw = json!({
+            "code": AUTOMATION_RUN_ALREADY_ACTIVE_CODE,
+            "message": "active"
+        })
+        .to_string();
+        let enriched: Value = serde_json::from_str(&friendly_automation_error(raw)).unwrap();
+        assert!(enriched["hint"].as_str().unwrap().contains("automation_runs"));
+
+        let plain = friendly_automation_error("Automation limit reached (max 20)".to_string());
+        assert!(plain.contains("automation_list"));
     }
 
     #[test]

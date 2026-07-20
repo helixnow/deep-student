@@ -174,6 +174,7 @@ pub use handlers::{
     // 资源库命令已迁移至 VFS 模块（vfs_* 命令）
     chat_v2_get_message_summary,
     chat_v2_list_sessions,
+    chat_v2_load_messages_page,
     chat_v2_load_session,
     chat_v2_migrate_legacy_chat,
     chat_v2_perform_ocr,

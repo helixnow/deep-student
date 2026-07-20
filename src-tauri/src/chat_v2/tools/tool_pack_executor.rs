@@ -8,7 +8,10 @@
 //! - Accepts up to 20 sub-tools per pack.
 //! - Delegates each sub-tool to `ToolExecutorRegistry::execute()`.
 //! - Uses a default pack timeout of 300s, overridable by `timeout`.
-//! - Filters sensitive tools that require user approval.
+//! - Blocks sub-tools whose **effective** sensitivity (executor base +
+//!   user-configured `tool_approval.*` overrides, same resolver as the main
+//!   tool loop) is not Low; unknown sensitivity is fail-closed. Shell deny
+//!   rules are enforced before execution as well.
 //! - Propagates cancellation with a child `CancellationToken`.
 //! - Wraps each spawned task with `catch_unwind` for panic isolation.
 
@@ -29,16 +32,16 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::executor_registry::ToolExecutorRegistry;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
-/// ???????
+/// Maximum number of sub-tools accepted in one pack.
 const MAX_SUB_TOOLS: usize = 20;
-/// ????????
+/// Maximum number of sub-tools running concurrently.
 const MAX_CONCURRENCY: usize = 10;
-/// ?? pack ??????
+/// Default pack-level timeout in seconds.
 const DEFAULT_PACK_TIMEOUT_SECS: u64 = 300;
-/// Pack ?????????????????
+/// Grace period for running sub-tools to drain after pack timeout/cancel.
 const CANCEL_GRACE_PERIOD_SECS: u64 = 3;
 
-/// ToolPackExecutor ? ?????????
+/// ToolPackExecutor — parallel built-in tool pack executor.
 pub struct ToolPackExecutor {
     /// Weak reference to ToolExecutorRegistry (avoids circular Arc dependency)
     registry_ref: Weak<ToolExecutorRegistry>,
@@ -135,10 +138,13 @@ impl ToolExecutor for ToolPackExecutor {
         ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
         // Upgrade weak reference
-        let registry = self
-            .registry_ref
-            .upgrade()
-            .ok_or("ToolExecutorRegistry has been dropped")?;
+        let registry = self.registry_ref.upgrade().ok_or_else(|| {
+            let msg = "ToolExecutorRegistry has been dropped".to_string();
+            // Close the pack block we just opened so the UI does not show a
+            // forever-running tool call.
+            ctx.emit_tool_call_error(&msg);
+            msg
+        })?;
 
         // Parse tools array
         let tools = call
@@ -342,7 +348,10 @@ impl ToolExecutor for ToolPackExecutor {
                 // Feature flag checks
                 let sub_short_name = sub.name.strip_prefix("builtin-").unwrap_or(&sub.name);
                 let is_memory_tool = sub_short_name.starts_with("memory_");
-                let is_rag_tool = sub_short_name.starts_with("rag_");
+                // rag_enabled 必须覆盖所有知识库检索工具：unified_search / multimodal_search
+                // 与 rag_search 同走 VFS 检索管线（与 tool_loop 预检口径一致）。
+                let is_rag_tool = sub_short_name.starts_with("rag_")
+                    || matches!(sub_short_name, "unified_search" | "multimodal_search");
                 let is_web_search_tool = sub_short_name == "web_search";
 
                 if is_memory_tool && !sub_ctx.memory_enabled {
@@ -382,32 +391,88 @@ impl ToolExecutor for ToolPackExecutor {
                     return result;
                 }
 
-                // Sensitivity check — block high-sensitivity tools that require user approval
-                // (approval dialogs cannot work inside parallel async spawns)
-                if let Some(sensitivity) =
-                    registry_clone.get_sensitivity_for_call(&sub.name, &sub.args)
-                {
-                    if sensitivity != ToolSensitivity::Low {
-                        log::warn!(
-                            "[ToolPack] Sub-tool '{}' has sensitivity {:?} — blocking in parallel context",
-                            sub.name,
-                            sensitivity
-                        );
-                        let result = ToolResultInfo::failure(
-                            Some(sub_call_id),
-                            Some(sub_block_id),
-                            sub.name.clone(),
-                            sub.args.clone(),
-                            format!(
-                                "Tool '{}' requires user approval (sensitivity: {:?}) and cannot be executed inside tool_pack",
-                                sub.name,
-                                sensitivity
+                // === Approval-policy preflight (mirrors pipeline execute_single_tool) ===
+                // 1. User-configured shell command Deny rules are authoritative for
+                //    every shell implementation and apply before anything else.
+                if crate::chat_v2::approval_scope::is_shell_runtime_tool_for_args(
+                    &sub.name, &sub.args,
+                ) {
+                    if let Some(command) = sub.args.get("command").and_then(Value::as_str) {
+                        let raw_policy = sub_ctx.main_db.as_ref().and_then(|db| {
+                            db.get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
+                                .ok()
+                                .flatten()
+                        });
+                        let decision = crate::chat_v2::shell_command_policy::enforce_for_call(
+                            raw_policy.as_deref(),
+                            command,
+                            crate::chat_v2::approval_scope::is_local_shell_execute_tool(
+                                &sub.name, &sub.args,
                             ),
-                            0,
                         );
-                        finalize_synthetic_sub_result(&sub_ctx, &result, true);
-                        return result;
+                        if decision.effective_effect
+                            == crate::chat_v2::shell_command_policy::ShellRuleEffect::Deny
+                        {
+                            let result = ToolResultInfo::failure(
+                                Some(sub_call_id),
+                                Some(sub_block_id),
+                                sub.name.clone(),
+                                sub.args.clone(),
+                                "终端命令被用户配置的拒绝规则拦截".to_string(),
+                                0,
+                            );
+                            finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                            return result;
+                        }
                     }
+                }
+
+                // 2. Sensitivity check — uses the same effective-sensitivity resolver
+                //    as the main tool loop, so user overrides (source/domain/tool
+                //    rules) that raise a Low tool to Medium/High cannot be bypassed
+                //    by wrapping the call in tool_pack. Approval dialogs cannot work
+                //    inside parallel async spawns, so anything that is not
+                //    effectively Low is blocked; an unknown sensitivity (no executor
+                //    mapping) is fail-closed, matching the main path.
+                let base_sensitivity =
+                    registry_clone.get_sensitivity_for_call(&sub.name, &sub.args);
+                let effective_sensitivity = if let Some(db) = sub_ctx.main_db.as_ref() {
+                    crate::chat_v2::tool_approval_policy::resolve_effective_sensitivity(
+                        base_sensitivity,
+                        &sub.name,
+                        &sub.args,
+                        |key| db.get_setting(key).ok().flatten(),
+                    )
+                } else {
+                    base_sensitivity
+                };
+                if effective_sensitivity != Some(ToolSensitivity::Low) {
+                    log::warn!(
+                        "[ToolPack] Sub-tool '{}' effective sensitivity {:?} (base {:?}) — blocking in parallel context",
+                        sub.name,
+                        effective_sensitivity,
+                        base_sensitivity
+                    );
+                    let reason = match effective_sensitivity {
+                        Some(sensitivity) => format!(
+                            "Tool '{}' requires user approval (effective sensitivity: {:?}) and cannot be executed inside tool_pack",
+                            sub.name, sensitivity
+                        ),
+                        None => format!(
+                            "Tool '{}' has no declared sensitivity; it is blocked inside tool_pack (fail-closed)",
+                            sub.name
+                        ),
+                    };
+                    let result = ToolResultInfo::failure(
+                        Some(sub_call_id),
+                        Some(sub_block_id),
+                        sub.name.clone(),
+                        sub.args.clone(),
+                        reason,
+                        0,
+                    );
+                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                    return result;
                 }
 
                 // Execute with catch_unwind to prevent panic propagation

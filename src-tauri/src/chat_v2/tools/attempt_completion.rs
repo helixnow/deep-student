@@ -122,20 +122,26 @@ pub fn result_to_json(result: &AttemptCompletionResult) -> Value {
 
 /// 去除工具名前缀
 ///
-/// 支持的前缀：builtin-, mcp_
+/// 支持的前缀：builtin-, builtin:
+///
+/// 🔒 刻意**不**剥 `mcp_` / `mcp.tools.`：外部 MCP 服务器暴露的同名工具
+/// 由不受信实现提供，不能被当作 builtin 控制工具（否则受限运行时白名单
+/// 与 headless 完成检测都会被同名外部工具冒名顶替）。builtin 的
+/// attempt_completion 在注入与落库时始终使用裸名/builtin 命名空间。
 fn strip_prefix(tool_name: &str) -> &str {
     tool_name
         .strip_prefix("builtin-")
-        .or_else(|| tool_name.strip_prefix("mcp_"))
+        .or_else(|| tool_name.strip_prefix("builtin:"))
         .unwrap_or(tool_name)
 }
 
 /// 检查工具名称是否为 attempt_completion
 ///
-/// 支持多种前缀格式：
+/// 支持的格式：
 /// - attempt_completion（无前缀）
-/// - builtin-attempt_completion
-/// - mcp_attempt_completion
+/// - builtin-attempt_completion / builtin:attempt_completion
+///
+/// `mcp_attempt_completion` 等外部 MCP 命名空间**不**匹配（见 strip_prefix）。
 pub fn is_attempt_completion(tool_name: &str) -> bool {
     strip_prefix(tool_name) == TOOL_NAME
 }
@@ -322,5 +328,16 @@ mod tests {
     fn test_schema() {
         let schema = get_schema();
         assert_eq!(schema["function"]["name"], TOOL_NAME);
+    }
+
+    /// 🔒 外部 MCP 命名空间不得冒名顶替 builtin 控制工具
+    #[test]
+    fn mcp_namespaced_names_are_not_attempt_completion() {
+        assert!(is_attempt_completion("attempt_completion"));
+        assert!(is_attempt_completion("builtin-attempt_completion"));
+        assert!(is_attempt_completion("builtin:attempt_completion"));
+        assert!(!is_attempt_completion("mcp_attempt_completion"));
+        assert!(!is_attempt_completion("mcp.tools.attempt_completion"));
+        assert!(!is_attempt_completion("other_tool"));
     }
 }

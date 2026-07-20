@@ -139,7 +139,7 @@ impl ChatV2Pipeline {
         let combined = kept_sections.join("\n\n");
         if kept_sections.len() < sections.len() {
             Some(format!(
-                "{}\n\n（用户画像已截断 {}/{} 个分类，完整信息请使用 memory_search 工具检索）",
+                "{}\n\n（用户画像已截断 {}/{} 个分类，完整信息请使用 builtin-memory_search 工具检索）",
                 combined,
                 kept_sections.len(),
                 sections.len()

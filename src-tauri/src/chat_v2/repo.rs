@@ -1235,6 +1235,26 @@ impl ChatV2Repo {
         page_size: u32,
         role_filter: Option<&str>,
     ) -> ChatV2Result<(Vec<ChatMessage>, Vec<MessageBlock>, u32)> {
+        let offset = u64::from(page.saturating_sub(1)) * u64::from(page_size);
+        Self::load_session_messages_window_with_conn(
+            conn,
+            session_id,
+            offset,
+            page_size,
+            role_filter,
+        )
+    }
+
+    /// 与 `load_session_messages_page_with_conn` 等价，但接受任意行偏移量
+    /// （offset-based，非页对齐），供 `chat_v2_load_messages_page` 命令做
+    /// 移动端渐进式历史补页。返回 `(messages, blocks, total)`，消息按时间正序。
+    pub fn load_session_messages_window_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        offset: u64,
+        limit: u32,
+        role_filter: Option<&str>,
+    ) -> ChatV2Result<(Vec<ChatMessage>, Vec<MessageBlock>, u32)> {
         let total: u32 = conn.query_row(
             r#"
             SELECT COUNT(*)
@@ -1246,7 +1266,7 @@ impl ChatV2Repo {
             |row| row.get(0),
         )?;
 
-        let offset = u64::from(page.saturating_sub(1)) * u64::from(page_size);
+        let page_size = limit;
         let mut message_stmt = conn.prepare(
             r#"
             SELECT id, session_id, role, block_ids_json, timestamp, persistent_stable_id,
@@ -1581,6 +1601,111 @@ impl ChatV2Repo {
 
         debug!("[ChatV2::Repo] Block created: {}", block.id);
         Ok(())
+    }
+
+    /// 批量创建/更新块（单事务落盘，供流式管线批量落块）
+    ///
+    /// ## 语义
+    /// - 与 `create_block_with_conn` 相同的 upsert 语义（`ON CONFLICT(id) DO UPDATE`）。
+    /// - 整批以 SAVEPOINT 包裹：中途失败整体回滚，不留半截数据；
+    ///   可安全嵌套在调用方已开启的事务中。
+    /// - 复用同一条预编译语句，避免逐块重新解析 SQL；autocommit 连接上
+    ///   整批只做一次 fsync，显著优于逐块 `create_block_with_conn`。
+    pub fn create_blocks_batch_with_conn(
+        conn: &Connection,
+        blocks: &[MessageBlock],
+    ) -> ChatV2Result<()> {
+        if blocks.is_empty() {
+            return Ok(());
+        }
+        debug!(
+            "[ChatV2::Repo] Creating {} blocks in one batch (first={})",
+            blocks.len(),
+            blocks[0].id
+        );
+
+        conn.execute_batch("SAVEPOINT create_blocks_batch")?;
+        let result = (|| -> ChatV2Result<()> {
+            let mut stmt = conn.prepare(
+                r#"
+                INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, tool_name, tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                ON CONFLICT(id) DO UPDATE SET
+                    message_id = excluded.message_id,
+                    block_type = excluded.block_type,
+                    status = excluded.status,
+                    block_index = excluded.block_index,
+                    content = excluded.content,
+                    tool_name = excluded.tool_name,
+                    tool_input_json = excluded.tool_input_json,
+                    tool_output_json = excluded.tool_output_json,
+                    citations_json = excluded.citations_json,
+                    error = excluded.error,
+                    started_at = excluded.started_at,
+                    ended_at = excluded.ended_at,
+                    first_chunk_at = excluded.first_chunk_at
+                "#,
+            )?;
+
+            for block in blocks {
+                let tool_input_json = block
+                    .tool_input
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+                let tool_output_json = block
+                    .tool_output
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+                let citations_json = block
+                    .citations
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+
+                stmt.execute(params![
+                    block.id,
+                    block.message_id,
+                    block.block_type,
+                    block.status,
+                    block.block_index,
+                    block.content,
+                    block.tool_name,
+                    tool_input_json,
+                    tool_output_json,
+                    citations_json,
+                    block.error,
+                    block.started_at,
+                    block.ended_at,
+                    block.first_chunk_at,
+                ])?;
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute_batch("RELEASE SAVEPOINT create_blocks_batch")?;
+                debug!("[ChatV2::Repo] Batch created {} blocks", blocks.len());
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT create_blocks_batch; RELEASE SAVEPOINT create_blocks_batch",
+                );
+                Err(e)
+            }
+        }
+    }
+
+    /// 批量创建/更新块（使用 ChatV2Database）
+    pub fn create_blocks_batch_v2(
+        db: &ChatV2Database,
+        blocks: &[MessageBlock],
+    ) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_blocks_batch_with_conn(&conn, blocks)
     }
 
     /// 获取块
@@ -2284,6 +2409,20 @@ impl ChatV2Repo {
         tx.commit()?;
         Ok(())
     }
+
+    // ========================================================================
+    // 回收站（persist_status 三态语义）
+    // ========================================================================
+    //
+    // 现行三态约定（以代码为准，V20260502 迁移注释中「已无 deleted」的说法已过时）：
+    // - `active`：正常会话，出现在会话列表。
+    // - `archived`：归档，出现在归档 Tab，可无损恢复；
+    //   课题归档会连带归档其下活跃会话（metadata.groupArchivedBy 记录归属）。
+    // - `deleted`：回收站（软删），仅出现在回收站视图；
+    //   `purge_deleted_sessions` 物理清空（级联删消息/块），调用方需先递减 VFS 引用。
+    // V20260502 是一次性历史数据修复：把旧版本遗留的 `deleted` 解释为 `archived`，
+    // 之后回收站语义重新启用 `deleted`，二者不冲突。
+    // 前端需与此三态保持一致（列表过滤 active、归档 Tab 过滤 archived、回收站过滤 deleted）。
 
     /// 列出所有已删除（回收站中）的会话 ID
     ///
@@ -3211,8 +3350,9 @@ impl ChatV2Repo {
     /// 重建消息内容 FTS5 索引：清空后从 chat_v2_blocks 全量回填，返回回填行数。
     ///
     /// 供设置页「全局索引维护」修复 FTS 漂移/缺失（例如历史导入、迁移异常或触发器
-    /// 短暂缺失导致的索引与正文不一致）。回填条件与 V20260301 迁移的初始回填、以及
-    /// trg_blocks_fts_* 触发器完全一致（content 非空且 block_type ∈ {content, thinking}）。
+    /// 短暂缺失导致的索引与正文不一致）。回填条件与 V20260301/V20260719 迁移的回填、
+    /// 以及 trg_blocks_fts_* 触发器完全一致（content 非空且 block_type ∈ {content, thinking}；
+    /// V20260719 起触发器同时覆盖 content 与 block_type 变更）。
     pub fn rebuild_content_fts(conn: &Connection) -> ChatV2Result<usize> {
         // 外部内容 FTS5 表，直接清空即可（无 'delete' 命令的外部内容表负担）
         conn.execute("DELETE FROM chat_v2_content_fts", [])?;
@@ -3512,6 +3652,9 @@ mod tests {
             include_str!("../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"),
             include_str!("../../migrations/chat_v2/V20260516__add_title_locked.sql"),
             include_str!("../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"),
+            include_str!(
+                "../../migrations/chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql"
+            ),
         ];
         for sql in migrations {
             conn.execute_batch(sql).unwrap();
@@ -4077,6 +4220,126 @@ mod tests {
         .unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].session_id, "sess_fts_date_1");
+    }
+
+    /// V20260719 回归：block_type 变更必须同步 FTS 索引（防幽灵/漏索引）
+    #[test]
+    fn test_fts_triggers_cover_block_type_changes() {
+        let conn = setup_test_db();
+
+        let session_id = "sess_fts_blocktype";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        let mut message = ChatMessage::new_user(session_id.to_string(), Vec::new());
+        message.id = "msg_fts_blocktype".to_string();
+        message.block_ids = vec!["blk_fts_blocktype".to_string()];
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.id = "blk_fts_blocktype".to_string();
+        block.content = Some("blocktypeneedle indexed text".to_string());
+        block.set_success();
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        // 初始为 content 块：可搜索
+        let hits = ChatV2Repo::search_content(&conn, "blocktypeneedle", 10).unwrap();
+        assert_eq!(hits.len(), 1, "content block must be indexed");
+
+        // 仅改 block_type（content 不变）为不可索引类型：索引必须被清理
+        conn.execute(
+            "UPDATE chat_v2_blocks SET block_type = 'mcp_tool' WHERE id = 'blk_fts_blocktype'",
+            [],
+        )
+        .unwrap();
+        let hits = ChatV2Repo::search_content(&conn, "blocktypeneedle", 10).unwrap();
+        assert!(
+            hits.is_empty(),
+            "block_type change away from content/thinking must remove FTS entry (ghost)"
+        );
+
+        // 改回可索引类型：索引必须补回
+        conn.execute(
+            "UPDATE chat_v2_blocks SET block_type = 'thinking' WHERE id = 'blk_fts_blocktype'",
+            [],
+        )
+        .unwrap();
+        let hits = ChatV2Repo::search_content(&conn, "blocktypeneedle", 10).unwrap();
+        assert_eq!(
+            hits.len(),
+            1,
+            "block_type change into content/thinking must re-index (missing entry)"
+        );
+    }
+
+    #[test]
+    fn test_create_blocks_batch_atomic() {
+        let conn = setup_test_db();
+
+        let session_id = "sess_batch_blocks";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_batch_blocks".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        // 正常批量：三个块一次落盘
+        let blocks: Vec<MessageBlock> = (0..3)
+            .map(|i| {
+                let mut b = MessageBlock::new_content(message.id.clone(), i);
+                b.id = format!("blk_batch_{}", i);
+                b.content = Some(format!("batch content {}", i));
+                b.set_success();
+                b
+            })
+            .collect();
+        ChatV2Repo::create_blocks_batch_with_conn(&conn, &blocks).unwrap();
+        let loaded = ChatV2Repo::get_message_blocks_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(loaded.len(), 3);
+
+        // 幂等 upsert：重复批量不新增行，内容更新
+        let mut updated = blocks.clone();
+        updated[1].content = Some("batch content 1 updated".to_string());
+        ChatV2Repo::create_blocks_batch_with_conn(&conn, &updated).unwrap();
+        let loaded = ChatV2Repo::get_message_blocks_with_conn(&conn, &message.id).unwrap();
+        assert_eq!(loaded.len(), 3);
+        assert_eq!(
+            loaded[1].content.as_deref(),
+            Some("batch content 1 updated")
+        );
+
+        // 原子性：批量中含外键违规块（message 不存在）时整体回滚
+        let bad_batch: Vec<MessageBlock> = vec![
+            {
+                let mut b = MessageBlock::new_content(message.id.clone(), 10);
+                b.id = "blk_batch_good".to_string();
+                b.content = Some("good".to_string());
+                b
+            },
+            {
+                let mut b = MessageBlock::new_content("msg_not_exists".to_string(), 0);
+                b.id = "blk_batch_bad".to_string();
+                b.content = Some("bad".to_string());
+                b
+            },
+        ];
+        let result = ChatV2Repo::create_blocks_batch_with_conn(&conn, &bad_batch);
+        assert!(result.is_err(), "FK violation must fail the batch");
+        assert!(
+            ChatV2Repo::get_block_with_conn(&conn, "blk_batch_good")
+                .unwrap()
+                .is_none(),
+            "batch must roll back as a whole"
+        );
+
+        // 空批量为 no-op
+        ChatV2Repo::create_blocks_batch_with_conn(&conn, &[]).unwrap();
     }
 
     #[test]

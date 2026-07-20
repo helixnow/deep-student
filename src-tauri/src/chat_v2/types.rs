@@ -194,11 +194,22 @@ pub struct TokenUsage {
 
     /// 最后一轮请求的上下文窗口使用量（prompt + completion，即该轮在上下文窗口中的总占用）
     ///
+    /// ⚠️ 命名为历史遗留：字段名带 "prompt" 但语义是 **prompt + completion**。
+    /// 前端 contextWindowUsage 与 compaction 阈值均按「上下文窗口占用」消费本字段，
+    /// 不可改变语义；需要纯输入规模时请用 `last_round_input_tokens`。
+    ///
     /// 行业标准：context_window = input_tokens + output_tokens
     /// 参考：Anthropic 文档 "context window refers to all the text a language model can reference
     /// when generating a response, including the response itself"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_round_prompt_tokens: Option<u32>,
+
+    /// 🆕 最后一轮请求的**纯输入** token 数（prompt-only，不含 completion）
+    ///
+    /// 与 `last_round_prompt_tokens` 互补：本字段才是「上一轮实际送入模型的
+    /// 输入规模」。新增字段（只增不删），旧前端可安全忽略。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_round_input_tokens: Option<u32>,
 }
 
 impl TokenUsage {
@@ -212,12 +223,13 @@ impl TokenUsage {
         Self {
             prompt_tokens: prompt,
             completion_tokens: completion,
-            total_tokens: prompt + completion,
+            total_tokens: prompt.saturating_add(completion),
             source: TokenSource::Api,
             reasoning_tokens: reasoning,
             cached_tokens: None,
             // 上下文窗口 = prompt + completion（行业标准：context_window 包含 input 和 output）
-            last_round_prompt_tokens: Some(prompt + completion),
+            last_round_prompt_tokens: Some(prompt.saturating_add(completion)),
+            last_round_input_tokens: Some(prompt),
         }
     }
 
@@ -237,12 +249,13 @@ impl TokenUsage {
         Self {
             prompt_tokens: prompt,
             completion_tokens: completion,
-            total_tokens: prompt + completion,
+            total_tokens: prompt.saturating_add(completion),
             source: TokenSource::Api,
             reasoning_tokens: reasoning,
             cached_tokens: cached,
             // 上下文窗口 = prompt + completion（行业标准：context_window 包含 input 和 output）
-            last_round_prompt_tokens: Some(prompt + completion),
+            last_round_prompt_tokens: Some(prompt.saturating_add(completion)),
+            last_round_input_tokens: Some(prompt),
         }
     }
 
@@ -256,7 +269,7 @@ impl TokenUsage {
         Self {
             prompt_tokens: prompt,
             completion_tokens: completion,
-            total_tokens: prompt + completion,
+            total_tokens: prompt.saturating_add(completion),
             source: if precise {
                 TokenSource::Tiktoken
             } else {
@@ -265,7 +278,8 @@ impl TokenUsage {
             reasoning_tokens: None,
             cached_tokens: None,
             // 上下文窗口 = prompt + completion（行业标准：context_window 包含 input 和 output）
-            last_round_prompt_tokens: Some(prompt + completion),
+            last_round_prompt_tokens: Some(prompt.saturating_add(completion)),
+            last_round_input_tokens: Some(prompt),
         }
     }
 
@@ -277,9 +291,10 @@ impl TokenUsage {
     /// - reasoning_tokens 和 cached_tokens：合并相加
     /// - last_round_prompt_tokens：更新为最新一轮的上下文窗口使用量（prompt + completion）
     pub fn accumulate(&mut self, other: &TokenUsage) {
-        self.prompt_tokens += other.prompt_tokens;
-        self.completion_tokens += other.completion_tokens;
-        self.total_tokens += other.total_tokens;
+        // saturating_add：长 agentic 会话多轮累加不应有 debug 溢出 panic 风险
+        self.prompt_tokens = self.prompt_tokens.saturating_add(other.prompt_tokens);
+        self.completion_tokens = self.completion_tokens.saturating_add(other.completion_tokens);
+        self.total_tokens = self.total_tokens.saturating_add(other.total_tokens);
 
         // 来源混合逻辑
         if self.source != other.source {
@@ -288,23 +303,25 @@ impl TokenUsage {
 
         // 累加 reasoning_tokens
         match (&self.reasoning_tokens, &other.reasoning_tokens) {
-            (Some(a), Some(b)) => self.reasoning_tokens = Some(a + b),
+            (Some(a), Some(b)) => self.reasoning_tokens = Some(a.saturating_add(*b)),
             (None, Some(b)) => self.reasoning_tokens = Some(*b),
             _ => {}
         }
 
         // 累加 cached_tokens
         match (&self.cached_tokens, &other.cached_tokens) {
-            (Some(a), Some(b)) => self.cached_tokens = Some(a + b),
+            (Some(a), Some(b)) => self.cached_tokens = Some(a.saturating_add(*b)),
             (None, Some(b)) => self.cached_tokens = Some(*b),
             _ => {}
         }
 
         // 更新 last_round_prompt_tokens 为最新一轮的上下文窗口使用量（prompt + completion）
         // 行业标准：context_window = input + output
-        let other_context_window = other.prompt_tokens + other.completion_tokens;
+        // 同步更新 last_round_input_tokens 为最新一轮的纯输入规模
+        let other_context_window = other.prompt_tokens.saturating_add(other.completion_tokens);
         if other_context_window > 0 {
             self.last_round_prompt_tokens = Some(other_context_window);
+            self.last_round_input_tokens = Some(other.prompt_tokens);
         }
     }
 
@@ -2476,6 +2493,29 @@ pub struct LoadSessionResponse {
     pub total_message_count: Option<u32>,
 }
 
+/// 消息分页加载响应（`chat_v2_load_messages_page`）
+///
+/// 与 `LoadSessionResponse` 中 messages/blocks 的序列化结构完全一致，
+/// 供前端在尾部首屏之后按窗口渐进补齐历史，避免一次性全量拉取。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadMessagesPageResponse {
+    /// 本页消息（时间正序）
+    pub messages: Vec<ChatMessage>,
+
+    /// 本页消息关联的所有块
+    pub blocks: Vec<MessageBlock>,
+
+    /// 会话消息总数（用于计算是否还有下一页）
+    pub total_message_count: u32,
+
+    /// 本页起始偏移（按时间正序的行偏移）
+    pub offset: u32,
+
+    /// 请求的页大小（服务端 clamp 后的实际值）
+    pub limit: u32,
+}
+
 /// 会话设置（用于更新会话）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3675,6 +3715,7 @@ mod tests {
             reasoning_tokens: Some(200),
             cached_tokens: None,
             last_round_prompt_tokens: None,
+            last_round_input_tokens: None,
         };
 
         let json = serde_json::to_string(&usage).unwrap();

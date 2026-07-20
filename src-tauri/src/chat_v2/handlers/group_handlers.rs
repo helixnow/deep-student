@@ -60,17 +60,19 @@ pub(crate) fn ensure_group_folder(
     vfs_db: &VfsDatabase,
     group_name: &str,
     pinned_resource_ids: Vec<String>,
-) -> Result<Vec<String>, String> {
-    let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+) -> Result<Vec<String>, ChatV2Error> {
+    let conn = vfs_db
+        .get_conn_safe()
+        .map_err(|e| ChatV2Error::Database(e.to_string()))?;
     let folder_title = topic_folder_title(group_name);
 
     if let Some(folder_id) = first_pinned_folder_id(&pinned_resource_ids) {
-        if let Some(mut folder) =
-            VfsFolderRepo::get_folder_with_conn(&conn, &folder_id).map_err(|e| e.to_string())?
+        if let Some(mut folder) = VfsFolderRepo::get_folder_with_conn(&conn, &folder_id)
+            .map_err(|e| ChatV2Error::Database(e.to_string()))?
         {
             if folder.parent_id.is_some()
                 || !VfsFolderRepo::folder_exists_with_conn(&conn, &folder_id)
-                    .map_err(|e| e.to_string())?
+                    .map_err(|e| ChatV2Error::Database(e.to_string()))?
             {
                 // A pinned child/deleted folder is not a valid topic root. Create a fresh
                 // root below instead of reusing another topic's same-named folder.
@@ -81,11 +83,11 @@ pub(crate) fn ensure_group_folder(
                     folder.parent_id.as_deref(),
                     Some(&folder_id),
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| ChatV2Error::Database(e.to_string()))?;
                 if folder.title != unique_title {
                     folder.title = unique_title;
                     VfsFolderRepo::update_folder_with_conn(&conn, &folder)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| ChatV2Error::Database(e.to_string()))?;
                 }
                 return Ok(prepend_unique_pinned_folder(pinned_resource_ids, folder_id));
             }
@@ -94,9 +96,10 @@ pub(crate) fn ensure_group_folder(
 
     let unique_title =
         VfsFolderRepo::generate_unique_folder_title_with_conn(&conn, &folder_title, None, None)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| ChatV2Error::Database(e.to_string()))?;
     let folder = VfsFolder::new(unique_title, None, Some("folder".to_string()), None);
-    VfsFolderRepo::create_folder_with_conn(&conn, &folder).map_err(|e| e.to_string())?;
+    VfsFolderRepo::create_folder_with_conn(&conn, &folder)
+        .map_err(|e| ChatV2Error::Database(e.to_string()))?;
     Ok(prepend_unique_pinned_folder(pinned_resource_ids, folder.id))
 }
 
@@ -109,7 +112,7 @@ fn resolve_group_preferred_runtime_root(
     app: &AppHandle,
     database: &crate::database::Database,
     root_id: Option<String>,
-) -> Result<(Option<String>, Option<String>), String> {
+) -> Result<(Option<String>, Option<String>), ChatV2Error> {
     let Some(raw) = root_id else {
         return Ok((None, None));
     };
@@ -121,8 +124,7 @@ fn resolve_group_preferred_runtime_root(
         return Err(ChatV2Error::Validation(
             "defaultRuntimeRootId must be a runtime root id (workspace / authorized_*), not a filesystem path"
                 .to_string(),
-        )
-        .to_string());
+        ));
     }
 
     let root = runtime_root_by_id(app, database, "session-preview", None, Some(trimmed), false)
@@ -131,7 +133,6 @@ fn resolve_group_preferred_runtime_root(
                 "defaultRuntimeRootId '{}' is not resolvable on this device: {}",
                 trimmed, e
             ))
-            .to_string()
         })?;
 
     Ok((
@@ -149,12 +150,12 @@ pub async fn chat_v2_create_group(
     vfs_db: State<'_, Arc<VfsDatabase>>,
     app_state: State<'_, AppState>,
 ) -> Result<SessionGroup, String> {
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let conn = db.get_conn_safe().map_err(String::from)?;
 
     // 计算 sort_order（追加到末尾）
     let existing =
         ChatV2Repo::list_groups_with_conn(&conn, Some("active"), request.workspace_id.as_deref())
-            .map_err(|e| e.to_string())?;
+            .map_err(String::from)?;
     let next_sort = existing.iter().map(|g| g.sort_order).max().unwrap_or(0) + 1;
 
     let now = chrono::Utc::now();
@@ -188,7 +189,7 @@ pub async fn chat_v2_create_group(
         updated_at: now,
     };
 
-    ChatV2Repo::create_group_with_conn(&conn, &group).map_err(|e| e.to_string())?;
+    ChatV2Repo::create_group_with_conn(&conn, &group).map_err(String::from)?;
     Ok(group)
 }
 
@@ -202,10 +203,10 @@ pub async fn chat_v2_update_group(
     vfs_db: State<'_, Arc<VfsDatabase>>,
     app_state: State<'_, AppState>,
 ) -> Result<SessionGroup, String> {
-    let mut conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let mut conn = db.get_conn_safe().map_err(String::from)?;
     let existing = ChatV2Repo::get_group_with_conn(&conn, &group_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| ChatV2Error::GroupNotFound(group_id.clone()).to_string())?;
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::GroupNotFound(group_id.clone())))?;
 
     let now = chrono::Utc::now();
 
@@ -267,13 +268,13 @@ pub async fn chat_v2_update_group(
         updated_at: now,
     };
 
-    ChatV2Repo::update_group_with_conn(&conn, &updated).map_err(|e| e.to_string())?;
+    ChatV2Repo::update_group_with_conn(&conn, &updated).map_err(String::from)?;
     match requested_status {
         Some(PersistStatus::Archived) => {
-            ChatV2Repo::archive_group_with_conn(&mut conn, &group_id).map_err(|e| e.to_string())?;
+            ChatV2Repo::archive_group_with_conn(&mut conn, &group_id).map_err(String::from)?;
         }
         Some(PersistStatus::Active) => {
-            ChatV2Repo::restore_group_with_conn(&mut conn, &group_id).map_err(|e| e.to_string())?;
+            ChatV2Repo::restore_group_with_conn(&mut conn, &group_id).map_err(String::from)?;
         }
         _ => {}
     }
@@ -288,34 +289,41 @@ pub async fn chat_v2_delete_group(
     vfs_db: State<'_, Arc<VfsDatabase>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
 ) -> Result<(), String> {
-    let mut conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let mut conn = db.get_conn_safe().map_err(String::from)?;
     let group = ChatV2Repo::get_group_with_conn(&conn, &group_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| ChatV2Error::GroupNotFound(group_id.clone()).to_string())?;
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::GroupNotFound(group_id.clone())))?;
     if group.persist_status == PersistStatus::Active {
         return Err(
-            ChatV2Error::Validation("请先归档课题，再从归档页永久删除。".to_string()).to_string(),
+            ChatV2Error::Validation("请先归档课题，再从归档页永久删除。".to_string()).into(),
         );
     }
 
     let session_ids = ChatV2Repo::list_session_ids_owned_by_group_with_conn(&conn, &group_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(String::from)?;
     for session_id in &session_ids {
         if chat_v2_state.has_active_stream(session_id) {
             return Err(ChatV2Error::Other(
                 "Cannot delete topic while a session is streaming. Please wait for completion or cancel first."
                     .to_string(),
             )
-            .to_string());
+            .into());
         }
-        super::manage_session::session_has_running_anki_blocks(db.inner().as_ref(), session_id)?;
+        if super::manage_session::session_has_running_anki_blocks(db.inner().as_ref(), session_id)?
+        {
+            return Err(ChatV2Error::Other(
+                "Cannot delete topic while ChatAnki generation is still running. Please wait for completion or cancel first."
+                    .to_string(),
+            )
+            .into());
+        }
     }
     for session_id in &session_ids {
         decrement_vfs_refs_for_session(db.inner().as_ref(), vfs_db.inner().as_ref(), session_id);
     }
 
     ChatV2Repo::permanently_delete_group_with_conn(&mut conn, &group_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(String::from)?;
     Ok(())
 }
 
@@ -325,8 +333,8 @@ pub async fn chat_v2_archive_group(
     group_id: String,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<(), String> {
-    let mut conn = db.get_conn_safe().map_err(|e| e.to_string())?;
-    ChatV2Repo::archive_group_with_conn(&mut conn, &group_id).map_err(|e| e.to_string())?;
+    let mut conn = db.get_conn_safe().map_err(String::from)?;
+    ChatV2Repo::archive_group_with_conn(&mut conn, &group_id).map_err(String::from)?;
     Ok(())
 }
 
@@ -337,12 +345,12 @@ pub async fn chat_v2_restore_group(
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<SessionGroup, String> {
-    let mut conn = db.get_conn_safe().map_err(|e| e.to_string())?;
-    ChatV2Repo::restore_group_with_conn(&mut conn, &group_id).map_err(|e| e.to_string())?;
+    let mut conn = db.get_conn_safe().map_err(String::from)?;
+    ChatV2Repo::restore_group_with_conn(&mut conn, &group_id).map_err(String::from)?;
 
     let mut group = ChatV2Repo::get_group_with_conn(&conn, &group_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| ChatV2Error::GroupNotFound(group_id.clone()).to_string())?;
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::GroupNotFound(group_id.clone())))?;
 
     let pinned_resource_ids = ensure_group_folder(
         vfs_db.inner().as_ref(),
@@ -351,7 +359,7 @@ pub async fn chat_v2_restore_group(
     )?;
     if pinned_resource_ids != group.pinned_resource_ids {
         group.pinned_resource_ids = pinned_resource_ids;
-        ChatV2Repo::update_group_with_conn(&conn, &group).map_err(|e| e.to_string())?;
+        ChatV2Repo::update_group_with_conn(&conn, &group).map_err(String::from)?;
     }
 
     Ok(group)
@@ -364,9 +372,9 @@ pub async fn chat_v2_get_group(
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<Option<SessionGroup>, String> {
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let conn = db.get_conn_safe().map_err(String::from)?;
     let Some(mut group) =
-        ChatV2Repo::get_group_with_conn(&conn, &group_id).map_err(|e| e.to_string())?
+        ChatV2Repo::get_group_with_conn(&conn, &group_id).map_err(String::from)?
     else {
         return Ok(None);
     };
@@ -380,7 +388,7 @@ pub async fn chat_v2_get_group(
         if pinned_resource_ids != group.pinned_resource_ids {
             group.pinned_resource_ids = pinned_resource_ids;
             group.updated_at = chrono::Utc::now();
-            ChatV2Repo::update_group_with_conn(&conn, &group).map_err(|e| e.to_string())?;
+            ChatV2Repo::update_group_with_conn(&conn, &group).map_err(String::from)?;
         }
     }
 
@@ -395,10 +403,10 @@ pub async fn chat_v2_list_groups(
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<Vec<SessionGroup>, String> {
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let conn = db.get_conn_safe().map_err(String::from)?;
     let mut groups =
         ChatV2Repo::list_groups_with_conn(&conn, status.as_deref(), workspace_id.as_deref())
-            .map_err(|e| e.to_string())?;
+            .map_err(String::from)?;
     for group in groups.iter_mut() {
         if group.persist_status != PersistStatus::Active {
             continue;
@@ -410,7 +418,7 @@ pub async fn chat_v2_list_groups(
         )?;
         if next_pinned != group.pinned_resource_ids {
             group.pinned_resource_ids = next_pinned;
-            ChatV2Repo::update_group_with_conn(&conn, group).map_err(|e| e.to_string())?;
+            ChatV2Repo::update_group_with_conn(&conn, group).map_err(String::from)?;
         }
     }
     Ok(groups)
@@ -422,8 +430,8 @@ pub async fn chat_v2_reorder_groups(
     group_ids: Vec<String>,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<(), String> {
-    let mut conn = db.get_conn_safe().map_err(|e| e.to_string())?;
-    ChatV2Repo::reorder_groups_with_conn(&mut conn, &group_ids).map_err(|e| e.to_string())?;
+    let mut conn = db.get_conn_safe().map_err(String::from)?;
+    ChatV2Repo::reorder_groups_with_conn(&mut conn, &group_ids).map_err(String::from)?;
     Ok(())
 }
 
@@ -434,25 +442,25 @@ pub async fn chat_v2_move_session_to_group(
     group_id: Option<String>,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<(), String> {
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let conn = db.get_conn_safe().map_err(String::from)?;
     let normalized_group_id =
         group_id.and_then(|g| if g.trim().is_empty() { None } else { Some(g) });
 
     // P1-5/P1-6 fix: Validate target group exists and is active
     if let Some(ref gid) = normalized_group_id {
-        let group = ChatV2Repo::get_group_with_conn(&conn, gid).map_err(|e| e.to_string())?;
+        let group = ChatV2Repo::get_group_with_conn(&conn, gid).map_err(String::from)?;
         match group {
             Some(g) if g.persist_status != PersistStatus::Active => {
-                return Err(ChatV2Error::GroupNotFound(gid.clone()).to_string());
+                return Err(ChatV2Error::GroupNotFound(gid.clone()).into());
             }
             None => {
-                return Err(ChatV2Error::GroupNotFound(gid.clone()).to_string());
+                return Err(ChatV2Error::GroupNotFound(gid.clone()).into());
             }
             _ => {}
         }
     }
 
     ChatV2Repo::update_session_group_with_conn(&conn, &session_id, normalized_group_id.as_deref())
-        .map_err(|e| e.to_string())?;
+        .map_err(String::from)?;
     Ok(())
 }

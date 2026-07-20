@@ -83,6 +83,7 @@ pub struct TaskAuditManifestBuilder {
     connector_targets: BTreeMap<String, ConnectorAuditTarget>,
     role_pack_version: Option<String>,
     change_coverage: ChangeCoverage,
+    backend_ledger_verified: bool,
 }
 
 impl TaskAuditManifestBuilder {
@@ -131,6 +132,20 @@ impl TaskAuditManifestBuilder {
         self
     }
 
+    /// Mark the manifest as cross-checked against the backend session ledger
+    /// (ChatV2 blocks + approval records).
+    ///
+    /// Only backend code paths that actually perform that verification may
+    /// call this. The tool-facing `task_audit_export` executor never does, so
+    /// LLM/caller-supplied manifests stay non-authoritative (fail-closed
+    /// default). When set and no other coverage is missing, the built
+    /// manifest reports `evidence_origin = "backend_verified"` and
+    /// `authoritative = true`.
+    pub fn verified_against_backend_session_ledger(&mut self) -> &mut Self {
+        self.backend_ledger_verified = true;
+        self
+    }
+
     pub fn build(self) -> Result<TaskAuditManifest, String> {
         if self.task_id.trim().is_empty() {
             return Err("task_id is required".to_string());
@@ -149,16 +164,24 @@ impl TaskAuditManifestBuilder {
         if self.change_coverage.rollback_available && !self.change_coverage.rollback_verified {
             missing.push("rollback_verification".to_string());
         }
-        // This builder aggregates caller-supplied evidence. Until the executor
-        // cross-checks ChatV2 blocks and the approval ledger, it must never
-        // claim to be an authoritative session audit package.
-        missing.push("backend_session_ledger".to_string());
+        // By default this builder aggregates caller-supplied evidence and must
+        // never claim to be an authoritative session audit package. Only an
+        // explicit backend cross-check (`verified_against_backend_session_ledger`)
+        // removes the hole and can make the manifest authoritative.
+        if !self.backend_ledger_verified {
+            missing.push("backend_session_ledger".to_string());
+        }
 
+        let coverage_complete = missing.is_empty();
         Ok(TaskAuditManifest {
             schema_version: TASK_AUDIT_SCHEMA_VERSION,
             task_id: self.task_id,
-            evidence_origin: "caller_supplied".to_string(),
-            authoritative: false,
+            evidence_origin: if self.backend_ledger_verified {
+                "backend_verified".to_string()
+            } else {
+                "caller_supplied".to_string()
+            },
+            authoritative: self.backend_ledger_verified && coverage_complete,
             object_handles: self.object_handles.into_values().collect(),
             tool_calls: self.tool_calls.into_values().collect(),
             approvals: self.approvals.into_values().collect(),
@@ -166,7 +189,7 @@ impl TaskAuditManifestBuilder {
             connector_targets: self.connector_targets.into_values().collect(),
             role_pack_version: self.role_pack_version,
             change_coverage: self.change_coverage,
-            coverage_complete: missing.is_empty(),
+            coverage_complete,
             missing_coverage: missing,
         })
     }
@@ -357,6 +380,64 @@ mod tests {
         assert_eq!(manifest.evidence_origin, "caller_supplied");
         assert!(!manifest.coverage_complete);
         assert!(manifest
+            .missing_coverage
+            .contains(&"backend_session_ledger".to_string()));
+    }
+
+    /// 分区 J 第二轮：显式后端 ledger 交叉校验后，且其余覆盖完整时，
+    /// 清单才可宣称权威；缺任何覆盖仍然 fail-closed。
+    #[test]
+    fn backend_verified_manifest_becomes_authoritative_only_with_full_coverage() {
+        let mut builder = TaskAuditManifestBuilder::new("task-1");
+        builder
+            .add_object_handle(TaskObjectHandle {
+                schema_version: 1,
+                handle_id: "input-1".into(),
+                kind: crate::chat_v2::task_objects::TaskObjectKind::File,
+                display_name: "input.txt".into(),
+                media_type: None,
+                size_bytes: None,
+                sha256: None,
+                locator: None,
+                provider_ref: None,
+                acl: None,
+                capabilities: Default::default(),
+                expires_at: None,
+                provenance: crate::chat_v2::task_objects::ObjectProvenance {
+                    source: "backend".into(),
+                    source_uri: None,
+                    server: None,
+                    tool: None,
+                    derived_from: Vec::new(),
+                    observed_at: "2026-07-19T00:00:00Z".into(),
+                },
+            })
+            .unwrap()
+            .add_tool_call(AuditToolCall {
+                call_id: "call-1".into(),
+                tool_name: "example".into(),
+                arguments: Value::Null,
+                result_hash: None,
+            })
+            .change_coverage(ChangeCoverage {
+                changes_recorded: true,
+                rollback_available: false,
+                rollback_verified: false,
+            })
+            .verified_against_backend_session_ledger();
+        let manifest = builder.build().unwrap();
+        assert!(manifest.authoritative);
+        assert_eq!(manifest.evidence_origin, "backend_verified");
+        assert!(manifest.coverage_complete);
+        assert!(manifest.missing_coverage.is_empty());
+
+        // 校验位存在但覆盖缺失 → 仍不权威
+        let mut incomplete = TaskAuditManifestBuilder::new("task-2");
+        incomplete.verified_against_backend_session_ledger();
+        let manifest = incomplete.build().unwrap();
+        assert!(!manifest.authoritative);
+        assert!(!manifest.coverage_complete);
+        assert!(!manifest
             .missing_coverage
             .contains(&"backend_session_ledger".to_string()));
     }

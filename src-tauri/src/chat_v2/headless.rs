@@ -19,7 +19,11 @@
 //! 3. **审批策略**：headless 无人审批。白名单仅收录 Low 敏感度工具
 //!    （由单元测试 `all_whitelisted_tools_are_low_sensitivity` 守护），
 //!    Medium/High 工具不在白名单内 → 调用被直接拒绝（等效"需人工授权"），
-//!    绝不进入审批等待。
+//!    绝不进入审批等待。唯一例外是 **trusted automation 预授权**：会话安装了
+//!    经哈希校验的 `TrustedAutomationProfile` 且工具调用通过
+//!    `validate_trusted_automation_tool_call` 全部校验时，
+//!    `is_trusted_automation_preauthorized` 允许 tool_loop 跳过 ApprovalManager
+//!    （fail-closed：任何校验失败/异常都回到人工审批路径）。
 //! 4. **超时与预算**：整个 turn 有硬超时（默认 10 分钟，可配），超时后先
 //!    触发 CancellationToken 让管线走取消保存路径，再限时等待收尾；
 //!    工具轮次上限默认 15（`max_tool_recursion`）。
@@ -280,6 +284,107 @@ pub fn validate_trusted_automation_tool_call(
         }
     }
     Ok(())
+}
+
+/// rollback_required 语义下，判断某个 trusted 写工具是否有**代码层已实现**的
+/// 回滚机制可用（宁可保守：无法确认回滚可用 → 返回 false → 回到人工审批）。
+///
+/// 现有回滚基建（workspace_change_set.rs + workspace_fs_executor.rs）：
+/// - `workspace_file_write` / `workspace_file_move` / `workspace_file_delete` /
+///   `workspace_artifact_write`：执行时强制生成 `MutationReceipt` / `ChangeSet`，
+///   可经 `workspace_change_revert` 回滚 → 回滚可用；
+/// - `workspace_change_revert`：本身就是回滚工具 → 可用；
+/// - `local_shell_execute`：仅当 `track_file_changes=true` 时执行器做
+///   前后快照并捕获 workspace change set → 可用；否则不可回滚；
+/// - 其余写工具（如 `attachment_stage`）当前没有已实现的回滚路径 → 不可用。
+fn trusted_write_tool_rollback_available(short_name: &str, arguments: &Value) -> bool {
+    match short_name {
+        "workspace_file_write" | "workspace_file_move" | "workspace_file_delete"
+        | "workspace_artifact_write" | "workspace_change_revert" => true,
+        "local_shell_execute" => {
+            arguments.get("track_file_changes").and_then(Value::as_bool) == Some(true)
+        }
+        _ => false,
+    }
+}
+
+/// trusted automation 预授权判定：tool_loop 在 ApprovalManager 前调用，
+/// 返回 `true` 表示该调用已被 pinned profile 完整预授权，可跳过人工审批。
+///
+/// 安全论证（fail-closed，任何一条不满足即返回 `false` → 走人工审批）：
+/// 1. 会话必须安装了 `TrustedAutomationSessionGuard`（即 profile 经
+///    `TrustedAutomationProfile::validate()` 哈希校验后被 headless runner
+///    显式安装；普通交互会话查不到 profile，永远不会被预授权）；
+/// 2. 工具必须在 profile 的 `allowed_tools` 白名单内（canonical 名比对；
+///    headless 只读白名单工具是 Low 敏感度，本就不会进 ApprovalManager，
+///    因此这里**不**为它们放行，保持预授权面最小化）；
+/// 3. 调用参数必须重新通过 `validate_trusted_automation_tool_call` 的全部
+///    校验（root 读写、shell 前缀/操作符、网络域、输出预算、回滚证据），
+///    校验返回 `Err` 一律不预授权；
+/// 4. `rollback_required` 的 profile：写工具还须确认代码层回滚机制可用
+///    （见 `trusted_write_tool_rollback_available`），确认不了则 `warn`
+///    并回到人工审批——宁可保守。
+///
+/// 该函数只读全局会话表和入参，不落库、不发事件；异常路径（锁中毒等）
+/// 由 `unwrap_or_else(into_inner)` 恢复后仍按上述规则判定。
+pub fn is_trusted_automation_preauthorized(
+    session_id: &str,
+    tool_name: &str,
+    arguments: &Value,
+) -> bool {
+    let profile = TRUSTED_AUTOMATION_SESSIONS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(session_id)
+        .cloned();
+    // fail-closed：没有安装 trusted profile 的会话一律不预授权
+    let Some(profile) = profile else {
+        return false;
+    };
+
+    let canonical = if tool_name.starts_with("builtin-") {
+        tool_name.to_string()
+    } else {
+        format!("builtin-{tool_name}")
+    };
+    // 预授权面最小化：只对 profile 显式列出的工具生效
+    if !profile.allowed_tools.contains(&canonical) {
+        return false;
+    }
+
+    // 全量重放 profile 校验（白名单、root 读写、shell 前缀、网络域、输出预算）
+    if let Err(error) = validate_trusted_automation_tool_call(session_id, tool_name, arguments) {
+        log::warn!(
+            "[ChatV2::headless] trusted automation preauthorization denied: session={}, tool={}, reason={}",
+            session_id,
+            tool_name,
+            error
+        );
+        return false;
+    }
+
+    // rollback_required：写工具必须确认回滚机制在代码层可用，否则保守回退审批
+    let short = canonical.strip_prefix("builtin-").unwrap_or(&canonical);
+    if profile.rollback_required
+        && trusted_profile_write_tool(&canonical)
+        && !trusted_write_tool_rollback_available(short, arguments)
+    {
+        log::warn!(
+            "[ChatV2::headless] trusted automation write tool '{}' has no verified rollback path; \
+             falling back to manual approval (session={}, rollback_required=true)",
+            tool_name,
+            session_id
+        );
+        return false;
+    }
+
+    log::info!(
+        "[ChatV2::headless] trusted_automation_preauthorized: session={}, tool={}, profile_hash={}",
+        session_id,
+        tool_name,
+        profile.profile_hash
+    );
+    true
 }
 
 // ============================================================================
@@ -1131,8 +1236,9 @@ pub async fn run_headless_turn(
     let _trusted_profile_guard =
         TrustedAutomationSessionGuard::install(&session_id, req.trusted_profile.as_ref());
 
-    // —— 超时/轮次预算：请求值 > 全局设置 > 默认值，并施加硬顶
-    let (hard_timeout_secs, _max_tool_rounds) = resolve_budget(&app, &req);
+    // —— 超时/轮次预算：一次解析（profile > 请求值 > 全局设置 > 默认值 + 硬顶），
+    //    结果贯穿传递给 execute_headless_pipeline，内部不再重算（消除维护漂移）
+    let (hard_timeout_secs, max_tool_rounds) = resolve_budget(&app, &req);
 
     let assistant_message_id = ChatMessage::generate_id();
     let exec = execute_headless_pipeline(
@@ -1143,7 +1249,7 @@ pub async fn run_headless_turn(
         req.model_id.as_deref(),
         None,
         std::time::Duration::from_secs(hard_timeout_secs),
-        req.max_tool_rounds,
+        Some(max_tool_rounds),
         req.cancellation_token,
     )
     .await;
@@ -1277,6 +1383,11 @@ pub fn create_headless_session(
 }
 
 /// 确保高层请求的会话存在（isolated 新建 / named 复用或新建），返回会话 ID。
+///
+/// named 模式健壮性：引用的会话已被删除、归档（非 Active）**或读取失败**时，
+/// 自动回退为新建会话。实际使用的会话 ID 始终通过
+/// `HeadlessTurnResult.session_id` 完整返回，调用方（automations.rs 的
+/// named_session_id 回写逻辑）据此回存新 ID 供下次复用。
 fn ensure_headless_session(db: &ChatV2Database, req: &HeadlessTurnRequest) -> ChatV2Result<String> {
     if req.session_mode == HeadlessSessionMode::Named {
         if let Some(existing_id) = req
@@ -1285,15 +1396,24 @@ fn ensure_headless_session(db: &ChatV2Database, req: &HeadlessTurnRequest) -> Ch
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
-            match ChatV2Repo::get_session_v2(db, existing_id)? {
-                Some(session) if session.persist_status == PersistStatus::Active => {
+            match ChatV2Repo::get_session_v2(db, existing_id) {
+                Ok(Some(session)) if session.persist_status == PersistStatus::Active => {
                     log::info!("[ChatV2::headless] named 模式复用既有会话: {}", existing_id);
                     return Ok(existing_id.to_string());
                 }
-                _ => {
+                Ok(_) => {
                     log::warn!(
-                        "[ChatV2::headless] named 会话 {} 不存在或非 Active，将新建",
+                        "[ChatV2::headless] named 会话 {} 不存在或非 Active，回退新建（新 ID 经 HeadlessTurnResult.session_id 返回，调用方应回写）",
                         existing_id
+                    );
+                }
+                Err(error) => {
+                    // 读取失败不让整轮失败：回退新建（若 DB 整体不可用，
+                    // 下方 create_headless_session 会以真实错误失败）
+                    log::warn!(
+                        "[ChatV2::headless] 读取 named 会话 {} 失败（{}），回退新建",
+                        existing_id,
+                        error
                     );
                 }
             }
@@ -1382,8 +1502,23 @@ async fn execute_headless_pipeline(
 
     // —— 事件发射所需的 Window（AppHandle 全局 emit 语义：无前端监听也无害）。
     //    Tauri 窗口在应用存续期间通常存活（最小化/隐藏不影响 emit）。
+    //
+    //    无窗口容错评估（2026-07）：`run_send_message_pipeline` →
+    //    `ChatV2Pipeline::execute(window: Window, ...)` 的签名强依赖具体
+    //    `tauri::Window`（emitter 构造 + 工具 ExecutionContext 的 window 桥），
+    //    `ChatV2EventEmitter` 的 windowless 形态仅 `#[cfg(test)]` 暴露，且这些
+    //    文件属于其他并行改造，headless 侧无法在不改管线签名的前提下安全降级为
+    //    "无 UI 事件模式"。此处保守保留 fail-fast，但补充 run 上下文日志便于排查
+    //    纯后台驻留场景（所有窗口已销毁）下的任务失败原因。
     let window = resolve_emit_window(app).ok_or_else(|| {
-        HeadlessPipelineTermination::Failed("没有可用的应用窗口，无法创建事件发射通道".to_string())
+        log::error!(
+            "[ChatV2::headless] 没有可用的应用窗口，headless turn 无法启动: session={}, assistant_message={}（纯后台驻留/窗口全部关闭场景；管线事件通道强依赖 Window，暂不支持无窗口降级）",
+            session_id,
+            assistant_message_id
+        );
+        HeadlessPipelineTermination::Failed(format!(
+            "没有可用的应用窗口，无法创建事件发射通道（session={session_id}）"
+        ))
     })?;
 
     let trusted_profile = TRUSTED_AUTOMATION_SESSIONS
@@ -1391,10 +1526,15 @@ async fn execute_headless_pipeline(
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .get(session_id)
         .cloned();
-    let max_tool_rounds = trusted_profile
-        .as_ref()
-        .map(|profile| profile.max_tool_rounds)
-        .or(max_tool_rounds_override)
+    // 轮次预算：run_headless_turn 已经通过 resolve_budget（profile > 请求 >
+    // 设置 > 默认 + 硬顶）解析并经 override 传入，这里直接采信不再重算；
+    // override 为 None 的低层路径（run_headless_agent_turn）保留原有解析链。
+    let max_tool_rounds = max_tool_rounds_override
+        .or_else(|| {
+            trusted_profile
+                .as_ref()
+                .map(|profile| profile.max_tool_rounds)
+        })
         .or_else(|| {
             read_main_db_setting_u64(app, SETTING_HEADLESS_MAX_TOOL_ROUNDS).map(|v| v as u32)
         })
@@ -1494,15 +1634,16 @@ async fn execute_headless_pipeline(
     );
 
     // —— 执行：复用 send_message 的内部管线路径（StreamGuard + Pipeline::execute），
-    //    硬超时命中后先 cancel 让管线走"取消保存部分结果"路径，再限时收尾
-    let pipeline_fut = super::handlers::send_message::run_send_message_pipeline(
+    //    硬超时命中后先 cancel 让管线走"取消保存部分结果"路径，再限时收尾。
+    //    Box::pin 拥有 future 所有权：超时收尾路径可以显式 drop 触发
+    //    StreamGuard 的清理，再做流注册泄漏兜底检查。
+    let mut pipeline_fut = Box::pin(super::handlers::send_message::run_send_message_pipeline(
         pipeline,
-        chat_v2_state,
+        chat_v2_state.clone(),
         window,
         request,
         cancel_token.clone(),
-    );
-    tokio::pin!(pipeline_fut);
+    ));
 
     let hard_timeout_sleep = tokio::time::sleep(hard_timeout);
     tokio::pin!(hard_timeout_sleep);
@@ -1529,11 +1670,21 @@ async fn execute_headless_pipeline(
                     session_id
                 );
                 cancel_token.cancel();
-                let _ = tokio::time::timeout(
+                let graceful = tokio::time::timeout(
                     std::time::Duration::from_secs(CANCEL_GRACE_SECS),
                     &mut pipeline_fut,
                 )
-                .await;
+                .await
+                .is_ok();
+                finalize_overrun_pipeline(
+                    pipeline_fut,
+                    graceful,
+                    &cancel_token,
+                    &chat_v2_state,
+                    session_id,
+                    assistant_message_id,
+                    "external-cancel",
+                );
                 return Err(HeadlessPipelineTermination::Cancelled);
             }
             _ = &mut hard_timeout_sleep => {}
@@ -1558,18 +1709,79 @@ async fn execute_headless_pipeline(
     }
 
     log::warn!(
-        "[ChatV2::headless] headless turn 超过硬超时 {}s，触发取消并等待收尾",
-        hard_timeout.as_secs()
+        "[ChatV2::headless] headless turn 超过硬超时 {}s，触发取消并等待收尾: session={}",
+        hard_timeout.as_secs(),
+        session_id
     );
     cancel_token.cancel();
-    let _ = tokio::time::timeout(
+    let graceful = tokio::time::timeout(
         std::time::Duration::from_secs(CANCEL_GRACE_SECS),
         &mut pipeline_fut,
     )
-    .await;
+    .await
+    .is_ok();
+    finalize_overrun_pipeline(
+        pipeline_fut,
+        graceful,
+        &cancel_token,
+        &chat_v2_state,
+        session_id,
+        assistant_message_id,
+        "hard-timeout",
+    );
     Err(HeadlessPipelineTermination::Timeout {
         seconds: hard_timeout.as_secs(),
     })
+}
+
+/// 超时/外部取消收尾兜底：确保 cancel token 已触发、pipeline future 被显式
+/// drop（触发其内部 StreamGuard 的 remove_stream 清理），并在极端情况下
+/// （StreamGuard 未建立的兼容路径竞态）显式清除残留的流注册，防止会话被
+/// 永久锁定。`graceful=false` 表示 grace 窗口内 future 仍未结束，此时用
+/// log::error 带 run 上下文记录强制收尾。
+fn finalize_overrun_pipeline<F>(
+    pipeline_fut: std::pin::Pin<Box<F>>,
+    graceful: bool,
+    cancel_token: &CancellationToken,
+    chat_v2_state: &Arc<ChatV2State>,
+    session_id: &str,
+    assistant_message_id: &str,
+    reason: &str,
+) where
+    F: std::future::Future + ?Sized,
+{
+    if !cancel_token.is_cancelled() {
+        // 不应发生（两个调用点都先 cancel）；防御性兜底
+        log::error!(
+            "[ChatV2::headless] finalize_overrun_pipeline 发现 cancel token 未触发，补触发: session={}, reason={}",
+            session_id,
+            reason
+        );
+        cancel_token.cancel();
+    }
+    if !graceful {
+        log::error!(
+            "[ChatV2::headless] pipeline future 在 {}s grace 窗口后仍未结束，强制 drop 收尾: session={}, assistant_message={}, reason={}",
+            CANCEL_GRACE_SECS,
+            session_id,
+            assistant_message_id,
+            reason
+        );
+    }
+    // 显式 drop：正常情况下 StreamGuard::drop → remove_stream_if_generation
+    drop(pipeline_fut);
+    // 兜底：StreamGuard::from_registered_token 在 token 已取消的竞态下可能返回
+    // None（无 guard），导致注册残留。走到这里 future 已被 drop、token 已取消，
+    // 该会话键若仍处于 active 只能是本次 run 的残留（headless 注册持键期间其他
+    // 调用方无法注册同键），显式清除并告警。
+    if chat_v2_state.has_active_stream(session_id) {
+        log::error!(
+            "[ChatV2::headless] 检测到残留的流注册（StreamGuard 未生效），显式清理: session={}, reason={}",
+            session_id,
+            reason
+        );
+        chat_v2_state.remove_stream(session_id);
+    }
 }
 
 // ============================================================================
@@ -2238,5 +2450,130 @@ mod tests {
             &json!({})
         )
         .is_ok());
+    }
+
+    // —— trusted automation 预授权旁路（ApprovalManager bypass）——————————
+
+    #[test]
+    fn preauthorization_denies_sessions_without_trusted_profile() {
+        // 未安装 profile 的会话（含普通交互会话）恒不预授权（fail-closed）
+        assert!(!is_trusted_automation_preauthorized(
+            "no-profile-session",
+            "builtin-local_shell_execute",
+            &json!({
+                "root_id": "workspace",
+                "command": "unzip bundle.zip",
+                "track_file_changes": true,
+                "max_output_bytes": 4096
+            })
+        ));
+    }
+
+    #[test]
+    fn preauthorization_allows_fully_validated_profile_call() {
+        let profile = trusted_profile_for_policy_test();
+        let _guard = TrustedAutomationSessionGuard::install("preauth-ok", Some(&profile)).unwrap();
+        assert!(is_trusted_automation_preauthorized(
+            "preauth-ok",
+            "builtin-local_shell_execute",
+            &json!({
+                "root_id": "workspace",
+                "command": "unzip bundle.zip",
+                "track_file_changes": true,
+                "max_output_bytes": 4096
+            })
+        ));
+        // 回滚工具本身也可预授权（receipt 里携带合法 root）
+        assert!(is_trusted_automation_preauthorized(
+            "preauth-ok",
+            "builtin-workspace_change_revert",
+            &json!({ "receipt": { "root_id": "workspace", "path": "notes/a.md" } })
+        ));
+    }
+
+    #[test]
+    fn preauthorization_denies_calls_outside_profile_allowed_tools() {
+        let profile = trusted_profile_for_policy_test();
+        let _guard =
+            TrustedAutomationSessionGuard::install("preauth-scope", Some(&profile)).unwrap();
+        // headless 只读白名单工具不在 profile.allowed_tools → 不预授权
+        // （它们是 Low 敏感度，本就不进 ApprovalManager，预授权面保持最小）
+        assert!(!is_trusted_automation_preauthorized(
+            "preauth-scope",
+            "builtin-web_fetch",
+            &json!({ "url": "https://example.com/x" })
+        ));
+    }
+
+    #[test]
+    fn preauthorization_denies_calls_failing_profile_validation() {
+        let profile = trusted_profile_for_policy_test();
+        let _guard =
+            TrustedAutomationSessionGuard::install("preauth-invalid", Some(&profile)).unwrap();
+        // root 越界
+        assert!(!is_trusted_automation_preauthorized(
+            "preauth-invalid",
+            "builtin-local_shell_execute",
+            &json!({
+                "root_id": "temp",
+                "command": "unzip bundle.zip",
+                "track_file_changes": true,
+                "max_output_bytes": 4096
+            })
+        ));
+        // 前缀越界
+        assert!(!is_trusted_automation_preauthorized(
+            "preauth-invalid",
+            "builtin-local_shell_execute",
+            &json!({
+                "root_id": "workspace",
+                "command": "rm -rf out",
+                "track_file_changes": true,
+                "max_output_bytes": 4096
+            })
+        ));
+    }
+
+    #[test]
+    fn preauthorization_requires_rollback_evidence_for_write_tools() {
+        let profile = trusted_profile_for_policy_test();
+        assert!(profile.rollback_required);
+        let _guard =
+            TrustedAutomationSessionGuard::install("preauth-rollback", Some(&profile)).unwrap();
+        // rollback_required 下缺少 track_file_changes 的 shell 写工具 → 保守回退审批
+        assert!(!is_trusted_automation_preauthorized(
+            "preauth-rollback",
+            "builtin-local_shell_execute",
+            &json!({
+                "root_id": "workspace",
+                "command": "unzip bundle.zip",
+                "max_output_bytes": 4096
+            })
+        ));
+    }
+
+    #[test]
+    fn rollback_availability_matrix_is_conservative() {
+        assert!(trusted_write_tool_rollback_available(
+            "workspace_file_write",
+            &json!({})
+        ));
+        assert!(trusted_write_tool_rollback_available(
+            "workspace_change_revert",
+            &json!({})
+        ));
+        assert!(trusted_write_tool_rollback_available(
+            "local_shell_execute",
+            &json!({ "track_file_changes": true })
+        ));
+        assert!(!trusted_write_tool_rollback_available(
+            "local_shell_execute",
+            &json!({})
+        ));
+        // 无已实现回滚路径的写工具一律不可用（宁可保守）
+        assert!(!trusted_write_tool_rollback_available(
+            "attachment_stage",
+            &json!({})
+        ));
     }
 }

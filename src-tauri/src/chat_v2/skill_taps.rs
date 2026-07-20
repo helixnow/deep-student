@@ -455,7 +455,11 @@ pub(crate) fn decode_tap_source_detail(detail: &str) -> Result<(String, String),
 
 /// 浏览 tap 技能源：下载仓库 zip 并列出全部技能条目（只读，不落盘）。
 #[tauri::command]
-pub async fn skill_tap_catalog(repo_url: String) -> ChatV2Result<TapCatalog> {
+pub async fn skill_tap_catalog(repo_url: String) -> Result<TapCatalog, String> {
+    skill_tap_catalog_impl(repo_url).await.map_err(String::from)
+}
+
+async fn skill_tap_catalog_impl(repo_url: String) -> ChatV2Result<TapCatalog> {
     let candidates = resolve_codeload_candidates(&repo_url).map_err(ChatV2Error::InvalidInput)?;
     let fetch = FetchExecutor::new();
     let (bytes, resolved_zip_url) = fetch_repo_zip(&fetch, &candidates)
@@ -479,6 +483,26 @@ pub async fn skill_tap_catalog(repo_url: String) -> ChatV2Result<TapCatalog> {
 /// `dry_run=false` 安装，写入 `tap` 来源 provenance 供后续更新检查。
 #[tauri::command]
 pub async fn skill_tap_install(
+    state: State<'_, AppState>,
+    zip_url: String,
+    subdir: String,
+    overwrite: bool,
+    dry_run: Option<bool>,
+    expected_package_sha256: Option<String>,
+) -> Result<SkillImportZipResult, String> {
+    skill_tap_install_impl(
+        state,
+        zip_url,
+        subdir,
+        overwrite,
+        dry_run,
+        expected_package_sha256,
+    )
+    .await
+    .map_err(String::from)
+}
+
+async fn skill_tap_install_impl(
     state: State<'_, AppState>,
     zip_url: String,
     subdir: String,
@@ -618,6 +642,15 @@ pub struct TapExportResult {
 /// `skill_tap_catalog` 消费——发布/分享闭环。
 #[tauri::command]
 pub async fn skill_export_tap(
+    skill_ids: Vec<String>,
+    dest_path: String,
+) -> Result<TapExportResult, String> {
+    skill_export_tap_impl(skill_ids, dest_path)
+        .await
+        .map_err(String::from)
+}
+
+async fn skill_export_tap_impl(
     skill_ids: Vec<String>,
     dest_path: String,
 ) -> ChatV2Result<TapExportResult> {

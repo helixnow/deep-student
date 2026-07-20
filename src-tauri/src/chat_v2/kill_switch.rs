@@ -84,8 +84,10 @@ impl AgentKillSwitch {
     }
 
     pub fn status_snapshot(&self) -> KillSwitchStatus {
+        let tripped = self.is_tripped();
         KillSwitchStatus {
-            tripped: self.is_tripped(),
+            tripped,
+            kill_switch_tripped: tripped,
             tripped_at_ms: self.tripped_at_ms.lock().ok().and_then(|guard| *guard),
             reason: self.reason.lock().ok().and_then(|guard| guard.clone()),
             automations_paused: is_automation_scheduler_paused(),
@@ -98,6 +100,10 @@ impl AgentKillSwitch {
 #[serde(rename_all = "camelCase")]
 pub struct KillSwitchStatus {
     pub tripped: bool,
+    /// Explicit alias of `tripped` (serialized as `killSwitchTripped`) so
+    /// frontend consumers can distinguish "kill switch tripped" from
+    /// "automations paused" without relying on the legacy `tripped` name.
+    pub kill_switch_tripped: bool,
     pub tripped_at_ms: Option<u64>,
     pub reason: Option<String>,
     pub automations_paused: bool,
@@ -253,14 +259,31 @@ pub fn admit_or_block(state: &ChatV2State) -> Result<(), String> {
     state.kill_switch.ensure_allowed()
 }
 
+/// Error surfaced when the kill-switch gate cannot verify admission because
+/// ChatV2State is not managed (degraded startup). Fail-closed by design.
+pub const KILL_SWITCH_STATE_UNAVAILABLE_MESSAGE: &str =
+    "AgentKillSwitch gate: ChatV2State is unavailable, admission denied (fail-closed).";
+
 /// Resolve ChatV2State from AppHandle and enforce the kill switch.
 ///
-/// When ChatV2State is not managed (degraded / unit-test AppHandle), admission
-/// is allowed; interactive and headless paths that require ChatV2State still fail
-/// elsewhere.
+/// **Fail-closed**: when ChatV2State is not managed (degraded startup /
+/// partially-initialized AppHandle), admission is DENIED instead of silently
+/// bypassing the kill switch. Callers:
+/// - automation scheduled dispatch gate (`automations.rs`)
+/// - automation manual-run gate (`automations.rs`)
+/// - headless turn admission (`headless.rs`) — which would fail immediately
+///   afterwards anyway when resolving `ChatV2Database` from the same degraded
+///   AppHandle, so failing closed here does not change effective behavior.
+///
+/// Interactive send paths are unaffected: they receive `State<Arc<ChatV2State>>`
+/// via Tauri command injection and never go through this resolver.
 pub fn admit_or_block_from_app(app: &AppHandle) -> Result<(), String> {
     let Some(state) = app.try_state::<Arc<ChatV2State>>() else {
-        return Ok(());
+        log::error!(
+            "[ChatV2::kill_switch] admit_or_block_from_app: ChatV2State not managed; \
+             failing closed and denying admission (automation dispatch / headless turn blocked)"
+        );
+        return Err(KILL_SWITCH_STATE_UNAVAILABLE_MESSAGE.to_string());
     };
     admit_or_block(state.inner())
 }
@@ -437,10 +460,29 @@ mod tests {
         ks.trip("reason-x");
         let status = ks.status_snapshot();
         assert!(status.tripped);
+        assert_eq!(
+            status.kill_switch_tripped, status.tripped,
+            "killSwitchTripped must mirror tripped"
+        );
         assert_eq!(status.reason.as_deref(), Some("reason-x"));
         assert!(status.tripped_at_ms.is_some());
         ks.reset();
-        assert!(!ks.status_snapshot().tripped);
-        assert!(ks.status_snapshot().reason.is_none());
+        let cleared = ks.status_snapshot();
+        assert!(!cleared.tripped);
+        assert!(!cleared.kill_switch_tripped);
+        assert!(cleared.reason.is_none());
+    }
+
+    #[test]
+    fn status_serializes_independent_pause_and_trip_fields() {
+        let ks = AgentKillSwitch::new();
+        ks.trip("serde-check");
+        let json = serde_json::to_value(ks.status_snapshot()).expect("serialize status");
+        assert_eq!(json.get("killSwitchTripped"), Some(&serde_json::json!(true)));
+        assert!(
+            json.get("automationsPaused").is_some(),
+            "automationsPaused must be present as an independent field"
+        );
+        ks.reset();
     }
 }

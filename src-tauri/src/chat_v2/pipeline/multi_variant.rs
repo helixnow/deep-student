@@ -611,17 +611,32 @@ impl ChatV2Pipeline {
         }
 
         if let Err(e) = save_result {
+            // 🔧 P0 修复：终态事件必须互斥且只发一次 —— 保存失败只发
+            // stream_error，不再补发 stream_complete（先 error 后 complete
+            // 会让前端把会话覆盖为「已完成」，吞掉错误态）。
             emitter.emit_stream_error(&assistant_message_id, &e.to_string());
-            let duration_ms = start_time.elapsed().as_millis() as u64;
-            emitter.emit_stream_complete_with_usage(&assistant_message_id, duration_ms, None);
             return Err(e);
         }
 
-        // === 12. 发射 stream_complete（带 token 统计） ===
+        // === 12. 发射 stream_complete（带汇总 token 统计） ===
         let duration_ms = start_time.elapsed().as_millis() as u64;
-        // 多变体模式下 Message._meta.usage 为 None，每个变体独立统计
-        // TODO: Prompt 9 实现后，可选择性汇总所有变体的 token 统计
-        emitter.emit_stream_complete_with_usage(&assistant_message_id, duration_ms, None);
+        // 🆕 汇总所有变体的 usage 到会话级 complete 事件；
+        // 变体级明细仍通过 variant_end 事件与 Variant.usage 持久化字段传递
+        let aggregated_usage = {
+            let mut total = TokenUsage::zero();
+            for (variant_ctx, _) in &variant_contexts {
+                let usage = variant_ctx.get_usage();
+                if usage.has_tokens() {
+                    total.accumulate(&usage);
+                }
+            }
+            total.has_tokens().then_some(total)
+        };
+        emitter.emit_stream_complete_with_usage(
+            &assistant_message_id,
+            duration_ms,
+            aggregated_usage.as_ref(),
+        );
 
         log::info!(
             "[ChatV2::pipeline] Multi-variant pipeline completed in {}ms",

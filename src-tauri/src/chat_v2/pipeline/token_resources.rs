@@ -42,13 +42,28 @@ impl ChatV2Pipeline {
         let prompt_tokens = self.estimate_prompt_tokens(messages, system_prompt, model_id);
         let completion_tokens = self.estimate_completion_tokens(completion_text, model_id);
 
+        // 🔧 P1 修复：估算口径补齐思维链输出。thinking 模型的 reasoning 往往
+        // 数倍于正文，不计入会严重低估上下文占用，导致 compaction 阈值迟迟
+        // 不触发。口径与多数厂商一致：completion_tokens 含 reasoning，
+        // reasoning_tokens 单列供展示。
+        let reasoning_tokens = adapter
+            .get_accumulated_reasoning()
+            .filter(|reasoning| !reasoning.is_empty())
+            .map(|reasoning| self.estimate_completion_tokens(&reasoning, model_id));
+
         // 判断是否使用了精确估算（tiktoken）
         #[cfg(feature = "tokenizer_tiktoken")]
         let precise = true;
         #[cfg(not(feature = "tokenizer_tiktoken"))]
         let precise = false;
 
-        TokenUsage::from_estimate(prompt_tokens, completion_tokens, precise)
+        let mut usage = TokenUsage::from_estimate(
+            prompt_tokens,
+            completion_tokens.saturating_add(reasoning_tokens.unwrap_or(0)),
+            precise,
+        );
+        usage.reasoning_tokens = reasoning_tokens;
+        usage
     }
 
     /// 估算输入 Token 数量

@@ -642,8 +642,10 @@ impl ChatV2Pipeline {
         // 注意：skip_user_message_save 为 true 时跳过（编辑重发场景）
         if !ctx.options.skip_user_message_save.unwrap_or(false) {
             if let Err(e) = self.save_user_message_immediately(&ctx).await {
-                log::warn!(
-                    "[ChatV2::pipeline] Failed to save user message immediately: {}",
+                // 🔧 升级为 error：此时用户输入仅存在于内存，若后续 save_results
+                // 也失败则输入彻底丢失，必须在日志中醒目可见
+                log::error!(
+                    "[ChatV2::pipeline] Failed to save user message immediately (will rely on save_results as fallback): {}",
                     e
                 );
                 // 不阻塞流程，继续执行（save_results 会再次保存）
@@ -932,8 +934,10 @@ impl ChatV2Pipeline {
         // 下一次 load_chat_history 就会应用视图（隐藏旧消息 + 注入摘要）
         if ctx.needs_compaction {
             if let Err(e) = self.run_compaction(ctx).await {
-                log::warn!(
-                    "[ChatV2::pipeline] run_compaction failed (non-fatal): {}",
+                // 🔧 升级为 error：压缩失败意味着长会话只能靠 FIFO 截断兜底，
+                // 上下文质量将悬崖式下降，不能只留一条 warn
+                log::error!(
+                    "[ChatV2::pipeline] run_compaction failed (non-fatal, falling back to FIFO trim next round): {}",
                     e
                 );
                 ctx.needs_compaction = false;

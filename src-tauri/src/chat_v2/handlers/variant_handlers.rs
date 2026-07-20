@@ -163,7 +163,7 @@ pub async fn chat_v2_switch_variant(
 
     switch_variant_impl(&db, &session_id, &message_id, &variant_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(String::from)
 }
 
 async fn switch_variant_impl(
@@ -234,7 +234,7 @@ pub async fn chat_v2_delete_variant(
 
     delete_variant_impl(&db, &window, &session_id, &message_id, &variant_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(String::from)
 }
 
 async fn delete_variant_impl(
@@ -426,7 +426,7 @@ pub async fn chat_v2_retry_variant(
         options,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(String::from)
 }
 
 /// 批量重试变体
@@ -468,7 +468,7 @@ pub async fn chat_v2_retry_variants(
         options,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(String::from)
 }
 
 async fn retry_variant_impl(
@@ -1061,7 +1061,7 @@ pub async fn chat_v2_cancel_variant(
 
     cancel_variant_impl(&db, &state, &session_id, &variant_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(String::from)
 }
 
 async fn cancel_variant_impl(

@@ -123,6 +123,35 @@ CREATE INDEX IF NOT EXISTS idx_subagent_task_workspace ON subagent_task(workspac
 
 const CURRENT_SCHEMA_VERSION: i32 = 2;
 
+/// workspace_id 允许的最大长度（正常 id 形如 `ws_{ULID}`，26 位 ULID + 前缀 ≈ 29 字符）
+const WORKSPACE_ID_MAX_LEN: usize = 128;
+
+/// P0 安全：workspace_id 会被直接拼进数据库文件名（`ws_{id}.db`），
+/// 必须先做白名单校验，拒绝路径分隔符、`..`、空字节等可构造逃逸路径的输入。
+///
+/// 合法格式：1..=128 个 `[A-Za-z0-9_-]` 字符。正常生成路径
+/// （`Workspace::generate_id` -> `ws_{ULID}`）天然满足；此校验用于封死
+/// 上层误传/恶意构造 id 的信任边界缺口。
+pub fn validate_workspace_id(workspace_id: &str) -> Result<(), String> {
+    if workspace_id.is_empty() || workspace_id.len() > WORKSPACE_ID_MAX_LEN {
+        return Err(format!(
+            "Invalid workspace_id length {} (expected 1..={})",
+            workspace_id.len(),
+            WORKSPACE_ID_MAX_LEN
+        ));
+    }
+    if !workspace_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(format!(
+            "Invalid workspace_id {:?}: only [A-Za-z0-9_-] characters are allowed",
+            workspace_id
+        ));
+    }
+    Ok(())
+}
+
 fn migrate_schema(conn: &Connection) -> Result<(), String> {
     let current_version: i32 = conn
         .pragma_query_value(None, "user_version", |row| row.get(0))
@@ -194,6 +223,7 @@ pub struct WorkspaceDatabase {
 
 impl WorkspaceDatabase {
     pub fn new(workspaces_dir: &Path, workspace_id: &str) -> Result<Self, String> {
+        validate_workspace_id(workspace_id)?;
         std::fs::create_dir_all(workspaces_dir)
             .map_err(|e| format!("Failed to create workspaces directory: {}", e))?;
 
@@ -348,6 +378,7 @@ impl WorkspaceDatabase {
     }
 
     pub fn delete_database(workspaces_dir: &Path, workspace_id: &str) -> Result<(), String> {
+        validate_workspace_id(workspace_id)?;
         let db_path = workspaces_dir.join(format!("ws_{}.db", workspace_id));
         let deleted_size = std::fs::metadata(&db_path).ok().map(|m| m.len());
         if db_path.exists() {
@@ -460,5 +491,52 @@ impl WorkspaceDatabaseManager {
     pub fn delete(&self, workspace_id: &str) -> Result<(), String> {
         self.remove(workspace_id);
         WorkspaceDatabase::delete_database(&self.workspaces_dir, workspace_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn validate_workspace_id_accepts_generated_ids() {
+        let id = super::super::types::Workspace::generate_id();
+        assert!(validate_workspace_id(&id).is_ok(), "generated id {}", id);
+        assert!(validate_workspace_id("ws_01ARZ3NDEKTSV4RRFFQ69G5FAV").is_ok());
+        assert!(validate_workspace_id("legacy-id_123").is_ok());
+    }
+
+    #[test]
+    fn validate_workspace_id_rejects_path_escapes() {
+        for bad in [
+            "",
+            "..",
+            "../evil",
+            "a/b",
+            "a\\b",
+            "ws_..",
+            "ws_1\0",
+            "ws 1",
+            "ws_1.db",
+        ] {
+            assert!(
+                validate_workspace_id(bad).is_err(),
+                "should reject {:?}",
+                bad
+            );
+        }
+        let too_long = "a".repeat(129);
+        assert!(validate_workspace_id(&too_long).is_err());
+    }
+
+    #[test]
+    fn workspace_database_new_rejects_traversal_ids() {
+        let temp = TempDir::new().unwrap();
+        assert!(WorkspaceDatabase::new(temp.path(), "../escape").is_err());
+        assert!(WorkspaceDatabase::delete_database(temp.path(), "../escape").is_err());
+        // 合法 id 正常创建
+        let db = WorkspaceDatabase::new(temp.path(), "ws_testvalid123").unwrap();
+        assert!(db.db_path().exists());
     }
 }

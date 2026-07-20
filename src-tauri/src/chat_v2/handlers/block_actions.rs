@@ -311,14 +311,14 @@ pub async fn chat_v2_update_block_content(
     // 🔒 P1 修复（2026-01-10）：检查块所属会话是否有活跃流
     // 防止流式中修改历史消息内容导致语义不一致
     let existing_block = ChatV2Repo::get_block_v2(&db, &block_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| ChatV2Error::BlockNotFound(block_id.clone()).to_string())?;
+        .map_err(String::from)?
+        .ok_or_else(|| String::from(ChatV2Error::BlockNotFound(block_id.clone())))?;
 
     // 从块获取消息，从消息获取 session_id
     let message = ChatV2Repo::get_message_v2(&db, &existing_block.message_id)
-        .map_err(|e| e.to_string())?
+        .map_err(String::from)?
         .ok_or_else(|| {
-            ChatV2Error::MessageNotFound(existing_block.message_id.clone()).to_string()
+            String::from(ChatV2Error::MessageNotFound(existing_block.message_id.clone()))
         })?;
 
     if chat_v2_state.has_active_stream(&message.session_id) {
@@ -362,14 +362,19 @@ pub async fn chat_v2_update_block_tool_output(
 
     // 验证 JSON 合法性
     let _: serde_json::Value = serde_json::from_str(&tool_output_json)
-        .map_err(|e| format!("Invalid tool_output_json: {}", e))?;
+        .map_err(|e| String::from(ChatV2Error::Validation(format!("Invalid tool_output_json: {}", e))))?;
 
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let conn = db.get_conn_safe().map_err(String::from)?;
     conn.execute(
         "UPDATE chat_v2_blocks SET tool_output_json = ?1 WHERE id = ?2",
         rusqlite::params![tool_output_json, block_id],
     )
-    .map_err(|e| format!("Failed to update block tool_output: {}", e))?;
+    .map_err(|e| {
+        String::from(ChatV2Error::Database(format!(
+            "Failed to update block tool_output: {}",
+            e
+        )))
+    })?;
 
     log::info!(
         "[ChatV2::handlers] Block tool_output updated: block_id={}",
@@ -388,27 +393,38 @@ pub async fn chat_v2_get_anki_cards_from_block_by_document_id(
 ) -> Result<Vec<crate::models::AnkiCard>, String> {
     let doc_id = documentId.trim();
     if doc_id.is_empty() {
-        return Err("documentId is required".to_string());
+        return Err(ChatV2Error::Validation("documentId is required".to_string()).into());
     }
 
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let conn = db.get_conn_safe().map_err(String::from)?;
+    // 用 LIKE 预过滤把候选行压到目标 documentId 附近，避免逐行反序列化全表
+    // 的 anki_cards 块；精确匹配仍在下方 JSON 解析后完成（防止子串误命中）。
+    let like_pattern = format!("%{}%", doc_id.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
     let mut stmt = conn
         .prepare(
             r#"
             SELECT tool_output_json
             FROM chat_v2_blocks
-            WHERE block_type = 'anki_cards' AND tool_output_json IS NOT NULL
+            WHERE block_type = 'anki_cards'
+              AND tool_output_json IS NOT NULL
+              AND tool_output_json LIKE ?1 ESCAPE '\'
             ORDER BY rowid DESC
             "#,
         )
-        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+        .map_err(|e| {
+            String::from(ChatV2Error::Database(format!("Failed to prepare query: {}", e)))
+        })?;
 
     let rows = stmt
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| format!("Failed to query blocks: {}", e))?;
+        .query_map([&like_pattern], |row| row.get::<_, String>(0))
+        .map_err(|e| {
+            String::from(ChatV2Error::Database(format!("Failed to query blocks: {}", e)))
+        })?;
 
     for row in rows {
-        let tool_output_json = row.map_err(|e| format!("Failed to read row: {}", e))?;
+        let tool_output_json = row.map_err(|e| {
+            String::from(ChatV2Error::Database(format!("Failed to read row: {}", e)))
+        })?;
         let parsed: serde_json::Value = match serde_json::from_str(&tool_output_json) {
             Ok(value) => value,
             Err(_) => continue,
@@ -521,12 +537,12 @@ pub async fn chat_v2_upsert_streaming_block(
         .as_ref()
         .map(|s| serde_json::from_str(s))
         .transpose()
-        .map_err(|e| format!("Invalid tool_input_json: {}", e))?;
+        .map_err(|e| String::from(ChatV2Error::Validation(format!("Invalid tool_input_json: {}", e))))?;
     let tool_output: Option<serde_json::Value> = tool_output_json
         .as_ref()
         .map(|s| serde_json::from_str(s))
         .transpose()
-        .map_err(|e| format!("Invalid tool_output_json: {}", e))?;
+        .map_err(|e| String::from(ChatV2Error::Validation(format!("Invalid tool_output_json: {}", e))))?;
 
     // 构建块对象
     let now_ms = chrono::Utc::now().timestamp_millis();
@@ -553,7 +569,7 @@ pub async fn chat_v2_upsert_streaming_block(
     };
 
     // 先确保消息占位行存在（FK 约束要求消息先于块存在）
-    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let conn = db.get_conn_safe().map_err(String::from)?;
     if let Err(e) =
         ensure_message_exists_with_block(&conn, session_id.as_deref(), &block.message_id, &block.id)
     {
@@ -875,7 +891,7 @@ pub async fn chat_v2_anki_cards_result(
     };
 
     // 保存到数据库
-    upsert_block_in_db(&block, &db).map_err(|e| e.to_string())?;
+    upsert_block_in_db(&block, &db).map_err(String::from)?;
 
     // 🆕 2026-01: 发射 anki_cards 事件到前端，通知 UI 更新
     // 使用会话特定的事件通道

@@ -8,6 +8,7 @@
 //! 3. 前端调用此命令返回编辑结果
 //! 4. 后端恢复工具执行流程
 
+use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::tools::canvas_executor::{
     handle_edit_ack, handle_edit_result, CanvasAIEditResult,
 };
@@ -16,8 +17,22 @@ use crate::chat_v2::tools::canvas_executor::{
 ///
 /// 前端在执行完 AI 编辑请求后，调用此命令返回结果。
 /// 后端通过 request_id 匹配等待的回调，恢复工具执行流程。
+///
+/// ## 错误
+/// - `INVALID_INPUT`: request_id 为空
+///
+/// 注意：request_id 无 pending 回调（编辑请求已超时/被消费）时，
+/// executor（分区 J）当前只记录 warn 且本命令仍返回 Ok。要返回
+/// `CANVAS_EDIT_EXPIRED` 需要 `handle_edit_result` 返回投递结果，
+/// 该改动归属分区 J，见 L-changes.md「跨分区跟进」。
 #[tauri::command]
 pub fn chat_v2_canvas_edit_result(result: CanvasAIEditResult) -> Result<(), String> {
+    if result.request_id.trim().is_empty() {
+        return Err(
+            ChatV2Error::InvalidInput("request_id must not be empty".to_string()).into(),
+        );
+    }
+
     log::debug!(
         "[canvas_handlers] Received edit result: request_id={}, success={}",
         result.request_id,
@@ -35,6 +50,12 @@ pub fn chat_v2_canvas_edit_result(result: CanvasAIEditResult) -> Result<(), Stri
 /// （笔记未打开），避免非目标实例抢答消费回调。
 #[tauri::command]
 pub fn chat_v2_canvas_edit_ack(request_id: String) -> Result<(), String> {
+    if request_id.trim().is_empty() {
+        return Err(
+            ChatV2Error::InvalidInput("request_id must not be empty".to_string()).into(),
+        );
+    }
+
     log::debug!(
         "[canvas_handlers] Received edit ack: request_id={}",
         request_id

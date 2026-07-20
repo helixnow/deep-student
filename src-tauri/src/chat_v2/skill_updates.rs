@@ -325,6 +325,15 @@ async fn check_one(
 pub async fn skill_check_updates(
     state: State<'_, AppState>,
     skill_ids: Option<Vec<String>>,
+) -> Result<Vec<SkillUpdateCheckResult>, String> {
+    skill_check_updates_impl(state, skill_ids)
+        .await
+        .map_err(String::from)
+}
+
+async fn skill_check_updates_impl(
+    state: State<'_, AppState>,
+    skill_ids: Option<Vec<String>>,
 ) -> ChatV2Result<Vec<SkillUpdateCheckResult>> {
     let entries = state
         .database
@@ -374,6 +383,15 @@ pub async fn skill_check_updates(
 /// 包内容变化会使既有信任指纹失效，技能回到未信任状态。
 #[tauri::command]
 pub async fn skill_update_from_source(
+    state: State<'_, AppState>,
+    skill_id: String,
+) -> Result<SkillUpdateApplyResult, String> {
+    skill_update_from_source_impl(state, skill_id)
+        .await
+        .map_err(String::from)
+}
+
+async fn skill_update_from_source_impl(
     state: State<'_, AppState>,
     skill_id: String,
 ) -> ChatV2Result<SkillUpdateApplyResult> {

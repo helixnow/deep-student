@@ -204,6 +204,9 @@ fn validate_forget_target(
 
 fn export_manifest(args: ExportArgs) -> Result<Value, String> {
     let mut builder = TaskAuditManifestBuilder::new(args.task_id);
+    // Note: the tool-facing export path never calls
+    // `verified_against_backend_session_ledger`; caller-supplied manifests
+    // must stay non-authoritative.
     for handle in args.object_handles {
         builder.add_object_handle(handle)?;
     }
@@ -224,6 +227,58 @@ fn export_manifest(args: ExportArgs) -> Result<Value, String> {
     }
     builder.change_coverage(args.change_coverage);
     builder.build()?.export_value()
+}
+
+/// 关键路径写入保证：把导出的审计清单原子落盘到会话 artifacts 根
+/// （`task-audit/<taskId>-<ts>.json`，先写临时文件再 rename）。
+/// 返回相对路径；任何失败都返回 Err —— 调用方按 fail-closed 处理，
+/// 不允许「仅内存返回、磁盘无痕」的导出成功。
+fn persist_manifest_export(
+    ctx: &ExecutionContext,
+    task_id: &str,
+    manifest: &Value,
+) -> Result<String, String> {
+    let window = ctx
+        .tauri_window
+        .as_ref()
+        .ok_or_else(|| "Tauri window unavailable; cannot persist audit manifest".to_string())?;
+    let artifact =
+        crate::chat_v2::runtime_roots::artifact_root(window.app_handle(), &ctx.session_id, true)?;
+    let dir = artifact.path.join("task-audit");
+    fs::create_dir_all(&dir)
+        .map_err(|error| format!("failed to create task-audit directory: {error}"))?;
+
+    let safe_task_id: String = task_id
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .take(96)
+        .collect();
+    let file_name = format!(
+        "{}-{}.json",
+        if safe_task_id.is_empty() {
+            "task"
+        } else {
+            safe_task_id.as_str()
+        },
+        chrono::Utc::now().timestamp_millis()
+    );
+    let serialized = serde_json::to_vec_pretty(manifest)
+        .map_err(|error| format!("failed to serialize audit manifest: {error}"))?;
+    let final_path = dir.join(&file_name);
+    let tmp_path = dir.join(format!("{file_name}.tmp"));
+    fs::write(&tmp_path, &serialized)
+        .map_err(|error| format!("failed to write audit manifest: {error}"))?;
+    if let Err(error) = fs::rename(&tmp_path, &final_path) {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(format!("failed to finalize audit manifest write: {error}"));
+    }
+    Ok(format!("task-audit/{file_name}"))
 }
 
 fn forget_lineage(args: ForgetArgs, ctx: &ExecutionContext) -> Result<Value, String> {
@@ -371,7 +426,24 @@ impl ToolExecutor for TaskAuditExecutor {
         let started = Instant::now();
         ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
         let result = match strip_tool_namespace(&call.name) {
-            tool_names::EXPORT => parse_args(&call.arguments).and_then(export_manifest),
+            tool_names::EXPORT => parse_args(&call.arguments).and_then(|args: ExportArgs| {
+                let task_id = args.task_id.clone();
+                let mut manifest = export_manifest(args)?;
+                // 写入保证（fail-closed）：清单必须同时落盘到会话 artifacts
+                // 根；落盘失败则整个导出失败，不返回未持久化的“成功”结果。
+                let relative_path = persist_manifest_export(ctx, &task_id, &manifest)
+                    .map_err(|error| format!("audit manifest persistence failed: {error}"))?;
+                if let Some(map) = manifest.as_object_mut() {
+                    map.insert(
+                        "persistedTo".to_string(),
+                        json!({
+                            "rootId": "artifacts",
+                            "relativePath": relative_path,
+                        }),
+                    );
+                }
+                Ok(manifest)
+            }),
             tool_names::FORGET => {
                 parse_args(&call.arguments).and_then(|args| forget_lineage(args, ctx))
             }

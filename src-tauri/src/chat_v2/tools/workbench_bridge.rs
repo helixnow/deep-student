@@ -474,13 +474,21 @@ pub async fn acr_bridge_call(
             }
         }
         WaitOutcome::ChannelClosed => {
-            cancel_on_drop.disarm();
             log::warn!("[workbench_bridge] response channel closed (corr={})", corr);
             emit_bridge_cancel(ctx.window_ref(), &cancel_payload, "response channel closed");
-            Err(format!(
-                "RESULT_UNKNOWN: ACR bridge response channel closed after request submission (corr={})",
-                corr
-            ))
+            // 与超时/取消同策略：先做有界 drain，晚到的权威回执仍可能经
+            // 广播通道补投；直接放弃会把可确认结果误报成 RESULT_UNKNOWN。
+            let drained = drain_terminal_response(&mut rx).await;
+            cancel_on_drop.disarm();
+            match drained {
+                WaitOutcome::Response(val) => {
+                    parse_terminal_response(val, &corr, &bridge_token, command)
+                }
+                _ => Err(format!(
+                    "RESULT_UNKNOWN: ACR bridge response channel closed after request submission (corr={})",
+                    corr
+                )),
+            }
         }
         WaitOutcome::Cancelled => {
             log::info!("[workbench_bridge] cancelled (corr={})", corr);
@@ -491,8 +499,11 @@ pub async fn acr_bridge_call(
                 WaitOutcome::Response(val) => {
                     parse_terminal_response(val, &corr, &bridge_token, command)
                 }
+                // 用户主动取消且无权威回执：返回结构化 CANCELLED（文件头
+                // 契约「取消 → CANCELLED」）；resultUnknown 语义并入消息，
+                // 提示调用方先重读目标状态再决定重试。
                 _ => Err(format!(
-                    "RESULT_UNKNOWN: ACR cancellation had no terminal receipt during {}ms drain (corr={})",
+                    "CANCELLED: ACR bridge call cancelled; no terminal receipt during {}ms drain, result unknown — re-observe before retrying (corr={})",
                     CANCEL_DRAIN_MS, corr
                 )),
             }

@@ -337,6 +337,21 @@ pub(crate) fn expand_path(path: &str) -> PathBuf {
 // Tauri 命令
 // ============================================================================
 
+/// 单个 SKILL.md 内容上限（编辑/创建路径门禁；zip 路径已有
+/// `MAX_SKILL_PACKAGE_ZIP_BYTES` 包级上限）
+pub(crate) const MAX_SKILL_FILE_BYTES: usize = 2 * 1024 * 1024;
+
+fn validate_skill_file_size(content: &str) -> ChatV2Result<()> {
+    if content.len() > MAX_SKILL_FILE_BYTES {
+        return Err(ChatV2Error::InvalidInput(format!(
+            "Skill file too large ({} bytes > {} bytes)",
+            content.len(),
+            MAX_SKILL_FILE_BYTES
+        )));
+    }
+    Ok(())
+}
+
 /// 列出 skills 目录中的子目录
 ///
 /// ## 参数
@@ -348,7 +363,13 @@ pub(crate) fn expand_path(path: &str) -> PathBuf {
 /// ## 安全
 /// - 验证路径在允许的 skills 目录范围内
 #[tauri::command]
-pub async fn skill_list_directories(path: String) -> ChatV2Result<Vec<SkillDirectoryEntry>> {
+pub async fn skill_list_directories(path: String) -> Result<Vec<SkillDirectoryEntry>, String> {
+    skill_list_directories_impl(path)
+        .await
+        .map_err(String::from)
+}
+
+async fn skill_list_directories_impl(path: String) -> ChatV2Result<Vec<SkillDirectoryEntry>> {
     let expanded_path = expand_path(&path);
     debug!("[Skills] 列出目录: {:?}", expanded_path);
 
@@ -537,7 +558,13 @@ pub(crate) fn canonicalize_skill_package_root(raw_path: &str) -> ChatV2Result<Pa
 }
 
 #[tauri::command]
-pub async fn skill_list_package_files(path: String) -> ChatV2Result<Vec<SkillPackageFileEntry>> {
+pub async fn skill_list_package_files(path: String) -> Result<Vec<SkillPackageFileEntry>, String> {
+    skill_list_package_files_impl(path)
+        .await
+        .map_err(String::from)
+}
+
+async fn skill_list_package_files_impl(path: String) -> ChatV2Result<Vec<SkillPackageFileEntry>> {
     let expanded_path = expand_path(&path);
     debug!("[Skills] list package files: {:?}", expanded_path);
 
@@ -561,7 +588,11 @@ pub async fn skill_list_package_files(path: String) -> ChatV2Result<Vec<SkillPac
 
 /// Read a SKILL.md file after validating it is under an allowed skills path.
 #[tauri::command]
-pub async fn skill_read_file(path: String) -> ChatV2Result<SkillFileContent> {
+pub async fn skill_read_file(path: String) -> Result<SkillFileContent, String> {
+    skill_read_file_impl(path).await.map_err(String::from)
+}
+
+async fn skill_read_file_impl(path: String) -> ChatV2Result<SkillFileContent> {
     let expanded_path = expand_path(&path);
     debug!("[Skills] 读取文件: {:?}", expanded_path);
 
@@ -612,7 +643,19 @@ pub async fn skill_create(
     base_path: String,
     skill_id: String,
     content: String,
+) -> Result<SkillFileContent, String> {
+    skill_create_impl(base_path, skill_id, content)
+        .await
+        .map_err(String::from)
+}
+
+async fn skill_create_impl(
+    base_path: String,
+    skill_id: String,
+    content: String,
 ) -> ChatV2Result<SkillFileContent> {
+    validate_skill_file_size(&content)?;
+
     // 验证 skill_id 格式（只允许字母、数字、连字符、下划线）
     if !skill_id
         .chars()
@@ -693,7 +736,13 @@ pub async fn skill_create(
 /// ## 安全
 /// - 验证路径在允许的 skills 目录范围内，防止路径遍历攻击
 #[tauri::command]
-pub async fn skill_update(path: String, content: String) -> ChatV2Result<SkillFileContent> {
+pub async fn skill_update(path: String, content: String) -> Result<SkillFileContent, String> {
+    skill_update_impl(path, content).await.map_err(String::from)
+}
+
+async fn skill_update_impl(path: String, content: String) -> ChatV2Result<SkillFileContent> {
+    validate_skill_file_size(&content)?;
+
     let expanded_path = expand_path(&path);
     debug!("[Skills] 更新文件: {:?}", expanded_path);
 
@@ -740,7 +789,11 @@ pub async fn skill_update(path: String, content: String) -> ChatV2Result<SkillFi
 /// - 验证路径在允许的 skills 目录范围内，防止路径遍历攻击
 /// - 额外检查目录中必须有 SKILL.md 文件
 #[tauri::command]
-pub async fn skill_delete(path: String) -> ChatV2Result<()> {
+pub async fn skill_delete(path: String) -> Result<(), String> {
+    skill_delete_impl(path).await.map_err(String::from)
+}
+
+async fn skill_delete_impl(path: String) -> ChatV2Result<()> {
     let expanded_path = expand_path(&path);
     debug!("[Skills] 删除目录: {:?}", expanded_path);
 
@@ -2209,6 +2262,17 @@ pub(crate) async fn install_skill_package_from_zip_bytes(
 /// `skill_install` executor 共用；本 command 只负责把 zip 文件读为字节。
 #[tauri::command]
 pub async fn skill_import_zip(
+    zip_path: String,
+    base_path: String,
+    overwrite: bool,
+    dry_run: Option<bool>,
+) -> Result<SkillImportZipResult, String> {
+    skill_import_zip_impl(zip_path, base_path, overwrite, dry_run)
+        .await
+        .map_err(String::from)
+}
+
+async fn skill_import_zip_impl(
     zip_path: String,
     base_path: String,
     overwrite: bool,

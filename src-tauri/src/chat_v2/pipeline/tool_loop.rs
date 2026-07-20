@@ -836,7 +836,12 @@ impl ChatV2Pipeline {
                         break;
                     }
 
-                    let err_str = format!("{:?}", call_result.as_ref().err().unwrap());
+                    // 🔧 P0 修复：is_err 守卫下用 match 取错误，替换掉脆弱的
+                    // `call_result.as_ref().err().unwrap()` 风格
+                    let err_str = match call_result.as_ref() {
+                        Err(err) => format!("{:?}", err),
+                        Ok(_) => break,
+                    };
                     if !is_retryable_llm_error(&err_str) {
                         break;
                     }
@@ -854,14 +859,19 @@ impl ChatV2Pipeline {
                         retry,
                         LLM_MAX_RETRIES,
                     );
-                    tokio::time::sleep(Duration::from_millis(delay)).await;
-
-                    if ctx
-                        .cancellation_token
-                        .as_ref()
-                        .map(|t| t.is_cancelled())
-                        .unwrap_or(false)
-                    {
+                    // 🔧 P0 修复：退避 sleep 与取消令牌 select，用户点停止后
+                    // 不再需要等完 1s/2s 指数退避才能响应取消
+                    let cancelled_during_backoff =
+                        if let Some(token) = ctx.cancellation_token.as_ref() {
+                            tokio::select! {
+                                _ = token.cancelled() => true,
+                                _ = tokio::time::sleep(Duration::from_millis(delay)) => false,
+                            }
+                        } else {
+                            tokio::time::sleep(Duration::from_millis(delay)).await;
+                            false
+                        };
+                    if cancelled_during_backoff {
                         break;
                     }
 
@@ -1055,11 +1065,20 @@ impl ChatV2Pipeline {
                         );
                     }
 
-                    // 调用 adapter 的错误处理
-                    adapter.on_error(&e.to_string());
-                    log::error!("[ChatV2::pipeline] LLM call failed: {}", e);
+                    let error_message = e.to_string();
 
-                    // 记录失败的 LLM 调用
+                    // 🔧 P0 修复：外部取消优先于错误上报。
+                    // 用户点停止时，进行中的流常以连接类错误收场（或重试循环
+                    // 检测到取消后 break 落到本分支）。此时必须映射为 Cancelled
+                    // 走取消收尾（保存部分内容 + emit_stream_cancelled），
+                    // 而不是误报 stream_error 吓到用户。
+                    let externally_cancelled = ctx
+                        .cancellation_token
+                        .as_ref()
+                        .map(|t| t.is_cancelled())
+                        .unwrap_or(false);
+
+                    // 记录失败/取消的 LLM 调用（部分用量仍需入账）
                     // 🔧 修复：优先使用解析后的模型显示名称，避免显示配置 ID
                     let model_for_usage = ctx
                         .model_display_name
@@ -1086,10 +1105,50 @@ impl ChatV2Pipeline {
                         Some(ctx.session_id.clone()),
                         None,
                         false,
-                        Some(e.to_string()),
+                        Some(if externally_cancelled {
+                            format!("cancelled by user (original error: {})", error_message)
+                        } else {
+                            error_message.clone()
+                        }),
                     );
 
-                    let error_message = e.to_string();
+                    if externally_cancelled {
+                        log::info!(
+                            "[ChatV2::pipeline] LLM round ended after external cancellation, mapping to Cancelled (original error: {})",
+                            error_message
+                        );
+                        // 与内部取消路径（llm_stream_cancelled）保持一致：
+                        // 捞回本轮部分内容，供外层取消收尾保存
+                        let partial_content = adapter.get_accumulated_content();
+                        let partial_reasoning = adapter.get_accumulated_reasoning();
+                        let has_partial_output = !partial_content.is_empty()
+                            || partial_reasoning
+                                .as_ref()
+                                .is_some_and(|reasoning| !reasoning.is_empty());
+                        if has_partial_output {
+                            ctx.final_content = partial_content;
+                            ctx.final_reasoning = partial_reasoning;
+                            ctx.streaming_thinking_block_id = adapter.get_thinking_block_id();
+                            ctx.streaming_content_block_id = adapter.get_content_block_id();
+                            if ctx.has_interleaved_blocks() {
+                                ctx.collect_round_blocks(
+                                    adapter.get_thinking_block_id(),
+                                    adapter.get_accumulated_reasoning(),
+                                    adapter.get_content_block_id(),
+                                    Some(ctx.final_content.clone()),
+                                    &ctx.assistant_message_id.clone(),
+                                );
+                            }
+                        }
+                        adapter.finalize_all();
+                        ctx.pending_reasoning_for_api = None;
+                        return Err(ChatV2Error::Cancelled);
+                    }
+
+                    // 调用 adapter 的错误处理（仅真实错误；取消不发 error 块）
+                    adapter.on_error(&error_message);
+                    log::error!("[ChatV2::pipeline] LLM call failed: {}", error_message);
+
                     if error_message.to_ascii_lowercase().contains("timed out") {
                         return Err(ChatV2Error::Timeout(error_message));
                     }
@@ -2578,7 +2637,12 @@ impl ChatV2Pipeline {
         }
 
         let is_memory_tool = short_name.starts_with("memory_");
-        let is_rag_tool = short_name.starts_with("rag_");
+        // 🔧 P0-2：rag_enabled 开关必须覆盖所有知识库检索工具。
+        // unified_search / multimodal_search 与 rag_search 同走 VFS 检索管线，
+        // 仅匹配 "rag_" 前缀会导致用户关闭 RAG 后仍可通过前两者检索知识库。
+        // web_search 不受 rag_enabled 控制，由 web_search_enabled 单独把关。
+        let is_rag_tool = short_name.starts_with("rag_")
+            || matches!(short_name, "unified_search" | "multimodal_search");
         let is_web_search_tool = short_name == "web_search";
 
         if is_memory_tool && !memory_enabled {
@@ -2808,7 +2872,32 @@ impl ChatV2Pipeline {
             }
         }
 
-        if approval_manager_required(effective_sensitivity) {
+        // trusted automation: begin —— 预授权旁路（无人值守定时任务）。
+        // 安全判定全部集中在 headless::is_trusted_automation_preauthorized：仅当
+        // 会话安装了 TrustedAutomationSessionGuard（headless runner 显式安装的
+        // pinned profile），且本次调用以【原始参数】重新通过 profile 全部校验
+        // （工具白名单、root 读写、shell 前缀/操作符、网络域、输出预算、回滚
+        // 证据）时才返回 true；任何校验不满足或异常一律 false → 走下方原有
+        // ApprovalManager 人工审批路径（fail-closed）。普通交互会话无 profile，
+        // 恒为 false，此段对非自动化路径零行为变化。
+        let trusted_automation_preauthorized =
+            crate::chat_v2::headless::is_trusted_automation_preauthorized(
+                session_id,
+                &tool_call.name,
+                &tool_call.arguments,
+            );
+        if trusted_automation_preauthorized && approval_manager_required(effective_sensitivity) {
+            log::info!(
+                "[ChatV2::pipeline] trusted_automation_preauthorized: skipping ApprovalManager for tool '{}' (session={}, tool_call_id={}, sensitivity={:?})",
+                tool_call.name,
+                session_id,
+                tool_call.id,
+                effective_sensitivity
+            );
+        }
+        // trusted automation: end（下一行条件中的 !trusted_automation_preauthorized
+        // 是本次改造对既有审批判定的唯一侵入点）
+        if approval_manager_required(effective_sensitivity) && !trusted_automation_preauthorized {
             let Some(approval_manager) = &self.approval_manager else {
                 log::error!(
                     "[ChatV2::pipeline] Refusing {:?} tool '{}' because ApprovalManager is unavailable",
@@ -3086,7 +3175,28 @@ impl ChatV2Pipeline {
 
         // 🆕 委托给 ExecutorRegistry 执行
         match self.executor_registry.execute(tool_call, &ctx).await {
-            Ok(result) => Ok(result),
+            // trusted automation: begin —— 预授权执行的可审计标记。
+            // 仅当本次调用经 trusted profile 预授权跳过了人工审批时，在持久化的
+            // 工具输出（JSON 对象时）补写 trusted_automation_preauthorized=true，
+            // 供事后审计区分"用户点了允许"与"profile 预授权放行"。
+            Ok(mut result) => {
+                if trusted_automation_preauthorized {
+                    if let Some(output) = result.output.as_object_mut() {
+                        output
+                            .entry("trusted_automation_preauthorized".to_string())
+                            .or_insert(json!(true));
+                    }
+                    log::info!(
+                        "[ChatV2::pipeline] tool '{}' executed under trusted_automation_preauthorized (session={}, tool_call_id={}, success={})",
+                        tool_call.name,
+                        session_id,
+                        tool_call.id,
+                        result.success
+                    );
+                }
+                Ok(result)
+            }
+            // trusted automation: end
             Err(error_msg) => {
                 ctx.emitter.emit_error_with_meta(
                     event_types::TOOL_CALL,

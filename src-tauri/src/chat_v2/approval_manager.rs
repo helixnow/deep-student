@@ -564,48 +564,82 @@ impl ApprovalManager {
         }
     }
 
-    /// 取消待审批（超时或取消时调用）
-    pub fn cancel_with_session(&self, session_id: &str, tool_call_id: &str) {
+    /// 取消待审批（超时或取消时调用）。
+    ///
+    /// 与 `reject_all_pending` 对齐：若等待方仍在等待，会立刻收到一个明确的
+    /// `approved=false, reason=CANCELLED_REASON` 决策，而不是 `RecvError`
+    ///（后者会被 Pipeline 归为「审批通道异常关闭」，取消语义丢失）。
+    /// 等待方已退出（审批超时/流取消后由 Pipeline 回调清理）时发送自然落空，
+    /// 仅做 pending 表清理。返回是否命中并移除了一个挂起审批。
+    pub fn cancel_with_session(&self, session_id: &str, tool_call_id: &str) -> bool {
         let pending_key = Self::make_pending_key(session_id, tool_call_id);
-        self.pending
+        self.cancel_pending_key(&pending_key)
+    }
+
+    /// 明确的取消决策 reason（前端可据此与「用户拒绝」区分文案）。
+    pub const CANCELLED_REASON: &'static str = "approval_cancelled";
+
+    /// 移除一个 pending 项并向仍在等待的接收方送达取消决策。
+    fn cancel_pending_key(&self, pending_key: &str) -> bool {
+        let tx = self
+            .pending
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                 poisoned.into_inner()
             })
-            .remove(&pending_key);
+            .remove(pending_key);
         self.pending_scope_keys
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                 poisoned.into_inner()
             })
-            .remove(&pending_key);
+            .remove(pending_key);
         self.pending_setting_keys
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                 poisoned.into_inner()
             })
-            .remove(&pending_key);
-        self.pending_tool_names
+            .remove(pending_key);
+        let tool_name = self
+            .pending_tool_names
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                 poisoned.into_inner()
             })
-            .remove(&pending_key);
+            .remove(pending_key);
         self.pending_remember_disabled
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                 poisoned.into_inner()
             })
-            .remove(&pending_key);
+            .remove(pending_key);
         self.pending_session_only
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(&pending_key);
+            .remove(pending_key);
+
+        let Some(tx) = tx else {
+            return false;
+        };
+
+        // pending_key 格式：`{session_id}\n{tool_call_id}`（见 make_pending_key）
+        let (session_id, tool_call_id) = pending_key
+            .split_once('\n')
+            .unwrap_or(("", pending_key));
+        let response = ApprovalResponse::rejected(
+            session_id.to_string(),
+            tool_call_id.to_string(),
+            tool_name.unwrap_or_default(),
+            Some(Self::CANCELLED_REASON.to_string()),
+        );
+        // 接收方可能已退出（超时/流取消）；发送落空不影响取消结果
+        let _ = tx.send(response);
+        true
     }
 
     /// 🆕 B2（一键断电）：以拒绝结果 drain 全部挂起审批。
@@ -704,7 +738,13 @@ impl ApprovalManager {
         rejected
     }
 
-    pub fn cancel(&self, tool_call_id: &str) {
+    /// 无 session 维度的取消（旧前端命令入口）。
+    ///
+    /// 单一命中时行为与 `cancel_with_session` 相同（含向等待方送达取消决策）。
+    /// 命中多个 pending 时必然分属不同会话（同会话同 id 是同一个 key），
+    /// 拒绝宽匹配取消并返回 `false` —— 调用方（handlers/前端）应改用带
+    /// session_id 的 `cancel_with_session` 精确取消。
+    pub fn cancel(&self, tool_call_id: &str) -> bool {
         // 🔧 配合 make_pending_key 的 `\n` 分隔符；旧 `:{}` suffix 已失效
         let suffix = format!("\n{}", tool_call_id);
         let pending_keys: Vec<String> = self
@@ -720,13 +760,12 @@ impl ApprovalManager {
             .collect();
 
         if pending_keys.is_empty() {
-            return;
+            return false;
         }
 
         // 🔒 02 号报告 P2-3：tool_call_id 不保证跨会话唯一。命中多个 pending
-        // 必然意味着分属不同会话（同会话同 id 是同一个 key），此时拒绝宽匹配取消，
-        // 避免一个会话的取消误清另一会话的审批（fail-safe：留待超时或
-        // `cancel_with_session` 精确处理）。
+        // 时拒绝宽匹配取消，避免一个会话的取消误清另一会话的审批
+        //（fail-safe：留待超时或 `cancel_with_session` 精确处理）。
         if pending_keys.len() > 1 {
             log::warn!(
                 "[ApprovalManager] cancel('{}') matched {} pending approvals across sessions; \
@@ -734,47 +773,10 @@ impl ApprovalManager {
                 tool_call_id,
                 pending_keys.len()
             );
-            return;
+            return false;
         }
 
-        let mut pending = self.pending.lock().unwrap_or_else(|poisoned| {
-            log::error!("[ApprovalManager] Mutex poisoned (pending)! Attempting recovery");
-            poisoned.into_inner()
-        });
-        let mut scope = self.pending_scope_keys.lock().unwrap_or_else(|poisoned| {
-            log::error!("[ApprovalManager] Mutex poisoned (scope_keys)! Attempting recovery");
-            poisoned.into_inner()
-        });
-        let mut setting = self.pending_setting_keys.lock().unwrap_or_else(|poisoned| {
-            log::error!("[ApprovalManager] Mutex poisoned (setting_keys)! Attempting recovery");
-            poisoned.into_inner()
-        });
-        let mut tool_names = self.pending_tool_names.lock().unwrap_or_else(|poisoned| {
-            log::error!("[ApprovalManager] Mutex poisoned (tool_names)! Attempting recovery");
-            poisoned.into_inner()
-        });
-        let mut remember_disabled =
-            self.pending_remember_disabled
-                .lock()
-                .unwrap_or_else(|poisoned| {
-                    log::error!(
-                        "[ApprovalManager] Mutex poisoned (remember_disabled)! Attempting recovery"
-                    );
-                    poisoned.into_inner()
-                });
-        let mut session_only = self
-            .pending_session_only
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-        for key in pending_keys {
-            pending.remove(&key);
-            scope.remove(&key);
-            setting.remove(&key);
-            tool_names.remove(&key);
-            remember_disabled.remove(&key);
-            session_only.remove(&key);
-        }
+        self.cancel_pending_key(&pending_keys[0])
     }
 
     /// 检查工具是否已被记住（自动批准/拒绝）
@@ -1267,7 +1269,7 @@ mod tests {
         assert_eq!(manager.pending_count(), 2);
 
         // 命中两个会话 → 拒绝宽匹配取消
-        manager.cancel("call_dup");
+        assert!(!manager.cancel("call_dup"));
         assert_eq!(
             manager.pending_count(),
             2,
@@ -1275,11 +1277,60 @@ mod tests {
         );
 
         // 带 session 的取消精确生效
-        manager.cancel_with_session("sess_a", "call_dup");
+        assert!(manager.cancel_with_session("sess_a", "call_dup"));
         assert_eq!(manager.pending_count(), 1);
 
         // 只剩单一命中时，宽匹配取消恢复可用
-        manager.cancel("call_dup");
+        assert!(manager.cancel("call_dup"));
+        assert_eq!(manager.pending_count(), 0);
+    }
+
+    /// 🔧 P0（分区 J 第二轮）：取消必须向仍在等待的接收方送达明确的取消
+    /// 决策（approved=false + CANCELLED_REASON），而不是丢弃 Sender 让等待方
+    /// 收到 RecvError 后被误报为「审批通道异常关闭」。
+    #[tokio::test]
+    async fn cancel_delivers_explicit_cancellation_decision_to_waiter() {
+        let manager = ApprovalManager::new();
+        let rx = manager.register_with_scope(
+            "sess_c",
+            "call_c",
+            "note_set",
+            &serde_json::json!({"noteId": "n1"}),
+        );
+        assert!(manager.cancel("call_c"));
+        let resp = rx.await.expect("waiter must receive explicit cancellation");
+        assert!(!resp.approved);
+        assert_eq!(
+            resp.reason.as_deref(),
+            Some(ApprovalManager::CANCELLED_REASON)
+        );
+        assert_eq!(resp.session_id, "sess_c");
+        assert_eq!(resp.tool_call_id, "call_c");
+        assert_eq!(resp.tool_name, "note_set");
+        assert_eq!(manager.pending_count(), 0);
+
+        // 未命中时返回 false
+        assert!(!manager.cancel("call_missing"));
+        assert!(!manager.cancel_with_session("sess_c", "call_c"));
+    }
+
+    #[tokio::test]
+    async fn cancel_with_session_delivers_cancellation_decision() {
+        let manager = ApprovalManager::new();
+        let rx = manager.register_with_scope(
+            "sess_d",
+            "call_d",
+            "file_write",
+            &serde_json::json!({"path": "a.txt"}),
+        );
+        assert!(manager.cancel_with_session("sess_d", "call_d"));
+        let resp = rx.await.expect("waiter must receive explicit cancellation");
+        assert!(!resp.approved);
+        assert_eq!(
+            resp.reason.as_deref(),
+            Some(ApprovalManager::CANCELLED_REASON)
+        );
+        assert_eq!(resp.tool_name, "file_write");
         assert_eq!(manager.pending_count(), 0);
     }
 

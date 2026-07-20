@@ -13,7 +13,10 @@
 //! 所有命令以 `chat_v2_` 前缀命名，以区分旧版聊天命令。
 //!
 //! ## 错误处理
-//! 所有命令返回 `Result<T, String>`，使用 `ChatV2Error::to_string()` 格式化错误。
+//! 所有命令返回 `Result<T, String>`；错误统一为 `ChatV2Error` 经
+//! `From<ChatV2Error> for String` 产出的 `{"code":"...","message":"..."}` JSON
+//! 字符串（见 `error.rs::to_command_error`）。禁止直接返回
+//! `ChatV2Error::to_string()` 明文或裸 `format!` 字符串。
 //!
 //! ## 资源操作
 //! 资源相关操作已迁移至 VFS 模块（vfs_* 命令），不再使用旧的 resource_* 命令。
@@ -23,6 +26,7 @@ pub mod ask_user_handlers; // 🆕 用户提问命令处理器
 pub mod block_actions;
 pub mod canvas_handlers;
 pub mod group_handlers;
+pub mod load_messages_page;
 pub mod load_session;
 pub mod manage_session;
 pub mod migration;
@@ -48,6 +52,7 @@ pub use group_handlers::{
     chat_v2_create_group, chat_v2_delete_group, chat_v2_get_group, chat_v2_list_groups,
     chat_v2_move_session_to_group, chat_v2_reorder_groups, chat_v2_update_group,
 };
+pub use load_messages_page::chat_v2_load_messages_page;
 pub use load_session::chat_v2_load_session;
 pub use manage_session::{
     chat_v2_archive_session, chat_v2_branch_session, chat_v2_count_sessions,
