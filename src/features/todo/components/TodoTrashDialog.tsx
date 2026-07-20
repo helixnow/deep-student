@@ -30,7 +30,7 @@ import {
   Trash,
   CheckSquare,
 } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { AnimatedListRow } from '@/components/ui/AnimatedListRow';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
@@ -118,26 +118,26 @@ const TrashRow: React.FC<TrashRowProps> = ({
           <span className="hidden text-xs text-[color:hsl(var(--destructive))] sm:inline">
             {t('todo:trash.purgeInlineHint')}
           </span>
-          <NotionButton
+          <DsButton
             variant="danger"
             size="sm"
             onClick={onConfirmPurge}
             className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem]"
           >
             {purgeLabel}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={onCancelPurge}
             className="!px-2 !py-1 text-sm [@media(pointer:coarse)]:min-h-[2.5rem]"
           >
             {t('common:actions.cancel')}
-          </NotionButton>
+          </DsButton>
         </div>
       ) : (
         <div className="flex flex-shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={onRestore}
@@ -147,8 +147,8 @@ const TrashRow: React.FC<TrashRowProps> = ({
           >
             <ArrowCounterClockwise size={13} />
             <span>{restoreLabel}</span>
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -158,7 +158,7 @@ const TrashRow: React.FC<TrashRowProps> = ({
             className="!p-1.5 [@media(pointer:coarse)]:!p-3 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
           >
             <Trash size={13} />
-          </NotionButton>
+          </DsButton>
         </div>
       )}
     </div>
@@ -297,7 +297,7 @@ const TrashSections: React.FC = () => {
 
       {trashHasMore && (
         <div className="flex justify-center pt-1">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             disabled={isLoadingTrash}
@@ -313,7 +313,7 @@ const TrashSections: React.FC = () => {
             ) : (
               t('todo:trash.loadMore')
             )}
-          </NotionButton>
+          </DsButton>
         </div>
       )}
     </div>
@@ -341,7 +341,7 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
         <span className="hidden text-sm text-muted-foreground sm:inline">
           {t('todo:trash.emptyAllInlineHint')}
         </span>
-        <NotionButton
+        <DsButton
           variant="danger"
           size="sm"
           onClick={() => {
@@ -351,21 +351,21 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
           className="[@media(pointer:coarse)]:min-h-[2.5rem]"
         >
           {t('todo:trash.confirmEmptyAll')}
-        </NotionButton>
-        <NotionButton
+        </DsButton>
+        <DsButton
           variant="ghost"
           size="sm"
           onClick={() => setConfirming(false)}
           className="[@media(pointer:coarse)]:min-h-[2.5rem]"
         >
           {t('common:actions.cancel')}
-        </NotionButton>
+        </DsButton>
       </div>
     );
   }
 
   return (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="sm"
       disabled={isEmpty}
@@ -376,7 +376,7 @@ const TrashEmptyAllButton: React.FC<{ className?: string }> = ({ className }) =>
       )}
     >
       {t('todo:trash.emptyAll')}
-    </NotionButton>
+    </DsButton>
   );
 };
 
@@ -422,7 +422,7 @@ export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className
     >
       <header className="study-shell-toolbar flex min-h-14 shrink-0 items-center justify-between gap-3 px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-2">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="sm"
             iconOnly
@@ -431,7 +431,7 @@ export const TodoTrashWorkspace: React.FC<{ className?: string }> = ({ className
             title={t('todo:trash.back')}
           >
             <ArrowLeft size={16} />
-          </NotionButton>
+          </DsButton>
           <Trash size={18} weight="duotone" className="shrink-0 text-muted-foreground" />
           <div className="min-w-0">
             <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">

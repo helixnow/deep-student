@@ -7,7 +7,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FunnelSimple } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   AppMenu,
   AppMenuContent,
@@ -46,7 +46,7 @@ export const PriorityFilterMenu: React.FC = () => {
   return (
     <AppMenu>
       <AppMenuTrigger asChild>
-        <NotionButton
+        <DsButton
           variant="utility"
           size="sm"
           data-selected={Boolean(priorityFilter)}
@@ -64,7 +64,7 @@ export const PriorityFilterMenu: React.FC = () => {
               ? t(PRIORITY_CONFIG[priorityFilter].labelKey)
               : t('todo:filters.priority')}
           </span>
-        </NotionButton>
+        </DsButton>
       </AppMenuTrigger>
       <AppMenuContent align="end" width={180}>
         <AppMenuItem

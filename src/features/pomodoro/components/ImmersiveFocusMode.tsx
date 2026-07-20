@@ -13,7 +13,7 @@ import { RollingTime } from './RollingTime';
 /**
  * 沉浸式专注模式 —— 全屏覆盖视图
  *
- * 设计理念（对标 Forest / Tide / Flow）：
+ * 设计理念：
  * - 背景随主题（语义 token），不再硬编码暗色
  * - 双层"极光"呼吸光晕随阶段氛围色漂移（work = primary，short_break = success，
  *   long_break = info），阶段切换时颜色 800ms 平滑过渡；暂停时动画凝固
@@ -289,9 +289,32 @@ export const ImmersiveFocusMode: React.FC<{
     }
   }, [mode, status, start, pause, resume]);
 
+  // 放弃专注会写入 interrupted 记录；沉浸态也使用二次点击确认，避免大按钮误触。
+  const [confirmingStop, setConfirmingStop] = useState(false);
+  const stopConfirmTimerRef = useRef<number | null>(null);
   const handleStop = useCallback(() => {
+    if (mode === 'work' && !confirmingStop) {
+      setConfirmingStop(true);
+      if (stopConfirmTimerRef.current != null) window.clearTimeout(stopConfirmTimerRef.current);
+      stopConfirmTimerRef.current = window.setTimeout(() => {
+        stopConfirmTimerRef.current = null;
+        setConfirmingStop(false);
+      }, 5000);
+      return;
+    }
+    if (stopConfirmTimerRef.current != null) {
+      window.clearTimeout(stopConfirmTimerRef.current);
+      stopConfirmTimerRef.current = null;
+    }
+    setConfirmingStop(false);
     stop(true);
-  }, [stop]);
+  }, [mode, confirmingStop, stop]);
+  useEffect(() => () => {
+    if (stopConfirmTimerRef.current != null) window.clearTimeout(stopConfirmTimerRef.current);
+  }, []);
+  useEffect(() => {
+    setConfirmingStop(false);
+  }, [mode]);
 
   // 触屏：轻触屏幕空白处暂停/恢复（按钮/滑杆等交互元素除外；严格模式给 shake 反馈）
   const handleBackdropTap = useCallback(
@@ -378,7 +401,7 @@ export const ImmersiveFocusMode: React.FC<{
       exit={{ opacity: 0 }}
       transition={motionSafe({ type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] })}
       className={cn(
-        'fixed inset-0 z-modal flex flex-col items-center justify-center bg-background select-none',
+        'fixed inset-0 z-modal flex min-h-[100dvh] flex-col items-center justify-center bg-background select-none',
         !chromeVisible && 'cursor-none'
       )}
       style={{ '--focus-accent': focusAccent } as React.CSSProperties}
@@ -427,10 +450,10 @@ export const ImmersiveFocusMode: React.FC<{
 
       {/* 顶部栏（预留移动端安全区，避免刘海/状态栏遮挡） */}
       <div
-        className={cn('absolute top-0 left-0 right-0 flex items-center justify-between px-6 pb-4', chromeClass)}
+        className={cn('absolute left-0 right-0 top-0 flex items-start justify-between gap-2 px-3 pb-4 sm:px-6', chromeClass)}
         style={{ paddingTop: 'calc(1rem + var(--mobile-safe-area-top, 0px))' }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <span
             className="flex items-center gap-2 text-sm font-medium"
             style={{ color: mode === 'idle' ? undefined : 'var(--focus-accent)' }}
@@ -439,24 +462,24 @@ export const ImmersiveFocusMode: React.FC<{
             {modeInfo.label}
           </span>
           {completedPomodorosToday > 0 && (
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+            <span className="hidden rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground sm:inline">
               {t('pomodoro.stats.todayCount', { value: completedPomodorosToday })}
             </span>
           )}
           {streakDays > 1 && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+            <span className="hidden items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground sm:flex">
               <Flame size={12} weight="fill" className="text-warning" />
               {t('pomodoro.stats.streakDays', { value: streakDays, defaultValue: '连续专注 {{value}} 天' })}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
           {/* 噪音类型（开启时显示，点击循环切换音色） */}
           {noiseEnabled && (
             <button
               onClick={cycleNoiseType}
               // 触屏放大到 ≥44px 触控目标
-              className="px-2 py-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 rounded-lg text-xs text-muted-foreground bg-muted hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 motion-reduce:transition-none"
+              className="hidden rounded-lg bg-muted px-2 py-1 text-xs text-muted-foreground transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground min-[400px]:block motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3"
               title={t('pomodoro.controls.noiseCycle')}
               aria-label={t('pomodoro.controls.noiseCycle')}
             >
@@ -492,7 +515,7 @@ export const ImmersiveFocusMode: React.FC<{
                 noiseEngine.setVolume(volume);
               }}
               // 触屏加高命中区（视觉轨道由原生渲染居中，盒高不影响观感）并加宽便于精调
-              className="h-1 w-20 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-28 cursor-pointer accent-primary"
+              className="hidden h-1 w-20 cursor-pointer accent-primary min-[480px]:block [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-28"
               aria-label={t('pomodoro.settings.noiseVolume')}
             />
           )}
@@ -509,7 +532,7 @@ export const ImmersiveFocusMode: React.FC<{
       </div>
 
       {/* 中央计时器区域（入场微缩放上浮） */}
-      <div className="pomodoro-center-enter relative flex flex-col items-center gap-8">
+      <div className="pomodoro-center-enter relative flex flex-col items-center gap-4 sm:gap-8">
         {/* 圆形进度 + 时间 */}
         <div
           className="relative"
@@ -539,9 +562,9 @@ export const ImmersiveFocusMode: React.FC<{
 
         {/* 当前任务 */}
         {currentTaskTitle && (
-          <div className="text-center max-w-md px-4">
+          <div className="max-w-md px-4 text-center">
             <p className="text-muted-foreground/70 text-xs uppercase tracking-widest mb-1">{t('pomodoro.immersive.currentTask')}</p>
-            <p className="text-foreground/90 text-lg font-medium truncate" title={currentTaskTitle}>
+            <p className="line-clamp-2 break-words text-lg font-medium text-foreground/90" title={currentTaskTitle}>
               {currentTaskTitle}
             </p>
           </div>
@@ -554,9 +577,18 @@ export const ImmersiveFocusMode: React.FC<{
             {mode !== 'idle' && (
               <button
                 onClick={handleStop}
-                className={cn(secondaryControlClass, 'hover:text-destructive hover:bg-destructive/10')}
-                title={t('pomodoro.controls.stop')}
-                aria-label={t('pomodoro.controls.stop')}
+                className={cn(
+                  secondaryControlClass,
+                  confirmingStop
+                    ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                    : 'hover:bg-destructive/10 hover:text-destructive',
+                )}
+                title={confirmingStop
+                  ? t('pomodoro.controls.abandonConfirm', '放弃本次专注？')
+                  : t('pomodoro.controls.stop')}
+                aria-label={confirmingStop
+                  ? t('pomodoro.controls.abandonConfirm', '放弃本次专注？')
+                  : t('pomodoro.controls.stop')}
               >
                 <Square size={20} />
               </button>
@@ -634,8 +666,12 @@ export const ImmersiveFocusMode: React.FC<{
           </div>
 
           {/* 严格模式 Space no-op 提示（固定高度避免布局跳动） */}
-          <div className="h-5 mt-3" aria-live="polite">
-            {strictHintVisible && (
+          <div className="mt-3 min-h-5 px-4 text-center" aria-live="polite">
+            {confirmingStop ? (
+              <p className="ui-rise-in text-xs text-destructive">
+                {t('pomodoro.controls.abandonConfirm', '放弃本次专注？')}
+              </p>
+            ) : strictHintVisible && (
               <p className="text-xs text-muted-foreground ui-rise-in">{t('pomodoro.strictHint')}</p>
             )}
           </div>

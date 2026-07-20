@@ -39,7 +39,7 @@ import {
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/shad/Select';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -492,7 +492,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     });
   }, [visibleRowIds]);
 
-  // Cmd/Ctrl 点选切换；Shift 从上一次点选位置做范围并选（对标 Finder/Todoist）
+  // Cmd/Ctrl 点选切换；Shift 从上一次点选位置做范围并选。
   const handleCheckToggle = useCallback((id: string, opts: { shift: boolean }) => {
     const ids = visibleRowIdsRef.current;
     setCheckedIds((prev) => {
@@ -731,7 +731,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     }
   })();
 
-  // 空态按视图差异化：清零类视图用庆祝语气（对齐 Todoist「Todoist Zero」体验）
+  // 空态按视图差异化：清零类视图用庆祝语气。
   const emptyState = (() => {
     if (filter.search.trim()) {
       return {
@@ -858,7 +858,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
           <div className="flex flex-shrink-0 items-center gap-2">
             {isSmallScreen ? (
               // 窄屏：搜索折叠为图标（≥44px 触控），点击展开下方内联输入行
-              <NotionButton
+              <DsButton
                 variant="utility"
                 size="icon"
                 iconOnly
@@ -873,7 +873,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 )}
               >
                 <MagnifyingGlass size={16} />
-              </NotionButton>
+              </DsButton>
             ) : (
               <div className="relative">
                 <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={14} />
@@ -910,7 +910,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               </SelectContent>
             </Select>
 
-            <NotionButton
+            <DsButton
               variant="utility"
               size="sm"
               onClick={() => setShowCompleted(!filter.showCompleted)}
@@ -924,7 +924,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
             >
               <CheckCircle size={14} />
               <span className="hidden sm:inline">{t('todo:filters.showCompleted')}</span>
-            </NotionButton>
+            </DsButton>
           </div>
 
           {/* 窄屏内联搜索行（flex-wrap 下换行占满整行；关闭时清空搜索词） */}
@@ -948,7 +948,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   className="h-10 w-full pl-9 pr-3 text-sm"
                 />
               </div>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -960,7 +960,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 className="!h-10 !w-10 flex-shrink-0"
               >
                 <X size={16} />
-              </NotionButton>
+              </DsButton>
             </div>
           )}
         </div>
@@ -1104,7 +1104,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                           </span>
                         </button>
                         {group.bucket === 'overdue' && (
-                          <NotionButton
+                          <DsButton
                             variant="utility"
                             size="sm"
                             disabled={reschedulingOverdue}
@@ -1114,7 +1114,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                           >
                             <CalendarPlus size={12} />
                             {t('todo:reschedule.allToToday')}
-                          </NotionButton>
+                          </DsButton>
                         )}
                       </div>
                       <InlineReveal open={!collapsed}>

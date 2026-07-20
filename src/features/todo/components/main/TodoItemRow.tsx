@@ -34,7 +34,7 @@ import {
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { haptics } from '@/hooks/mobile';
@@ -73,7 +73,7 @@ export const PriorityIcon: React.FC<{ priority: TodoPriority; className?: string
   return <Icon size={16} className={cn(config.color, className)} />;
 };
 
-// 勾选圈按优先级着色（Todoist 式一眼识别轻重；none 保持中性并在 hover 时转主色）
+// 勾选圈按优先级着色（一眼识别轻重；none 保持中性并在 hover 时转主色）
 const PRIORITY_CHECKBOX_CLASS: Record<TodoPriority, string> = {
   none: 'border-[color:var(--border-default)] group-hover:border-[color:hsl(var(--primary))] group-focus-within:border-[color:hsl(var(--primary))]',
   low: 'border-[color:hsl(var(--info))]/75',
@@ -826,7 +826,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
                   total: subtaskProgress.total,
                 })}
               >
-                {/* 迷你进度环：一眼读出子任务完成比例（Things 3 式） */}
+                {/* 迷你进度环：一眼读出子任务完成比例（式） */}
                 <svg width={12} height={12} viewBox="0 0 12 12" aria-hidden className="flex-shrink-0">
                   <circle cx="6" cy="6" r="4.75" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.25" />
                   <circle
@@ -933,7 +933,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
       )}
 
       {!isCompleted && (
-        <NotionButton
+        <DsButton
           variant="utility"
           size="icon"
           iconOnly
@@ -946,10 +946,10 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
           className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 !p-1.5 [@media(pointer:coarse)]:hidden"
         >
           <Play size={16} />
-        </NotionButton>
+        </DsButton>
       )}
 
-      <NotionButton
+      <DsButton
         variant="utility"
         size="icon"
         iconOnly
@@ -962,7 +962,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 !p-1.5 [@media(pointer:coarse)]:hidden hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
       >
         <Trash size={16} />
-      </NotionButton>
+      </DsButton>
       </div>
 
       {/* 行下方内联改期展开条（滑动「改期」动作 / 触屏路径） */}

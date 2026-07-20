@@ -464,7 +464,7 @@ const TodoListRow: React.FC<TodoListRowProps> = ({
                     onSetColor(color);
                   }}
                   className={cn(
-                    'flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors duration-150',
+                    'flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors duration-150 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
                     list.color === color
                       ? 'border-[color:var(--shell-navigation-foreground)]'
                       : 'border-transparent hover:border-[color:var(--shell-navigation-border)]',
@@ -487,7 +487,7 @@ const TodoListRow: React.FC<TodoListRowProps> = ({
             ) : null}
             <AppMenuSeparator />
             <AppMenuLabel>{t('todo:sidebar.listIcon')}</AppMenuLabel>
-            <div className="grid grid-cols-6 gap-1 px-3 pb-2 pt-0.5" role="group">
+            <div className="grid grid-cols-4 gap-1 px-3 pb-2 pt-0.5 sm:grid-cols-6" role="group">
               {LIST_ICON_OPTIONS.map(({ id, icon: IconOption }) => (
                 <button
                   key={id}
@@ -500,7 +500,7 @@ const TodoListRow: React.FC<TodoListRowProps> = ({
                     onSetIcon(id);
                   }}
                   className={cn(
-                    'flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-150',
+                    'flex h-6 w-6 items-center justify-center rounded-md transition-colors duration-150 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
                     list.icon === id
                       ? 'bg-[color:var(--interactive-selected)] text-foreground'
                       : 'text-muted-foreground hover:bg-[color:var(--interactive-hover)] hover:text-foreground',

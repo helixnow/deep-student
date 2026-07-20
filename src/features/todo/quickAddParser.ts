@@ -1,5 +1,5 @@
 /**
- * Todo 快速添加自然语言解析（Todoist 级）
+ * Todo 快速添加自然语言解析
  *
  * 从输入文本中识别日期、时间、优先级、重复规则、提醒、标签、目标清单与预估时长
  * token，返回剔除 token 后的标题。
@@ -9,7 +9,7 @@
  *         today / tomorrow / monday / next monday / next week /
  *         jul 30 / july 30th / 30 jul / in 3 days / in 2 weeks
  *   时间：HH:MM / N点(半|一刻|三刻|N分) / 上午|下午|晚上N点 / 3pm / 3:30pm
- *   优先级：!紧急 / !高 / !中 / !低（半角或全角叹号）/ p1~p4（Todoist 惯例：p1=urgent p4=low）
+ *   优先级：!紧急 / !高 / !中 / !低（半角或全角叹号）/ p1~p4（p1=urgent，p4=low）
  *   重复：每天 / 每周 / 每周X / 每周一三五 / 每N天 / 每月 / 每年 / 每个工作日 /
  *         daily / weekly / every 2 weeks ...
  *   提醒：提醒我 / !remind / remind me（结合解析出的日期时间，输出 YYYY-MM-DDTHH:MM，
@@ -383,7 +383,7 @@ function matchDate(text: string, now: Date): DateMatch | null {
     }
   }
 
-  // next week（= 下周一，Todoist 语义）/ 下周（无星期后缀）
+  // next week（= 下周一）/ 下周（无星期后缀）
   const nextWeekRe = /\bnext\s+week\b/i;
   const nw = nextWeekRe.exec(text);
   if (nw) {
@@ -491,7 +491,7 @@ interface PriorityMatch extends Span {
   priority: TodoPriority;
 }
 
-/** Todoist 惯例：p1 最高 → p4 最低 */
+/** p1 最高 → p4 最低 */
 const P_LEVEL_MAP: Record<string, TodoPriority> = {
   '1': 'urgent',
   '2': 'high',

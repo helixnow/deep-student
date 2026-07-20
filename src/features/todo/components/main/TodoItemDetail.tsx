@@ -30,7 +30,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -72,6 +72,7 @@ import { InlineConfirmDelete } from './detail/InlineConfirmDelete';
 import { TagsEditor } from './detail/TagsEditor';
 import { SubtaskSection } from './detail/SubtaskSection';
 import { FocusHistorySection } from './detail/FocusHistorySection';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 /** 属性行统一视觉：12px 圆角、悬停 --interactive-hover（对齐设计规范） */
 const PROPERTY_ROW_CLASS =
@@ -133,6 +134,14 @@ export const TodoItemDetail: React.FC<{
   const [intervalDraft, setIntervalDraft] = useState('');
   const [pomodoroHistory, setPomodoroHistory] = useState<PomodoroRecord[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!calendarOpen) return;
+    return registerBackHandler(() => {
+      setCalendarOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [calendarOpen]);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
@@ -547,7 +556,7 @@ export const TodoItemDetail: React.FC<{
         <div className="flex items-center gap-1">
           {/* 触屏行尾播放按钮已收敛到详情：这里提供「开始专注」入口 */}
           {!isCompleted && (
-            <NotionButton
+            <DsButton
               variant="utility"
               size="icon"
               iconOnly
@@ -557,10 +566,10 @@ export const TodoItemDetail: React.FC<{
               className="!p-1.5 [@media(pointer:coarse)]:!p-3"
             >
               <Play size={16} />
-            </NotionButton>
+            </DsButton>
           )}
           {!hideCloseButton && (
-            <NotionButton
+            <DsButton
               variant="utility"
               size="icon"
               iconOnly
@@ -569,7 +578,7 @@ export const TodoItemDetail: React.FC<{
               className="!p-1.5"
             >
               <X size={16} />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>
@@ -666,7 +675,7 @@ export const TodoItemDetail: React.FC<{
               </button>
               {/* 重复任务需要锚定日期：开启重复时不提供一键清空 */}
               {dueDate && !repeatRule && (
-                <NotionButton
+                <DsButton
                   variant="utility"
                   size="icon"
                   iconOnly
@@ -676,7 +685,7 @@ export const TodoItemDetail: React.FC<{
                   className="!p-1 [@media(pointer:coarse)]:!p-3"
                 >
                   <X size={13} />
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           </div>
@@ -701,7 +710,7 @@ export const TodoItemDetail: React.FC<{
           {/* 内联月历（选中即收起；Esc 也可收起） */}
           <InlineReveal open={calendarOpen}>
             <div className={cn(CHIP_INDENT_CLASS, 'pb-1.5')}>
-              <span className="w-[4.75rem] flex-shrink-0" />
+              <span className="hidden w-[4.75rem] flex-shrink-0 sm:block" />
               <div className="min-w-0 flex-1 rounded-[var(--radius-shell-control)] border border-[color:var(--border-default)] bg-[color:var(--surface-muted)]/40 p-2">
                 <MiniCalendar
                   value={dueDate}
@@ -743,7 +752,7 @@ export const TodoItemDetail: React.FC<{
                 className="flex-1"
               />
               {reminder && (
-                <NotionButton
+                <DsButton
                   variant="utility"
                   size="icon"
                   iconOnly
@@ -752,7 +761,7 @@ export const TodoItemDetail: React.FC<{
                   className="!p-1 [@media(pointer:coarse)]:!p-3"
                 >
                   <X size={13} />
-                </NotionButton>
+                </DsButton>
               )}
             </div>
           </div>
@@ -838,7 +847,7 @@ export const TodoItemDetail: React.FC<{
           {/* weekly：多选星期（如「每周一、三、五」） */}
           {repeatRule?.freq === 'weekly' && (
             <div className={PROPERTY_ROW_CLASS}>
-              <span className="w-[4.75rem] flex-shrink-0" />
+              <span className="hidden w-[4.75rem] flex-shrink-0 sm:block" />
               <div
                 className="flex flex-wrap items-center gap-1"
                 role="group"
@@ -853,7 +862,7 @@ export const TodoItemDetail: React.FC<{
                       aria-pressed={active}
                       onClick={() => handleToggleWeekday(day)}
                       className={cn(
-                        'h-6 w-6 rounded-full text-xs font-medium transition-colors duration-150',
+                        'h-9 w-9 rounded-full text-xs font-medium transition-colors duration-150 sm:h-6 sm:w-6',
                         active
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-muted text-muted-foreground hover:bg-[color:var(--interactive-hover)]',

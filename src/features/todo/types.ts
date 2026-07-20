@@ -378,7 +378,7 @@ export const EISENHOWER_QUADRANTS: EisenhowerQuadrant[] = [
 
 /**
  * 四象限归类：重要 = 优先级 high/urgent；紧急 = 今天到期或已逾期。
- * 与滴答清单的默认映射一致（优先级×时间两轴）。
+ * 使用优先级与时间两个维度归类。
  */
 export function classifyEisenhower(item: TodoItem, today: string = localToday()): EisenhowerQuadrant {
   const important = item.priority === 'high' || item.priority === 'urgent';

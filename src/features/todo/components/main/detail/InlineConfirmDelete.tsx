@@ -8,7 +8,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Trash } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { tweenFast, transitionInstant } from '@/styles/motion-springs';
 
 const AUTO_DISMISS_MS = 6000;
@@ -61,18 +61,18 @@ export const InlineConfirmDelete: React.FC<{
             <span className="text-xs text-[color:hsl(var(--destructive))]" role="alert">
               {question}
             </span>
-            <NotionButton variant="danger" size="sm" onClick={onConfirm} className="gap-1.5">
+            <DsButton variant="danger" size="sm" onClick={onConfirm} className="gap-1.5">
               <Trash size={14} />
               {confirmLabel}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               ref={cancelRef}
               variant="utility"
               size="sm"
               onClick={() => setConfirming(false)}
             >
               {cancelLabel}
-            </NotionButton>
+            </DsButton>
           </motion.div>
         ) : (
           <motion.div
@@ -82,7 +82,7 @@ export const InlineConfirmDelete: React.FC<{
             exit={prefersReducedMotion ? undefined : { opacity: 0 }}
             transition={transition}
           >
-            <NotionButton
+            <DsButton
               variant="danger"
               size="sm"
               onClick={() => setConfirming(true)}
@@ -90,7 +90,7 @@ export const InlineConfirmDelete: React.FC<{
             >
               <Trash size={16} />
               {label}
-            </NotionButton>
+            </DsButton>
           </motion.div>
         )}
       </AnimatePresence>

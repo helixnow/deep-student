@@ -2,7 +2,7 @@
  * RowPriorityMenu — 行内一键改优先级浮层
  *
  * 与 RescheduleMenu 同范式：hover 渐显图标按钮 + Popover 锚定菜单，
- * 不进详情面板即可调整优先级（对标 Todoist 的行内 p1-p4 快改）。
+ * 不进详情面板即可调整优先级（行内 p1-p4 快改）。
  */
 
 import React, { useCallback, useState } from 'react';
@@ -17,7 +17,7 @@ import {
   Warning,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { useTodoStore } from '../../stores/useTodoStore';
 import type { TodoItem, TodoPriority } from '../../types';
@@ -66,7 +66,7 @@ export const RowPriorityMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
     >
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <NotionButton
+          <DsButton
             variant="utility"
             size="icon"
             iconOnly
@@ -79,7 +79,7 @@ export const RowPriorityMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
               weight={item.priority !== 'none' ? 'fill' : 'regular'}
               className={item.priority !== 'none' ? PRIORITY_CONFIG[item.priority].color : undefined}
             />
-          </NotionButton>
+          </DsButton>
         </PopoverTrigger>
         <PopoverContent
           align="end"

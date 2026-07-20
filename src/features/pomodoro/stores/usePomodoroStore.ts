@@ -282,7 +282,7 @@ export const usePomodoroStore = create<PomodoroState>()(
       pause: () => {
         const { status, mode, phaseEndsAt, phaseStartedAt, timeLeft, settings } = get();
         if (status !== 'running') return;
-        // 严格模式：专注阶段不可暂停（对标番茄ToDo 强制专注）
+        // 严格模式：专注阶段不可暂停。
         if (settings.strictMode && mode === 'work') return;
         // 环境音在暂停时保持播放（短暂中断维持氛围，见 noiseAutoWithFocus 语义注释）
         if (phaseStartedAt != null) {

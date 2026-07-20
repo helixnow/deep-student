@@ -160,7 +160,10 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   })();
 
   // 移动端详情子屏是否打开（与 TodoMainPanel 内的覆盖层同一判定）
-  const mobileDetailOpen = workspaceView === 'todos' && useMobileLayout && items.some((i) => i.id === selectedItemId);
+  const mobileDetailItem = workspaceView === 'todos' && useMobileLayout
+    ? items.find((item) => item.id === selectedItemId) ?? null
+    : null;
+  const mobileDetailOpen = Boolean(mobileDetailItem);
 
   // 子层级打开时统一顶栏切返回箭头（契约 1）；层级优先级与视觉堆叠一致
   const headerConfig = (() => {
@@ -188,7 +191,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
       }
       if (mobileDetailOpen) {
         return {
-          title: t('todo:detail.title'),
+          title: mobileDetailItem?.title || t('todo:detail.title'),
           showBackArrow: true,
           onMenuClick: () => selectItem(null),
         };
@@ -204,7 +207,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   useMobileHeader(
     'todo',
     headerConfig,
-    [headerTitle, useMobileLayout, trashOpen, pomodoroSubView, mobileDetailOpen],
+    [headerTitle, useMobileLayout, trashOpen, pomodoroSubView, mobileDetailOpen, mobileDetailItem?.title],
   );
 
   // ===== 移动端：MobileSlidingLayout =====

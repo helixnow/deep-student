@@ -18,7 +18,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -565,8 +565,8 @@ export const TodoAutomationWorkspace: React.FC = () => {
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-[color:var(--surface-root,var(--background))]">
-      <header className="study-shell-toolbar flex min-h-14 shrink-0 items-center justify-between border-b border-border px-4 sm:px-6">
-        <div className="flex min-w-0 items-center gap-2.5">
+      <header className="study-shell-toolbar flex min-h-12 shrink-0 items-center justify-end border-b border-border px-4 sm:min-h-14 sm:justify-between sm:px-6">
+        <div className="hidden min-w-0 items-center gap-2.5 sm:flex">
           <Robot size={20} weight="duotone" className="shrink-0 text-primary" />
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-foreground">
@@ -578,7 +578,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -588,10 +588,10 @@ export const TodoAutomationWorkspace: React.FC = () => {
             onClick={handleRefresh}
           >
             <ArrowsClockwise size={16} className={cn(refreshing && 'animate-spin motion-reduce:animate-none')} />
-          </NotionButton>
+          </DsButton>
           {/* 容量门禁：与 AutomationSettingsSection 的新建按钮同一判定与提示文案 */}
           <span title={capacityFull ? t('settings:automation.create.capacity_full', { max }) : undefined}>
-            <NotionButton
+            <DsButton
               ref={newTaskButtonRef}
               variant="primary"
               size="sm"
@@ -602,7 +602,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
             >
               <Plus size={15} />
               {t('todo:automation.new')}
-            </NotionButton>
+            </DsButton>
           </span>
         </div>
       </header>
@@ -616,7 +616,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
             >
               <WarningCircle size={16} className="mt-0.5 shrink-0" />
               <span className="min-w-0 flex-1 break-words">{globalError}</span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 className="shrink-0 text-destructive"
@@ -624,7 +624,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
               >
                 <ArrowsClockwise size={14} className={cn(refreshing && 'animate-spin motion-reduce:animate-none')} />
                 {t('todo:automation.retry')}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : null}
 
@@ -759,7 +759,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                     <span className="hidden text-xs text-muted-foreground sm:inline">
                       {t('todo:automation.createPanel.shortcutHint')}
                     </span>
-                    <NotionButton
+                    <DsButton
                       variant="ghost"
                       size="icon"
                       iconOnly
@@ -769,7 +769,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                       onClick={closeCreate}
                     >
                       <X size={16} />
-                    </NotionButton>
+                    </DsButton>
                   </div>
                 </div>
 
@@ -792,7 +792,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
                       <MagicWand size={14} className="text-primary" />
                       {t('todo:automation.createPanel.quickTitle')}
                     </label>
-                    <div className="flex items-start gap-2">
+                    <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-start">
                       <Input
                         id="automation-create-nl"
                         value={nlText}
@@ -806,15 +806,15 @@ export const TodoAutomationWorkspace: React.FC = () => {
                           }
                         }}
                       />
-                      <NotionButton
+                      <DsButton
                         variant="secondary"
                         size="sm"
-                        className="shrink-0"
+                        className="w-full shrink-0 sm:w-auto"
                         disabled={!nlResult || creating}
                         onClick={applyNlResult}
                       >
                         {t('todo:automation.createPanel.nlApply')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                     {nlResult ? (
                       <div aria-live="polite" className="automation-rise-in mt-2 space-y-1 text-xs">
@@ -1168,13 +1168,13 @@ export const TodoAutomationWorkspace: React.FC = () => {
                     </div>
 
                     <div className="flex items-center justify-end gap-2">
-                      <NotionButton variant="ghost" disabled={creating} onClick={closeCreate}>{t('common:actions.cancel')}</NotionButton>
-                      <NotionButton variant="primary" disabled={creating} aria-busy={creating || undefined} onClick={() => void submitCreate()}>
+                      <DsButton variant="ghost" disabled={creating} onClick={closeCreate}>{t('common:actions.cancel')}</DsButton>
+                      <DsButton variant="primary" disabled={creating} aria-busy={creating || undefined} onClick={() => void submitCreate()}>
                         {creating
                           ? <CircleNotch size={15} className="animate-spin motion-reduce:animate-none" />
                           : <CalendarBlank size={15} />}
                         {t('todo:automation.create')}
-                      </NotionButton>
+                      </DsButton>
                     </div>
                   </section>
                 </div>
@@ -1191,7 +1191,7 @@ export const TodoAutomationWorkspace: React.FC = () => {
               <h3 className="study-shell-empty-state__title">{t('todo:automation.emptyTitle')}</h3>
               <p className="study-shell-empty-state__description">{t('todo:automation.emptyHint')}</p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <NotionButton
+                <DsButton
                   variant="primary"
                   size="sm"
                   onClick={() => {
@@ -1201,11 +1201,11 @@ export const TodoAutomationWorkspace: React.FC = () => {
                 >
                   <Sparkle size={15} />
                   {t('todo:automation.emptyTemplate')}
-                </NotionButton>
-                <NotionButton variant="ghost" size="sm" onClick={openCreate}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" onClick={openCreate}>
                   <Plus size={15} />
                   {t('todo:automation.new')}
-                </NotionButton>
+                </DsButton>
               </div>
             </div>
           ) : null}

@@ -250,7 +250,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
 
   return (
     <>
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         {showTitle ? (
           <span className="text-xs font-semibold text-foreground">
             {t('pomodoro.statsPopover.title')}
@@ -299,7 +299,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
           <Skeleton className="h-3.5 w-16" />
         </div>
       ) : (
-        <div className="mb-2 flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>
             {t('pomodoro.statsPopover.totalPomodoros')}{' '}
             <strong className="font-semibold tabular-nums text-foreground">{summary.pomodoros}</strong>

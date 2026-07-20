@@ -1,7 +1,7 @@
 /**
  * TodoQuickAdd — 扁平输入条（自然语言解析 + 可移除 chip 预览）
  *
- * 对标 Todoist 快速添加：
+ * 快速添加交互：
  * - 输入时实时解析日期/时间/优先级/重复/提醒/标签，以 chip 内联预览
  * - 每个 chip 可点击 × 移除（把对应 token 从输入文本中剥掉）
  * - Enter 连续添加：提交后保持展开与焦点，可流水式录入
@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { Bell, Brain, Calendar, Plus, Repeat, Tag, Tray, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { useTodoStore } from '../../stores/useTodoStore';
@@ -164,7 +164,7 @@ export const TodoQuickAdd: React.FC<{
       setPriority('none');
       setDueDate('');
       setSuppressDefaultDue(false);
-      // 保持展开与焦点：Enter 连续添加（对标 Todoist）；Esc 收起。
+      // 保持展开与焦点：Enter 连续添加；Esc 收起。
       // 点「添加」按钮提交时焦点在按钮上，这里统一拉回输入框
       document.querySelector<HTMLInputElement>('[data-todo-quick-add]')?.focus();
       setAddedFlash((n) => n + 1);
@@ -203,13 +203,13 @@ export const TodoQuickAdd: React.FC<{
 
   return (
     <div>
-      <div className="flex items-center gap-2.5 px-4 py-2.5 sm:px-6">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5 sm:flex-nowrap sm:px-6">
         <Plus
           size={16}
           // key 变化重播弹跳动画；0 = 静息态
           key={addedFlash}
           className={cn(
-            'flex-shrink-0 text-[color:var(--text-muted)]',
+            'order-1 flex-shrink-0 text-[color:var(--text-muted)] sm:order-none',
             addedFlash > 0 && 'todo-quickadd-pop',
           )}
         />
@@ -220,11 +220,11 @@ export const TodoQuickAdd: React.FC<{
           onFocus={() => setIsExpanded(true)}
           placeholder={t('todo:actions.quickAddPlaceholder')}
           data-todo-quick-add
-          className="min-w-0 flex-1 bg-transparent border-0 focus-visible:ring-0 placeholder:text-muted-foreground/50"
+          className="order-2 min-w-0 flex-1 border-0 bg-transparent placeholder:text-muted-foreground/50 focus-visible:ring-0 sm:order-none"
         />
-        {/* 自然语言解析预览 chip（可点击 × 移除；提交时生效）；窄屏横向滚动 */}
+        {/* 手机端把解析结果换到下一行，避免 chips 与输入框/提交按钮互相挤压。 */}
         {hasChips && (
-          <div className="flex min-w-0 max-w-[45%] flex-shrink items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="order-4 flex w-full min-w-0 flex-wrap items-center gap-1.5 pl-[1.65rem] sm:order-none sm:w-auto sm:max-w-[45%] sm:flex-shrink sm:flex-nowrap sm:overflow-x-auto sm:pl-0 sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden">
             {/* 智能视图默认截止日提示（如「今日」视图默认落到今天），可移除 */}
             {showDefaultDueChip && defaultDueDate && (
               <ParsedChip
@@ -325,14 +325,14 @@ export const TodoQuickAdd: React.FC<{
           </div>
         )}
         {title.trim() && (
-          <NotionButton
+          <DsButton
             variant="shell"
             size="sm"
             onClick={handleSubmit}
-            className="h-7 flex-shrink-0 text-xs [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-4"
+            className="order-3 h-7 flex-shrink-0 text-xs sm:order-none [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-4"
           >
             {t('todo:actions.add')}
-          </NotionButton>
+          </DsButton>
         )}
       </div>
 

@@ -11,7 +11,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import type { AutomationRun } from '@/features/settings/components/automationSettingsApi';
@@ -190,7 +190,7 @@ function CopyButton({
       >
         {state === 'idle' ? '' : stateLabel}
       </span>
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -205,7 +205,7 @@ function CopyButton({
         ) : (
           <Copy size={14} aria-hidden />
         )}
-      </NotionButton>
+      </DsButton>
     </span>
   );
 }
@@ -446,7 +446,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
 
             <div className="flex flex-wrap items-center gap-1.5">
               {retryable ? (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   disabled={busy}
@@ -459,10 +459,10 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                     ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden />
                     : <ArrowCounterClockwise size={14} aria-hidden />}
                   {t('todo:automation.history.retry')}
-                </NotionButton>
+                </DsButton>
               ) : null}
               {isActive ? (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   disabled={busy}
@@ -475,10 +475,10 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                     ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden />
                     : <X size={14} aria-hidden />}
                   {t('todo:automation.history.cancel')}
-                </NotionButton>
+                </DsButton>
               ) : null}
               {run.sessionId ? (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="sm"
                   onClick={(event) => {
@@ -488,7 +488,7 @@ function RunRow({ run, name, locale, now, expanded, busy, actionErrorMessage, on
                 >
                   <ChatCircleDots size={14} aria-hidden />
                   {t('todo:automation.history.viewSession')}
-                </NotionButton>
+                </DsButton>
               ) : null}
             </div>
           </div>
@@ -676,7 +676,7 @@ export function AutomationRunHistory({
           <div className="flex flex-col items-center justify-center gap-2 px-3 py-10 text-center">
             <Clock size={28} weight="duotone" className="text-muted-foreground/60" aria-hidden />
             <p className="text-sm text-muted-foreground">{t('todo:automation.history.filteredEmpty')}</p>
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="sm"
               onClick={() => {
@@ -685,7 +685,7 @@ export function AutomationRunHistory({
               }}
             >
               {t('todo:automation.history.clearFilters')}
-            </NotionButton>
+            </DsButton>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center gap-2 px-3 py-10 text-center">
@@ -728,7 +728,7 @@ export function AutomationRunHistory({
           </ul>
           {hiddenCount > 0 ? (
             <div className="flex justify-center pt-2">
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={() => setVisibleCount((count) => count + VISIBLE_STEP)}
@@ -737,7 +737,7 @@ export function AutomationRunHistory({
                   count: hiddenCount,
                   defaultValue: `Show more (${hiddenCount})`,
                 })}
-              </NotionButton>
+              </DsButton>
             </div>
           ) : null}
         </>

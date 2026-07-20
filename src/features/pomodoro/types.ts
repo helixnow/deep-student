@@ -10,9 +10,9 @@ export interface PomodoroSettings {
   longBreakInterval: number; // number of pomodoros before a long break
   autoStartBreaks: boolean;  // 工作结束后自动开始休息
   autoStartWork: boolean;    // 休息结束后自动开始下一个番茄
-  /** 严格模式：专注进行中禁止暂停（对标番茄ToDo/Forest 的强制专注） */
+  /** 严格模式：专注进行中禁止暂停。 */
   strictMode: boolean;
-  /** 正计时模式：专注阶段秒表向上计时，手动「完成」收尾（对标滴答清单） */
+  /** 正计时模式：专注阶段秒表向上计时，手动「完成」收尾。 */
   countUp: boolean;
   /** 结束前提醒（秒）：倒计时剩余该秒数时轻提示；0 = 关闭 */
   endReminderSeconds: number;

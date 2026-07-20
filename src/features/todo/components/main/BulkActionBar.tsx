@@ -20,7 +20,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   AppMenu,
   AppMenuContent,
@@ -217,7 +217,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
         <CircleNotch size={14} className="animate-spin text-muted-foreground" />
       ) : (
         <>
-          <NotionButton
+          <DsButton
             variant="utility"
             size="sm"
             onClick={handleComplete}
@@ -225,9 +225,9 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
           >
             <CheckCircle size={13} />
             {t('todo:bulk.complete', { defaultValue: '完成' })}
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton
+          <DsButton
             variant="utility"
             size="sm"
             // 点击时刻取「今天」：操作条可能跨午夜常驻（对齐 RescheduleMenu 的口径）
@@ -236,9 +236,9 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
           >
             <CalendarPlus size={13} />
             {t('todo:reschedule.today')}
-          </NotionButton>
+          </DsButton>
 
-          <NotionButton
+          <DsButton
             variant="utility"
             size="sm"
             onClick={() => handleReschedule(formatLocalDate(addDays(new Date(), 1)))}
@@ -246,14 +246,14 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
           >
             <CalendarPlus size={13} />
             {t('todo:reschedule.tomorrow')}
-          </NotionButton>
+          </DsButton>
 
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton variant="utility" size="sm" className="h-7 gap-1 !px-2 text-xs">
+              <DsButton variant="utility" size="sm" className="h-7 gap-1 !px-2 text-xs">
                 <Flag size={13} />
                 {t('todo:fields.priority')}
-              </NotionButton>
+              </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={160}>
               {PRIORITY_ORDER.map((p) => (
@@ -264,7 +264,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             </AppMenuContent>
           </AppMenu>
 
-          <NotionButton
+          <DsButton
             variant="utility"
             size="sm"
             onClick={handleDelete}
@@ -279,11 +279,11 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
             {confirmingDelete
               ? t('todo:bulk.confirmDelete', { defaultValue: '确认删除' })
               : t('common:actions.delete', '删除')}
-          </NotionButton>
+          </DsButton>
         </>
       )}
 
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="sm"
         onClick={onClear}
@@ -291,7 +291,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ checkedIds, onClea
       >
         <X size={13} />
         {t('todo:bulk.clear', { defaultValue: '清除选择' })}
-      </NotionButton>
+      </DsButton>
     </div>
   );
 };

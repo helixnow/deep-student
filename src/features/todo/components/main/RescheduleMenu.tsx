@@ -1,7 +1,7 @@
 /**
  * RescheduleMenu — 行内一键改期浮层
  *
- * 对标 Things 3 / Todoist 的 quick reschedule：不进详情面板即可挪动到期日。
+ * 快速改期：不进详情面板即可挪动到期日。
  * 使用项目 Popover（portal + 碰撞检测定位），不再被滚动容器裁切。
  * 智能选项：今天 / 明天 / 周末 / 下周一 / 两周后 + 内嵌迷你月历 + 移除日期。
  * 月历复用 detail/MiniCalendar（点选即提交，替代原 <input type="date">——
@@ -19,7 +19,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { useTodoStore } from '../../stores/useTodoStore';
 import type { TodoItem } from '../../types';
@@ -106,7 +106,7 @@ export const RescheduleMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
     >
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <NotionButton
+          <DsButton
             variant="utility"
             size="icon"
             iconOnly
@@ -115,7 +115,7 @@ export const RescheduleMenu: React.FC<{ item: TodoItem }> = ({ item }) => {
             className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 aria-expanded:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!-m-1.5"
           >
             <CalendarPlus size={16} />
-          </NotionButton>
+          </DsButton>
         </PopoverTrigger>
         <PopoverContent
           align="end"

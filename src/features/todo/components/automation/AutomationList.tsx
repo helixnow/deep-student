@@ -23,7 +23,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { cn } from '@/lib/utils';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -298,10 +298,10 @@ function AutomationCard({
             {t('todo:automation.card.deleteConfirm', { name: automation.name })}
           </span>
           <div className="flex items-center gap-2">
-            <NotionButton size="sm" variant="ghost" onClick={() => onRequestDelete(null)}>
+            <DsButton size="sm" variant="ghost" onClick={() => onRequestDelete(null)}>
               {t('common:actions.cancel')}
-            </NotionButton>
-            <NotionButton
+            </DsButton>
+            <DsButton
               size="sm"
               variant="danger"
               disabled={deleteBusy}
@@ -309,7 +309,7 @@ function AutomationCard({
             >
               {deleteBusy ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden /> : null}
               {t('todo:automation.card.deleteAction')}
-            </NotionButton>
+            </DsButton>
           </div>
         </div>
       ) : null}
@@ -390,7 +390,7 @@ function AutomationCard({
               onCheckedChange={(checked) => onToggleEnabled(automation, checked)}
             />
           )}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -403,8 +403,8 @@ function AutomationCard({
             {runBusy
               ? <CircleNotch size={15} className="animate-spin motion-reduce:animate-none" aria-hidden />
               : <Play size={15} weight="fill" aria-hidden />}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             ref={editButtonRef}
             variant="ghost"
             size="icon"
@@ -420,16 +420,16 @@ function AutomationCard({
             onClick={() => onToggleExpand(automation.id)}
           >
             <PencilSimple size={15} aria-hidden />
-          </NotionButton>
+          </DsButton>
           {automation.heartbeat ? (
             // 心跳探活任务不可删除（与设置侧一致）
             <span title={t('settings:automation.delete.heartbeat_blocked')}>
-              <NotionButton variant="ghost" size="icon" iconOnly className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" disabled aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}>
+              <DsButton variant="ghost" size="icon" iconOnly className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" disabled aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}>
                 <Trash size={15} aria-hidden />
-              </NotionButton>
+              </DsButton>
             </span>
           ) : (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -440,7 +440,7 @@ function AutomationCard({
               onClick={() => onRequestDelete(automation.id)}
             >
               <Trash size={15} aria-hidden />
-            </NotionButton>
+            </DsButton>
           )}
         </div>
       </div>
@@ -737,13 +737,13 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
       ) : null}
 
       <div className="flex items-center justify-end gap-2 border-t border-[color:var(--border-soft,hsl(var(--border)))] pt-3">
-        <NotionButton variant="ghost" size="sm" disabled={busy} onClick={onCancel}>
+        <DsButton variant="ghost" size="sm" disabled={busy} onClick={onCancel}>
           {t('common:actions.cancel')}
-        </NotionButton>
-        <NotionButton variant="primary" size="sm" disabled={busy} onClick={() => void handleSubmit()}>
+        </DsButton>
+        <DsButton variant="primary" size="sm" disabled={busy} onClick={() => void handleSubmit()}>
           {busy ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden /> : null}
           {t('todo:automation.card.save')}
-        </NotionButton>
+        </DsButton>
       </div>
     </div>
   );

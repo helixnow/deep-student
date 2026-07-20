@@ -2,7 +2,7 @@
  * PomodoroPanel - 嵌入 Todo 页面的番茄钟面板
  *
  * 视觉规则（设计系统白名单，本区所有改动必须遵守）：
- * - 按钮一律 NotionButton（variant: primary/utility/ghost）；禁大号 rounded-full 圆形主按钮
+ * - 按钮一律 DsButton（variant: primary/utility/ghost）；禁大号 rounded-full 圆形主按钮
  * - 颜色走语义 token：--primary/--success/--warning/--info/--destructive；扁平布局忌盒中盒
  * - 分隔用 divide-border/[0.08]；边框/分隔走 --shell-workspace-border / --shell-inspector-border
  * - 动效克制：ui-rise-in / 200ms 级过渡，尊重 prefers-reduced-motion
@@ -39,7 +39,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { NotionButton } from '@/components/ui/NotionButton';
+import { DsButton } from '@/components/ui/DsButton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Slider } from '@/components/ui/shad/Slider';
@@ -70,7 +70,7 @@ const ExtendChips: React.FC<{
   return (
     <>
       {[1, 5].map((minutes) => (
-        <NotionButton
+        <DsButton
           key={minutes}
           variant="utility"
           size="sm"
@@ -84,7 +84,7 @@ const ExtendChips: React.FC<{
           )}
         >
           {t('pomodoro.controls.extendMinutes', { count: minutes })}
-        </NotionButton>
+        </DsButton>
       ))}
     </>
   );
@@ -731,7 +731,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
   // 统计/设置入口在桌面控制行与移动横滑区共用；
   // 宿主页提供 inline 子屏回调时直开子屏，否则切换面板内内联展开区（禁浮层承载主内容）
   const renderStatsControl = (btnClass: string, iconSize: number) => (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="icon"
       iconOnly
@@ -742,11 +742,11 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
       className={cn(btnClass, !onOpenStatsSubView && inlinePanel === 'stats' && 'text-primary')}
     >
       <ChartBar size={iconSize} />
-    </NotionButton>
+    </DsButton>
   );
 
   const renderSettingsControl = (btnClass: string, iconSize: number) => (
-    <NotionButton
+    <DsButton
       variant="ghost"
       size="icon"
       iconOnly
@@ -760,7 +760,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
       )}
     >
       <GearSix size={iconSize} />
-    </NotionButton>
+    </DsButton>
   );
 
   // ===== 内联展开区（设置/统计）——grid 0fr→1fr 200ms（ComposerInlinePanel 金标准） =====
@@ -796,7 +796,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 <ChartBar size={16} weight="bold" className="shrink-0 text-foreground" aria-hidden="true" />
               )}
               <span className="text-ui font-semibold text-foreground">{inlinePanelTitle}</span>
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -806,7 +806,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 className="ml-auto !h-6 !w-6 transition-colors duration-150 ease-standard"
               >
                 <X size={14} />
-              </NotionButton>
+              </DsButton>
             </div>
             <div className="-mr-1 max-h-[min(48vh,420px)] overflow-y-auto overscroll-contain pr-1">
               {renderedPanel === 'settings' ? (
@@ -849,7 +849,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
           >
             {abandonConfirmLabel}
           </span>
-          <NotionButton
+          <DsButton
             variant="utility"
             size="sm"
             onClick={handleStop}
@@ -861,8 +861,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             )}
           >
             {abandonLabel}
-          </NotionButton>
-          <NotionButton
+          </DsButton>
+          <DsButton
             variant="ghost"
             size="sm"
             onClick={cancelStopConfirm}
@@ -874,12 +874,12 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             )}
           >
             {keepGoingLabel}
-          </NotionButton>
+          </DsButton>
         </span>
       );
     }
     return (
-      <NotionButton
+      <DsButton
         variant="ghost"
         size="icon"
         iconOnly
@@ -889,7 +889,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         className={touch ? mobileIconBtnClass : '!h-7 !w-7 transition-colors duration-150 ease-standard'}
       >
         <Square size={touch ? 16 : 14} />
-      </NotionButton>
+      </DsButton>
     );
   };
 
@@ -903,7 +903,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         aria-label={t('pomodoro.presets.label', '时长快捷预设')}
       >
         {DURATION_PRESETS.map((minutes) => (
-          <NotionButton
+          <DsButton
             key={minutes}
             variant="ghost"
             size="sm"
@@ -926,7 +926,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             )}
           >
             {minutes}
-          </NotionButton>
+          </DsButton>
         ))}
         <span className="text-[10px] text-muted-foreground/60">{t('pomodoro.settings.minutesUnit')}</span>
       </span>
@@ -1000,7 +1000,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
           <div className="flex min-w-0 items-center gap-2">
             <span
               className={cn(
-                'inline-flex flex-shrink-0 items-center gap-1.5 text-xs font-medium transition-colors duration-150 ease-standard',
+                'inline-flex max-w-[5.5rem] flex-shrink-0 items-center gap-1.5 truncate text-xs font-medium transition-colors duration-150 ease-standard min-[360px]:max-w-none',
                 modeInfo.colorClass,
               )}
             >
@@ -1029,7 +1029,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                       type="button"
                       onClick={() => setShowStrictHint((v) => !v)}
                       aria-expanded={showStrictHint}
-                      className="px-1 text-xs text-muted-foreground/60"
+                      className="min-h-11 rounded-md px-2 text-xs text-muted-foreground/60"
                     >
                       {t('pomodoro.strictBadge')}
                     </button>
@@ -1039,7 +1039,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               )}
               {/* 单一主 CTA：开始/暂停/继续（44px 触控） */}
               {!(pauseLocked && isRunning) && (
-                <NotionButton
+                <DsButton
                   variant={mode === 'idle' || !isRunning ? 'primary' : 'utility'}
                   size="sm"
                   onClick={handleTogglePlay}
@@ -1052,11 +1052,13 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                     a={<Play size={18} />}
                     b={<Pause size={18} />}
                   />
-                  <span>{isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.start') : t('pomodoro.controls.resume')}</span>
-                </NotionButton>
+                  <span className="hidden min-[360px]:inline">
+                    {isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.start') : t('pomodoro.controls.resume')}
+                  </span>
+                </DsButton>
               )}
               {/* 次要操作收纳开关（运行中横滑区常显，此开关只在空闲态生效） */}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -1070,7 +1072,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 )}
               >
                 <DotsThree size={20} weight="bold" />
-              </NotionButton>
+              </DsButton>
             </div>
           </div>
 
@@ -1113,7 +1115,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               {renderStopControl(true)}
               {renderDurationPresets(true)}
               {isCountUpWork && isRunning && (
-                <NotionButton
+                <DsButton
                   variant="utility"
                   size="sm"
                   onClick={() => completeCurrentSession()}
@@ -1123,10 +1125,10 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 >
                   <CheckCircle size={16} />
                   <span>{t('pomodoro.controls.finish')}</span>
-                </NotionButton>
+                </DsButton>
               )}
               {(mode === 'short_break' || mode === 'long_break') && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -1136,11 +1138,11 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   className={mobileIconBtnClass}
                 >
                   <SkipForward size={16} />
-                </NotionButton>
+                </DsButton>
               )}
               {/* 延长阶段：休息中常显；专注倒计时临近结束时也给机会 */}
               {showExtendChips && <ExtendChips touch onExtend={extendPhase} />}
-              <NotionButton
+              <DsButton
                 variant="ghost"
                 size="icon"
                 iconOnly
@@ -1155,9 +1157,9 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   b={<SpeakerHigh size={16} />}
                 />
                 {noiseEnabled && <NoisePlayingDot />}
-              </NotionButton>
+              </DsButton>
               {mode !== 'idle' && (
-                <NotionButton
+                <DsButton
                   variant="ghost"
                   size="icon"
                   iconOnly
@@ -1167,7 +1169,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   className={mobileIconBtnClass}
                 >
                   <ArrowsOut size={16} />
-                </NotionButton>
+                </DsButton>
               )}
               {renderStatsControl(mobileIconBtnClass, 16)}
               {renderSettingsControl(mobileIconBtnClass, 16)}
@@ -1241,7 +1243,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
 
           {/* 正计时专注中：手动「完成」收尾 */}
           {isCountUpWork && isRunning && (
-            <NotionButton
+            <DsButton
               variant="primary"
               size="sm"
               onClick={() => completeCurrentSession()}
@@ -1251,12 +1253,12 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             >
               <CheckCircle size={14} />
               <span>{t('pomodoro.controls.finish')}</span>
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 严格模式专注中不可暂停 */}
           {!(pauseLocked && isRunning) && (
-            <NotionButton
+            <DsButton
               variant={mode === 'idle' || !isRunning ? 'primary' : 'utility'}
               size="sm"
               onClick={handleTogglePlay}
@@ -1270,7 +1272,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                 b={<Pause size={14} />}
               />
               <span>{isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.start') : t('pomodoro.controls.resume')}</span>
-            </NotionButton>
+            </DsButton>
           )}
           {pauseLocked && isRunning && !isCountUpWork && (
             <Tooltip>
@@ -1290,7 +1292,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
           )}
 
           {(mode === 'short_break' || mode === 'long_break') && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -1300,14 +1302,14 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               className="!h-7 !w-7 transition-colors duration-150 ease-standard"
             >
               <SkipForward size={14} />
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 延长阶段：休息中常显；专注倒计时剩余 <2min 时也显示 */}
           {showExtendChips && <ExtendChips onExtend={extendPhase} />}
 
           {/* 环境音开关（全局状态收敛在 store：noiseEnabled/setNoiseEnabled） */}
-          <NotionButton
+          <DsButton
             variant="ghost"
             size="icon"
             iconOnly
@@ -1325,10 +1327,10 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               b={<SpeakerHigh size={14} />}
             />
             {noiseEnabled && <NoisePlayingDot />}
-          </NotionButton>
+          </DsButton>
 
           {mode !== 'idle' && (
-            <NotionButton
+            <DsButton
               variant="ghost"
               size="icon"
               iconOnly
@@ -1338,7 +1340,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               className="!h-7 !w-7 transition-colors duration-150 ease-standard"
             >
               <ArrowsOut size={14} />
-            </NotionButton>
+            </DsButton>
           )}
 
           {/* 统计趋势 / 设置（移动端交给宿主页 inline 子屏，桌面端切换面板内联展开区） */}

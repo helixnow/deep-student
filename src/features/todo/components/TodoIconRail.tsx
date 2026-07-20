@@ -63,7 +63,7 @@ const RailButton = React.forwardRef<HTMLButtonElement, RailButtonProps>(
       {typeof badgeCount === 'number' && (
         <span
           aria-hidden
-          className="absolute -right-0.5 -top-0.5 inline-flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-[color:hsl(var(--destructive))] px-0.5 text-[9px] font-semibold leading-none tabular-nums text-white"
+          className="absolute -right-0.5 -top-0.5 inline-flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-[color:hsl(var(--destructive))] px-0.5 text-[9px] font-semibold leading-none tabular-nums text-destructive-foreground"
         >
           {badgeCount > 99 ? '99+' : badgeCount}
         </span>

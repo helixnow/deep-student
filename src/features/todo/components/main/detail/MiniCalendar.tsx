@@ -127,7 +127,7 @@ export const MiniCalendar: React.FC<{
             <button
               type="button"
               onClick={jumpToToday}
-              className="rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]"
+              className="rounded-[var(--radius-shell-control)] px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:min-h-9 [@media(pointer:coarse)]:px-2"
             >
               {t('todo:calendar.backToToday')}
             </button>
@@ -136,7 +136,7 @@ export const MiniCalendar: React.FC<{
             type="button"
             onClick={() => shiftMonth(-1)}
             aria-label={t('todo:calendar.prevMonth')}
-            className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-shell-control)] text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]"
+            className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-shell-control)] text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
           >
             <CaretLeft size={13} />
           </button>
@@ -144,7 +144,7 @@ export const MiniCalendar: React.FC<{
             type="button"
             onClick={() => shiftMonth(1)}
             aria-label={t('todo:calendar.nextMonth')}
-            className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-shell-control)] text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]"
+            className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-shell-control)] text-muted-foreground transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
           >
             <CaretRight size={13} />
           </button>
@@ -197,7 +197,7 @@ export const MiniCalendar: React.FC<{
                       title={cell.date}
                       onClick={() => onSelect(cell.date)}
                       className={cn(
-                        'mx-auto flex h-[1.625rem] w-[1.625rem] items-center justify-center rounded-full text-xs tabular-nums',
+                        'mx-auto flex h-9 w-9 items-center justify-center rounded-full text-xs tabular-nums sm:h-[1.625rem] sm:w-[1.625rem] [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9',
                         'transition-colors duration-150 motion-reduce:transition-none',
                         'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]',
                         isSelected
