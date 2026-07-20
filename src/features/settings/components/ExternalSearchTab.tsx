@@ -57,16 +57,17 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden", className)}>
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className={cn("group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden", className)}>
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <div className="w-full sm:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end sm:justify-start">
+    <div className="w-full md:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end md:justify-start">
       {children}
     </div>
   </div>
@@ -135,7 +136,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }}
                   className="!w-24 h-8 text-xs bg-transparent"
                 />
-                <span className="text-[11px] text-muted-foreground/70">{t('common:unit.chars')}</span>
+                <span className="text-xs text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
             </SettingRow>
             <SettingRow
@@ -154,7 +155,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
                   }}
                   className="!w-24 h-8 text-xs bg-transparent"
                 />
-                <span className="text-[11px] text-muted-foreground/70">{t('common:unit.chars')}</span>
+                <span className="text-xs text-muted-foreground/70">{t('common:unit.chars')}</span>
               </div>
             </SettingRow>
           </div>
@@ -163,7 +164,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
         {/* 4. 站点过滤配置 */}
         <div className="mt-8">
           <GroupTitle title={t('settings:sections.site_filter_title')} />
-          <p className="px-1 mb-2 text-[11px] text-muted-foreground/70 leading-relaxed">
+          <p className="px-1 mb-2 text-xs text-muted-foreground/70 leading-relaxed">
             {t('settings:placeholders.domain_list_hint')}
           </p>
           <div className="space-y-px">

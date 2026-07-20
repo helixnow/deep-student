@@ -596,7 +596,7 @@ export const OpenAICodexAccountSection: React.FC = () => {
                       />
                     )}
                     {(duration || reset) && (
-                      <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                      <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span>{duration}</span>
                         {reset && <span>{translate(t, 'resets_at', 'Resets {{time}}', { time: reset })}</span>}
                       </div>

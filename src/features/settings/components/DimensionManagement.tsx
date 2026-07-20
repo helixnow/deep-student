@@ -179,7 +179,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
   const getStatusIndicator = (status: DimensionStatus) => {
     switch (status) {
       case 'active':
-        return <span className="w-1.5 h-1.5 rounded-full bg-green-500" />;
+        return <span className="w-1.5 h-1.5 rounded-full bg-success" />;
       case 'empty':
         return <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />;
       default:
@@ -377,7 +377,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             variant={isAddingNew ? 'default' : 'ghost'}
             size="sm"
             onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
-            className="flex-1 sm:flex-none h-7 text-[11px] px-2 py-0"
+            className="flex-1 sm:flex-none h-7 text-xs px-2 py-0"
           >
             {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
             <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
@@ -387,7 +387,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             size="sm"
             onClick={loadDimensions}
             disabled={loading}
-            className="flex-1 sm:flex-none h-7 text-[11px] px-2 py-0"
+            className="flex-1 sm:flex-none h-7 text-xs px-2 py-0"
           >
             {t('common:refresh')}
           </NotionButton>
@@ -408,7 +408,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           
           <div className="space-y-2 md:space-y-0 md:grid md:grid-cols-3 md:gap-x-4 mb-3">
             <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase text-muted-foreground font-semibold">{t('settings:dimension_management.dimension_value')}</Label>
+              <Label className="text-2xs uppercase text-muted-foreground font-semibold">{t('settings:dimension_management.dimension_value')}</Label>
               <Input
                 type="number"
                 value={newDimension}
@@ -421,7 +421,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             
             <div className="grid grid-cols-2 gap-2 md:contents">
               <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">{t('settings:dimension_management.modality')}</Label>
+                <Label className="text-2xs uppercase text-muted-foreground font-semibold">{t('settings:dimension_management.modality')}</Label>
                 <AppSelect value={newModality} onValueChange={setNewModality}
                   options={[
                     { value: 'text', label: t('settings:dimension_management.type_text') },
@@ -433,7 +433,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
               </div>
               
               <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase text-muted-foreground font-semibold">{t('settings:dimension_management.optional_model')}</Label>
+                <Label className="text-2xs uppercase text-muted-foreground font-semibold">{t('settings:dimension_management.optional_model')}</Label>
                 <AppSelect value={newModelId} onValueChange={setNewModelId}
                   placeholder={t('settings:dimension_management.select_model_optional')}
                   options={[
@@ -449,7 +449,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           
           {presetDimensions.length > 0 && (
             <div className="flex flex-wrap items-center gap-1 md:gap-1.5 mb-3">
-              <span className="text-[10px] text-muted-foreground/60 mr-0.5 md:mr-1">{t('settings:dimension_management.preset_dimensions')}:</span>
+              <span className="text-2xs text-muted-foreground/60 mr-0.5 md:mr-1">{t('settings:dimension_management.preset_dimensions')}:</span>
               {presetDimensions.map((preset) => {
                 const isSelected = newDimension === String(preset);
                 const exists = dimensions.some(d => d.dimension === preset && d.modality === newModality);
@@ -457,7 +457,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                   <Badge
                     key={preset}
                     variant={isSelected ? 'default' : 'outline'}
-                    className={`cursor-pointer text-[10px] px-1.5 py-0.5 h-5 transition-colors ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
+                    className={`cursor-pointer text-2xs px-1.5 py-0.5 h-5 transition-colors ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
                     onClick={() => !exists && setNewDimension(String(preset))}
                   >
                     {preset}
@@ -487,7 +487,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
 
       <div>
         {!loading && dimensions.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-[11px]">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-xs">
             <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5 transition-colors hover:bg-muted/30 hover:border-muted-foreground/10">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.stats_dimensions')}</span>
               <span className="font-medium text-sm">{stats.totalDimensions}</span>
@@ -498,7 +498,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             </div>
             <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5 transition-colors hover:bg-muted/30 hover:border-muted-foreground/10">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.type_text')}</span>
-              <span className="font-medium text-sm text-blue-500/80">{stats.textDimensions}</span>
+              <span className="font-medium text-sm text-info/80">{stats.textDimensions}</span>
             </div>
             <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5 transition-colors hover:bg-muted/30 hover:border-muted-foreground/10">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.type_multimodal')}</span>
@@ -545,22 +545,22 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                 <Table>
                   <TableHeader className="bg-muted/30 sticky top-0 z-10">
                     <TableRow className="hover:bg-transparent border-b">
-                      <TableHead className="w-[80px] text-[11px] font-semibold uppercase tracking-wider py-2 h-9">
+                      <TableHead className="w-[80px] text-xs font-semibold uppercase tracking-wider py-2 h-9">
                         {t('settings:dimension_management.column_dimension')}
                       </TableHead>
-                      <TableHead className="text-[11px] font-semibold uppercase tracking-wider py-2 h-9">
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider py-2 h-9">
                         {t('settings:dimension_management.column_model')}
                       </TableHead>
-                      <TableHead className="w-[90px] text-[11px] font-semibold uppercase tracking-wider py-2 h-9 text-right">
+                      <TableHead className="w-[90px] text-xs font-semibold uppercase tracking-wider py-2 h-9 text-right">
                         {t('settings:dimension_management.column_count')}
                       </TableHead>
-                      <TableHead className="w-[80px] text-[11px] font-semibold uppercase tracking-wider py-2 h-9">
+                      <TableHead className="w-[80px] text-xs font-semibold uppercase tracking-wider py-2 h-9">
                         {t('settings:dimension_management.column_type')}
                       </TableHead>
-                      <TableHead className="w-[100px] text-[11px] font-semibold uppercase tracking-wider py-2 h-9">
+                      <TableHead className="w-[100px] text-xs font-semibold uppercase tracking-wider py-2 h-9">
                         {t('settings:dimension_management.column_status')}
                       </TableHead>
-                      <TableHead className="w-[120px] text-[11px] font-semibold uppercase tracking-wider py-2 h-9 text-right pr-4">
+                      <TableHead className="w-[120px] text-xs font-semibold uppercase tracking-wider py-2 h-9 text-right pr-4">
                         {t('settings:dimension_management.column_actions')}
                       </TableHead>
                     </TableRow>
@@ -583,7 +583,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                 <span className="text-sm font-medium">{dim.dimension}</span>
                                 {isDefaultDimension(dim) && (
                                   <CommonTooltip content={t('settings:dimension_management.set_as_default')}>
-                                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 shadow-[0_0_4px_hsl(var(--warning)/0.5)]" />
+                                    <span className="w-1.5 h-1.5 rounded-full bg-warning shadow-[0_0_4px_hsl(var(--warning)/0.5)]" />
                                   </CommonTooltip>
                                 )}
                               </div>
@@ -595,7 +595,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     <span className="text-muted-foreground/50 italic">{t('settings:dimension_management.no_model_bound')}</span>
                                   )}
                                 </span>
-                                <span className="text-[10px] text-muted-foreground/40 font-mono truncate max-w-[220px]">
+                                <span className="text-2xs text-muted-foreground/40 font-mono truncate max-w-[220px]">
                                   {dim.lanceTableName}
                                 </span>
                               </div>
@@ -604,16 +604,16 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               {dim.recordCount.toLocaleString()}
                             </TableCell>
                             <TableCell className="py-1">
-                              <span className="text-[11px]">
+                              <span className="text-xs">
                                 {dim.isMultimodal
                                   ? <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">{t('settings:dimension_management.type_multimodal')}</span>
-                                  : <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">{t('settings:dimension_management.type_text')}</span>}
+                                  : <span className="px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/20">{t('settings:dimension_management.type_text')}</span>}
                               </span>
                             </TableCell>
                             <TableCell className="py-1">
                               <div className="flex items-center gap-1.5">
                                 {getStatusIndicator(dim.status)}
-                                <span className="text-[11px] text-muted-foreground">{getStatusText(dim.status)}</span>
+                                <span className="text-xs text-muted-foreground">{getStatusText(dim.status)}</span>
                               </div>
                             </TableCell>
                             <TableCell className="py-1 pr-4">
@@ -628,9 +628,9 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       size="sm"
                                       onClick={() => handleSetAsDefault(dim)}
                                       disabled={settingDefault || !dim.modelConfigId}
-                                      className="text-yellow-600/70 hover:text-yellow-600 hover:bg-yellow-500/10 h-6 w-6 p-0"
+                                      className="text-warning/70 hover:text-warning hover:bg-warning/10 h-6 w-6 p-0 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
                                     >
-                                      <span className="text-[10px]">⭐</span>
+                                      <span className="text-2xs">⭐</span>
                                     </NotionButton>
                                   </CommonTooltip>
                                 )}
@@ -640,7 +640,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     size="sm"
                                     onClick={() => handleChangeModel(dim)}
                                     className={cn(
-                                      "h-6 px-1.5 text-[10px] transition-colors",
+                                      "h-6 px-1.5 text-2xs transition-colors [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:px-2.5",
                                       isExpanded ? "bg-primary/10 text-primary hover:bg-primary/20" : "text-muted-foreground hover:text-foreground"
                                     )}
                                   >
@@ -655,13 +655,13 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                     onClick={() => handleToggleDeleteConfirm(dim)}
                                     aria-expanded={isConfirmingDelete}
                                     className={cn(
-                                      "h-6 w-6 p-0 transition-colors",
+                                      "h-6 w-6 p-0 transition-colors [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9",
                                       isConfirmingDelete
                                         ? "text-destructive bg-destructive/10"
                                         : "text-destructive/60 hover:text-destructive hover:bg-destructive/10"
                                     )}
                                   >
-                                    <span className="text-[10px]">✕</span>
+                                    <span className="text-2xs">✕</span>
                                   </NotionButton>
                                 </CommonTooltip>
                               </div>
@@ -678,7 +678,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       <h5 className="text-xs font-semibold text-foreground">
                                         {t('settings:dimension_management.change_model_title')}
                                       </h5>
-                                      <p className="text-[10px] text-muted-foreground">
+                                      <p className="text-2xs text-muted-foreground">
                                         {t('settings:dimension_management.change_model_description', {
                                           dimension: dim.dimension,
                                         })}
@@ -710,7 +710,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                   {embeddingModels.length === 0 ? (
                                     <div className="p-2.5 bg-muted/50 rounded border border-border/40 flex items-start gap-2">
                                       <WarningCircle size={14} className="text-muted-foreground mt-0.5" />
-                                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                      <p className="text-xs text-muted-foreground leading-relaxed">
                                         {t('settings:dimension_management.no_embedding_models')}
                                       </p>
                                     </div>
@@ -736,9 +736,9 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       </div>
 
                                       {selectedModelId && dim.modelConfigId !== selectedModelId && (
-                                        <div className="p-2.5 bg-yellow-500/5 border border-yellow-500/10 rounded flex items-start gap-2">
-                                          <Warning size={14} className="text-yellow-600/80 mt-0.5" />
-                                          <p className="text-[10px] text-yellow-700/80 dark:text-yellow-400/80 leading-relaxed">
+                                        <div className="p-2.5 bg-warning/5 border border-warning/10 rounded flex items-start gap-2">
+                                          <Warning size={14} className="text-warning/80 mt-0.5" />
+                                          <p className="text-2xs text-warning/80 leading-relaxed">
                                             {t('settings:dimension_management.change_model_warning')}
                                           </p>
                                         </div>
@@ -763,7 +763,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                 <div className="overflow-hidden">
                                   <div className="flex items-center gap-3 px-4 py-2.5 bg-destructive/5 border-l-2 border-destructive/60">
                                     <Warning size={14} className="text-destructive shrink-0" />
-                                    <p className="flex-1 min-w-0 text-[11px] text-destructive/90 leading-relaxed">
+                                    <p className="flex-1 min-w-0 text-xs text-destructive/90 leading-relaxed">
                                       {t('settings:dimension_management.delete_confirm_inline', {
                                         dimension: dim.dimension,
                                         count: dim.recordCount,
@@ -776,7 +776,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         tabIndex={isConfirmingDelete ? 0 : -1}
                                         onClick={() => setConfirmingDeleteRow(null)}
                                         disabled={deleting}
-                                        className="h-6 px-2 text-[11px]"
+                                        className="h-6 px-2 text-xs"
                                       >
                                         {t('common:cancel')}
                                       </NotionButton>
@@ -786,7 +786,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         tabIndex={isConfirmingDelete ? 0 : -1}
                                         onClick={() => handleDeleteDimension(dim)}
                                         disabled={deleting}
-                                        className="h-6 px-2 text-[11px]"
+                                        className="h-6 px-2 text-xs"
                                       >
                                         {deleting && isConfirmingDelete
                                           ? <CircleNotch size={12} className="mr-1 animate-spin" />
@@ -823,20 +823,21 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-sm font-bold">{dim.dimension}</span>
+                          {/* 触屏无 hover，Tooltip 圆点不可发现：移动卡片改用可见文字徽标 */}
                           {isDefaultDimension(dim) && (
-                            <CommonTooltip content={t('settings:dimension_management.set_as_default')}>
-                              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 shadow-[0_0_4px_hsl(var(--warning)/0.5)]" />
-                            </CommonTooltip>
+                            <span className="rounded bg-warning/10 px-1.5 py-0.5 text-2xs text-warning">
+                              {t('common:default', '默认')}
+                            </span>
                           )}
-                          <span className="text-[10px]">
+                          <span className="text-2xs">
                             {dim.isMultimodal
                               ? <span className="px-1 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">{t('settings:dimension_management.type_multimodal')}</span>
-                              : <span className="px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">{t('settings:dimension_management.type_text')}</span>}
+                              : <span className="px-1 py-0.5 rounded bg-info/10 text-info">{t('settings:dimension_management.type_text')}</span>}
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
                           {getStatusIndicator(dim.status)}
-                          <span className="text-[10px] text-muted-foreground">{getStatusText(dim.status)}</span>
+                          <span className="text-2xs text-muted-foreground">{getStatusText(dim.status)}</span>
                         </div>
                       </div>
                       
@@ -844,30 +845,39 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                         <p className="text-xs font-medium truncate flex-1">
                           {dim.modelName || <span className="text-muted-foreground/50 italic">{t('settings:dimension_management.no_model_bound')}</span>}
                         </p>
-                        <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                        <span className="text-2xs text-muted-foreground font-mono shrink-0">
                           {dim.recordCount.toLocaleString()} {t('settings:dimension_management.column_count').toLowerCase()}
                         </span>
                       </div>
                       
                       <div className="flex items-center gap-1 pt-2 border-t border-muted-foreground/5">
                         {!isDefaultDimension(dim) && (
-                          <NotionButton
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleSetAsDefault(dim)}
-                            disabled={settingDefault || !dim.modelConfigId}
-                            className="text-yellow-600/70 hover:text-yellow-600 text-[10px] h-7 px-2 active:scale-95"
+                          // 禁用按钮不触发事件：包裹层点击时提示「需先绑定模型」（触屏看不到 Tooltip）
+                          <span
+                            onClick={() => {
+                              if (!dim.modelConfigId) {
+                                showGlobalNotification('info', t('settings:dimension_management.bind_model_first'));
+                              }
+                            }}
                           >
-                            <span className="mr-1">⭐</span>
-                            {t('settings:dimension_management.set_as_default')}
-                          </NotionButton>
+                            <NotionButton
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSetAsDefault(dim)}
+                              disabled={settingDefault || !dim.modelConfigId}
+                              className="text-warning/70 hover:text-warning text-2xs h-7 [@media(pointer:coarse)]:h-10 px-2 active:scale-95"
+                            >
+                              <span className="mr-1">⭐</span>
+                              {t('settings:dimension_management.set_as_default')}
+                            </NotionButton>
+                          </span>
                         )}
                         <NotionButton
                           variant={isExpanded ? "default" : "ghost"}
                           size="sm"
                           onClick={() => handleChangeModel(dim)}
                           className={cn(
-                            "text-[10px] h-7 px-2 active:scale-95",
+                            "text-2xs h-7 [@media(pointer:coarse)]:h-10 px-2 active:scale-95",
                             isExpanded && "bg-primary/10 text-primary"
                           )}
                         >
@@ -881,7 +891,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           onClick={() => handleToggleDeleteConfirm(dim)}
                           aria-expanded={isConfirmingDelete}
                           className={cn(
-                            "text-[10px] h-7 w-7 p-0 active:scale-95 transition-colors",
+                            "text-2xs h-7 w-7 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:w-10 p-0 active:scale-95 transition-colors",
                             isConfirmingDelete
                               ? "text-destructive bg-destructive/10"
                               : "text-destructive/60 hover:text-destructive"
@@ -904,7 +914,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                         <div className="mx-3 mb-3 p-2.5 rounded bg-destructive/5 border border-destructive/20 space-y-2">
                           <div className="flex items-start gap-2">
                             <Warning size={14} className="text-destructive shrink-0 mt-0.5" />
-                            <p className="text-[11px] text-destructive/90 leading-relaxed">
+                            <p className="text-xs text-destructive/90 leading-relaxed">
                               {t('settings:dimension_management.delete_confirm_inline', {
                                 dimension: dim.dimension,
                                 count: dim.recordCount,
@@ -918,7 +928,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               tabIndex={isConfirmingDelete ? 0 : -1}
                               onClick={() => setConfirmingDeleteRow(null)}
                               disabled={deleting}
-                              className="h-7 text-[11px] flex-1"
+                              className="h-7 text-xs flex-1"
                             >
                               {t('common:cancel')}
                             </NotionButton>
@@ -928,7 +938,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               tabIndex={isConfirmingDelete ? 0 : -1}
                               onClick={() => handleDeleteDimension(dim)}
                               disabled={deleting}
-                              className="h-7 text-[11px] flex-1"
+                              className="h-7 text-xs flex-1"
                             >
                               {deleting && isConfirmingDelete
                                 ? <CircleNotch size={12} className="mr-1 animate-spin" />
@@ -944,7 +954,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                       <div className="px-3 pb-3 pt-1 border-t border-border/40 ui-drop-in">
                         <div className="space-y-3">
                           <div className="space-y-1">
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="text-2xs text-muted-foreground">
                               {t('settings:dimension_management.change_model_description', { dimension: dim.dimension })}
                             </p>
                           </div>
@@ -952,7 +962,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           {embeddingModels.length === 0 ? (
                             <div className="p-2.5 bg-muted/50 rounded border border-border/40 flex items-start gap-2">
                               <WarningCircle size={14} className="text-muted-foreground mt-0.5 shrink-0" />
-                              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                              <p className="text-xs text-muted-foreground leading-relaxed">
                                 {t('settings:dimension_management.no_embedding_models')}
                               </p>
                             </div>
@@ -966,9 +976,9 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               />
                               
                               {selectedModelId && dim.modelConfigId !== selectedModelId && (
-                                <div className="p-2 bg-yellow-500/5 border border-yellow-500/10 rounded flex items-start gap-2">
-                                  <Warning size={12} className="text-yellow-600/80 mt-0.5 shrink-0" />
-                                  <p className="text-[10px] text-yellow-700/80 dark:text-yellow-400/80 leading-relaxed">
+                                <div className="p-2 bg-warning/5 border border-warning/10 rounded flex items-start gap-2">
+                                  <Warning size={12} className="text-warning/80 mt-0.5 shrink-0" />
+                                  <p className="text-2xs text-warning/80 leading-relaxed">
                                     {t('settings:dimension_management.change_model_warning')}
                                   </p>
                                 </div>

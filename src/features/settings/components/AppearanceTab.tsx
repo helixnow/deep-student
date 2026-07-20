@@ -19,6 +19,7 @@ import {
   UI_FONT_SIZE_PRESETS,
 } from '@/config/fontConfig';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
+import { APP_EVENTS, addAppEventListener, dispatchAppEvent } from '@/events';
 
 const DEFAULT_UI_ZOOM = 1.0;
 const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
@@ -115,16 +116,15 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
     };
     void loadSidebarTranslucent();
 
-    const handleSettingsChange = (event: CustomEvent<{ settingKey?: string }>) => {
-      if (event.detail?.settingKey === SIDEBAR_TRANSLUCENT_KEY) {
+    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
+      if (detail?.settingKey === SIDEBAR_TRANSLUCENT_KEY) {
         void loadSidebarTranslucent();
       }
-    };
-    window.addEventListener('systemSettingsChanged', handleSettingsChange as EventListener);
+    });
 
     return () => {
       cancelled = true;
-      window.removeEventListener('systemSettingsChanged', handleSettingsChange as EventListener);
+      dispose();
     };
   }, []);
 
@@ -162,20 +162,18 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         const enabled = String(raw ?? '').trim() !== 'false';
         setThinkingAutoCollapse(enabled);
         document.documentElement.setAttribute('data-auto-collapse-thinking', String(enabled));
-        window.dispatchEvent(
-          new CustomEvent('systemSettingsChanged', {
-            detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: enabled },
-          }),
-        );
+        dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+          settingKey: THINKING_AUTO_COLLAPSE_KEY,
+          value: enabled,
+        });
       } catch {
         if (cancelled) return;
         setThinkingAutoCollapse(true);
         document.documentElement.setAttribute('data-auto-collapse-thinking', 'true');
-        window.dispatchEvent(
-          new CustomEvent('systemSettingsChanged', {
-            detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: true },
-          }),
-        );
+        dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+          settingKey: THINKING_AUTO_COLLAPSE_KEY,
+          value: true,
+        });
       }
     })();
 
@@ -264,14 +262,10 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         value: String(checked),
       });
 
-      window.dispatchEvent(
-        new CustomEvent('systemSettingsChanged', {
-          detail: {
-            macosFontSmoothing: true,
-            settingKey: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY,
-          },
-        }),
-      );
+      dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+        macosFontSmoothing: true,
+        settingKey: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY,
+      });
     } catch (error: unknown) {
       setMacosNativeFontSmoothingEnabled(previousValue);
       showGlobalNotification('error', getErrorMessage(error));
@@ -312,15 +306,11 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         value: String(checked),
       });
 
-      window.dispatchEvent(
-        new CustomEvent('systemSettingsChanged', {
-          detail: {
-            pointerCursor: true,
-            settingKey: POINTER_CURSOR_SETTING_KEY,
-            value: checked,
-          },
-        }),
-      );
+      dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+        pointerCursor: true,
+        settingKey: POINTER_CURSOR_SETTING_KEY,
+        value: checked,
+      });
     } catch (error: unknown) {
       setPointerCursorEnabled(previousValue);
       document.documentElement.setAttribute('data-pointer-cursor', String(previousValue));
@@ -328,17 +318,36 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
     }
   }, [invoke, pointerCursorEnabled]);
 
+  // 同步 DB 副本 theme_palette（localStorage 是主源，DB 副本供 Agent 工具/导出读取，
+  // 之前只在设置页 autoSave 链路里偶发写入，长期漂移）
+  const persistThemePalette = React.useCallback((palette: ThemePalette) => {
+    if (!invoke) return;
+    void (invoke as typeof tauriInvoke)('save_setting', { key: 'theme_palette', value: palette })
+      .catch((error: unknown) => {
+        console.warn('Failed to persist theme_palette:', getErrorMessage(error));
+      });
+  }, [invoke]);
+
+  const handleThemePaletteChange = React.useCallback((palette: ThemePalette) => {
+    setThemePalette(palette);
+    persistThemePalette(palette);
+  }, [persistThemePalette, setThemePalette]);
+
+  const handleCustomColorChange = React.useCallback((color: string) => {
+    setCustomColor(color);
+    persistThemePalette('custom');
+  }, [persistThemePalette, setCustomColor]);
+
   const handleThinkingAutoCollapseChange = React.useCallback(async (checked: boolean) => {
     if (thinkingAutoCollapse === null) return;
     const previousValue = thinkingAutoCollapse;
     setThinkingAutoCollapse(checked);
     document.documentElement.setAttribute('data-auto-collapse-thinking', String(checked));
 
-    window.dispatchEvent(
-      new CustomEvent('systemSettingsChanged', {
-        detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: checked },
-      }),
-    );
+    dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+      settingKey: THINKING_AUTO_COLLAPSE_KEY,
+      value: checked,
+    });
 
     if (!invoke) return;
 
@@ -350,11 +359,10 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
     } catch (error: unknown) {
       setThinkingAutoCollapse(previousValue);
       document.documentElement.setAttribute('data-auto-collapse-thinking', String(previousValue));
-      window.dispatchEvent(
-        new CustomEvent('systemSettingsChanged', {
-          detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: previousValue },
-        }),
-      );
+      dispatchAppEvent(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, {
+        settingKey: THINKING_AUTO_COLLAPSE_KEY,
+        value: previousValue,
+      });
       showGlobalNotification('error', getErrorMessage(error));
     }
   }, [invoke, thinkingAutoCollapse]);
@@ -466,7 +474,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   </NotionButton>
                 </div>
               ) : (
-                <div className="text-[11px] text-muted-foreground/70">
+                <div className="text-xs text-muted-foreground/70">
                   {t('settings:zoom.not_supported')}
                 </div>
               )}
@@ -534,15 +542,15 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 <h3 className="text-sm text-foreground/90 leading-tight">
                   {t('settings:theme.accent_label')}
                 </h3>
-                <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
+                <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">
                   {t('settings:theme.accent_hint')}
                 </p>
               </div>
               <AccentPicker
                 palette={themePalette}
                 customColor={customColor}
-                onSelectPreset={setThemePalette}
-                onSelectCustomColor={setCustomColor}
+                onSelectPreset={handleThemePaletteChange}
+                onSelectCustomColor={handleCustomColorChange}
               />
             </div>
         </SettingsGroup>

@@ -9,6 +9,7 @@ import { MemorySettingsSection } from './MemorySettingsSection';
 import { MarkdownEditorWindowSettings } from './MarkdownEditorWindowSettings';
 import { WorkbenchSettingsSection } from './WorkbenchSettingsSection';
 import { AnkiConnectSettingsSection } from './AnkiConnectSettingsSection';
+import { SystemPermissionsSection } from './SystemPermissionsSection';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -18,11 +19,13 @@ import { UserAgreementDialog } from '@/components/legal/UserAgreementDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { useQueueSettings } from '@/features/chat/queue/useQueueSettings';
 import { debugMasterSwitch } from '@/debug-panel/debugMasterSwitch';
 import { isAndroid, isMobilePlatform } from '@/utils/platform';
 import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '@/features/chat/hooks/useDevShowRawRequest';
 import {
+  ensureSystemNotificationPermission,
   getSystemNotificationPolicy,
   setSystemNotificationPolicy,
   type SystemNotificationPolicy,
@@ -38,6 +41,10 @@ import {
   type QuickAssistantConfig,
 } from '@/quick-assistant/config';
 import { openQuickAssistantWindow } from '@/quick-assistant/window';
+import {
+  chooseAndExportDiagnostics,
+  revealDiagnostics,
+} from '@/logging/exportDiagnostics';
 
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
 
@@ -68,12 +75,15 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
   const [sentryEnabled, setSentryEnabled] = useState<boolean | null>(null);
+  const [sentryUpdating, setSentryUpdating] = useState(false);
   const [showAgreementPreview, setShowAgreementPreview] = useState(false);
   const [debugLogEnabled, setDebugLogEnabled] = useState(() => debugMasterSwitch.isEnabled());
   const [debugPersistLogs, setDebugPersistLogs] = useState<boolean | null>(null);
   const [filterConfig, setFilterConfig] = useState<CopyFilterConfig>(getDefaultConfig);
   const [debugLogsInfo, setDebugLogsInfo] = useState<{ count: number; total_size_display: string } | null>(null);
   const [debugLogsClearing, setDebugLogsClearing] = useState(false);
+  const [diagnosticsExporting, setDiagnosticsExporting] = useState(false);
+  const [includeDetailedDiagnostics, setIncludeDetailedDiagnostics] = useState(false);
   const { mode, loading: queueModeLoading, setMode } = useQueueSettings();
   const [notificationPolicy, setNotificationPolicy] = useState<SystemNotificationPolicy>(() => getSystemNotificationPolicy());
   const [quickAssistantConfig, setQuickAssistantConfig] = useState<QuickAssistantConfig | null>(null);
@@ -219,6 +229,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
         </SettingsGroup>
         )}
 
+        {quickAssistantSupported && <SystemPermissionsSection />}
+
         <SettingsGroup
           title={t('settings:tabs.general')}
           description={t('settings:study_ui_descriptions.general')}
@@ -276,6 +288,18 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   const policy = next as SystemNotificationPolicy;
                   setNotificationPolicy(policy);
                   setSystemNotificationPolicy(policy);
+                  // 用户此刻主动订阅通知：当场把系统权限要下来。若等首个通知
+                  // 在后台触发时才请求，请求框不会被看到，通知会被静默丢弃。
+                  if (policy !== 'never') {
+                    void ensureSystemNotificationPermission().then((state) => {
+                      if (state === 'denied') {
+                        showGlobalNotification(
+                          'warning',
+                          t('settings:system_authorization.notifications.denied_hint'),
+                        );
+                      }
+                    });
+                  }
                 }}
                 size="compact"
                 options={[
@@ -318,6 +342,77 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
         <WorkbenchSettingsSection className="mt-8" />
 
         <SettingsGroup
+          title={t('settings:diagnostics.title', 'Diagnostics and feedback')}
+          className="mt-8"
+        >
+          <SettingRow
+            title={t('settings:diagnostics.export.title', 'Export diagnostic bundle')}
+            description={
+              isMobilePlatform()
+                ? t(
+                    'settings:diagnostics.export.mobile_unsupported',
+                    'Mobile sharing is not available in this version. Error reporting still works automatically when enabled.',
+                  )
+                : t(
+                    'settings:diagnostics.export.description',
+                    'Collects current and legacy logs into a redacted ZIP. Databases and documents are never included.',
+                  )
+            }
+          >
+            {!isMobilePlatform() && (
+              <NotionButton
+                variant="primary"
+                size="sm"
+                disabled={diagnosticsExporting}
+                onClick={async () => {
+                  setDiagnosticsExporting(true);
+                  try {
+                    const result = await chooseAndExportDiagnostics(includeDetailedDiagnostics);
+                    if (!result) return;
+                    showGlobalNotification(
+                      result.skippedCount > 0 ? 'warning' : 'success',
+                      result.skippedCount > 0
+                        ? t('settings:diagnostics.export.partial', {
+                            count: result.fileCount,
+                            skipped: result.skippedCount,
+                            defaultValue: `Exported ${result.fileCount} files; ${result.skippedCount} could not be included`,
+                          })
+                        : t('settings:diagnostics.export.success', {
+                            count: result.fileCount,
+                            defaultValue: `Diagnostic bundle exported (${result.fileCount} files)`,
+                          }),
+                    );
+                    void revealDiagnostics(result).catch(() => undefined);
+                  } catch (error: unknown) {
+                    showGlobalNotification('error', getErrorMessage(error));
+                  } finally {
+                    setDiagnosticsExporting(false);
+                  }
+                }}
+              >
+                {diagnosticsExporting
+                  ? <CircleNotch size={12} className="animate-spin" />
+                  : t('settings:diagnostics.export.action', 'Export ZIP')}
+              </NotionButton>
+            )}
+          </SettingRow>
+          {!isMobilePlatform() && (
+            <SwitchRow
+              title={t(
+                'settings:diagnostics.include_debug.title',
+                'Include detailed AI request logs',
+              )}
+              description={t(
+                'settings:diagnostics.include_debug.description',
+                'Off by default. These logs may contain study content; review the ZIP before sharing.',
+              )}
+              checked={includeDetailedDiagnostics}
+              onCheckedChange={setIncludeDetailedDiagnostics}
+            />
+          )}
+        </SettingsGroup>
+
+        <SettingsGroup
           title={t('settings:cards.developer_options_title')}
           className="mt-8"
         >
@@ -357,7 +452,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 className="!w-20 h-8 text-xs bg-transparent"
                 min="0"
               />
-              <span className="text-[11px] text-muted-foreground/70">{t('settings:developer.units.px')}</span>
+              <span className="text-xs text-muted-foreground/70">{t('settings:developer.units.px')}</span>
             </div>
           </SettingRow>
 
@@ -473,7 +568,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               <div className="py-2.5 px-1">
                 <div className="pt-1.5 pb-1 px-1">
                   <h3 className="text-sm text-foreground/90 leading-tight">{t('settings:developer.copy_filter.title')}</h3>
-                  <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{t('settings:developer.copy_filter.desc')}</p>
+                  <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">{t('settings:developer.copy_filter.desc')}</p>
                 </div>
                 <div className="mt-1.5 space-y-1.5 pl-1">
                   <div className="flex items-center justify-between gap-3 rounded px-1 py-1">
@@ -488,7 +583,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -505,7 +600,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -521,7 +616,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -539,9 +634,9 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                             const v = parseInt(e.target.value, 10);
                             if (!isNaN(v) && v >= 100) saveConfig({ ...filterConfig, messageTruncateLength: v });
                           }}
-                          className="h-7 w-20 text-xs"
+                          className="h-7 [@media(pointer:coarse)]:h-10 w-20 text-xs"
                         />
-                        <span className="text-[10px] text-muted-foreground/60">{t('common:unit.chars')}</span>
+                        <span className="text-2xs text-muted-foreground/60">{t('common:unit.chars')}</span>
                       </div>
                     </div>
                   )}
@@ -556,7 +651,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                       ]}
                       size="sm"
                       variant="ghost"
-                      className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
+                      className="h-7 [@media(pointer:coarse)]:h-10 text-xs bg-transparent hover:bg-[var(--interactive-hover)]"
                       width={140}
                     />
                   </div>
@@ -637,27 +732,29 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               title={t('common:legal.settingsSection.sentryToggle.title')}
               description={t('common:legal.settingsSection.sentryToggle.description')}
               checked={sentryEnabled ?? false}
-              loading={sentryEnabled === null}
+              loading={sentryEnabled === null || sentryUpdating}
               onCheckedChange={async (newValue) => {
-                if (sentryEnabled === null) return;
+                if (sentryEnabled === null || sentryUpdating) return;
                 setSentryEnabled(newValue);
+                setSentryUpdating(true);
                 try {
-                  await tauriInvoke('save_setting', {
-                    key: SENTRY_CONSENT_KEY,
-                    value: String(newValue),
+                  await tauriInvoke('set_backend_sentry_enabled', {
+                    enabled: newValue,
                   });
+                  window.dispatchEvent(new CustomEvent('systemSettingsChanged', {
+                    detail: { sentryConsent: newValue },
+                  }));
                   showGlobalNotification(
                     'success',
                     newValue
                       ? t('common:legal.settingsSection.sentryToggle.enabled')
                       : t('common:legal.settingsSection.sentryToggle.disabled')
                   );
-                  if (newValue) {
-                    showGlobalNotification('info', t('settings:save_notifications.restart_hint'));
-                  }
                 } catch (error: unknown) {
                   showGlobalNotification('error', getErrorMessage(error));
                   setSentryEnabled(!newValue);
+                } finally {
+                  setSentryUpdating(false);
                 }
               }}
             />
@@ -700,7 +797,9 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                     // Settings 已挂载时靠 SETTINGS_NAVIGATE_TAB 事件即时切换；
                     // pending 值兜底 Settings 尚未挂载的竞态（与 openArchivedSessionsSettings 同模式）
                     setPendingSettingsTab('data-governance');
-                    window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'data-governance' } }));
+                    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, {
+                      tab: 'data-governance',
+                    });
                   }}
                 >
                   {t('common:legal.dataRights.goToDataGovernance')}

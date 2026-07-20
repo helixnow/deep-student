@@ -52,11 +52,12 @@ import {
   requestVoiceRecordingPermission,
   type VoiceRecordingSupport,
 } from '@/voice-input/support';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 type SettingsTabId = 'apis' | 'models' | 'statistics';
 
 function openSettingsTab(tab: SettingsTabId): void {
-  window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab } }));
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab });
 }
 
 function serializeVocabularyDraft(entries: string[] | undefined): string {
@@ -99,7 +100,7 @@ const GroupTitle: React.FC<{ title: string; description?: string; rightSlot?: Re
     <div className="min-w-0">
       <h3 className="text-base font-semibold text-foreground leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{description}</p>
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">{description}</p>
       )}
     </div>
     {rightSlot && <div className="flex-shrink-0 flex items-center gap-1">{rightSlot}</div>}
@@ -111,11 +112,12 @@ const SettingRow: React.FC<{
   description?: string;
   children: React.ReactNode;
 }> = ({ title, description, children }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <div className="text-sm text-foreground/90 leading-tight">{title}</div>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
@@ -135,7 +137,7 @@ const Subsection: React.FC<{
       <div className="min-w-0">
         <div className="text-sm text-foreground/90 leading-tight">{title}</div>
         {description && (
-          <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
+          <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">
             {description}
           </p>
         )}
@@ -261,7 +263,7 @@ function ModelStatusHint({
   };
 
   return (
-    <div className="mx-1 my-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+    <div className="mx-1 my-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
       <div className="flex items-start gap-2">
         <Warning className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
         <span>{map[assignedModel.status]}</span>
@@ -334,7 +336,7 @@ function HistoryEntryCard({
   return (
     <div className="py-2.5 px-1 rounded">
       <div className="mb-1 flex items-start justify-between gap-3">
-        <div className="text-[11px] text-muted-foreground/70">
+        <div className="text-xs text-muted-foreground/70">
           {formatVoiceHistoryTime(entry.createdAt)}
           {entry.providerId ? ` · ${entry.providerId}` : ''}
           {entry.model ? ` · ${entry.model}` : ''}
@@ -705,7 +707,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               defaultValue: 'Photosynthesis\nAnkylosing spondylitis\nDeepStudent',
             })}
           />
-          <div className="mt-1.5 text-[11px] text-muted-foreground/70">
+          <div className="mt-1.5 text-xs text-muted-foreground/70">
             {t('settings:voice_input.dictionary_count', {
               defaultValue: '{{count}} phrase hints',
               count: vocabularyCount,
@@ -839,7 +841,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
                   {t('settings:voice_input.refresh_support', { defaultValue: 'Refresh Support' })}
                 </NotionButton>
               </div>
-              <p className="text-[11px] leading-5 text-muted-foreground/70">
+              <p className="text-xs leading-5 text-muted-foreground/70">
                 {t('settings:voice_input.runtime_hint', {
                   defaultValue:
                     'If recording support is unavailable, the app build is still missing platform microphone capability, the runtime is not exposing getUserMedia, or OS permission is blocked.',
@@ -856,7 +858,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
 function DiagnosticItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground/60">{label}</div>
       <div className="mt-0.5 text-xs text-foreground/80">{value}</div>
     </div>
   );

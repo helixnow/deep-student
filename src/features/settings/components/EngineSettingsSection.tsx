@@ -63,16 +63,17 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 overflow-hidden", settingsQuietInteractiveRowClassName, className)}>
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className={cn("group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 overflow-hidden", settingsQuietInteractiveRowClassName, className)}>
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <div className="w-full sm:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end sm:justify-start">
+    <div className="w-full md:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end md:justify-start">
       {children}
     </div>
   </div>
@@ -133,9 +134,9 @@ export const EngineSettingsSection: React.FC<{
 
   const StrategySummary: React.FC<{ id: string }> = ({ id }) => {
     const s = providerStrategies?.[id] || providerStrategies?.default;
-    if (!s) return <div className="text-[11px] text-muted-foreground/70">{t('settings:config_status.not_configured_use_default')}</div>;
+    if (!s) return <div className="text-xs text-muted-foreground/70">{t('settings:config_status.not_configured_use_default')}</div>;
     return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70 mt-1">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs text-muted-foreground/70 mt-1">
         <div>{t('settings:advanced_search.providers.timeout_ms')}: {s.timeout_ms ?? '-'}ms</div>
         <div>{t('settings:advanced_search.providers.max_retries')}: {s.max_retries ?? '-'}</div>
         <div>{t('settings:advanced_search.providers.initial_delay_ms')}: {s.initial_retry_delay_ms ?? '-'}ms</div>
@@ -184,7 +185,7 @@ export const EngineSettingsSection: React.FC<{
     return (
       <div className="mt-6 grid gap-4 text-xs grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.timeout_ms')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.timeout_ms')}</div>
           <Input
             type="number"
             min={1000}
@@ -194,7 +195,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_retries')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_retries')}</div>
           <Input
             type="number"
             min={0}
@@ -204,7 +205,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.initial_delay_ms')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.initial_delay_ms')}</div>
           <Input
             type="number"
             min={0}
@@ -214,7 +215,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_concurrent_requests')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.max_concurrent_requests')}</div>
           <Input
             type="number"
             min={0}
@@ -224,7 +225,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.rate_limit_per_minute')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.rate_limit_per_minute')}</div>
           <Input
             type="number"
             min={0}
@@ -234,7 +235,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_ttl_seconds')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_ttl_seconds')}</div>
           <Input
             type="number"
             min={0}
@@ -244,7 +245,7 @@ export const EngineSettingsSection: React.FC<{
           />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_max_entries')}</div>
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:advanced_search.providers.cache_max_entries')}</div>
           <Input
             type="number"
             min={0}
@@ -268,7 +269,7 @@ export const EngineSettingsSection: React.FC<{
           <div className="flex items-center gap-2 flex-shrink-0">
             {engineResults[id] && (
               <span className={cn(
-                "text-[11px] mr-2",
+                "text-xs mr-2",
                 engineResults[id].ok ? 'text-success' : 'text-destructive'
               )}>
                 {engineResults[id].ok ? '✓' : '✗'} {engineResults[id].ms ? `${engineResults[id].ms}ms` : ''}
@@ -384,12 +385,12 @@ export const EngineSettingsSection: React.FC<{
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_api_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_api_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchGoogleKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleKey: v }))} placeholder="GOOGLE_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.google_api_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_api_key_desc')}</p>
                 </div>
                 <div className="space-y-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_cse_cx_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.google_cse_cx_label')}</div>
                           <Input
                     type="text"
                     value={config.webSearchGoogleCx}
@@ -397,7 +398,7 @@ export const EngineSettingsSection: React.FC<{
                     placeholder="GOOGLE_CSE_CX"
                     className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
                   />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.google_cse_cx_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_cse_cx_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('google_cse', !!(config.webSearchGoogleKey && config.webSearchGoogleCx))}
@@ -421,9 +422,9 @@ export const EngineSettingsSection: React.FC<{
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.serpapi_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.serpapi_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchSerpApiKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSerpApiKey: v }))} placeholder="SERPAPI_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.serpapi_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.serpapi_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('serpapi', !!config.webSearchSerpApiKey)}
@@ -447,9 +448,9 @@ export const EngineSettingsSection: React.FC<{
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.tavily_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.tavily_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchTavilyKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchTavilyKey: v }))} placeholder="TAVILY_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.tavily_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.tavily_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('tavily', !!config.webSearchTavilyKey)}
@@ -473,9 +474,9 @@ export const EngineSettingsSection: React.FC<{
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.brave_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.brave_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchBraveKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBraveKey: v }))} placeholder="BRAVE_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.brave_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.brave_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('brave', !!config.webSearchBraveKey)}
@@ -499,7 +500,7 @@ export const EngineSettingsSection: React.FC<{
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
                           <Input
                     type="text"
                     value={config.webSearchSearxngEndpoint}
@@ -507,12 +508,12 @@ export const EngineSettingsSection: React.FC<{
                     placeholder="https://searx.example.com"
                     className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
                   />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_endpoint_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.searxng_endpoint_desc')}</p>
                 </div>
                 <div className="space-y-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchSearxngKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngKey: v }))} placeholder="SEARXNG_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.searxng_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.searxng_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('searxng', !!config.webSearchSearxngEndpoint)}
@@ -536,9 +537,9 @@ export const EngineSettingsSection: React.FC<{
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.zhipu_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.zhipu_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchZhipuKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchZhipuKey: v }))} placeholder="ZHIPU_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.zhipu_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.zhipu_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('zhipu', !!config.webSearchZhipuKey)}
@@ -562,9 +563,9 @@ export const EngineSettingsSection: React.FC<{
               </div>
               <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.bocha_key_label')}</div>
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.bocha_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchBochaKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchBochaKey: v }))} placeholder="BOCHA_API_KEY" isSensitive />
-                  <p className="text-[11px] text-muted-foreground/70">{t('settings:external_search.bocha_key_desc')}</p>
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.bocha_key_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('bocha', !!config.webSearchBochaKey)}
@@ -630,7 +631,7 @@ export const EngineSettingsSection: React.FC<{
               }}
               className="!w-24 h-8 text-xs bg-transparent"
             />
-            <span className="text-[11px] text-muted-foreground/70">ms</span>
+            <span className="text-xs text-muted-foreground/70">ms</span>
           </div>
         </SettingRow>
       </div>

@@ -25,6 +25,7 @@ import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 
 import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSidebarItem } from '@/components/ui/unified-sidebar/UnifiedSidebar';
 import useTheme, { type ThemeMode, type ThemePalette } from '@/hooks/useTheme';
@@ -44,10 +45,12 @@ import { ApisTab } from './ApisTab';
 import { ParamsTab } from './ParamsTab';
 import { ExternalSearchTab } from './ExternalSearchTab';
 import { AutomationSettingsSection } from './AutomationSettingsSection';
+import { SubagentProfilesSection } from './SubagentProfilesSection';
 import type { AutomationListen } from './automationSettingsApi';
 import { useSettingsNavigation } from './useSettingsNavigation';
 import { type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
+import { APP_EVENTS, useAppEvent } from '@/events';
 import {
   UI_FONT_STORAGE_KEY,
   DEFAULT_UI_FONT,
@@ -62,7 +65,6 @@ import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdju
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import {
   DEFAULT_STDIO_ARGS_STORAGE,
-  CHAT_STREAM_SETTINGS_EVENT,
   UI_ZOOM_STORAGE_KEY,
   DEFAULT_UI_ZOOM,
   clampZoom,
@@ -471,28 +473,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   );
 
   const mcpSection = useMcpEditorSection({ config, setConfig, isSmallScreen: effectiveMobilePanelMode, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo });
-  const { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, emitChatStreamSettingsUpdate, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry } = mcpSection;
+  const { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry } = mcpSection;
 
-  const handleMobileSettingsBack = useCallback(() => {
-    if (screenPosition !== 'right') {
-      // 左抽屉展开时先收起
-      if (screenPosition === 'left') {
-        setScreenPosition('center');
-        return;
-      }
-      // P0-1 / P1-6 两级导航返回链：
-      // 供应商详情 → 供应商列表 → 分区内容 → 分区列表 →（菜单键）应用导航抽屉
-      if (mobileNavView === 'content') {
-        if (activeTab === 'apis' && mobileVendorDetailOpen) {
-          setMobileVendorDetailOpen(false);
-          return;
-        }
-        setMobileNavView('sections');
-        return;
-      }
-      setScreenPosition('left');
-      return;
-    }
+  // 按 rightPanelType 关闭当前右滑面板并清理对应状态
+  //（返回键与手势滑回共用，避免手势 dismiss 后 mcpPreview/modelEditor 等状态残留）
+  const dismissRightPanel = useCallback(() => {
     switch (rightPanelType) {
       case 'modelEditor':
         handleCloseModelEditor();
@@ -518,11 +503,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         closeRightPanel();
     }
   }, [
-    screenPosition,
     rightPanelType,
-    mobileNavView,
-    activeTab,
-    mobileVendorDetailOpen,
     handleCloseModelEditor,
     setVendorModalOpen,
     setEditingVendor,
@@ -531,6 +512,65 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     setMcpPolicyModal,
     handleClosePreview,
   ]);
+
+  // 手势滑动切屏：从右滑面板滑回时执行与返回键一致的清理，
+  // 否则 mcpPreview.open 残留为 true，再次点击「预览」时 effect 不重跑、面板无法滑出
+  const handleScreenPositionChange = useCallback((next: ScreenPosition) => {
+    if (screenPosition === 'right' && next !== 'right') {
+      dismissRightPanel();
+      return;
+    }
+    setScreenPosition(next);
+  }, [screenPosition, dismissRightPanel]);
+
+  const handleMobileSettingsBack = useCallback(() => {
+    if (screenPosition !== 'right') {
+      // 左抽屉展开时先收起
+      if (screenPosition === 'left') {
+        setScreenPosition('center');
+        return;
+      }
+      // P0-1 / P1-6 两级导航返回链：
+      // 供应商详情 → 供应商列表 → 分区内容 → 分区列表 →（菜单键）应用导航抽屉
+      if (mobileNavView === 'content') {
+        if (activeTab === 'apis' && mobileVendorDetailOpen) {
+          setMobileVendorDetailOpen(false);
+          return;
+        }
+        setMobileNavView('sections');
+        return;
+      }
+      setScreenPosition('left');
+      return;
+    }
+    dismissRightPanel();
+  }, [
+    screenPosition,
+    mobileNavView,
+    activeTab,
+    mobileVendorDetailOpen,
+    dismissRightPanel,
+  ]);
+
+  // Android 返回键：设置两级导航逐级回退（供应商详情 → 供应商列表 → 分区内容 → 分区列表）。
+  // Dialog / 右滑面板 / 左抽屉由 overlay 优先级 handler（NotionDialog、MobileSlidingLayout）
+  // 先行消费；此处只在中屏「分区内容态」接管，与顶栏返回箭头同一条回退链。
+  // 分区列表态返回 false，交给应用级视图历史 fallback。
+  const settingsBackStateRef = useRef({ screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen });
+  settingsBackStateRef.current = { screenPosition, mobileNavView, activeTab, mobileVendorDetailOpen };
+  useEffect(() => {
+    if (!isSmallScreen) return;
+    return registerBackHandler(() => {
+      const s = settingsBackStateRef.current;
+      if (s.screenPosition !== 'center' || s.mobileNavView !== 'content') return false;
+      if (s.activeTab === 'apis' && s.mobileVendorDetailOpen) {
+        setMobileVendorDetailOpen(false);
+      } else {
+        setMobileNavView('sections');
+      }
+      return true;
+    }, BACK_PRIORITY.view);
+  }, [isSmallScreen]);
 
   // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 NotionDialog）
   useEffect(() => {
@@ -652,7 +692,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         chatStreamTimeoutSeconds: savedValue,
         _lastSavedTimeoutSeconds: savedValue,
       }));
-      emitChatStreamSettingsUpdate({ timeoutMs });
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       console.error('[Settings] 保存聊天流式超时失败:', error);
@@ -662,7 +701,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         chatStreamTimeoutSeconds: prev._lastSavedTimeoutSeconds ?? '',
       }));
     }
-  }, [emitChatStreamSettingsUpdate, extra, invoke, showGlobalNotification, t]);
+  }, [extra, invoke, showGlobalNotification, t]);
 
   const handleToggleChatStreamAutoCancel = useCallback(async (checked: boolean) => {
     setExtra(prev => ({ ...prev, chatStreamAutoCancel: checked }));
@@ -673,14 +712,13 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     try {
       await invoke('save_setting', { key: 'chat.stream.auto_cancel_on_timeout', value: checked ? '1' : '0' });
       showGlobalNotification('success', t('common:settings.chat_stream.save_success_auto_cancel'));
-      emitChatStreamSettingsUpdate({ autoCancel: checked });
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       console.error('[Settings] 保存聊天流式自动取消失败:', error);
       showGlobalNotification('error', t('common:settings.chat_stream.save_error_auto_cancel', { error: errorMessage }));
       setExtra(prev => ({ ...prev, chatStreamAutoCancel: !checked }));
     }
-  }, [emitChatStreamSettingsUpdate, invoke, showGlobalNotification, t]);
+  }, [invoke, showGlobalNotification, t]);
 
   // 🔧 R2-9: 合并为单一 useEffect，避免竞态写入
   useEffect(() => {
@@ -688,16 +726,17 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     (async () => {
       try {
         // 并行加载所有参数调整相关设置
-        const [ftsVal, rrfk, wfts, wvec, rawTimeout, rawAutoCancel] = await Promise.all([
+        // FTS 预筛：后端消费的 key 是 rag.hybrid.fts_prefilter.enabled；
+        // 旧 key search.chat.semantic.fts_prefilter.enabled 仅作读取回退（历史用户已保存值）
+        const [ftsVal, ftsLegacyVal, rawTimeout, rawAutoCancel] = await Promise.all([
+          invoke<string | null>('get_setting', { key: 'rag.hybrid.fts_prefilter.enabled' }).catch(() => null),
           invoke<string | null>('get_setting', { key: 'search.chat.semantic.fts_prefilter.enabled' }).catch(() => null),
-          invoke<string | null>('get_setting', { key: 'search.chat.rrf.k' }).catch(() => null),
-          invoke<string | null>('get_setting', { key: 'search.chat.rrf.w_fts' }).catch(() => null),
-          invoke<string | null>('get_setting', { key: 'search.chat.rrf.w_vec' }).catch(() => null),
           invoke<string | null>('get_setting', { key: 'chat.stream.timeout_ms' }).catch(() => null),
           invoke<string | null>('get_setting', { key: 'chat.stream.auto_cancel_on_timeout' }).catch(() => null),
         ]);
 
-        const ftsEnabled = ftsVal ? (ftsVal === '1' || ftsVal.toLowerCase() === 'true') : true;
+        const ftsRaw = ftsVal ?? ftsLegacyVal;
+        const ftsEnabled = ftsRaw ? (ftsRaw === '1' || ftsRaw.toLowerCase() === 'true') : true;
 
         const timeoutMs = (() => {
           if (!rawTimeout) return null;
@@ -720,9 +759,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           ...prev,
           paramsLoaded: true,
           chatSemanticFtsPrefilter: ftsEnabled,
-          rrf_k: rrfk || '',
-          rrf_w_fts: wfts || '',
-          rrf_w_vec: wvec || '',
           chatStreamTimeoutSeconds: secondsString,
           chatStreamAutoCancel: autoCancel,
           _lastSavedTimeoutSeconds: secondsString,
@@ -754,24 +790,21 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   }, [applySettingsRoute]);
 
   // P1-09: 监听命令面板的 tab 跳转事件
-  useEffect(() => {
-    const handleNavigateTab = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tab?: string; dataGovernanceTab?: string }>;
-      const tab = customEvent.detail?.tab;
+  useAppEvent(
+    APP_EVENTS.SETTINGS_NAVIGATE_TAB,
+    (detail) => {
+      const tab = detail.tab;
       if (tab) {
         applySettingsRoute({
           tab,
-          dataGovernanceTab: customEvent.detail?.dataGovernanceTab,
+          dataGovernanceTab: detail.dataGovernanceTab,
         });
         // 程序化直达某分区：移动端跳过分区列表，直接进入内容态
         setMobileNavView('content');
       }
-    };
-    window.addEventListener('SETTINGS_NAVIGATE_TAB', handleNavigateTab);
-    return () => {
-      window.removeEventListener('SETTINGS_NAVIGATE_TAB', handleNavigateTab);
-    };
-  }, [applySettingsRoute]);
+    },
+    [applySettingsRoute],
+  );
 
   // 当进入 MCP 标签或配置变化时刷新缓存快照
   useEffect(() => {
@@ -1070,7 +1103,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                     type="button"
                     onClick={() => openMobileSection(item.tab)}
                     className={cn(
-                      'flex w-full min-h-11 items-center gap-3 px-3 py-1.5 text-left',
+                      'flex w-full min-h-11 items-center gap-3 px-3 py-1.5 text-left ui-press',
                       settingsQuietInteractiveRowClassName,
                       settingsQuietHoverClassName
                     )}
@@ -1106,7 +1139,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                     data-tour-id={item.tourId}
                     onClick={() => openMobileSection(item.value)}
                     className={cn(
-                      'flex w-full min-h-11 items-center gap-3 px-3 text-left',
+                      'flex w-full min-h-11 items-center gap-3 px-3 text-left ui-press',
                       settingsQuietInteractiveRowClassName,
                       settingsQuietHoverClassName
                     )}
@@ -1396,10 +1429,13 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           <DataImportExport embedded={true} mode="stats" />
         )}
         {activeTab === 'automation' && (
-          <AutomationSettingsSection
-            invoke={invoke}
-            listen={isTauri ? tauriListen as unknown as AutomationListen : null}
-          />
+          <div className="space-y-6">
+            <AutomationSettingsSection
+              invoke={invoke}
+              listen={isTauri ? tauriListen as unknown as AutomationListen : null}
+            />
+            <SubagentProfilesSection />
+          </div>
         )}
         {/* 数据治理 */}
         {activeTab === 'data-governance' && (
@@ -1484,7 +1520,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                   </svg>
                 </NotionButton>
               </div>
-              <div style={{ display: 'grid', gap: 12 }}>
+              {/* 矮窗口下限高滚动，避免表单被 max-h-[85vh] + overflow-hidden 裁剪后按钮不可达 */}
+              <div className="min-h-0 flex-1 overflow-y-auto" style={{ display: 'grid', gap: 12 }}>
                 <label className="inline-flex items-center gap-2 cursor-pointer">
                   <Switch
                     checked={mcpPolicyModal.advertiseAll}
@@ -1725,7 +1762,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           }
           rightPanel={renderRightPanel()}
           screenPosition={screenPosition}
-          onScreenPositionChange={setScreenPosition}
+          onScreenPositionChange={handleScreenPositionChange}
           sidebarWidth="auto"
           rightPanelEnabled={rightPanelType !== 'none'}
           enableGesture={true}

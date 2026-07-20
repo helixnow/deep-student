@@ -953,28 +953,28 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 <TabsTrigger 
                   value="general" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-xs sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.basic_info')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="capabilities" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-xs sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.capabilities.title')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="params" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-xs sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.advanced_settings')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="reasoning" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-xs sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.reasoning.title')}
                 </TabsTrigger>
@@ -1012,7 +1012,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         />
                         <Sparkle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-400/60 pointer-events-none" />
                       </div>
-                      <p className="text-[10px] text-muted-foreground/60 flex items-center gap-1 ml-1">
+                      <p className="text-2xs text-muted-foreground/60 flex items-center gap-1 ml-1">
                         {t('settings:api.modal.model_name_hint')}
                       </p>
                     </div>
@@ -1100,7 +1100,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           variant="ghost"
                           className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10 w-full"
                         />
-                        <p className="text-[10px] text-muted-foreground/70 ml-1">
+                        <p className="text-2xs text-muted-foreground/70 ml-1">
                           {t('settings:api.modal.protocol_hint')}
                         </p>
                       </div>
@@ -1195,7 +1195,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             <span className="font-medium text-sm flex items-center gap-2">
                               {option.title}
                               {option.highlight && (
-                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal bg-primary/10 text-primary border-none">
+                                <Badge variant="secondary" className="text-2xs h-4 px-1.5 font-normal bg-primary/10 text-primary border-none">
                                   {t('settings:api.modal.capabilities.recommended')}
                                 </Badge>
                               )}
@@ -1239,7 +1239,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         step={0.1}
                         className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
-                      <p className="text-[10px] text-muted-foreground/60 ml-1">
+                      <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.temperature_hint')}
                       </p>
                     </div>
@@ -1266,11 +1266,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         step={1}
                         className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
-                      <p className="text-[10px] text-muted-foreground/60 ml-1">
+                      <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.max_tokens_hint')}
                       </p>
                       {formData.modelAdapter === 'general' && formData.model?.toLowerCase().includes('qwen') && (
-                        <p className="text-[10px] text-amber-500 ml-1">{t('settings:api.modal.fields.qwen_hint')}</p>
+                        <p className="text-2xs text-amber-500 ml-1">{t('settings:api.modal.fields.qwen_hint')}</p>
                       )}
                     </div>
                   </div>
@@ -1306,7 +1306,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       placeholder={t('settings:api.modal.fields.max_tokens_limit_placeholder')}
                       className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                     />
-                    <p className="text-[10px] text-muted-foreground/60 ml-1">
+                    <p className="text-2xs text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.max_tokens_limit_hint')}
                     </p>
                   </div>
@@ -1342,7 +1342,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       placeholder={t('settings:api.modal.fields.context_window_placeholder', { defaultValue: `${t('settings:api.modal.fields.context_window_auto_inferred')}: ${inferredCaps.contextWindow.toLocaleString()}` })}
                       className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                     />
-                    <p className="text-[10px] text-muted-foreground/60 ml-1">
+                    <p className="text-2xs text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.context_window_hint')}
                       {' '}{inferredCaps.contextWindow.toLocaleString()} tokens
                     </p>
@@ -1554,7 +1554,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         placeholder={t('settings:api.modal.fields.repetition_penalty_placeholder', 'Qwen: >1.0, Doubao: >0')}
                         className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
-                      <p className="text-[10px] text-muted-foreground/60 ml-1">
+                      <p className="text-2xs text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.repetition_penalty_hint', 'Qwen/Doubao models: penalize repeated tokens')}
                       </p>
                     </div>
@@ -1624,7 +1624,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           }}
                           className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                         />
-                        <p className="text-[10px] text-muted-foreground/60 ml-1">{t('settings:api.modal.anthropic.budget_hint')}</p>
+                        <p className="text-2xs text-muted-foreground/60 ml-1">{t('settings:api.modal.anthropic.budget_hint')}</p>
                       </div>}
                     </div>
                   )}
@@ -1771,7 +1771,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 variant="ghost"
                                 className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
-                              <p className="text-[10px] text-muted-foreground/60 ml-1">
+                              <p className="text-2xs text-muted-foreground/60 ml-1">
                                 {deepSeekReasoningControl.kind === 'v32-budget-effort'
                                   ? t('settings:api.modal.deepseek.v32_depth_hint', 'DeepSeek V3.2 maps depth presets to SiliconFlow thinking_budget.')
                                   : t('settings:api.modal.deepseek.reasoning_effort_hint', 'DeepSeek V4 supports high or max reasoning effort.')}
@@ -1893,7 +1893,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               variant="ghost"
                               className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                             />
-                            <p className="text-[10px] text-muted-foreground/60 ml-1">
+                            <p className="text-2xs text-muted-foreground/60 ml-1">
                               {t('settings:api.modal.grok.reasoning_effort_hint')}
                             </p>
                           </div>
@@ -1944,7 +1944,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               variant="ghost"
                               className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                             />
-                            <p className="text-[10px] text-muted-foreground/60 ml-1">
+                            <p className="text-2xs text-muted-foreground/60 ml-1">
                               {t('settings:api.modal.doubao.thinking_mode_hint')}
                             </p>
                           </div>

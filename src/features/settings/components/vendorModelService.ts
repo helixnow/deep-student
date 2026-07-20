@@ -9,6 +9,7 @@
  */
 
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { TauriAPI } from '@/utils/tauriApi';
 import type { VendorConfig } from '@/types';
 
@@ -107,13 +108,16 @@ export function buildVendorModelsUrl(baseUrl: string): string {
  * 解析供应商的明文 API Key。
  * 内置供应商 → 优先从 Tauri 安全存储读取，回退到 vendor.apiKey
  * 普通供应商 → 直接返回（排除掩码 ***）
- * noApiKey 供应商 → 返回空字符串（允许无 Key 获取模型）
+ * authMode=none（兼容 noApiKey）供应商 → 返回空字符串（允许无 Key 获取模型）
  */
 export async function resolveApiKey(vendor: VendorConfig): Promise<string | null> {
-  // noApiKey 供应商：无需 Key，返回空字符串表示"可跳过认证"
-  if (vendor.noApiKey) {
+  // 免密供应商：authMode 是持久化契约，noApiKey 仅用于兼容旧前端状态。
+  if (vendor.authMode === 'none' || vendor.noApiKey) {
     return '';
   }
+  const submittedKey = [vendor.apiKey, ...(vendor.apiKeys ?? [])]
+    .map(key => key?.trim() ?? '')
+    .find(key => key && key !== '***' && !key.split('').every(character => character === '*'));
 
   const isBuiltin = vendor.isBuiltin || vendor.id.startsWith('builtin-');
 
@@ -125,29 +129,15 @@ export async function resolveApiKey(vendor: VendorConfig): Promise<string | null
         key = await TauriAPI.getSetting('siliconflow.api_key');
       }
       // 回退：Tauri 存储为空时，检查 vendor.apiKey（handleSaveVendorApiKey 临时存入）
-      if (!key) {
-        const raw = vendor.apiKey?.trim();
-        if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
-          return raw;
-        }
-      }
+      if (!key && submittedKey) return submittedKey;
       return key && key.trim() ? key.trim() : null;
     } catch {
       console.warn(`[vendorModelService] Failed to resolve builtin API key for ${vendor.id}`);
-      // 异常时回退到 vendor.apiKey
-      const raw = vendor.apiKey?.trim();
-      if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
-        return raw;
-      }
-      return null;
+      return submittedKey ?? null;
     }
   }
 
-  const raw = vendor.apiKey?.trim();
-  if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
-    return raw;
-  }
-  return null;
+  return submittedKey ?? null;
 }
 
 // ============================================================================
@@ -164,6 +154,16 @@ export async function fetchModelsFromVendor(
   vendor: VendorConfig,
   resolvedApiKey: string
 ): Promise<FetchedModel[]> {
+  if (
+    typeof window !== 'undefined'
+    && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+    && vendor.id.trim()
+  ) {
+    return tauriInvoke<FetchedModel[]>('fetch_vendor_models', {
+      vendorId: vendor.id,
+    });
+  }
+
   const baseUrl = vendor.baseUrl.trim().replace(/\/+$/u, '');
   if (!baseUrl) {
     throw new Error('Vendor base URL is empty');
@@ -372,9 +372,10 @@ export async function autoPostSaveFlow(
 ): Promise<void> {
   const { existingModelIds, onAddModels } = options;
 
-  // 1. 解析 API Key
-  const resolvedKey = await resolveApiKey(vendor);
-  // noApiKey 供应商返回空字符串（而非 null），允许无 Key 获取模型
+  // 1. Tauri 运行时由 Rust 解析凭据；浏览器回退路径才读取当前表单中的明文 key。
+  const isTauri = typeof window !== 'undefined'
+    && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+  const resolvedKey = isTauri ? '' : await resolveApiKey(vendor);
   if (resolvedKey === null) {
     console.warn(
       `[autoPostSaveFlow] Cannot resolve API key for vendor ${vendor.id} (${vendor.name}), skipping auto-fetch.`

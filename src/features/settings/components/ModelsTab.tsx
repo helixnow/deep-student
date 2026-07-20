@@ -82,15 +82,16 @@ const ModelAssignmentRow = ({
   onSave: (field: string, value: string | null) => Promise<any>;
   setConfig: React.Dispatch<React.SetStateAction<any>>;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+      <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
         {description}
       </p>
     </div>
     
-    <div className="w-full sm:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end sm:justify-start">
+    <div className="w-full md:w-[280px] flex-shrink-0 [&>div]:w-full [&_button]:w-full flex items-center justify-end md:justify-start">
       <UnifiedModelSelector
         models={models}
         value={value || ''}
@@ -109,7 +110,7 @@ const ModelAssignmentRow = ({
         popoverClassName="w-[280px]"
       />
       {models.length === 0 && noModelsMessage && (
-        <div className="text-[11px] text-destructive/80 mt-1">
+        <div className="text-xs text-destructive/80 mt-1">
           {noModelsMessage}
         </div>
       )}
@@ -141,14 +142,15 @@ const TranslationDisplayModeRow = ({
   onSave: (field: string, value: string | null) => Promise<any>;
   setConfig: React.Dispatch<React.SetStateAction<any>>;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+      <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
         {description}
       </p>
     </div>
-    <div className="w-full sm:w-[280px] flex-shrink-0 flex items-center justify-end sm:justify-start">
+    <div className="w-full md:w-[280px] flex-shrink-0 flex items-center justify-end md:justify-start">
       <SegmentedControl<TranslationDisplayMode>
         ariaLabel={title}
         value={value}

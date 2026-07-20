@@ -19,6 +19,8 @@ export type SettingsRightPanelType =
 export interface McpToolConfig {
   id: string;
   name: string;
+  /** 后端 stdio 门禁要求 enabled == true（缺省按 false）；存量 UI 条目缺省时前端按 true 兼容 */
+  enabled?: boolean;
   transportType?: 'stdio' | 'websocket' | 'sse' | 'streamable_http';
   connected?: boolean;
   url?: string;
@@ -35,9 +37,6 @@ export interface McpToolConfig {
 export interface SettingsExtra {
   paramsLoaded?: boolean;
   chatSemanticFtsPrefilter?: boolean;
-  rrf_k?: string;
-  rrf_w_fts?: string;
-  rrf_w_vec?: string;
   chatStreamTimeoutSeconds?: string;
   chatStreamAutoCancel?: boolean;
   _lastSavedTimeoutSeconds?: string;

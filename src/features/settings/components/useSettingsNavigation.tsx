@@ -69,6 +69,11 @@ export function useSettingsNavigation() {
     { tab: 'general', label: t('settings:language.title'), keywords: ['language'] },
     {
       tab: 'general',
+      label: t('settings:system_authorization.title'),
+      keywords: ['permission', 'authorization', 'notification', 'microphone', 'file access', '权限', '授权', '通知', '麦克风', '文件访问'],
+    },
+    {
+      tab: 'general',
       label: t('settings:voice_input.title'),
       keywords: ['voice input', 'dictation', 'asr', 'microphone', 'speech to text', '听写', '语音输入'],
     },

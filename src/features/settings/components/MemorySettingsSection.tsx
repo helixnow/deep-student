@@ -242,7 +242,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               {!isMemoryOn ? t('settings:memory.disabled') : isConfigured ? t('settings:memory.configured') : t('settings:memory.notConfigured')}
             </span>
           </div>
-          <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-1 ml-3.5">
+          <p className="text-xs text-muted-foreground/70 leading-relaxed mt-1 ml-3.5">
             {t('settings:memory.description')}
           </p>
         </div>
@@ -292,7 +292,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
         {/* 创建新文件夹输入 */}
         {showCreateInput && (
           <div className="group py-2.5 px-1 rounded">
-            <div className="flex items-center gap-2 ml-0 sm:ml-auto sm:max-w-[280px]">
+            <div className="flex items-center gap-2 ml-0 md:ml-auto md:max-w-[280px]">
               <Input
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
@@ -349,10 +349,17 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
           />
         </SettingRow>
 
-        {/* ★ 自动提取频率（此前仅在记忆文件夹横幅中可配置） */}
+        {/* ★ 自动提取频率（此前仅在记忆文件夹横幅中可配置）
+            描述随当前档位变化：off 档如实说明只关自动提取、生命周期管理照常运行 */}
         <SettingRow
           title={t('settings:memory.autoExtractFrequency')}
-          description={t('settings:memory.autoExtractFrequencyDesc')}
+          description={t(
+            {
+              off: 'settings:memory.freqOffDesc',
+              balanced: 'settings:memory.freqBalancedDesc',
+              aggressive: 'settings:memory.freqAggressiveDesc',
+            }[config?.autoExtractFrequency || 'balanced']
+          )}
         >
           <AppSelect
             value={config?.autoExtractFrequency || 'balanced'}

@@ -124,7 +124,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               aria-label={t('sidebar.search_placeholder')}
               className={cn(
                 'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
-                'pl-8 pr-2.5 text-[13px] text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
+                'pl-8 pr-2.5 text-ui text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
                 'outline-none transition-colors focus:border-[color:var(--border)] focus:bg-background',
                 '[&::-webkit-search-cancel-button]:hidden'
               )}
@@ -149,7 +149,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                   >
                     <span className="flex min-w-0 flex-col items-start text-left">
                       <span className={`truncate ${SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}`}>{item.label}</span>
-                      <span className="truncate text-[11px] text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-70">
+                      <span className="truncate text-xs text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-70">
                         {tabLabelMap.get(item.tab) ?? item.tab}
                       </span>
                     </span>
@@ -158,7 +158,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               ))}
             </ul>
           ) : (
-            <p className="px-3 py-2 text-[12px] text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-80">
+            <p className="px-3 py-2 text-sm text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-80">
               {t('sidebar.no_results')}
             </p>
           )

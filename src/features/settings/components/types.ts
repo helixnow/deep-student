@@ -48,7 +48,7 @@ export interface SystemConfig {
   mcpCacheMax: number;
   mcpCacheTtlMs: number;
   // 多个 MCP 工具配置（以工具为单位）
-  mcpTools?: Array<{ id: string; name: string; transportType?: 'stdio'|'websocket'|'sse'|'streamable_http'; url?: string; command?: string; args?: string | string[]; env?: Record<string, string>; endpoint?: string; apiKey?: string; fetch?: { type: 'sse'|'streamable_http'; url: string }; mcpServers?: Record<string, any> }>;
+  mcpTools?: Array<{ id: string; name: string; enabled?: boolean; transportType?: 'stdio'|'websocket'|'sse'|'streamable_http'; url?: string; command?: string; args?: string | string[]; env?: Record<string, string>; endpoint?: string; apiKey?: string; fetch?: { type: 'sse'|'streamable_http'; url: string }; mcpServers?: Record<string, any> }>;
 
   // 外部搜索设置（不再提供全局启用开关，仅保留引擎与密钥配置）
   webSearchEngine: string;

@@ -18,7 +18,17 @@ vi.mock('react-i18next', () => {
       'settings:automation.heartbeat': 'Heartbeat',
       'settings:automation.last_run_relative': `Last run ${String(options?.time ?? '')}`,
       'settings:automation.next_run_relative': `Next run ${String(options?.time ?? '')}`,
+      'settings:automation.starting_soon': 'Starting soon',
       'settings:automation.row_updated_elsewhere': 'This task was updated elsewhere; the list has been refreshed.',
+      'settings:automation.background.title': 'Background running',
+      'settings:automation.background.description': 'Keep the app alive after the window closes so automations still fire on time.',
+      'settings:automation.background.active_hint': `Background scheduling active · next trigger ${String(options?.time ?? '')}`,
+      'settings:automation.background.active_hint_idle': 'Background scheduling active; no upcoming triggers',
+      'settings:automation.background.paused_hint': 'Background running is off; automations will not fire after the window closes',
+      'settings:automation.background.confirm_hint': 'Turn off background running? Once the window closes, no automations will fire until it is re-enabled.',
+      'settings:automation.background.confirm': 'Turn off background running',
+      'settings:automation.notices.background_enabled': 'Background running enabled.',
+      'settings:automation.notices.background_disabled': 'Background running turned off.',
       'settings:automation.action_type.agent_turn': 'Agent task',
       'settings:automation.action_type.notify': 'Notification + todo',
       'settings:automation.schedule.daily': `Every day at ${String(options?.time ?? '')}`,
@@ -103,7 +113,8 @@ const automationItem = {
   retryBackoffSeconds: 60,
   timeoutSeconds: 600,
   lastRunAt: undefined as string | undefined,
-  nextTriggerAt: '2026-07-14T08:00:00+08:00',
+  // 远未来时刻：保证「已过期 → 即将开始」分支不随真实时间推进而误触发
+  nextTriggerAt: '2099-07-14T08:00:00+08:00',
 };
 
 const latestRun = {
@@ -117,10 +128,19 @@ const latestRun = {
   delivered: [] as string[],
 };
 
+type SummaryState = {
+  enabledCount: number;
+  runningCount: number;
+  failedCount: number;
+  nextRunAt?: string;
+  backgroundEnabled: boolean;
+};
+
 type StoreState = {
   automations: Array<typeof automationItem>;
   count: number;
   max: number;
+  summary: SummaryState | null;
   runs: Array<typeof latestRun>;
   loading: boolean;
   error: string | null;
@@ -131,6 +151,7 @@ type StoreState = {
   remove: ReturnType<typeof vi.fn>;
   runNow: ReturnType<typeof vi.fn>;
   create: ReturnType<typeof vi.fn>;
+  setBackgroundEnabled: ReturnType<typeof vi.fn>;
 };
 
 const stopSyncMock = vi.fn();
@@ -185,6 +206,13 @@ const buildStoreState = (): StoreState => ({
   automations: [{ ...automationItem, schedule: { ...automationItem.schedule } }],
   count: 1,
   max: 20,
+  summary: {
+    enabledCount: 1,
+    runningCount: 0,
+    failedCount: 0,
+    nextRunAt: '2099-07-14T08:00:00+08:00',
+    backgroundEnabled: true,
+  },
   runs: [{ ...latestRun }],
   loading: false,
   error: null,
@@ -195,6 +223,7 @@ const buildStoreState = (): StoreState => ({
   remove: vi.fn(async () => undefined),
   runNow: vi.fn(async () => undefined),
   create: vi.fn(async () => undefined),
+  setBackgroundEnabled: vi.fn(async () => undefined),
 });
 
 const renderSection = (props: Partial<React.ComponentProps<typeof AutomationSettingsSection>> = {}) =>
@@ -213,7 +242,8 @@ describe('AutomationSettingsSection', () => {
   it('starts the store sync on mount and stops it on unmount', () => {
     const { unmount } = renderSection();
     expect(startAutomationSyncMock).toHaveBeenCalledTimes(1);
-    expect(storeState.refresh).toHaveBeenCalled();
+    // 首轮拉取由 startAutomationSync 负责；组件不再显式 refresh（避免重复拉取）
+    expect(storeState.refresh).not.toHaveBeenCalled();
     unmount();
     expect(stopSyncMock).toHaveBeenCalledTimes(1);
   });
@@ -227,8 +257,15 @@ describe('AutomationSettingsSection', () => {
   it('renders rows with relative next-run time and the last-run status pill', () => {
     renderSection();
     expect(screen.getByText('Morning review')).toBeInTheDocument();
-    expect(screen.getByText('Next run rel(2026-07-14T08:00:00+08:00)')).toBeInTheDocument();
+    expect(screen.getByText('Next run rel(2099-07-14T08:00:00+08:00)')).toBeInTheDocument();
     expect(screen.getByTestId('status-pill')).toHaveTextContent('success');
+  });
+
+  it('shows "starting soon" instead of a past-tense relative time for an overdue next run', () => {
+    storeState.automations = [{ ...automationItem, nextTriggerAt: '2020-01-01T00:00:00Z' }];
+    renderSection();
+    expect(screen.getByText('Next run Starting soon')).toBeInTheDocument();
+    expect(screen.queryByText('Next run rel(2020-01-01T00:00:00Z)')).not.toBeInTheDocument();
   });
 
   it('marks paused automations with a chip and degraded styling', () => {
@@ -340,7 +377,8 @@ describe('AutomationSettingsSection', () => {
       'This task was updated elsewhere; the list has been refreshed.',
     );
     expect(screen.queryByTestId('automation-form-edit')).not.toBeInTheDocument();
-    expect(storeState.refresh).toHaveBeenCalledTimes(2); // mount + conflict
+    // 冲突后的补拉由 store.runMutation 内部完成，组件不再显式 refresh
+    expect(storeState.refresh).not.toHaveBeenCalled();
   });
 
   it('requires a second inline confirmation before deleting', async () => {
@@ -467,6 +505,47 @@ describe('AutomationSettingsSection', () => {
     expect(screen.getByText('1 / 20')).toBeInTheDocument();
   });
 
+  it('shows the background running row with the next-trigger hint in settings mode', () => {
+    renderSection();
+    expect(screen.getByTestId('automation-background-row')).toBeInTheDocument();
+    expect(
+      screen.getByText('Background scheduling active · next trigger rel(2099-07-14T08:00:00+08:00)'),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the background running row in embedded mode (workspace owns the toggle)', () => {
+    renderSection({ embedded: true });
+    expect(screen.queryByTestId('automation-background-row')).not.toBeInTheDocument();
+  });
+
+  it('requires an inline confirmation before turning background running off', async () => {
+    renderSection();
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Background running' }));
+    expect(storeState.setBackgroundEnabled).not.toHaveBeenCalled();
+    expect(screen.getByText(/Turn off background running\? Once the window closes/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off background running' }));
+    await waitFor(() => {
+      expect(storeState.setBackgroundEnabled).toHaveBeenCalledWith(false);
+    });
+    expect(screen.getByText('Background running turned off.')).toBeInTheDocument();
+  });
+
+  it('re-enables background running immediately without confirmation', async () => {
+    storeState.summary = { ...storeState.summary!, backgroundEnabled: false };
+    renderSection();
+    expect(
+      screen.getByText('Background running is off; automations will not fire after the window closes'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Background running' }));
+    await waitFor(() => {
+      expect(storeState.setBackgroundEnabled).toHaveBeenCalledWith(true);
+    });
+    expect(screen.getByText('Background running enabled.')).toBeInTheDocument();
+  });
+
   it('surfaces store errors with a retry action', () => {
     storeState.error = 'automation list failed';
     storeState.automations = [];
@@ -477,6 +556,6 @@ describe('AutomationSettingsSection', () => {
     expect(screen.queryByText('No automations yet')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(storeState.refresh).toHaveBeenCalledTimes(2); // mount + retry
+    expect(storeState.refresh).toHaveBeenCalledTimes(1); // retry（挂载不再显式 refresh）
   });
 });

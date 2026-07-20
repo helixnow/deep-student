@@ -146,7 +146,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
           className="rounded-lg border border-border/45 bg-muted/15 p-3.5"
         >
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h4 className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-foreground/90">
+            <h4 className="flex min-w-0 items-center gap-2 text-ui font-medium text-foreground/90">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/45" />
               <span className="truncate">{t(`acknowledgements.openSource.categories.${group.key}`)}</span>
             </h4>
@@ -193,7 +193,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
         </div>
       )}
       {!legalLoading && !legalError && (
-        <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/45 bg-muted/15 p-4 text-[11px] leading-5 text-foreground/80 select-text">
+        <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/45 bg-muted/15 p-4 text-xs leading-5 text-foreground/80 select-text">
           {legalText}
         </pre>
       )}

@@ -53,15 +53,8 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
         (window as any).__TAURI_INTERNALS__ ? (await import('@tauri-apps/api/core')).invoke<string[]>('anki_get_deck_names') : Promise.resolve([]),
         (window as any).__TAURI_INTERNALS__ ? (await import('@tauri-apps/api/core')).invoke<string[]>('get_anki_model_names') : Promise.resolve([])
       ]);
-      // 向全局派发连接状态事件，供页面顶部状态同步
-      window.dispatchEvent(new CustomEvent('ankiConnectStatusUpdated', {
-        detail: { available: true, deckNames, modelNames }
-      }));
       showGlobalNotification('success', t('common:anki.settings.connection_success', { deckCount: deckNames.length, modelCount: modelNames.length }));
-    } catch (e: any) {
-      window.dispatchEvent(new CustomEvent('ankiConnectStatusUpdated', {
-        detail: { available: false, error: e?.message || String(e) }
-      }));
+    } catch {
       showGlobalNotification('error', t('common:anki.settings.connection_failed'));
     } finally {
       setTesting(false);
@@ -137,8 +130,8 @@ export const AnkiConnectSettingsSection: React.FC<AnkiConnectSettingsSectionProp
       >
         <Input
           placeholder={t('common:anki.settings.export_deck_placeholder')}
-          value={settings.anki_connect_export_deck || ''}
-          onChange={(event) => savePartial({ anki_connect_export_deck: event.target.value })}
+          value={settings.anki_connect_default_deck || ''}
+          onChange={(event) => savePartial({ anki_connect_default_deck: event.target.value })}
           className="h-8 w-64 max-w-full bg-transparent text-xs"
         />
       </SettingRow>

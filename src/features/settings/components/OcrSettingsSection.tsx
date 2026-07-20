@@ -38,16 +38,18 @@ const SettingRow = ({
   description?: string;
   children: React.ReactNode;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <div className="w-[200px] flex-shrink-0">
+    {/* 移动端占满行宽（提高滑块可用行程），≥md 才收敛为固定列宽 */}
+    <div className="w-full md:w-[200px] flex-shrink-0">
       {children}
     </div>
   </div>
@@ -67,16 +69,24 @@ const SwitchRow = ({
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
 }) => (
-  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 rounded">
+  // 整行可点切换，开关本体 stopPropagation 避免双重切换
+  <div
+    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
+    onClick={() => {
+      if (!disabled) onCheckedChange(!checked);
+    }}
+  >
     <div className="flex-1 min-w-0">
       <h3 className={cn("text-sm leading-tight", disabled ? "text-muted-foreground/50" : "text-foreground/90")}>{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
+    <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
+    </span>
   </div>
 );
 
@@ -123,12 +133,12 @@ const Slider: React.FC<{
       onChange={(e) => onChange(parseFloat(e.target.value))}
       disabled={disabled}
       className={cn(
-        "flex-1 h-1.5 bg-muted rounded-full appearance-none cursor-pointer accent-primary",
+        "settings-range-slider flex-1 h-1.5 bg-muted rounded-full appearance-none cursor-pointer",
         disabled && "opacity-50 cursor-not-allowed"
       )}
     />
     {showValue && (
-      <span className="text-[11px] text-muted-foreground/70 min-w-[3.5rem] text-right">
+      <span className="text-xs text-muted-foreground/70 min-w-[3.5rem] text-right">
         {value}{suffix}
       </span>
     )}
@@ -334,7 +344,7 @@ export const OcrSettingsSection: React.FC = () => {
 
       {/* 说明提示 */}
       <div className="mt-6 py-3 px-1">
-        <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+        <p className="text-xs text-muted-foreground/60 leading-relaxed">
           {t('settings:ocr.tip')}
         </p>
       </div>

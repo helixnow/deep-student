@@ -569,8 +569,14 @@
       "custom": "自定义"
     },
     "base_url_label": "接口地址",
+    "max_tokens_limit_label": "最大输出 Token 上限",
+    "timeout_ms_label": "发现/测试超时（毫秒）",
+    "optional_placeholder": "可选",
     "api_key_label": "API 密钥",
     "api_key_placeholder_keep_or_update": "留空保持不变，或输入新密钥",
+    "backup_api_keys_label": "备用 API 密钥",
+    "backup_api_keys_placeholder": "每行输入一个 API 密钥",
+    "backup_api_keys_hint": "按顺序用于故障切换；掩码行保留原密钥，删除中间密钥时请将对应行留空。",
     "notes_label": "备注",
     "notes_placeholder": "可选：添加备注信息",
     "headers_label": "自定义请求头",
@@ -764,7 +770,17 @@
     "next_run": "下次运行",
     "last_run_relative": "上次运行：{{time}}",
     "next_run_relative": "下次运行：{{time}}",
+    "starting_soon": "即将开始",
     "row_updated_elsewhere": "任务已在别处更新，已刷新",
+    "background": {
+      "title": "后台运行",
+      "description": "关闭窗口后应用驻留后台，定时任务照常触发；显式退出应用或关机会停止任务，重新打开后按补偿策略恢复。",
+      "active_hint": "后台调度运行中 · 下次触发：{{time}}",
+      "active_hint_idle": "后台调度运行中，暂无待触发的任务",
+      "paused_hint": "后台运行已关闭，窗口关闭后定时任务不会触发",
+      "confirm_hint": "关闭后台运行？窗口关闭后所有定时任务（含心跳）将不再触发，直到重新开启。",
+      "confirm": "关闭后台运行"
+    },
     "action_type": {
       "notify": "通知 + 待办",
       "agent_turn": "Agent 任务"
@@ -863,7 +879,9 @@
       "disabled": "已停用「{{name}}」。",
       "started": "「{{name}}」已开始运行。",
       "updated": "已更新「{{name}}」。",
-      "deleted": "已删除「{{name}}」。"
+      "deleted": "已删除「{{name}}」。",
+      "background_enabled": "已开启后台运行。",
+      "background_disabled": "已关闭后台运行。"
     },
     "errors": {
       "desktop_only": "自动化管理需要 Deep Student 桌面应用。",
@@ -874,12 +892,45 @@
       "prompt_required": "任务说明不能为空。",
       "prompt_too_long": "任务说明不能超过 4000 个字符。",
       "invalid_time": "请输入有效的 24 小时制时间。",
+      "date_required": "一次性任务需要选择运行日期。",
       "invalid_timezone": "请输入有效的 IANA 时区，例如 Asia/Shanghai。",
       "invalid_day_of_month": "每月日期必须是 1 到 31 之间的整数。",
       "invalid_interval": "间隔必须是 5 到 1440 之间的整数分钟。",
       "invalid_retries": "失败重试次数必须是 0 到 10 之间的整数。",
       "invalid_backoff": "重试退避必须是 5 到 86400 之间的整数秒。",
       "invalid_timeout": "超时必须是 30 到 3600 之间的整数秒。"
+    }
+  },
+  "subagentProfiles": {
+    "title": "子代理档案",
+    "description": "查看可用的子代理档案：内建三型开箱即用，自定义档案通过档案目录中的 Markdown 文件定义。",
+    "loading": "正在加载子代理档案",
+    "builtin_badge": "内建",
+    "custom_badge": "自定义",
+    "model": "模型：{{model}}",
+    "tool_count": "工具数：{{count}}",
+    "builtin_names": {
+      "default": "通用",
+      "worker": "执行者",
+      "explorer": "调研者"
+    },
+    "actions": {
+      "refresh": "刷新档案列表",
+      "retry": "重试",
+      "open_dir": "打开档案目录",
+      "copy_template": "复制模板",
+      "copied": "已复制"
+    },
+    "empty": {
+      "title": "还没有自定义档案",
+      "description": "在档案目录放置 .md 文件即可定义自定义子代理，保存后点击刷新生效。",
+      "template_hint": "最小模板",
+      "template": "---\nname: my-researcher\ndescription: 网络调研并输出要点\nbase: explorer\n---\n你是一个调研子代理。给出结论时必须附来源链接。"
+    },
+    "errors": {
+      "desktop_only": "子代理档案管理需要 Deep Student 桌面应用。",
+      "reveal_failed": "无法打开档案目录，请检查目录是否存在。",
+      "copy_failed": "复制模板失败，请手动复制。"
     }
   },
   "sidebar": {
@@ -900,10 +951,41 @@
   },
   "system_notification": {
     "title": "系统通知",
-    "desc": "番茄钟、待办提醒、制卡等任务的系统通知策略。「仅后台」表示应用在前台时不打扰。",
+    "desc": "番茄钟、待办提醒、制卡与后台自动化的系统通知策略。「仅后台」表示应用在前台时不打扰；「从不」对后台任务同样生效。",
     "background": "仅后台",
     "always": "总是",
     "never": "从不"
+  },
+  "system_authorization": {
+    "title": "系统授权",
+    "description": "管理 Deep Student 在电脑上运行所需的系统权限。只在实际使用相关功能时申请。",
+    "request": "去授权",
+    "open_settings": "打开设置",
+    "refresh": "刷新状态",
+    "status": {
+      "checking": "检测中",
+      "granted": "已授权",
+      "not_requested": "未授权",
+      "denied": "已拒绝",
+      "unavailable": "不可用",
+      "unknown": "待确认"
+    },
+    "notifications": {
+      "title": "系统通知",
+      "description": "允许番茄钟、待办提醒和后台自动化在需要时发送系统通知。",
+      "denied_hint": "系统通知权限已被拒绝，请在系统设置中允许 Deep Student 发送通知。"
+    },
+    "microphone": {
+      "title": "麦克风",
+      "description": "允许语音输入在你主动开始听写时采集音频。",
+      "denied_hint": "麦克风权限已被拒绝，请在系统设置中允许 Deep Student 使用麦克风。"
+    },
+    "files": {
+      "title": "文件与目录",
+      "description": "AI 只访问你明确选择的目录，不需要完全磁盘访问权限。",
+      "status": "按需授权",
+      "manage": "管理目录"
+    }
   },
   "debug": {
     "description": "用于调试全局流式会话与事件"
@@ -1077,6 +1159,21 @@
       "description": "预览项目中使用的自定义 UI 组件。",
       "app_menu": "现代化菜单",
       "app_menu_desc": "现代化下拉菜单/右键菜单通用组件"
+    }
+  },
+  "diagnostics": {
+    "title": "诊断与反馈",
+    "export": {
+      "title": "导出诊断包",
+      "description": "将当前日志和旧版本遗留日志脱敏后汇总为 ZIP，不会包含数据库和用户文档。",
+      "mobile_unsupported": "当前版本暂不支持移动端分享；启用错误报告后仍会自动记录故障。",
+      "action": "导出 ZIP",
+      "success": "诊断包已导出（{{count}} 个文件）",
+      "partial": "已导出 {{count}} 个文件，另有 {{skipped}} 个文件未能包含"
+    },
+    "include_debug": {
+      "title": "包含详细 AI 请求日志",
+      "description": "默认关闭；其中可能包含学习内容，分享前请检查 ZIP。"
     }
   },
   "developer": {
@@ -2228,7 +2325,9 @@
     "latest_prompts": "最新 Prompts",
     "latest_resources": "最新 Resources",
     "none": "暂无",
-    "prompts_resources_section": "Prompts & Resources"
+    "prompts_resources_section": "Prompts & Resources",
+    "toggle_enabled": "启用或停用服务器 {{name}}",
+    "disabled_badge": "已停用"
   },
   "tool_permissions": {
     "title": "工具权限管理",
@@ -2457,6 +2556,9 @@
     "freqOff": "关闭",
     "freqBalanced": "平衡",
     "freqAggressive": "积极",
+    "freqOffDesc": "仅关闭对话后的自动提取；已有记忆的整理、衰减与画像更新仍会照常运行。",
+    "freqBalancedDesc": "每轮对话后自动提取记忆，内容不足 10 个字符时跳过。",
+    "freqAggressiveDesc": "更积极地提取（内容满 4 个字符即触发），分类刷新与记忆整理也更频繁。",
     "categoryGeneral": "通用",
     "categoryPreference": "偏好",
     "categoryExperience": "经历",

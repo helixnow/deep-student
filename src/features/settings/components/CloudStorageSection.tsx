@@ -23,6 +23,7 @@ import * as cloudApi from '@/utils/cloudStorageApi';
 import { TauriAPI } from '@/utils/tauriApi';
 import { DataGovernanceApi, type BackupJobSummary } from '@/api/dataGovernance';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -96,10 +97,27 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [showFtpPassword, setShowFtpPassword] = useState(false);
   const [testing, setTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'failed'>('unknown');
+  const [secureStoreIssue, setSecureStoreIssue] = useState<string | null>(null);
+
+  const markSecureStoreIssue = useCallback(
+    (error: unknown, operation: 'read' | 'write'): string | null => {
+      const envelope = parseCommandErrorEnvelope(error);
+      if (!envelope?.code.startsWith('SECURE_STORE_')) return null;
+      const message = t(
+        operation === 'read'
+          ? 'cloudStorage:messages.secureStoreReadFailed'
+          : 'cloudStorage:messages.secureStoreWriteFailed',
+      );
+      setSecureStoreIssue(message);
+      return message;
+    },
+    [t],
+  );
   
   // 同步状态
   const [syncStatus, setSyncStatus] = useState<cloudApi.SyncStatus | null>(null);
   const [versions, setVersions] = useState<cloudApi.BackupVersion[]>([]);
+  const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -128,6 +146,20 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     const timer = window.setTimeout(() => setConfirmingDeleteVersionId(null), 4000);
     return () => window.clearTimeout(timer);
   }, [confirmingDeleteVersionId]);
+
+  useEffect(() => {
+    let active = true;
+    void cloudApi.getDeviceId()
+      .then(deviceId => {
+        if (active) setCurrentDeviceId(deviceId);
+      })
+      .catch(error => {
+        console.warn('[cloud-backup] failed to resolve current device id:', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // 不安全连接警告对话框状态
   const [showInsecureFtpWarning, setShowInsecureFtpWarning] = useState(false);
@@ -225,6 +257,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           configLoaded = true;
         } catch (e: unknown) {
           console.error('Failed to load cloud storage config:', e);
+          const secureMessage = markSecureStoreIssue(e, 'write');
+          if (secureMessage) {
+            showGlobalNotification('error', secureMessage);
+          }
         }
       } else if (legacy) {
         // 从旧配置迁移
@@ -290,12 +326,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           configLoaded = true;
         } catch (e: unknown) {
           console.error('Failed to migrate legacy config:', e);
+          const secureMessage = markSecureStoreIssue(e, 'write');
+          if (secureMessage) {
+            showGlobalNotification('error', secureMessage);
+          }
         }
       }
       
       // 从安全存储加载敏感凭据
       try {
         const credentials = await cloudApi.getCredentials();
+        setSecureStoreIssue(null);
         if (credentials) {
           if (credentials.webdavPassword) {
             setWebdavConfig(prev => ({ ...prev, password: credentials.webdavPassword! }));
@@ -312,6 +353,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         }
       } catch (e: unknown) {
         console.warn('Failed to load credentials from secure storage:', e);
+        const secureMessage = markSecureStoreIssue(e, 'read');
+        showGlobalNotification(
+          'warning',
+          secureMessage ?? t('cloudStorage:messages.secureStoreReadFailed'),
+        );
       }
 
       if (
@@ -324,7 +370,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     };
     
     loadConfig();
-  }, [t]);
+  }, [markSecureStoreIssue, t]);
 
   // 构建配置对象
   const buildConfig = useCallback((): cloudApi.CloudStorageConfig => {
@@ -373,7 +419,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     };
 
     // 凭据是提交前置条件。只有安全存储成功后，才发布“已配置”的非敏感配置，
-    // 避免 Keychain/Credential Manager 失败留下无法工作的半配置状态。
+    // 避免安全存储（本机加密文件，见 secure_store.rs）写入失败留下无法工作的半配置状态。
     try {
       await cloudApi.saveCredentials({
         webdavPassword: webdavConfig.password || undefined,
@@ -381,9 +427,16 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         ftpPassword: ftpConfig.password || undefined,
         encryptionPassword: encryptionPassword || undefined,
       });
+      setSecureStoreIssue(null);
     } catch (e: unknown) {
       console.error('Failed to save credentials to secure storage:', e);
-      showGlobalNotification('error', t('cloudStorage:messages.configSavedButCredentialsFailed'));
+      const secureMessage = markSecureStoreIssue(e, 'write');
+      const userMessage =
+        secureMessage ?? t('cloudStorage:messages.configSavedButCredentialsFailed');
+      showGlobalNotification(
+        'error',
+        `${userMessage}: ${getErrorMessage(e)}`,
+      );
       return;
     }
 
@@ -398,7 +451,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
     showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
     onConfigChanged?.();
-  }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, t, onConfigChanged]);
+  }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, markSecureStoreIssue, t, onConfigChanged]);
 
   // 保存配置（先检查不安全连接）
   const saveConfig = useCallback(async () => {
@@ -633,19 +686,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   useEffect(() => {
     return () => {
       abortCtrlRef.current?.abort();
-      const jobId = activeGovernanceJobRef.current;
-      if (jobId) {
-        void DataGovernanceApi.cancelBackup(jobId).catch((error: unknown) => {
-          console.warn('[cloud-backup] failed to cancel job during unmount:', error);
-        });
-      }
     };
   }, []);
 
   const waitForGovernanceJob = useCallback(async (
     jobId: string,
     kind: 'export' | 'import',
-    timeoutMs = 180000
+    inactivityTimeoutMs = 15 * 60 * 1000
   ): Promise<BackupJobSummary> => {
     abortCtrlRef.current?.abort();
     const ctrl = new AbortController();
@@ -653,14 +700,25 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     activeGovernanceJobRef.current = jobId;
 
     const startedAt = Date.now();
+    const hardDeadlineMs = 24 * 60 * 60 * 1000;
+    let lastActivityAt = startedAt;
+    let lastSignature = '';
     try {
-      while (Date.now() - startedAt < timeoutMs) {
+      while (
+        Date.now() - lastActivityAt < inactivityTimeoutMs
+        && Date.now() - startedAt < hardDeadlineMs
+      ) {
         if (ctrl.signal.aborted) {
           throw new Error(`${kind} job polling cancelled (component unmounted)`);
         }
 
         const job = await DataGovernanceApi.getBackupJob(jobId);
         if (job) {
+          const signature = `${job.status}|${job.phase}|${job.progress}|${job.message ?? ''}`;
+          if (signature !== lastSignature) {
+            lastSignature = signature;
+            lastActivityAt = Date.now();
+          }
           if (job.status === 'completed') {
             if (job.result?.success !== true) {
               throw new Error(
@@ -688,9 +746,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       }
 
       await DataGovernanceApi.cancelBackup(jobId).catch((error: unknown) => {
-        console.warn('[cloud-backup] failed to cancel timed out job:', error);
+        console.warn('[cloud-backup] failed to cancel stalled job:', error);
       });
-      throw new Error(`backup job timeout: ${kind} (${Math.floor(timeoutMs / 1000)}s)`);
+      throw new Error(
+        Date.now() - startedAt >= hardDeadlineMs
+          ? `backup job exceeded maximum runtime: ${kind} (24h)`
+          : `backup job made no progress: ${kind} (${Math.floor(inactivityTimeoutMs / 1000)}s)`
+      );
     } finally {
       if (activeGovernanceJobRef.current === jobId) {
         activeGovernanceJobRef.current = null;
@@ -897,8 +959,21 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 主要内容
   const content = (
     <div className={isDialog ? 'space-y-4' : 'space-y-6'}>
-      {/* 存储类型选择 - 卡片式单选 */}
-      <div className="grid grid-cols-2 gap-3">
+      {secureStoreIssue && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300"
+        >
+          <WarningCircle size={18} className="mt-0.5 shrink-0" aria-hidden />
+          <div className="min-w-0">
+            <p className="font-medium">{t('cloudStorage:messages.secureStoreIssueTitle')}</p>
+            <p className="mt-0.5 text-xs leading-relaxed">{secureStoreIssue}</p>
+          </div>
+        </div>
+      )}
+
+      {/* 存储类型选择 - 卡片式单选（<sm 上下堆叠，400px 双列卡片文案过挤） */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <NotionButton
           variant="ghost"
           size="sm"
@@ -1361,7 +1436,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                           <Download size={16} />
                         )}
                       </NotionButton>
-                      {isSmallScreen && confirmingDeleteVersionId === version.id ? (
+                      {currentDeviceId === version.deviceId && (
+                        isSmallScreen && confirmingDeleteVersionId === version.id ? (
                         // P2-12 移动端两段式行内确认：再点一次执行删除
                         <NotionButton
                           size="sm"
@@ -1392,6 +1468,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         >
                           <Trash size={16} className="text-destructive" />
                         </NotionButton>
+                        )
                       )}
                     </div>
                   </div>

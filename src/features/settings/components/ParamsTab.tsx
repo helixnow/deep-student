@@ -25,11 +25,12 @@ const SettingRow = ({
   description?: string;
   children: React.ReactNode;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
@@ -53,11 +54,17 @@ const SwitchRow = ({
   onCheckedChange: (checked: boolean) => void;
   loading?: boolean;
 }) => (
-  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 rounded">
+  // 整行可点切换，开关本体 stopPropagation 避免双重切换
+  <div
+    className="group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1 rounded"
+    onClick={() => {
+      if (!loading) onCheckedChange(!checked);
+    }}
+  >
     <div className="flex-1 min-w-0">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
@@ -65,7 +72,9 @@ const SwitchRow = ({
     {loading ? (
       <div aria-hidden="true" className="h-6 w-11 shrink-0 rounded-full bg-muted/50 animate-pulse" />
     ) : (
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+        <Switch checked={checked} onCheckedChange={onCheckedChange} />
+      </span>
     )}
   </div>
 );
@@ -91,7 +100,9 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
   const handleFtsToggle = useCallback(async (v: boolean) => {
     setExtra((prev: any) => ({ ...prev, chatSemanticFtsPrefilter: v }));
     try {
-      await invoke?.('save_setting', { key: 'search.chat.semantic.fts_prefilter.enabled', value: v ? '1' : '0' });
+      // 后端（lance_vector_store）消费的 key 是 rag.hybrid.fts_prefilter.enabled，
+      // 旧 key search.chat.semantic.fts_prefilter.enabled 已废弃（仅读取时回退兼容）
+      await invoke?.('save_setting', { key: 'rag.hybrid.fts_prefilter.enabled', value: v ? '1' : '0' });
       showGlobalNotification('success', t('settings:notifications.semantic_fts_save_success'));
     } catch (error: unknown) {
       showGlobalNotification('error', t('settings:notifications.semantic_fts_save_error', { error: getErrorMessage(error) }));

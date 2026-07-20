@@ -15,6 +15,7 @@ import i18n from '@/i18n';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 export const WORKBENCH_MODE_SETTING_KEY = 'desktop.workbenchMode';
 /** 一次性默认值迁移哨兵：避免对缺失键重复写入 / 重复提示 */
@@ -148,7 +149,7 @@ export async function persistWorkbenchModeEnabled(enabled: boolean): Promise<boo
   if (!enabled) await closeBrowserForDisabledGate();
   workbenchBus.setEnabled(enabled);
   try {
-    window.dispatchEvent(new CustomEvent('workbench:mode-changed', { detail: { enabled } }));
+    dispatchAppEvent(APP_EVENTS.WORKBENCH_MODE_CHANGED, { enabled });
   } catch {
     // noop
   }

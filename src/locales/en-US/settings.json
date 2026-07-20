@@ -569,8 +569,14 @@
       "custom": "Custom"
     },
     "base_url_label": "Base URL",
+    "max_tokens_limit_label": "Max output token cap",
+    "timeout_ms_label": "Discovery/test timeout (ms)",
+    "optional_placeholder": "Optional",
     "api_key_label": "API Key",
     "api_key_placeholder_keep_or_update": "Leave empty to keep unchanged, or enter new key",
+    "backup_api_keys_label": "Backup API keys",
+    "backup_api_keys_placeholder": "One API key per line",
+    "backup_api_keys_hint": "Used in order for failover. Masked lines keep stored keys; leave a middle line blank to delete that key.",
     "notes_label": "Notes",
     "notes_placeholder": "Optional: Add notes",
     "headers_label": "Custom Headers",
@@ -764,7 +770,17 @@
     "next_run": "Next run",
     "last_run_relative": "Last run {{time}}",
     "next_run_relative": "Next run {{time}}",
+    "starting_soon": "Starting soon",
     "row_updated_elsewhere": "This task was updated elsewhere; the list has been refreshed.",
+    "background": {
+      "title": "Background running",
+      "description": "Keep the app alive after the window closes so automations still fire on time; quitting the app or shutting down stops tasks, and missed runs recover according to their policy.",
+      "active_hint": "Background scheduling active · next trigger {{time}}",
+      "active_hint_idle": "Background scheduling active; no upcoming triggers",
+      "paused_hint": "Background running is off; automations will not fire after the window closes",
+      "confirm_hint": "Turn off background running? Once the window closes, no automations (including the heartbeat) will fire until it is re-enabled.",
+      "confirm": "Turn off background running"
+    },
     "action_type": {
       "notify": "Notification + todo",
       "agent_turn": "Agent task"
@@ -863,7 +879,9 @@
       "disabled": "Disabled {{name}}.",
       "started": "Started {{name}}.",
       "updated": "Updated {{name}}.",
-      "deleted": "Deleted {{name}}."
+      "deleted": "Deleted {{name}}.",
+      "background_enabled": "Background running enabled.",
+      "background_disabled": "Background running turned off."
     },
     "errors": {
       "desktop_only": "Automation management requires the Deep Student desktop app.",
@@ -874,12 +892,45 @@
       "prompt_required": "Task instructions cannot be empty.",
       "prompt_too_long": "Task instructions cannot exceed 4,000 characters.",
       "invalid_time": "Enter a valid 24-hour time.",
+      "date_required": "A one-time automation needs a run date.",
       "invalid_timezone": "Enter a valid IANA time zone, such as Asia/Shanghai.",
       "invalid_day_of_month": "Day of month must be an integer from 1 to 31.",
       "invalid_interval": "The interval must be an integer from 5 to 1,440 minutes.",
       "invalid_retries": "Failure retries must be an integer from 0 to 10.",
       "invalid_backoff": "Retry delay must be an integer from 5 to 86,400 seconds.",
       "invalid_timeout": "Timeout must be an integer from 30 to 3,600 seconds."
+    }
+  },
+  "subagentProfiles": {
+    "title": "Subagent Profiles",
+    "description": "Browse available subagent profiles: the three built-in profiles work out of the box, and custom profiles are defined as Markdown files in the profiles directory.",
+    "loading": "Loading subagent profiles",
+    "builtin_badge": "Built-in",
+    "custom_badge": "Custom",
+    "model": "Model: {{model}}",
+    "tool_count": "Tools: {{count}}",
+    "builtin_names": {
+      "default": "Default",
+      "worker": "Worker",
+      "explorer": "Explorer"
+    },
+    "actions": {
+      "refresh": "Refresh profiles",
+      "retry": "Retry",
+      "open_dir": "Open profiles directory",
+      "copy_template": "Copy template",
+      "copied": "Copied"
+    },
+    "empty": {
+      "title": "No custom profiles yet",
+      "description": "Drop a .md file into the profiles directory to define a custom subagent, then hit refresh to load it.",
+      "template_hint": "Minimal template",
+      "template": "---\nname: my-researcher\ndescription: Research the web and report key points\nbase: explorer\n---\nYou are a research subagent. Always include source links with your conclusions."
+    },
+    "errors": {
+      "desktop_only": "Subagent profile management requires the Deep Student desktop app.",
+      "reveal_failed": "Could not open the profiles directory. Check that it exists.",
+      "copy_failed": "Failed to copy the template. Please copy it manually."
     }
   },
   "sidebar": {
@@ -900,10 +951,41 @@
   },
   "system_notification": {
     "title": "System Notifications",
-    "desc": "Notification policy for pomodoro, todo reminders and card generation. \"Background only\" keeps quiet while the app is focused.",
+    "desc": "Notification policy for pomodoro, todo reminders, card generation and background automations. \"Background only\" keeps quiet while the app is focused; \"Never\" also silences background tasks.",
     "background": "Background only",
     "always": "Always",
     "never": "Never"
+  },
+  "system_authorization": {
+    "title": "System Permissions",
+    "description": "Manage the system access Deep Student needs to run on this computer. Access is requested only when you use the related feature.",
+    "request": "Authorize",
+    "open_settings": "Open Settings",
+    "refresh": "Refresh Status",
+    "status": {
+      "checking": "Checking",
+      "granted": "Authorized",
+      "not_requested": "Not Authorized",
+      "denied": "Denied",
+      "unavailable": "Unavailable",
+      "unknown": "Needs Check"
+    },
+    "notifications": {
+      "title": "System Notifications",
+      "description": "Allow pomodoro, todo reminders, and background automations to send system notifications when needed.",
+      "denied_hint": "Notification access was denied. Allow Deep Student to send notifications in System Settings."
+    },
+    "microphone": {
+      "title": "Microphone",
+      "description": "Allow voice input to capture audio only after you actively start dictation.",
+      "denied_hint": "Microphone access was denied. Allow Deep Student to use the microphone in System Settings."
+    },
+    "files": {
+      "title": "Files and Folders",
+      "description": "AI can access only folders you explicitly choose. Full Disk Access is not required.",
+      "status": "Authorized as Needed",
+      "manage": "Manage Folders"
+    }
   },
   "debug": {
     "description": "For debugging global streaming sessions and events"
@@ -1077,6 +1159,21 @@
       "description": "Preview custom UI components used in the project.",
       "app_menu": "Modern Style Menu",
       "app_menu_desc": "A modern dropdown/context menu component"
+    }
+  },
+  "diagnostics": {
+    "title": "Diagnostics and feedback",
+    "export": {
+      "title": "Export diagnostic bundle",
+      "description": "Collects current and legacy logs into a redacted ZIP. Databases and documents are never included.",
+      "mobile_unsupported": "Mobile sharing is not available in this version. Error reporting still works automatically when enabled.",
+      "action": "Export ZIP",
+      "success": "Diagnostic bundle exported ({{count}} files)",
+      "partial": "Exported {{count}} files; {{skipped}} could not be included"
+    },
+    "include_debug": {
+      "title": "Include detailed AI request logs",
+      "description": "Off by default. These logs may contain study content; review the ZIP before sharing."
     }
   },
   "developer": {
@@ -2228,7 +2325,9 @@
     "latest_prompts": "Latest Prompts",
     "latest_resources": "Latest Resources",
     "none": "None",
-    "prompts_resources_section": "Prompts & Resources"
+    "prompts_resources_section": "Prompts & Resources",
+    "toggle_enabled": "Enable or disable server {{name}}",
+    "disabled_badge": "Disabled"
   },
   "tool_permissions": {
     "title": "Tool Permissions",
@@ -2457,6 +2556,9 @@
     "freqOff": "Off",
     "freqBalanced": "Balanced",
     "freqAggressive": "Aggressive",
+    "freqOffDesc": "Only turns off auto-extraction after conversations; existing memories are still organized, decayed and the profile keeps updating.",
+    "freqBalancedDesc": "Extracts memories after each conversation; skipped when the content is under 10 characters.",
+    "freqAggressiveDesc": "Extracts more eagerly (4-character threshold), with more frequent category refresh and memory maintenance.",
     "categoryGeneral": "General",
     "categoryPreference": "Preferences",
     "categoryExperience": "Experiences",

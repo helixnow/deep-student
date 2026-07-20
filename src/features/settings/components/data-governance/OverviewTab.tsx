@@ -87,15 +87,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <div className="flex items-center gap-2 h-8">
             {healthCheck?.overall_healthy ? (
               <>
-                <CheckCircle className="h-5 w-5 text-emerald-500" />
-                <span className="text-emerald-600 font-medium">
+                <CheckCircle className="h-5 w-5 text-success" />
+                <span className="text-success font-medium">
                   {t('data:governance.healthy')}
                 </span>
               </>
             ) : (
               <>
-                <Warning className="h-5 w-5 text-amber-500" />
-                <span className="text-amber-600 font-medium">
+                <Warning className="h-5 w-5 text-warning" />
+                <span className="text-warning font-medium">
                   {t('data:governance.needs_attention')}
                 </span>
               </>
@@ -126,13 +126,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <div className="flex items-baseline gap-2">
             <div className={`text-2xl font-semibold ${
               hasPendingMigrations
-                ? 'text-amber-600 dark:text-amber-400' 
+                ? 'text-warning' 
                 : 'text-foreground'
             }`}>
               {pendingMigrationCount}
             </div>
             {hasPendingMigrations && (
-              <span className="text-xs text-amber-600 dark:text-amber-400">
+              <span className="text-xs text-warning">
                 {t('data:governance.pending_migrations_restart_needed')}
               </span>
             )}
@@ -206,15 +206,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <div className="flex items-center gap-1.5">
                 {lastAutoVerifyResult.is_valid ? (
                   <>
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
-                    <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+                    <CheckCircle className="h-4 w-4 text-success" />
+                    <span className="text-sm text-success font-medium">
                       {t('data:governance.last_verification_passed')}
                     </span>
                   </>
                 ) : (
                   <>
-                    <Warning className="h-4 w-4 text-red-500" />
-                    <span className="text-sm text-red-600 dark:text-red-400 font-medium">
+                    <Warning className="h-4 w-4 text-destructive" />
+                    <span className="text-sm text-destructive font-medium">
                       {t('data:governance.last_verification_failed')}
                     </span>
                   </>
@@ -250,12 +250,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
         {/* 验证失败时显示错误详情 */}
         {lastAutoVerifyResult && !lastAutoVerifyResult.is_valid && lastAutoVerifyResult.errors.length > 0 && (
-          <div className="rounded-md border border-red-500/30 bg-red-500/5 p-3 mt-2">
-            <div className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 mt-2">
+            <div className="text-xs font-medium text-destructive mb-1">
               {t('data:governance.verify_errors_title')}
             </div>
             {lastAutoVerifyResult.errors.map((error, idx) => (
-              <div key={idx} className="text-xs text-red-600/80 dark:text-red-400/80 break-all">
+              <div key={idx} className="text-xs text-destructive/80 break-all">
                 {error}
               </div>
             ))}
@@ -265,12 +265,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
       {/* Schema 迁移待执行（无错误，重启即可） */}
       {hasPendingMigrations && !(migrationStatus?.has_pending_migrations && migrationStatus.last_error) && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-medium">
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-warning font-medium">
             <Warning className="h-4 w-4" />
             {t('data:governance.pending_migrations_next_step')}
           </div>
-          <p className="text-sm text-amber-600/90 dark:text-amber-400/90 pl-6">
+          <p className="text-sm text-warning/90 pl-6">
             {t('data:governance.pending_migrations_guidance')}
           </p>
         </div>
@@ -278,12 +278,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
       {/* Schema 迁移失败（有错误信息，展示具体错误和可操作步骤） */}
       {migrationStatus?.has_pending_migrations && migrationStatus.last_error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 space-y-2">
-          <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-medium">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-destructive font-medium">
             <Warning className="h-4 w-4" />
             {t('data:governance.migration_incomplete_title')}
           </div>
-          <p className="text-sm font-mono text-red-600/80 dark:text-red-400/80 pl-6 break-all">
+          <p className="text-sm font-mono text-destructive/80 pl-6 break-all">
             {migrationStatus.last_error}
           </p>
           <p className="text-sm text-muted-foreground pl-6 mt-1">
@@ -294,12 +294,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
       {/* 审计写入异常 */}
       {auditDegraded && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-medium">
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-warning font-medium">
             <Warning className="h-4 w-4" />
             {t('data:governance.audit_degraded_title')}
           </div>
-          <p className="text-sm text-amber-600/90 dark:text-amber-400/90 pl-6">
+          <p className="text-sm text-warning/90 pl-6">
             {t('data:governance.audit_degraded_desc')}
           </p>
           {healthCheck?.audit_log_error && (
@@ -366,10 +366,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                       {db.pending_count > 0 && (
                         <>
                           <span className="text-xs text-muted-foreground">→</span>
-                          <span className="text-xs font-mono bg-amber-100 dark:bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                          <span className="text-xs font-mono bg-warning/15 px-1.5 py-0.5 rounded text-warning whitespace-nowrap">
                             v{db.target_version}
                           </span>
-                          <span className="text-xs text-amber-600 dark:text-amber-400">
+                          <span className="text-xs text-warning">
                             ({db.pending_count}{t('data:governance.pending_count_unit')})
                           </span>
                         </>
@@ -378,17 +378,17 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   </TableCell>
                   <TableCell className="py-3">
                     {db.is_healthy ? (
-                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-success/10 text-success text-xs whitespace-nowrap">
                         <CheckCircle className="h-3 w-3 shrink-0" />
                         {t('data:governance.healthy')}
                       </div>
                     ) : db.pending_count > 0 ? (
-                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 text-xs whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-warning/10 text-warning text-xs whitespace-nowrap">
                         <Warning className="h-3 w-3 shrink-0" />
                         {t('data:governance.pending_migration_status')}
                       </div>
                     ) : (
-                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 text-xs whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-destructive/10 text-destructive text-xs whitespace-nowrap">
                         <XCircle className="h-3 w-3 shrink-0" />
                         {t('data:governance.unhealthy')}
                       </div>
@@ -396,9 +396,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   </TableCell>
                   <TableCell className="py-3">
                     {db.dependencies_met ? (
-                      <CheckCircle className="h-4 w-4 text-emerald-500/70" />
+                      <CheckCircle className="h-4 w-4 text-success/70" />
                     ) : (
-                      <Warning className="h-4 w-4 text-amber-500/70" />
+                      <Warning className="h-4 w-4 text-warning/70" />
                     )}
                   </TableCell>
                   <TableCell className="py-3">

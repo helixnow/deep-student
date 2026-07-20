@@ -324,7 +324,7 @@ export const SyncQuarantinePanel: React.FC<{
                   <summary className="cursor-pointer text-muted-foreground">
                     {t("data:governance.quarantine_payload_label")}
                   </summary>
-                  <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted/40 p-2 text-[11px] leading-5">
+                  <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted/40 p-2 text-xs leading-5">
                     {formatPayload(row.payload_json)}
                   </pre>
                 </details>

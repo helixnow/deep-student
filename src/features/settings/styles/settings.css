@@ -573,54 +573,6 @@
   box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.1);
 }
 
-.btn-primary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  border: none;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.1);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: hsl(var(--primary) / 0.9);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 6px hsl(var(--shadow-base) / 0.1);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  background: hsl(var(--secondary));
-  color: hsl(var(--secondary-foreground));
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: hsl(var(--accent));
-  border-color: hsl(var(--ring));
-  color: hsl(var(--accent-foreground));
-}
-
 .save-button-content {
   display: flex;
   align-items: center;
@@ -754,6 +706,51 @@
 
 .settings-select-trigger > span:first-of-type[data-placeholder] {
   opacity: 0.6;
+}
+
+/* ============ 设置页 range 滑块（PDF / OCR 参数） ============ */
+
+/*
+ * 滑块 input 使用了 appearance-none：WebKit 下若不自定义 ::-webkit-slider-thumb，
+ * 滑块柄会直接不渲染（accent-color 在 appearance:none 下也不生效）。
+ * 这里统一补 thumb 样式，并在触屏（pointer:coarse）下放大便于拖动。
+ */
+.settings-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.25);
+  cursor: pointer;
+}
+
+.settings-range-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.25);
+  cursor: pointer;
+}
+
+.settings-range-slider:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+}
+
+@media (pointer: coarse) {
+  .settings-range-slider::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+
+  .settings-range-slider::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
 }
 
 /* ============ 模型卡片内联编辑展开/收起 ============ */

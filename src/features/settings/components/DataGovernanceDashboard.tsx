@@ -57,6 +57,7 @@ import type {
   MigrationStatusResponse,
   BackupInfoResponse,
   BackupVerifyResponse,
+  AutoVerifyResponse,
   SyncStatusResponse,
   ConflictDetectionResponse,
   SyncProgress,
@@ -479,9 +480,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   tabTarget = null,
 }) => {
   const { t } = useTranslation(['data', 'common']);
-  const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore(
+  const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
+      requireMaintenanceRestart: state.requireMaintenanceRestart,
       exitMaintenanceMode: state.exitMaintenanceMode,
     }))
   );
@@ -531,6 +533,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 审计日志分页
   const AUDIT_PAGE_SIZE = 50;
   const auditFilterRef = useRef<{ operationType?: AuditOperationType; status?: AuditStatus }>({});
+  const auditRequestGeneration = useRef(0);
 
   // 云端同步状态（进度事件）
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
@@ -572,6 +575,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 备份验证结果详细信息
   const [verifyResult, setVerifyResult] = useState<BackupVerifyResponse | null>(null);
   const [showVerifyDialog, setShowVerifyDialog] = useState(false);
+
+  // 最新备份自动验证（概览页「验证最新备份」按钮）
+  const [lastAutoVerifyResult, setLastAutoVerifyResult] = useState<AutoVerifyResponse | null>(null);
+  const [isAutoVerifying, setIsAutoVerifying] = useState(false);
 
   // 云存储配置（由 CloudStorageSection 维护：localStorage + 安全存储）
   // 从 localStorage 同步读取当前配置摘要
@@ -659,6 +666,30 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
   }, [t]);
 
+  /**
+   * 以后端聚合状态为真相收敛前端维护横幅。
+   *
+   * 退出屏障可能只在某个子库失败；此时任务已经终止，但继续撤掉横幅会让用户
+   * 误以为可以写入。状态查询本身失败也保持 fail-close，提示重启恢复。
+   */
+  const reconcileMaintenanceMode = useCallback(async () => {
+    const generation = useSystemStatusStore.getState().maintenanceGeneration;
+    try {
+      const status = await DataGovernanceApi.getMaintenanceStatus();
+      // 查询期间若有新任务进入/退出维护模式，旧结果不得覆盖新状态。
+      if (useSystemStatusStore.getState().maintenanceGeneration !== generation) return;
+      if (status.is_in_maintenance_mode) {
+        requireMaintenanceRestart(t('common:maintenance.recovery_required'));
+      } else {
+        exitMaintenanceMode();
+      }
+    } catch (error: unknown) {
+      console.error('查询维护屏障聚合状态失败:', error);
+      if (useSystemStatusStore.getState().maintenanceGeneration !== generation) return;
+      requireMaintenanceRestart(t('common:maintenance.recovery_required'));
+    }
+  }, [exitMaintenanceMode, requireMaintenanceRestart, t]);
+
   // 使用统一的备份任务监听 Hook
   const { startListening, stopListening } = useBackupJobListener({
     onProgress: (event) => {
@@ -666,7 +697,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     },
     onComplete: (event) => {
       setIsBackupRunning(false);
-      exitMaintenanceMode();
       stopTabLoading('backup');
       setBackupJobId(null);
       const op = currentJobOperationRef.current;
@@ -734,7 +764,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
       // 检查是否需要重启（恢复操作特有）—— 显示模态对话框而非通知
       if (event.result?.requires_restart) {
+        // 恢复切槽在重启前有意保持后端屏障；横幅与不可关闭对话框必须一致。
+        requireMaintenanceRestart(t('common:maintenance.recovery_required'));
         setShowRestartDialog(true);
+      } else {
+        void reconcileMaintenanceMode();
       }
 
       // 刷新可恢复任务列表
@@ -742,10 +776,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     },
     onError: (event) => {
       setIsBackupRunning(false);
-      exitMaintenanceMode();
       stopTabLoading('backup');
       setBackupJobId(null);
       setJobOperation(null);
+      void reconcileMaintenanceMode();
       showGlobalNotification(
         'error',
         localizeBackupJobError(event.result?.error || event.message, t),
@@ -753,10 +787,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     },
     onCancelled: () => {
       setIsBackupRunning(false);
-      exitMaintenanceMode();
       stopTabLoading('backup');
       setBackupJobId(null);
       setJobOperation(null);
+      void reconcileMaintenanceMode();
       showGlobalNotification('info', t('data:governance.backup_cancelled'));
       void loadResumableJobs();
     },
@@ -791,10 +825,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     } catch (error: unknown) {
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
     }
-  }, [isBackupRunning, resumableJobs, setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t]);
+  }, [isBackupRunning, resumableJobs, setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t]);
 
   // 加载同步状态
   const loadSyncStatus = useCallback(async () => {
@@ -818,14 +852,17 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     operationType?: AuditOperationType,
     status?: AuditStatus
   ) => {
+    const generation = ++auditRequestGeneration.current;
     auditFilterRef.current = { operationType, status };
     startTabLoading('audit');
     try {
       const result = await DataGovernanceApi.getAuditLogs(operationType, status, AUDIT_PAGE_SIZE, 0);
       const logs = Array.isArray(result) ? result : Array.isArray(result?.logs) ? result.logs : [];
-      setAuditLogs(logs);
-      setAuditTotal(typeof result?.total === 'number' ? result.total : logs.length);
-      setAuditLoadError(null);
+      if (auditRequestGeneration.current === generation) {
+        setAuditLogs(logs);
+        setAuditTotal(typeof result?.total === 'number' ? result.total : logs.length);
+        setAuditLoadError(null);
+      }
     } catch (error: unknown) {
       console.error('加载审计日志失败:', error);
       setAuditLoadError(getErrorMessage(error));
@@ -838,14 +875,17 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 加载更多审计日志（追加）
   const loadMoreAuditLogs = useCallback(async () => {
     const { operationType, status } = auditFilterRef.current;
+    const generation = ++auditRequestGeneration.current;
     startTabLoading('audit');
     try {
       const offset = auditLogs.length;
       const result = await DataGovernanceApi.getAuditLogs(operationType, status, AUDIT_PAGE_SIZE, offset);
       const moreLogs = Array.isArray(result) ? result : Array.isArray(result?.logs) ? result.logs : [];
-      setAuditLogs((prev) => [...prev, ...moreLogs]);
-      if (typeof result?.total === 'number') {
-        setAuditTotal(result.total);
+      if (auditRequestGeneration.current === generation) {
+        setAuditLogs((prev) => [...prev, ...moreLogs]);
+        if (typeof result?.total === 'number') {
+          setAuditTotal(result.total);
+        }
       }
     } catch (error: unknown) {
       console.error('加载更多审计日志失败:', error);
@@ -874,6 +914,27 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       stopTabLoading('overview');
     }
   }, [startTabLoading, stopTabLoading, t]);
+
+  // 验证最新备份（调用后端 data_governance_auto_verify_latest_backup）
+  const verifyLatestBackup = useCallback(async () => {
+    if (isAutoVerifying) return;
+    setIsAutoVerifying(true);
+    try {
+      const result = await DataGovernanceApi.autoVerifyLatestBackup();
+      setLastAutoVerifyResult(result);
+      showGlobalNotification(
+        result.is_valid ? 'success' : 'warning',
+        result.is_valid
+          ? t('data:governance.auto_verify_success')
+          : t('data:governance.auto_verify_failed')
+      );
+    } catch (error: unknown) {
+      console.error('验证最新备份失败:', error);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      setIsAutoVerifying(false);
+    }
+  }, [isAutoVerifying, t]);
 
   // 一步导出备份（备份 + ZIP）
   const backupAndExportZip = useCallback(async (options: {
@@ -923,11 +984,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('备份并导出 ZIP 失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 取消备份
   const cancelBackup = useCallback(async () => {
@@ -991,11 +1052,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('ZIP 导出失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 从 ZIP 导入（异步）
   const importZip = useCallback(async () => {
@@ -1052,11 +1113,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('ZIP 导入失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 删除备份
   const deleteBackup = useCallback(async (backupId: string) => {
@@ -1133,11 +1194,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       console.error('恢复备份失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
       setIsBackupRunning(false);
-      exitMaintenanceMode();
+      void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, exitMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 执行云端同步（带进度事件）
   const runCloudSync = useCallback(async (
@@ -1393,10 +1454,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 预取审计日志：提升切换体验（并与单测期望对齐）
   useEffect(() => {
     let mounted = true;
+    const generation = ++auditRequestGeneration.current;
     void (async () => {
       try {
         const result = await DataGovernanceApi.getAuditLogs(undefined, undefined, AUDIT_PAGE_SIZE);
-        if (mounted) {
+        if (mounted && auditRequestGeneration.current === generation) {
           const logs = Array.isArray(result) ? result : Array.isArray(result?.logs) ? result.logs : [];
           setAuditLogs(logs);
           setAuditTotal(typeof result?.total === 'number' ? result.total : logs.length);
@@ -1404,7 +1466,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         }
       } catch (error: unknown) {
         console.error('预加载审计日志失败:', error);
-        if (mounted) {
+        if (mounted && auditRequestGeneration.current === generation) {
           setAuditLoadError(getErrorMessage(error));
         }
       }
@@ -1493,12 +1555,18 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       if (isBackupRunning) return;
 
       try {
+        const maintenanceGeneration =
+          useSystemStatusStore.getState().maintenanceGeneration;
         const allJobs = await DataGovernanceApi.listBackupJobs();
         const runningJob = allJobs.find(
           (j) => j.status === 'running' || j.status === 'queued'
         );
 
-        if (runningJob && mounted) {
+        if (
+          runningJob
+          && mounted
+          && useSystemStatusStore.getState().maintenanceGeneration === maintenanceGeneration
+        ) {
           setBackupJobId(runningJob.job_id);
           setIsBackupRunning(true);
           setBackupProgress({
@@ -1519,6 +1587,28 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
           // 重新建立进度监听
           await startListening(runningJob.job_id);
+          return;
+        }
+
+        // 页面卸载期间任务可能已经结束。listener 的终态回调此时不会执行，
+        // 需要以后端维护状态为真相清理前端残留；恢复切槽成功时后端仍为 true，
+        // 因而不会误解除等待重启的安全屏障。
+        if (
+          mounted
+          && useSystemStatusStore.getState().maintenanceGeneration === maintenanceGeneration
+        ) {
+          const maintenance = await DataGovernanceApi.getMaintenanceStatus();
+          if (
+            !mounted
+            || useSystemStatusStore.getState().maintenanceGeneration !== maintenanceGeneration
+          ) {
+            return;
+          }
+          if (maintenance.is_in_maintenance_mode) {
+            enterMaintenanceMode(t('data:governance.maintenance_restore'));
+          } else {
+            exitMaintenanceMode();
+          }
         }
       } catch (error: unknown) {
         console.error('检查运行中的备份任务失败:', error);
@@ -1576,6 +1666,9 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           loading={overviewLoading}
           onRefresh={loadOverviewData}
           onRunHealthCheck={runHealthCheck}
+          lastAutoVerifyResult={lastAutoVerifyResult}
+          isVerifying={isAutoVerifying}
+          onVerifyLatestBackup={verifyLatestBackup}
           onOpenArchive={() => setActiveTab('archive')}
         />
       </TabsContent>

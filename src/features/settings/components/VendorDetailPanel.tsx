@@ -36,6 +36,7 @@ import { groupByModelFamily } from './modelFamily';
 import type { VendorConfig } from '@/types';
 import { isOpenAICodexOAuthVendor } from '@/utils/vendorAuth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // --- Save Status Indicator ---
 type SaveStatus = 'idle' | 'saving' | 'saved';
@@ -43,7 +44,7 @@ type SaveStatus = 'idle' | 'saving' | 'saved';
 const SaveIndicator: React.FC<{ status: SaveStatus }> = ({ status }) => {
   if (status === 'idle') return null;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground ui-rise-in">
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground ui-rise-in">
       {status === 'saving' && <Spinner className="h-3 w-3 animate-spin" />}
       {status === 'saved' && <Check className="h-3 w-3 text-green-500" />}
     </span>
@@ -105,17 +106,24 @@ const InlineEditorCollapse: React.FC<{
   );
 };
 
+// floating 态自绘 fixed 遮罩 dialog 的 Escape 栈（与 NotionDialog/shad Dialog 同语义：
+// 仅栈顶实例响应，多层浮层一次只关最上层）
+const floatingEditorEscapeStack: symbol[] = [];
+
 const ResponsiveInlineEditorHost: React.FC<{
   floating: boolean;
   testId: string;
   surfaceTestId: string;
   ariaLabel: string;
+  onDismiss?: () => void;
   children: React.ReactNode;
-}> = ({ floating, testId, surfaceTestId, ariaLabel, children }) => {
+}> = ({ floating, testId, surfaceTestId, ariaLabel, onDismiss, children }) => {
   const placeholderRef = useRef<HTMLDivElement | null>(null);
   const [host] = useState<HTMLDivElement | null>(() =>
     typeof document === 'undefined' ? null : document.createElement('div')
   );
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
 
   // Keep one portal target for the lifetime of the form. Moving that target preserves
   // ShadApiEditModal's local draft state while escaping transformed/contained ancestors.
@@ -127,6 +135,31 @@ const ResponsiveInlineEditorHost: React.FC<{
 
   useLayoutEffect(() => () => host?.remove(), [host]);
 
+  // floating 态是自绘 role="dialog"（非 Radix，无 data-state="open"），
+  // androidBackCoordinator 的 Radix Escape 兜底匹配不到——必须显式注册
+  // overlay 级返回 handler + Escape，否则中屏按返回键会穿透到底层导航。
+  useEffect(() => {
+    if (!floating) return;
+    const token = Symbol('responsive-inline-editor-esc');
+    floatingEditorEscapeStack.push(token);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (floatingEditorEscapeStack[floatingEditorEscapeStack.length - 1] !== token) return;
+      onDismissRef.current?.();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    const unregisterBack = registerBackHandler(() => {
+      onDismissRef.current?.();
+      return true;
+    }, BACK_PRIORITY.overlay);
+    return () => {
+      const index = floatingEditorEscapeStack.indexOf(token);
+      if (index >= 0) floatingEditorEscapeStack.splice(index, 1);
+      document.removeEventListener('keydown', onKeyDown);
+      unregisterBack();
+    };
+  }, [floating]);
+
   const content = (
     <div
       data-testid={testId}
@@ -135,14 +168,14 @@ const ResponsiveInlineEditorHost: React.FC<{
       aria-label={floating ? ariaLabel : undefined}
       className={cn(
         floating &&
-          'fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:py-8'
+          'fixed inset-0 z-overlay flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:py-8'
       )}
     >
       <div
         data-testid={surfaceTestId}
         className={cn(
           floating &&
-            'h-[min(760px,calc(100dvh-4rem))] w-full max-w-[672px] overflow-hidden rounded-lg border border-border/60 bg-background shadow-2xl'
+            'relative z-modal h-[min(760px,calc(100dvh-4rem))] w-full max-w-[672px] overflow-hidden rounded-lg border border-border/60 bg-background shadow-2xl'
         )}
       >
         {children}
@@ -267,6 +300,8 @@ export const VendorDetailPanel: React.FC = () => {
   const confirmingDeleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCodexOAuthVendor = isOpenAICodexOAuthVendor(selectedVendor);
+  const usesNoApiKey =
+    selectedVendor?.authMode === 'none' || selectedVendor?.noApiKey === true;
 
   // 进入确认态后 4 秒未再次点击则自动复位，避免误触残留
   const armConfirmingDelete = (target: { type: 'vendor' } | { type: 'model'; profileId: string }) => {
@@ -294,10 +329,13 @@ export const VendorDetailPanel: React.FC = () => {
     if (!selectedVendor) return false;
     const hasUrl = !!(selectedVendor.baseUrl?.trim());
     if (isCodexOAuthVendor) return true;
-    if (selectedVendor.noApiKey || selectedVendor.authMode === 'none') return hasUrl;
-    const hasKey = !!(selectedVendor.apiKey?.trim());
+    if (usesNoApiKey) return hasUrl;
+    const hasKey = Boolean(
+      selectedVendor.apiKey?.trim()
+      || selectedVendor.apiKeys?.some(key => key.trim())
+    );
     return hasUrl && hasKey;
-  }, [selectedVendor, isCodexOAuthVendor]);
+  }, [selectedVendor, isCodexOAuthVendor, usesNoApiKey]);
 
   // 模型按家族分组（GPT-4 / Claude Opus / Gemini 2.5 …）
   const familyGroups = useMemo(
@@ -400,8 +438,8 @@ export const VendorDetailPanel: React.FC = () => {
             <div className="flex-1 min-w-0 space-y-0.5">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-foreground truncate">{profile.label || api.name}</span>
-                {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
-                {isReadOnly && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
+                {!profile.enabled && <span className="text-2xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
+                {isReadOnly && <span className="text-2xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="font-mono text-xs text-muted-foreground truncate">{api.model}</span>
@@ -514,6 +552,7 @@ export const VendorDetailPanel: React.FC = () => {
             testId={`responsive-inline-model-editor-${profile.id}`}
             surfaceTestId={`responsive-inline-model-editor-surface-${profile.id}`}
             ariaLabel={profile.label || api.name}
+            onDismiss={() => setInlineEditState(null)}
           >
             <InlineEditorCollapse
               open={isEditing}
@@ -572,7 +611,7 @@ export const VendorDetailPanel: React.FC = () => {
                 {vendorDisplayName}
               </h3>
               {selectedVendorIsSiliconflow && (
-                <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0 shrink-0">
+                <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-2xs px-1.5 py-0 shrink-0">
                   {t('settings:api.modal.capabilities.recommended')}
                 </Badge>
               )}
@@ -673,7 +712,7 @@ export const VendorDetailPanel: React.FC = () => {
                     <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
                     <span className="truncate font-mono text-xs">{selectedVendor.baseUrl}</span>
                     <span className="text-muted-foreground/60 shrink-0">·</span>
-                    {selectedVendor.noApiKey ? (
+                    {usesNoApiKey ? (
                       <span className="text-xs shrink-0 text-muted-foreground">
                         {t('settings:vendor_panel.no_api_key_needed_short')}
                       </span>
@@ -746,7 +785,7 @@ export const VendorDetailPanel: React.FC = () => {
                             });
                           }}
                         />
-                      ) : selectedVendor.noApiKey ? (
+                      ) : usesNoApiKey ? (
                         <div className="flex items-center gap-2 rounded-lg border border-border/40 px-4 py-3 text-sm text-muted-foreground">
                           <Prohibit className="h-4 w-4 shrink-0" />
                           <span>{t('settings:vendor_panel.no_api_key_required_hint')}</span>
@@ -861,6 +900,7 @@ export const VendorDetailPanel: React.FC = () => {
                 testId="responsive-inline-new-model-editor"
                 surfaceTestId="responsive-inline-new-model-editor-surface"
                 ariaLabel={t('settings:vendor_panel.add_model_button')}
+                onDismiss={handleCancelAddModel}
               >
                 <InlineEditorCollapse
                   open={!!(isAddingNewModel && inlineEditState)}

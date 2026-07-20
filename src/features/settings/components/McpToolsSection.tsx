@@ -55,6 +55,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { ApiKeyField } from './ApiKeyField';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { 
@@ -102,6 +103,8 @@ import {
 interface McpServer {
   id: string;
   name: string;
+  /** 与 secure store mcp.tools.list 的 enabled 字段共享同一状态（缺省视为启用）；agent 的 mcp_server_set_enabled 也写同一字段 */
+  enabled?: boolean;
   transportType?: 'stdio' | 'websocket' | 'sse' | 'streamable_http' | 'builtin';
   url?: string;
   command?: string;
@@ -189,9 +192,9 @@ function StatItem({
   status?: 'success' | 'warning' | 'error' | 'neutral';
 }) {
   const statusColors = {
-    success: 'bg-green-500',
-    warning: 'bg-yellow-500',
-    error: 'bg-red-500',
+    success: 'bg-success',
+    warning: 'bg-warning',
+    error: 'bg-destructive',
     neutral: 'bg-muted-foreground'
   };
 
@@ -259,7 +262,10 @@ function ServerListItem({
   const [showActions, setShowActions] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const isExpanded = expandedPanel !== null;
+  // enabled 缺省视为启用（兼容无该字段的存量条目，与后端/agent 口径一致）
+  const isEnabled = server.enabled !== false;
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -272,7 +278,8 @@ function ServerListItem({
     <div
       className={cn(
         'rounded-lg overflow-hidden transition-colors duration-200 border border-transparent',
-        isExpanded ? 'bg-muted/30 border-border/40' : 'hover:bg-[var(--interactive-hover)] hover:border-border/20'
+        isExpanded ? 'bg-muted/30 border-border/40' : 'hover:bg-[var(--interactive-hover)] hover:border-border/20',
+        !isBuiltin && !isEnabled && 'opacity-70'
       )}
     >
       {/* 删除确认栏 */}
@@ -324,7 +331,7 @@ function ServerListItem({
           {/* 状态指示点 */}
           <span className={cn(
             'w-2 h-2 rounded-full flex-shrink-0 mt-1.5',
-            isConnected ? 'bg-green-500' : 'bg-muted-foreground/30'
+            isConnected ? 'bg-success' : 'bg-muted-foreground/30'
           )} />
 
           {/* 服务器信息 */}
@@ -334,14 +341,19 @@ function ServerListItem({
                 {displayName}
               </span>
               {isBuiltin && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary flex-shrink-0 flex items-center gap-1">
+                <span className="text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary flex-shrink-0 flex items-center gap-1">
                   <Lock className="w-2.5 h-2.5" />
                   {t('settings:mcp_server_list.builtin')}
                 </span>
               )}
               {!isBuiltin && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0 border border-border/50">
+                <span className="text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0 border border-border/50">
                   {transportLabel}
+                </span>
+              )}
+              {!isBuiltin && !isEnabled && (
+                <span className="text-2xs px-1.5 py-0.5 rounded bg-warning/10 text-warning flex-shrink-0">
+                  {t('settings:mcp_server_list.disabled_badge')}
                 </span>
               )}
             </div>
@@ -352,7 +364,7 @@ function ServerListItem({
             {/* 工具预览 - 移到服务器信息下方 */}
             {cachedToolCount > 0 && toolNames.length > 0 && (
               <div className="pt-1">
-                <div className="text-[11px] text-muted-foreground truncate opacity-80">
+                <div className="text-xs text-muted-foreground truncate opacity-80">
                   {toolNames.slice(0, 3).join(', ')}{cachedToolCount > 3 ? ' ...' : ''}
                 </div>
               </div>
@@ -360,32 +372,56 @@ function ServerListItem({
 
             {/* 错误信息 */}
             {status?.error && (
-              <div className="pt-1 flex items-center gap-1.5 text-[10px] text-red-500">
+              <div className="pt-1 flex items-center gap-1.5 text-2xs text-destructive">
                 <WifiSlash className="w-3 h-3" />
                 <span className="truncate">{status.error}</span>
               </div>
             )}
           </div>
 
-          {/* 右侧区域：工具数量 + 操作按钮 */}
+          {/* 右侧区域：启停开关 + 工具数量 + 操作按钮 */}
           <div className="flex flex-col items-end gap-2 flex-shrink-0">
+            {/* 启停开关：与 agent 的 mcp_server_set_enabled 共享 mcp.tools.list 的 enabled 字段 */}
+            {!isBuiltin && (
+              <span onClick={(e) => e.stopPropagation()}>
+                <Switch
+                  checked={isEnabled}
+                  disabled={toggling}
+                  onCheckedChange={(checked) => {
+                    void (async () => {
+                      if (toggling) return;
+                      setToggling(true);
+                      try {
+                        await onSave({ enabled: checked });
+                      } finally {
+                        if (isMountedRef.current) setToggling(false);
+                      }
+                    })();
+                  }}
+                  aria-label={t('settings:mcp_server_list.toggle_enabled', { name: displayName })}
+                />
+              </span>
+            )}
             {/* 工具数量 */}
             <div className="text-right">
               <div className="text-sm font-medium text-foreground">{cachedToolCount}</div>
-              <div className="text-[10px] text-muted-foreground">{t('settings:mcp_server_list.tools')}</div>
+              <div className="text-2xs text-muted-foreground">{t('settings:mcp_server_list.tools')}</div>
             </div>
 
-            {/* 操作按钮 - 移到右下角 */}
+            {/* 操作按钮 - 移到右下角；触屏（pointer:coarse）无 hover，需常显，
+                隐藏态补 pointer-events-none 防止不可见按钮被误触 */}
             <div className={cn(
               'flex items-center gap-1',
               'transition-opacity duration-100',
-              showActions || isExpanded ? 'opacity-100' : 'opacity-0'
+              showActions || isExpanded
+                ? 'opacity-100'
+                : 'opacity-0 pointer-events-none [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:pointer-events-auto'
             )}>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'preview' ? null : 'preview'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'preview' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_preview')} aria-label="preview">
                 <Eye className="w-3.5 h-3.5" />
               </NotionButton>
               {!isBuiltin && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
                   {isTesting ? (
                     <ArrowClockwise className="w-3.5 h-3.5 animate-spin" />
                   ) : (
@@ -394,16 +430,16 @@ function ServerListItem({
                 </NotionButton>
               )}
               {isTesting && testStepLabel && (
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap animate-pulse">
+                <span className="text-2xs text-muted-foreground whitespace-nowrap animate-pulse">
                   {testStepLabel}
                 </span>
               )}
               {!isBuiltin && (
                 <>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label={t('settings:a11y.edit')}>
                     <PencilSimple className="w-3.5 h-3.5" />
                   </NotionButton>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label={t('settings:a11y.delete')}>
                     <Trash className="w-3.5 h-3.5" />
                   </NotionButton>
                 </>
@@ -442,22 +478,22 @@ function ServerPreviewPanel({
   const { t } = useTranslation(['settings']);
   return (
     <div className="p-4 space-y-6">
-      {/* 基本信息 */}
-      <div className="grid grid-cols-2 gap-6">
+      {/* 基本信息：<sm 单列（右滑面板 400px 双列会把 URL/命令压到不可读） */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">{t('settings:mcp_server_preview.name')}</div>
+          <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5">{t('settings:mcp_server_preview.name')}</div>
           <div className="text-sm text-foreground">{server.name || t('settings:mcp_server_preview.not_set')}</div>
         </div>
         <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">{t('settings:mcp_server_preview.namespace')}</div>
+          <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5">{t('settings:mcp_server_preview.namespace')}</div>
           <div className="text-sm text-foreground font-mono">{server.namespace || server.id}</div>
         </div>
         <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">{t('settings:mcp_server_preview.transport_type')}</div>
+          <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5">{t('settings:mcp_server_preview.transport_type')}</div>
           <div className="text-sm text-foreground">{server.transportType || 'sse'}</div>
         </div>
         <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">
+          <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5">
             {server.transportType === 'stdio' ? t('settings:mcp_server_preview.command') : t('settings:mcp_server_preview.url')}
           </div>
           <div className="text-sm text-foreground font-mono truncate">
@@ -469,7 +505,7 @@ function ServerPreviewPanel({
       {/* 工具列表 */}
       {cachedToolCount > 0 && (
         <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">
+          <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-3">
             {t('settings:mcp_server_preview.available_tools')} ({cachedToolCount})
           </div>
           <div className="flex flex-wrap gap-2">
@@ -743,7 +779,7 @@ function ServerEditPanel({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* 名称 */}
               <div>
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                   {t('settings:mcp_server_edit.server_name')} *
                 </label>
                 <Input
@@ -756,7 +792,7 @@ function ServerEditPanel({
 
               {/* 命名空间 */}
               <div>
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                   {t('settings:mcp_server_edit.namespace')}
                 </label>
                 <Input
@@ -770,7 +806,7 @@ function ServerEditPanel({
 
             {/* 传输类型 */}
             <div>
-              <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                 {t('settings:mcp_server_edit.transport_type')}
               </label>
               <Select value={formData.transportType} onValueChange={(val) => setFormData({ ...formData, transportType: val as McpServer['transportType'] })}>
@@ -790,7 +826,7 @@ function ServerEditPanel({
             {formData.transportType === 'stdio' ? (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
-                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                  <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.command')} *
                   </label>
                   <Input
@@ -802,7 +838,7 @@ function ServerEditPanel({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                  <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.args')}
                   </label>
                   <Input
@@ -815,7 +851,7 @@ function ServerEditPanel({
               </div>
             ) : (
               <div>
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                   {t('settings:mcp_server_edit.server_url')} *
                 </label>
                 <Input
@@ -840,7 +876,7 @@ function ServerEditPanel({
                 <div className="px-4 pb-4 space-y-6 border-t border-border/40 pt-4 bg-muted/10">
                   {/* API Key */}
                   <div>
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                       {t('settings:mcp_server_edit.api_key')}
                     </label>
                     <ApiKeyField
@@ -859,7 +895,7 @@ function ServerEditPanel({
                   {/* 环境变量 */}
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                      <label className="text-2xs text-muted-foreground uppercase tracking-wider">
                         {t('settings:mcp_server_edit.env_vars')}
                       </label>
                       <NotionButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
@@ -901,7 +937,7 @@ function ServerEditPanel({
           <>
             {/* JSON编辑模式 */}
             <div className="space-y-2">
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+              <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1">
                 {t('settings:mcp_json_config.label')}
               </div>
               <UnifiedCodeEditor
@@ -922,7 +958,7 @@ function ServerEditPanel({
                   {jsonError}
                 </div>
               )}
-              <p className="text-[10px] text-muted-foreground mt-2">
+              <p className="text-2xs text-muted-foreground mt-2">
                 {t('settings:mcp_server_edit.json_hint')}
               </p>
             </div>
@@ -1199,7 +1235,7 @@ function NewServerEditItem({
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 名称 */}
                 <div>
-                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                  <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.server_name')} *
                   </label>
                   <Input
@@ -1213,7 +1249,7 @@ function NewServerEditItem({
 
                 {/* ID */}
                 <div>
-                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                  <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     ID
                   </label>
                   <Input
@@ -1226,7 +1262,7 @@ function NewServerEditItem({
 
               {/* 传输类型 */}
               <div>
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                   {t('settings:mcp_server_edit.transport_type')}
                 </label>
                 <Select value={formData.transportType} onValueChange={(val) => setFormData({ ...formData, transportType: val as McpServer['transportType'] })}>
@@ -1246,7 +1282,7 @@ function NewServerEditItem({
               {formData.transportType === 'stdio' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                       {t('settings:mcp_server_edit.command')} *
                     </label>
                   <Input
@@ -1258,7 +1294,7 @@ function NewServerEditItem({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                  <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.args')}
                   </label>
                   <Input
@@ -1271,7 +1307,7 @@ function NewServerEditItem({
                 </div>
               ) : (
                 <div>
-                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                  <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.server_url')} *
                   </label>
                   <Input
@@ -1296,7 +1332,7 @@ function NewServerEditItem({
                   <div className="px-4 pb-4 space-y-6 border-t border-border/40 pt-4 bg-muted/10">
                     {/* Namespace */}
                     <div>
-                      <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                      <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                         {t('settings:mcp_server_edit.namespace')}
                       </label>
                       <Input
@@ -1309,7 +1345,7 @@ function NewServerEditItem({
 
                     {/* API Key */}
                     <div>
-                      <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                      <label className="text-2xs text-muted-foreground uppercase tracking-wider mb-1.5 block">
                         {t('settings:mcp_server_edit.api_key')}
                       </label>
                       <ApiKeyField
@@ -1328,7 +1364,7 @@ function NewServerEditItem({
                     {/* 环境变量 */}
                     <div>
                       <div className="flex items-center justify-between mb-3">
-                        <label className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                        <label className="text-2xs text-muted-foreground uppercase tracking-wider">
                           {t('settings:mcp_server_edit.env_vars')}
                         </label>
                         <NotionButton variant="ghost" size="sm" onClick={addEnvRow} className="text-primary hover:text-primary/80 !h-auto !p-0">
@@ -1370,7 +1406,7 @@ function NewServerEditItem({
             <>
               {/* JSON编辑模式 */}
               <div className="space-y-2">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+                <div className="text-2xs text-muted-foreground uppercase tracking-wider mb-1">
                   {t('settings:mcp_json_config.label')}
                 </div>
                 <UnifiedCodeEditor
@@ -1391,7 +1427,7 @@ function NewServerEditItem({
                     {jsonError}
                   </div>
                 )}
-                <p className="text-[10px] text-muted-foreground mt-2">
+                <p className="text-2xs text-muted-foreground mt-2">
                   {t('settings:mcp_server_edit.json_hint')}
                 </p>
               </div>
@@ -1631,7 +1667,7 @@ export function PresetServerSelector({
 
       {Object.entries(groupedPresets).map(([category, presets]) => (
               <div key={category} className="mb-3">
-                <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                <div className="px-2 py-1 text-2xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t(CATEGORY_LABELS[category] || category)}
                 </div>
                 <div className="space-y-1">
@@ -1657,32 +1693,32 @@ export function PresetServerSelector({
                       >
                         <span className={cn(
                           'w-2 h-2 rounded-full flex-shrink-0 mt-2',
-                          isAdded ? 'bg-green-500' : 'bg-muted-foreground/30'
+                          isAdded ? 'bg-success' : 'bg-muted-foreground/30'
                         )} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-medium text-foreground">{preset.name}</span>
                             {isAdded && (
-                              <Check className="w-3.5 h-3.5 text-green-500" />
+                              <Check className="w-3.5 h-3.5 text-success" />
                             )}
                             {preset.source === 'official' && (
-                              <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">
+                              <span className="text-2xs px-1 py-0.5 rounded bg-info/10 text-info font-medium">
                                 {t('settings:mcp_presets.official')}
                               </span>
                             )}
                             {preset.source === 'community' && (
-                              <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-medium">
+                              <span className="text-2xs px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-500 font-medium">
                                 {t('settings:mcp_presets.community')}
                               </span>
                             )}
                             {(preset.requiresApiKey || preset.authKind === 'api_key' || preset.authKind === 'api_key_or_oauth') && (
-                              <span className="text-[9px] px-1 py-0.5 rounded bg-orange-500/10 text-orange-500 font-medium">
+                              <span className="text-2xs px-1 py-0.5 rounded bg-warning/10 text-warning font-medium">
                                 <Key className="w-2.5 h-2.5 inline mr-0.5" />
                                 API Key
                               </span>
                             )}
                             {oauthSupported && isOAuthCapablePreset(preset) && (
-                              <span className="text-[9px] px-1 py-0.5 rounded bg-violet-500/10 text-violet-500 font-medium">
+                              <span className="text-2xs px-1 py-0.5 rounded bg-violet-500/10 text-violet-500 font-medium">
                                 OAuth
                               </span>
                             )}
@@ -1715,9 +1751,9 @@ export function PresetServerSelector({
           <span
             className={cn(
               'text-xs font-medium px-1.5 py-0.5 rounded',
-              pendingPreset.risk === 'high' && 'bg-red-500/10 text-red-500',
-              pendingPreset.risk === 'medium' && 'bg-amber-500/10 text-amber-600',
-              pendingPreset.risk === 'low' && 'bg-green-500/10 text-green-600',
+              pendingPreset.risk === 'high' && 'bg-destructive/10 text-destructive',
+              pendingPreset.risk === 'medium' && 'bg-warning/10 text-warning',
+              pendingPreset.risk === 'low' && 'bg-success/10 text-success',
             )}
             data-testid="mcp-preset-permission-risk"
           >
@@ -1942,16 +1978,16 @@ const SENSITIVITY_CONFIG: Record<SensitivityLevel, {
   dot: string;
 }> = {
   low: {
-    badge: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    dot: 'bg-green-500',
+    badge: 'bg-success/10 text-success',
+    dot: 'bg-success',
   },
   medium: {
-    badge: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-    dot: 'bg-yellow-500',
+    badge: 'bg-warning/10 text-warning',
+    dot: 'bg-warning',
   },
   high: {
-    badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    dot: 'bg-red-500',
+    badge: 'bg-destructive/10 text-destructive',
+    dot: 'bg-destructive',
   },
 };
 
@@ -1978,6 +2014,45 @@ function shellRuleRemovalRelaxesPolicy(
   return SHELL_EFFECT_RESTRICTIVENESS[nextEffect] < SHELL_EFFECT_RESTRICTIVENESS[rule.action];
 }
 
+/**
+ * 应用内确认对话框（替代原生 window.confirm）。
+ *
+ * Tauri WebView（macOS/iOS WKWebView、Android WebView）默认不实现阻塞式
+ * JS 确认框，window.confirm 可能不弹窗直接返回 false，导致危险操作静默失效；
+ * 这里统一改走 NotionAlertDialog，返回 Promise<boolean> 供 async 调用点 await。
+ */
+function useAppConfirm() {
+  const { t } = useTranslation(['common']);
+  const [request, setRequest] = useState<{ message: string; resolve: (ok: boolean) => void } | null>(null);
+
+  const appConfirm = useCallback((message: string) => {
+    return new Promise<boolean>(resolve => {
+      setRequest({ message, resolve });
+    });
+  }, []);
+
+  // 关闭时 resolve 并清空请求；取消/确认共用，避免 Promise 悬挂
+  const settle = useCallback((ok: boolean) => {
+    setRequest(prev => {
+      prev?.resolve(ok);
+      return null;
+    });
+  }, []);
+
+  const confirmDialog = (
+    <NotionAlertDialog
+      open={request !== null}
+      onOpenChange={open => { if (!open) settle(false); }}
+      title={t('common:actions.confirm')}
+      description={request?.message}
+      confirmVariant="danger"
+      onConfirm={() => settle(true)}
+    />
+  );
+
+  return { appConfirm, confirmDialog };
+}
+
 /** Fine-grained policy for the protected local terminal tool. */
 function ShellCommandRulesSection() {
   const { t } = useTranslation(['settings', 'common']);
@@ -1996,6 +2071,7 @@ function ShellCommandRulesSection() {
   const [pendingDefaultAllow, setPendingDefaultAllow] = useState(false);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
   const [previewCommand, setPreviewCommand] = useState('');
+  const { appConfirm, confirmDialog } = useAppConfirm();
 
   const loadPolicy = useCallback(async () => {
     setLoading(true);
@@ -2145,36 +2221,32 @@ function ShellCommandRulesSection() {
     const relaxedCount = operation === 'enable' ? 0 : rules.filter(rule => (
       selectedRuleIds.has(rule.id) && shellRuleRemovalRelaxesPolicy(rule, defaultEffect, next)
     )).length;
-    // eslint-disable-next-line no-alert -- policy relaxation and destructive removal require explicit confirmation
-    if (relaxedCount > 0 && !window.confirm(t('settings:tool_permissions.shell_rules.relax_confirm', { count: relaxedCount }))) return;
-    // eslint-disable-next-line no-alert -- destructive bulk removal requires explicit confirmation
-    if (operation === 'delete' && relaxedCount === 0 && !window.confirm(t('settings:tool_permissions.shell_rules.bulk_delete_confirm', { count: selectedRuleIds.size }))) return;
+    if (relaxedCount > 0 && !(await appConfirm(t('settings:tool_permissions.shell_rules.relax_confirm', { count: relaxedCount })))) return;
+    if (operation === 'delete' && relaxedCount === 0 && !(await appConfirm(t('settings:tool_permissions.shell_rules.bulk_delete_confirm', { count: selectedRuleIds.size })))) return;
     if (await persistPolicy(defaultEffect, next)) setSelectedRuleIds(new Set());
-  }, [defaultEffect, persistPolicy, rules, selectedRuleIds, t]);
+  }, [appConfirm, defaultEffect, persistPolicy, rules, selectedRuleIds, t]);
 
   const setRuleEnabled = useCallback(async (rule: ShellCommandRule, enabled: boolean) => {
     const next = rules.map(item => item.id === rule.id ? { ...item, enabled } : item);
     if (!enabled && shellRuleRemovalRelaxesPolicy(rule, defaultEffect, next)) {
-      // eslint-disable-next-line no-alert -- disabling a restrictive rule may widen terminal access
-      if (!window.confirm(t('settings:tool_permissions.shell_rules.relax_confirm', { count: 1 }))) return;
+      if (!(await appConfirm(t('settings:tool_permissions.shell_rules.relax_confirm', { count: 1 })))) return;
     }
     await persistPolicy(defaultEffect, next);
-  }, [defaultEffect, persistPolicy, rules, t]);
+  }, [appConfirm, defaultEffect, persistPolicy, rules, t]);
 
   const deleteRule = useCallback(async (rule: ShellCommandRule) => {
     const next = rules.filter(item => item.id !== rule.id);
     const key = shellRuleRemovalRelaxesPolicy(rule, defaultEffect, next)
       ? 'settings:tool_permissions.shell_rules.relax_confirm'
       : 'settings:tool_permissions.shell_rules.delete_confirm';
-    // eslint-disable-next-line no-alert -- deleting a command rule requires explicit confirmation
-    if (!window.confirm(t(key, { count: 1, pattern: rule.pattern }))) return;
+    if (!(await appConfirm(t(key, { count: 1, pattern: rule.pattern })))) return;
     await persistPolicy(defaultEffect, next);
-  }, [defaultEffect, persistPolicy, rules, t]);
+  }, [appConfirm, defaultEffect, persistPolicy, rules, t]);
 
   const actionClass: Record<ShellCommandAction, string> = {
-    allow: 'border-green-500/25 bg-green-500/10 text-green-700 dark:text-green-400',
-    ask: 'border-yellow-500/25 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
-    deny: 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-400',
+    allow: 'border-success/25 bg-success/10 text-success',
+    ask: 'border-warning/25 bg-warning/10 text-warning',
+    deny: 'border-destructive/25 bg-destructive/10 text-destructive',
   };
 
   return (
@@ -2202,7 +2274,7 @@ function ShellCommandRulesSection() {
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
           <div>
             <div className="text-xs font-medium text-foreground">{t('settings:tool_permissions.shell_rules.default_title')}</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">{t('settings:tool_permissions.shell_rules.default_desc')}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{t('settings:tool_permissions.shell_rules.default_desc')}</div>
           </div>
           <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5 self-start sm:self-auto" role="group" aria-label={t('settings:tool_permissions.shell_rules.default_title')}>
             {(['allow', 'ask', 'deny'] as ShellCommandAction[]).map(effect => (
@@ -2221,7 +2293,7 @@ function ShellCommandRulesSection() {
           </div>
         </div>
         {pendingDefaultAllow && (
-          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/5 px-2.5 py-2 text-xs text-warning">
             <Warning className="h-3.5 w-3.5 flex-shrink-0" />
             <span className="flex-1">{t('settings:tool_permissions.shell_rules.default_allow_warning')}</span>
             <NotionButton variant="ghost" size="sm" onClick={() => void handleDefaultEffect('allow')} className="!h-6 text-xs">
@@ -2231,7 +2303,7 @@ function ShellCommandRulesSection() {
         )}
       </div>
 
-      <div className="mb-3 flex items-start gap-2 rounded-md border border-border/30 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+      <div className="mb-3 flex items-start gap-2 rounded-md border border-border/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
         <Lock className="mt-px h-3.5 w-3.5 flex-shrink-0" />
         <span>{t('settings:tool_permissions.shell_rules.safety_boundary')}</span>
       </div>
@@ -2248,7 +2320,7 @@ function ShellCommandRulesSection() {
           />
           {preview && (
             <div className="flex min-h-8 items-center gap-2 text-xs sm:max-w-[45%]">
-              <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[10px]', actionClass[preview.effect])}>
+              <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-2xs', actionClass[preview.effect])}>
                 {t(`settings:tool_permissions.shell_rules.action_${preview.effect}`)}
               </span>
               <span className="truncate text-muted-foreground" title={preview.matchedRule?.pattern}>
@@ -2259,7 +2331,7 @@ function ShellCommandRulesSection() {
             </div>
           )}
         </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">{t('settings:tool_permissions.shell_rules.preview_hint')}</p>
+        <p className="mt-1.5 text-xs text-muted-foreground">{t('settings:tool_permissions.shell_rules.preview_hint')}</p>
       </div>
 
       {showEditor && (
@@ -2286,10 +2358,10 @@ function ShellCommandRulesSection() {
             />
           </div>
           <Input value={draft.note} onChange={event => setDraft(prev => ({ ...prev, note: event.target.value }))} placeholder={t('settings:tool_permissions.shell_rules.note_placeholder')} aria-label={t('settings:tool_permissions.shell_rules.note_label')} className="mt-2 h-8 text-xs" />
-          <p className="mt-1.5 text-[11px] text-muted-foreground">{t(`settings:tool_permissions.shell_rules.help_${draft.matchType}`)}</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">{t(`settings:tool_permissions.shell_rules.help_${draft.matchType}`)}</p>
           {draftError && <p className="mt-2 text-xs text-destructive">{t(`settings:tool_permissions.shell_rules.error_${draftError}`)}</p>}
           {pendingRisk && (
-            <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 text-xs text-amber-700 dark:text-amber-300">
+            <div className="mt-2 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 px-2.5 py-2 text-xs text-warning">
               <Warning className="mt-px h-3.5 w-3.5 flex-shrink-0" />
               <span>{t('settings:tool_permissions.shell_rules.broad_allow_warning')}</span>
             </div>
@@ -2307,7 +2379,7 @@ function ShellCommandRulesSection() {
         <div className="rounded-lg border border-dashed border-border/50 py-6 text-center">
           <CodeBlock className="mx-auto mb-2 h-5 w-5 text-muted-foreground/40" />
           <p className="text-xs text-muted-foreground">{t('settings:tool_permissions.shell_rules.empty')}</p>
-          <p className="mt-1 text-[11px] text-muted-foreground/80">{t('settings:tool_permissions.shell_rules.empty_hint')}</p>
+          <p className="mt-1 text-xs text-muted-foreground/80">{t('settings:tool_permissions.shell_rules.empty_hint')}</p>
         </div>
       ) : (
         <>
@@ -2322,7 +2394,7 @@ function ShellCommandRulesSection() {
               onCheckedChange={checked => selectVisibleRules(checked === true)}
               aria-label={t('settings:tool_permissions.shell_rules.select_visible')}
             />
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {selectedRuleIds.size > 0
                 ? t('settings:tool_permissions.shell_rules.selected_count', { count: selectedRuleIds.size })
                 : t('settings:tool_permissions.shell_rules.select_visible')}
@@ -2352,16 +2424,16 @@ function ShellCommandRulesSection() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <code className="break-all text-xs font-medium text-foreground">{rule.pattern}</code>
-                      <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', actionClass[rule.action])}>{t(`settings:tool_permissions.shell_rules.action_${rule.action}`)}</span>
-                      <span className="rounded border border-border/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">{t(`settings:tool_permissions.shell_rules.match_${rule.matchType}`)}</span>
-                      {risk && <span className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/5 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-300"><Warning className="h-3 w-3" />{t('settings:tool_permissions.shell_rules.broad_badge')}</span>}
+                      <span className={cn('rounded border px-1.5 py-0.5 text-2xs', actionClass[rule.action])}>{t(`settings:tool_permissions.shell_rules.action_${rule.action}`)}</span>
+                      <span className="rounded border border-border/40 px-1.5 py-0.5 text-2xs text-muted-foreground">{t(`settings:tool_permissions.shell_rules.match_${rule.matchType}`)}</span>
+                      {risk && <span className="inline-flex items-center gap-1 rounded border border-warning/30 bg-warning/5 px-1.5 py-0.5 text-2xs text-warning"><Warning className="h-3 w-3" />{t('settings:tool_permissions.shell_rules.broad_badge')}</span>}
                     </div>
-                    {rule.note && <p className="mt-1 truncate text-[11px] text-muted-foreground" title={rule.note}>{rule.note}</p>}
+                    {rule.note && <p className="mt-1 truncate text-xs text-muted-foreground" title={rule.note}>{rule.note}</p>}
                   </div>
                   <div className="flex items-center justify-end gap-1">
                     <Switch checked={rule.enabled} disabled={saving} onCheckedChange={enabled => void setRuleEnabled(rule, enabled)} aria-label={t('settings:tool_permissions.shell_rules.toggle_rule', { pattern: rule.pattern })} />
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => beginEdit(rule)} className="!h-7 !w-7" title={t('common:actions.edit')} aria-label={t('common:actions.edit')}><PencilSimple className="h-3.5 w-3.5" /></NotionButton>
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => void deleteRule(rule)} className="!h-7 !w-7 text-muted-foreground hover:text-destructive" title={t('common:delete')} aria-label={t('common:delete')}><Trash className="h-3.5 w-3.5" /></NotionButton>
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => beginEdit(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10" title={t('common:actions.edit')} aria-label={t('common:actions.edit')}><PencilSimple className="h-3.5 w-3.5" /></NotionButton>
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => void deleteRule(rule)} className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground hover:text-destructive" title={t('common:delete')} aria-label={t('common:delete')}><Trash className="h-3.5 w-3.5" /></NotionButton>
                   </div>
                 </div>;
               })}
@@ -2369,6 +2441,7 @@ function ShellCommandRulesSection() {
           )}
         </>
       )}
+      {confirmDialog}
     </div>
   );
 }
@@ -2396,6 +2469,7 @@ function ToolPermissionsSection({ toolsByServer }: {
   const [groupMode, setGroupMode] = useState<'domain' | 'source'>('domain');
   const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const { appConfirm, confirmDialog } = useAppConfirm();
   /** 待确认的高风险授权（两步确认：第一次点添加只显示警示，再点才真正授权） */
   const [pendingRootRisk, setPendingRootRisk] = useState<Exclude<AuthorizedRootRisk, 'safe'> | null>(null);
   const runtimeRootInputRef = useRef<HTMLInputElement>(null);
@@ -2527,8 +2601,7 @@ function ToolPermissionsSection({ toolsByServer }: {
   /** 切换全局免审批开关 */
   const handleToggleGlobalBypass = useCallback(async (checked: boolean) => {
     const newVal = checked;
-    // eslint-disable-next-line no-alert -- enabling a broad policy requires impact confirmation
-    if (newVal && !window.confirm(t('settings:tool_permissions.bypass_enable_confirm', { count: allTools.length }))) return;
+    if (newVal && !(await appConfirm(t('settings:tool_permissions.bypass_enable_confirm', { count: allTools.length })))) return;
     try {
       await invoke('save_setting', {
         key: 'tool_approval.global_bypass',
@@ -2545,7 +2618,7 @@ function ToolPermissionsSection({ toolsByServer }: {
       console.error('[ToolPermissions] Toggle global bypass failed:', err);
       showGlobalNotification('error', t('settings:tool_permissions.toggle_failed'));
     }
-  }, [allTools.length, t]);
+  }, [allTools.length, appConfirm, t]);
 
   /** 设置单个工具的等级覆盖 */
   const handleSetOverride = useCallback(async (toolName: string, level: SensitivityLevel) => {
@@ -2584,8 +2657,7 @@ function ToolPermissionsSection({ toolsByServer }: {
     const ids = Array.from(new Set(toolIds));
     if (ids.length === 0 || isBulkUpdating) return;
     if (level === 'low' && ids.length > 1) {
-      // eslint-disable-next-line no-alert -- lowering multiple tools reduces routine approvals
-      if (!window.confirm(t('settings:tool_permissions.bulk_low_confirm', { count: ids.length }))) return;
+      if (!(await appConfirm(t('settings:tool_permissions.bulk_low_confirm', { count: ids.length })))) return;
     }
     const settingKeys = level
       ? ids.map(id => `tool_approval.override.${id}`)
@@ -2641,7 +2713,7 @@ function ToolPermissionsSection({ toolsByServer }: {
     } finally {
       setIsBulkUpdating(false);
     }
-  }, [allTools, isBulkUpdating, overrideMap, t, toolById]);
+  }, [allTools, appConfirm, isBulkUpdating, overrideMap, t, toolById]);
 
   const handleSetGroupOverride = useCallback(async (
     kind: 'source' | 'domain',
@@ -2653,8 +2725,7 @@ function ToolPermissionsSection({ toolsByServer }: {
       kind === 'source' ? tool.source === group : tool.domain === group
     )).length;
     if (level === 'low') {
-      // eslint-disable-next-line no-alert -- lowering an entire group requires impact confirmation
-      if (!window.confirm(t('settings:tool_permissions.group_low_confirm', { count: affectedCount }))) return;
+      if (!(await appConfirm(t('settings:tool_permissions.group_low_confirm', { count: affectedCount })))) return;
     }
     const key = `tool_approval.${kind}.${group}`;
     setIsBulkUpdating(true);
@@ -2675,7 +2746,7 @@ function ToolPermissionsSection({ toolsByServer }: {
     } finally {
       setIsBulkUpdating(false);
     }
-  }, [allTools, isBulkUpdating, t]);
+  }, [allTools, appConfirm, isBulkUpdating, t]);
 
   const toggleToolSelection = useCallback((toolName: string, selected: boolean) => {
     setSelectedTools(prev => {
@@ -2699,8 +2770,7 @@ function ToolPermissionsSection({ toolsByServer }: {
 
   /** 清除所有历史审批记录（DB + 内存） */
   const handleClearHistory = useCallback(async () => {
-    // eslint-disable-next-line no-alert -- 破坏性操作需要阻塞式确认，待统一 confirm 组件落地后替换
-    if (!window.confirm(t('settings:tool_permissions.clear_history_confirm'))) return;
+    if (!(await appConfirm(t('settings:tool_permissions.clear_history_confirm')))) return;
     try {
       // 🔧 R2-H2 修复：调用统一命令，同时清内存 + DB。
       // 旧实现 `delete_settings_by_prefix` 只清 DB，ApprovalManager 内存 HashMap
@@ -2715,7 +2785,7 @@ function ToolPermissionsSection({ toolsByServer }: {
       console.error('[ToolPermissions] Clear history failed:', err);
       showGlobalNotification('error', t('settings:tool_permissions.clear_all_failed'));
     }
-  }, [t]);
+  }, [appConfirm, t]);
 
   const handleAuthorizeRuntimeRoot = useCallback(async () => {
     const path = newRuntimeRootPath.trim();
@@ -2883,7 +2953,7 @@ function ToolPermissionsSection({ toolsByServer }: {
               aria-pressed={active}
               onClick={() => void handleBulkOverride(toolNames, level === 'default' ? null : level)}
               className={cn(
-                '!h-6 !px-1.5 text-[11px] font-medium',
+                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5',
                 active && level === 'default' && 'bg-background text-foreground shadow-sm',
                 active && level !== 'default' && SENSITIVITY_CONFIG[level].badge,
                 !active && 'text-muted-foreground hover:text-foreground'
@@ -2921,7 +2991,7 @@ function ToolPermissionsSection({ toolsByServer }: {
               aria-pressed={active}
               onClick={() => void handleSetGroupOverride(kind, group, level === 'default' ? null : level)}
               className={cn(
-                '!h-6 !px-1.5 text-[11px] font-medium',
+                '!h-6 !px-1.5 text-xs font-medium [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-2.5',
                 active && level === 'default' && 'bg-background text-foreground shadow-sm',
                 active && level !== 'default' && SENSITIVITY_CONFIG[level].badge,
                 !active && 'text-muted-foreground hover:text-foreground'
@@ -2952,7 +3022,10 @@ function ToolPermissionsSection({ toolsByServer }: {
   }, [allTools, groupMode]);
 
   return (
-    <div className="mt-8 min-w-0 max-w-full pt-6 border-t border-border/40">
+    <div
+      id="settings-tool-permissions"
+      className="mt-8 min-w-0 max-w-full scroll-mt-6 border-t border-border/40 pt-6"
+    >
       {/* 标题栏 */}
       <h3 className="text-sm font-medium text-foreground mb-4">
         {t('settings:tool_permissions.title')}
@@ -2982,7 +3055,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                     {t('settings:tool_permissions.global_bypass_title')}
                   </span>
                   {globalBypass && (
-                    <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded-full">
+                    <span className="text-xs bg-success/10 text-success px-1.5 py-0.5 rounded-full">
                       {t('settings:tool_permissions.bypass_badge')}
                     </span>
                   )}
@@ -3075,7 +3148,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                   disabled={!newRuntimeRootPath.trim() || isSavingRuntimeRoot}
                   className={cn(
                     'text-xs flex-shrink-0',
-                    pendingRootRisk && 'text-amber-700 dark:text-amber-300'
+                    pendingRootRisk && 'text-warning'
                   )}
                 >
                   <Plus className="h-3 w-3 mr-1" />
@@ -3087,14 +3160,14 @@ function ToolPermissionsSection({ toolsByServer }: {
             </div>
 
             {workspaceAccess === 'read_write' && (
-              <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+              <div className="mb-3 flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-warning">
                 <Warning className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                 <span>{t('settings:tool_permissions.runtime_root_workspace_write_warning')}</span>
               </div>
             )}
 
             {pendingRootRisk && (
-              <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+              <div className="mb-3 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-warning">
                 <div className="flex items-start gap-2">
                   <Warning className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                   <div className="min-w-0 flex-1">
@@ -3125,7 +3198,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                 <p className="text-xs text-muted-foreground">
                   {t('settings:tool_permissions.runtime_roots_empty')}
                 </p>
-                <p className="mt-1 text-[11px] text-muted-foreground/80 leading-relaxed px-4">
+                <p className="mt-1 text-xs text-muted-foreground/80 leading-relaxed px-4">
                   {t('settings:tool_permissions.runtime_roots_authorized_empty_hint')}
                 </p>
               </div>
@@ -3154,21 +3227,21 @@ function ToolPermissionsSection({ toolsByServer }: {
                             <span className="text-sm font-medium text-foreground truncate">
                               {root.label || root.id}
                             </span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border/40 capitalize">
+                            <span className="text-2xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border/40 capitalize">
                               {displayKind}
                             </span>
                             <span
-                              className="inline-block max-w-[12rem] truncate text-[10px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground border border-border/30 font-mono normal-case"
+                              className="inline-block max-w-[12rem] truncate text-2xs px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground border border-border/30 font-mono normal-case"
                               title={root.id}
                             >
                               {root.id}
                             </span>
                             <span
                               className={cn(
-                                'text-[10px] px-1.5 py-0.5 rounded border',
+                                'text-2xs px-1.5 py-0.5 rounded border',
                                 isReadWrite
-                                  ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-900/50'
-                                  : 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-900/50'
+                                  ? 'bg-warning/10 text-warning border-warning/25'
+                                  : 'bg-success/10 text-success border-success/25'
                               )}
                             >
                               {t(isReadWrite
@@ -3176,17 +3249,17 @@ function ToolPermissionsSection({ toolsByServer }: {
                                 : 'settings:tool_permissions.runtime_root_read_only')}
                             </span>
                             {root.session_scoped && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                              <span className="text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                                 {t('settings:tool_permissions.runtime_root_session_scoped')}
                               </span>
                             )}
                             {root.kind === 'workspace' && root.configured && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                              <span className="text-2xs px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                                 {t('settings:tool_permissions.runtime_root_configured')}
                               </span>
                             )}
                             {root.kind === 'workspace' && !root.configured && (
-                              <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-900/50">
+                              <span className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded border bg-warning/10 text-warning border-warning/25">
                                 <Warning className="h-3 w-3" />
                                 {t('settings:tool_permissions.runtime_root_not_configured')}
                               </span>
@@ -3196,18 +3269,18 @@ function ToolPermissionsSection({ toolsByServer }: {
                             {root.path}
                           </div>
                           {root.description && (
-                            <div className="mt-1 text-[11px] text-muted-foreground/80 leading-relaxed">
+                            <div className="mt-1 text-xs text-muted-foreground/80 leading-relaxed">
                               {root.description}
                             </div>
                           )}
                           {root.kind === 'workspace' && !root.configured && (
-                            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-relaxed text-yellow-700 dark:text-yellow-400">
+                            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs leading-relaxed text-warning">
                               <span>{t('settings:tool_permissions.runtime_root_not_configured_hint')}</span>
                               <NotionButton
                                 variant="ghost"
                                 size="sm"
                                 onClick={handleFocusRuntimeRootInput}
-                                className="!h-auto !px-1 !py-0 text-[11px] font-medium text-primary hover:underline"
+                                className="!h-auto !px-1 !py-0 text-xs font-medium text-primary hover:underline"
                               >
                                 {t('settings:tool_permissions.runtime_root_configure_now')}
                               </NotionButton>
@@ -3220,7 +3293,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                             size="icon"
                             iconOnly
                             onClick={() => handleRevokeRuntimeRoot(root.id)}
-                            className="!h-7 !w-7 text-muted-foreground hover:text-destructive flex-shrink-0"
+                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground hover:text-destructive flex-shrink-0"
                             title={t('settings:tool_permissions.runtime_root_remove')}
                             aria-label={t('settings:tool_permissions.runtime_root_remove')}
                           >
@@ -3233,7 +3306,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                             size="icon"
                             iconOnly
                             onClick={handleResetWorkspaceRoot}
-                            className="!h-7 !w-7 text-muted-foreground flex-shrink-0"
+                            className="!h-7 !w-7 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground flex-shrink-0"
                             title={t('settings:tool_permissions.runtime_root_workspace_reset')}
                             aria-label={t('settings:tool_permissions.runtime_root_workspace_reset')}
                           >
@@ -3248,7 +3321,7 @@ function ToolPermissionsSection({ toolsByServer }: {
             )}
 
             {runtimeRoots.length > 0 && !runtimeRoots.some((root) => root.kind === 'authorized') && (
-              <p className="mt-2 text-[11px] text-muted-foreground/80 leading-relaxed">
+              <p className="mt-2 text-xs text-muted-foreground/80 leading-relaxed">
                 {t('settings:tool_permissions.runtime_roots_authorized_empty_hint')}
               </p>
             )}
@@ -3294,20 +3367,20 @@ function ToolPermissionsSection({ toolsByServer }: {
                 <div className="grid grid-cols-3 border-y border-border/30 mb-3">
                   <div className="py-2.5 pr-3">
                     <div className="text-base font-semibold tabular-nums">{allTools.length}</div>
-                    <div className="text-[11px] text-muted-foreground">{t('settings:tool_permissions.summary_tools')}</div>
+                    <div className="text-xs text-muted-foreground">{t('settings:tool_permissions.summary_tools')}</div>
                   </div>
                   <div className="py-2.5 px-3 border-x border-border/30">
                     <div className="text-base font-semibold tabular-nums">{availableSources.length}</div>
-                    <div className="text-[11px] text-muted-foreground">{t('settings:tool_permissions.summary_sources')}</div>
+                    <div className="text-xs text-muted-foreground">{t('settings:tool_permissions.summary_sources')}</div>
                   </div>
                   <div className="py-2.5 pl-3">
                     <div className="text-base font-semibold tabular-nums text-primary">{configuredToolCount}</div>
-                    <div className="text-[11px] text-muted-foreground">{t('settings:tool_permissions.summary_overrides')}</div>
+                    <div className="text-xs text-muted-foreground">{t('settings:tool_permissions.summary_overrides')}</div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-[11px] text-muted-foreground">{t('settings:tool_permissions.group_by')}</span>
+                  <span className="text-xs text-muted-foreground">{t('settings:tool_permissions.group_by')}</span>
                   <div className="flex items-center bg-muted/40 rounded-md p-0.5" role="group" aria-label={t('settings:tool_permissions.group_by')}>
                     {(['domain', 'source'] as const).map(mode => (
                       <NotionButton
@@ -3317,7 +3390,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                         onClick={() => setGroupMode(mode)}
                         aria-pressed={groupMode === mode}
                         className={cn(
-                          '!h-6 !px-2 text-[11px]',
+                          '!h-6 !px-2 text-xs [@media(pointer:coarse)]:!h-9 [@media(pointer:coarse)]:!px-3',
                           groupMode === mode && 'bg-background text-foreground shadow-sm'
                         )}
                       >
@@ -3341,7 +3414,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                             <div className="text-sm font-medium text-foreground truncate" title={group}>
                               {groupMode === 'source' ? formatToolSource(group) : group}
                             </div>
-                            <div className="text-[11px] text-muted-foreground">
+                            <div className="text-xs text-muted-foreground">
                               {t('settings:tool_permissions.group_summary', {
                                 count: tools.length,
                                 overridden: overriddenCount,
@@ -3357,7 +3430,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                   })}
                 </div>
 
-                <div className="mt-2 flex items-start gap-1.5 text-[11px] text-muted-foreground/80 leading-relaxed">
+                <div className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground/80 leading-relaxed">
                   <Lock className="h-3.5 w-3.5 mt-px flex-shrink-0" />
                   <span>{t('settings:tool_permissions.dynamic_risk_hint')}</span>
                 </div>
@@ -3451,7 +3524,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                               variant="ghost"
                               size="sm"
                               onClick={() => setSelectedTools(new Set())}
-                              className="!h-6 text-[11px]"
+                              className="!h-6 text-xs [@media(pointer:coarse)]:!h-9"
                             >
                               {t('settings:tool_permissions.clear_selection')}
                             </NotionButton>
@@ -3502,7 +3575,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                                         {tool.display}
                                       </span>
                                       <span className={cn(
-                                        'text-[10px] px-1.5 py-0.5 rounded border',
+                                        'text-2xs px-1.5 py-0.5 rounded border',
                                         overrideEntry
                                           ? 'border-primary/20 bg-primary/5 text-primary'
                                           : 'border-border/40 text-muted-foreground'
@@ -3510,7 +3583,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                                         {t(`settings:tool_permissions.${statusKey}`)}
                                       </span>
                                     </div>
-                                    <div className="mt-0.5 text-[11px] text-muted-foreground truncate" title={tool.description || tool.name}>
+                                    <div className="mt-0.5 text-xs text-muted-foreground truncate" title={tool.description || tool.name}>
                                       {t(`settings:tool_permissions.capability_${tool.capability}`)}
                                       <span className="mx-1">·</span>
                                       {formatToolSource(tool.source)}
@@ -3547,7 +3620,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                 variant="ghost"
                 size="sm"
                 onClick={handleClearHistory}
-                className="text-xs text-red-500 hover:text-red-600"
+                className="text-xs text-destructive hover:text-destructive/80"
               >
                 <Trash className="h-3 w-3 mr-1" />
                 {t('settings:tool_permissions.clear_history')}
@@ -3556,6 +3629,7 @@ function ToolPermissionsSection({ toolsByServer }: {
           )}
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }
@@ -3682,12 +3756,12 @@ export function McpToolsSection({
             <div className="flex items-center gap-3">
               <div>
                 <span className="text-lg font-semibold text-foreground">{promptsCount}</span>
-                <span className="text-[10px] text-muted-foreground ml-1">P</span>
+                <span className="text-2xs text-muted-foreground ml-1">P</span>
               </div>
               <div className="w-px h-6 bg-border/60" />
               <div>
                 <span className="text-lg font-semibold text-foreground">{resourcesCount}</span>
-                <span className="text-[10px] text-muted-foreground ml-1">R</span>
+                <span className="text-2xs text-muted-foreground ml-1">R</span>
               </div>
             </div>
           </div>
@@ -3701,8 +3775,8 @@ export function McpToolsSection({
 
         {/* 错误提示 */}
         {lastError && (
-          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <div className="flex items-center gap-2 text-sm text-red-500">
+          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-destructive">
               <WifiSlash className="w-4 h-4 flex-shrink-0" />
               <span className="truncate">{lastError}</span>
             </div>
@@ -3813,7 +3887,7 @@ export function McpToolsSection({
                   ) : (
                     prompts.items.slice(0, 5).map((item, i) => (
                       <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-md">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-info flex-shrink-0" />
                         <span className="text-foreground truncate">{item.name}</span>
                       </div>
                     ))

@@ -728,23 +728,6 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               </div>
             </div>
 
-            {/* 精简备份模式 */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="text-sm font-medium text-foreground">
-                  {t('data:governance.slim_backup')}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {t('data:governance.slim_backup_desc')}
-                </p>
-              </div>
-              <Switch
-                checked={backupConfig.slimBackup}
-                onCheckedChange={(checked) => updateConfigField('slimBackup', checked)}
-                disabled={configSaving}
-              />
-            </div>
-
             {/* 保存指示器 */}
             {configSaving && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">

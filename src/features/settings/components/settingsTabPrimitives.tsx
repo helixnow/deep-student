@@ -14,11 +14,13 @@ export const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn('group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 overflow-hidden', settingsQuietInteractiveRowClassName, className)}>
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 useBreakpoint().isSmallScreen（<768，App shell 移动模式）对齐，
+  // 避免 640-767px 区间「移动页面模式 + 桌面双栏行」的形态混搭
+  <div className={cn('group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 overflow-hidden', settingsQuietInteractiveRowClassName, className)}>
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
@@ -48,11 +50,17 @@ export const SwitchRow = ({
   const switchDescriptionId = `${switchLabelId}-description`;
 
   return (
-    <div className={cn('group flex items-center justify-between gap-4 py-2.5 px-1', settingsQuietInteractiveRowClassName)}>
+    // 整行可点切换（iOS/Android 设置页惯例），开关本体 stopPropagation 避免双重切换
+    <div
+      className={cn('group flex cursor-pointer items-center justify-between gap-4 py-2.5 px-1', settingsQuietInteractiveRowClassName)}
+      onClick={() => {
+        if (!disabled && !loading) onCheckedChange(!checked);
+      }}
+    >
       <div className="flex-1 min-w-0">
         <h3 id={switchLabelId} className="text-sm text-foreground/90 leading-tight">{title}</h3>
         {description && (
-          <p id={switchDescriptionId} className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+          <p id={switchDescriptionId} className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
             {description}
           </p>
         )}
@@ -63,13 +71,15 @@ export const SwitchRow = ({
           className="h-6 w-11 shrink-0 rounded-full bg-muted/50 animate-pulse"
         />
       ) : (
-        <Switch
-          checked={checked}
-          onCheckedChange={onCheckedChange}
-          disabled={disabled}
-          aria-labelledby={switchLabelId}
-          aria-describedby={description ? switchDescriptionId : undefined}
-        />
+        <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+          <Switch
+            checked={checked}
+            onCheckedChange={onCheckedChange}
+            disabled={disabled}
+            aria-labelledby={switchLabelId}
+            aria-describedby={description ? switchDescriptionId : undefined}
+          />
+        </span>
       )}
     </div>
   );

@@ -21,7 +21,6 @@ import { type McpStatusInfo } from '@/mcp/mcpService';
 import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
 import {
   DEFAULT_STDIO_ARGS_PLACEHOLDER,
-  CHAT_STREAM_SETTINGS_EVENT,
   resolveSettingsStdioFraming,
 } from './constants';
 import { Info as InfoIcon, Plus, Trash, X, Check, ArrowCounterClockwise } from '@phosphor-icons/react';
@@ -390,14 +389,39 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
     return idx > 0 ? raw.slice(idx + 1) : raw;
   }, []);
 
+  // agent 侧修改 mcp.tools.list（propose/update/set_enabled/remove）后，
+  // 经 chat_v2://settings_changed → systemSettingsChanged 同步刷新设置页服务器列表，
+  // 不必重开设置页。value 缺失（如 mcpReloaded 广播）时回读一次 setting。
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ settingKey?: string; value?: unknown }>)?.detail;
+      if (detail?.settingKey !== 'mcp.tools.list') return;
+      void (async () => {
+        try {
+          const raw = typeof detail.value === 'string'
+            ? detail.value
+            : (invoke ? await invoke<string | null>('get_setting', { key: 'mcp.tools.list' }) : null);
+          const parsed = (() => {
+            try { return raw ? JSON.parse(raw) : []; } catch { return null; }
+          })();
+          if (Array.isArray(parsed)) {
+            setConfig(prev => ({ ...prev, mcpTools: parsed }));
+          }
+        } catch (e) {
+          console.warn('[Settings] 同步外部 MCP 配置变更失败:', e);
+        }
+      })();
+    };
+    window.addEventListener('systemSettingsChanged', handler);
+    return () => window.removeEventListener('systemSettingsChanged', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setConfig]);
+
   // ★ 2026-01-15: 导师模式已迁移到 Skills 系统，相关状态和处理函数已删除
   // ★ 2026-01-19: Irec 模块已废弃，相关预设加载/保存逻辑已删除
 
-  const emitChatStreamSettingsUpdate = useCallback((payload: { timeoutMs?: number | null; autoCancel?: boolean }) => {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(CHAT_STREAM_SETTINGS_EVENT, { detail: payload }));
-    }
-  }, []);
+  // ★ 2026-07: CHAT_STREAM_SETTINGS_EVENT 广播已删除——全仓无监听者，
+  // 聊天流超时设置改为 Rust 端每次请求时从 settings 读取，无需前端事件通知。
   const resolveServerId = (tool: McpToolConfig, idx: number): string => {
     const transport = (tool?.transportType || 'sse') as string;
     const directId = tool?.id || tool?.name;
@@ -505,6 +529,8 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         name: newServer.name || t('common:new_mcp_server'),
         transportType: newServer.transportType || 'sse',
         ...newServer,
+        // 后端 stdio 门禁要求 enabled == true；新增条目默认启用
+        enabled: newServer.enabled ?? true,
       };
 
       // 处理传输类型特定的字段
@@ -653,11 +679,16 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
 
       // 合并更新数据，但清理非标准字段（如 mcpServers 残留）
       const { mcpServers: _discardMcpServers, ...cleanUpdatedData } = updatedData;
+      const enabledChanged =
+        typeof cleanUpdatedData.enabled === 'boolean' &&
+        cleanUpdatedData.enabled !== (existing.enabled ?? true);
 
       const updated = {
         ...existing,
         ...cleanUpdatedData,
         id: existing.id || updatedData.id || `mcp_${Date.now()}`,
+        // 编辑保留原 enabled；存量条目缺省视为启用（兼容无该字段的历史数据）
+        enabled: cleanUpdatedData.enabled ?? existing.enabled ?? true,
       };
 
       // 处理传输类型特定的字段
@@ -676,6 +707,15 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         await invoke('save_setting', { key: 'mcp.tools.list', value: JSON.stringify(currentList) });
       }
       setConfig(prev => ({ ...prev, mcpTools: currentList }));
+      if (enabledChanged) {
+        // 启停切换需要重建前端连接（停用 → 断开；启用 → 建连），
+        // 交给 main.tsx 的 systemSettingsChanged → bootstrapMcpFromSettings 统一处理
+        try {
+          window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { mcpChanged: true } }));
+        } catch {
+          // 事件派发失败不影响保存结果
+        }
+      }
       try {
         await refreshSnapshots({ reload: true });
       } catch (e) {
@@ -684,8 +724,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       }
       showGlobalNotification('success', t('common:mcp_tool_saved'));
 
-      // 编辑保存后自动运行一次连通性测试以刷新工具列表
-      handleTestServer(updated).catch(() => { /* 静默处理测试失败 */ });
+      // 编辑保存后自动运行一次连通性测试以刷新工具列表（已停用的 server 不再拉起测试）
+      if (updated.enabled !== false) {
+        handleTestServer(updated).catch(() => { /* 静默处理测试失败 */ });
+      }
 
       return true;
     } catch (error) {
@@ -972,6 +1014,14 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           toolToSave = normalizedDraft as McpToolConfig;
         }
 
+        // 后端 stdio 门禁要求 enabled == true：新增默认启用；编辑保留原值（存量缺省视为启用）
+        if (typeof toolToSave.enabled !== 'boolean') {
+          const priorEnabled = mcpToolModal.index != null
+            ? (config.mcpTools || [])[mcpToolModal.index]?.enabled
+            : undefined;
+          toolToSave.enabled = priorEnabled ?? true;
+        }
+
         const nextList = [...(config.mcpTools || [])];
         if (mcpToolModal.index == null) {
           nextList.push(toolToSave);
@@ -1093,7 +1143,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                     showLabel={t('common:securePassword.showPassword')}
                     hideLabel={t('common:securePassword.hidePassword')}
                   />
-                  <p className="text-[11px] text-muted-foreground">{t('settings:mcp.oauth.api_key_priority_hint')}</p>
+                  <p className="text-xs text-muted-foreground">{t('settings:mcp.oauth.api_key_priority_hint')}</p>
                 </div>
               </div>
             )}
@@ -1382,6 +1432,14 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             cwd: draft.cwd,
             framing: transport === 'stdio' ? resolveSettingsStdioFraming(draft.framing) : draft.framing,
           };
+        }
+
+        // 后端 stdio 门禁要求 enabled == true：新增默认启用；编辑保留原值（存量缺省视为启用）
+        if (typeof toolToSave.enabled !== 'boolean') {
+          const priorEnabled = mcpToolModal.index != null
+            ? (config.mcpTools || [])[mcpToolModal.index]?.enabled
+            : undefined;
+          toolToSave.enabled = priorEnabled ?? true;
         }
 
         const nextList = [...(config.mcpTools || [])];
@@ -1709,8 +1767,8 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
               />
             </div>
 
-            {/* 性能参数 */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 性能参数（<sm 单列，避免 400px 标签换行挤压） */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium">{t('settings:mcp_descriptions.timeout_label')}</label>
                 <Input
@@ -2059,5 +2117,5 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   const latestPrompts = useMemo(() => mcpCachedDetails.prompts.items.slice(0, 5), [mcpCachedDetails.prompts.items]);
   const latestResources = useMemo(() => mcpCachedDetails.resources.items.slice(0, 5), [mcpCachedDetails.resources.items]);
 
-  return { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, emitChatStreamSettingsUpdate, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry };
+  return { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry };
 }

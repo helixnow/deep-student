@@ -204,7 +204,7 @@ export const VendorSidebar: React.FC = () => {
             </div>
             <div className="flex items-center gap-1.5">
               {modelCount > 0 && (
-                <span className="text-[10px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">
+                <span className="text-2xs text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">
                   {modelCount}
                 </span>
               )}

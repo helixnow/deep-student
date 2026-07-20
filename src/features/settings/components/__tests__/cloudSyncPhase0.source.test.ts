@@ -50,8 +50,11 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     ),
     "utf-8",
   );
-  const syncConflictDialog = readFileSync(
-    resolve(process.cwd(), "src/components/SyncConflictDialog.tsx"),
+  const examContentView = readFileSync(
+    resolve(
+      process.cwd(),
+      "src/features/learning-hub/apps/views/ExamContentView.tsx",
+    ),
     "utf-8",
   );
   const tauriLib = readFileSync(
@@ -187,24 +190,15 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     expect(syncTab).toContain("SyncQuarantinePanel");
   });
 
-  it("keeps legacy sync conflict dialog failures visible and refreshes after single resolve", () => {
-    const singleResolveStart = syncConflictDialog.indexOf(
-      "const handleResolve = useCallback",
-    );
-    const singleResolveEnd = syncConflictDialog.indexOf(
-      "  // 批量解决",
-      singleResolveStart,
-    );
-    const singleResolveBlock = syncConflictDialog.slice(
-      singleResolveStart,
-      singleResolveEnd,
-    );
-
-    expect(singleResolveBlock).toContain("onResolved?.()");
-    expect(singleResolveBlock).toContain("unifiedAlert(");
-    expect(singleResolveBlock).toContain("notifications.conflictResolveFailed");
-    expect(syncConflictDialog).toContain(
-      "notifications.conflictBatchResolveFailed",
-    );
+  it("routes record conflicts through data-governance UI, not the retired qbank dialog", () => {
+    // 题库专属 SyncConflictDialog / qbank_*_sync_* 已退役（无生产生产者）。
+    expect(examContentView).not.toContain("SyncConflictDialog");
+    expect(examContentView).not.toContain("qbank_get_sync_conflicts");
+    expect(tauriLib).not.toContain("qbank_get_sync_conflicts");
+    expect(tauriLib).not.toContain("qbank_resolve_sync_conflict");
+    // 真冲突源：记录级 __sync_conflicts
+    expect(syncTab).toContain("RecordConflictsPanel");
+    expect(dataGovernanceApi).toContain("data_governance_list_record_conflicts");
+    expect(dataGovernanceApi).toContain("data_governance_resolve_record_conflict");
   });
 });

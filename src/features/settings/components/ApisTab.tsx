@@ -130,6 +130,14 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
         className="py-0"
         contentClassName="space-y-4"
       >
+        {/* Settings 顶栏已渲染 tab 标题（故 hideHeader 防重复），
+            这里单独补回分区描述，给从欢迎弹窗进来的新用户「这是什么/该做什么」的定位。
+            移动端进入供应商详情态时隐藏，避免挤占详情面板。 */}
+        {!(isSmallScreen && mobileVendorDetailOpen) && (
+          <p className="text-sm text-muted-foreground">
+            {t('settings:sections.api_config_desc')}
+          </p>
+        )}
         <VendorSettingsProvider value={contextValue}>
           {isSmallScreen ? (
             // P1-6 移动端两级导航（master → detail）：

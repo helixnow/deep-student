@@ -165,7 +165,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <h3 className="text-base font-medium text-foreground">
               {t("data:governance.database_sync_status")}
             </h3>
-            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
+            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
               {t("data:governance.experimental_badge")}
             </span>
           </div>
@@ -280,7 +280,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <h3 className="text-base font-medium text-foreground">
               {t("data:governance.cloud_sync_title")}
             </h3>
-            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
+            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
               {t("data:governance.experimental_badge")}
             </span>
           </div>

@@ -190,6 +190,10 @@ const normalizeDeepSeekModelAdapter = (
 
 export const convertProfileToApiConfig = (profile: ModelProfile, vendor: VendorConfig): ApiConfig => {
   const providerScope = profile.providerScope ?? vendor.providerType;
+  const maxTokensLimit =
+    profile.maxTokensLimit != null && vendor.maxTokensLimit != null
+      ? Math.min(profile.maxTokensLimit, vendor.maxTokensLimit)
+      : profile.maxTokensLimit ?? vendor.maxTokensLimit;
   const modelAdapter = normalizeDeepSeekModelAdapter(
     profile.modelAdapter,
     profile.model,
@@ -236,6 +240,9 @@ export const convertProfileToApiConfig = (profile: ModelProfile, vendor: VendorC
     topK: profile.topK,
     supportsReasoning: profile.supportsReasoning ?? profile.isReasoning,
     headers: vendor.headers,
+    maxTokensLimit,
+    modelMaxTokensLimit: profile.maxTokensLimit,
+    initialEffectiveMaxTokensLimit: maxTokensLimit,
     contextWindow: profile.contextWindow,
     repetitionPenalty: profile.repetitionPenalty,
     reasoningSplit: profile.reasoningSplit,
@@ -286,6 +293,10 @@ export const convertApiConfigToProfile = (api: ApiConfig, vendorId: string): Mod
     geminiApiVersion: api.geminiApiVersion,
     isBuiltin: api.isBuiltin,
     isReadOnly: api.isReadOnly,
+    maxTokensLimit:
+      api.maxTokensLimit === api.initialEffectiveMaxTokensLimit
+        ? api.modelMaxTokensLimit
+        : api.maxTokensLimit,
     contextWindow: api.contextWindow,
     repetitionPenalty: api.repetitionPenalty,
     reasoningSplit: api.reasoningSplit,

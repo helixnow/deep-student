@@ -7,7 +7,11 @@ import { GeneralTab } from '../GeneralTab';
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty' as const, init: () => {} },
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string | { defaultValue?: string }) => (
+      typeof fallback === 'string'
+        ? fallback
+        : fallback?.defaultValue ?? key
+    ),
     i18n: {
       language: 'zh-CN',
       changeLanguage: vi.fn(),
@@ -49,6 +53,11 @@ vi.mock('@/features/chat/hooks/useDevShowRawRequest', async () => {
 });
 
 vi.mock('@/debug-panel/debugMasterSwitch', () => ({
+  debugLog: {
+    log: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
   debugMasterSwitch: {
     isEnabled: () => false,
     addListener: () => () => undefined,
@@ -71,6 +80,10 @@ vi.mock('../VoiceInputSettingsSection', () => ({
 
 vi.mock('../MemorySettingsSection', () => ({
   MemorySettingsSection: () => <div>MemorySettingsSection</div>,
+}));
+
+vi.mock('../SystemPermissionsSection', () => ({
+  SystemPermissionsSection: () => <div>SystemPermissionsSection</div>,
 }));
 
 vi.mock('@/components/legal/UserAgreementDialog', () => ({

@@ -118,9 +118,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     // 前端只检查是否完全没有配置（空字符串且没有 vendorId）
     const apiKeyTrimmed = (api.apiKey || '').trim();
     const hasVendorId = !!api.vendorId;
+    const usesNoApiKey = api.authMode === 'none';
     
     // 如果 apiKey 是空且没有 vendorId，才报错（占位符如 *** 由后端处理）
-    if (!apiKeyTrimmed && !hasVendorId) {
+    if (!usesNoApiKey && !apiKeyTrimmed && !hasVendorId) {
       showGlobalNotification('error', t('settings:notifications.api_key_required'));
       return;
     }
@@ -331,7 +332,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       setSelectedVendorId(saved.id);
       showGlobalNotification('success', t('common:config_saved'));
       // noApiKey 供应商：编辑保存后自动获取模型列表
-      if (saved.noApiKey) {
+      if (saved.authMode === 'none' || saved.noApiKey) {
         triggerPostSaveAutoFlow(saved);
       }
     } catch (error) {
@@ -355,7 +356,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       showGlobalNotification('success', t('common:config_saved'));
       // noApiKey 供应商：创建后自动获取模型列表
-      if (saved.noApiKey) {
+      if (saved.authMode === 'none' || saved.noApiKey) {
         triggerPostSaveAutoFlow(saved);
       }
     } catch (error) {
@@ -426,6 +427,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       const updated = { ...vendor, apiKey: '' };
       await upsertVendor(updated);
+
+      // 仅清除主 key；仍有备用 key 时供应商依然可用，不应禁用模型或清空分配。
+      if (vendor.apiKeys?.some(key => key.trim())) {
+        return;
+      }
 
       // 清空 Key 后：禁用该供应商所有模型 + 清除模型分配 + 重新分配
       const vendorProfileIds = new Set(

@@ -29,11 +29,12 @@ const SettingRow = ({
   description?: string;
   children: React.ReactNode;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+  // 双栏切换点与 isSmallScreen（<768）对齐，避免 640-767px 移动模式下出现桌面双栏行
+  <div className="group flex flex-col md:flex-row md:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 md:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
@@ -150,14 +151,14 @@ export const AboutTab: React.FC = () => {
   return (
     <div className="space-y-1 pb-10 text-left ui-fade-in-slow">
       <SettingSection title="" hideHeader className="overflow-hidden">
-        <div className="flex flex-col sm:flex-row gap-6 py-6">
-          <div className="flex flex-col items-center justify-center sm:w-1/3 gap-5">
+        <div className="flex flex-col md:flex-row gap-6 py-6">
+          <div className="flex flex-col items-center justify-center md:w-1/3 gap-5">
             <DeepStudentLogo className="w-44 max-w-full" />
             <div className="text-center">
               <p className="text-xs text-muted-foreground/70 mt-0.5">{VERSION_INFO.FULL_VERSION}</p>
             </div>
           </div>
-          <div className="sm:w-2/3">
+          <div className="md:w-2/3">
             <GroupTitle title={t('acknowledgements.developer.title')} />
             <div className="space-y-px">
               <SettingRow title={t('acknowledgements.developer.fields.developer')}>
@@ -174,7 +175,7 @@ export const AboutTab: React.FC = () => {
                   size="sm"
                   onClick={() => updater.checkForUpdate(false)}
                   disabled={updater.checking}
-                  className="h-6 px-2 text-xs flex-shrink-0 whitespace-nowrap"
+                  className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs flex-shrink-0 whitespace-nowrap"
                 >
                   <ArrowClockwise size={12} className={`mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
                   {updater.checking
@@ -191,7 +192,8 @@ export const AboutTab: React.FC = () => {
                 : t('about.update.channelStableDesc')}
             >
               <Select value={channel} onValueChange={(val) => handleChannelChange(val as UpdateChannel)}>
-                <SelectTrigger className="h-6 px-1.5 text-xs w-auto min-h-0">
+                {/* 触屏下放大到 40px 触控高度（桌面保持紧凑 24px） */}
+                <SelectTrigger className="h-6 [@media(pointer:coarse)]:h-10 px-1.5 text-xs w-auto min-h-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -217,14 +219,14 @@ export const AboutTab: React.FC = () => {
                     variant="ghost"
                     size="sm"
                     onClick={handleResetNoRemind}
-                    className="h-6 px-2 text-xs text-primary"
+                    className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs text-primary"
                   >
                     {t('about.update.frequencyReEnable')}
                   </NotionButton>
                 ) : (
                   <>
                     <Select value={frequency} onValueChange={(val) => handleFrequencyChange(val as UpdateFrequency)}>
-                      <SelectTrigger className="h-6 px-1.5 text-xs w-auto min-h-0">
+                      <SelectTrigger className="h-6 [@media(pointer:coarse)]:h-10 px-1.5 text-xs w-auto min-h-0">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -240,7 +242,7 @@ export const AboutTab: React.FC = () => {
                         max={365}
                         value={frequencyDays}
                         onChange={(e) => handleFrequencyDaysChange(Number(e.target.value))}
-                        className="h-6 w-14 px-1.5 text-xs text-center min-h-0"
+                        className="h-6 [@media(pointer:coarse)]:h-10 w-14 px-1.5 text-xs text-center min-h-0"
                       />
                     )}
                   </>
@@ -281,7 +283,7 @@ export const AboutTab: React.FC = () => {
                             li: ({ children }) => <li className="break-words" style={{ overflowWrap: 'anywhere' }}>{children}</li>,
                             a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" style={{ overflowWrap: 'anywhere' }}>{children}</a>,
                             strong: ({ children }) => <strong className="font-semibold text-foreground/90">{children}</strong>,
-                            code: ({ children }) => <code className="px-1 py-0.5 rounded bg-muted text-[11px]">{children}</code>,
+                            code: ({ children }) => <code className="px-1 py-0.5 rounded bg-muted text-xs">{children}</code>,
                           }}
                         >{md}</ReactMarkdown>
                       </div>);
@@ -327,6 +329,18 @@ export const AboutTab: React.FC = () => {
                 {!updater.isMobile && updater.downloading && updater.progress > 0 && (
                   <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
                     <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${updater.progress}%` }} />
+                  </div>
+                )}
+                {!updater.downloading && (
+                  <div className="mt-2">
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => updater.skipVersion(updater.info!.version)}
+                      className="h-6 [@media(pointer:coarse)]:h-10 px-2 text-xs text-muted-foreground"
+                    >
+                      {t('about.update.dialog.skipVersion')}
+                    </NotionButton>
                   </div>
                 )}
               </div>

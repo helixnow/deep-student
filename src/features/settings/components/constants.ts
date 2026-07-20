@@ -45,13 +45,15 @@ export function resolveSettingsStdioFraming(
   return 'jsonl';
 }
 
-export const DEFAULT_CHAT_STREAM_TIMEOUT_SECONDS = 180;
-export const CHAT_STREAM_SETTINGS_EVENT = 'DSTU_CHAT_STREAM_SETTINGS_UPDATED';
+// 与 Rust 端 chat_v2 pipeline 的默认空闲超时（LLM_STREAM_TIMEOUT_SECS=600）保持一致
+export const DEFAULT_CHAT_STREAM_TIMEOUT_SECONDS = 600;
 export const UI_ZOOM_STORAGE_KEY = 'ui.zoom';
 export const DEFAULT_UI_ZOOM = 1;
-export const MIN_UI_ZOOM = 0.85;
+// 下限与 AppearanceTab 的 80% 预设保持一致，避免选中 80% 被 clamp 回其他值
+export const MIN_UI_ZOOM = 0.8;
 export const MAX_UI_ZOOM = 1.5;
 export const UI_ZOOM_PRESETS = [
+  { value: 0.8, label: '80%' },
   { value: 0.85, label: '85%' },
   { value: 0.9, label: '90%' },
   { value: 1, label: '100%' },

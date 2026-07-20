@@ -94,7 +94,7 @@ export const MarkdownEditorWindowSettings: React.FC = () => {
           }}
           className="!w-24 h-8 text-xs bg-transparent"
         />
-        <span className="text-[11px] text-muted-foreground/70">
+        <span className="text-xs text-muted-foreground/70">
           {t('settings:notes_editor.initial_line_window.unit', 'lines')}
         </span>
         <NotionButton

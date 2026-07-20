@@ -259,7 +259,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                 )}
               >
                 {/* 优先级序号 */}
-                <span className="w-4 text-center text-[10px] text-muted-foreground/50 shrink-0 tabular-nums">
+                <span className="w-4 text-center text-2xs text-muted-foreground/50 shrink-0 tabular-nums">
                   {index + 1}
                 </span>
 
@@ -284,31 +284,31 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                     </span>
                     
                     {engine.isFree && (
-                      <span className="text-[10px] text-green-600/80 dark:text-green-400/80 shrink-0">
+                      <span className="text-2xs text-green-600/80 dark:text-green-400/80 shrink-0">
                         {t('settings:ocr.free')}
                       </span>
                     )}
 
                     {engine.engineType === 'system_ocr' && (
-                      <span className="text-[10px] text-purple-600/80 dark:text-purple-400/80 shrink-0">
+                      <span className="text-2xs text-purple-600/80 dark:text-purple-400/80 shrink-0">
                         {t('settings:ocr.offline')}
                       </span>
                     )}
                     
                     {engine.supportsGrounding && (
-                      <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80 shrink-0">
+                      <span className="text-2xs text-blue-600/80 dark:text-blue-400/80 shrink-0">
                         {t('settings:ocr.coordinate_positioning')}
                       </span>
                     )}
 
                     {index === firstEnabledIndex && engine.enabled && (
-                      <span className="text-[10px] text-primary/85 shrink-0">
+                      <span className="text-2xs text-primary/85 shrink-0">
                         {t('settings:ocr.primary')}
                       </span>
                     )}
                   </div>
                   
-                  <p className="text-[10px] text-muted-foreground/50 leading-relaxed line-clamp-1">
+                  <p className="text-2xs text-muted-foreground/50 leading-relaxed line-clamp-1">
                     {engine.engineType === 'system_ocr'
                       ? (engine.description || '调用操作系统内置 OCR 引擎')
                       : engine.engineType === 'generic_vlm'
@@ -319,14 +319,15 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
 
                 {/* 操作按钮(触屏常显) */}
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity shrink-0">
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveUp(index)} disabled={index === 0 || saving} className="!h-5 !w-5 !p-0 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_up')} aria-label="move up">
+                  {/* 触屏下放大到 ≥40px 触控目标，避免 20px 排序/删除按钮误触 */}
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveUp(index)} disabled={index === 0 || saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_up')} aria-label="move up">
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 3L9 7H3L6 3Z" fill="currentColor"/></svg>
                   </NotionButton>
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveDown(index)} disabled={index === engines.length - 1 || saving} className="!h-5 !w-5 !p-0 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_down')} aria-label="move down">
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleMoveDown(index)} disabled={index === engines.length - 1 || saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/40 hover:text-foreground disabled:invisible" title={t('settings:ocr.move_down')} aria-label="move down">
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9L3 5H9L6 9Z" fill="currentColor"/></svg>
                   </NotionButton>
                   {engine.engineType !== 'system_ocr' && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label={t('settings:a11y.delete')}>
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label={t('settings:a11y.delete')}>
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     </NotionButton>
                   )}
@@ -336,7 +337,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
           ) : (
             <div className="mx-1 my-1.5 py-3 px-2 text-center">
               <p className="text-xs text-muted-foreground/60">{t('settings:ocr.no_engines')}</p>
-              <p className="text-[11px] text-amber-600/80 dark:text-amber-500/80 mt-1">
+              <p className="text-xs text-amber-600/80 dark:text-amber-500/80 mt-1">
                 {t('settings:ocr.siliconflow_hint')}
               </p>
             </div>
@@ -347,10 +348,10 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
         {!loading && engines.length > 0 && (
           <div className="flex items-center justify-between px-1.5 py-1.5 rounded bg-muted/20">
             <div className="space-y-0">
-              <span className="text-[11px] text-muted-foreground/80">
+              <span className="text-xs text-muted-foreground/80">
                 {t('settings:ocr.thinking_label')}
               </span>
-              <p className="text-[10px] text-muted-foreground/50 leading-tight">
+              <p className="text-2xs text-muted-foreground/50 leading-tight">
                 {t('settings:ocr.thinking_desc')}
               </p>
             </div>
@@ -376,18 +377,18 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
         {!loading && (
           <div className="flex items-center justify-between px-1 pt-1 border-t border-border/20">
             <div className="flex items-center gap-2">
-              <NotionButton variant="ghost" size="sm" onClick={() => setShowAddDialog(true)} className="!h-auto !p-0 text-[11px] text-primary/70 hover:text-primary">
+              <NotionButton variant="ghost" size="sm" onClick={() => setShowAddDialog(true)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-xs text-primary/70 hover:text-primary">
                 + {t('settings:ocr.add_engine')}
               </NotionButton>
               {enabledCount > 1 && (
-                <span className="text-[10px] text-muted-foreground/40">
+                <span className="text-2xs text-muted-foreground/40">
                   {t('settings:ocr.fallback_hint', { count: enabledCount })}
                 </span>
               )}
             </div>
 
             {engines.length >= 1 && (
-              <NotionButton variant="ghost" size="sm" onClick={() => setShowTestPanel(!showTestPanel)} className="!h-auto !p-0 text-[11px] text-muted-foreground/60 hover:text-foreground">
+              <NotionButton variant="ghost" size="sm" onClick={() => setShowTestPanel(!showTestPanel)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2 text-xs text-muted-foreground/60 hover:text-foreground">
                 {showTestPanel ? t('settings:ocr.collapse_test') : (engines.length >= 2 ? t('settings:ocr.engine_comparison_test') : t('settings:ocr.engine_test'))}
               </NotionButton>
             )}
@@ -399,7 +400,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
           <div className="mx-1 mt-1 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium">{t('settings:ocr.select_multimodal_model')}</span>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowAddDialog(false)} className="!h-5 !w-5 !p-0 text-muted-foreground/40 hover:text-foreground" aria-label={t('settings:a11y.close')}>
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowAddDialog(false)} className="!h-5 !w-5 !p-0 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 text-muted-foreground/40 hover:text-foreground" aria-label={t('settings:a11y.close')}>
                 ✕
               </NotionButton>
             </div>
@@ -413,7 +414,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
               popoverClassName="w-[280px]"
             />
             {multimodalModels.length === 0 && (
-              <p className="text-[11px] text-muted-foreground/50 py-1 text-center">
+              <p className="text-xs text-muted-foreground/50 py-1 text-center">
                 {t('settings:ocr.no_multimodal_available')}
               </p>
             )}

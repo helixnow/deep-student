@@ -21,12 +21,17 @@ import { Button } from '@/components/ui/shad/Button';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 // 刻意深路径导入：workbench 公共出口（index.ts）聚合了 chat/系统应用等重量级
 // re-export，settings 页只需要 bus / 材质 / 壁纸预设三个轻量模块，
 // 走 index 会把整条 chat store 链拖进 settings bundle（见 P10 进度文件遗留项）。
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { setMaterialTier, type MaterialTierSetting } from '@/features/workbench/core/materialTier';
 import { WALLPAPER_PRESETS, DEFAULT_WALLPAPER, type WallpaperConfig } from '@/features/workbench/components/WallpaperLayer';
+import {
+  parseTitleBarDoubleClickAction,
+  type TitleBarDoubleClickAction,
+} from '@/features/workbench/components/titleBarBehaviorStore';
 import { AgentCapabilitySummary } from '@/features/workbench/components/AgentControlCenter';
 import {
   persistBrowserNetworkModeSelection,
@@ -45,7 +50,10 @@ export const WORKBENCH_SETTING_KEYS = {
   tileMargins: 'desktop.workbenchTileMargins',
   dockSize: 'desktop.workbenchDockSize',
   dockAutohide: 'desktop.workbenchDockAutohide',
-  dockMagnification: 'desktop.workbenchDockMagnification',
+  /** 菜单栏自动隐藏（StatusBar 自读；见 menuBarAutohideStore） */
+  menuBarAutohide: 'desktop.workbenchMenuBarAutohide',
+  /** 双击标题栏行为（WindowTitleBar 自读；见 titleBarBehaviorStore） */
+  titleBarDoubleClick: 'desktop.workbenchTitleBarDoubleClick',
   devPanel: 'desktop.workbenchDevPanel',
   /** 内置浏览器子闸（受 workbenchMode 父闸约束） */
   browserEnabled: 'desktop.workbenchBrowserEnabled',
@@ -66,14 +74,14 @@ export type WorkbenchAgentControl = 'off' | 'background' | 'follow';
 /** ACR 演出节奏档（DESIGN §4.3） */
 export type WorkbenchAgentPacing = 'fast' | 'normal' | 'demo';
 
-/** 性能预设 → 材质 / Dock 放大 */
+/** 性能预设 → 材质 */
 export const PERFORMANCE_PROFILE_PRESETS: Record<
   Exclude<PerformanceProfile, 'custom'>,
-  { materialTier: MaterialTierSetting; dockMagnification: boolean }
+  { materialTier: MaterialTierSetting }
 > = {
-  quality: { materialTier: 'full', dockMagnification: true },
-  balanced: { materialTier: 'reduced', dockMagnification: true },
-  performance: { materialTier: 'minimal', dockMagnification: false },
+  quality: { materialTier: 'full' },
+  balanced: { materialTier: 'reduced' },
+  performance: { materialTier: 'minimal' },
 };
 
 export type WallpaperSetting = WallpaperConfig;
@@ -164,13 +172,14 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const [mode, setMode] = useState(true);
   const [performanceProfile, setPerformanceProfile] = useState<PerformanceProfile>('custom');
   const [materialTier, setMaterialTierState] = useState<MaterialTierSetting>('auto');
-  const [dockMagnification, setDockMagnification] = useState(true);
   const [wallpaper, setWallpaper] = useState<WallpaperSetting>(DEFAULT_WALLPAPER);
   const [wallpaperImportPending, setWallpaperImportPending] = useState(false);
   const wallpaperImportPendingRef = useRef(false);
   const [tileMargins, setTileMargins] = useState<TileMarginsSetting>(DEFAULT_TILE_MARGINS);
   const [dockSize, setDockSize] = useState(DOCK_SIZE_DEFAULT);
   const [dockAutohide, setDockAutohide] = useState(false);
+  const [menuBarAutohide, setMenuBarAutohide] = useState(false);
+  const [titleBarDoubleClick, setTitleBarDoubleClick] = useState<TitleBarDoubleClickAction>('zoom');
   const [devPanel, setDevPanel] = useState(false);
   const [browserEnabled, setBrowserEnabled] = useState(false);
   const [browserNetworkMode, setBrowserNetworkMode] = useState<BrowserNetworkMode>('local_whitelist');
@@ -195,7 +204,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         marginsVal,
         dockSizeVal,
         autohideVal,
-        dockMagVal,
+        menuBarAutohideVal,
+        titleBarDoubleClickVal,
         devPanelVal,
         browserEnabledVal,
         browserNetworkModeVal,
@@ -211,7 +221,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         read(WORKBENCH_SETTING_KEYS.tileMargins),
         read(WORKBENCH_SETTING_KEYS.dockSize),
         read(WORKBENCH_SETTING_KEYS.dockAutohide),
-        read(WORKBENCH_SETTING_KEYS.dockMagnification),
+        read(WORKBENCH_SETTING_KEYS.menuBarAutohide),
+        read(WORKBENCH_SETTING_KEYS.titleBarDoubleClick),
         read(WORKBENCH_SETTING_KEYS.devPanel),
         read(WORKBENCH_SETTING_KEYS.browserEnabled),
         read(WORKBENCH_SETTING_KEYS.browserNetworkMode),
@@ -224,13 +235,13 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       setMode(modeResult.enabled);
       setPerformanceProfile(parseProfile(profileVal));
       setMaterialTierState(parseMaterialTier(tierVal));
-      // 未设置 → 保留 Dock 放大（与 quality 默认手感一致）；显式 'false' 才关
-      setDockMagnification(String(dockMagVal ?? '') !== 'false');
       const wp = parseJsonSetting<WallpaperSetting>(wallpaperVal, DEFAULT_WALLPAPER);
       setWallpaper(wp);
       setTileMargins(parseJsonSetting<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
       setDockSize(parseDockSize(dockSizeVal));
       setDockAutohide(String(autohideVal ?? '') === 'true');
+      setMenuBarAutohide(String(menuBarAutohideVal ?? '') === 'true');
+      setTitleBarDoubleClick(parseTitleBarDoubleClickAction(titleBarDoubleClickVal));
       setDevPanel(String(devPanelVal ?? '') === 'true');
       setBrowserEnabled(String(browserEnabledVal ?? '') === 'true');
       setBrowserNetworkMode(parseBrowserNetworkMode(browserNetworkModeVal));
@@ -278,7 +289,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       if (!enabled) await closeBrowserForDisabledGate();
       workbenchBus.setEnabled(enabled);
       try {
-        window.dispatchEvent(new CustomEvent('workbench:mode-changed', { detail: { enabled } }));
+        dispatchAppEvent(APP_EVENTS.WORKBENCH_MODE_CHANGED, { enabled });
       } catch {
         // noop
       }
@@ -295,14 +306,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
     [persist],
   );
 
-  const applyDockMagnification = useCallback(
-    (next: boolean) => {
-      setDockMagnification(next);
-      void persist(WORKBENCH_SETTING_KEYS.dockMagnification, String(next), next);
-    },
-    [persist],
-  );
-
   const handleProfileChange = useCallback(
     (next: PerformanceProfile) => {
       setPerformanceProfile(next);
@@ -310,9 +313,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       if (next === 'custom') return;
       const preset = PERFORMANCE_PROFILE_PRESETS[next];
       applyMaterialTier(preset.materialTier);
-      applyDockMagnification(preset.dockMagnification);
     },
-    [applyDockMagnification, applyMaterialTier, persist],
+    [applyMaterialTier, persist],
   );
 
   const handleTierChange = useCallback(
@@ -321,14 +323,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       applyMaterialTier(next);
     },
     [applyMaterialTier, markCustomIfNeeded],
-  );
-
-  const handleDockMagChange = useCallback(
-    (next: boolean) => {
-      markCustomIfNeeded();
-      applyDockMagnification(next);
-    },
-    [applyDockMagnification, markCustomIfNeeded],
   );
 
   const saveWallpaper = useCallback(
@@ -504,17 +498,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         />
       </SettingRow>
 
-      <SwitchRow
-        title={t('workbench:settings.dockMagnification.title')}
-        description={t('workbench:settings.dockMagnification.desc')}
-        checked={dockMagnification}
-        loading={!loaded}
-        onCheckedChange={(next) => {
-          if (!loaded) return;
-          handleDockMagChange(next);
-        }}
-      />
-
       <SettingRow
         title={t('workbench:settings.wallpaper.title')}
         description={t('workbench:settings.wallpaper.desc')}
@@ -607,7 +590,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
               }}
               className="!w-20 h-8 text-xs bg-transparent"
             />
-            <span className="text-[11px] text-muted-foreground/70">px</span>
+            <span className="text-xs text-muted-foreground/70">px</span>
           </div>
         </SettingRow>
       )}
@@ -653,6 +636,41 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           void persist(WORKBENCH_SETTING_KEYS.dockAutohide, String(next), next);
         }}
       />
+
+      <SwitchRow
+        title={t('workbench:settings.menubarAutohide.title')}
+        description={t('workbench:settings.menubarAutohide.desc')}
+        checked={menuBarAutohide}
+        loading={!loaded}
+        onCheckedChange={(next) => {
+          if (!loaded) return;
+          setMenuBarAutohide(next);
+          void persist(WORKBENCH_SETTING_KEYS.menuBarAutohide, String(next), next);
+        }}
+      />
+
+      <SettingRow
+        title={t('workbench:settings.titleBarDoubleClick.title')}
+        description={t('workbench:settings.titleBarDoubleClick.desc')}
+        className="items-center"
+      >
+        <SegmentedControl
+          ariaLabel={t('workbench:settings.titleBarDoubleClick.title')}
+          value={titleBarDoubleClick}
+          onValueChange={(next) => {
+            if (!loaded) return;
+            const value = parseTitleBarDoubleClickAction(next);
+            setTitleBarDoubleClick(value);
+            void persist(WORKBENCH_SETTING_KEYS.titleBarDoubleClick, value, value);
+          }}
+          size="compact"
+          options={[
+            { value: 'zoom', label: t('workbench:settings.titleBarDoubleClick.zoom') },
+            { value: 'minimize', label: t('workbench:settings.titleBarDoubleClick.minimize') },
+            { value: 'none', label: t('workbench:settings.titleBarDoubleClick.none') },
+          ]}
+        />
+      </SettingRow>
 
       <SwitchRow
         title={t('workbench:settings.devPanel.title')}
@@ -769,7 +787,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             ]}
           />
           {!browserControlsDisabled && (
-            <p className="max-w-[22rem] text-right text-[11px] leading-snug text-muted-foreground/80">
+            <p className="max-w-[22rem] text-right text-xs leading-snug text-muted-foreground/80">
               {agentControl === 'off'
                 ? t('workbench:settings.agentControl.offDesc')
                 : agentControl === 'follow'
