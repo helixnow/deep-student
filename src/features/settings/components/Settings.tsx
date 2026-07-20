@@ -91,6 +91,15 @@ const SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE: React.CSSProperties = {
   borderBottom: 0,
 };
 
+// P2-13：防抖工具提到组件外，避免每次渲染重建
+function debounce(func: (...args: unknown[]) => void, wait: number) {
+  let timeout: ReturnType<typeof setTimeout>;
+  return function (...args: unknown[]) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
+
 const normalizeThemeMode = (value: unknown): ThemeMode => {
   if (value === 'dark' || value === 'auto') return value;
   return 'light';
@@ -113,7 +122,14 @@ import {
   ArrowCounterClockwise,
   Info as InfoIcon,
   Stack,
+  MagnifyingGlass,
+  CaretRight,
 } from '@phosphor-icons/react';
+import {
+  settingsQuietHoverClassName,
+  settingsQuietInteractiveRowClassName,
+} from './SettingsCommon';
+import type { SettingsRightPanelType } from './hookDepsTypes';
 import { type McpStatusInfo } from '@/mcp/mcpService';
 import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
 import { getBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
@@ -143,7 +159,7 @@ const invoke = isTauri ? tauriInvoke : null;
 export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
   const { isSmallScreen } = useBreakpoint();
-  // 移动端设置作为普通视图页呈现：统一顶栏 + chip rail 分区导航（不再有 Sheet 浮层形态）
+  // 移动端设置作为普通视图页呈现：统一顶栏 + 分组列表两级导航（不再有 Sheet 浮层形态）
   const effectiveMobilePanelMode = isSmallScreen;
   const {
     mode: themeMode,
@@ -159,9 +175,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   // 移动端三屏布局状态（需要在 useMobileHeader 之前定义）
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   // 右侧面板类型：用于统一管理移动端右侧滑动面板内容
-  const [rightPanelType, setRightPanelType] = useState<'none' | 'modelEditor' | 'mcpTool' | 'mcpPolicy' | 'vendorConfig'>('none');
+  const [rightPanelType, setRightPanelType] = useState<SettingsRightPanelType>('none');
   // 供应商配置 Modal ref（用于移动端顶栏保存按钮调用）
   const vendorConfigModalRef = useRef<VendorConfigModalRef>(null);
+
+  // P0-1 移动端两级导航：分区列表态（iOS 式分组列表 + 搜索） / 分区内容态
+  const [mobileNavView, setMobileNavView] = useState<'sections' | 'content'>('sections');
+  const [mobileSearchQuery, setMobileSearchQuery] = useState('');
+  // P1-6 移动端 API 配置页两级导航：供应商列表 → 供应商详情
+  const [mobileVendorDetailOpen, setMobileVendorDetailOpen] = useState(false);
 
   // 移动端统一顶栏配置 - 带面包屑导航
   // 获取当前标签页的显示名称（需要在 useMobileHeader 之前定义）
@@ -170,21 +192,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const dataGovernanceTabTarget = useSettingsShellStore((state) => state.dataGovernanceTabTarget);
   const applySettingsRoute = useSettingsShellStore((state) => state.applySettingsRoute);
   
-  // 顶栏标题：与其他页面一致的单一标题（当前分区由 chip rail 高亮表达，不再用面包屑双标题）
-  const SettingsBreadcrumb = useMemo(() => {
-    if (screenPosition === 'right') {
-      return (
-        <h1 className="text-base font-semibold truncate">
-          {t('settings:title_edit')}
-        </h1>
-      );
-    }
-    return (
-      <h1 className="text-base font-semibold truncate">
-        {t('settings:title')}
-      </h1>
-    );
-  }, [screenPosition, t]);
+  // 顶栏标题在 vendorState / mcpSection 就绪后统一计算（见下方 SettingsBreadcrumb）
 
   const isTauriEnvironment = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
   const [uiZoom, setUiZoom] = useState<number>(DEFAULT_UI_ZOOM);
@@ -357,7 +365,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const [extra, setExtra] = useState<SettingsExtra>({});
   const [showAppMenuDemo, setShowAppMenuDemo] = useState(false);
   const isMcpLoading = activeTab === 'mcp' && loading;
-  const { sidebarNavItems } = useSettingsNavigation();
+  const { sidebarNavGroups, sidebarNavItems, settingsSearchIndex } = useSettingsNavigation();
 
   // 顶部栏顶部边距高度设置（用于安卓状态栏等场景）
   const [topbarTopMargin, setTopbarTopMargin] = useState<string>('');
@@ -428,17 +436,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const tabsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
   const tabButtonsContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // 移动端 chip rail：activeTab 变化（含程序化跳转）时把激活 chip 滚到可视区。
-  // 不能用 scrollIntoView：它会横向滚动 MobileSlidingLayout 的 overflow-hidden 祖先，
-  // 在 translate3d 布局上叠加 scrollLeft 偏移，导致整个内容窗格错位
+  // P0-1：移动端分区导航改为分组列表（chip rail 已移除）。
+  // 切换分区时收起 API 配置页的供应商详情，保证再次进入时回到列表态。
   useEffect(() => {
-    if (!isSmallScreen || !activeTab) return;
-    const chip = tabsRef.current.get(activeTab);
-    const rail = chip?.parentElement;
-    if (!chip || !rail) return;
-    const target = chip.offsetLeft - (rail.clientWidth - chip.offsetWidth) / 2;
-    rail.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
-  }, [isSmallScreen, activeTab]);
+    setMobileVendorDetailOpen(false);
+  }, [activeTab]);
 
   // MCP 状态
   const [mcpStatusInfo, setMcpStatusInfo] = useState<McpStatusInfo | null>(null);
@@ -473,7 +475,22 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   const handleMobileSettingsBack = useCallback(() => {
     if (screenPosition !== 'right') {
-      setScreenPosition(prev => (prev === 'left' ? 'center' : 'left'));
+      // 左抽屉展开时先收起
+      if (screenPosition === 'left') {
+        setScreenPosition('center');
+        return;
+      }
+      // P0-1 / P1-6 两级导航返回链：
+      // 供应商详情 → 供应商列表 → 分区内容 → 分区列表 →（菜单键）应用导航抽屉
+      if (mobileNavView === 'content') {
+        if (activeTab === 'apis' && mobileVendorDetailOpen) {
+          setMobileVendorDetailOpen(false);
+          return;
+        }
+        setMobileNavView('sections');
+        return;
+      }
+      setScreenPosition('left');
       return;
     }
     switch (rightPanelType) {
@@ -493,18 +510,76 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         setMcpPolicyModal(prev => ({ ...prev, open: false }));
         closeRightPanel();
         break;
+      case 'mcpPreview':
+        handleClosePreview();
+        closeRightPanel();
+        break;
       default:
         closeRightPanel();
     }
   }, [
     screenPosition,
     rightPanelType,
+    mobileNavView,
+    activeTab,
+    mobileVendorDetailOpen,
     handleCloseModelEditor,
     setVendorModalOpen,
     setEditingVendor,
     closeRightPanel,
     setMcpToolModal,
     setMcpPolicyModal,
+    handleClosePreview,
+  ]);
+
+  // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 NotionDialog）
+  useEffect(() => {
+    if (!isSmallScreen) return;
+    if (mcpPreview.open) {
+      setRightPanelType('mcpPreview');
+      setScreenPosition('right');
+    } else if (rightPanelType === 'mcpPreview') {
+      closeRightPanel();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSmallScreen, mcpPreview.open]);
+
+  // 当前分区的导航项（分区内容态顶栏标题用）
+  const activeNavItem = useMemo(
+    () => sidebarNavItems.find((item) => item.value === activeTab) ?? null,
+    [sidebarNavItems, activeTab]
+  );
+
+  // 顶栏标题：分区列表态显示「系统设置」；分区内容态显示分区名；
+  // API 详情态显示供应商名；右滑面板显示编辑/预览标题
+  const SettingsBreadcrumb = useMemo(() => {
+    let text = t('settings:title');
+    if (screenPosition === 'right') {
+      text = rightPanelType === 'mcpPreview'
+        ? (mcpPreview.serverName || t('settings:mcp.preview.default_title'))
+        : t('settings:title_edit');
+    } else if (mobileNavView === 'content') {
+      if (activeTab === 'apis' && mobileVendorDetailOpen && selectedVendor) {
+        text = selectedVendor.name || activeNavItem?.label || t('settings:title');
+      } else {
+        text = activeNavItem?.label ?? t('settings:title');
+      }
+    }
+    return (
+      <h1 className="text-base font-semibold truncate">
+        {text}
+      </h1>
+    );
+  }, [
+    screenPosition,
+    rightPanelType,
+    mcpPreview.serverName,
+    mobileNavView,
+    activeTab,
+    mobileVendorDetailOpen,
+    selectedVendor,
+    activeNavItem,
+    t,
   ]);
 
   const settingsHeaderRightActions = useMemo(() => {
@@ -537,13 +612,18 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     return undefined;
   }, [screenPosition, rightPanelType, t]);
 
+  // 中屏顶栏：分区列表态显示菜单键（打开应用导航抽屉）；
+  // 分区内容态 / 供应商详情态 / 右滑面板态显示返回箭头（逐级回退）
+  const showSettingsBackArrow =
+    screenPosition === 'right' || (screenPosition === 'center' && mobileNavView === 'content');
+
   useMobileHeader('settings', {
     titleNode: SettingsBreadcrumb,
     showMenu: true,
     onMenuClick: handleMobileSettingsBack,
-    showBackArrow: screenPosition === 'right',
+    showBackArrow: showSettingsBackArrow,
     rightActions: settingsHeaderRightActions,
-  }, [SettingsBreadcrumb, screenPosition, settingsHeaderRightActions, handleMobileSettingsBack]);
+  }, [SettingsBreadcrumb, screenPosition, showSettingsBackArrow, settingsHeaderRightActions, handleMobileSettingsBack]);
 
   const handleSaveChatStreamTimeout = useCallback(async () => {
     const raw = String(extra?.chatStreamTimeoutSeconds ?? '').trim();
@@ -668,6 +748,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     const pending = consumePendingSettingsRoute();
     if (pending) {
       applySettingsRoute(pending);
+      // 程序化直达某分区：移动端跳过分区列表，直接进入内容态
+      setMobileNavView('content');
     }
   }, [applySettingsRoute]);
 
@@ -681,6 +763,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           tab,
           dataGovernanceTab: customEvent.detail?.dataGovernanceTab,
         });
+        // 程序化直达某分区：移动端跳过分区列表，直接进入内容态
+        setMobileNavView('content');
       }
     };
     window.addEventListener('SETTINGS_NAVIGATE_TAB', handleNavigateTab);
@@ -824,15 +908,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     }
   }, [loading, activeTab, updateIndicatorRaf]);
 
-  // 添加防抖函数
-  function debounce(func: (...args: unknown[]) => void, wait: number) {
-    let timeout: ReturnType<typeof setTimeout>;
-    return function(...args: unknown[]) {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => func(...args), wait);
-    };
-  }
-
   useEffect(() => {
     loadConfig();
   }, []);
@@ -903,11 +978,20 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   if (loading) {
     if (isSmallScreen) {
+      // 骨架对齐正式布局：搜索框 + 分组列表卡片
       return (
         <div className="absolute inset-0 flex flex-col overflow-hidden bg-background text-foreground">
-          <div className="flex gap-2 overflow-hidden border-b border-border px-4 py-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-11 w-24 shrink-0 rounded-[14px] bg-muted animate-pulse" />
+          <div className="space-y-4 px-5 pt-4">
+            <div className="h-11 w-full rounded-[14px] bg-muted animate-pulse" />
+            {[3, 2, 3].map((rows, groupIdx) => (
+              <div key={groupIdx} className="rounded-2xl border border-border/40 bg-background p-2">
+                {Array.from({ length: rows }).map((_, rowIdx) => (
+                  <div key={rowIdx} className="flex min-h-11 items-center gap-3 px-2">
+                    <div className="h-5 w-5 rounded-md bg-muted animate-pulse" />
+                    <div className="h-4 flex-1 max-w-[60%] rounded bg-muted animate-pulse" />
+                  </div>
+                ))}
+              </div>
             ))}
           </div>
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
@@ -926,46 +1010,235 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     );
   }
 
-  // 移动端分区导航：chip rail（横向滚动 tab 条，替代旧的抽屉内设置侧栏）
-  const renderSettingsSheetTabRail = () => (
-    <div className="relative shrink-0 border-b border-border bg-background py-2">
-      {/* S-4: 右缘渐隐提示——暗示 chip rail 可横向滚动、后面还有更多 tab */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-10 bg-gradient-to-l from-background to-transparent"
-      />
-      <div className="flex snap-x gap-2 overflow-x-auto px-5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {sidebarNavItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.value;
+  // P0-1 移动端分区导航：进入某分区内容态（替代旧 chip rail 的横滑切换）
+  const openMobileSection = (tab: string) => {
+    setActiveTab(tab);
+    setMobileNavView('content');
+    setMobileSearchQuery('');
+  };
 
-          return (
-            <button
-              key={item.value}
-              ref={(el) => {
-                if (el) tabsRef.current.set(item.value, el);
-                else tabsRef.current.delete(item.value);
-              }}
-              type="button"
-              onClick={() => setActiveTab(item.value)}
-              className={cn(
-                "inline-flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-[14px] px-3.5 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              )}
-              aria-current={isActive ? 'page' : undefined}
+  // 搜索结果：命中 label 或关键词的设置项，扁平列表点击直达对应分区
+  const mobileSearchResults = (() => {
+    const query = mobileSearchQuery.trim().toLowerCase();
+    if (!query) return [];
+    return settingsSearchIndex.filter((item) => {
+      if (item.label.toLowerCase().includes(query)) return true;
+      return item.keywords.some((keyword) => keyword.toLowerCase().includes(query));
+    });
+  })();
+
+  // P0-1 移动端分区首页：搜索框 + iOS 式分组列表（复用 sidebarNavGroups 5 组）
+  const renderMobileSectionList = () => (
+    <CustomScrollArea
+      className="flex-1 w-full max-w-full overflow-x-hidden"
+      viewportClassName="px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
+      trackOffsetTop={16}
+      trackOffsetBottom={16}
+      trackOffsetRight={0}
+    >
+      <div className="desktop-shell-content-enter mx-auto w-full max-w-[40rem] space-y-4">
+        {/* 搜索框 */}
+        <div className="relative">
+          <MagnifyingGlass
+            aria-hidden
+            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60"
+          />
+          <Input
+            type="search"
+            value={mobileSearchQuery}
+            onChange={(e) => setMobileSearchQuery(e.target.value)}
+            placeholder={t('settings:sidebar.search_placeholder')}
+            aria-label={t('settings:sidebar.search_placeholder')}
+            className="h-11 rounded-[14px] border-border/40 bg-muted/30 pl-10"
+          />
+        </div>
+
+        {mobileSearchQuery.trim() ? (
+          // 搜索结果态：扁平列表，点击直达对应分区
+          <div className="rounded-2xl border border-border/40 bg-background px-1.5 py-1.5">
+            {mobileSearchResults.length === 0 ? (
+              <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                {t('settings:sidebar.no_results')}
+              </div>
+            ) : (
+              mobileSearchResults.map((item, index) => {
+                const sectionItem = sidebarNavItems.find((nav) => nav.value === item.tab);
+                const SectionIcon = sectionItem?.icon;
+                return (
+                  <button
+                    key={`${item.tab}-${item.label}-${index}`}
+                    type="button"
+                    onClick={() => openMobileSection(item.tab)}
+                    className={cn(
+                      'flex w-full min-h-11 items-center gap-3 px-3 py-1.5 text-left',
+                      settingsQuietInteractiveRowClassName,
+                      settingsQuietHoverClassName
+                    )}
+                  >
+                    {SectionIcon && <SectionIcon className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-foreground">{item.label}</span>
+                      {sectionItem && (
+                        <span className="block truncate text-xs text-muted-foreground/70">{sectionItem.label}</span>
+                      )}
+                    </span>
+                    <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
+                  </button>
+                );
+              })
+            )}
+          </div>
+        ) : (
+          // 分组列表态：五组分区，行高 44px + chevron
+          sidebarNavGroups.map((group, groupIndex) => (
+            <nav
+              key={groupIndex}
+              aria-label={t('settings:title')}
+              className="rounded-2xl border border-border/40 bg-background px-1.5 py-1.5"
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="whitespace-nowrap">{item.label}</span>
-            </button>
-          );
-        })}
+              {group.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.value;
+                return (
+                  <button
+                    key={item.value}
+                    type="button"
+                    data-tour-id={item.tourId}
+                    onClick={() => openMobileSection(item.value)}
+                    className={cn(
+                      'flex w-full min-h-11 items-center gap-3 px-3 text-left',
+                      settingsQuietInteractiveRowClassName,
+                      settingsQuietHoverClassName
+                    )}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <Icon
+                      className={cn(
+                        'h-[18px] w-[18px] shrink-0',
+                        isActive ? 'text-primary' : 'text-muted-foreground'
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">{item.label}</span>
+                    <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
+                  </button>
+                );
+              })}
+            </nav>
+          ))
+        )}
       </div>
-    </div>
+    </CustomScrollArea>
   );
 
-  // 渲染主内容区域（mobilePageMode：移动端普通视图页形态，配合 chip rail）
+  // P0-4：MCP 工具/资源预览正文（桌面 NotionDialog 与移动右滑面板共用）
+  const renderMcpPreviewBody = () => {
+    if (mcpPreview.loading) {
+      return <div className="py-12 text-center text-sm text-muted-foreground">{t('settings:mcp.preview.loading')}</div>;
+    }
+    if (mcpPreview.error) {
+      return (
+        <div className="rounded-md border px-3 py-2 text-sm" style={{ background: 'hsl(var(--danger-bg))', color: 'hsl(var(--danger))', borderColor: 'hsl(var(--danger) / 0.3)' }}>
+          {mcpPreview.error}
+        </div>
+      );
+    }
+    return (
+      <div className="grid gap-4">
+        <div className="flex flex-col rounded-lg border bg-muted p-3">
+          <div className="text-sm font-semibold text-foreground">{t('settings:mcp_descriptions.tools_count', { count: mcpPreview.tools.length })}</div>
+          {mcpPreview.tools.length === 0 ? (
+            <div className="mt-3 rounded-md border border-dashed bg-background/70 px-3 py-6 text-center text-xs text-muted-foreground">
+              {t('settings:common_labels.no_data')}
+            </div>
+          ) : (
+            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+              {mcpPreview.tools.map((tool, index) => {
+                const formattedName = stripMcpPrefix(tool?.name);
+                return (
+                  <div
+                    key={`${tool?.name || 'tool'}-${index}`}
+                    className="rounded border bg-card px-2 py-2 shadow-sm"
+                  >
+                    <div
+                      className="font-medium text-foreground break-all"
+                      title={tool?.name || t('settings:status_labels.unnamed_tool')}
+                    >
+                      {formattedName || t('settings:status_labels.unnamed_tool')}
+                    </div>
+                    {tool?.description && (
+                      <div className="mt-1 text-muted-foreground leading-5 break-words">
+                        {tool.description}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col rounded-lg border bg-muted p-3">
+          <div className="text-sm font-semibold text-foreground">{t('settings:mcp_descriptions.prompts_count', { count: mcpPreview.prompts.length })}</div>
+          {mcpPreview.prompts.length === 0 ? (
+            <div className="mt-3 rounded-md border border-dashed bg-background/70 px-3 py-6 text-center text-xs text-muted-foreground">
+              {t('settings:common_labels.no_data')}
+            </div>
+          ) : (
+            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+              {mcpPreview.prompts.map((prompt, index) => (
+                <div
+                  key={`${prompt?.name || 'prompt'}-${index}`}
+                  className="rounded border bg-card px-2 py-2 shadow-sm"
+                >
+                  <div
+                    className="font-medium text-foreground break-all"
+                    title={prompt?.name || t('settings:status_labels.unnamed_prompt')}
+                  >
+                    {prompt?.name || t('settings:status_labels.unnamed_prompt')}
+                  </div>
+                  {prompt?.description && (
+                    <div className="mt-1 text-muted-foreground leading-5 break-words">
+                      {prompt.description}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col rounded-lg border bg-muted p-3">
+          <div className="text-sm font-semibold text-foreground">{t('settings:mcp_descriptions.resources_count', { count: mcpPreview.resources.length })}</div>
+          {mcpPreview.resources.length === 0 ? (
+            <div className="mt-3 rounded-md border border-dashed bg-background/70 px-3 py-6 text-center text-xs text-muted-foreground">
+              {t('settings:common_labels.no_data')}
+            </div>
+          ) : (
+            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+              {mcpPreview.resources.map((res, index) => (
+                <div
+                  key={`${res?.uri || res?.name || 'resource'}-${index}`}
+                  className="rounded border bg-card px-2 py-2 shadow-sm"
+                >
+                  <div
+                    className="font-medium text-foreground break-all"
+                    title={res?.name || res?.uri || t('settings:status_labels.unnamed_resource')}
+                  >
+                    {res?.name || stripMcpPrefix(res?.uri) || t('settings:status_labels.unnamed_resource')}
+                  </div>
+                  {res?.description && (
+                    <div className="mt-1 text-muted-foreground leading-5 break-words">
+                      {res.description}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // 渲染主内容区域（mobilePageMode：移动端普通视图页形态）
   const renderSettingsMainContent = ({ mobilePageMode = false }: { mobilePageMode?: boolean } = {}) => (
     <div
       id="settings-main-content"
@@ -1037,131 +1310,37 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             onAddVendorModels={handleAddVendorModels}
             triggerPostSaveAutoFlow={triggerPostSaveAutoFlow}
             isSmallScreen={effectiveMobilePanelMode}
+            mobileVendorDetailOpen={mobileVendorDetailOpen}
+            onMobileVendorDetailOpenChange={setMobileVendorDetailOpen}
           />
         )}
 
-        <NotionDialog open={mcpPreview.open} onOpenChange={(open) => { if (!open) handleClosePreview(); }} maxWidth="max-w-3xl">
-          <NotionDialogHeader>
-            <NotionDialogTitle>{mcpPreview.serverName || t('settings:mcp.preview.default_title')}</NotionDialogTitle>
-            <NotionDialogDescription>{t('settings:mcp.preview.description')}</NotionDialogDescription>
-            {mcpPreview.serverId && (
-              <div className="mt-1 text-xs text-muted-foreground break-all">{t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}</div>
-            )}
-          </NotionDialogHeader>
-          <NotionDialogBody>
-            <CustomScrollArea
-              className="flex-1 min-h-0 px-6 py-6"
-              viewportClassName="px-6 py-6"
-              trackOffsetTop={12}
-              trackOffsetBottom={12}
-              viewportProps={{ style: { maxHeight: '60vh' } }}
-            >
-              {mcpPreview.loading ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">{t('settings:mcp.preview.loading')}</div>
-              ) : mcpPreview.error ? (
-                <div className="rounded-md border px-3 py-2 text-sm" style={{ background: 'hsl(var(--danger-bg))', color: 'hsl(var(--danger))', borderColor: 'hsl(var(--danger) / 0.3)' }}>
-                  {mcpPreview.error}
-                </div>
-              ) : (
-                <div className="grid gap-4">
-                  <div className="flex flex-col rounded-lg border bg-muted p-3">
-                    <div className="text-sm font-semibold text-foreground">{t('settings:mcp_descriptions.tools_count', { count: mcpPreview.tools.length })}</div>
-                    {mcpPreview.tools.length === 0 ? (
-                      <div className="mt-3 rounded-md border border-dashed bg-background/70 px-3 py-6 text-center text-xs text-muted-foreground">
-                        {t('settings:common_labels.no_data')}
-                      </div>
-                    ) : (
-                      <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-                        {mcpPreview.tools.map((tool, index) => {
-                          const formattedName = stripMcpPrefix(tool?.name);
-                          return (
-                            <div
-                              key={`${tool?.name || 'tool'}-${index}`}
-                              className="rounded border bg-card px-2 py-2 shadow-sm"
-                            >
-                              <div
-                                className="font-medium text-foreground break-all"
-                                title={tool?.name || t('settings:status_labels.unnamed_tool')}
-                              >
-                                {formattedName || t('settings:status_labels.unnamed_tool')}
-                              </div>
-                              {tool?.description && (
-                                <div className="mt-1 text-muted-foreground leading-5 break-words">
-                                  {tool.description}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col rounded-lg border bg-muted p-3">
-                    <div className="text-sm font-semibold text-foreground">{t('settings:mcp_descriptions.prompts_count', { count: mcpPreview.prompts.length })}</div>
-                    {mcpPreview.prompts.length === 0 ? (
-                      <div className="mt-3 rounded-md border border-dashed bg-background/70 px-3 py-6 text-center text-xs text-muted-foreground">
-                        {t('settings:common_labels.no_data')}
-                      </div>
-                    ) : (
-                      <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-                        {mcpPreview.prompts.map((prompt, index) => (
-                          <div
-                            key={`${prompt?.name || 'prompt'}-${index}`}
-                            className="rounded border bg-card px-2 py-2 shadow-sm"
-                          >
-                            <div
-                              className="font-medium text-foreground break-all"
-                              title={prompt?.name || t('settings:status_labels.unnamed_prompt')}
-                            >
-                              {prompt?.name || t('settings:status_labels.unnamed_prompt')}
-                            </div>
-                            {prompt?.description && (
-                              <div className="mt-1 text-muted-foreground leading-5 break-words">
-                                {prompt.description}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col rounded-lg border bg-muted p-3">
-                    <div className="text-sm font-semibold text-foreground">{t('settings:mcp_descriptions.resources_count', { count: mcpPreview.resources.length })}</div>
-                    {mcpPreview.resources.length === 0 ? (
-                      <div className="mt-3 rounded-md border border-dashed bg-background/70 px-3 py-6 text-center text-xs text-muted-foreground">
-                        {t('settings:common_labels.no_data')}
-                      </div>
-                    ) : (
-                      <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-                        {mcpPreview.resources.map((res, index) => (
-                          <div
-                            key={`${res?.uri || res?.name || 'resource'}-${index}`}
-                            className="rounded border bg-card px-2 py-2 shadow-sm"
-                          >
-                            <div
-                              className="font-medium text-foreground break-all"
-                              title={res?.name || res?.uri || t('settings:status_labels.unnamed_resource')}
-                            >
-                              {res?.name || stripMcpPrefix(res?.uri) || t('settings:status_labels.unnamed_resource')}
-                            </div>
-                            {res?.description && (
-                              <div className="mt-1 text-muted-foreground leading-5 break-words">
-                                {res.description}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+        {/* MCP 预览：桌面用 NotionDialog；移动端由三屏右滑面板承载（见 renderRightPanel） */}
+        {!isSmallScreen && (
+          <NotionDialog open={mcpPreview.open} onOpenChange={(open) => { if (!open) handleClosePreview(); }} maxWidth="max-w-3xl">
+            <NotionDialogHeader>
+              <NotionDialogTitle>{mcpPreview.serverName || t('settings:mcp.preview.default_title')}</NotionDialogTitle>
+              <NotionDialogDescription>{t('settings:mcp.preview.description')}</NotionDialogDescription>
+              {mcpPreview.serverId && (
+                <div className="mt-1 text-xs text-muted-foreground break-all">{t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}</div>
               )}
-            </CustomScrollArea>
-          </NotionDialogBody>
-          <NotionDialogFooter>
-            <NotionButton variant="default" size="sm" onClick={handleClosePreview}>{t('common:close')}</NotionButton>
-          </NotionDialogFooter>
-        </NotionDialog>
+            </NotionDialogHeader>
+            <NotionDialogBody>
+              <CustomScrollArea
+                className="flex-1 min-h-0 px-6 py-6"
+                viewportClassName="px-6 py-6"
+                trackOffsetTop={12}
+                trackOffsetBottom={12}
+                viewportProps={{ style: { maxHeight: '60vh' } }}
+              >
+                {renderMcpPreviewBody()}
+              </CustomScrollArea>
+            </NotionDialogBody>
+            <NotionDialogFooter>
+              <NotionButton variant="default" size="sm" onClick={handleClosePreview}>{t('common:close')}</NotionButton>
+            </NotionDialogFooter>
+          </NotionDialog>
+        )}
         {/* 外部搜索设置 */}
         {activeTab === 'search' && (
           <ExternalSearchTab config={config} setConfig={setConfig} />
@@ -1493,6 +1672,34 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       case 'mcpPolicy':
         return renderMcpPolicyEditorEmbedded();
 
+      case 'mcpPreview':
+        // P0-4：MCP 工具/资源预览（移动端），标题由统一顶栏承载
+        return (
+          <div
+            className="h-full flex flex-col bg-background"
+            style={{
+              paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
+            }}
+          >
+            <CustomScrollArea
+              className="flex-1 min-h-0 w-full"
+              viewportClassName="px-4 py-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
+              trackOffsetTop={12}
+              trackOffsetBottom={12}
+            >
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">{t('settings:mcp.preview.description')}</p>
+                {mcpPreview.serverId && (
+                  <p className="text-xs text-muted-foreground break-all">
+                    {t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}
+                  </p>
+                )}
+                {renderMcpPreviewBody()}
+              </div>
+            </CustomScrollArea>
+          </div>
+        );
+
       case 'vendorConfig':
         return renderVendorConfigEmbedded();
 
@@ -1513,7 +1720,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
         <MobileSlidingLayout
           sidebar={
-            // 设置分区导航由 chip rail 承载；抽屉只保留统一应用导航，与其他页面同构
+            // 设置分区导航由分组列表首页承载；抽屉只保留统一应用导航，与其他页面同构
             <div aria-hidden className="h-0" />
           }
           rightPanel={renderRightPanel()}
@@ -1528,46 +1735,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           className="flex-1"
         >
           <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
-            {renderSettingsSheetTabRail()}
-            {renderSettingsMainContent({ mobilePageMode: true })}
+            {/* P0-1 两级导航：分区列表态（分组列表 + 搜索）↔ 分区内容态 */}
+            {mobileNavView === 'sections'
+              ? renderMobileSectionList()
+              : renderSettingsMainContent({ mobilePageMode: true })}
           </div>
         </MobileSlidingLayout>
         {/* VendorConfigModal 在移动端已通过右侧滑动面板渲染，这里不再重复渲染 */}
-        {/* VendorConfigModal 在移动端已通过右侧滑动面板渲染，这里不再重复渲染 */}
-        <NotionAlertDialog
-          open={Boolean(modelDeleteDialog)}
-          onOpenChange={open => { if (!open) setModelDeleteDialog(null); }}
-          title={t('settings:vendor_panel.delete_model_title')}
-          description={t('settings:vendor_panel.delete_model_desc')}
-          confirmText={t('common:actions.delete')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="danger"
-          onConfirm={confirmDeleteModelProfile}
-        >
-          {modelDeleteDialog?.referencingKeys.length ? (
-            <p className="text-sm text-muted-foreground">
-              {t('settings:common_labels.confirm_delete_api_with_assignments', {
-                count: modelDeleteDialog.referencingKeys.length,
-              })}
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t('settings:common_labels.confirm_delete_api')}</p>
-          )}
-        </NotionAlertDialog>
-        <NotionAlertDialog
-          open={Boolean(vendorDeleteDialog)}
-          onOpenChange={open => { if (!open) setVendorDeleteDialog(null); }}
-          title={t('settings:vendor_panel.delete_vendor_title')}
-          description={t('settings:vendor_panel.delete_vendor_desc')}
-          confirmText={t('common:actions.delete')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="danger"
-          onConfirm={confirmDeleteVendor}
-        >
-          {vendorDeleteDialog && (
-            <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.confirm_delete', { name: vendorDeleteDialog.name })}</p>
-          )}
-        </NotionAlertDialog>
+        {/* P0-5：模型/供应商删除确认在移动端改为行内二次确认（VendorDetailPanel），
+            不再渲染 NotionAlertDialog（遵循移动端无弹层契约） */}
 
         {/* 现代化菜单演示对话框 */}
         <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">

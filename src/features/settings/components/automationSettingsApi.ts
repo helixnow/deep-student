@@ -1,4 +1,4 @@
-export type AutomationScheduleKind = 'daily' | 'weekly' | 'weekdays' | 'monthly' | 'interval';
+export type AutomationScheduleKind = 'daily' | 'weekly' | 'weekdays' | 'monthly' | 'interval' | 'once';
 export type AutomationActionType = 'notify' | 'agent_turn';
 export type AutomationCatchUpPolicy = 'skip' | 'run_once' | 'catch_up_all';
 export type AutomationSessionMode = 'isolated' | 'named';
@@ -41,6 +41,8 @@ export interface AutomationSchedule {
   weekday?: number;
   dayOfMonth?: number;
   intervalMinutes?: number;
+  /** YYYY-MM-DD，仅 kind === 'once' 使用（once 需要 time + date + 可选 timezone） */
+  date?: string;
   timezone?: string;
 }
 
@@ -61,6 +63,8 @@ export interface AutomationListItem {
   retryBackoffSeconds: number;
   timeoutSeconds: number;
   trustedProfile?: TrustedAutomationProfile;
+  sessionId?: string;
+  agentSessionId?: string;
   createdAt?: string;
   lastRunAt?: string;
   nextTriggerAt?: string;
@@ -114,6 +118,17 @@ export interface AutomationRun {
   error?: string;
 }
 
+/** `chat_v2_automation_run_completed` 事件 payload（camelCase，与后端 emit 保持一致） */
+export interface AutomationRunCompletedPayload {
+  automationId: string;
+  runId: string;
+  automationName?: string;
+  sessionId?: string | null;
+  status?: string;
+  summary?: string;
+  heartbeat?: boolean;
+}
+
 export interface AutomationSummary {
   enabledCount: number;
   runningCount: number;
@@ -158,7 +173,11 @@ function normalizeSchedule(raw: unknown): AutomationSchedule {
   const value = isRecord(raw) ? raw : {};
   const rawKind = value.kind;
   const kind: AutomationScheduleKind =
-    rawKind === 'weekly' || rawKind === 'weekdays' || rawKind === 'monthly' || rawKind === 'interval'
+    rawKind === 'weekly'
+      || rawKind === 'weekdays'
+      || rawKind === 'monthly'
+      || rawKind === 'interval'
+      || rawKind === 'once'
       ? rawKind
       : 'daily';
   const rawWeekday = value.weekday;
@@ -171,9 +190,23 @@ function normalizeSchedule(raw: unknown): AutomationSchedule {
     ...(typeof rawWeekday === 'number' ? { weekday: rawWeekday } : {}),
     ...(typeof rawDayOfMonth === 'number' ? { dayOfMonth: rawDayOfMonth } : {}),
     ...(typeof rawInterval === 'number' ? { intervalMinutes: rawInterval } : {}),
+    ...(typeof value.date === 'string' && value.date.trim() ? { date: value.date } : {}),
     ...(typeof value.timezone === 'string' && value.timezone.trim()
       ? { timezone: value.timezone }
       : {}),
+  };
+}
+
+/** create/update 共用的 schedule 序列化（后端 snake_case 同名 `date` 由 Tauri 反序列化处理，前端保持 camelCase 请求体） */
+function serializeSchedule(schedule: AutomationSchedule): Record<string, unknown> {
+  return {
+    kind: schedule.kind,
+    time: schedule.kind === 'interval' ? '' : schedule.time,
+    ...(schedule.kind === 'weekly' ? { weekday: schedule.weekday } : {}),
+    ...(schedule.kind === 'monthly' ? { dayOfMonth: schedule.dayOfMonth } : {}),
+    ...(schedule.kind === 'interval' ? { intervalMinutes: schedule.intervalMinutes } : {}),
+    ...(schedule.kind === 'once' && schedule.date ? { date: schedule.date } : {}),
+    ...(schedule.timezone ? { timezone: schedule.timezone } : {}),
   };
 }
 
@@ -219,6 +252,8 @@ function normalizeAutomation(raw: unknown): AutomationListItem | null {
       ? Number(raw.timeoutSeconds ?? raw.timeout_seconds)
       : 600,
     trustedProfile,
+    sessionId: readString(raw, 'sessionId', 'session_id'),
+    agentSessionId: readString(raw, 'agentSessionId', 'agent_session_id'),
     createdAt: readString(raw, 'createdAt', 'created_at'),
     lastRunAt: readString(raw, 'lastRunAt', 'last_run_at'),
     nextTriggerAt: readString(raw, 'nextTriggerAt', 'next_trigger_at'),
@@ -244,35 +279,38 @@ export async function listAutomations(invoke: AutomationInvoke): Promise<Automat
   };
 }
 
+/**
+ * 从 mutation 响应中提取最新条目快照。
+ * create 返回 `{ success, automation }`，update 返回 `{ success, current, ... }`；
+ * 解析失败返回 null（不抛错），调用方可退化为全量 refresh。
+ */
+function extractAutomationSnapshot(raw: unknown): AutomationListItem | null {
+  if (!isRecord(raw)) return null;
+  const candidate = raw.automation ?? raw.current ?? raw;
+  return normalizeAutomation(candidate);
+}
+
 export async function setAutomationEnabled(
   invoke: AutomationInvoke,
   automationId: string,
   expectedVersion: number,
   enabled: boolean,
-): Promise<void> {
-  await invoke('chat_v2_automation_set_enabled', { automationId, expectedVersion, enabled });
+): Promise<AutomationListItem | null> {
+  const raw = await invoke('chat_v2_automation_set_enabled', { automationId, expectedVersion, enabled });
+  return extractAutomationSnapshot(raw);
 }
 
 export async function updateAutomation(
   invoke: AutomationInvoke,
   input: AutomationUpdateInput,
-): Promise<void> {
+): Promise<AutomationListItem | null> {
   const request: Record<string, unknown> = {
     automationId: input.automationId,
     expectedVersion: input.expectedVersion,
   };
   if (input.name !== undefined) request.name = input.name;
   if (input.schedule) {
-    request.schedule = {
-      kind: input.schedule.kind,
-      time: input.schedule.kind === 'interval' ? '' : input.schedule.time,
-      ...(input.schedule.kind === 'weekly' ? { weekday: input.schedule.weekday } : {}),
-      ...(input.schedule.kind === 'monthly' ? { dayOfMonth: input.schedule.dayOfMonth } : {}),
-      ...(input.schedule.kind === 'interval'
-        ? { intervalMinutes: input.schedule.intervalMinutes }
-        : {}),
-      ...(input.schedule.timezone ? { timezone: input.schedule.timezone } : {}),
-    };
+    request.schedule = serializeSchedule(input.schedule);
   }
   if (input.prompt !== undefined) request.prompt = input.prompt;
   if (input.actionType !== undefined) request.actionType = input.actionType;
@@ -285,25 +323,17 @@ export async function updateAutomation(
   if (input.timeoutSeconds !== undefined) request.timeoutSeconds = input.timeoutSeconds;
   if (input.trustedProfile !== undefined) request.trustedProfile = input.trustedProfile;
 
-  await invoke('chat_v2_automation_update', { request });
+  const raw = await invoke('chat_v2_automation_update', { request });
+  return extractAutomationSnapshot(raw);
 }
 
 export async function createAutomation(
   invoke: AutomationInvoke,
   input: AutomationCreateInput,
-): Promise<void> {
+): Promise<AutomationListItem | null> {
   const request: Record<string, unknown> = {
     name: input.name,
-    schedule: {
-      kind: input.schedule.kind,
-      time: input.schedule.kind === 'interval' ? '' : input.schedule.time,
-      ...(input.schedule.kind === 'weekly' ? { weekday: input.schedule.weekday } : {}),
-      ...(input.schedule.kind === 'monthly' ? { dayOfMonth: input.schedule.dayOfMonth } : {}),
-      ...(input.schedule.kind === 'interval'
-        ? { intervalMinutes: input.schedule.intervalMinutes }
-        : {}),
-      ...(input.schedule.timezone ? { timezone: input.schedule.timezone } : {}),
-    },
+    schedule: serializeSchedule(input.schedule),
     prompt: input.prompt,
     enabled: input.enabled ?? true,
     actionType: input.actionType,
@@ -318,7 +348,8 @@ export async function createAutomation(
     request.sessionMode = input.sessionMode ?? 'isolated';
     if (input.modelId) request.modelId = input.modelId;
   }
-  await invoke('chat_v2_automation_create', { request });
+  const raw = await invoke('chat_v2_automation_create', { request });
+  return extractAutomationSnapshot(raw);
 }
 
 export async function deleteAutomation(
@@ -368,7 +399,9 @@ export async function listAutomationRuns(
   limit = 50,
 ): Promise<AutomationRun[]> {
   const raw = await invoke('chat_v2_automation_runs', { automationId, limit });
-  if (!isRecord(raw) || !Array.isArray(raw.runs)) return [];
+  if (!isRecord(raw) || !Array.isArray(raw.runs)) {
+    throw new Error('AUTOMATION_RUNS_INVALID_RESPONSE');
+  }
   return raw.runs.map(normalizeRun).filter((run): run is AutomationRun => run !== null);
 }
 

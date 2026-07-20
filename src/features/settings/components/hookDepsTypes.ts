@@ -7,6 +7,15 @@ import type { ZoomStatusState } from './constants';
 import type { ScreenPosition } from '@/components/layout';
 import type { McpStatusInfo } from '@/mcp/mcpService';
 
+/** 移动端三屏布局右侧滑动面板的内容类型（唯一定义处，Settings/vendor/mcp hooks 共用） */
+export type SettingsRightPanelType =
+  | 'none'
+  | 'modelEditor'
+  | 'mcpTool'
+  | 'mcpPolicy'
+  | 'mcpPreview'
+  | 'vendorConfig';
+
 export interface McpToolConfig {
   id: string;
   name: string;
@@ -96,7 +105,7 @@ export interface UseSettingsVendorStateDeps {
   refreshApiConfigsFromBackend: () => Promise<void>;
   isSmallScreen: boolean;
   setScreenPosition: (v: ScreenPosition) => void;
-  setRightPanelType: (v: 'none' | 'modelEditor' | 'mcpTool' | 'mcpPolicy' | 'vendorConfig') => void;
+  setRightPanelType: (v: SettingsRightPanelType) => void;
   activeTab: string;
   deleteVendorById: (id: string) => Promise<void>;
 }
@@ -108,7 +117,7 @@ export interface UseMcpEditorSectionDeps {
   activeTab: string;
   setActiveTab: (v: string) => void;
   setScreenPosition: (v: ScreenPosition) => void;
-  setRightPanelType: (v: 'none' | 'modelEditor' | 'mcpTool' | 'mcpPolicy' | 'vendorConfig') => void;
+  setRightPanelType: (v: SettingsRightPanelType) => void;
   t: TFunction;
   extra: SettingsExtra;
   setExtra: Dispatch<SetStateAction<SettingsExtra>>;

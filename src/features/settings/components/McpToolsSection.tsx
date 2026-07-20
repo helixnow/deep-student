@@ -45,6 +45,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { isAndroid } from '@/utils/platform';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 import { isBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
@@ -1465,45 +1466,66 @@ function ActionMenu({
   onOpenPolicy: () => void;
 }) {
   const { t } = useTranslation(['settings']);
+  // P0-3 移动端契约：不使用 fixed 遮罩下拉，改为按钮下方页内内联展开
+  const { isSmallScreen } = useBreakpoint();
   const [isOpen, setIsOpen] = useState(false);
 
+  const menuItems = (
+    <>
+      <NotionButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start">
+        <ArrowClockwise className="w-3.5 h-3.5 text-muted-foreground" />
+        {t('settings:mcp.reconnect')}
+      </NotionButton>
+      <NotionButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start">
+        <Sparkle className="w-3.5 h-3.5 text-muted-foreground" />
+        {t('settings:mcp.refresh_list')}
+      </NotionButton>
+      <NotionButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start">
+        <Flask className="w-3.5 h-3.5 text-muted-foreground" />
+        {t('settings:mcp.health_check')}
+      </NotionButton>
+      <NotionButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start">
+        <Sparkle className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
+        {t('settings:mcp.clear_cache')}
+      </NotionButton>
+      <div className="my-1 border-t border-border/50" />
+      <NotionButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start">
+        <Key className="w-3.5 h-3.5 text-muted-foreground" />
+        {t('settings:mcp.security_policy')}
+      </NotionButton>
+    </>
+  );
+
   return (
-    <div className="relative">
-      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className="bg-muted/50 hover:bg-[var(--interactive-hover)]">
+    <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
+      <NotionButton
+        variant="ghost"
+        size="sm"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        className="bg-muted/50 hover:bg-[var(--interactive-hover)]"
+      >
         <DotsThree className="w-4 h-4" />
         {t('settings:mcp_descriptions.quick_actions')}
       </NotionButton>
 
       {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="absolute top-full right-0 mt-1 z-50 min-w-[180px] p-1.5 bg-popover border border-border rounded-lg shadow-lg ui-zoom-fade-in">
-            <NotionButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start">
-              <ArrowClockwise className="w-3.5 h-3.5 text-muted-foreground" />
-              {t('settings:mcp.reconnect')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start">
-              <Sparkle className="w-3.5 h-3.5 text-muted-foreground" />
-              {t('settings:mcp.refresh_list')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start">
-              <Flask className="w-3.5 h-3.5 text-muted-foreground" />
-              {t('settings:mcp.health_check')}
-            </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start">
-              <Sparkle className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
-              {t('settings:mcp.clear_cache')}
-            </NotionButton>
-            <div className="my-1 border-t border-border/50" />
-            <NotionButton variant="ghost" size="sm" onClick={() => { onOpenPolicy(); setIsOpen(false); }} className="w-full !justify-start">
-              <Key className="w-3.5 h-3.5 text-muted-foreground" />
-              {t('settings:mcp.security_policy')}
-            </NotionButton>
+        isSmallScreen ? (
+          // 移动端：按钮下方内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）
+          <div className="mt-1 w-full rounded-lg border border-border bg-popover p-1.5 ui-zoom-fade-in motion-reduce:animate-none">
+            {menuItems}
           </div>
-        </>
+        ) : (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setIsOpen(false)}
+            />
+            <div className="absolute top-full right-0 mt-1 z-50 min-w-[180px] p-1.5 bg-popover border border-border rounded-lg shadow-lg ui-zoom-fade-in">
+              {menuItems}
+            </div>
+          </>
+        )
       )}
     </div>
   );
@@ -1518,6 +1540,9 @@ export function PresetServerSelector({
   onAddPreset: (preset: PresetMcpServer, options?: { apiKey?: string; enableOauth?: boolean }) => void;
 }) {
   const { t } = useTranslation(['settings', 'common']);
+  // P0-3 移动端契约：预置列表由 fixed 遮罩下拉改为内联展开；
+  // 安装前权限确认由 Sheet 抽屉改为内联展开卡
+  const { isSmallScreen } = useBreakpoint();
   const [isOpen, setIsOpen] = useState(false);
   const [pendingPreset, setPendingPreset] = useState<PresetMcpServer | null>(null);
   const [pendingApiKey, setPendingApiKey] = useState('');
@@ -1596,44 +1621,15 @@ export function PresetServerSelector({
     closePermissionDrawer();
   }, [pendingPreset, pendingApiKey, enableOauth, oauthSupported, onAddPreset, closePermissionDrawer, t]);
 
-  return (
-    <div className="relative">
-      <NotionButton
-        ref={addPresetBtnRef}
-        onClick={() => setIsOpen(!isOpen)}
-        variant="default"
-        size="sm"
-        aria-haspopup="dialog"
-        aria-expanded={isOpen}
-        data-testid="mcp-preset-add-btn"
-      >
-        <Package className="w-4 h-4 mr-1" aria-hidden="true" />
-        {t('settings:mcp_presets.add_preset')}
-      </NotionButton>
+  // 预置分组列表（桌面下拉与移动内联展开共用）
+  const selectorContent = (
+    <>
+      <div className="px-2 py-1.5 mb-2">
+        <div className="text-sm font-medium text-foreground">{t('settings:mcp_presets.title')}</div>
+        <div className="text-xs text-muted-foreground">{t('settings:mcp_presets.description')}</div>
+      </div>
 
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={closeSelector}
-            aria-hidden="true"
-            data-testid="mcp-preset-selector-backdrop"
-          />
-          <div
-            ref={selectorPanelRef}
-            className="absolute top-full right-0 mt-1 z-50 w-[380px] max-w-[calc(100vw-3rem)] max-h-[480px] overflow-y-auto p-2 bg-popover border border-border rounded-lg shadow-lg ui-zoom-fade-in mcp-preset-selector"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('settings:mcp_presets.title')}
-            tabIndex={-1}
-            data-testid="mcp-preset-selector"
-          >
-            <div className="px-2 py-1.5 mb-2">
-              <div className="text-sm font-medium text-foreground">{t('settings:mcp_presets.title')}</div>
-              <div className="text-xs text-muted-foreground">{t('settings:mcp_presets.description')}</div>
-            </div>
-
-            {Object.entries(groupedPresets).map(([category, presets]) => (
+      {Object.entries(groupedPresets).map(([category, presets]) => (
               <div key={category} className="mb-3">
                 <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
                   {t(CATEGORY_LABELS[category] || category)}
@@ -1701,126 +1697,214 @@ export function PresetServerSelector({
                 </div>
               </div>
             ))}
-          </div>
-        </>
+    </>
+  );
+
+  // 安装前权限确认正文（桌面 Sheet 与移动内联展开卡共用）
+  const permissionBody = pendingPreset ? (
+    <>
+      <div
+        id="mcp-preset-permission-summary"
+        className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2"
+        role="region"
+        aria-label={t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
+        data-testid="mcp-preset-permission-summary"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-muted-foreground">{t('settings:mcp_presets.risk_label')}</span>
+          <span
+            className={cn(
+              'text-xs font-medium px-1.5 py-0.5 rounded',
+              pendingPreset.risk === 'high' && 'bg-red-500/10 text-red-500',
+              pendingPreset.risk === 'medium' && 'bg-amber-500/10 text-amber-600',
+              pendingPreset.risk === 'low' && 'bg-green-500/10 text-green-600',
+            )}
+            data-testid="mcp-preset-permission-risk"
+          >
+            {t(RISK_LABELS[pendingPreset.risk])}
+          </span>
+        </div>
+        <div data-testid="mcp-preset-permission-scope">
+          <div className="text-muted-foreground mb-1">{t('settings:mcp_presets.data_scope_label')}</div>
+          <p className="text-foreground">{t(pendingPreset.permissions.dataScopeKey)}</p>
+        </div>
+        <div className="flex items-center gap-2" data-testid="mcp-preset-permission-egress">
+          <span className="text-muted-foreground">{t('settings:mcp_presets.network_egress_label')}</span>
+          <span>{pendingPreset.permissions.networkEgress
+            ? t('settings:mcp_presets.network_egress_yes')
+            : t('settings:mcp_presets.network_egress_no')}</span>
+        </div>
+        {pendingPreset.permissions.notesKey && (
+          <p
+            className="text-xs text-muted-foreground"
+            data-testid="mcp-preset-permission-notes"
+          >
+            {t(pendingPreset.permissions.notesKey)}
+          </p>
+        )}
+        {pendingPreset.permissions.apiKeyUrl && (
+          <a
+            href={pendingPreset.permissions.apiKeyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            data-testid="mcp-preset-permission-api-key-link"
+          >
+            <ArrowSquareOut className="w-3 h-3" aria-hidden="true" />
+            {t('settings:mcp_presets.get_api_key')}
+          </a>
+        )}
+      </div>
+
+      {(pendingPreset.requiresApiKey || pendingPreset.authKind === 'api_key' || pendingPreset.authKind === 'api_key_or_oauth') && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium">{t('settings:mcp.api_key')}</label>
+          <Input
+            type="password"
+            value={pendingApiKey}
+            onChange={(e) => {
+              setPendingApiKey(e.target.value);
+              if (e.target.value.trim()) setEnableOauth(false);
+            }}
+            placeholder={pendingPreset.apiKeyHint ? t(pendingPreset.apiKeyHint) : t('settings:placeholders.api_key')}
+            className="font-mono"
+          />
+        </div>
       )}
 
-      <Sheet open={Boolean(pendingPreset)} onOpenChange={(open) => { if (!open) closePermissionDrawer(); }}>
-        <SheetContent
-          side="right"
-          className="w-full sm:max-w-md mcp-preset-permission-drawer"
-          data-testid="mcp-preset-permission-drawer"
-          aria-describedby="mcp-preset-permission-summary"
-        >
-          {pendingPreset && (
-            <>
-              <SheetHeader>
-                <SheetTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5" aria-hidden="true" />
+      {oauthSupported && isOAuthCapablePreset(pendingPreset) && (
+        <label className="flex items-start gap-2 cursor-pointer">
+          <Checkbox
+            checked={enableOauth && !pendingApiKey.trim()}
+            onCheckedChange={(v) => {
+              setEnableOauth(Boolean(v));
+              if (v) setPendingApiKey('');
+            }}
+            disabled={Boolean(pendingApiKey.trim())}
+          />
+          <span className="text-sm leading-snug">
+            {t('settings:mcp_presets.enable_oauth_install')}
+          </span>
+        </label>
+      )}
+    </>
+  ) : null;
+
+  const permissionFooterButtons = (
+    <>
+      <NotionButton variant="default" size="sm" onClick={closePermissionDrawer}>
+        {t('common:cancel')}
+      </NotionButton>
+      <NotionButton variant="primary" size="sm" onClick={confirmInstall}>
+        {t('settings:mcp_presets.confirm_install')}
+      </NotionButton>
+    </>
+  );
+
+  return (
+    <div className={cn('relative', isSmallScreen && isOpen && 'w-full')}>
+      <NotionButton
+        ref={addPresetBtnRef}
+        onClick={() => setIsOpen(!isOpen)}
+        variant="default"
+        size="sm"
+        aria-haspopup={isSmallScreen ? undefined : 'dialog'}
+        aria-expanded={isOpen}
+        data-testid="mcp-preset-add-btn"
+      >
+        <Package className="w-4 h-4 mr-1" aria-hidden="true" />
+        {t('settings:mcp_presets.add_preset')}
+      </NotionButton>
+
+      {isOpen && (
+        isSmallScreen ? (
+          // P0-3 移动端：内联展开（操作栏为 flex-wrap，w-full 自动换行占满一行）。
+          // 选中预置后列表让位给权限确认卡，取消则回到列表。
+          pendingPreset ? (
+            <div
+              className="mt-1 w-full space-y-4 rounded-lg border border-border bg-popover p-4 text-sm ui-zoom-fade-in motion-reduce:animate-none mcp-preset-permission-drawer"
+              role="group"
+              aria-label={t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
+              data-testid="mcp-preset-permission-drawer"
+            >
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Shield className="w-4 h-4" aria-hidden="true" />
                   {t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
-                </SheetTitle>
-                <SheetDescription>
-                  {t(pendingPreset.descriptionKey)}
-                </SheetDescription>
-              </SheetHeader>
-              <div className="mt-4 space-y-4 text-sm">
-                <div
-                  id="mcp-preset-permission-summary"
-                  className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2"
-                  role="region"
-                  aria-label={t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
-                  data-testid="mcp-preset-permission-summary"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground">{t('settings:mcp_presets.risk_label')}</span>
-                    <span
-                      className={cn(
-                        'text-xs font-medium px-1.5 py-0.5 rounded',
-                        pendingPreset.risk === 'high' && 'bg-red-500/10 text-red-500',
-                        pendingPreset.risk === 'medium' && 'bg-amber-500/10 text-amber-600',
-                        pendingPreset.risk === 'low' && 'bg-green-500/10 text-green-600',
-                      )}
-                      data-testid="mcp-preset-permission-risk"
-                    >
-                      {t(RISK_LABELS[pendingPreset.risk])}
-                    </span>
-                  </div>
-                  <div data-testid="mcp-preset-permission-scope">
-                    <div className="text-muted-foreground mb-1">{t('settings:mcp_presets.data_scope_label')}</div>
-                    <p className="text-foreground">{t(pendingPreset.permissions.dataScopeKey)}</p>
-                  </div>
-                  <div className="flex items-center gap-2" data-testid="mcp-preset-permission-egress">
-                    <span className="text-muted-foreground">{t('settings:mcp_presets.network_egress_label')}</span>
-                    <span>{pendingPreset.permissions.networkEgress
-                      ? t('settings:mcp_presets.network_egress_yes')
-                      : t('settings:mcp_presets.network_egress_no')}</span>
-                  </div>
-                  {pendingPreset.permissions.notesKey && (
-                    <p
-                      className="text-xs text-muted-foreground"
-                      data-testid="mcp-preset-permission-notes"
-                    >
-                      {t(pendingPreset.permissions.notesKey)}
-                    </p>
-                  )}
-                  {pendingPreset.permissions.apiKeyUrl && (
-                    <a
-                      href={pendingPreset.permissions.apiKeyUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                      data-testid="mcp-preset-permission-api-key-link"
-                    >
-                      <ArrowSquareOut className="w-3 h-3" aria-hidden="true" />
-                      {t('settings:mcp_presets.get_api_key')}
-                    </a>
-                  )}
                 </div>
-
-                {(pendingPreset.requiresApiKey || pendingPreset.authKind === 'api_key' || pendingPreset.authKind === 'api_key_or_oauth') && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">{t('settings:mcp.api_key')}</label>
-                    <Input
-                      type="password"
-                      value={pendingApiKey}
-                      onChange={(e) => {
-                        setPendingApiKey(e.target.value);
-                        if (e.target.value.trim()) setEnableOauth(false);
-                      }}
-                      placeholder={pendingPreset.apiKeyHint ? t(pendingPreset.apiKeyHint) : t('settings:placeholders.api_key')}
-                      className="font-mono"
-                    />
-                  </div>
-                )}
-
-                {oauthSupported && isOAuthCapablePreset(pendingPreset) && (
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={enableOauth && !pendingApiKey.trim()}
-                      onCheckedChange={(v) => {
-                        setEnableOauth(Boolean(v));
-                        if (v) setPendingApiKey('');
-                      }}
-                      disabled={Boolean(pendingApiKey.trim())}
-                    />
-                    <span className="text-sm leading-snug">
-                      {t('settings:mcp_presets.enable_oauth_install')}
-                    </span>
-                  </label>
-                )}
+                <p className="mt-1 text-xs text-muted-foreground">{t(pendingPreset.descriptionKey)}</p>
               </div>
-              <SheetFooter className="mt-6 flex gap-2 sm:justify-end">
-                <NotionButton variant="default" size="sm" onClick={closePermissionDrawer}>
-                  {t('common:cancel')}
-                </NotionButton>
-                <NotionButton variant="primary" size="sm" onClick={confirmInstall}>
-                  {t('settings:mcp_presets.confirm_install')}
-                </NotionButton>
-              </SheetFooter>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+              {permissionBody}
+              <div className="flex flex-wrap justify-end gap-2 border-t border-border/40 pt-3">
+                {permissionFooterButtons}
+              </div>
+            </div>
+          ) : (
+            <div
+              ref={selectorPanelRef}
+              className="mt-1 max-h-[60vh] w-full overflow-y-auto rounded-lg border border-border bg-popover p-2 ui-zoom-fade-in motion-reduce:animate-none mcp-preset-selector"
+              role="group"
+              aria-label={t('settings:mcp_presets.title')}
+              tabIndex={-1}
+              data-testid="mcp-preset-selector"
+            >
+              {selectorContent}
+            </div>
+          )
+        ) : (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={closeSelector}
+              aria-hidden="true"
+              data-testid="mcp-preset-selector-backdrop"
+            />
+            <div
+              ref={selectorPanelRef}
+              className="absolute top-full right-0 mt-1 z-50 w-[380px] max-w-[calc(100vw-3rem)] max-h-[480px] overflow-y-auto p-2 bg-popover border border-border rounded-lg shadow-lg ui-zoom-fade-in mcp-preset-selector"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('settings:mcp_presets.title')}
+              tabIndex={-1}
+              data-testid="mcp-preset-selector"
+            >
+              {selectorContent}
+            </div>
+          </>
+        )
+      )}
+
+      {/* 桌面端：安装前权限确认保留 Sheet；移动端由上方内联卡承载（P0-3） */}
+      {!isSmallScreen && (
+        <Sheet open={Boolean(pendingPreset)} onOpenChange={(open) => { if (!open) closePermissionDrawer(); }}>
+          <SheetContent
+            side="right"
+            className="w-full sm:max-w-md mcp-preset-permission-drawer"
+            data-testid="mcp-preset-permission-drawer"
+            aria-describedby="mcp-preset-permission-summary"
+          >
+            {pendingPreset && (
+              <>
+                <SheetHeader>
+                  <SheetTitle className="flex items-center gap-2">
+                    <Shield className="w-5 h-5" aria-hidden="true" />
+                    {t('settings:mcp_presets.permission_title', { name: pendingPreset.name })}
+                  </SheetTitle>
+                  <SheetDescription>
+                    {t(pendingPreset.descriptionKey)}
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="mt-4 space-y-4 text-sm">
+                  {permissionBody}
+                </div>
+                <SheetFooter className="mt-6 flex gap-2 sm:justify-end">
+                  {permissionFooterButtons}
+                </SheetFooter>
+              </>
+            )}
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   );
 }

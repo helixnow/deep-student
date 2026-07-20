@@ -28,7 +28,8 @@ const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNA
 const invoke = isTauri ? tauriInvoke : null;
 
 export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
-  const { resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, refreshVendors, refreshProfiles, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor } = deps;
+  // P2-13：closeRightPanel 单一来源——直接使用 Settings.tsx 传入的实现，不再本地重复定义
+  const { resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, refreshVendors, refreshProfiles, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor, closeRightPanel } = deps;
 
   const apiConfigsForApisTab = resolvedApiConfigs;
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
@@ -363,9 +364,14 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
   };
 
-  const handleDeleteVendor = (vendor: VendorConfig) => {
+  const handleDeleteVendor = (vendor: VendorConfig, options?: { skipConfirm?: boolean }) => {
     if (vendor.isBuiltin) {
       showGlobalNotification('error', t('settings:vendor_panel.cannot_delete_builtin'));
+      return;
+    }
+    // 移动端行内二次确认路径：确认已在行内完成，直接执行删除（P0-5）
+    if (options?.skipConfirm) {
+      void performDeleteVendor(vendor);
       return;
     }
     setVendorDeleteDialog(vendor);
@@ -488,20 +494,25 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
   };
 
-  const confirmDeleteVendor = async () => {
-    if (!vendorDeleteDialog) return;
+  // 供应商删除的实际执行体（桌面对话框确认 / 移动行内二次确认共用）
+  const performDeleteVendor = async (vendor: VendorConfig) => {
     try {
-      await deleteVendor(vendorDeleteDialog.id);
+      await deleteVendor(vendor.id);
       showGlobalNotification('success', t('settings:notifications.vendor_deleted'));
-      if (selectedVendorId === vendorDeleteDialog.id) {
+      if (selectedVendorId === vendor.id) {
         setSelectedVendorId(null);
       }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.vendor_delete_failed', { error: errorMessage }));
-    } finally {
-      setVendorDeleteDialog(null);
     }
+  };
+
+  const confirmDeleteVendor = async () => {
+    if (!vendorDeleteDialog) return;
+    const vendor = vendorDeleteDialog;
+    setVendorDeleteDialog(null);
+    await performDeleteVendor(vendor);
   };
 
   const handleOpenModelEditor = (vendor: VendorConfig, profile?: ModelProfile) => {
@@ -645,12 +656,6 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
   };
 
   // ===== 移动端三屏布局相关 hooks =====
-  // 关闭右侧面板的通用函数
-  const closeRightPanel = useCallback(() => {
-    setRightPanelType('none');
-    setScreenPosition('center');
-  }, []);
-
   // 当打开编辑器时自动切换到右侧面板
   useEffect(() => {
     if (isSmallScreen && modelEditor) {
@@ -673,20 +678,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     handleCloseModelEditor();
   }, [handleSaveModelProfile, handleCloseModelEditor]);
 
-  const handleDeleteModelProfile = (profile: ModelProfile) => {
-    if (profile.isBuiltin) {
-      showGlobalNotification('error', t('settings:common_labels.builtin_cannot_delete'));
-      return;
-    }
-    const referencingKeys = (Object.keys(modelAssignments) as Array<keyof ModelAssignments>).filter(
-      key => modelAssignments[key] === profile.id
-    );
-    setModelDeleteDialog({ profile, referencingKeys });
-  };
-
-  const confirmDeleteModelProfile = async () => {
-    if (!modelDeleteDialog) return;
-    const { profile, referencingKeys } = modelDeleteDialog;
+  // 模型删除的实际执行体（桌面对话框确认 / 移动行内二次确认共用）
+  const performDeleteModelProfile = async (
+    profile: ModelProfile,
+    referencingKeys: Array<keyof ModelAssignments>
+  ) => {
     try {
       if (referencingKeys.length > 0) {
         const clearedAssignments: ModelAssignments = { ...modelAssignments };
@@ -700,9 +696,30 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.api_delete_failed', { error: errorMessage }));
-    } finally {
-      setModelDeleteDialog(null);
     }
+  };
+
+  const handleDeleteModelProfile = (profile: ModelProfile, options?: { skipConfirm?: boolean }) => {
+    if (profile.isBuiltin) {
+      showGlobalNotification('error', t('settings:common_labels.builtin_cannot_delete'));
+      return;
+    }
+    const referencingKeys = (Object.keys(modelAssignments) as Array<keyof ModelAssignments>).filter(
+      key => modelAssignments[key] === profile.id
+    );
+    // 移动端行内二次确认路径：确认已在行内完成，直接执行删除（P0-5）
+    if (options?.skipConfirm) {
+      void performDeleteModelProfile(profile, referencingKeys);
+      return;
+    }
+    setModelDeleteDialog({ profile, referencingKeys });
+  };
+
+  const confirmDeleteModelProfile = async () => {
+    if (!modelDeleteDialog) return;
+    const { profile, referencingKeys } = modelDeleteDialog;
+    setModelDeleteDialog(null);
+    await performDeleteModelProfile(profile, referencingKeys);
   };
 
   const handleToggleModelProfile = async (profile: ModelProfile, enabled: boolean) => {

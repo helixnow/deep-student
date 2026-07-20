@@ -5,7 +5,6 @@ export { UpdateNotificationDialog } from './components/UpdateNotificationDialog'
 export { SettingsShellSidebar } from './components/SettingsShellSidebar';
 export {
   SettingSection,
-  settingsMobileSheetCloseButtonClassName,
   settingsQuietTableRowClassName,
   settingsQuietHoverClassName,
   settingsQuietRowBaseClassName,

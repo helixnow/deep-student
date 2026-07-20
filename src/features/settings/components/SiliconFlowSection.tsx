@@ -92,6 +92,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const [confirmingClearApiKey, setConfirmingClearApiKey] = useState(false);
   const [savingApiKey, setSavingApiKey] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
+  // 一键分配后的嵌入维度创建结果（内联展示，避免静默失败）
+  const [dimensionSetupResult, setDimensionSetupResult] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const siliconFlowVendorKey = 'builtin-siliconflow.api_key';
   const siliconFlowLegacyKey = 'siliconflow.api_key';
   const [lastFetchTime, setLastFetchTime] = useState<number | null>(null); // 上次获取时间
@@ -697,12 +699,23 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
 
   // 一键分配功能 - 预设模型配置
   // 注意：嵌入模型不再通过全局分配，而是通过维度管理
-  const PRESET_MODELS = [
+  // 目前仅预设文本嵌入（BAAI/bge-m3, 1024 维）；硅基流动暂无可确认的多模态嵌入模型，
+  // 若后续上线可在此追加 modality: 'multimodal' 预设项
+  interface OneClickPresetModel {
+    model: string;
+    name: string;
+    assignmentKey: string;
+    /** 嵌入模型：创建 API 配置后，还需在维度管理中创建对应维度并设为默认 */
+    isDimensionModel?: boolean;
+    dimension?: number;
+    modality?: 'text' | 'multimodal';
+  }
+  const PRESET_MODELS: OneClickPresetModel[] = [
     { model: 'deepseek-ai/DeepSeek-V3.2', name: 'SiliconFlow - deepseek-ai/DeepSeek-V3.2', assignmentKey: t('settings:mapping_keys.model2_configured') },
     { model: 'deepseek-ai/DeepSeek-V3.2', name: 'SiliconFlow - deepseek-ai/DeepSeek-V3.2', assignmentKey: t('settings:mapping_keys.qbank_ai_grading_configured') },
     { model: 'Qwen/Qwen3-30B-A3B-Instruct-2507', name: 'SiliconFlow - Qwen/Qwen3-30B-A3B-Instruct-2507', assignmentKey: t('settings:mapping_keys.anki_configured') },
     // 嵌入模型将通过维度管理创建，但仍需创建 API 配置
-    { model: 'BAAI/bge-m3', name: 'SiliconFlow - BAAI/bge-m3', assignmentKey: '__embedding_text__', isDimensionModel: true, dimension: 1024, modality: 'text' as const },
+    { model: 'BAAI/bge-m3', name: 'SiliconFlow - BAAI/bge-m3', assignmentKey: '__embedding_text__', isDimensionModel: true, dimension: 1024, modality: 'text' },
     { model: 'BAAI/bge-reranker-v2-m3', name: 'SiliconFlow - BAAI/bge-reranker-v2-m3', assignmentKey: t('settings:mapping_keys.reranker_configured') },
     { model: 'inclusionAI/Ling-mini-2.0', name: 'SiliconFlow - inclusionAI/Ling-mini-2.0', assignmentKey: t('settings:mapping_keys.chat_title_configured') },
     { model: 'tencent/Hunyuan-MT-7B', name: 'SiliconFlow - tencent/Hunyuan-MT-7B', assignmentKey: t('settings:mapping_keys.translation_configured') },
@@ -761,6 +774,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
 
     setLoading(true);
+    setDimensionSetupResult(null);
 
     try {
       // 准备批量创建的配置
@@ -866,22 +880,15 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         }
       }
 
-      console.log('🎯 准备批量创建配置:');
-      console.log('  - 配置数量:', batchConfigs.length);
-      console.log('  - 配置ID列表:', batchConfigs.map(c => c.tempId));
-      console.log('  - 配置名称列表:', batchConfigs.map(c => c.name));
-      
       // 批量创建所有配置
       let success = false;
       let idMap: { [tempId: string]: string } = {};
       if (onBatchCreateConfigs) {
-        console.log('📤 调用 onBatchCreateConfigs...');
         const result = await onBatchCreateConfigs(batchConfigs);
         if (result && typeof result === 'object') {
           success = !!result.success;
           idMap = result.idMap || {};
         }
-        console.log('📥 onBatchCreateConfigs 返回:', result);
       } else {
         // 回退到单个创建
         for (const config of batchConfigs) {
@@ -910,28 +917,47 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           onBatchConfigsCreated(finalMapping);
         }
 
-        // 创建嵌入维度并设置为默认
-        try {
-          for (const presetModel of PRESET_MODELS) {
-            if ((presetModel as any).isDimensionModel) {
-              const tempId = configMapping[presetModel.assignmentKey];
-              const realConfigId = idMap[tempId] || tempId;
-              const { dimension, modality } = presetModel as any;
-              
-              console.log(`📊 创建嵌入维度: ${dimension} (${modality}), 模型: ${realConfigId}`);
-              
-              // 创建维度并绑定模型
-              await vfsUnifiedIndexApi.createDimension(dimension, modality, realConfigId, presetModel.name);
-              
-              // 设置为默认维度
-              await vfsUnifiedIndexApi.setDefaultEmbeddingDimension(dimension, modality);
-              
-              console.log(`✅ 已设置默认 ${modality} 嵌入维度: ${dimension}`);
-            }
+        // 创建嵌入维度并设置为默认（逐项处理，结果对用户可见，不再静默失败）
+        const readyDimensions: number[] = [];
+        const failedDimensions: number[] = [];
+        for (const presetModel of PRESET_MODELS) {
+          if (!presetModel.isDimensionModel || presetModel.dimension == null || !presetModel.modality) {
+            continue;
           }
-        } catch (e: unknown) {
-          console.warn('创建嵌入维度失败:', e);
-          // 不阻止整体流程
+          const tempId = configMapping[presetModel.assignmentKey];
+          const realConfigId = idMap[tempId] || tempId;
+          const { dimension, modality } = presetModel;
+
+          try {
+            // 创建维度并绑定模型
+            await vfsUnifiedIndexApi.createDimension(dimension, modality, realConfigId, presetModel.name);
+          } catch (e: unknown) {
+            // 维度可能已存在（重复执行一键分配）；真正的失败会在下面设默认时暴露
+            console.warn(`Failed to create embedding dimension ${dimension} (${modality}):`, e);
+          }
+
+          try {
+            // 设置为默认维度（决定嵌入配置是否真正可用）
+            await vfsUnifiedIndexApi.setDefaultEmbeddingDimension(dimension, modality);
+            readyDimensions.push(dimension);
+          } catch (e: unknown) {
+            console.warn(`Failed to set default embedding dimension ${dimension} (${modality}):`, e);
+            failedDimensions.push(dimension);
+          }
+        }
+        if (failedDimensions.length > 0) {
+          const failedMessage = t('settings:dimension_management.preset_dimension_failed', {
+            dimension: failedDimensions.join(', '),
+          });
+          setDimensionSetupResult({ tone: 'error', message: failedMessage });
+          showGlobalNotification('warning', failedMessage);
+        } else if (readyDimensions.length > 0) {
+          setDimensionSetupResult({
+            tone: 'success',
+            message: t('settings:dimension_management.preset_dimension_success', {
+              dimension: readyDimensions.join(', '),
+            }),
+          });
         }
 
         // M6 fix: 合并模式 — 保留用户已有的自定义 OCR 引擎，仅补充预设引擎
@@ -1074,6 +1100,23 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
             : t('common:siliconflow.clear_button')}
         </NotionButton>
       </div>
+      {/* 一键分配的嵌入维度结果反馈（成功/失败均可见） */}
+      {dimensionSetupResult && (
+        <div
+          className={cn(
+            'flex items-start gap-2 text-xs ui-drop-in',
+            dimensionSetupResult.tone === 'error'
+              ? 'text-destructive'
+              : 'text-green-600 dark:text-green-400'
+          )}
+          aria-live="polite"
+        >
+          {dimensionSetupResult.tone === 'error'
+            ? <WarningCircle className="h-3.5 w-3.5 shrink-0 mt-px" />
+            : <Check className="h-3.5 w-3.5 shrink-0 mt-px" />}
+          <span className="leading-relaxed">{dimensionSetupResult.message}</span>
+        </div>
+      )}
     </div>
   );
 

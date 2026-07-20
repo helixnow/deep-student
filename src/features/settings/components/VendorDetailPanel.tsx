@@ -248,6 +248,7 @@ export const VendorDetailPanel: React.FC = () => {
     onAddVendorModels,
     triggerPostSaveAutoFlow,
     isSmallScreen,
+    closeMobileVendorDetail,
   } = useVendorSettings();
   const usePanelModelEditor = isSmallScreen || !isXl;
   const useResponsiveInlineDialog = !isSmallScreen && !isXl;
@@ -259,8 +260,34 @@ export const VendorDetailPanel: React.FC = () => {
   const [isModelFetcherDialogOpen, setIsModelFetcherDialogOpen] = useState(false);
   // 移动端不使用 Dialog（契约：移动端弹层禁承载列表流程），改为模型列表上方的内联卡片
   const [isMobileFetcherOpen, setIsMobileFetcherOpen] = useState(false);
+  // P0-5 移动端删除行内二次确认：记录当前处于「再点一次确认」态的目标（供应商 / 模型）
+  const [confirmingDelete, setConfirmingDelete] = useState<
+    { type: 'vendor' } | { type: 'model'; profileId: string } | null
+  >(null);
+  const confirmingDeleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCodexOAuthVendor = isOpenAICodexOAuthVendor(selectedVendor);
+
+  // 进入确认态后 4 秒未再次点击则自动复位，避免误触残留
+  const armConfirmingDelete = (target: { type: 'vendor' } | { type: 'model'; profileId: string }) => {
+    setConfirmingDelete(target);
+    if (confirmingDeleteTimerRef.current) clearTimeout(confirmingDeleteTimerRef.current);
+    confirmingDeleteTimerRef.current = setTimeout(() => setConfirmingDelete(null), 4000);
+  };
+
+  const resetConfirmingDelete = () => {
+    setConfirmingDelete(null);
+    if (confirmingDeleteTimerRef.current) {
+      clearTimeout(confirmingDeleteTimerRef.current);
+      confirmingDeleteTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (confirmingDeleteTimerRef.current) clearTimeout(confirmingDeleteTimerRef.current);
+    };
+  }, []);
 
   // 判断连接是否已配置（有 baseUrl 且有 apiKey，或 noApiKey 模式）
   const isConnectionConfigured = useMemo(() => {
@@ -289,6 +316,7 @@ export const VendorDetailPanel: React.FC = () => {
     // 切换供应商时折叠状态归零（默认全展开）
     setCollapsedFamilies(new Set());
     setIsMobileFetcherOpen(false);
+    setConfirmingDelete(null);
   }, [selectedVendor?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // baseUrl 变化时同步 draft（外部更新）
@@ -417,19 +445,42 @@ export const VendorDetailPanel: React.FC = () => {
                   {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
                 </NotionButton>
 
-                {/* 删除：触发全局确认对话框 */}
+                {/* 删除：桌面触发全局确认对话框；移动端改行内二次确认（P0-5，弹层契约） */}
                 {!isReadOnly ? (
-                  <NotionButton
-                    size="sm"
-                    variant="ghost"
-                    iconOnly
-                    disabled={vendorBusy}
-                    title={t('common:actions.delete')}
-                    className="text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDeleteModelProfile(profile)}
-                  >
-                    <Trash className="h-3.5 w-3.5" />
-                  </NotionButton>
+                  isSmallScreen && confirmingDelete?.type === 'model' && confirmingDelete.profileId === profile.id ? (
+                    <NotionButton
+                      size="sm"
+                      variant="danger"
+                      disabled={vendorBusy}
+                      className="shrink-0 whitespace-nowrap"
+                      onClick={() => {
+                        resetConfirmingDelete();
+                        handleDeleteModelProfile(profile, { skipConfirm: true });
+                      }}
+                    >
+                      <Trash className="h-3.5 w-3.5" />
+                      {t('common:actions.confirm_delete')}
+                    </NotionButton>
+                  ) : (
+                    <NotionButton
+                      size="sm"
+                      variant="ghost"
+                      iconOnly
+                      disabled={vendorBusy}
+                      title={t('common:actions.delete')}
+                      aria-label={t('common:actions.delete')}
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => {
+                        if (isSmallScreen) {
+                          armConfirmingDelete({ type: 'model', profileId: profile.id });
+                          return;
+                        }
+                        handleDeleteModelProfile(profile);
+                      }}
+                    >
+                      <Trash className="h-3.5 w-3.5" />
+                    </NotionButton>
+                  )
                 ) : (
                   /* 占位：保持对齐（窄屏无需占位） */
                   <div className="h-7 w-7 shrink-0 max-md:hidden" />
@@ -551,7 +602,29 @@ export const VendorDetailPanel: React.FC = () => {
                 <>
                   <NotionButton size="sm" variant="ghost" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</NotionButton>
                   {!selectedVendorIsSiliconflow && !selectedVendor.isBuiltin && !selectedVendor.isReadOnly && (
-                    <NotionButton size="sm" variant="danger" onClick={() => handleDeleteVendor(selectedVendor)}>{t('common:actions.delete')}</NotionButton>
+                    // 桌面：确认对话框；移动端：行内二次确认（P0-5），删除后回到供应商列表屏
+                    <NotionButton
+                      size="sm"
+                      variant="danger"
+                      className={cn(isSmallScreen && confirmingDelete?.type === 'vendor' && 'whitespace-nowrap')}
+                      onClick={() => {
+                        if (!isSmallScreen) {
+                          handleDeleteVendor(selectedVendor);
+                          return;
+                        }
+                        if (confirmingDelete?.type === 'vendor') {
+                          resetConfirmingDelete();
+                          handleDeleteVendor(selectedVendor, { skipConfirm: true });
+                          closeMobileVendorDetail?.();
+                        } else {
+                          armConfirmingDelete({ type: 'vendor' });
+                        }
+                      }}
+                    >
+                      {isSmallScreen && confirmingDelete?.type === 'vendor'
+                        ? t('common:actions.confirm_delete')
+                        : t('common:actions.delete')}
+                    </NotionButton>
                   )}
                 </>
               )}
@@ -718,6 +791,7 @@ export const VendorDetailPanel: React.FC = () => {
         <div className="space-y-6">
           {!selectedVendorIsSiliconflow && (
             <div
+              data-wb-blur-surface
               className={cn(
                 'sticky top-0 md:top-4 z-10 -mx-1 px-1 py-3',
                 'bg-[color:var(--shell-workspace-panel)]/85',

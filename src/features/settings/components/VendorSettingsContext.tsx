@@ -35,13 +35,17 @@ export interface VendorSettingsContextValue {
   setInlineEditState: (state: InlineEditState | null) => void;
   isAddingNewModel: boolean;
   isSmallScreen: boolean;
+  /** 移动端两级导航：从供应商列表进入详情（P1-6） */
+  openMobileVendorDetail?: () => void;
+  /** 移动端两级导航：从详情返回供应商列表（P1-6） */
+  closeMobileVendorDetail?: () => void;
 
   // --- 操作 ---
   handleOpenVendorModal: (vendor?: VendorConfig | null) => void;
   handleStartEditVendor: (vendor: VendorConfig) => void;
   handleCancelEditVendor: () => void;
   handleSaveEditVendor: () => void;
-  handleDeleteVendor: (vendor: VendorConfig) => void;
+  handleDeleteVendor: (vendor: VendorConfig, options?: { skipConfirm?: boolean }) => void;
   handleSaveVendorBaseUrl: (vendorId: string, baseUrl: string) => void;
   handleSaveVendorApiKey: (vendorId: string, apiKey: string) => void;
   handleClearVendorApiKey: (vendorId: string) => void;
@@ -50,7 +54,7 @@ export interface VendorSettingsContextValue {
   handleAddModelInline: (vendor: VendorConfig) => void;
   handleCancelAddModel: () => void;
   handleToggleModelProfile: (profile: ModelProfile, enabled: boolean) => void;
-  handleDeleteModelProfile: (profile: ModelProfile) => void;
+  handleDeleteModelProfile: (profile: ModelProfile, options?: { skipConfirm?: boolean }) => void;
   handleToggleFavorite: (profile: ModelProfile) => void;
   testApiConnection: (api: ApiConfig) => Promise<void>;
   handleSiliconFlowConfig: (config: any) => Promise<string | undefined> | void;

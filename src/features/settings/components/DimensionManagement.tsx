@@ -17,6 +17,7 @@ import {
   Check,
   CaretDown,
   CaretUp,
+  Trash,
 } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -34,7 +35,7 @@ import {
   TableRow,
 } from '@/components/ui/shad/Table';
 import { AppSelect } from '@/components/ui/app-menu';
-import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { vfsUnifiedIndexApi, type VfsEmbeddingDimension } from '@/api/vfsUnifiedIndexApi';
 import { ApiConfig } from '@/types';
@@ -83,8 +84,8 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
   const [dimensionRange, setDimensionRange] = useState<[number, number]>([64, 8192]);
   const [creating, setCreating] = useState(false);
   
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [dimensionToDelete, setDimensionToDelete] = useState<DimensionSummary | null>(null);
+  // 行内删除确认：记录处于确认态的行 id（'dimension-modality'），无对话框
+  const [confirmingDeleteRow, setConfirmingDeleteRow] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   
   const [newModelId, setNewModelId] = useState<string>('__none__');
@@ -143,7 +144,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
         multimodal: multimodalDefault?.dimension ?? null,
       });
     } catch (error: unknown) {
-      console.error('加载默认维度设置失败:', error);
+      console.error('Failed to load default embedding dimensions:', error);
     }
   }, []);
 
@@ -162,7 +163,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
       // 同时加载默认维度设置
       await loadDefaultDimensions();
     } catch (error: unknown) {
-      console.error('加载维度数据失败:', error);
+      console.error('Failed to load embedding dimensions:', error);
       showGlobalNotification('error', t('settings:dimension_management.load_error'));
     } finally {
       setLoading(false);
@@ -209,6 +210,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
       setSelectedModelId(dimension.modelConfigId || '');
       setExpandedRow(rowId);
       setIsAddingNew(false);
+      setConfirmingDeleteRow(null);
     }
   };
 
@@ -243,7 +245,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
         showGlobalNotification('error', t('settings:dimension_management.assign_failed'));
       }
     } catch (error: unknown) {
-      console.error('分配维度模型失败:', error);
+      console.error('Failed to assign dimension model:', error);
       showGlobalNotification('error', t('settings:dimension_management.assign_failed'));
     } finally {
       setUpdating(false);
@@ -296,16 +298,20 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
       setIsAddingNew(false);
       loadDimensions();
     } catch (error: unknown) {
-      console.error('创建维度失败:', error);
+      console.error('Failed to create dimension:', error);
       showGlobalNotification('error', t('settings:dimension_management.create_failed'));
     } finally {
       setCreating(false);
     }
   };
 
-  const handleOpenDeleteDialog = (dim: DimensionSummary) => {
-    setDimensionToDelete(dim);
-    setShowDeleteDialog(true);
+  // 切换行内删除确认条（同一行再次点击则收起）
+  const handleToggleDeleteConfirm = (dim: DimensionSummary) => {
+    const rowId = `${dim.dimension}-${dim.modality}`;
+    setConfirmingDeleteRow((current) => (current === rowId ? null : rowId));
+    // 删除确认与分配模型面板互斥，避免同一行叠开两个展开区
+    setExpandedRow(null);
+    setSelectedDimension(null);
   };
 
   // 设置为默认维度
@@ -325,7 +331,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
       }));
       await loadDefaultDimensions();
     } catch (error: unknown) {
-      console.error('设置默认维度失败:', error);
+      console.error('Failed to set default dimension:', error);
       showGlobalNotification('error', t('settings:dimension_management.set_default_failed'));
     } finally {
       setSettingDefault(false);
@@ -338,23 +344,17 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
     return defaultDimensions[modality] === dim.dimension;
   };
 
-  const handleDeleteDimension = async () => {
-    if (!dimensionToDelete) return;
-
+  const handleDeleteDimension = async (dim: DimensionSummary) => {
     setDeleting(true);
     try {
-      const result = await vfsUnifiedIndexApi.deleteDimension(
-        dimensionToDelete.dimension,
-        dimensionToDelete.modality
-      );
+      const result = await vfsUnifiedIndexApi.deleteDimension(dim.dimension, dim.modality);
       showGlobalNotification('success', t('settings:dimension_management.delete_success', {
         count: result.deletedSegments,
       }));
-      setShowDeleteDialog(false);
-      setDimensionToDelete(null);
+      setConfirmingDeleteRow(null);
       loadDimensions();
     } catch (error: unknown) {
-      console.error('删除维度失败:', error);
+      console.error('Failed to delete dimension:', error);
       showGlobalNotification('error', t('settings:dimension_management.delete_failed'));
     } finally {
       setDeleting(false);
@@ -488,19 +488,19 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
       <div>
         {!loading && dimensions.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-[11px]">
-            <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5">
+            <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5 transition-colors hover:bg-muted/30 hover:border-muted-foreground/10">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.stats_dimensions')}</span>
               <span className="font-medium text-sm">{stats.totalDimensions}</span>
             </div>
-            <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5">
+            <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5 transition-colors hover:bg-muted/30 hover:border-muted-foreground/10">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.stats_records')}</span>
               <span className="font-medium text-sm">{stats.totalRecords.toLocaleString()}</span>
             </div>
-            <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5">
+            <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5 transition-colors hover:bg-muted/30 hover:border-muted-foreground/10">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.type_text')}</span>
               <span className="font-medium text-sm text-blue-500/80">{stats.textDimensions}</span>
             </div>
-            <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5">
+            <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5 transition-colors hover:bg-muted/30 hover:border-muted-foreground/10">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.type_multimodal')}</span>
               <span className="font-medium text-sm text-purple-500/80">{stats.multimodalDimensions}</span>
             </div>
@@ -508,8 +508,22 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <CircleNotch size={20} className="text-muted-foreground/40 animate-spin" />
+          <div className="space-y-3" aria-busy="true">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-11 rounded" />
+              ))}
+            </div>
+            <div className="border rounded-md overflow-hidden bg-background/50 divide-y divide-border/40">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-4 h-12">
+                  <Skeleton className="h-3.5 w-12 shrink-0" />
+                  <Skeleton className="h-3.5 w-full max-w-[220px]" />
+                  <Skeleton className="h-3.5 w-16 ml-auto shrink-0" />
+                  <Skeleton className="h-3.5 w-14 shrink-0" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : dimensions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed rounded-lg bg-muted/5">
@@ -555,10 +569,15 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                     {dimensions.map((dim) => {
                       const rowId = `${dim.dimension}-${dim.modality}`;
                       const isExpanded = expandedRow === rowId;
+                      const isConfirmingDelete = confirmingDeleteRow === rowId;
                       
                       return (
                         <React.Fragment key={rowId}>
-                          <TableRow className={cn("group h-12 transition-colors hover:bg-[var(--interactive-hover)]", isExpanded && "bg-muted/40")}>
+                          <TableRow className={cn(
+                            "group h-12 transition-colors hover:bg-[var(--interactive-hover)]",
+                            isExpanded && "bg-muted/40",
+                            isConfirmingDelete && "bg-destructive/5 hover:bg-destructive/5",
+                          )}>
                             <TableCell className="font-mono py-1">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm font-medium">{dim.dimension}</span>
@@ -600,7 +619,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                             <TableCell className="py-1 pr-4">
                               <div className={cn(
                                 "flex items-center justify-end gap-0.5 transition-opacity",
-                                isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                                (isExpanded || isConfirmingDelete) ? "opacity-100" : "opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100"
                               )}>
                                 {!isDefaultDimension(dim) && (
                                   <CommonTooltip content={dim.modelConfigId ? t('settings:dimension_management.set_as_default') : t('settings:dimension_management.bind_model_first')}>
@@ -633,8 +652,14 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                   <NotionButton
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleOpenDeleteDialog(dim)}
-                                    className="text-destructive/60 hover:text-destructive hover:bg-destructive/10 h-6 w-6 p-0"
+                                    onClick={() => handleToggleDeleteConfirm(dim)}
+                                    aria-expanded={isConfirmingDelete}
+                                    className={cn(
+                                      "h-6 w-6 p-0 transition-colors",
+                                      isConfirmingDelete
+                                        ? "text-destructive bg-destructive/10"
+                                        : "text-destructive/60 hover:text-destructive hover:bg-destructive/10"
+                                    )}
                                   >
                                     <span className="text-[10px]">✕</span>
                                   </NotionButton>
@@ -724,6 +749,56 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               </TableCell>
                             </TableRow>
                           )}
+
+                          {/* 行内展开：删除确认条（常驻挂载，grid-rows 动画收展） */}
+                          <TableRow
+                            className={cn("hover:bg-transparent", !isConfirmingDelete && "border-none")}
+                            aria-hidden={!isConfirmingDelete}
+                          >
+                            <TableCell colSpan={6} className="p-0 border-none">
+                              <div className={cn(
+                                "grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
+                                isConfirmingDelete ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                              )}>
+                                <div className="overflow-hidden">
+                                  <div className="flex items-center gap-3 px-4 py-2.5 bg-destructive/5 border-l-2 border-destructive/60">
+                                    <Warning size={14} className="text-destructive shrink-0" />
+                                    <p className="flex-1 min-w-0 text-[11px] text-destructive/90 leading-relaxed">
+                                      {t('settings:dimension_management.delete_confirm_inline', {
+                                        dimension: dim.dimension,
+                                        count: dim.recordCount,
+                                      })}
+                                    </p>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <NotionButton
+                                        variant="ghost"
+                                        size="sm"
+                                        tabIndex={isConfirmingDelete ? 0 : -1}
+                                        onClick={() => setConfirmingDeleteRow(null)}
+                                        disabled={deleting}
+                                        className="h-6 px-2 text-[11px]"
+                                      >
+                                        {t('common:cancel')}
+                                      </NotionButton>
+                                      <NotionButton
+                                        variant="danger"
+                                        size="sm"
+                                        tabIndex={isConfirmingDelete ? 0 : -1}
+                                        onClick={() => handleDeleteDimension(dim)}
+                                        disabled={deleting}
+                                        className="h-6 px-2 text-[11px]"
+                                      >
+                                        {deleting && isConfirmingDelete
+                                          ? <CircleNotch size={12} className="mr-1 animate-spin" />
+                                          : <Trash size={12} className="mr-1" />}
+                                        {t('settings:dimension_management.delete_confirm_button')}
+                                      </NotionButton>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
                         </React.Fragment>
                       );
                     })}
@@ -736,11 +811,13 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
               {dimensions.map((dim) => {
                 const rowId = `${dim.dimension}-${dim.modality}`;
                 const isExpanded = expandedRow === rowId;
+                const isConfirmingDelete = confirmingDeleteRow === rowId;
                 
                 return (
                   <div key={rowId} className={cn(
-                    "border rounded-md bg-background/50 transition-colors",
-                    isExpanded && "border-primary/30 bg-muted/30"
+                    "border rounded-md bg-background/50 transition-colors hover:border-border hover:bg-muted/20",
+                    isExpanded && "border-primary/30 bg-muted/30",
+                    isConfirmingDelete && "border-destructive/40 bg-destructive/5"
                   )}>
                     <div className="p-3 space-y-2">
                       <div className="flex items-center justify-between">
@@ -801,11 +878,65 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                         <NotionButton
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleOpenDeleteDialog(dim)}
-                          className="text-destructive/60 hover:text-destructive text-[10px] h-7 w-7 p-0 active:scale-95"
+                          onClick={() => handleToggleDeleteConfirm(dim)}
+                          aria-expanded={isConfirmingDelete}
+                          className={cn(
+                            "text-[10px] h-7 w-7 p-0 active:scale-95 transition-colors",
+                            isConfirmingDelete
+                              ? "text-destructive bg-destructive/10"
+                              : "text-destructive/60 hover:text-destructive"
+                          )}
                         >
                           <span>✕</span>
                         </NotionButton>
+                      </div>
+                    </div>
+
+                    {/* 行内删除确认条（常驻挂载，grid-rows 动画收展） */}
+                    <div
+                      className={cn(
+                        "grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
+                        isConfirmingDelete ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                      )}
+                      aria-hidden={!isConfirmingDelete}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="mx-3 mb-3 p-2.5 rounded bg-destructive/5 border border-destructive/20 space-y-2">
+                          <div className="flex items-start gap-2">
+                            <Warning size={14} className="text-destructive shrink-0 mt-0.5" />
+                            <p className="text-[11px] text-destructive/90 leading-relaxed">
+                              {t('settings:dimension_management.delete_confirm_inline', {
+                                dimension: dim.dimension,
+                                count: dim.recordCount,
+                              })}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <NotionButton
+                              variant="ghost"
+                              size="sm"
+                              tabIndex={isConfirmingDelete ? 0 : -1}
+                              onClick={() => setConfirmingDeleteRow(null)}
+                              disabled={deleting}
+                              className="h-7 text-[11px] flex-1"
+                            >
+                              {t('common:cancel')}
+                            </NotionButton>
+                            <NotionButton
+                              variant="danger"
+                              size="sm"
+                              tabIndex={isConfirmingDelete ? 0 : -1}
+                              onClick={() => handleDeleteDimension(dim)}
+                              disabled={deleting}
+                              className="h-7 text-[11px] flex-1"
+                            >
+                              {deleting && isConfirmingDelete
+                                ? <CircleNotch size={12} className="mr-1 animate-spin" />
+                                : <Trash size={12} className="mr-1" />}
+                              {t('settings:dimension_management.delete_confirm_button')}
+                            </NotionButton>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     
@@ -876,38 +1007,6 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           </>
         )}
 
-        {/* 更换模型对话框 (已改为内联编辑) */}
-
-        {/* 新建维度对话框 (已改为内联编辑) */}
-
-        <NotionAlertDialog
-          open={showDeleteDialog}
-          onOpenChange={setShowDeleteDialog}
-          title={t('settings:dimension_management.delete_dimension_title')}
-          description={t('settings:dimension_management.delete_dimension_description', {
-            dimension: dimensionToDelete?.dimension,
-            count: dimensionToDelete?.recordCount ?? 0,
-          })}
-          confirmText={t('common:delete')}
-          cancelText={t('common:cancel')}
-          confirmVariant="danger"
-          loading={deleting}
-          disabled={deleting}
-          onConfirm={handleDeleteDimension}
-        >
-          {dimensionToDelete && dimensionToDelete.recordCount > 0 && (
-            <div className="p-3 bg-destructive/5 border border-destructive/10 rounded-md">
-                <div className="flex items-start gap-2">
-                  <Warning size={16} className="text-destructive flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-destructive/80 leading-relaxed">
-                    {t('settings:dimension_management.delete_warning', {
-                      count: dimensionToDelete.recordCount,
-                    })}
-                  </p>
-                </div>
-              </div>
-            )}
-        </NotionAlertDialog>
       </div>
     </div>
   );

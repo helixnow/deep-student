@@ -20,26 +20,28 @@ vi.mock('react-i18next', () => ({
 
 import { PresetServerSelector } from '../McpToolsSection';
 
+// vitest.setup.ts 的 matchMedia polyfill 恒返回 matches:false，
+// 因此 useBreakpoint().isSmallScreen === true —— 这里覆盖的是移动端内联展开形态
+// （P0-3：预置列表内联展开、权限确认内联卡，均不使用弹层/Sheet）。
 describe('PresetServerSelector permission drawer a11y', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('opens selector with dialog role and closes on Escape with focus return', async () => {
+  it('opens selector inline and closes on Escape with focus return', async () => {
     render(
       <PresetServerSelector existingServerIds={[]} onAddPreset={() => undefined} />,
     );
 
     const addBtn = screen.getByTestId('mcp-preset-add-btn');
-    expect(addBtn).toHaveAttribute('aria-haspopup', 'dialog');
     expect(addBtn).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.click(addBtn);
     expect(addBtn).toHaveAttribute('aria-expanded', 'true');
 
     const selector = await screen.findByTestId('mcp-preset-selector');
-    expect(selector).toHaveAttribute('role', 'dialog');
-    expect(selector).toHaveAttribute('aria-modal', 'true');
+    // 移动端为页内内联展开的分组列表，不再是模态弹层
+    expect(selector).not.toHaveAttribute('aria-modal');
 
     fireEvent.keyDown(window, { key: 'Escape', bubbles: true });
     await waitFor(() => {

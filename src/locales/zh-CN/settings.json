@@ -762,6 +762,9 @@
     "prompt_empty": "无任务说明",
     "last_run": "上次运行",
     "next_run": "下次运行",
+    "last_run_relative": "上次运行：{{time}}",
+    "next_run_relative": "下次运行：{{time}}",
+    "row_updated_elsewhere": "任务已在别处更新，已刷新",
     "action_type": {
       "notify": "通知 + 待办",
       "agent_turn": "Agent 任务"
@@ -771,7 +774,8 @@
       "weekdays": "工作日",
       "weekly": "每周",
       "monthly": "每月",
-      "interval": "按间隔"
+      "interval": "按间隔",
+      "once": "仅一次"
     },
     "schedule": {
       "daily": "每天 {{time}}",
@@ -779,6 +783,7 @@
       "weekly": "每周{{weekday}} {{time}}",
       "monthly": "每月 {{day}} 日 {{time}}",
       "interval": "每 {{count}} 分钟",
+      "once": "{{date}} {{time}} 运行一次",
       "timezone": " · {{timezone}}"
     },
     "catch_up": {
@@ -812,7 +817,15 @@
     },
     "empty": {
       "title": "还没有自动化",
-      "description": "当前没有已创建的定时任务。"
+      "description": "当前没有已创建的定时任务。",
+      "cta": "创建第一个定时任务"
+    },
+    "create": {
+      "button": "新建任务",
+      "title": "新建定时任务",
+      "description": "设置任务内容、调度和失败恢复策略后创建。",
+      "submit": "创建",
+      "capacity_full": "已达上限（{{max}} 个），请先删除或停用现有任务"
     },
     "edit": {
       "title": "编辑「{{name}}」",
@@ -834,14 +847,18 @@
       "max_retries": "失败重试次数",
       "retry_backoff_seconds": "重试退避（秒）",
       "timeout_seconds": "超时（秒）",
-      "prompt": "任务说明"
+      "prompt": "任务说明",
+      "advanced": "高级选项"
     },
     "delete": {
       "title": "删除自动化？",
       "description": "「{{name}}」将被永久删除，后续不再触发且无法恢复。",
-      "confirm": "永久删除"
+      "confirm": "永久删除",
+      "inline_confirm": "确认删除？该任务的运行历史将一并删除",
+      "heartbeat_blocked": "系统心跳任务不可删除，可停用"
     },
     "notices": {
+      "created": "已创建「{{name}}」。",
       "enabled": "已启用「{{name}}」。",
       "disabled": "已停用「{{name}}」。",
       "started": "「{{name}}」已开始运行。",
@@ -1455,9 +1472,8 @@
     "create_failed": "维度创建失败",
     "dimension_exists": "该维度已存在",
     "dimension_exists_hint": "此维度已存在",
-    "delete_dimension_title": "删除嵌入维度",
-    "delete_dimension_description": "确定要删除维度 {{dimension}} 吗？该维度包含 {{count}} 条数据。",
-    "delete_warning": "此操作将删除该维度下的所有 {{count}} 条向量数据，且不可恢复！",
+    "delete_confirm_inline": "将删除维度 {{dimension}} 及其 {{count}} 条向量记录，此操作不可恢复",
+    "delete_confirm_button": "确认删除",
     "delete_success": "维度已删除，共清理 {{count}} 条数据",
     "delete_failed": "删除维度失败",
     "stats_dimensions": "维度数",
@@ -1472,7 +1488,9 @@
     "set_default_success": "已设置为默认{{type}}嵌入维度",
     "set_default_failed": "设置默认维度失败",
     "bind_model_first": "请先为此维度分配模型",
-    "preset_dimensions": "常用维度"
+    "preset_dimensions": "常用维度",
+    "preset_dimension_success": "默认嵌入维度 {{dimension}} 已创建并生效",
+    "preset_dimension_failed": "嵌入维度 {{dimension}} 配置失败，请在「嵌入维度管理」中手动创建并设为默认"
   },
   "mcp": {
     "title": "MCP工具协议",
@@ -2432,7 +2450,17 @@
     "autoSubfolders": "自动创建子文件夹",
     "autoSubfoldersDesc": "写入记忆时，自动按分类路径创建子文件夹。",
     "defaultCategory": "默认分类",
-    "defaultCategoryDesc": "未指定分类时记忆存入的默认子文件夹。"
+    "defaultCategoryDesc": "未指定分类时记忆存入的默认子文件夹。",
+    "autoExtractFrequency": "自动提取频率",
+    "autoExtractFrequencyDesc": "对话结束后自动提取记忆的频率",
+    "autoExtractFrequencyUpdated": "自动提取频率已更新",
+    "freqOff": "关闭",
+    "freqBalanced": "平衡",
+    "freqAggressive": "积极",
+    "categoryGeneral": "通用",
+    "categoryPreference": "偏好",
+    "categoryExperience": "经历",
+    "loadError": "记忆设置加载失败"
   },
   "data_governance": {
     "backup_tiers": {

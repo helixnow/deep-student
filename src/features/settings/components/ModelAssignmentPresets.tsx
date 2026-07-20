@@ -12,7 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { TauriAPI } from '@/utils/tauriApi';
 
 interface ModelAssignmentPreset {
@@ -64,7 +63,8 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
   const { t } = useTranslation(['settings', 'common']);
   const [presets, setPresets] = useState<ModelAssignmentPreset[]>([]);
   const [newPresetName, setNewPresetName] = useState('');
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  // P1-10：预设命名不再使用 Dialog，改为列表上方内联输入行（桌面/移动统一）
+  const [showCreateRow, setShowCreateRow] = useState(false);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 
   // 创建或恢复内置预设的函数
@@ -214,8 +214,13 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
     const updatedPresets = [...presets, newPreset];
     await savePresetsToStorage(updatedPresets);
     setNewPresetName('');
-    setShowCreateDialog(false);
+    setShowCreateRow(false);
     showGlobalNotification('success', t('settings:model_presets.preset_created', { name: newPresetName }));
+  };
+
+  const handleCancelCreate = () => {
+    setShowCreateRow(false);
+    setNewPresetName('');
   };
 
   // 应用预设
@@ -333,7 +338,7 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
           <SettingsIcon size={20} className="text-muted-foreground shrink-0" />
           <CardTitle className="text-base text-left" style={{ textAlign: 'left' }}>{t('settings:model_presets.title')}</CardTitle>
         </div>
-        <NotionButton size="sm" variant="primary" className="ml-auto" onClick={() => setShowCreateDialog(true)} data-tour-id="settings-model-presets-save">
+        <NotionButton size="sm" variant="primary" className="ml-auto" onClick={() => setShowCreateRow(true)} disabled={showCreateRow} data-tour-id="settings-model-presets-save">
           <FloppyDisk size={14} className="shrink-0" /> {t('settings:model_presets.save_current')}
         </NotionButton>
       </CardHeader>
@@ -341,6 +346,28 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
         <CardDescription className="text-xs">
           {t('settings:model_presets.update_description')}
         </CardDescription>
+
+        {/* P1-10：内联命名输入行（替代原 NotionDialog） */}
+        {showCreateRow && (
+          <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-muted/20 p-2 sm:flex-row sm:items-center">
+            <Input
+              autoFocus
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              placeholder={t('settings:model_presets.preset_name_placeholder')}
+              aria-label={t('settings:model_presets.create_dialog_title')}
+              className="min-h-11 flex-1 sm:min-h-0"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreatePreset();
+                if (e.key === 'Escape') handleCancelCreate();
+              }}
+            />
+            <div className="flex shrink-0 justify-end gap-2">
+              <NotionButton size="sm" variant="default" onClick={handleCancelCreate}>{t('common:actions.cancel')}</NotionButton>
+              <NotionButton size="sm" variant="primary" onClick={() => { void handleCreatePreset(); }}>{t('common:actions.add')}</NotionButton>
+            </div>
+          </div>
+        )}
 
         {presets.length === 0 ? (
           <div className="text-sm text-muted-foreground border border-border rounded-md p-3">{t('settings:model_presets.no_presets')}</div>
@@ -392,24 +419,6 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
           </div>
         )}
 
-        <NotionDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} maxWidth="max-w-md">
-          <NotionDialogHeader>
-            <NotionDialogTitle>{t('settings:model_presets.create_dialog_title')}</NotionDialogTitle>
-            <NotionDialogDescription>{t('settings:model_presets.create_dialog_description')}</NotionDialogDescription>
-          </NotionDialogHeader>
-          <NotionDialogBody>
-            <Input
-              value={newPresetName}
-              onChange={(e) => setNewPresetName(e.target.value)}
-              placeholder={t('settings:model_presets.preset_name_placeholder')}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreatePreset()}
-            />
-          </NotionDialogBody>
-          <NotionDialogFooter>
-            <NotionButton size="sm" variant="default" onClick={() => { setShowCreateDialog(false); setNewPresetName(''); }}>{t('common:actions.cancel')}</NotionButton>
-            <NotionButton size="sm" variant="primary" onClick={handleCreatePreset}>{t('common:actions.add')}</NotionButton>
-          </NotionDialogFooter>
-        </NotionDialog>
       </CardContent>
     </Card>
   );

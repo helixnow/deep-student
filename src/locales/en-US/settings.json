@@ -762,6 +762,9 @@
     "prompt_empty": "No task instructions",
     "last_run": "Last run",
     "next_run": "Next run",
+    "last_run_relative": "Last run {{time}}",
+    "next_run_relative": "Next run {{time}}",
+    "row_updated_elsewhere": "This task was updated elsewhere; the list has been refreshed.",
     "action_type": {
       "notify": "Notification + todo",
       "agent_turn": "Agent task"
@@ -771,7 +774,8 @@
       "weekdays": "Weekdays",
       "weekly": "Weekly",
       "monthly": "Monthly",
-      "interval": "Interval"
+      "interval": "Interval",
+      "once": "Once"
     },
     "schedule": {
       "daily": "Every day at {{time}}",
@@ -779,6 +783,7 @@
       "weekly": "Every {{weekday}} at {{time}}",
       "monthly": "Day {{day}} of each month at {{time}}",
       "interval": "Every {{count}} minutes",
+      "once": "Once on {{date}} at {{time}}",
       "timezone": " · {{timezone}}"
     },
     "catch_up": {
@@ -812,7 +817,15 @@
     },
     "empty": {
       "title": "No automations yet",
-      "description": "There are no scheduled tasks yet."
+      "description": "There are no scheduled tasks yet.",
+      "cta": "Create your first automation"
+    },
+    "create": {
+      "button": "New automation",
+      "title": "Create automation",
+      "description": "Define the task, schedule, and failure recovery policy.",
+      "submit": "Create",
+      "capacity_full": "Capacity reached ({{max}}). Delete or disable an existing automation first."
     },
     "edit": {
       "title": "Edit {{name}}",
@@ -834,14 +847,18 @@
       "max_retries": "Failure retries",
       "retry_backoff_seconds": "Retry delay (seconds)",
       "timeout_seconds": "Timeout (seconds)",
-      "prompt": "Task instructions"
+      "prompt": "Task instructions",
+      "advanced": "Advanced options"
     },
     "delete": {
       "title": "Delete automation?",
       "description": "{{name}} will be permanently deleted, will no longer run, and cannot be restored.",
-      "confirm": "Delete permanently"
+      "confirm": "Delete permanently",
+      "inline_confirm": "Delete this automation? Its run history will be deleted too.",
+      "heartbeat_blocked": "The system heartbeat automation cannot be deleted; you can disable it instead."
     },
     "notices": {
+      "created": "Created {{name}}.",
       "enabled": "Enabled {{name}}.",
       "disabled": "Disabled {{name}}.",
       "started": "Started {{name}}.",
@@ -1455,9 +1472,8 @@
     "create_failed": "Failed to create dimension",
     "dimension_exists": "This dimension already exists",
     "dimension_exists_hint": "This dimension already exists",
-    "delete_dimension_title": "Delete Embedding Dimension",
-    "delete_dimension_description": "Are you sure you want to delete dimension {{dimension}}? It contains {{count}} records.",
-    "delete_warning": "This will permanently delete all {{count}} vector records in this dimension!",
+    "delete_confirm_inline": "This will delete dimension {{dimension}} and its {{count}} vector records. This action cannot be undone.",
+    "delete_confirm_button": "Confirm delete",
     "delete_success": "Dimension deleted, {{count}} records cleaned up",
     "delete_failed": "Failed to delete dimension",
     "stats_dimensions": "Dimensions",
@@ -1472,7 +1488,9 @@
     "set_default_success": "Set as default {{type}} embedding dimension",
     "set_default_failed": "Failed to set default dimension",
     "bind_model_first": "Please assign a model to this dimension first",
-    "preset_dimensions": "Presets"
+    "preset_dimensions": "Presets",
+    "preset_dimension_success": "Default embedding dimension {{dimension}} is created and active",
+    "preset_dimension_failed": "Failed to configure embedding dimension {{dimension}}. Please create it and set it as default in Embedding Dimension Management."
   },
   "mcp": {
     "title": "MCP Tool Protocol",
@@ -2432,7 +2450,17 @@
     "autoSubfolders": "Create subfolders automatically",
     "autoSubfoldersDesc": "Create category subfolders automatically when saving memories.",
     "defaultCategory": "Default category",
-    "defaultCategoryDesc": "The default subfolder used when no category is specified."
+    "defaultCategoryDesc": "The default subfolder used when no category is specified.",
+    "autoExtractFrequency": "Auto-extract frequency",
+    "autoExtractFrequencyDesc": "How often memories are auto-extracted after conversations",
+    "autoExtractFrequencyUpdated": "Auto-extract frequency updated",
+    "freqOff": "Off",
+    "freqBalanced": "Balanced",
+    "freqAggressive": "Aggressive",
+    "categoryGeneral": "General",
+    "categoryPreference": "Preferences",
+    "categoryExperience": "Experiences",
+    "loadError": "Failed to load memory settings"
   },
   "data_governance": {
     "backup_tiers": {
@@ -2595,7 +2623,6 @@
       "github_notes": "High risk: treat tokens as secrets. Host OAuth support varies; PAT is the supported path today."
     }
   },
-
   "gradingMode": {
     "backToSettings": "Back to settings",
     "badgeBuiltin": "Built-in",

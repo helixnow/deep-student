@@ -45,6 +45,7 @@ import {
   getAllowedApiProtocolsForModelAdapter,
   normalizeApiProtocolForModelAdapter,
 } from './modelConverters';
+import { useKeyboardInset } from '../hooks/useKeyboardInset';
 
 // Tauri 2.x API导入（可选）
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
@@ -159,6 +160,8 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   mobilePanelMode = false,
 }) => {
   const { t } = useTranslation(['common', 'settings']);
+  // P2-15 键盘避让：移动端右滑面板中，软键盘弹出时抬升底部操作栏
+  const keyboardInset = useKeyboardInset(mobilePanelMode);
   const [connectionTest, setConnectionTest] = useState<
     | { state: 'idle' }
     | { state: 'testing' }
@@ -2162,7 +2165,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           </Tabs>
 
           {/* Footer - Fixed & Minimal */}
-          <div className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center gap-2">
+          <div
+            className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center gap-2"
+            style={mobilePanelMode && keyboardInset > 0 ? { paddingBottom: `calc(0.5rem + ${keyboardInset}px)` } : undefined}
+          >
             <NotionButton
               type="button"
               variant="ghost"
@@ -2188,14 +2194,18 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               )}
             </NotionButton>
             <div className="flex-1" />
+            {/* P1-7 移动端右滑面板：保存唯一出口在统一顶栏 Check，底栏只保留「测试连接」，
+                避免顶栏/底栏双保存出口造成心智分叉（表单仍可经 requestSubmit 提交） */}
             {!mobilePanelMode && (
-              <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
-                {t('common:actions.cancel')}
-              </NotionButton>
+              <>
+                <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
+                  {t('common:actions.cancel')}
+                </NotionButton>
+                <NotionButton type="submit" variant="primary" className="min-w-[100px]">
+                  {t('common:actions.save')}
+                </NotionButton>
+              </>
             )}
-            <NotionButton type="submit" variant="primary" className="min-w-[100px]">
-              {t('common:actions.save')}
-            </NotionButton>
           </div>
         </form>
   );

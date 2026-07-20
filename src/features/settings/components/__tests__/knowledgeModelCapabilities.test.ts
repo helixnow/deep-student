@@ -29,8 +29,21 @@ describe('knowledge model capability routing', () => {
     })).toBeNull();
   });
 
+  it('treats undefined capability flags as unset (not bindable)', () => {
+    expect(getKnowledgeModelCapability({})).toBeNull();
+    expect(getKnowledgeModelCapability({ isMultimodal: true })).toBeNull();
+    // undefined isReranker + explicit embedding flag is still a valid embedding model
+    expect(getKnowledgeModelCapability({ isEmbedding: true })).toBe('text_embedding');
+  });
+
   it('maps dimension modality to an exact embedding capability', () => {
     expect(embeddingCapabilityForModality('text')).toBe('text_embedding');
     expect(embeddingCapabilityForModality('multimodal')).toBe('multimodal_embedding');
+  });
+
+  it('falls back to text embedding for unknown or empty modalities', () => {
+    expect(embeddingCapabilityForModality('')).toBe('text_embedding');
+    expect(embeddingCapabilityForModality('audio')).toBe('text_embedding');
+    expect(embeddingCapabilityForModality('MULTIMODAL')).toBe('text_embedding');
   });
 });

@@ -12,7 +12,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import { DotsSixVertical, Plus } from '@phosphor-icons/react';
+import { CaretRight, DotsSixVertical, Plus } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { cn } from '@/lib/utils';
@@ -121,6 +121,8 @@ export const VendorSidebar: React.FC = () => {
     vendorBusy,
     handleOpenVendorModal,
     onReorderVendors,
+    isSmallScreen,
+    openMobileVendorDetail,
   } = useVendorSettings();
 
   // 乐观更新：本地维护拖拽顺序，避免等待持久化导致闪烁
@@ -161,14 +163,22 @@ export const VendorSidebar: React.FC = () => {
         {...provided.draggableProps}
         {...provided.dragHandleProps}
         style={provided.draggableProps.style}
-        onClick={() => setSelectedVendorId(vendor.id)}
+        onClick={() => {
+          setSelectedVendorId(vendor.id);
+          // P1-6 移动端两级导航：点击行即进入供应商详情屏
+          if (isSmallScreen) openMobileVendorDetail?.();
+        }}
         className={cn(
-          'px-3 py-2 text-left w-full flex items-center gap-2 cursor-grab active:cursor-grabbing group',
+          'px-3 py-2 text-left w-full flex items-center gap-2 group',
+          // P1-8 触屏禁拖：小屏不显示抓取光标（拖拽已通过 isDragDisabled 关闭）
+          isSmallScreen ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
           isActive
             ? settingsQuietSelectedRowClassName
             : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
           // 侧栏统一契约：行圆角/高度/字号对齐对话标准（desktop-shell-nav-row 配方）
-          'min-h-[32px] rounded-[var(--shell-nav-row-radius,14px)] text-sm',
+          // P1-8 触控目标：小屏行高提升到 44px
+          isSmallScreen ? 'min-h-11' : 'min-h-[32px]',
+          'rounded-[var(--shell-nav-row-radius,14px)] text-sm',
           snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
         )}
       >
@@ -201,10 +211,16 @@ export const VendorSidebar: React.FC = () => {
             </div>
           </div>
         </div>
-        {/* 拖拽指示：hover 时显示，放最右边 */}
-        <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-          <DotsSixVertical size={12} />
-        </span>
+        {/* 移动端：chevron 暗示可进入详情；桌面端：hover 显示拖拽指示 */}
+        {isSmallScreen ? (
+          <span className="shrink-0 text-muted-foreground/40" aria-hidden="true">
+            <CaretRight size={14} />
+          </span>
+        ) : (
+          <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+            <DotsSixVertical size={12} />
+          </span>
+        )}
       </div>
     );
   };
@@ -248,7 +264,8 @@ export const VendorSidebar: React.FC = () => {
               {(provided) => (
                 <div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col gap-0.5">
                   {displayVendors.map((vendor, index) => (
-                    <Draggable key={vendor.id} draggableId={vendor.id} index={index}>
+                    // P1-8 触屏禁拖：整行拖拽在触屏上与滚动/点按冲突，小屏直接关闭拖拽排序
+                    <Draggable key={vendor.id} draggableId={vendor.id} index={index} isDragDisabled={isSmallScreen}>
                       {(provided, snapshot) => renderVendorRow(vendor, provided, snapshot)}
                     </Draggable>
                   ))}

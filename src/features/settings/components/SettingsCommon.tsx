@@ -45,12 +45,6 @@ export const settingsQuietTableRowClassName = cn(
   settingsQuietHoverClassName,
 );
 
-export const settingsMobileSheetCloseButtonClassName = cn(
-  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-[var(--button-radius)] text-[color:var(--text-secondary)]',
-  'transition-[background-color] duration-150 ease-out hover:bg-[color:var(--sidebar-quiet-hover)]',
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] motion-reduce:transition-none',
-);
-
 export interface SettingSectionProps {
   title: string;
   description?: string;

@@ -22,6 +22,7 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import * as cloudApi from '@/utils/cloudStorageApi';
 import { TauriAPI } from '@/utils/tauriApi';
 import { DataGovernanceApi, type BackupJobSummary } from '@/api/dataGovernance';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -118,6 +119,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 删除确认对话框状态
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteVersionId, setPendingDeleteVersionId] = useState<string | null>(null);
+  // P2-12 移动端契约：版本删除确认改为按钮两段式行内确认（4 秒未确认自动复位）
+  const { isSmallScreen } = useBreakpoint();
+  const [confirmingDeleteVersionId, setConfirmingDeleteVersionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirmingDeleteVersionId) return;
+    const timer = window.setTimeout(() => setConfirmingDeleteVersionId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmingDeleteVersionId]);
 
   // 不安全连接警告对话框状态
   const [showInsecureFtpWarning, setShowInsecureFtpWarning] = useState(false);
@@ -1351,14 +1361,38 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                           <Download size={16} />
                         )}
                       </NotionButton>
-                      <NotionButton
-                        size="sm"
-                        variant="ghost"
-                        title={t('cloudStorage:history.delete')}
-                        onClick={() => openDeleteConfirm(version.id)}
-                      >
-                        <Trash size={16} className="text-destructive" />
-                      </NotionButton>
+                      {isSmallScreen && confirmingDeleteVersionId === version.id ? (
+                        // P2-12 移动端两段式行内确认：再点一次执行删除
+                        <NotionButton
+                          size="sm"
+                          variant="danger"
+                          className="whitespace-nowrap"
+                          onClick={() => {
+                            setConfirmingDeleteVersionId(null);
+                            void handleDeleteVersion();
+                          }}
+                        >
+                          <Trash size={14} />
+                          {t('common:actions.confirm_delete')}
+                        </NotionButton>
+                      ) : (
+                        <NotionButton
+                          size="sm"
+                          variant="ghost"
+                          title={t('cloudStorage:history.delete')}
+                          aria-label={t('cloudStorage:history.delete')}
+                          onClick={() => {
+                            if (isSmallScreen) {
+                              setPendingDeleteVersionId(version.id);
+                              setConfirmingDeleteVersionId(version.id);
+                              return;
+                            }
+                            openDeleteConfirm(version.id);
+                          }}
+                        >
+                          <Trash size={16} className="text-destructive" />
+                        </NotionButton>
+                      )}
                     </div>
                   </div>
                 ))}

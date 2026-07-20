@@ -20,7 +20,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { useQueueSettings } from '@/features/chat/queue/useQueueSettings';
 import { debugMasterSwitch } from '@/debug-panel/debugMasterSwitch';
-import { isAndroid } from '@/utils/platform';
+import { isAndroid, isMobilePlatform } from '@/utils/platform';
 import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '@/features/chat/hooks/useDevShowRawRequest';
 import {
   getSystemNotificationPolicy,
@@ -77,10 +77,13 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   const { mode, loading: queueModeLoading, setMode } = useQueueSettings();
   const [notificationPolicy, setNotificationPolicy] = useState<SystemNotificationPolicy>(() => getSystemNotificationPolicy());
   const [quickAssistantConfig, setQuickAssistantConfig] = useState<QuickAssistantConfig | null>(null);
+  // P1-11：快速助手（系统快捷小窗）仅桌面端 Rust 实现，移动平台隐藏整块假入口
+  const quickAssistantSupported = !isMobilePlatform();
 
   useEffect(() => {
+    if (!quickAssistantSupported) return;
     void getQuickAssistantConfig().then(setQuickAssistantConfig);
-  }, []);
+  }, [quickAssistantSupported]);
 
   const updateQuickAssistant = async (
     key: string,
@@ -171,6 +174,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
         className="overflow-visible"
         hideHeader
       >
+        {quickAssistantSupported && (
         <SettingsGroup
           title={t('settings:quick_assistant.title', '快速学习')}
           description={t('settings:quick_assistant.description', '在其他应用中捕获内容、快速处理并沉淀到学习系统。')}
@@ -213,6 +217,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             </NotionButton>
           </SettingRow>
         </SettingsGroup>
+        )}
 
         <SettingsGroup
           title={t('settings:tabs.general')}
